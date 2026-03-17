@@ -115,6 +115,12 @@ pub struct ViewportWidget {
 
     /// Clipboard for copy/paste operations
     clipboard: Option<crate::clipboard::ClipboardData>,
+
+    /// Whether terrain brush mode is active (set externally)
+    terrain_brush_active: bool,
+
+    /// Queued terrain brush hits (world X, Z) from mouse clicks in viewport
+    terrain_brush_hits: Vec<[f32; 2]>,
 }
 
 impl ViewportWidget {
@@ -180,12 +186,24 @@ impl ViewportWidget {
                 None, None, None, None, None, None, None, None, None, None, None, None,
             ],
             clipboard: None,
+            terrain_brush_active: false,
+            terrain_brush_hits: Vec::new(),
         })
     }
 
     /// Set the selection count for display in viewport HUD
     pub fn set_selection_count(&mut self, count: usize) {
         self.toolbar.stats.selection_count = count;
+    }
+
+    /// Enable/disable terrain brush mode for viewport mouse interaction
+    pub fn set_terrain_brush_active(&mut self, active: bool) {
+        self.terrain_brush_active = active;
+    }
+
+    /// Take all pending terrain brush hits (world X, Z coordinates)
+    pub fn take_terrain_brush_hits(&mut self) -> Vec<[f32; 2]> {
+        std::mem::take(&mut self.terrain_brush_hits)
     }
 
     /// Get access to the underlying renderer
@@ -283,9 +301,10 @@ impl ViewportWidget {
             opt_prefab_mgr,
         )?;
 
-        // Only request continuous repaint when viewport is hovered or focused
+        // Request continuous repaint when viewport is hovered, focused, or weather effects are active
         // This prevents cursor/focus issues when switching windows (alt-tab)
-        if response.hovered() || self.has_focus {
+        let effects_active = self.renderer.lock().map_or(false, |r| r.has_active_effects());
+        if response.hovered() || self.has_focus || effects_active {
             ui.ctx().request_repaint();
         }
 
@@ -843,11 +862,12 @@ impl ViewportWidget {
             }
         }
 
-        // Orbit camera (left mouse drag) - DISABLED during gizmo operation
+        // Orbit camera (left mouse drag) - DISABLED during gizmo operation or terrain brush
         if can_control_camera
             && response.dragged_by(egui::PointerButton::Primary)
             && !self.gizmo_state.is_active()
-        // Don't orbit while gizmo active
+            && !self.terrain_brush_active
+        // Don't orbit while gizmo or terrain brush active
         {
             let delta = response.drag_delta();
             debug!(
@@ -858,6 +878,30 @@ impl ViewportWidget {
                 "Orbit camera"
             );
             self.camera.orbit(delta.x, delta.y);
+        }
+
+        // Terrain brush: raycast mouse to ground plane on click/drag
+        if self.terrain_brush_active
+            && !self.gizmo_state.is_active()
+            && (response.dragged_by(egui::PointerButton::Primary)
+                || response.clicked_by(egui::PointerButton::Primary))
+        {
+            if let Some(mouse_pos_abs) = response.hover_pos() {
+                let viewport_size = response.rect.size();
+                let mouse_pos = egui::Pos2 {
+                    x: mouse_pos_abs.x - response.rect.min.x,
+                    y: mouse_pos_abs.y - response.rect.min.y,
+                };
+                let ray = self.camera.ray_from_screen(mouse_pos, viewport_size);
+                let denom = ray.direction.dot(glam::Vec3::Y);
+                if denom.abs() > 0.0001 {
+                    let t = (glam::Vec3::ZERO - ray.origin).dot(glam::Vec3::Y) / denom;
+                    if t >= 0.0 {
+                        let world_pos = ray.origin + ray.direction * t;
+                        self.terrain_brush_hits.push([world_pos.x, world_pos.z]);
+                    }
+                }
+            }
         }
 
         // Pan camera (right mouse drag)

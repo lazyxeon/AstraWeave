@@ -1131,9 +1131,16 @@ impl AssetBrowser {
                                 if entry.asset_type == AssetType::Directory {
                                     path_to_navigate = Some(entry.path.clone());
                                 } else if entry.asset_type == AssetType::Model {
-                                    // Double-click on model loads it to viewport
-                                    self.pending_actions.push(AssetAction::LoadToViewport {
+                                    // Double-click on model imports it to the scene
+                                    self.pending_actions.push(AssetAction::ImportModel {
                                         path: entry.path.clone(),
+                                    });
+                                } else if entry.asset_type == AssetType::Texture {
+                                    // Double-click on texture applies it to selected entity
+                                    let tex_type = entry.texture_type.unwrap_or(TextureType::Albedo);
+                                    self.pending_actions.push(AssetAction::ApplyTexture {
+                                        path: entry.path.clone(),
+                                        texture_type: tex_type,
                                     });
                                 }
                             }
@@ -1273,6 +1280,34 @@ impl AssetBrowser {
                                                     );
                                                 }
                                             }
+
+                                            // Quick-add button for models (top-right corner, visible on hover)
+                                            if entry_asset_type == AssetType::Model
+                                                && response.hovered()
+                                            {
+                                                let btn_size = 22.0;
+                                                let btn_rect = egui::Rect::from_min_size(
+                                                    egui::pos2(
+                                                        rect.max.x - btn_size - 2.0,
+                                                        rect.min.y + 2.0,
+                                                    ),
+                                                    egui::vec2(btn_size, btn_size),
+                                                );
+                                                ui.painter().rect_filled(
+                                                    btn_rect,
+                                                    4.0,
+                                                    egui::Color32::from_rgba_unmultiplied(
+                                                        40, 160, 80, 220,
+                                                    ),
+                                                );
+                                                ui.painter().text(
+                                                    btn_rect.center(),
+                                                    egui::Align2::CENTER_CENTER,
+                                                    "+",
+                                                    egui::FontId::proportional(16.0),
+                                                    egui::Color32::WHITE,
+                                                );
+                                            }
                                         }
 
                                         if response.clicked() {
@@ -1287,10 +1322,19 @@ impl AssetBrowser {
                                             if entry_asset_type == AssetType::Directory {
                                                 path_to_navigate = Some(entry_path.clone());
                                             } else if entry_asset_type == AssetType::Model {
-                                                // Double-click on model loads it to viewport
+                                                // Double-click on model imports it to the scene
                                                 self.pending_actions.push(
-                                                    AssetAction::LoadToViewport {
+                                                    AssetAction::ImportModel {
                                                         path: entry_path.clone(),
+                                                    },
+                                                );
+                                            } else if entry_asset_type == AssetType::Texture {
+                                                // Double-click on texture applies it to selected entity
+                                                let tex_type = entry_texture_type.unwrap_or(TextureType::Albedo);
+                                                self.pending_actions.push(
+                                                    AssetAction::ApplyTexture {
+                                                        path: entry_path.clone(),
+                                                        texture_type: tex_type,
                                                     },
                                                 );
                                             }
@@ -1379,18 +1423,19 @@ impl AssetBrowser {
                     // Context-appropriate action buttons
                     match asset_type {
                         AssetType::Model => {
-                            if ui.button("Load to Viewport").clicked() {
-                                self.pending_actions.push(AssetAction::LoadToViewport {
-                                    path: selected.clone(),
-                                });
-                            }
-                            if ui.button("Import to Scene").clicked() {
+                            if ui
+                                .button(
+                                    egui::RichText::new("📥 Add to Scene")
+                                        .color(egui::Color32::from_rgb(100, 220, 140)),
+                                )
+                                .clicked()
+                            {
                                 self.pending_actions.push(AssetAction::ImportModel {
                                     path: selected.clone(),
                                 });
                             }
-                            if ui.button("Inspect").clicked() {
-                                self.pending_actions.push(AssetAction::InspectAsset {
+                            if ui.button("Preview").clicked() {
+                                self.pending_actions.push(AssetAction::LoadToViewport {
                                     path: selected.clone(),
                                 });
                             }
@@ -1398,7 +1443,13 @@ impl AssetBrowser {
                         AssetType::Texture => {
                             let tex_type = texture_type.unwrap_or(TextureType::Albedo);
                             if ui
-                                .button(format!("Apply as {}", tex_type.label()))
+                                .button(
+                                    egui::RichText::new(format!(
+                                        "🎨 Apply as {}",
+                                        tex_type.label()
+                                    ))
+                                    .color(egui::Color32::from_rgb(100, 180, 220)),
+                                )
                                 .clicked()
                             {
                                 self.pending_actions.push(AssetAction::ApplyTexture {
@@ -1406,14 +1457,15 @@ impl AssetBrowser {
                                     texture_type: tex_type,
                                 });
                             }
-                            if ui.button("Inspect").clicked() {
-                                self.pending_actions.push(AssetAction::InspectAsset {
-                                    path: selected.clone(),
-                                });
-                            }
                         }
                         AssetType::Material => {
-                            if ui.button("💎 Apply Material").clicked() {
+                            if ui
+                                .button(
+                                    egui::RichText::new("💎 Apply Material")
+                                        .color(egui::Color32::from_rgb(180, 140, 220)),
+                                )
+                                .clicked()
+                            {
                                 self.pending_actions.push(AssetAction::ApplyMaterial {
                                     path: selected.clone(),
                                 });
@@ -1485,7 +1537,13 @@ impl AssetBrowser {
                     // Context-appropriate action buttons
                     match asset_type {
                         AssetType::Model => {
-                            if ui.button("Import to Scene").clicked() {
+                            if ui
+                                .button(
+                                    egui::RichText::new("📥 Add to Scene")
+                                        .color(egui::Color32::from_rgb(100, 220, 140)),
+                                )
+                                .clicked()
+                            {
                                 self.pending_actions.push(AssetAction::ImportModel {
                                     path: selected.clone(),
                                 });
@@ -1494,7 +1552,13 @@ impl AssetBrowser {
                         AssetType::Texture => {
                             let tex_type = texture_type.unwrap_or(TextureType::Albedo);
                             if ui
-                                .button(format!("Apply as {}", tex_type.label()))
+                                .button(
+                                    egui::RichText::new(format!(
+                                        "🎨 Apply as {}",
+                                        tex_type.label()
+                                    ))
+                                    .color(egui::Color32::from_rgb(100, 180, 220)),
+                                )
                                 .clicked()
                             {
                                 self.pending_actions.push(AssetAction::ApplyTexture {
@@ -1504,7 +1568,13 @@ impl AssetBrowser {
                             }
                         }
                         AssetType::Material => {
-                            if ui.button("💎 Apply Material").clicked() {
+                            if ui
+                                .button(
+                                    egui::RichText::new("💎 Apply Material")
+                                        .color(egui::Color32::from_rgb(180, 140, 220)),
+                                )
+                                .clicked()
+                            {
                                 self.pending_actions.push(AssetAction::ApplyMaterial {
                                     path: selected.clone(),
                                 });

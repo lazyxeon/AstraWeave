@@ -112,60 +112,65 @@ fn water_noise(p: vec2<f32>) -> f32 {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_dir = normalize(u.camera_pos - in.world_position);
     var n = in.world_normal;
+    let cam_dist = distance(u.camera_pos, in.world_position);
 
-    // Micro-detail normal perturbation
-    let ds = 8.0;
-    let eps = 0.05;
-    let flow = vec2<f32>(u.time * 0.3, u.time * 0.2);
-    let h0 = water_noise(in.world_position.xz * ds + flow);
-    let hx = water_noise((in.world_position.xz + vec2<f32>(eps, 0.0)) * ds + flow);
-    let hz = water_noise((in.world_position.xz + vec2<f32>(0.0, eps)) * ds + flow);
-    n = normalize(n + vec3<f32>(-(hx - h0) / eps, 0.0, -(hz - h0) / eps) * 0.15);
+    // Micro-detail normal perturbation — attenuate with distance to prevent aliasing
+    let detail_fade = 1.0 - smoothstep(20.0, 80.0, cam_dist);
+    if detail_fade > 0.01 {
+        let ds = 3.0;
+        let eps = 0.15;
+        let flow = vec2<f32>(u.time * 0.3, u.time * 0.2);
+        let h0 = water_noise(in.world_position.xz * ds + flow);
+        let hx = water_noise((in.world_position.xz + vec2<f32>(eps, 0.0)) * ds + flow);
+        let hz = water_noise((in.world_position.xz + vec2<f32>(0.0, eps)) * ds + flow);
+        n = normalize(n + vec3<f32>(-(hx - h0) / eps, 0.0, -(hz - h0) / eps) * 0.08 * detail_fade);
+    }
 
-    // Fresnel
-    let fresnel = pow(1.0 - max(dot(n, view_dir), 0.0), 4.0);
-    let fresnel_f = mix(0.04, 1.0, fresnel);
+    // Fresnel (clamped to avoid overbright)
+    let n_dot_v = max(dot(n, view_dir), 0.0);
+    let fresnel = pow(1.0 - n_dot_v, 3.0);
+    let fresnel_f = clamp(mix(0.04, 0.6, fresnel), 0.04, 0.65);
 
-    // Water color
-    let deep = vec3<f32>(0.005, 0.025, 0.06);
-    let shallow = vec3<f32>(0.01, 0.06, 0.08);
-    let water_c = mix(shallow, deep, 0.6);
+    // Water color (deep blue-green)
+    let deep = vec3<f32>(0.005, 0.035, 0.08);
+    let shallow = vec3<f32>(0.01, 0.07, 0.10);
+    let water_c = mix(shallow, deep, 0.55);
 
-    // Sky reflection
-    let sky_reflect = vec3<f32>(0.35, 0.50, 0.70);
+    // Sky reflection color
+    let sky_reflect = vec3<f32>(0.30, 0.45, 0.65);
 
-    // Sun specular
+    // Sun specular — attenuated at distance to prevent sparkle
     let light_dir = normalize(vec3<f32>(0.4, 0.8, 0.3));
     let half_dir = normalize(light_dir + view_dir);
-    let spec = pow(max(dot(n, half_dir), 0.0), 256.0) * 2.0;
-    let sun_c = vec3<f32>(1.4, 1.3, 1.0);
+    let spec_atten = 1.0 - smoothstep(40.0, 120.0, cam_dist);
+    let spec = pow(max(dot(n, half_dir), 0.0), 128.0) * 0.8 * spec_atten;
+    let sun_c = vec3<f32>(1.3, 1.2, 0.95);
 
     var color = mix(water_c, sky_reflect, fresnel_f);
     color += sun_c * spec;
 
     // Foam at wave crests
     let crest = in.world_position.y - u.water_level;
-    let foam_n = water_noise(in.world_position.xz * 3.0 + vec2<f32>(u.time * 0.1));
-    let foam_f = smoothstep(0.15, 0.5, crest) * foam_n;
-    color = mix(color, vec3<f32>(0.80, 0.85, 0.88), foam_f * 0.5);
+    let foam_n = water_noise(in.world_position.xz * 2.0 + vec2<f32>(u.time * 0.08));
+    let foam_f = smoothstep(0.2, 0.55, crest) * foam_n * detail_fade;
+    color = mix(color, vec3<f32>(0.75, 0.80, 0.85), foam_f * 0.35);
 
     // Subsurface scattering approximation
-    let sss_f = pow(max(dot(view_dir, -light_dir), 0.0), 4.0) * 0.15;
-    color += vec3<f32>(0.02, 0.08, 0.06) * sss_f;
+    let sss_f = pow(max(dot(view_dir, -light_dir), 0.0), 4.0) * 0.1;
+    color += vec3<f32>(0.015, 0.06, 0.05) * sss_f;
 
-    // Tone map
+    // Tone map (Reinhard)
     color = color / (color + vec3<f32>(1.0));
 
     // Fog
     if u.fog_enabled == 1u {
-        let dist = distance(u.camera_pos, in.world_position);
+        let dist = cam_dist;
         let fog_f = 1.0 - exp(-u.fog_density * dist);
         color = mix(color, u.fog_color, clamp(fog_f, 0.0, 1.0));
     }
 
-    // Depth-based alpha (more opaque at distance)
-    let cam_dist = distance(u.camera_pos, in.world_position);
-    let alpha = mix(0.65, 0.92, clamp(cam_dist / 100.0, 0.0, 1.0));
+    // Depth-based alpha (more opaque closer, transparent at edges)
+    let alpha = mix(0.55, 0.85, clamp(cam_dist / 80.0, 0.0, 1.0));
 
     return vec4<f32>(color, alpha);
 }

@@ -91,6 +91,7 @@ mod recent_files; // Phase 3 - Recent files tracking
 mod runtime; // Week 4 - Deterministic runtime integration
 mod scene_serialization; // Phase 2.2 - Scene Save/Load
 mod scene_state; // Week 1 - Canonical edit-mode world owner
+mod splash; // Startup splash screen with logo + cinematic video
 mod terrain_integration; // Terrain generation integration
 mod ui; // Phase 3 - UI components (StatusBar, etc.)
 mod viewport; // Phase 1.1 - 3D Viewport
@@ -409,6 +410,8 @@ struct EditorApp {
     resource_usage: ui::ResourceUsage,
     /// Last time resources were sampled
     last_resource_sample: std::time::Instant,
+    /// Startup splash screen (Some while active, None after transition)
+    splash: Option<splash::SplashScreen>,
 }
 
 impl Default for EditorApp {
@@ -596,6 +599,7 @@ impl Default for EditorApp {
             // Week 6 Day 5: Resource usage tracking
             resource_usage: ui::ResourceUsage::new(),
             last_resource_sample: std::time::Instant::now(),
+            splash: Some(splash::SplashScreen::new()),
         }
     }
 }
@@ -3282,10 +3286,16 @@ impl EditorApp {
                 // Get mutable world from scene state
                 let world_opt = self.scene_state.as_mut().map(|s| s.world_mut());
 
+                // Check terrain brush state before borrowing dock_tab_viewer mutably
+                let brush_active = self.dock_tab_viewer.is_terrain_brush_active();
+
                 // Unified context rendering to avoid type-switching issues
                 let mut context = EditorDrawContext::new(&mut self.dock_tab_viewer);
 
                 if let (Some(world), Some(viewport)) = (world_opt, self.viewport.as_mut()) {
+                    // Sync terrain brush state: tell viewport when brush is active
+                    viewport.set_terrain_brush_active(brush_active);
+
                     context = context
                         .with_viewport(viewport)
                         .with_world(world)
@@ -3296,6 +3306,14 @@ impl EditorApp {
 
                 self.dock_layout.show_inside(ui, &mut context);
             });
+
+        // Forward terrain brush hits from viewport to terrain panel
+        if let Some(viewport) = self.viewport.as_mut() {
+            let hits = viewport.take_terrain_brush_hits();
+            for hit in hits {
+                self.dock_tab_viewer.apply_terrain_brush_at(hit[0], hit[1]);
+            }
+        }
 
         // Sync environment settings (skybox preset, time-of-day, weather, fog) to viewport each frame
         if let Some(viewport) = &self.viewport {
@@ -3927,6 +3945,19 @@ impl EditorApp {
                     if let Some(viewport) = &self.viewport {
                         viewport.upload_terrain_chunks(&chunks);
                     }
+
+                    // Generate scatter placements from terrain vegetation system
+                    let scatter_placements = self.dock_tab_viewer.generate_scatter_placements();
+                    if !scatter_placements.is_empty() {
+                        if let Some(viewport) = &self.viewport {
+                            if let Ok(mut renderer) = viewport.renderer().lock() {
+                                let count = scatter_placements.len();
+                                renderer.set_scatter_placements(scatter_placements);
+                                tracing::info!("Scatter: {count} placements uploaded to renderer");
+                            }
+                        }
+                    }
+
                     self.status =
                         format!("Terrain generated: {} chunks uploaded", chunks.len());
                 }
@@ -4776,7 +4807,7 @@ impl EditorApp {
         }
         // Handle drag-drop from the dock tab viewer's asset browser
         if let Some(dragged_path) = self.dock_tab_viewer.take_asset_browser_dragged_prefab() {
-            self.spawn_prefab_from_drag(dragged_path, (0, 0));
+            self.handle_dragged_asset(dragged_path);
         }
         // Also check the standalone asset browser (backward compat)
         let standalone_actions = self.asset_browser.take_pending_actions();
@@ -4784,7 +4815,24 @@ impl EditorApp {
             self.handle_asset_action(action);
         }
         if let Some(dragged_path) = self.asset_browser.take_dragged_prefab() {
-            self.spawn_prefab_from_drag(dragged_path, (0, 0));
+            self.handle_dragged_asset(dragged_path);
+        }
+    }
+
+    /// Handle a dragged asset — import GLTF/GLB models directly, spawn prefabs for .prefab files
+    fn handle_dragged_asset(&mut self, path: std::path::PathBuf) {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        match ext.as_str() {
+            "glb" | "gltf" | "obj" | "fbx" => {
+                self.handle_asset_action(AssetAction::ImportModel { path });
+            }
+            _ => {
+                self.spawn_prefab_from_drag(path, (0, 0));
+            }
         }
     }
 
@@ -4809,9 +4857,31 @@ impl EditorApp {
                     );
                     scene_state.sync_entity(entity);
 
+                    let mesh_path_str = path.display().to_string();
+
                     // Get the editor entity and set its mesh
                     if let Some(editor_entity) = scene_state.get_editor_entity_mut(entity) {
-                        editor_entity.set_mesh(path.display().to_string());
+                        editor_entity.set_mesh(mesh_path_str.clone());
+                    }
+
+                    // Sync mesh to the EntityManager so the viewport can find it
+                    {
+                        let em_id = entity as u64;
+                        if let Some(em_entity) = self.entity_manager.get_mut(em_id) {
+                            em_entity.set_mesh(mesh_path_str);
+                        } else {
+                            let mut em_entity =
+                                entity_manager::EditorEntity::new(em_id, model_name.clone());
+                            em_entity.set_mesh(mesh_path_str);
+                            if let Some(pose) = scene_state.world().pose(entity) {
+                                em_entity.position = glam::Vec3::new(
+                                    pose.pos.x as f32,
+                                    1.0,
+                                    pose.pos.y as f32,
+                                );
+                            }
+                            self.entity_manager.add(em_entity);
+                        }
                     }
 
                     // Load the glTF model into the engine renderer
@@ -4861,6 +4931,12 @@ impl EditorApp {
                             .get_editor_entity_mut(selected_id as astraweave_core::Entity)
                         {
                             editor_entity.set_texture(slot, path.clone());
+
+                            // Sync texture to EntityManager
+                            if let Some(em_entity) = self.entity_manager.get_mut(selected_id) {
+                                em_entity.set_texture(slot, path.clone());
+                            }
+
                             info!(
                                 "Applied {:?} texture '{}' to entity #{}",
                                 slot,
@@ -4901,7 +4977,13 @@ impl EditorApp {
                             // Create a new material with the name from the path
                             let mut material = entity_manager::EntityMaterial::new();
                             material.name = material_name.clone();
-                            editor_entity.set_material(material);
+                            editor_entity.set_material(material.clone());
+
+                            // Sync material to EntityManager
+                            if let Some(em_entity) = self.entity_manager.get_mut(selected_id) {
+                                em_entity.set_material(material);
+                            }
+
                             info!(
                                 "Applied material '{}' to entity #{}",
                                 material_name, selected_id
@@ -6189,6 +6271,14 @@ impl eframe::App for EditorApp {
 
         // Apply persisted theme on first frame
         self.theme_manager.apply_theme(ctx);
+
+        // --- Startup splash screen (logo + cinematic video) ---
+        if let Some(splash) = &mut self.splash {
+            if splash.show(ctx) {
+                return; // Splash still active
+            }
+            self.splash = None; // Splash finished, proceed to editor
+        }
 
         // If pending_quit was set (e.g. from File > Exit with clean state), close immediately
         if self.pending_quit {

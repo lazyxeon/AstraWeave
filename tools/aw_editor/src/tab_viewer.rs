@@ -23,6 +23,7 @@ use crate::panels::{
     NavigationPanel, NetworkingPanel, ParticleSystemPanel, PcgPanel, PhysicsPanel,
     PostProcessPanel, ProjectSettingsPanel, SplineEditorPanel, TerrainPanel, UiEditorPanel,
 };
+use crate::panels::entity_catalog::EntityCatalogState;
 use crate::prefab::PrefabManager;
 use crate::viewport::ViewportWidget;
 use astraweave_core::World;
@@ -1192,6 +1193,8 @@ pub struct EditorTabViewer {
     material_editor_panel: MaterialEditorPanel,
     /// Available 3D models from asset packs (name, path)
     spawnable_models: Vec<(String, String)>,
+    /// Entity catalog (KayKit character/enemy/boss thumbnail picker)
+    entity_catalog: EntityCatalogState,
     /// Real filesystem-backed asset browser panel
     asset_browser_panel: AssetBrowser,
 }
@@ -1426,6 +1429,7 @@ impl EditorTabViewer {
             input_bindings_panel: InputBindingsPanel::new(),
             material_editor_panel: MaterialEditorPanel::new(),
             spawnable_models: Vec::new(),
+            entity_catalog: EntityCatalogState::new(),
             asset_browser_panel: AssetBrowser::new(std::path::PathBuf::from("assets")),
         }
     }
@@ -1622,6 +1626,21 @@ impl EditorTabViewer {
         &self,
     ) -> Vec<(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)> {
         self.terrain_panel.get_gpu_chunks()
+    }
+
+    /// Generate scatter placements from current terrain (vegetation, rocks, etc.)
+    pub fn generate_scatter_placements(&self) -> Vec<crate::terrain_integration::ScatterPlacement> {
+        self.terrain_panel.generate_scatter_placements()
+    }
+
+    /// Returns true if terrain brush is active and terrain exists
+    pub fn is_terrain_brush_active(&self) -> bool {
+        self.terrain_panel.is_brush_active()
+    }
+
+    /// Apply terrain brush at world coordinates (forwarded from viewport)
+    pub fn apply_terrain_brush_at(&mut self, world_x: f32, world_z: f32) {
+        self.terrain_panel.apply_brush_at(world_x, world_z);
     }
 
     /// Returns (fog_enabled, fog_density, weather_preset) for the current world settings.
@@ -3152,6 +3171,25 @@ impl TabViewer for EditorTabViewer {
                 if let Some(_entity_id) = entity_to_rename {
                     // Would start rename mode - emit event for now
                 }
+
+                // ── Entity Library (KayKit catalog with thumbnails) ──
+                ui.add_space(4.0);
+                ui.separator();
+                let catalog_count = self.entity_catalog.entry_count();
+                egui::CollapsingHeader::new(
+                    egui::RichText::new(format!("Entity Library ({catalog_count})")).strong(),
+                )
+                .default_open(false)
+                .show(ui, |ui| {
+                    let ctx = ui.ctx().clone();
+                    self.entity_catalog.show(ui, &ctx);
+                });
+
+                // Drain catalog spawn events → PanelEvent::SpawnModel
+                let spawns = self.entity_catalog.take_spawns();
+                for (name, path) in spawns {
+                    self.emit_event(PanelEvent::SpawnModel { name, path });
+                }
             }
             PanelType::Console => {
                 // Count errors, warnings, info for header badges
@@ -4347,7 +4385,7 @@ impl TabViewer for EditorTabViewer {
                             "Sandstorm",
                         ];
                         let weather_icons =
-                            ["Clear", "Cloud", "Rain", "Storm", "Snow", "Fog", "Sand"];
+                            ["\u{2600}", "\u{2601}", "\u{1F327}", "\u{26C8}", "\u{2744}", "\u{1F32B}", "\u{1F3DC}"];
 
                         ui.horizontal(|ui| {
                             ui.label("Weather:");

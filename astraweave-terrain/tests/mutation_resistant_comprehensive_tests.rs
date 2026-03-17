@@ -471,21 +471,21 @@ mod biome_scoring_mutations {
         let g = BiomeConfig::grassland(); // height range [0, 50]
         let in_range = g.score_conditions(25.0, 0.5, 0.6); // 3.1
         let out_by_10 = g.score_conditions(60.0, 0.5, 0.6);
-        // Out by 10.0 → penalty = 10.0 * 0.01 = 0.1
-        // score = -0.1 (height penalty) + 1.0 (temp) + 1.0 (moisture) + 0.1 (priority)
-        let expected_out = -0.1 + 1.0 + 1.0 + 0.1;
+        // Out by 10.0 → penalty = 10.0 * 0.08 = 0.8
+        // score = -0.8 (height penalty) + 1.0 (temp) + 1.0 (moisture) + 0.1 (priority)
+        let expected_out = -0.8 + 1.0 + 1.0 + 0.1;
         assert!(
             (out_by_10 - expected_out).abs() < 0.01,
             "Height out by 10: expected {}, got {}",
             expected_out,
             out_by_10
         );
-        // Verify penalty multiplier is 0.01, not 0.1 or 0.001
+        // Verify penalty multiplier is 0.08 (height-dominant scoring)
         let diff = in_range - out_by_10;
-        // diff = 1.0 (in-range bonus) + penalty = 1.0 + 0.1 = 1.1
+        // diff = 1.0 (in-range bonus) + penalty = 1.0 + 0.8 = 1.8
         assert!(
-            (diff - 1.1).abs() < 0.01,
-            "Score diff for 10-height offset must be 1.1, got {}",
+            (diff - 1.8).abs() < 0.01,
+            "Score diff for 10-height offset must be 1.8, got {}",
             diff
         );
     }
@@ -551,8 +551,8 @@ mod biome_scoring_mutations {
     fn height_penalty_below_range() {
         let g = BiomeConfig::grassland(); // height range [0, 50]
         let below = g.score_conditions(-10.0, 0.5, 0.6);
-        // Height distance = 0.0 - (-10.0) = 10.0 → penalty = 10.0 * 0.01 = 0.1
-        let expected = -0.1 + 1.0 + 1.0 + 0.1;
+        // Height distance = 0.0 - (-10.0) = 10.0 → penalty = 10.0 * 0.08 = 0.8
+        let expected = -0.8 + 1.0 + 1.0 + 0.1;
         assert!(
             (below - expected).abs() < 0.01,
             "Below range by 10: expected {}, got {}",

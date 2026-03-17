@@ -621,6 +621,11 @@ impl TerrainPanel {
         self.terrain_state.get_gpu_chunks()
     }
 
+    /// Generate scatter placements from the terrain vegetation system
+    pub fn generate_scatter_placements(&self) -> Vec<crate::terrain_integration::ScatterPlacement> {
+        self.terrain_state.generate_scatter_placements()
+    }
+
     /// Queue an action for later processing
     pub fn queue_action(&mut self, action: TerrainAction) {
         self.pending_actions.push(action);
@@ -639,6 +644,45 @@ impl TerrainPanel {
     /// Check if terrain needs regeneration
     pub fn needs_regeneration(&self) -> bool {
         self.terrain_state.is_dirty()
+    }
+
+    /// Returns true if a sculpting brush mode is active and terrain exists
+    pub fn is_brush_active(&self) -> bool {
+        self.terrain_state.has_terrain()
+    }
+
+    /// Apply brush at the given world position using current brush settings.
+    /// Called from viewport mouse interaction.
+    pub fn apply_brush_at(&mut self, world_x: f32, world_z: f32) {
+        self.brush_pos_x = world_x;
+        self.brush_pos_z = world_z;
+
+        let modified = if self.brush_mode == BrushMode::Paint {
+            self.terrain_state.apply_brush_paint(
+                world_x,
+                world_z,
+                self.brush_radius,
+                self.selected_material as u32,
+            )
+        } else {
+            let brush_mode_id = match self.brush_mode {
+                BrushMode::Sculpt => 0,
+                BrushMode::Smooth => 1,
+                BrushMode::Flatten => 2,
+                BrushMode::Paint => 3,
+                BrushMode::Erode => 4,
+            };
+            self.terrain_state.apply_brush(
+                world_x,
+                world_z,
+                self.brush_radius,
+                self.brush_strength,
+                brush_mode_id,
+            )
+        };
+        if modified {
+            self.pending_actions.push(TerrainAction::Generate);
+        }
     }
 
     fn show_generation_section(&mut self, ui: &mut Ui) {
@@ -679,6 +723,8 @@ impl TerrainPanel {
                             self.lacunarity = preset.base_lacunarity as f32;
                             self.persistence = preset.base_persistence as f32;
                             self.base_amplitude = preset.base_amplitude;
+                            // Auto-regenerate terrain with new preset
+                            self.regenerate_terrain();
                         }
                     }
                 });
@@ -821,15 +867,15 @@ impl TerrainPanel {
 
             if self.brush_mode == BrushMode::Paint {
                 ui.horizontal(|ui| {
-                    ui.label("Material:");
+                    ui.label("Biome:");
                     egui::ComboBox::from_id_salt("brush_material")
-                        .selected_text(Self::material_name(self.selected_material))
+                        .selected_text(Self::biome_paint_name(self.selected_material))
                         .show_ui(ui, |ui| {
                             for i in 0..8 {
                                 ui.selectable_value(
                                     &mut self.selected_material,
                                     i,
-                                    Self::material_name(i),
+                                    Self::biome_paint_name(i),
                                 );
                             }
                         });
@@ -843,6 +889,13 @@ impl TerrainPanel {
                         .italics(),
                 );
             }
+
+            ui.label(
+                RichText::new("💡 Click or drag in viewport to apply brush")
+                    .small()
+                    .italics()
+                    .color(egui::Color32::from_rgb(130, 170, 220)),
+            );
 
             ui.add_space(5.0);
 
@@ -869,20 +922,30 @@ impl TerrainPanel {
                 .add_enabled(has_terrain, egui::Button::new(apply_text))
                 .clicked()
             {
-                let brush_mode_id = match self.brush_mode {
-                    BrushMode::Sculpt => 0,
-                    BrushMode::Smooth => 1,
-                    BrushMode::Flatten => 2,
-                    BrushMode::Paint => 3, // lower
-                    BrushMode::Erode => 4,
+                let modified = if self.brush_mode == BrushMode::Paint {
+                    // Paint mode: change biome/material at brush location
+                    self.terrain_state.apply_brush_paint(
+                        self.brush_pos_x,
+                        self.brush_pos_z,
+                        self.brush_radius,
+                        self.selected_material as u32,
+                    )
+                } else {
+                    let brush_mode_id = match self.brush_mode {
+                        BrushMode::Sculpt => 0,
+                        BrushMode::Smooth => 1,
+                        BrushMode::Flatten => 2,
+                        BrushMode::Paint => 3, // unreachable due to if above
+                        BrushMode::Erode => 4,
+                    };
+                    self.terrain_state.apply_brush(
+                        self.brush_pos_x,
+                        self.brush_pos_z,
+                        self.brush_radius,
+                        self.brush_strength,
+                        brush_mode_id,
+                    )
                 };
-                let modified = self.terrain_state.apply_brush(
-                    self.brush_pos_x,
-                    self.brush_pos_z,
-                    self.brush_radius,
-                    self.brush_strength,
-                    brush_mode_id,
-                );
                 if modified {
                     self.pending_actions.push(TerrainAction::Generate);
                 }
@@ -1401,6 +1464,20 @@ impl TerrainPanel {
             6 => "Gravel",
             7 => "Clay",
             _ => "Unknown",
+        }
+    }
+
+    fn biome_paint_name(id: usize) -> &'static str {
+        match id {
+            0 => "Grassland",
+            1 => "Desert",
+            2 => "Forest",
+            3 => "Mountain",
+            4 => "Tundra",
+            5 => "Swamp",
+            6 => "Beach",
+            7 => "River",
+            _ => "Grassland",
         }
     }
 

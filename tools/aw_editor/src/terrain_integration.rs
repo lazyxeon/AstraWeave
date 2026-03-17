@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use astraweave_terrain::{
-    BiomeConfig, BiomeType, ChunkId, Heightmap, TerrainChunk, WorldConfig, WorldGenerator,
+    BiomeConfig, BiomeType, ChunkId, Heightmap, ScatterConfig, ScatterResult, TerrainChunk,
+    VegetationInstance, VegetationScatter, WorldConfig, WorldGenerator,
 };
 use glam::Vec3;
 use std::collections::HashMap;
@@ -308,6 +309,20 @@ impl TerrainState {
         }
     }
 
+    fn id_to_biome(id: u32) -> BiomeType {
+        match id {
+            0 => BiomeType::Grassland,
+            1 => BiomeType::Desert,
+            2 => BiomeType::Forest,
+            3 => BiomeType::Mountain,
+            4 => BiomeType::Tundra,
+            5 => BiomeType::Swamp,
+            6 => BiomeType::Beach,
+            7 => BiomeType::River,
+            _ => BiomeType::Grassland,
+        }
+    }
+
     pub fn is_dirty(&self) -> bool {
         self.terrain_dirty
     }
@@ -526,6 +541,76 @@ impl TerrainState {
         modified
     }
 
+    /// Paint a biome material at the given world-space position.
+    ///
+    /// `biome_id`: 0-7 corresponding to the shader biome IDs.
+    /// Returns true if any terrain was modified.
+    pub fn apply_brush_paint(
+        &mut self,
+        world_x: f32,
+        world_z: f32,
+        radius: f32,
+        biome_id: u32,
+    ) -> bool {
+        let chunk_size = self.config.chunk_size;
+        let target_biome = Self::id_to_biome(biome_id);
+        let mut modified = false;
+
+        let chunk_ids: Vec<ChunkId> = self.generated_chunks.keys().cloned().collect();
+
+        for chunk_id in chunk_ids {
+            let chunk_origin_x = chunk_id.x as f32 * chunk_size;
+            let chunk_origin_z = chunk_id.z as f32 * chunk_size;
+
+            // Quick AABB check
+            let closest_x = world_x.clamp(chunk_origin_x, chunk_origin_x + chunk_size);
+            let closest_z = world_z.clamp(chunk_origin_z, chunk_origin_z + chunk_size);
+            let dx = world_x - closest_x;
+            let dz = world_z - closest_z;
+            if dx * dx + dz * dz > radius * radius {
+                continue;
+            }
+
+            if let Some(gen_chunk) = self.generated_chunks.get_mut(&chunk_id) {
+                let resolution = gen_chunk.chunk.heightmap().resolution() as usize;
+                let cell_size = chunk_size / (resolution - 1) as f32;
+                let mut chunk_modified = false;
+
+                let biome_map = gen_chunk.chunk.biome_map_mut();
+                for gz in 0..resolution {
+                    for gx in 0..resolution {
+                        let px = chunk_origin_x + gx as f32 * cell_size;
+                        let pz = chunk_origin_z + gz as f32 * cell_size;
+                        let dist = ((px - world_x).powi(2) + (pz - world_z).powi(2)).sqrt();
+                        if dist > radius {
+                            continue;
+                        }
+                        let idx = gz * resolution + gx;
+                        if idx < biome_map.len() {
+                            biome_map[idx] = target_biome;
+                            chunk_modified = true;
+                        }
+                    }
+                }
+
+                if chunk_modified {
+                    let world_offset = Vec3::new(chunk_origin_x, 0.0, chunk_origin_z);
+                    let (vertices, indices) = Self::generate_heightmap_mesh(
+                        gen_chunk.chunk.heightmap(),
+                        gen_chunk.chunk.biome_map(),
+                        chunk_size,
+                        world_offset,
+                    );
+                    gen_chunk.vertices = vertices;
+                    gen_chunk.indices = indices;
+                    modified = true;
+                }
+            }
+        }
+
+        modified
+    }
+
     /// Get terrain statistics
     pub fn stats(&self) -> TerrainStats {
         TerrainStats {
@@ -536,6 +621,62 @@ impl TerrainState {
             seed: self.last_seed,
             is_dirty: self.terrain_dirty,
         }
+    }
+
+    /// Generate scatter placements for all generated terrain chunks.
+    ///
+    /// Uses the existing VegetationScatter system from astraweave-terrain
+    /// to place vegetation/rocks with Poisson disk sampling and biome-aware
+    /// density rules. Returns a flat list of placements ready for the
+    /// scatter renderer's GPU instancing pipeline.
+    pub fn generate_scatter_placements(&self) -> Vec<ScatterPlacement> {
+        let scatter_config = ScatterConfig::default();
+        let scatter = VegetationScatter::new(scatter_config);
+        let chunk_size = self.config.chunk_size;
+
+        let mut placements = Vec::new();
+
+        for (chunk_id, gen_chunk) in &self.generated_chunks {
+            let chunk = &gen_chunk.chunk;
+
+            // Sample biome at chunk center
+            let chunk_center = chunk_id.to_center_pos(chunk_size);
+            let center_biome = chunk
+                .get_biome_at_world_pos(chunk_center, chunk_size)
+                .unwrap_or(BiomeType::Grassland);
+
+            let biome_config = self
+                .config
+                .biomes
+                .iter()
+                .find(|b| b.biome_type == center_biome)
+                .cloned()
+                .unwrap_or_else(BiomeConfig::grassland);
+
+            let seed = self.config.seed + chunk_id.x as u64 * 1000 + chunk_id.z as u64;
+
+            // Generate vegetation instances via the terrain scatter system
+            let vegetation = match scatter.scatter_vegetation(chunk, chunk_size, &biome_config, seed)
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("Scatter failed for chunk {:?}: {e}", chunk_id);
+                    continue;
+                }
+            };
+
+            for vi in vegetation {
+                placements.push(ScatterPlacement::from_vegetation_instance(&vi));
+            }
+        }
+
+        tracing::info!(
+            "Generated {} scatter placements across {} chunks",
+            placements.len(),
+            self.generated_chunks.len()
+        );
+
+        placements
     }
 }
 
@@ -608,6 +749,30 @@ impl TerrainVertex {
                     format: wgpu::VertexFormat::Uint32,
                 },
             ],
+        }
+    }
+}
+
+/// CPU-side scatter placement (bridges terrain VegetationInstance to GPU renderer).
+#[derive(Debug, Clone)]
+pub struct ScatterPlacement {
+    pub position: Vec3,
+    pub rotation: f32,
+    pub scale: f32,
+    pub mesh_key: String,
+    pub mesh_path: String,
+    pub bounding_radius: f32,
+}
+
+impl ScatterPlacement {
+    pub fn from_vegetation_instance(vi: &VegetationInstance) -> Self {
+        Self {
+            position: vi.position,
+            rotation: vi.rotation,
+            scale: vi.scale,
+            mesh_key: vi.vegetation_type.clone(),
+            mesh_path: vi.model_path.clone(),
+            bounding_radius: vi.scale * 1.5, // conservative estimate
         }
     }
 }

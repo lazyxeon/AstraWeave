@@ -100,6 +100,12 @@ impl TerrainChunk {
         &self.biome_map
     }
 
+    /// Get mutable access to the biome map (for paint brushes)
+    pub fn biome_map_mut(&mut self) -> &mut [BiomeType] {
+        self.mesh_dirty = true;
+        &mut self.biome_map
+    }
+
     /// Check if the mesh needs to be regenerated
     pub fn is_mesh_dirty(&self) -> bool {
         self.mesh_dirty

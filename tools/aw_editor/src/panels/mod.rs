@@ -56,6 +56,9 @@ pub mod transform_panel;
 pub mod ui_editor_panel;
 pub mod world_panel;
 
+// Entity catalog (thumbnail-grid character/enemy/boss selector)
+pub mod entity_catalog;
+
 // New procedural and asset management panels
 pub mod environment_preset_panel;
 pub mod import_doctor_panel;

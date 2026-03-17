@@ -30,6 +30,7 @@ use super::entity_renderer::EntityRenderer;
 use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
 use super::physics_renderer::PhysicsDebugRenderer;
+use super::scatter_renderer::{ScatterPlacement, ScatterRenderer};
 use super::skybox_renderer::SkyboxRenderer;
 use super::rain_renderer::RainRenderer;
 use super::terrain_renderer::TerrainRenderer;
@@ -66,6 +67,10 @@ pub struct ViewportRenderer {
     terrain_renderer: TerrainRenderer,
     water_renderer: WaterRenderer,
     rain_renderer: RainRenderer,
+    scatter_renderer: ScatterRenderer,
+
+    /// Scatter placements for current frame
+    scatter_placements: Vec<ScatterPlacement>,
 
     /// Engine renderer adapter for PBR mesh rendering (feature-gated)
     #[cfg(feature = "astraweave-render")]
@@ -115,6 +120,8 @@ impl ViewportRenderer {
             WaterRenderer::new(&device).context("Failed to create water renderer")?;
         let rain_renderer =
             RainRenderer::new(&device).context("Failed to create rain renderer")?;
+        let scatter_renderer =
+            ScatterRenderer::new(device.clone()).context("Failed to create scatter renderer")?;
 
         Ok(Self {
             device,
@@ -127,6 +134,8 @@ impl ViewportRenderer {
             terrain_renderer,
             water_renderer,
             rain_renderer,
+            scatter_renderer,
+            scatter_placements: Vec::new(),
             #[cfg(feature = "astraweave-render")]
             engine_adapter: None,
             use_engine_rendering: false,
@@ -285,6 +294,22 @@ impl ViewportRenderer {
                 shading_mode,
             )
             .context("Terrain render failed")?;
+
+        // Pass 2.6: Scatter objects (GPU-instanced vegetation, rocks, props)
+        if !self.scatter_placements.is_empty() {
+            let placements = std::mem::take(&mut self.scatter_placements);
+            self.scatter_renderer
+                .render(
+                    &mut encoder,
+                    &target_view,
+                    depth_view,
+                    camera,
+                    &placements,
+                    &self.queue,
+                )
+                .context("Scatter render failed")?;
+            self.scatter_placements = placements;
+        }
 
         // Pass 2.7: Water plane (transparent, rendered after terrain)
         self.water_renderer
@@ -526,6 +551,11 @@ impl ViewportRenderer {
         self.physics_renderer.options.show_colliders = enabled;
     }
 
+    /// Check if any animated weather effects are active (rain, etc.)
+    pub fn has_active_effects(&self) -> bool {
+        self.rain_renderer.is_active()
+    }
+
     /// Load an HDRI file and apply it as the skybox background
     pub fn load_hdri(&mut self, path: &std::path::Path) -> Result<()> {
         self.skybox_renderer
@@ -555,6 +585,8 @@ impl ViewportRenderer {
         // Forward fog to water renderer
         self.water_renderer
             .set_fog(params.fog_enabled, params.fog_density, params.fog_color);
+        // Forward fog to scatter renderer
+        self.scatter_renderer.set_fog_params(params);
         // Enable rain for weather types 2 (Rain) and 3 (Storm)
         let rain_active = params.weather_type == 2 || params.weather_type == 3;
         let rain_intensity = if params.weather_type == 3 { 1.0 } else { 0.5 };
@@ -572,6 +604,38 @@ impl ViewportRenderer {
     pub fn set_water_level(&mut self, level: f32) {
         self.water_renderer.set_water_level(level);
         self.terrain_renderer.set_water_level(level);
+    }
+
+    // ── Scatter management ──────────────────────────────────────────────
+
+    /// Set scatter placements for instanced rendering.
+    pub fn set_scatter_placements(&mut self, placements: Vec<ScatterPlacement>) {
+        self.scatter_placements = placements;
+    }
+
+    /// Ensure a scatter mesh is loaded and cached.
+    pub fn ensure_scatter_mesh(&mut self, key: &str, path: &str) -> Result<()> {
+        self.scatter_renderer.ensure_mesh_loaded(key, path)
+    }
+
+    /// Set wind parameters for scatter vegetation animation.
+    pub fn set_scatter_wind(&mut self, strength: f32, frequency: f32) {
+        self.scatter_renderer.set_wind(strength, frequency);
+    }
+
+    /// Set cull distance for scatter objects.
+    pub fn set_scatter_cull_distance(&mut self, distance: f32) {
+        self.scatter_renderer.set_cull_distance(distance);
+    }
+
+    /// Get the number of scatter instances rendered last frame.
+    pub fn scatter_instance_count(&self) -> u32 {
+        self.scatter_renderer.last_instance_count()
+    }
+
+    /// Get the number of scatter draw calls last frame.
+    pub fn scatter_draw_calls(&self) -> u32 {
+        self.scatter_renderer.last_draw_calls()
     }
 
     /// Check if engine rendering (PBR meshes) is enabled

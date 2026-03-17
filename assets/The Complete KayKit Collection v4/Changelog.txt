@@ -1,0 +1,63 @@
+	
+
+	The Complete KayKit Collection v4
+
+	Created/distributed by Kay Lousberg (www.kaylousberg.com)
+	Creation date: 19/02/2026 09:00
+
+	
+
+	Changelog:
+	------------------------------
+
+	Version 4.0.0
+
+	- Added new asset pack : "KayKit Fantasy Weapons Bits" 1.0
+		- 45+ models of fantasy themed weapons.
+
+	------------------------------
+	
+	Version 3.0.0
+
+	- Added new asset pack : "KayKit RPG Tools Bits" 1.0
+		- 65+ models of RPG themed tools and equipment.
+
+	- Added Changelog.txt to Complete Collection (this is what you're reading right now :D)
+
+	- Updated "KayKit Character Animations" to 1.1
+		- Adds 28 new tool animations for Rig_Medium
+	
+	- Patched "KayKit Medieval Hexagon Pack" to 1.0.1
+		- Shortened the names of various .obj/.mtl files. This will make it less likely to hit the Windows 11 save path length limit when extracting this pack.
+
+	------------------------------
+	
+	Version 2.0.0
+
+	- Added new asset pack : "Holiday Bits" 1.0
+		- 85+ holiday themed 3D models.
+
+	------------------------------
+	
+	Version 1.0.0
+	
+	- Launch release includes 17 asset packs
+
+		- KayKit Adventurers 2.0
+		- KayKit Block Bits 1.0
+		- KayKit Character Animations 1.0
+		- KayKit City Builder Bits 1.0
+		- KayKit Dungeon Remastered 1.1
+		- KayKit Forest Nature Pack 1.0
+		- KayKit Furniture Bits 1.0
+		- KayKit Halloween Bits 1.0
+		- KayKit Medieval Hexagon Pack 1.0
+		- KayKit Mystery Monthly Series 4
+		- KayKit Mystery Monthly Series 5
+		- KayKit Platformer Pack 1.0
+		- KayKit Prototype Bits 1.1
+		- KayKit Resource Bits 1.0
+		- KayKit Restaurant Bits 1.0
+		- KayKit Skeletons 1.1
+		- KayKit Space Base Bits 1.0
+

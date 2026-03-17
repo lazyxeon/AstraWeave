@@ -178,7 +178,7 @@ impl WaterRenderer {
             index_count: indices.len() as u32,
             start_time: std::time::Instant::now(),
             water_level: 0.0,
-            enabled: true,
+            enabled: false,
             fog_enabled: false,
             fog_density: 0.01,
             fog_color: [0.6, 0.6, 0.62],

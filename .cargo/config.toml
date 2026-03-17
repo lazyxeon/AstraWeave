@@ -6,3 +6,9 @@ rustflags = ["-C", "link-args=/STACK:16777216"]
 
 [target.x86_64-pc-windows-gnu]
 rustflags = ["-C", "link-args=-Wl,--stack,16777216"]
+
+# Convenience aliases for the editor
+[alias]
+editor = "run --bin aw_editor --profile release-fast"
+editor-release = "run --bin aw_editor --release"
+editor-dev = "run --bin aw_editor"

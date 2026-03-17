@@ -173,10 +173,10 @@ fn material_grassland(pos: vec3<f32>, n: vec3<f32>) -> Material {
     let base = triplanar_fbm(pos, n, 0.8);
     let detail = triplanar_noise(pos, n, 3.0);
     let clump = triplanar_fbm(pos, n, 0.15);
-    let green1 = vec3<f32>(0.04, 0.12, 0.01);
-    let green2 = vec3<f32>(0.08, 0.18, 0.02);
-    let green3 = vec3<f32>(0.06, 0.13, 0.005);
-    let dirt = vec3<f32>(0.06, 0.03, 0.01);
+    let green1 = vec3<f32>(0.12, 0.28, 0.04);
+    let green2 = vec3<f32>(0.18, 0.38, 0.06);
+    let green3 = vec3<f32>(0.14, 0.30, 0.03);
+    let dirt = vec3<f32>(0.14, 0.08, 0.03);
     var color = mix(green1, green2, base);
     color = mix(color, green3, detail * 0.4);
     let dirt_f = smoothstep(0.25, 0.35, 1.0 - clump);
@@ -195,10 +195,10 @@ fn material_desert(pos: vec3<f32>, n: vec3<f32>) -> Material {
     let base = triplanar_fbm(pos, n, 0.3);
     let ripple = triplanar_noise(pos, n, 6.0);
     let large = triplanar_fbm(pos, n, 0.05);
-    let sand1 = vec3<f32>(0.55, 0.32, 0.12);
-    let sand2 = vec3<f32>(0.65, 0.42, 0.15);
-    let rsand = vec3<f32>(0.48, 0.15, 0.04);
-    let rock = vec3<f32>(0.18, 0.13, 0.08);
+    let sand1 = vec3<f32>(0.72, 0.55, 0.30);
+    let sand2 = vec3<f32>(0.82, 0.62, 0.35);
+    let rsand = vec3<f32>(0.65, 0.35, 0.15);
+    let rock = vec3<f32>(0.35, 0.28, 0.18);
     var color = mix(sand1, sand2, base);
     color = mix(color, rsand, large * 0.4);
     color += vec3<f32>(0.02) * ripple;
@@ -218,10 +218,10 @@ fn material_forest(pos: vec3<f32>, n: vec3<f32>) -> Material {
     let base = triplanar_fbm(pos, n, 0.5);
     let leaf = triplanar_noise(pos, n, 4.0);
     let moss = triplanar_fbm(pos, n, 1.5);
-    let earth = vec3<f32>(0.02, 0.015, 0.005);
-    let lg = vec3<f32>(0.01, 0.05, 0.005);
-    let lb = vec3<f32>(0.08, 0.03, 0.005);
-    let mg = vec3<f32>(0.015, 0.07, 0.01);
+    let earth = vec3<f32>(0.08, 0.05, 0.02);
+    let lg = vec3<f32>(0.06, 0.18, 0.03);
+    let lb = vec3<f32>(0.15, 0.08, 0.02);
+    let mg = vec3<f32>(0.05, 0.22, 0.04);
     var color = mix(earth, lg, base * 0.7);
     color = mix(color, lb, leaf * 0.35);
     let flat_f = max(dot(n, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
@@ -240,9 +240,9 @@ fn material_mountain(pos: vec3<f32>, n: vec3<f32>) -> Material {
     let strata = triplanar_fbm(pos, n, 0.4);
     let crack = voronoi2d(pos.xz * 2.0);
     let detail = triplanar_noise(pos, n, 5.0);
-    let rock1 = vec3<f32>(0.12, 0.10, 0.09);
-    let rock2 = vec3<f32>(0.22, 0.18, 0.14);
-    let dark = vec3<f32>(0.04, 0.035, 0.03);
+    let rock1 = vec3<f32>(0.30, 0.26, 0.22);
+    let rock2 = vec3<f32>(0.45, 0.38, 0.30);
+    let dark = vec3<f32>(0.12, 0.10, 0.08);
     var color = mix(rock1, rock2, strata);
     let crack_f = smoothstep(0.02, 0.08, crack.x);
     color = mix(dark, color, crack_f);
@@ -266,9 +266,9 @@ fn material_tundra(pos: vec3<f32>, n: vec3<f32>) -> Material {
     let base = triplanar_fbm(pos, n, 0.6);
     let ice = voronoi2d(pos.xz * 3.0);
     let frost = triplanar_noise(pos, n, 8.0);
-    let snow = vec3<f32>(0.75, 0.78, 0.85);
-    let ice_blue = vec3<f32>(0.38, 0.55, 0.72);
-    let frozen = vec3<f32>(0.10, 0.09, 0.06);
+    let snow = vec3<f32>(0.85, 0.88, 0.92);
+    let ice_blue = vec3<f32>(0.55, 0.68, 0.82);
+    let frozen = vec3<f32>(0.22, 0.20, 0.16);
     var color = mix(snow, frozen, base * 0.3);
     let ice_f = smoothstep(0.15, 0.25, ice.x);
     color = mix(ice_blue, color, ice_f);
@@ -285,10 +285,10 @@ fn material_swamp(pos: vec3<f32>, n: vec3<f32>) -> Material {
     let base = triplanar_fbm(pos, n, 0.4);
     let mud = warped_fbm(pos.xz * 0.5);
     let algae = triplanar_noise(pos, n, 2.0);
-    let mud_brown = vec3<f32>(0.045, 0.025, 0.005);
-    let swamp_green = vec3<f32>(0.015, 0.04, 0.005);
-    let dark_water = vec3<f32>(0.005, 0.015, 0.005);
-    let algae_green = vec3<f32>(0.03, 0.08, 0.005);
+    let mud_brown = vec3<f32>(0.12, 0.08, 0.03);
+    let swamp_green = vec3<f32>(0.06, 0.14, 0.03);
+    let dark_water = vec3<f32>(0.02, 0.06, 0.03);
+    let algae_green = vec3<f32>(0.08, 0.20, 0.04);
     var color = mix(mud_brown, swamp_green, base);
     let water_patch = smoothstep(0.4, 0.5, mud);
     color = mix(color, dark_water, water_patch * 0.7);
@@ -307,9 +307,9 @@ fn material_beach(pos: vec3<f32>, n: vec3<f32>) -> Material {
     let base = triplanar_fbm(pos, n, 0.8);
     let shell = voronoi2d(pos.xz * 8.0);
     let wave_mark = sin(pos.x * 5.0 + pos.z * 0.5 + noise2d(pos.xz * 2.0) * 3.0);
-    let dry = vec3<f32>(0.65, 0.50, 0.30);
-    let wet = vec3<f32>(0.28, 0.21, 0.10);
-    let pebble = vec3<f32>(0.14, 0.12, 0.10);
+    let dry = vec3<f32>(0.78, 0.65, 0.42);
+    let wet = vec3<f32>(0.42, 0.34, 0.20);
+    let pebble = vec3<f32>(0.30, 0.26, 0.22);
     let wet_f = smoothstep(2.0, -1.0, pos.y - uniforms.water_level);
     var color = mix(dry, wet, wet_f);
     color = mix(color, color * 1.1, base * 0.3);
@@ -330,15 +330,15 @@ fn material_beach(pos: vec3<f32>, n: vec3<f32>) -> Material {
 fn material_river(pos: vec3<f32>, n: vec3<f32>) -> Material {
     let stones = voronoi2d(pos.xz * 5.0);
     let base = triplanar_fbm(pos, n, 1.0);
-    let wet_rock = vec3<f32>(0.08, 0.07, 0.05);
-    let sand = vec3<f32>(0.22, 0.16, 0.08);
-    let dark = vec3<f32>(0.02, 0.03, 0.02);
+    let wet_rock = vec3<f32>(0.15, 0.13, 0.10);
+    let sand = vec3<f32>(0.38, 0.30, 0.18);
+    let dark = vec3<f32>(0.06, 0.08, 0.06);
     var color = mix(sand, wet_rock, base);
     let stone_f = smoothstep(0.1, 0.15, stones.x);
     color = mix(dark, color, stone_f);
     let depth = max(0.0, uniforms.water_level - pos.y);
-    let underwater_tint = vec3<f32>(0.01, 0.06, 0.08);
-    color = mix(color, underwater_tint, smoothstep(0.0, 5.0, depth) * 0.5);
+    let underwater_tint = vec3<f32>(0.05, 0.15, 0.22);
+    color = mix(color, underwater_tint, smoothstep(0.0, 5.0, depth) * 0.4);
     var mat: Material;
     mat.albedo = color;
     mat.roughness = 0.25;
@@ -351,9 +351,9 @@ fn rock_material(pos: vec3<f32>, n: vec3<f32>) -> Material {
     let strata = triplanar_fbm(pos, n, 0.5);
     let crack = voronoi2d(pos.xz * 3.0);
     let detail = triplanar_noise(pos, n, 4.0);
-    let rock1 = vec3<f32>(0.15, 0.12, 0.10);
-    let rock2 = vec3<f32>(0.27, 0.22, 0.18);
-    let dark = vec3<f32>(0.05, 0.04, 0.035);
+    let rock1 = vec3<f32>(0.32, 0.28, 0.24);
+    let rock2 = vec3<f32>(0.48, 0.40, 0.34);
+    let dark = vec3<f32>(0.14, 0.12, 0.10);
     var color = mix(rock1, rock2, strata);
     let crack_f = smoothstep(0.03, 0.1, crack.x);
     color = mix(dark, color, crack_f);
@@ -452,7 +452,7 @@ fn pbr_lighting(mat: Material, pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     let sky_c = vec3<f32>(0.5, 0.6, 0.8);
     let ground_c = vec3<f32>(0.15, 0.12, 0.08);
     let amb_blend = n.y * 0.5 + 0.5;
-    let ambient = mix(ground_c, sky_c, amb_blend) * mat.albedo * mat.ao * 0.25;
+    let ambient = mix(ground_c, sky_c, amb_blend) * mat.albedo * mat.ao * 0.45;
     let rim = pow(1.0 - n_dot_v, 3.0) * 0.06;
     return direct + ambient + vec3<f32>(rim);
 }
@@ -508,8 +508,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     var color = pbr_lighting(mat, in.world_position, perturbed_n);
 
-    // Tone map (Reinhard)
-    color = color / (color + vec3<f32>(1.0));
+    // Tone map (ACES Filmic — preserves color saturation better than Reinhard)
+    let a = color * (2.51 * color + vec3<f32>(0.03));
+    let b = color * (2.43 * color + vec3<f32>(0.59)) + vec3<f32>(0.14);
+    color = clamp(a / b, vec3<f32>(0.0), vec3<f32>(1.0));
+
+    // Gamma correction (linear → sRGB)
+    color = pow(color, vec3<f32>(1.0 / 2.2));
 
     // Fog (height-aware exponential)
     if uniforms.fog_enabled == 1u {

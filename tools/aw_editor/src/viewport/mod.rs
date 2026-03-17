@@ -42,6 +42,7 @@ mod grid_renderer;
 mod physics_renderer;
 mod rain_renderer;
 mod renderer;
+mod scatter_renderer;
 mod skybox_renderer;
 pub mod terrain_renderer;
 pub mod toolbar;

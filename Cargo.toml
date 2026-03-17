@@ -224,11 +224,22 @@ astraweave-scripting = { path = "astraweave-scripting" }
 [profile.dev]
 opt-level = 0         # Fast compile for workspace code
 debug = true
+codegen-units = 256   # Maximize parallelism for faster incremental builds
+split-debuginfo = "unpacked"  # Faster linking on Windows (avoids PDB merging)
+incremental = true    # Ensure incremental compilation is enabled
 
 # Optimize all dependencies even in dev mode — substantial runtime speedup
 # with minimal impact on incremental compile times (deps are cached)
 [profile.dev.package."*"]
 opt-level = 2
+
+# Fast optimized profile for day-to-day editor use (no LTO = much faster linking)
+# Usage: cargo run --bin aw_editor --profile release-fast
+[profile.release-fast]
+inherits = "release"
+lto = false
+codegen-units = 256
+incremental = true
 
 [profile.release]
 opt-level = 3
