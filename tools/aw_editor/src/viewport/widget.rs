@@ -251,8 +251,8 @@ impl ViewportWidget {
         let viewport_size = egui::vec2(available.x, available.y);
         let (rect, response) = ui.allocate_exact_size(viewport_size, egui::Sense::click_and_drag());
 
-        // Request focus on hover or click (enables camera controls)
-        if response.hovered() || response.clicked() {
+        // Request focus only on click (not hover) to avoid stealing focus from other panels
+        if response.clicked() {
             trace!(
                 hovered = response.hovered(),
                 clicked = response.clicked(),
@@ -283,8 +283,16 @@ impl ViewportWidget {
             opt_prefab_mgr,
         )?;
 
-        // Request continuous repaint to update viewport every frame
-        ui.ctx().request_repaint();
+        // Only request continuous repaint when viewport is hovered or focused
+        // This prevents cursor/focus issues when switching windows (alt-tab)
+        if response.hovered() || self.has_focus {
+            ui.ctx().request_repaint();
+        }
+
+        // Restore default cursor when viewport loses focus (prevents cursor disappearing on alt-tab)
+        if response.hovered() && !self.gizmo_state.is_active() {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Default);
+        }
 
         // Update camera aspect ratio
         if viewport_size.x > 0.0 && viewport_size.y > 0.0 {
@@ -1970,6 +1978,32 @@ impl ViewportWidget {
     pub fn clear_terrain(&self) {
         if let Ok(mut renderer) = self.renderer.lock() {
             renderer.clear_terrain();
+        }
+    }
+
+    /// Set the procedural sky gradient colors for skybox presets / time-of-day / weather
+    pub fn set_sky_colors(
+        &self,
+        sky_top: [f32; 4],
+        sky_horizon: [f32; 4],
+        ground_color: [f32; 4],
+    ) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.set_sky_colors(sky_top, sky_horizon, ground_color);
+        }
+    }
+
+    /// Set fog and weather parameters for distance-based terrain fog rendering
+    pub fn set_fog_params(&self, params: super::terrain_renderer::TerrainFogParams) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.set_fog_params(params);
+        }
+    }
+
+    /// Set water level for volumetric water plane
+    pub fn set_water_level(&self, level: f32) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.set_water_level(level);
         }
     }
 

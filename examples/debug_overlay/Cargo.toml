@@ -6,6 +6,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
-eframe = { workspace = true }
+eframe = { workspace = true, features = ["glow"] }
 egui = { workspace = true }
 astraweave-core = { path = "../../astraweave-core" }

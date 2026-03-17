@@ -8,75 +8,47 @@ use super::camera::OrbitCamera;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-pub struct TerrainVertex {
-    pub position: [f32; 3],
-    pub normal: [f32; 3],
-    pub uv: [f32; 2],
-    pub biome_id: u32,
-    pub _padding: [u32; 3],
+struct WaterVertex {
+    position: [f32; 3],
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct Uniforms {
+struct WaterUniforms {
     view_proj: [[f32; 4]; 4],
     camera_pos: [f32; 3],
-    shading_mode: u32,
+    time: f32,
     fog_color: [f32; 3],
     fog_density: f32,
-    fog_enabled: u32,
-    weather_type: u32,
-    time: f32,
     water_level: f32,
+    fog_enabled: u32,
+    _pad: [f32; 2],
 }
 
-/// Fog and weather parameters passed to the terrain shader.
-#[derive(Clone, Copy, Debug)]
-pub struct TerrainFogParams {
-    pub fog_enabled: bool,
-    pub fog_density: f32,
-    pub fog_color: [f32; 3],
-    pub weather_type: u32,
-}
-
-impl Default for TerrainFogParams {
-    fn default() -> Self {
-        Self {
-            fog_enabled: false,
-            fog_density: 0.01,
-            fog_color: [0.6, 0.6, 0.62],
-            weather_type: 0,
-        }
-    }
-}
-
-pub struct TerrainChunkGpu {
+pub struct WaterRenderer {
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+    uniform_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     index_count: u32,
-}
-
-pub struct TerrainRenderer {
-    pipeline: wgpu::RenderPipeline,
-    bind_group_layout: wgpu::BindGroupLayout,
-    bind_group: wgpu::BindGroup,
-    uniform_buffer: wgpu::Buffer,
-    device: wgpu::Device,
-    chunks: Vec<TerrainChunkGpu>,
-    fog_params: TerrainFogParams,
     start_time: std::time::Instant,
     water_level: f32,
+    enabled: bool,
+    fog_enabled: bool,
+    fog_density: f32,
+    fog_color: [f32; 3],
 }
 
-impl TerrainRenderer {
+impl WaterRenderer {
     pub fn new(device: &wgpu::Device) -> Result<Self> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Terrain Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/terrain.wgsl").into()),
+            label: Some("Water Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/water.wgsl").into()),
         });
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Terrain Bind Group Layout"),
+            label: Some("Water Bind Group Layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
@@ -90,42 +62,25 @@ impl TerrainRenderer {
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Terrain Pipeline Layout"),
+            label: Some("Water Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Terrain Render Pipeline"),
+            label: Some("Water Render Pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<TerrainVertex>() as u64,
+                    array_stride: std::mem::size_of::<WaterVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            offset: 0,
-                            shader_location: 0,
-                            format: wgpu::VertexFormat::Float32x3,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: 12,
-                            shader_location: 1,
-                            format: wgpu::VertexFormat::Float32x3,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: 24,
-                            shader_location: 2,
-                            format: wgpu::VertexFormat::Float32x2,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: 32,
-                            shader_location: 3,
-                            format: wgpu::VertexFormat::Uint32,
-                        },
-                    ],
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x3,
+                    }],
                 }],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -134,7 +89,18 @@ impl TerrainRenderer {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Bgra8UnormSrgb,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::SrcAlpha,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -143,14 +109,14 @@ impl TerrainRenderer {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None, // Render both sides of water
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
+                depth_write_enabled: false, // Transparent — don't write depth
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
@@ -165,23 +131,22 @@ impl TerrainRenderer {
         });
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Terrain Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[Uniforms {
+            label: Some("Water Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[WaterUniforms {
                 view_proj: [[0.0; 4]; 4],
                 camera_pos: [0.0; 3],
-                shading_mode: 0,
+                time: 0.0,
                 fog_color: [0.6, 0.6, 0.62],
                 fog_density: 0.01,
-                fog_enabled: 0,
-                weather_type: 0,
-                time: 0.0,
                 water_level: 0.0,
+                fog_enabled: 0,
+                _pad: [0.0; 2],
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Terrain Bind Group"),
+            label: Some("Water Bind Group"),
             layout: &bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -189,65 +154,86 @@ impl TerrainRenderer {
             }],
         });
 
+        // Generate water grid mesh (128x128, spanning -200..200)
+        let (vertices, indices) = Self::generate_water_mesh(128, 200.0);
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Water Vertex Buffer"),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Water Index Buffer"),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+
         Ok(Self {
             pipeline,
-            bind_group_layout,
             bind_group,
             uniform_buffer,
-            device: device.clone(),
-            chunks: Vec::new(),
-            fog_params: TerrainFogParams::default(),
+            vertex_buffer,
+            index_buffer,
+            index_count: indices.len() as u32,
             start_time: std::time::Instant::now(),
             water_level: 0.0,
+            enabled: true,
+            fog_enabled: false,
+            fog_density: 0.01,
+            fog_color: [0.6, 0.6, 0.62],
         })
     }
 
-    pub fn upload_chunks(&mut self, chunks: &[(Vec<TerrainVertex>, Vec<u32>)]) {
-        self.chunks.clear();
+    fn generate_water_mesh(resolution: u32, extent: f32) -> (Vec<WaterVertex>, Vec<u32>) {
+        let res = resolution + 1;
+        let mut vertices = Vec::with_capacity((res * res) as usize);
+        let mut indices = Vec::with_capacity(((resolution) * (resolution) * 6) as usize);
 
-        for (vertices, indices) in chunks {
-            if vertices.is_empty() || indices.is_empty() {
-                continue;
+        for z in 0..res {
+            for x in 0..res {
+                let fx = (x as f32 / resolution as f32) * 2.0 * extent - extent;
+                let fz = (z as f32 / resolution as f32) * 2.0 * extent - extent;
+                vertices.push(WaterVertex {
+                    position: [fx, 0.0, fz],
+                });
             }
-
-            let vertex_buffer = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Terrain Vertex Buffer"),
-                    contents: bytemuck::cast_slice(vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-
-            let index_buffer = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Terrain Index Buffer"),
-                    contents: bytemuck::cast_slice(indices),
-                    usage: wgpu::BufferUsages::INDEX,
-                });
-
-            self.chunks.push(TerrainChunkGpu {
-                vertex_buffer,
-                index_buffer,
-                index_count: indices.len() as u32,
-            });
         }
-    }
 
-    pub fn clear_chunks(&mut self) {
-        self.chunks.clear();
-    }
+        for z in 0..resolution {
+            for x in 0..resolution {
+                let tl = z * res + x;
+                let tr = tl + 1;
+                let bl = (z + 1) * res + x;
+                let br = bl + 1;
+                indices.push(tl);
+                indices.push(bl);
+                indices.push(tr);
+                indices.push(tr);
+                indices.push(bl);
+                indices.push(br);
+            }
+        }
 
-    pub fn chunk_count(&self) -> usize {
-        self.chunks.len()
-    }
-
-    pub fn set_fog_params(&mut self, params: TerrainFogParams) {
-        self.fog_params = params;
+        (vertices, indices)
     }
 
     pub fn set_water_level(&mut self, level: f32) {
         self.water_level = level;
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn set_fog(&mut self, enabled: bool, density: f32, color: [f32; 3]) {
+        self.fog_enabled = enabled;
+        self.fog_density = density;
+        self.fog_color = color;
     }
 
     pub fn render(
@@ -257,31 +243,30 @@ impl TerrainRenderer {
         depth_view: &wgpu::TextureView,
         camera: &OrbitCamera,
         queue: &wgpu::Queue,
-        shading_mode: u32,
     ) -> Result<()> {
-        if self.chunks.is_empty() {
+        if !self.enabled {
             return Ok(());
         }
 
+        let elapsed = self.start_time.elapsed().as_secs_f32();
         let view_proj = camera.view_projection_matrix();
         let camera_pos = camera.position();
 
-        let uniforms = Uniforms {
+        let uniforms = WaterUniforms {
             view_proj: view_proj.to_cols_array_2d(),
             camera_pos: camera_pos.to_array(),
-            shading_mode,
-            fog_color: self.fog_params.fog_color,
-            fog_density: self.fog_params.fog_density,
-            fog_enabled: if self.fog_params.fog_enabled { 1 } else { 0 },
-            weather_type: self.fog_params.weather_type,
-            time: self.start_time.elapsed().as_secs_f32(),
+            time: elapsed,
+            fog_color: self.fog_color,
+            fog_density: self.fog_density,
             water_level: self.water_level,
+            fog_enabled: if self.fog_enabled { 1 } else { 0 },
+            _pad: [0.0; 2],
         };
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Terrain Render Pass"),
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Water Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: target,
                 resolve_target: None,
@@ -302,14 +287,11 @@ impl TerrainRenderer {
             occlusion_query_set: None,
         });
 
-        render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_bind_group(0, &self.bind_group, &[]);
-
-        for chunk in &self.chunks {
-            render_pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            render_pass.draw_indexed(0..chunk.index_count, 0, 0..1);
-        }
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        pass.draw_indexed(0..self.index_count, 0, 0..1);
 
         Ok(())
     }

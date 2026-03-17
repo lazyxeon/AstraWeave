@@ -7,7 +7,7 @@ license = "MIT"
 [dependencies]
 egui = { workspace = true }
 egui_plot = { workspace = true }
-eframe = { workspace = true }
+eframe = { workspace = true, features = ["glow"] }
 rand = { workspace = true }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }

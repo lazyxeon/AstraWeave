@@ -436,15 +436,29 @@ pub struct TerrainPanel {
     show_advanced: bool,
     last_generation_time_ms: f32,
     generation_stats: GenerationStats,
+    /// True while background terrain generation is in progress
+    generating: bool,
+    /// Receiver for completed background terrain generation
+    gen_receiver: Option<std::sync::mpsc::Receiver<TerrainGenResult>>,
 
     /// Brush settings for voxel editing
     brush_mode: BrushMode,
     brush_radius: f32,
     brush_strength: f32,
     selected_material: usize,
+    /// Brush world position (X, Z) for applying brush strokes
+    brush_pos_x: f32,
+    brush_pos_z: f32,
 
     /// Action queue
     pending_actions: Vec<TerrainAction>,
+}
+
+/// Result sent back from the background terrain generation thread
+struct TerrainGenResult {
+    terrain_state: TerrainState,
+    chunk_count: usize,
+    elapsed_ms: f32,
 }
 
 /// Brush modes for terrain sculpting
@@ -574,10 +588,14 @@ impl Default for TerrainPanel {
             show_advanced: false,
             last_generation_time_ms: 0.0,
             generation_stats: GenerationStats::default(),
+            generating: false,
+            gen_receiver: None,
             brush_mode: BrushMode::Sculpt,
             brush_radius: 5.0,
             brush_strength: 0.5,
             selected_material: 0,
+            brush_pos_x: 0.0,
+            brush_pos_z: 0.0,
             pending_actions: Vec::new(),
         }
     }
@@ -596,6 +614,11 @@ impl TerrainPanel {
     /// Returns true if there are pending actions
     pub fn has_pending_actions(&self) -> bool {
         !self.pending_actions.is_empty()
+    }
+
+    /// Get terrain chunks ready for GPU upload
+    pub fn get_gpu_chunks(&self) -> Vec<(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)> {
+        self.terrain_state.get_gpu_chunks()
     }
 
     /// Queue an action for later processing
@@ -650,6 +673,12 @@ impl TerrainPanel {
                             .clicked()
                         {
                             self.terrain_state.configure(self.seed, &self.primary_biome);
+                            // Apply biome-specific noise presets so terrain shape changes
+                            let preset = Self::noise_preset_for_biome(&self.primary_biome);
+                            self.octaves = preset.base_octaves as u32;
+                            self.lacunarity = preset.base_lacunarity as f32;
+                            self.persistence = preset.base_persistence as f32;
+                            self.base_amplitude = preset.base_amplitude;
                         }
                     }
                 });
@@ -669,15 +698,25 @@ impl TerrainPanel {
 
         ui.add_space(10.0);
 
-        // Generate button
-        let generate_text = if self.terrain_state.is_dirty() {
-            RichText::new("Generate Terrain").color(Color32::YELLOW)
-        } else {
-            RichText::new("Generate Terrain")
-        };
+        // Poll for completed background generation
+        self.poll_generation();
 
-        if ui.button(generate_text).clicked() {
-            self.regenerate_terrain();
+        // Generate button
+        if self.generating {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Generating terrain...");
+            });
+        } else {
+            let generate_text = if self.terrain_state.is_dirty() {
+                RichText::new("Generate Terrain").color(Color32::YELLOW)
+            } else {
+                RichText::new("Generate Terrain")
+            };
+
+            if ui.button(generate_text).clicked() {
+                self.regenerate_terrain();
+            }
         }
 
         ui.checkbox(&mut self.auto_regenerate, "Auto-regenerate on change");
@@ -806,11 +845,48 @@ impl TerrainPanel {
             }
 
             ui.add_space(5.0);
-            ui.label(
-                RichText::new("Tip: Use in viewport with Shift+Click")
-                    .small()
-                    .italics(),
-            );
+
+            // Brush position input
+            ui.horizontal(|ui| {
+                ui.label("Position X:");
+                ui.add(egui::DragValue::new(&mut self.brush_pos_x).speed(1.0));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Position Z:");
+                ui.add(egui::DragValue::new(&mut self.brush_pos_z).speed(1.0));
+            });
+
+            ui.add_space(5.0);
+
+            let has_terrain = self.terrain_state.has_terrain();
+            let apply_text = if has_terrain {
+                "Apply Brush"
+            } else {
+                "Generate terrain first"
+            };
+
+            if ui
+                .add_enabled(has_terrain, egui::Button::new(apply_text))
+                .clicked()
+            {
+                let brush_mode_id = match self.brush_mode {
+                    BrushMode::Sculpt => 0,
+                    BrushMode::Smooth => 1,
+                    BrushMode::Flatten => 2,
+                    BrushMode::Paint => 3, // lower
+                    BrushMode::Erode => 4,
+                };
+                let modified = self.terrain_state.apply_brush(
+                    self.brush_pos_x,
+                    self.brush_pos_z,
+                    self.brush_radius,
+                    self.brush_strength,
+                    brush_mode_id,
+                );
+                if modified {
+                    self.pending_actions.push(TerrainAction::Generate);
+                }
+            }
         });
     }
 
@@ -1328,31 +1404,143 @@ impl TerrainPanel {
         }
     }
 
+    /// Returns a full biome noise preset that configures all three noise layers
+    /// to produce terrain shapes appropriate for each biome.
+    fn noise_preset_for_biome(biome: &str) -> crate::terrain_integration::BiomeNoisePreset {
+        use crate::terrain_integration::BiomeNoisePreset;
+        match biome {
+            "mountain" => BiomeNoisePreset {
+                base_scale: 0.003, base_amplitude: 120.0, base_octaves: 6,
+                base_persistence: 0.55, base_lacunarity: 2.2,
+                mountains_enabled: true, mountains_scale: 0.002, mountains_amplitude: 150.0, mountains_octaves: 8,
+                detail_enabled: true, detail_scale: 0.03, detail_amplitude: 8.0,
+            },
+            "desert" => BiomeNoisePreset {
+                base_scale: 0.002, base_amplitude: 20.0, base_octaves: 3,
+                base_persistence: 0.35, base_lacunarity: 2.5,
+                mountains_enabled: false, mountains_scale: 0.002, mountains_amplitude: 0.0, mountains_octaves: 4,
+                detail_enabled: true, detail_scale: 0.04, detail_amplitude: 3.0,
+            },
+            "forest" => BiomeNoisePreset {
+                base_scale: 0.004, base_amplitude: 40.0, base_octaves: 5,
+                base_persistence: 0.50, base_lacunarity: 2.0,
+                mountains_enabled: true, mountains_scale: 0.003, mountains_amplitude: 25.0, mountains_octaves: 4,
+                detail_enabled: true, detail_scale: 0.02, detail_amplitude: 6.0,
+            },
+            "tundra" => BiomeNoisePreset {
+                base_scale: 0.003, base_amplitude: 30.0, base_octaves: 4,
+                base_persistence: 0.40, base_lacunarity: 2.0,
+                mountains_enabled: true, mountains_scale: 0.002, mountains_amplitude: 40.0, mountains_octaves: 5,
+                detail_enabled: true, detail_scale: 0.015, detail_amplitude: 4.0,
+            },
+            "swamp" => BiomeNoisePreset {
+                base_scale: 0.006, base_amplitude: 8.0, base_octaves: 4,
+                base_persistence: 0.60, base_lacunarity: 1.8,
+                mountains_enabled: false, mountains_scale: 0.002, mountains_amplitude: 0.0, mountains_octaves: 3,
+                detail_enabled: true, detail_scale: 0.03, detail_amplitude: 2.0,
+            },
+            "beach" => BiomeNoisePreset {
+                base_scale: 0.008, base_amplitude: 5.0, base_octaves: 3,
+                base_persistence: 0.30, base_lacunarity: 2.0,
+                mountains_enabled: false, mountains_scale: 0.002, mountains_amplitude: 0.0, mountains_octaves: 3,
+                detail_enabled: true, detail_scale: 0.05, detail_amplitude: 1.5,
+            },
+            "river" => BiomeNoisePreset {
+                base_scale: 0.004, base_amplitude: 25.0, base_octaves: 5,
+                base_persistence: 0.45, base_lacunarity: 2.0,
+                mountains_enabled: true, mountains_scale: 0.003, mountains_amplitude: 20.0, mountains_octaves: 4,
+                detail_enabled: true, detail_scale: 0.025, detail_amplitude: 4.0,
+            },
+            _ => BiomeNoisePreset {
+                // grassland / default — gentle rolling hills
+                base_scale: 0.005, base_amplitude: 35.0, base_octaves: 4,
+                base_persistence: 0.50, base_lacunarity: 2.0,
+                mountains_enabled: true, mountains_scale: 0.003, mountains_amplitude: 15.0, mountains_octaves: 4,
+                detail_enabled: true, detail_scale: 0.02, detail_amplitude: 5.0,
+            },
+        }
+    }
+
     fn regenerate_terrain(&mut self) {
-        let start = std::time::Instant::now();
+        if self.generating {
+            return;
+        }
 
-        match self.terrain_state.generate_terrain(self.chunk_radius) {
-            Ok(count) => {
-                self.last_generation_time_ms = start.elapsed().as_secs_f32() * 1000.0;
+        // Prepare a fresh TerrainState with current config on the background thread
+        let mut state = TerrainState::new();
+        state.configure(self.seed, &self.primary_biome);
+        // Apply the full biome noise preset (all 3 layers)
+        let preset = Self::noise_preset_for_biome(&self.primary_biome);
+        state.apply_biome_noise_preset(&preset);
+        // Override base elevation with user-tweaked sliders
+        state.set_noise_params(
+            self.octaves as usize,
+            self.lacunarity as f64,
+            self.persistence as f64,
+            self.base_amplitude,
+        );
+        let chunk_radius = self.chunk_radius;
 
-                let all_vertices = self.terrain_state.get_all_vertices();
-                let vertex_count = all_vertices.len();
-                let triangle_count = self.terrain_state.get_all_indices(0).len() / 3;
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.generating = true;
+        self.gen_receiver = Some(rx);
 
-                self.generation_stats = GenerationStats {
-                    chunks_generated: count,
-                    total_vertices: vertex_count,
-                    total_triangles: triangle_count,
-                    memory_estimate_mb: (vertex_count
-                        * std::mem::size_of::<crate::terrain_integration::TerrainVertex>())
-                        as f32
-                        / (1024.0 * 1024.0),
-                    erosion_time_ms: 0.0,
-                    splatmap_time_ms: 0.0,
-                };
+        std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            match state.generate_terrain(chunk_radius) {
+                Ok(count) => {
+                    let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
+                    let _ = tx.send(TerrainGenResult {
+                        terrain_state: state,
+                        chunk_count: count,
+                        elapsed_ms,
+                    });
+                }
+                Err(e) => {
+                    tracing::error!("Terrain generation failed: {}", e);
+                    // Don't send anything — the panel will stop spinning
+                    // when it sees the channel is disconnected.
+                }
             }
-            Err(e) => {
-                tracing::error!("Terrain generation failed: {}", e);
+        });
+    }
+
+    /// Check if the background generation thread has finished and apply results.
+    fn poll_generation(&mut self) {
+        if let Some(rx) = &self.gen_receiver {
+            match rx.try_recv() {
+                Ok(result) => {
+                    let vertex_count = result.terrain_state.total_vertex_count();
+                    let triangle_count = result.terrain_state.total_triangle_count();
+
+                    self.terrain_state = result.terrain_state;
+                    self.last_generation_time_ms = result.elapsed_ms;
+                    self.generation_stats = GenerationStats {
+                        chunks_generated: result.chunk_count,
+                        total_vertices: vertex_count,
+                        total_triangles: triangle_count,
+                        memory_estimate_mb: (vertex_count
+                            * std::mem::size_of::<crate::terrain_integration::TerrainVertex>())
+                            as f32
+                            / (1024.0 * 1024.0),
+                        erosion_time_ms: 0.0,
+                        splatmap_time_ms: 0.0,
+                    };
+
+                    // Queue action so tab_viewer/main.rs can upload chunks to viewport
+                    self.pending_actions.push(TerrainAction::Generate);
+
+                    self.generating = false;
+                    self.gen_receiver = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // Still generating — do nothing
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    // Thread finished without sending (error case)
+                    self.generating = false;
+                    self.gen_receiver = None;
+                }
             }
         }
     }

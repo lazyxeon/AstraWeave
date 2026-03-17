@@ -88,39 +88,62 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
     
-    // Compute grid coordinates
-    let grid_coord = world_pos.xz / uniforms.grid_size;
-    let grid_fract = fract(grid_coord);
+    // LOD: smoothly blend between grid scales based on camera height
+    let cam_height = abs(uniforms.camera_pos.y);
+    let lod_size = uniforms.grid_size;
     
-    // Compute grid line thickness (derivative-based anti-aliasing)
-    // Thicker lines (3x derivative) for better visibility
-    let grid_deriv = fwidth(grid_coord);
-    let grid_line = smoothstep(vec2<f32>(0.0), grid_deriv * 3.0, abs(grid_fract - 0.5) - 0.5 + grid_deriv * 1.5);
-    let grid_alpha = 1.0 - min(grid_line.x, grid_line.y);
+    // Two-level grid: minor (1m) fades out at height, major (10m) always visible
+    // This avoids blur by keeping crisp lines at all zoom levels
     
-    // Major grid lines (every N lines)
-    let major_coord = world_pos.xz / (uniforms.grid_size * uniforms.major_grid_every);
+    // --- Minor grid (1m spacing) ---
+    let minor_coord = world_pos.xz / lod_size;
+    let minor_fract = fract(minor_coord);
+    let minor_deriv = fwidth(minor_coord);
+    // Clamp derivative to prevent overly thick/blurry lines at distance
+    let minor_width = clamp(minor_deriv * 1.5, vec2<f32>(0.01), vec2<f32>(0.45));
+    let minor_line = smoothstep(minor_width, vec2<f32>(0.0), abs(minor_fract - 0.5) - 0.5 + minor_width);
+    let minor_raw = max(minor_line.x, minor_line.y);
+    // Fade minor grid when zoomed out (lines would alias)
+    let minor_fade = 1.0 - smoothstep(30.0, 80.0, cam_height);
+    let minor_alpha = minor_raw * minor_fade;
+    
+    // --- Major grid (10m spacing) ---
+    let major_coord = world_pos.xz / (lod_size * uniforms.major_grid_every);
     let major_fract = fract(major_coord);
     let major_deriv = fwidth(major_coord);
-    let major_line = smoothstep(vec2<f32>(0.0), major_deriv * 3.0, abs(major_fract - 0.5) - 0.5 + major_deriv * 1.5);
-    let major_alpha = 1.0 - min(major_line.x, major_line.y);
+    let major_width = clamp(major_deriv * 1.5, vec2<f32>(0.01), vec2<f32>(0.45));
+    let major_line = smoothstep(major_width, vec2<f32>(0.0), abs(major_fract - 0.5) - 0.5 + major_width);
+    let major_alpha = max(major_line.x, major_line.y);
     
-    // Axes (X and Z)
-    let x_axis_alpha = smoothstep(0.0, uniforms.grid_size * 0.1, abs(world_pos.z));
-    let z_axis_alpha = smoothstep(0.0, uniforms.grid_size * 0.1, abs(world_pos.x));
+    // --- Super-major grid (100m spacing, for very far zoom) ---
+    let super_coord = world_pos.xz / (lod_size * uniforms.major_grid_every * 10.0);
+    let super_fract = fract(super_coord);
+    let super_deriv = fwidth(super_coord);
+    let super_width = clamp(super_deriv * 1.5, vec2<f32>(0.01), vec2<f32>(0.45));
+    let super_line = smoothstep(super_width, vec2<f32>(0.0), abs(super_fract - 0.5) - 0.5 + super_width);
+    let super_raw = max(super_line.x, super_line.y);
+    // Fade in super grid only when zoomed far out
+    let super_fade = smoothstep(60.0, 150.0, cam_height);
+    let super_alpha = super_raw * super_fade;
+    
+    // Axes (X and Z) — scale width with camera height for visibility
+    let axis_width = max(lod_size * 0.05, cam_height * 0.002);
+    let x_axis_alpha = smoothstep(0.0, axis_width, abs(world_pos.z));
+    let z_axis_alpha = smoothstep(0.0, axis_width, abs(world_pos.x));
     
     // Distance fade
     let fade = 1.0 - smoothstep(uniforms.fade_distance, uniforms.max_distance, distance);
     
-    // Ground plane base color (subtle dark surface so grid lines stand out)
-    let ground_base_color = vec4<f32>(0.1, 0.1, 0.12, 0.35);
+    // Ground plane base color (opaque dark surface so grid lines stand out)
+    let ground_base_color = vec4<f32>(0.12, 0.12, 0.14, 0.85);
     
-    // Combine: Ground base → Grid → Major grid → Axes
-    var color = ground_base_color; // Start with ground plane
-    color = mix(color, uniforms.grid_color, grid_alpha); // Add grid lines
-    color = mix(color, uniforms.major_grid_color, major_alpha); // Add major grid
-    color = mix(color, uniforms.x_axis_color, (1.0 - x_axis_alpha) * uniforms.x_axis_color.a); // X axis
-    color = mix(color, uniforms.z_axis_color, (1.0 - z_axis_alpha) * uniforms.z_axis_color.a); // Z axis
+    // Combine: Ground base → Minor grid → Major grid → Super grid → Axes
+    var color = ground_base_color;
+    color = mix(color, uniforms.grid_color, minor_alpha);
+    color = mix(color, uniforms.major_grid_color, major_alpha);
+    color = mix(color, uniforms.major_grid_color, super_alpha);
+    color = mix(color, uniforms.x_axis_color, (1.0 - x_axis_alpha) * uniforms.x_axis_color.a);
+    color = mix(color, uniforms.z_axis_color, (1.0 - z_axis_alpha) * uniforms.z_axis_color.a);
     
     // Apply distance fade
     color.a *= fade;

@@ -172,7 +172,7 @@ impl GridRenderer {
         let (grid_color, major_grid_color) = if crosshair_mode {
             ([0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]) // Invisible grid lines
         } else {
-            ([0.55, 0.55, 0.6, 0.9], [0.75, 0.75, 0.8, 1.0]) // High-contrast grid lines
+            ([0.45, 0.45, 0.5, 1.0], [0.7, 0.7, 0.75, 1.0]) // Bright, opaque grid-paper lines
         };
 
         let uniforms = GridUniforms {

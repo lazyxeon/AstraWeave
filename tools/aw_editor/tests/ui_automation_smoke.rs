@@ -1,3 +1,5 @@
+#![cfg(feature = "kittest")]
+
 use aw_editor_lib::viewport::toolbar::ViewportToolbar;
 use egui::Rect;
 use egui_kittest::kittest::Queryable;

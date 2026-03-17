@@ -89,6 +89,12 @@ impl TerrainChunk {
         &self.heightmap
     }
 
+    /// Get mutable access to the heightmap (for sculpting brushes)
+    pub fn heightmap_mut(&mut self) -> &mut Heightmap {
+        self.mesh_dirty = true;
+        &mut self.heightmap
+    }
+
     /// Get the biome map
     pub fn biome_map(&self) -> &[BiomeType] {
         &self.biome_map

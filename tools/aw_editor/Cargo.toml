@@ -19,6 +19,7 @@ editor-nav = ["editor-core"]
 editor-sim = ["editor-core"]
 editor-full = ["editor-graphs", "editor-materials", "editor-terrain", "editor-nav", "editor-sim"]
 profiling = ["astraweave-profiling/profiling"]
+kittest = ["dep:egui_kittest"]
 
 [dependencies]
 eframe = { workspace = true, features = ["wgpu"] }
@@ -69,10 +70,10 @@ zstd = "0.13"
 lz4_flex = "0.11"
 crc32fast = "1.4"
 astraweave-asset-pipeline = { path = "../../astraweave-asset-pipeline" }
+egui_kittest = { version = "0.32", optional = true }
 [dev-dependencies]
 approx = "0.5"
 criterion = { version = "0.5", features = ["html_reports"] }
-egui_kittest = "0.32"
 tempfile = "3"
 
 [[bench]]

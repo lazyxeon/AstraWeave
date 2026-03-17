@@ -2303,9 +2303,8 @@ impl EditorApp {
         // Load preferences again to ensure we have the latest
         let prefs = editor_preferences::EditorPreferences::load();
 
-        // Initialize sample entities for testing (synced to both World and EntityManager)
+        // Sync hierarchy panel with world (no sample entities — start with clean scene)
         if let Some(scene_state) = app.scene_state.as_mut() {
-            Self::init_sample_entities(&mut app.entity_manager, scene_state);
             app.hierarchy_panel.sync_with_world(scene_state.world_mut());
         }
 
@@ -3097,10 +3096,10 @@ impl EditorApp {
         if let Some(entity_id) = self.selected_entity {
             if let Some(entity) = self.entity_manager.get(entity_id) {
                 let (pos, rot, scale) = entity.transform();
-                // Convert to 2D-like format: x, y, rotation_z, scale_x, scale_y
+                // Convert to 3D format: x, y, z, rotation_z, scale_x, scale_y, scale_z
                 let angle = rot.to_euler(glam::EulerRot::ZXY).0;
                 self.dock_tab_viewer
-                    .set_selected_transform(Some((pos.x, pos.y, angle, scale.x, scale.y)));
+                    .set_selected_transform(Some((pos.x, pos.y, pos.z, angle, scale.x, scale.y, scale.z)));
                 let entity_type = if entity.components.contains_key("Camera") {
                     "Camera".to_string()
                 } else if entity.components.contains_key("Light") {
@@ -3298,6 +3297,26 @@ impl EditorApp {
                 self.dock_layout.show_inside(ui, &mut context);
             });
 
+        // Sync environment settings (skybox preset, time-of-day, weather, fog) to viewport each frame
+        if let Some(viewport) = &self.viewport {
+            let (sky_top, sky_horizon, ground_color) =
+                self.dock_tab_viewer.compute_sky_colors();
+            viewport.set_sky_colors(sky_top, sky_horizon, ground_color);
+
+            // Compute fog color from sky horizon (fog blends toward sky color)
+            let fog_color = [sky_horizon[0], sky_horizon[1], sky_horizon[2]];
+            let (fog_enabled, fog_density, weather_type) =
+                self.dock_tab_viewer.fog_weather_params();
+            let fog_params = crate::viewport::terrain_renderer::TerrainFogParams {
+                fog_enabled,
+                fog_density,
+                fog_color,
+                weather_type,
+            };
+            viewport.set_fog_params(fog_params);
+            viewport.set_water_level(0.0);
+        }
+
         // Check for transform changes and emit events
         self.dock_tab_viewer.check_transform_changes();
 
@@ -3324,20 +3343,20 @@ impl EditorApp {
                     self.selection_set.primary = None;
                     self.status = "Deselected entity".to_string();
                 }
-                tab_viewer::PanelEvent::TransformPositionChanged { entity_id, x, y } => {
+                tab_viewer::PanelEvent::TransformPositionChanged { entity_id, x, y, z } => {
                     // Update entity transform in scene
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let entity = entity_id as u32;
                         if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
                             pose.pos.x = x as i32;
-                            pose.pos.y = y as i32;
+                            pose.pos.y = z as i32; // World IVec2.y maps to world Z
                         }
                         scene_state.sync_entity(entity);
                     }
-                    // Sync EntityManager position
+                    // Sync EntityManager position (full 3D)
                     self.entity_manager
-                        .update_position(entity_id, glam::Vec3::new(x, y, 0.0));
-                    self.status = format!("Entity {} position: ({:.2}, {:.2})", entity_id, x, y);
+                        .update_position(entity_id, glam::Vec3::new(x, y, z));
+                    self.status = format!("Entity {} position: ({:.2}, {:.2}, {:.2})", entity_id, x, y, z);
                 }
                 tab_viewer::PanelEvent::TransformRotationChanged {
                     entity_id,
@@ -3360,18 +3379,22 @@ impl EditorApp {
                     entity_id,
                     scale_x,
                     scale_y,
+                    scale_z,
                 } => {
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let entity = entity_id as u32;
                         if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
-                            // Use average of x/y for uniform scale (World uses single scale value)
-                            pose.scale = (scale_x + scale_y) / 2.0;
+                            // Use average for uniform scale (World uses single scale value)
+                            pose.scale = (scale_x + scale_y + scale_z) / 3.0;
                         }
                         scene_state.sync_entity(entity);
                     }
+                    // Sync EntityManager scale (full 3D)
+                    self.entity_manager
+                        .update_scale(entity_id, glam::Vec3::new(scale_x, scale_y, scale_z));
                     self.status = format!(
-                        "Entity {} scale: ({:.2}, {:.2})",
-                        entity_id, scale_x, scale_y
+                        "Entity {} scale: ({:.2}, {:.2}, {:.2})",
+                        entity_id, scale_x, scale_y, scale_z
                     );
                 }
                 tab_viewer::PanelEvent::CreateEntity => {
@@ -3854,12 +3877,66 @@ impl EditorApp {
                     self.dock_layout = DockLayout::from_preset(LayoutPreset::Default);
                     self.status = "Layout reset to default".to_string();
                 }
+                tab_viewer::PanelEvent::HdriLoaded { ref path } => {
+                    if let Some(viewport) = &self.viewport {
+                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                            match renderer.load_hdri(path) {
+                                Ok(()) => {
+                                    self.status = format!(
+                                        "HDRI loaded: {}",
+                                        path.file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("unknown")
+                                    );
+                                }
+                                Err(e) => {
+                                    self.status = format!("Failed to load HDRI: {e}");
+                                    tracing::error!("HDRI load error: {e:#}");
+                                }
+                            }
+                        }
+                    }
+                }
+                tab_viewer::PanelEvent::HdriCleared => {
+                    if let Some(viewport) = &self.viewport {
+                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                            renderer.clear_hdri();
+                        }
+                    }
+                    self.status = "HDRI skybox removed".to_string();
+                }
+                tab_viewer::PanelEvent::TerrainReady => {
+                    let src_chunks = self.dock_tab_viewer.terrain_gpu_chunks();
+                    let chunks: Vec<(Vec<crate::viewport::terrain_renderer::TerrainVertex>, Vec<u32>)> =
+                        src_chunks
+                            .into_iter()
+                            .map(|(verts, indices)| {
+                                let gpu_verts = verts
+                                    .iter()
+                                    .map(|v| crate::viewport::terrain_renderer::TerrainVertex {
+                                        position: v.position,
+                                        normal: v.normal,
+                                        uv: v.uv,
+                                        biome_id: v.biome_id,
+                                        _padding: [0; 3],
+                                    })
+                                    .collect();
+                                (gpu_verts, indices)
+                            })
+                            .collect();
+                    if let Some(viewport) = &self.viewport {
+                        viewport.upload_terrain_chunks(&chunks);
+                    }
+                    self.status =
+                        format!("Terrain generated: {} chunks uploaded", chunks.len());
+                }
             }
         }
     }
 
     fn show_top_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top")
+            .min_height(24.0)
             .frame(
                 egui::Frame::side_top_panel(&ctx.style())
                     .inner_margin(egui::Margin::symmetric(6, 2)),
@@ -6275,11 +6352,7 @@ impl eframe::App for EditorApp {
             .and_then(|n| n.to_str())
             .unwrap_or("Untitled");
         let dirty_marker = if self.is_dirty { "*" } else { "" };
-        let entity_count = self
-            .scene_state
-            .as_ref()
-            .map(|s| s.world().entities().len())
-            .unwrap_or(0);
+        let entity_count = self.entity_manager.count();
         let title = format!(
             "AstraWeave Editor - {}{} ({} entities)",
             file_name, dirty_marker, entity_count
@@ -6814,6 +6887,31 @@ fn main() -> Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_maximized(true)
             .with_title("AstraWeave Level & Encounter Editor"),
+        wgpu_options: egui_wgpu::WgpuConfiguration {
+            wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(egui_wgpu::WgpuSetupCreateNew {
+                device_descriptor: std::sync::Arc::new(|adapter| {
+                    let base_limits =
+                        if adapter.get_info().backend == wgpu::Backend::Gl {
+                            wgpu::Limits::downlevel_webgl2_defaults()
+                        } else {
+                            wgpu::Limits::default()
+                        };
+                    wgpu::DeviceDescriptor {
+                        label: Some("egui wgpu device"),
+                        required_features: wgpu::Features::default(),
+                        required_limits: wgpu::Limits {
+                            max_texture_dimension_2d: 8192,
+                            max_bind_groups: 8,
+                            ..base_limits
+                        },
+                        memory_hints: wgpu::MemoryHints::default(),
+                        trace: wgpu::Trace::Off,
+                    }
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
         ..Default::default()
     };
     eframe::run_native(

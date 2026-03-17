@@ -571,7 +571,7 @@ impl DockLayout {
 
         DockArea::new(&mut self.dock_state)
             .style(self.style.clone())
-            .draggable_tabs(false)
+            .draggable_tabs(true)
             .show(ctx, tab_viewer);
     }
 
@@ -592,7 +592,7 @@ impl DockLayout {
 
         DockArea::new(&mut self.dock_state)
             .style(self.style.clone())
-            .draggable_tabs(false)
+            .draggable_tabs(true)
             .show_inside(ui, tab_viewer);
     }
 

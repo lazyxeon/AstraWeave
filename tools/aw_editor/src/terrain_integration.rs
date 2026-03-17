@@ -6,6 +6,25 @@ use astraweave_terrain::{
 use glam::Vec3;
 use std::collections::HashMap;
 
+/// Full noise preset for a biome — configures all three noise layers.
+pub struct BiomeNoisePreset {
+    // Base elevation (Perlin)
+    pub base_scale: f64,
+    pub base_amplitude: f32,
+    pub base_octaves: usize,
+    pub base_persistence: f64,
+    pub base_lacunarity: f64,
+    // Mountains (RidgedMulti)
+    pub mountains_enabled: bool,
+    pub mountains_scale: f64,
+    pub mountains_amplitude: f32,
+    pub mountains_octaves: usize,
+    // Detail (Billow)
+    pub detail_enabled: bool,
+    pub detail_scale: f64,
+    pub detail_amplitude: f32,
+}
+
 pub struct TerrainState {
     generator: Option<WorldGenerator>,
     config: WorldConfig,
@@ -73,6 +92,44 @@ impl TerrainState {
         self.config.biomes = Self::biomes_for_primary(primary_biome);
     }
 
+    /// Update the noise generation parameters (octaves, lacunarity, persistence, amplitude).
+    pub fn set_noise_params(
+        &mut self,
+        octaves: usize,
+        lacunarity: f64,
+        persistence: f64,
+        amplitude: f32,
+    ) {
+        self.config.noise.base_elevation.octaves = octaves;
+        self.config.noise.base_elevation.lacunarity = lacunarity;
+        self.config.noise.base_elevation.persistence = persistence;
+        self.config.noise.base_elevation.amplitude = amplitude;
+        self.terrain_dirty = true;
+    }
+
+    /// Apply a full biome noise preset that configures all three noise layers.
+    pub fn apply_biome_noise_preset(&mut self, preset: &BiomeNoisePreset) {
+        // Base elevation
+        self.config.noise.base_elevation.scale = preset.base_scale;
+        self.config.noise.base_elevation.amplitude = preset.base_amplitude;
+        self.config.noise.base_elevation.octaves = preset.base_octaves;
+        self.config.noise.base_elevation.persistence = preset.base_persistence;
+        self.config.noise.base_elevation.lacunarity = preset.base_lacunarity;
+
+        // Mountains
+        self.config.noise.mountains.enabled = preset.mountains_enabled;
+        self.config.noise.mountains.scale = preset.mountains_scale;
+        self.config.noise.mountains.amplitude = preset.mountains_amplitude;
+        self.config.noise.mountains.octaves = preset.mountains_octaves;
+
+        // Detail
+        self.config.noise.detail.enabled = preset.detail_enabled;
+        self.config.noise.detail.scale = preset.detail_scale;
+        self.config.noise.detail.amplitude = preset.detail_amplitude;
+
+        self.terrain_dirty = true;
+    }
+
     fn biomes_for_primary(primary: &str) -> Vec<BiomeConfig> {
         let primary_type = primary.parse::<BiomeType>().unwrap_or(BiomeType::Grassland);
 
@@ -116,10 +173,14 @@ impl TerrainState {
             for z in -chunk_radius..=chunk_radius {
                 let chunk_id = ChunkId { x, z };
 
-                let (chunk, _scatter) = generator.generate_chunk_with_scatter(chunk_id)?;
+                // Use generate_chunk (heightmap only) instead of
+                // generate_chunk_with_scatter which runs extremely expensive
+                // O(n²) Poisson disk sampling for vegetation/resources that
+                // the editor doesn't render anyway.
+                let chunk = generator.generate_chunk(chunk_id)?;
 
                 let world_pos = chunk_id.to_world_pos(chunk_size);
-                let world_offset = Vec3::new(world_pos.x, 0.0, world_pos.y);
+                let world_offset = Vec3::new(world_pos.x, 0.0, world_pos.z);
 
                 let (vertices, indices) = Self::generate_heightmap_mesh(
                     chunk.heightmap(),
@@ -347,6 +408,122 @@ impl TerrainState {
     /// Get chunk IDs as a list
     pub fn chunk_ids(&self) -> Vec<ChunkId> {
         self.generated_chunks.keys().cloned().collect()
+    }
+
+    /// Apply a sculpting brush at the given world-space position.
+    ///
+    /// `brush_mode`: 0=Raise, 1=Smooth, 2=Flatten, 3=Lower, 4=Erode
+    /// Returns true if any terrain was modified.
+    pub fn apply_brush(
+        &mut self,
+        world_x: f32,
+        world_z: f32,
+        radius: f32,
+        strength: f32,
+        brush_mode: u32,
+    ) -> bool {
+        let chunk_size = self.config.chunk_size;
+        let mut modified = false;
+
+        // Collect chunk IDs that might be affected
+        let chunk_ids: Vec<ChunkId> = self.generated_chunks.keys().cloned().collect();
+
+        for chunk_id in chunk_ids {
+            let chunk_origin_x = chunk_id.x as f32 * chunk_size;
+            let chunk_origin_z = chunk_id.z as f32 * chunk_size;
+
+            // Quick AABB check: does the brush circle overlap this chunk?
+            let closest_x = world_x.clamp(chunk_origin_x, chunk_origin_x + chunk_size);
+            let closest_z = world_z.clamp(chunk_origin_z, chunk_origin_z + chunk_size);
+            let dx = world_x - closest_x;
+            let dz = world_z - closest_z;
+            if dx * dx + dz * dz > radius * radius {
+                continue;
+            }
+
+            if let Some(gen_chunk) = self.generated_chunks.get_mut(&chunk_id) {
+                let resolution = gen_chunk.chunk.heightmap().resolution();
+                let cell_size = chunk_size / (resolution - 1) as f32;
+                let mut chunk_modified = false;
+
+                // Gather heights for smooth/flatten operations
+                let avg_height = if brush_mode == 1 || brush_mode == 2 {
+                    // Average height under brush
+                    let mut sum = 0.0f32;
+                    let mut count = 0u32;
+                    for gz in 0..resolution {
+                        for gx in 0..resolution {
+                            let px = chunk_origin_x + gx as f32 * cell_size;
+                            let pz = chunk_origin_z + gz as f32 * cell_size;
+                            let d = ((px - world_x).powi(2) + (pz - world_z).powi(2)).sqrt();
+                            if d <= radius {
+                                sum += gen_chunk.chunk.heightmap().get_height(gx, gz);
+                                count += 1;
+                            }
+                        }
+                    }
+                    if count > 0 { sum / count as f32 } else { 0.0 }
+                } else {
+                    0.0
+                };
+
+                for gz in 0..resolution {
+                    for gx in 0..resolution {
+                        let px = chunk_origin_x + gx as f32 * cell_size;
+                        let pz = chunk_origin_z + gz as f32 * cell_size;
+                        let dist = ((px - world_x).powi(2) + (pz - world_z).powi(2)).sqrt();
+                        if dist > radius {
+                            continue;
+                        }
+
+                        // Smooth falloff
+                        let falloff = 1.0 - (dist / radius);
+                        let falloff = falloff * falloff; // quadratic
+                        let current_h = gen_chunk.chunk.heightmap().get_height(gx, gz);
+
+                        let new_h = match brush_mode {
+                            0 => current_h + strength * falloff * 5.0, // Raise (Sculpt)
+                            1 => {
+                                // Smooth toward average
+                                let blend = strength * falloff * 0.3;
+                                current_h * (1.0 - blend) + avg_height * blend
+                            }
+                            2 => {
+                                // Flatten toward average
+                                let blend = strength * falloff;
+                                current_h * (1.0 - blend) + avg_height * blend
+                            }
+                            3 => current_h - strength * falloff * 5.0, // Lower (Paint as lower)
+                            4 => {
+                                // Erode (lower + smoothing)
+                                let erode = current_h - strength * falloff * 3.0;
+                                erode * (1.0 - falloff * 0.1) + avg_height * falloff * 0.1
+                            }
+                            _ => current_h,
+                        };
+
+                        gen_chunk.chunk.heightmap_mut().set_height(gx, gz, new_h);
+                        chunk_modified = true;
+                    }
+                }
+
+                if chunk_modified {
+                    // Regenerate mesh for this chunk
+                    let world_offset = Vec3::new(chunk_origin_x, 0.0, chunk_origin_z);
+                    let (vertices, indices) = Self::generate_heightmap_mesh(
+                        gen_chunk.chunk.heightmap(),
+                        gen_chunk.chunk.biome_map(),
+                        chunk_size,
+                        world_offset,
+                    );
+                    gen_chunk.vertices = vertices;
+                    gen_chunk.indices = indices;
+                    modified = true;
+                }
+            }
+        }
+
+        modified
     }
 
     /// Get terrain statistics

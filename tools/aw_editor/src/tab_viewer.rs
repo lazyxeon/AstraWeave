@@ -303,7 +303,7 @@ pub enum PanelEvent {
     /// An entity was deselected
     EntityDeselected,
     /// Transform position changed
-    TransformPositionChanged { entity_id: u64, x: f32, y: f32 },
+    TransformPositionChanged { entity_id: u64, x: f32, y: f32, z: f32 },
     /// Transform rotation changed
     TransformRotationChanged { entity_id: u64, rotation: f32 },
     /// Transform scale changed
@@ -311,6 +311,7 @@ pub enum PanelEvent {
         entity_id: u64,
         scale_x: f32,
         scale_y: f32,
+        scale_z: f32,
     },
     /// Request to create a new empty entity
     CreateEntity,
@@ -395,6 +396,12 @@ pub enum PanelEvent {
     ViewportResetCamera,
     /// Viewport camera preset applied (front, top, side, perspective)
     ViewportCameraPreset(String),
+    /// HDRI skybox loaded from file
+    HdriLoaded { path: std::path::PathBuf },
+    /// HDRI skybox removed
+    HdriCleared,
+    /// Terrain was generated and is ready for viewport upload
+    TerrainReady,
     /// Request to reset panel layout to default
     ResetLayout,
 }
@@ -501,6 +508,11 @@ impl std::fmt::Display for PanelEvent {
             PanelEvent::ViewportCameraPreset(preset) => {
                 write!(f, "Viewport Camera Preset: {}", preset)
             }
+            PanelEvent::HdriLoaded { ref path } => {
+                write!(f, "HDRI Loaded: {}", path.display())
+            }
+            PanelEvent::HdriCleared => write!(f, "HDRI Cleared"),
+            PanelEvent::TerrainReady => write!(f, "Terrain Ready"),
             PanelEvent::ResetLayout => write!(f, "Reset Layout"),
         }
     }
@@ -549,6 +561,8 @@ impl PanelEvent {
             | PanelEvent::ViewportFocusOnSelection
             | PanelEvent::ViewportResetCamera
             | PanelEvent::ViewportCameraPreset(_) => "Viewport",
+            PanelEvent::HdriLoaded { .. } | PanelEvent::HdriCleared => "Skybox",
+            PanelEvent::TerrainReady => "Terrain",
         }
     }
 
@@ -1012,9 +1026,9 @@ pub struct EditorTabViewer {
     /// Cached console warning count (updated when logs change)
     console_warn_count: usize,
     /// Selected entity transform data (position, rotation, scale) - MUTABLE for editing
-    pub selected_transform: Option<(f32, f32, f32, f32, f32)>, // x, y, rotation, scale_x, scale_y
+    pub selected_transform: Option<(f32, f32, f32, f32, f32, f32, f32)>, // x, y, z, rotation, scale_x, scale_y, scale_z
     /// Previous transform for change detection
-    previous_transform: Option<(f32, f32, f32, f32, f32)>,
+    previous_transform: Option<(f32, f32, f32, f32, f32, f32, f32)>,
     /// Selected entity info
     selected_entity_info: Option<EntityInfo>,
     /// Hierarchy search filter
@@ -1127,6 +1141,8 @@ pub struct EditorTabViewer {
     transform_snap_value: f32,
     /// World skybox preset
     world_skybox_preset: usize,
+    /// Custom HDRI file path (if loaded)
+    world_hdri_path: Option<std::path::PathBuf>,
     /// World time of day (0-24 hours)
     world_time_of_day: f32,
     /// World weather preset
@@ -1382,6 +1398,7 @@ impl EditorTabViewer {
             transform_snap_value: 1.0,
             // Additional world settings
             world_skybox_preset: 0,  // Clear Sky
+            world_hdri_path: None,
             world_time_of_day: 12.0, // Noon
             world_weather_preset: 0, // Clear
             // Scene state
@@ -1499,7 +1516,7 @@ impl EditorTabViewer {
     }
 
     /// Update selected entity's transform (synced from main editor)
-    pub fn set_selected_transform(&mut self, transform: Option<(f32, f32, f32, f32, f32)>) {
+    pub fn set_selected_transform(&mut self, transform: Option<(f32, f32, f32, f32, f32, f32, f32)>) {
         // Only update if this is an external sync, not our own edit
         if self.selected_transform != transform {
             self.selected_transform = transform;
@@ -1514,13 +1531,13 @@ impl EditorTabViewer {
             self.selected_transform,
             self.previous_transform,
         ) {
-            let (x, y, rot, sx, sy) = current;
-            let (px, py, prot, psx, psy) = prev;
+            let (x, y, z, rot, sx, sy, sz) = current;
+            let (px, py, pz, prot, psx, psy, psz) = prev;
 
             // Check position change
-            if (x - px).abs() > 0.001 || (y - py).abs() > 0.001 {
+            if (x - px).abs() > 0.001 || (y - py).abs() > 0.001 || (z - pz).abs() > 0.001 {
                 self.events
-                    .push(PanelEvent::TransformPositionChanged { entity_id, x, y });
+                    .push(PanelEvent::TransformPositionChanged { entity_id, x, y, z });
             }
 
             // Check rotation change
@@ -1532,11 +1549,12 @@ impl EditorTabViewer {
             }
 
             // Check scale change
-            if (sx - psx).abs() > 0.001 || (sy - psy).abs() > 0.001 {
+            if (sx - psx).abs() > 0.001 || (sy - psy).abs() > 0.001 || (sz - psz).abs() > 0.001 {
                 self.events.push(PanelEvent::TransformScaleChanged {
                     entity_id,
                     scale_x: sx,
                     scale_y: sy,
+                    scale_z: sz,
                 });
             }
 
@@ -1597,6 +1615,182 @@ impl EditorTabViewer {
     /// Drain and return events that were emitted this frame
     pub fn take_events(&mut self) -> Vec<PanelEvent> {
         std::mem::take(&mut self.events)
+    }
+
+    /// Get GPU-ready terrain chunks from the terrain panel
+    pub fn terrain_gpu_chunks(
+        &self,
+    ) -> Vec<(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)> {
+        self.terrain_panel.get_gpu_chunks()
+    }
+
+    /// Returns (fog_enabled, fog_density, weather_preset) for the current world settings.
+    pub fn fog_weather_params(&self) -> (bool, f32, u32) {
+        (
+            self.world_fog_enabled || self.world_weather_preset == 5,
+            if self.world_weather_preset == 5 { 0.012 } else { self.world_fog_density },
+            self.world_weather_preset as u32,
+        )
+    }
+
+    /// Compute the current sky colors from skybox preset, time-of-day, and weather settings.
+    ///
+    /// Returns `(sky_top, sky_horizon, ground_color)` as `[f32; 4]` RGBA arrays.
+    pub fn compute_sky_colors(&self) -> ([f32; 4], [f32; 4], [f32; 4]) {
+        // Base colors from skybox preset
+        let (mut top, mut horizon, mut ground) = match self.world_skybox_preset {
+            0 => (
+                // Clear Sky
+                [0.1, 0.3, 0.8, 1.0],
+                [0.5, 0.7, 0.95, 1.0],
+                [0.2, 0.15, 0.1, 1.0],
+            ),
+            1 => (
+                // Overcast
+                [0.35, 0.38, 0.42, 1.0],
+                [0.55, 0.55, 0.58, 1.0],
+                [0.2, 0.18, 0.15, 1.0],
+            ),
+            2 => (
+                // Sunset
+                [0.15, 0.1, 0.35, 1.0],
+                [0.95, 0.45, 0.2, 1.0],
+                [0.25, 0.12, 0.08, 1.0],
+            ),
+            3 => (
+                // Night
+                [0.02, 0.02, 0.06, 1.0],
+                [0.05, 0.05, 0.12, 1.0],
+                [0.03, 0.03, 0.05, 1.0],
+            ),
+            4 => (
+                // Space
+                [0.0, 0.0, 0.02, 1.0],
+                [0.01, 0.01, 0.04, 1.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ),
+            5 => (
+                // Gradient
+                [0.25, 0.35, 0.65, 1.0],
+                [0.55, 0.6, 0.75, 1.0],
+                [0.2, 0.18, 0.15, 1.0],
+            ),
+            _ => (
+                [0.1, 0.3, 0.8, 1.0],
+                [0.5, 0.7, 0.95, 1.0],
+                [0.2, 0.15, 0.1, 1.0],
+            ),
+        };
+
+        // Modulate by time of day
+        let time = self.world_time_of_day;
+        let day_factor = if time >= 6.0 && time <= 18.0 {
+            let mid = 12.0;
+            let diff = (time - mid).abs();
+            1.0 - (diff / 6.0) * 0.6 // 1.0 at noon, 0.4 at 6am/6pm
+        } else {
+            // Night: smooth transition
+            let night_mid = if time > 18.0 { 24.0 } else { 0.0 };
+            let dist = (time - night_mid).abs().min((time - 24.0 + night_mid).abs());
+            0.1 + 0.3 * (dist / 6.0).min(1.0) // 0.1 at midnight, 0.4 toward sunrise/sunset
+        };
+
+        // Dawn/dusk warm tint (5-7 and 17-19)
+        let dawn_dusk = if (5.0..7.0).contains(&time) {
+            1.0 - (time - 6.0).abs()
+        } else if (17.0..19.0).contains(&time) {
+            1.0 - (time - 18.0).abs()
+        } else {
+            0.0
+        };
+
+        // Apply time modulation
+        for c in &mut top[0..3] {
+            *c *= day_factor;
+        }
+        for c in &mut horizon[0..3] {
+            *c *= day_factor;
+        }
+        for c in &mut ground[0..3] {
+            *c *= day_factor.max(0.15);
+        }
+
+        // Add warm tint at dawn/dusk
+        if dawn_dusk > 0.0 {
+            horizon[0] = (horizon[0] + 0.3 * dawn_dusk).min(1.0);
+            horizon[1] = (horizon[1] + 0.1 * dawn_dusk).min(1.0);
+            top[0] = (top[0] + 0.1 * dawn_dusk).min(1.0);
+        }
+
+        // Weather modulation
+        match self.world_weather_preset {
+            1 => {
+                // Cloudy — desaturate and gray out
+                let gray_top = (top[0] + top[1] + top[2]) / 3.0;
+                let gray_hor = (horizon[0] + horizon[1] + horizon[2]) / 3.0;
+                for i in 0..3 {
+                    top[i] = top[i] * 0.4 + gray_top * 0.6;
+                    horizon[i] = horizon[i] * 0.4 + gray_hor * 0.6;
+                }
+            }
+            2 | 3 => {
+                // Rain / Storm — darker, more gray
+                let darken = if self.world_weather_preset == 3 { 0.3 } else { 0.5 };
+                for i in 0..3 {
+                    top[i] *= darken;
+                    horizon[i] *= darken;
+                    ground[i] *= 0.7;
+                }
+                let gray = 0.15 * darken;
+                top[0] = top[0] * 0.5 + gray;
+                top[1] = top[1] * 0.5 + gray;
+                top[2] = top[2] * 0.5 + gray;
+            }
+            4 => {
+                // Snow — cool blue tint, brighter
+                for i in 0..3 {
+                    top[i] = top[i] * 0.6 + 0.3;
+                    horizon[i] = horizon[i] * 0.6 + 0.35;
+                }
+                ground = [0.7, 0.72, 0.75, 1.0]; // snow on ground
+            }
+            5 => {
+                // Fog — blend everything toward fog color
+                let fog_color = [0.6, 0.6, 0.62];
+                for i in 0..3 {
+                    top[i] = top[i] * 0.3 + fog_color[i] * 0.7;
+                    horizon[i] = fog_color[i];
+                    ground[i] = ground[i] * 0.3 + fog_color[i] * 0.7;
+                }
+            }
+            6 => {
+                // Sandstorm — orange-brown tint
+                let sand = [0.7, 0.5, 0.25];
+                for i in 0..3 {
+                    top[i] = top[i] * 0.3 + sand[i] * 0.7;
+                    horizon[i] = sand[i];
+                    ground[i] = sand[i] * 0.8;
+                }
+            }
+            _ => {} // 0 = Clear, no change
+        }
+
+        // Fog blending (additional UI fog control)
+        if self.world_fog_enabled {
+            let fog_blend = (self.world_fog_density * 10.0).min(1.0);
+            let fog_color = [
+                self.world_ambient_color[0] * 0.5 + 0.3,
+                self.world_ambient_color[1] * 0.5 + 0.3,
+                self.world_ambient_color[2] * 0.5 + 0.3,
+            ];
+            for i in 0..3 {
+                horizon[i] = horizon[i] * (1.0 - fog_blend) + fog_color[i] * fog_blend;
+                top[i] = top[i] * (1.0 - fog_blend * 0.5)
+                    + fog_color[i] * fog_blend * 0.5;
+            }
+        }
+
+        (top, horizon, ground)
     }
 
     /// Drain pending asset browser actions (import, apply texture, etc.)
@@ -1952,6 +2146,9 @@ impl TabViewer for EditorTabViewer {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+        // Ensure text wraps within panel boundaries (prevents overflow)
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+
         // Play mode indicator
         if self.is_playing {
             ui.horizontal(|ui| {
@@ -2403,14 +2600,16 @@ impl TabViewer for EditorTabViewer {
                     let mut transform_events = Vec::new();
 
                     ui.collapsing("Transform", |ui| {
-                        if let Some((mut x, mut y, mut rotation, mut scale_x, mut scale_y)) =
+                        if let Some((mut x, mut y, mut z, mut rotation, mut scale_x, mut scale_y, mut scale_z)) =
                             self.selected_transform
                         {
                             let orig_x = x;
                             let orig_y = y;
+                            let orig_z = z;
                             let _orig_rot_rad = rotation;
                             let orig_sx = scale_x;
                             let orig_sy = scale_y;
+                            let orig_sz = scale_z;
 
                             // Position editing
                             ui.horizontal(|ui| {
@@ -2424,6 +2623,12 @@ impl TabViewer for EditorTabViewer {
                                 ui.label("Y");
                                 ui.add(
                                     egui::DragValue::new(&mut y)
+                                        .speed(0.1)
+                                        .range(-10000.0..=10000.0),
+                                );
+                                ui.label("Z");
+                                ui.add(
+                                    egui::DragValue::new(&mut z)
                                         .speed(0.1)
                                         .range(-10000.0..=10000.0),
                                 );
@@ -2458,14 +2663,21 @@ impl TabViewer for EditorTabViewer {
                                         .speed(0.01)
                                         .range(0.01..=100.0),
                                 );
+                                ui.label("Z");
+                                ui.add(
+                                    egui::DragValue::new(&mut scale_z)
+                                        .speed(0.01)
+                                        .range(0.01..=100.0),
+                                );
                             });
 
                             // Update transform and collect events
-                            if (x - orig_x).abs() > 0.0001 || (y - orig_y).abs() > 0.0001 {
+                            if (x - orig_x).abs() > 0.0001 || (y - orig_y).abs() > 0.0001 || (z - orig_z).abs() > 0.0001 {
                                 transform_events.push(PanelEvent::TransformPositionChanged {
                                     entity_id,
                                     x,
                                     y,
+                                    z,
                                 });
                             }
                             if (rot_degrees - orig_rot_degrees).abs() > 0.0001 {
@@ -2476,21 +2688,23 @@ impl TabViewer for EditorTabViewer {
                             }
                             if (scale_x - orig_sx).abs() > 0.0001
                                 || (scale_y - orig_sy).abs() > 0.0001
+                                || (scale_z - orig_sz).abs() > 0.0001
                             {
                                 transform_events.push(PanelEvent::TransformScaleChanged {
                                     entity_id,
                                     scale_x,
                                     scale_y,
+                                    scale_z,
                                 });
                             }
 
                             // Update cached transform
-                            self.selected_transform = Some((x, y, rotation, scale_x, scale_y));
+                            self.selected_transform = Some((x, y, z, rotation, scale_x, scale_y, scale_z));
                         } else {
                             // Default transform when none set
                             ui.horizontal(|ui| {
                                 ui.label("Position:");
-                                ui.label("X: 0.0  Y: 0.0");
+                                ui.label("X: 0.0  Y: 0.0  Z: 0.0");
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Rotation:");
@@ -2498,7 +2712,7 @@ impl TabViewer for EditorTabViewer {
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Scale:");
-                                ui.label("X: 1.0  Y: 1.0");
+                                ui.label("X: 1.0  Y: 1.0  Z: 1.0");
                             });
                         }
                     });
@@ -3643,16 +3857,20 @@ impl TabViewer for EditorTabViewer {
                 if let Some((
                     ref mut x,
                     ref mut y,
+                    ref mut z,
                     ref mut rotation,
                     ref mut scale_x,
                     ref mut scale_y,
+                    ref mut scale_z,
                 )) = self.selected_transform
                 {
                     let orig_x = *x;
                     let orig_y = *y;
+                    let orig_z = *z;
                     let _orig_rot_rad = *rotation;
                     let orig_sx = *scale_x;
                     let orig_sy = *scale_y;
+                    let orig_sz = *scale_z;
 
                     // Snap settings
                     ui.horizontal(|ui| {
@@ -3707,6 +3925,25 @@ impl TabViewer for EditorTabViewer {
                                 1.0
                             };
                             *y += snap;
+                        }
+                        ui.separator();
+                        ui.label("Z:");
+                        if ui.small_button("-").on_hover_text("Decrease Z").clicked() {
+                            let snap = if self.transform_snap_value > 0.0 {
+                                self.transform_snap_value
+                            } else {
+                                1.0
+                            };
+                            *z -= snap;
+                        }
+                        ui.add(egui::DragValue::new(z).speed(0.1).min_decimals(2));
+                        if ui.small_button("+").on_hover_text("Increase Z").clicked() {
+                            let snap = if self.transform_snap_value > 0.0 {
+                                self.transform_snap_value
+                            } else {
+                                1.0
+                            };
+                            *z += snap;
                         }
                     });
                     ui.add_space(8.0);
@@ -3765,14 +4002,22 @@ impl TabViewer for EditorTabViewer {
                                 .min_decimals(2)
                                 .range(0.01..=100.0),
                         );
+                        ui.label("Z:");
+                        ui.add(
+                            egui::DragValue::new(scale_z)
+                                .speed(0.01)
+                                .min_decimals(2)
+                                .range(0.01..=100.0),
+                        );
                         ui.separator();
                         // Uniform scale shortcut
                         if ui
                             .small_button("=")
-                            .on_hover_text("Make uniform (Y = X)")
+                            .on_hover_text("Make uniform (Y=Z=X)")
                             .clicked()
                         {
                             *scale_y = *scale_x;
+                            *scale_z = *scale_x;
                         }
                     });
                     // Scale presets
@@ -3781,18 +4026,22 @@ impl TabViewer for EditorTabViewer {
                         if ui.small_button("0.5x").clicked() {
                             *scale_x = 0.5;
                             *scale_y = 0.5;
+                            *scale_z = 0.5;
                         }
                         if ui.small_button("1x").clicked() {
                             *scale_x = 1.0;
                             *scale_y = 1.0;
+                            *scale_z = 1.0;
                         }
                         if ui.small_button("2x").clicked() {
                             *scale_x = 2.0;
                             *scale_y = 2.0;
+                            *scale_z = 2.0;
                         }
                         if ui.small_button("4x").clicked() {
                             *scale_x = 4.0;
                             *scale_y = 4.0;
+                            *scale_z = 4.0;
                         }
                     });
 
@@ -3807,8 +4056,8 @@ impl TabViewer for EditorTabViewer {
                             .clicked()
                         {
                             let transform_text = format!(
-                                "pos({:.2},{:.2}) rot({:.1}°) scale({:.2},{:.2})",
-                                *x, *y, rotation_degrees, *scale_x, *scale_y
+                                "pos({:.2},{:.2},{:.2}) rot({:.1}°) scale({:.2},{:.2},{:.2})",
+                                *x, *y, *z, rotation_degrees, *scale_x, *scale_y, *scale_z
                             );
                             ui.ctx().copy_text(transform_text);
                         }
@@ -3820,10 +4069,12 @@ impl TabViewer for EditorTabViewer {
                         {
                             *x = 0.0;
                             *y = 0.0;
+                            *z = 0.0;
                             transform_events.push(PanelEvent::TransformPositionChanged {
                                 entity_id,
                                 x: 0.0,
                                 y: 0.0,
+                                z: 0.0,
                             });
                         }
                         if ui
@@ -3844,20 +4095,23 @@ impl TabViewer for EditorTabViewer {
                         {
                             *scale_x = 1.0;
                             *scale_y = 1.0;
+                            *scale_z = 1.0;
                             transform_events.push(PanelEvent::TransformScaleChanged {
                                 entity_id,
                                 scale_x: 1.0,
                                 scale_y: 1.0,
+                                scale_z: 1.0,
                             });
                         }
                     });
 
                     // Check for changes and emit events
-                    if ((*x) - orig_x).abs() > 0.0001 || ((*y) - orig_y).abs() > 0.0001 {
+                    if ((*x) - orig_x).abs() > 0.0001 || ((*y) - orig_y).abs() > 0.0001 || ((*z) - orig_z).abs() > 0.0001 {
                         transform_events.push(PanelEvent::TransformPositionChanged {
                             entity_id,
                             x: *x,
                             y: *y,
+                            z: *z,
                         });
                     }
                     if (rotation_degrees - orig_rot_degrees).abs() > 0.0001 {
@@ -3868,11 +4122,13 @@ impl TabViewer for EditorTabViewer {
                     }
                     if ((*scale_x) - orig_sx).abs() > 0.0001
                         || ((*scale_y) - orig_sy).abs() > 0.0001
+                        || ((*scale_z) - orig_sz).abs() > 0.0001
                     {
                         transform_events.push(PanelEvent::TransformScaleChanged {
                             entity_id,
                             scale_x: *scale_x,
                             scale_y: *scale_y,
+                            scale_z: *scale_z,
                         });
                     }
                 } else {
@@ -3983,6 +4239,38 @@ impl TabViewer for EditorTabViewer {
                                 (preview_color[2] * 255.0) as u8,
                             ),
                         );
+
+                        ui.add_space(4.0);
+
+                        // HDRI file loader
+                        ui.horizontal(|ui| {
+                            ui.label("HDRI:");
+                            if let Some(path) = &self.world_hdri_path {
+                                let name = path.file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("unknown");
+                                ui.label(name);
+                                if ui.small_button("\u{2715}").on_hover_text("Remove HDRI").clicked() {
+                                    let was_some = self.world_hdri_path.is_some();
+                                    self.world_hdri_path = None;
+                                    if was_some {
+                                        self.emit_event(PanelEvent::HdriCleared);
+                                    }
+                                }
+                            } else {
+                                ui.weak("None");
+                            }
+                        });
+                        if ui.button("Load HDRI...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("HDR Images", &["hdr", "exr", "hdri"])
+                                .add_filter("All Images", &["hdr", "exr", "hdri", "png", "jpg"])
+                                .pick_file()
+                            {
+                                self.emit_event(PanelEvent::HdriLoaded { path: path.clone() });
+                                self.world_hdri_path = Some(path);
+                            }
+                        }
                     });
 
                 ui.add_space(4.0);
@@ -5010,6 +5298,7 @@ impl TabViewer for EditorTabViewer {
                                                         entity_id,
                                                         x,
                                                         y,
+                                                        z: 0.0,
                                                     },
                                                 );
                                             }
@@ -5053,6 +5342,7 @@ impl TabViewer for EditorTabViewer {
                                                         entity_id,
                                                         scale_x: s,
                                                         scale_y: s,
+                                                        scale_z: s,
                                                     },
                                                 );
                                             }
@@ -6694,6 +6984,15 @@ impl TabViewer for EditorTabViewer {
                 // Delegate to TerrainPanel implementation
                 use crate::panels::Panel;
                 self.terrain_panel.show(ui);
+
+                // Check for completed terrain generation
+                if self.terrain_panel.has_pending_actions() {
+                    for action in self.terrain_panel.take_actions() {
+                        if matches!(action, crate::panels::terrain_panel::TerrainAction::Generate) {
+                            self.emit_event(PanelEvent::TerrainReady);
+                        }
+                    }
+                }
             }
             // === New Phase 8 SOTA Panels ===
             PanelType::UiEditor => {
@@ -7049,6 +7348,7 @@ mod tests {
             entity_id: 1,
             x: 0.0,
             y: 0.0,
+            z: 0.0,
         };
         assert!(event.to_string().contains("Transform"));
     }
@@ -7062,7 +7362,8 @@ mod tests {
         assert!(PanelEvent::TransformPositionChanged {
             entity_id: 1,
             x: 0.0,
-            y: 0.0
+            y: 0.0,
+            z: 0.0,
         }
         .is_transform_event());
         assert!(PanelEvent::ViewportFocusOnSelection.is_viewport_event());
@@ -7076,7 +7377,8 @@ mod tests {
             PanelEvent::TransformPositionChanged {
                 entity_id: 5,
                 x: 0.0,
-                y: 0.0
+                y: 0.0,
+                z: 0.0,
             }
             .entity_id(),
             Some(5)

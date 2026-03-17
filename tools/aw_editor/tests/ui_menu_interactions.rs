@@ -1,3 +1,5 @@
+#![cfg(feature = "kittest")]
+
 use aw_editor_lib::panel_type::PanelType;
 use aw_editor_lib::ui::menu_bar::{
     AlignDirection, DistributeDirection, MenuActionHandler, MenuBar,

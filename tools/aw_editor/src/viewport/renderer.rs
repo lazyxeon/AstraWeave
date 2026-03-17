@@ -31,7 +31,9 @@ use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
 use super::physics_renderer::PhysicsDebugRenderer;
 use super::skybox_renderer::SkyboxRenderer;
+use super::rain_renderer::RainRenderer;
 use super::terrain_renderer::TerrainRenderer;
+use super::water_renderer::WaterRenderer;
 use crate::gizmo::GizmoState;
 use astraweave_core::{Entity, World};
 
@@ -62,6 +64,8 @@ pub struct ViewportRenderer {
     gizmo_renderer: GizmoRendererWgpu,
     physics_renderer: PhysicsDebugRenderer,
     terrain_renderer: TerrainRenderer,
+    water_renderer: WaterRenderer,
+    rain_renderer: RainRenderer,
 
     /// Engine renderer adapter for PBR mesh rendering (feature-gated)
     #[cfg(feature = "astraweave-render")]
@@ -107,6 +111,10 @@ impl ViewportRenderer {
                 .context("Failed to create physics debug renderer")?;
         let terrain_renderer =
             TerrainRenderer::new(&device).context("Failed to create terrain renderer")?;
+        let water_renderer =
+            WaterRenderer::new(&device).context("Failed to create water renderer")?;
+        let rain_renderer =
+            RainRenderer::new(&device).context("Failed to create rain renderer")?;
 
         Ok(Self {
             device,
@@ -117,6 +125,8 @@ impl ViewportRenderer {
             gizmo_renderer,
             physics_renderer,
             terrain_renderer,
+            water_renderer,
+            rain_renderer,
             #[cfg(feature = "astraweave-render")]
             engine_adapter: None,
             use_engine_rendering: false,
@@ -276,6 +286,11 @@ impl ViewportRenderer {
             )
             .context("Terrain render failed")?;
 
+        // Pass 2.7: Water plane (transparent, rendered after terrain)
+        self.water_renderer
+            .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+            .context("Water render failed")?;
+
         // Pass 3: Entities (engine renderer or cube fallback)
         #[cfg(feature = "astraweave-render")]
         {
@@ -336,6 +351,11 @@ impl ViewportRenderer {
                 .render(&mut encoder, &target_view, depth_view, camera, debug_lines)
                 .context("Physics debug render failed")?;
         }
+
+        // Pass 4.5: Rain particles (transparent volumetric rain)
+        self.rain_renderer
+            .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+            .context("Rain render failed")?;
 
         // Pass 5: Gizmos (if entity selected and gizmo active)
         if let (Some(selected), Some(gizmo)) = (self.selected_entity(), gizmo_state) {
@@ -504,6 +524,54 @@ impl ViewportRenderer {
     /// Enable/disable physics debug rendering
     pub fn set_physics_debug_enabled(&mut self, enabled: bool) {
         self.physics_renderer.options.show_colliders = enabled;
+    }
+
+    /// Load an HDRI file and apply it as the skybox background
+    pub fn load_hdri(&mut self, path: &std::path::Path) -> Result<()> {
+        self.skybox_renderer
+            .load_hdri(&self.device, &self.queue, path)
+            .context("Failed to load HDRI skybox")
+    }
+
+    /// Remove the HDRI skybox and revert to procedural gradient
+    pub fn clear_hdri(&mut self) {
+        self.skybox_renderer.clear_hdri();
+    }
+
+    /// Set environment sky colors (for skybox presets, time-of-day, weather)
+    pub fn set_sky_colors(
+        &mut self,
+        sky_top: [f32; 4],
+        sky_horizon: [f32; 4],
+        ground_color: [f32; 4],
+    ) {
+        self.skybox_renderer
+            .set_sky_colors(sky_top, sky_horizon, ground_color);
+    }
+
+    /// Set fog and weather parameters for distance-based terrain fog
+    pub fn set_fog_params(&mut self, params: super::terrain_renderer::TerrainFogParams) {
+        self.terrain_renderer.set_fog_params(params);
+        // Forward fog to water renderer
+        self.water_renderer
+            .set_fog(params.fog_enabled, params.fog_density, params.fog_color);
+        // Enable rain for weather types 2 (Rain) and 3 (Storm)
+        let rain_active = params.weather_type == 2 || params.weather_type == 3;
+        let rain_intensity = if params.weather_type == 3 { 1.0 } else { 0.5 };
+        self.rain_renderer.set_active(rain_active, rain_intensity);
+        // Wind for storm
+        let (wx, wz) = match params.weather_type {
+            3 => (4.0, 2.0),
+            2 => (1.0, 0.5),
+            _ => (0.0, 0.0),
+        };
+        self.rain_renderer.set_wind(wx, wz);
+    }
+
+    /// Set water level for volumetric water plane
+    pub fn set_water_level(&mut self, level: f32) {
+        self.water_renderer.set_water_level(level);
+        self.terrain_renderer.set_water_level(level);
     }
 
     /// Check if engine rendering (PBR meshes) is enabled

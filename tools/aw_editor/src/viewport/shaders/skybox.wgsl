@@ -1,6 +1,7 @@
 // Skybox Shader
 //
 // Procedural gradient skybox with horizon blending.
+// Also supports equirectangular HDRI texture sampling.
 // Renders at infinite distance (depth = 1.0).
 
 struct Uniforms {
@@ -19,6 +20,12 @@ struct VertexOutput {
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
+
+// HDRI texture + sampler (only bound in HDRI pipeline)
+@group(0) @binding(1)
+var hdri_texture: texture_2d<f32>;
+@group(0) @binding(2)
+var hdri_sampler: sampler;
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
@@ -47,27 +54,33 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return output;
 }
 
+// Procedural gradient fragment shader
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Normalize view direction
     let dir = normalize(in.view_dir);
-
-    // Vertical gradient (Y = -1 to +1)
     let t = dir.y;
 
-    // Blend between sky and ground
     var color: vec4<f32>;
     if (t > 0.0) {
-        // Sky (above horizon)
-        // Gradient from horizon (t=0) to top (t=1)
         let sky_t = smoothstep(0.0, 0.5, t);
         color = mix(uniforms.sky_horizon, uniforms.sky_top, sky_t);
     } else {
-        // Ground (below horizon)
-        // Fade to dark ground color
         let ground_t = smoothstep(-0.2, 0.0, t);
         color = mix(uniforms.ground_color, uniforms.sky_horizon, ground_t);
     }
 
     return color;
+}
+
+// HDRI equirectangular fragment shader
+@fragment
+fn fs_hdri(in: VertexOutput) -> @location(0) vec4<f32> {
+    let dir = normalize(in.view_dir);
+
+    // Equirectangular projection: direction → (u, v)
+    let u = atan2(dir.z, dir.x) * (0.5 / 3.14159265) + 0.5;
+    let v = 0.5 - asin(clamp(dir.y, -1.0, 1.0)) * (1.0 / 3.14159265);
+
+    let color = textureSample(hdri_texture, hdri_sampler, vec2<f32>(u, v));
+    return vec4<f32>(color.rgb, 1.0);
 }

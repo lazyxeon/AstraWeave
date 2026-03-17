@@ -9,7 +9,7 @@ astraweave-core = { path = "../../astraweave-core" }
 astraweave-render = { path = "../../astraweave-render" }
 astraweave-author = { path = "../../astraweave-author" }
 aw_debug = { path = "../../tools/aw_debug" }
-eframe = { workspace = true }
+eframe = { workspace = true, features = ["glow"] }
 egui = { workspace = true }
 egui-wgpu = { workspace = true }
 egui-winit = { workspace = true }
