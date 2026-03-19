@@ -219,6 +219,7 @@ fn perception_stage(world: &World, ai_agents: &[u32]) -> Vec<WorldSnapshot> {
         .map(|&agent_id| {
             let agent_pose = world.pose(agent_id).unwrap_or(Pose {
                 pos: IVec2 { x: 0, y: 0 },
+                height: 0.0,
                 rotation: 0.0,
                 rotation_x: 0.0,
                 rotation_z: 0.0,

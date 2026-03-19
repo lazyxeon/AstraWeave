@@ -530,8 +530,8 @@ impl ViewportWidget {
         // Get inverse view-projection matrix for ray casting
         let inv_view_proj = self.camera.inverse_view_projection_matrix();
 
-        // Gizmo position in 3D (Y=0 ground plane)
-        let gizmo_pos = glam::Vec3::new(pose.pos.x as f32, 0.0, pose.pos.y as f32);
+        // Gizmo position in 3D
+        let gizmo_pos = glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
 
         // Update picker scale based on camera distance
         let camera_distance = (self.camera.position() - gizmo_pos).length();
@@ -726,7 +726,7 @@ impl ViewportWidget {
                                                     (locked_pos.0 as i32, snapped_z.round() as i32)
                                                 }
                                                 crate::gizmo::AxisConstraint::Y => {
-                                                    // Y-axis constrained (ground plane - no movement)
+                                                    // Y-axis: lock XZ, height handled below via screen-space delta
                                                     (locked_pos.0 as i32, locked_pos.1 as i32)
                                                 }
                                                 _ => {
@@ -743,6 +743,13 @@ impl ViewportWidget {
                                             {
                                                 pose_mut.pos.x = new_x;
                                                 pose_mut.pos.y = new_z; // IVec2.y = world Z
+
+                                                // Y-axis constraint: use mouse vertical delta to adjust height
+                                                if matches!(constraint, crate::gizmo::AxisConstraint::Y) {
+                                                    let dy = ctx.input(|i| i.pointer.delta().y);
+                                                    let height_sensitivity = 0.05;
+                                                    pose_mut.height -= dy * height_sensitivity;
+                                                }
 
                                                 debug!(
                                                     entity = ?selected_id,
@@ -991,7 +998,7 @@ impl ViewportWidget {
                         pose.rotation_z,
                     );
                     self.gizmo_state.start_transform = Some(TransformSnapshot {
-                        position: glam::Vec3::new(x, 1.0, z),
+                        position: glam::Vec3::new(x, pose.height, z),
                         rotation: rotation_quat, // Store all 3 rotation axes
                         scale: glam::Vec3::splat(pose.scale),
                     });
@@ -1053,7 +1060,7 @@ impl ViewportWidget {
                 if let Some(selected_id) = self.selected_entity() {
                     if let Some(pose) = world.pose(selected_id as u32) {
                         let current_pos =
-                            glam::Vec3::new(pose.pos.x as f32, 1.0, pose.pos.y as f32);
+                            glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
                         self.gizmo_state.constraint_position = Some(current_pos);
                         debug!(
                             "Captured constraint position: ({}, {})",
@@ -1069,7 +1076,7 @@ impl ViewportWidget {
                 if let Some(selected_id) = self.selected_entity() {
                     if let Some(pose) = world.pose(selected_id as u32) {
                         let current_pos =
-                            glam::Vec3::new(pose.pos.x as f32, 1.0, pose.pos.y as f32);
+                            glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
                         self.gizmo_state.constraint_position = Some(current_pos);
                         debug!(
                             "Captured constraint position: ({}, {})",
@@ -1085,7 +1092,7 @@ impl ViewportWidget {
                 if let Some(selected_id) = self.selected_entity() {
                     if let Some(pose) = world.pose(selected_id as u32) {
                         let current_pos =
-                            glam::Vec3::new(pose.pos.x as f32, 1.0, pose.pos.y as f32);
+                            glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
                         self.gizmo_state.constraint_position = Some(current_pos);
                         debug!(
                             "Captured constraint position: ({}, {})",
@@ -1187,7 +1194,7 @@ impl ViewportWidget {
                     if let Some(pose) = world.pose(selected_id as u32) {
                         let x = pose.pos.x as f32;
                         let z = pose.pos.y as f32;
-                        let position = glam::Vec3::new(x, 1.0, z); // Y=1.0 (raised position)
+                        let position = glam::Vec3::new(x, pose.height, z);
                         let entity_radius = 0.866; // Half diagonal of 1x1x1 cube = sqrt(3)/2
 
                         // Frame entity in camera view
@@ -1369,7 +1376,7 @@ impl ViewportWidget {
                         // Match entity_renderer position calculation
                         let x = pose.pos.x as f32;
                         let z = pose.pos.y as f32;
-                        let position = glam::Vec3::new(x, 1.0, z); // Y=1.0 (raised position)
+                        let position = glam::Vec3::new(x, pose.height, z);
 
                         // Create AABB that accounts for entity scale
                         let half_size = 0.5 * pose.scale;

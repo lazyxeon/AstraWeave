@@ -30,8 +30,8 @@ use super::entity_renderer::EntityRenderer;
 use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
 use super::physics_renderer::PhysicsDebugRenderer;
-use super::rain_renderer::RainRenderer;
 use super::scatter_renderer::{ScatterPlacement, ScatterRenderer};
+use super::weather_particle_renderer::{WeatherKind, WeatherParticleRenderer};
 use super::skybox_renderer::SkyboxRenderer;
 use super::terrain_renderer::TerrainRenderer;
 use super::water_renderer::WaterRenderer;
@@ -68,7 +68,7 @@ pub struct ViewportRenderer {
     physics_renderer: Option<PhysicsDebugRenderer>,
     terrain_renderer: Option<TerrainRenderer>,
     water_renderer: Option<WaterRenderer>,
-    rain_renderer: Option<RainRenderer>,
+    weather_renderer: Option<WeatherParticleRenderer>,
     scatter_renderer: Option<ScatterRenderer>,
 
     /// Scatter placements for current frame
@@ -127,7 +127,7 @@ impl ViewportRenderer {
             physics_renderer: None,
             terrain_renderer: None,
             water_renderer: None,
-            rain_renderer: None,
+            weather_renderer: None,
             scatter_renderer: None,
             scatter_placements: Vec::new(),
             #[cfg(feature = "astraweave-render")]
@@ -177,14 +177,14 @@ impl ViewportRenderer {
         Ok(self.water_renderer.as_mut().unwrap())
     }
 
-    fn ensure_rain_renderer(&mut self) -> Result<&mut RainRenderer> {
-        if self.rain_renderer.is_none() {
-            self.rain_renderer = Some(
-                RainRenderer::new(&self.device)
-                    .context("Failed to create rain renderer (deferred)")?,
+    fn ensure_weather_renderer(&mut self) -> Result<&mut WeatherParticleRenderer> {
+        if self.weather_renderer.is_none() {
+            self.weather_renderer = Some(
+                WeatherParticleRenderer::new(&self.device)
+                    .context("Failed to create weather particle renderer (deferred)")?,
             );
         }
-        Ok(self.rain_renderer.as_mut().unwrap())
+        Ok(self.weather_renderer.as_mut().unwrap())
     }
 
     fn ensure_scatter_renderer(&mut self) -> Result<&mut ScatterRenderer> {
@@ -371,9 +371,12 @@ impl ViewportRenderer {
 
         // Pass 2.7: Water plane (transparent, rendered after terrain) — deferred init
         if let Some(water) = self.water_renderer.as_mut() {
-            water
-                .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
-                .context("Water render failed")?;
+            eprintln!("[renderer] DIAG water_renderer is Some! enabled={}", water.is_enabled());
+            if water.is_enabled() {
+                water
+                    .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+                    .context("Water render failed")?;
+            }
         }
 
         // Pass 3: Entities (engine renderer or cube fallback)
@@ -439,10 +442,10 @@ impl ViewportRenderer {
             }
         }
 
-        // Pass 4.5: Rain particles (transparent volumetric rain) — deferred init
-        if let Some(rain) = self.rain_renderer.as_mut() {
-            rain.render(&mut encoder, &target_view, depth_view, camera, &self.queue)
-                .context("Rain render failed")?;
+        // Pass 4.5: Weather particles (rain, snow, hail, sandstorm, blizzard) — deferred init
+        if let Some(weather) = self.weather_renderer.as_mut() {
+            weather.render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+                .context("Weather particle render failed")?;
         }
 
         // Pass 5: Gizmos (if entity selected and gizmo active)
@@ -469,6 +472,7 @@ impl ViewportRenderer {
                             camera,
                             gizmo,
                             glam_pos,
+                            pose.height,
                             hovered_axis,
                             &self.queue,
                         )
@@ -628,7 +632,7 @@ impl ViewportRenderer {
 
     /// Check if any animated weather effects are active (rain, etc.)
     pub fn has_active_effects(&self) -> bool {
-        self.rain_renderer.as_ref().map_or(false, |r| r.is_active())
+        self.weather_renderer.as_ref().map_or(false, |r| r.is_active())
     }
 
     /// Load an HDRI file and apply it as the skybox background
@@ -659,26 +663,30 @@ impl ViewportRenderer {
         if let Ok(terrain) = self.ensure_terrain_renderer() {
             terrain.set_fog_params(params);
         }
-        // Forward fog to water renderer
-        if let Ok(water) = self.ensure_water_renderer() {
+        // Forward fog to water renderer only if it already exists (don't create it)
+        if let Some(water) = self.water_renderer.as_mut() {
             water.set_fog(params.fog_enabled, params.fog_density, params.fog_color);
         }
         // Forward fog to scatter renderer
         if let Ok(scatter) = self.ensure_scatter_renderer() {
             scatter.set_fog_params(params);
         }
-        // Enable rain for weather types 2 (Rain) and 3 (Storm)
-        let rain_active = params.weather_type == 2 || params.weather_type == 3;
-        let rain_intensity = if params.weather_type == 3 { 1.0 } else { 0.5 };
-        if let Ok(rain) = self.ensure_rain_renderer() {
-            rain.set_active(rain_active, rain_intensity);
-            // Wind for storm
+        // Map weather type to particle weather kind
+        let kind = WeatherKind::from_weather_type(params.weather_type);
+        let intensity = match params.weather_type {
+            3 => 1.0,  // Storm = heavy
+            _ => 0.5,
+        };
+        let queue = self.queue.clone();
+        if let Ok(weather) = self.ensure_weather_renderer() {
+            weather.set_weather(kind, intensity, &queue);
             let (wx, wz) = match params.weather_type {
                 3 => (4.0, 2.0),
                 2 => (1.0, 0.5),
+                6 => (6.0, 3.0),  // Sandstorm = strong wind
                 _ => (0.0, 0.0),
             };
-            rain.set_wind(wx, wz);
+            weather.set_wind(wx, wz);
         }
     }
 
@@ -687,11 +695,16 @@ impl ViewportRenderer {
         if let Ok(terrain) = self.ensure_terrain_renderer() {
             terrain.set_lighting_params(params);
         }
+        // Forward lighting to scatter renderer so vegetation matches terrain
+        if let Ok(scatter) = self.ensure_scatter_renderer() {
+            scatter.set_lighting_params(params);
+        }
     }
 
     /// Set water level for volumetric water plane
     pub fn set_water_level(&mut self, level: f32) {
-        if let Ok(water) = self.ensure_water_renderer() {
+        // Only forward to water renderer if it already exists (don't create it)
+        if let Some(water) = self.water_renderer.as_mut() {
             water.set_water_level(level);
         }
         if let Ok(terrain) = self.ensure_terrain_renderer() {
@@ -701,8 +714,13 @@ impl ViewportRenderer {
 
     /// Enable or disable the volumetric water plane
     pub fn set_water_enabled(&mut self, enabled: bool) {
-        if let Ok(water) = self.ensure_water_renderer() {
-            water.set_enabled(enabled);
+        if enabled {
+            if let Ok(water) = self.ensure_water_renderer() {
+                water.set_enabled(true);
+            }
+        } else {
+            // Drop the water renderer entirely to guarantee no rendering
+            self.water_renderer = None;
         }
     }
 

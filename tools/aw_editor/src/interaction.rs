@@ -375,6 +375,7 @@ pub fn cancel_active_gizmo(
             x: snapshot.position.x.round() as i32,
             y: snapshot.position.z.round() as i32,
         };
+        pose.height = snapshot.position.y;
         let (rx, ry, rz) = snapshot.rotation.to_euler(glam::EulerRot::XYZ);
         pose.rotation_x = rx;
         pose.rotation = ry;
@@ -398,7 +399,7 @@ pub fn ensure_world_snapshot(state: &mut GizmoState, world: &World) -> Option<Tr
     let entity = state.selected_entity?;
     let pose = world.pose(entity)?;
     let snapshot = TransformSnapshot {
-        position: glam::Vec3::new(pose.pos.x as f32, 1.0, pose.pos.y as f32),
+        position: glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32),
         rotation: Quat::from_euler(
             glam::EulerRot::XYZ,
             pose.rotation_x,

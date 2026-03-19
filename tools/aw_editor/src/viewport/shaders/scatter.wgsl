@@ -18,6 +18,13 @@ struct Uniforms {
     wind_strength: f32,
     wind_frequency: f32,
     cull_distance: f32,
+    // Lighting uniforms (synced from terrain)
+    sun_dir: vec3<f32>,
+    sun_intensity: f32,
+    sun_color: vec3<f32>,
+    ambient_intensity: f32,
+    ambient_color: vec3<f32>,
+    exposure: f32,
 }
 
 struct VertexInput {
@@ -100,8 +107,8 @@ fn vs_main(
     let dist = length(world_position.xyz - uniforms.camera_pos);
     var fog_factor = 0.0;
     if uniforms.fog_enabled > 0u {
-        fog_factor = 1.0 - exp(-uniforms.fog_density * dist * dist);
-        fog_factor = saturate(fog_factor);
+        fog_factor = 1.0 - exp(-uniforms.fog_density * dist);
+        fog_factor = clamp(fog_factor * 0.7, 0.0, 0.65);
     }
 
     var output: VertexOutput;
@@ -115,7 +122,8 @@ fn vs_main(
     let local_y = saturate(vertex.position.y);                 // 0 at base, ~1 at top
     let ao = mix(0.65, 1.0, local_y);                         // 35% darker at base
     let tip_boost = smoothstep(0.6, 1.0, local_y) * 0.12;    // Slight lighten at tips
-    let noise = (hash_position(world_position.xyz * 3.7) - 0.5) * 0.08; // ±4% per-instance scatter
+    // Use fixed instance origin (not wind-displaced position) so noise is stable per-frame
+    let noise = (hash_position(model_matrix[3].xyz * 3.7) - 0.5) * 0.08; // ±4% per-instance scatter
     output.color = vec4<f32>(
         clamp(output.color.rgb * ao + tip_boost + noise, vec3<f32>(0.0), vec3<f32>(1.0)),
         output.color.a
@@ -127,12 +135,21 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Directional lighting (matching entity shader)
-    let light_dir = normalize(vec3<f32>(0.5, 1.0, 0.3));
-    let ambient = 0.35;
-    let diffuse = max(dot(in.world_normal, light_dir), 0.0) * 0.65;
-    let lighting = ambient + diffuse;
-    var lit_color = in.color.rgb * lighting;
+    // Dynamic directional lighting from terrain sun uniforms
+    let light_dir = normalize(uniforms.sun_dir);
+    let n = normalize(in.world_normal);
+    let ndotl = max(dot(n, light_dir), 0.0);
+
+    // Diffuse: sun color × intensity × NdotL
+    let diffuse = uniforms.sun_color * uniforms.sun_intensity * ndotl;
+    // Ambient: ambient color × intensity
+    let ambient = uniforms.ambient_color * uniforms.ambient_intensity;
+    // Combine lighting
+    var lit_color = in.color.rgb * (diffuse + ambient);
+
+    // Apply exposure and simple Reinhard tone mapping
+    lit_color = lit_color * uniforms.exposure;
+    lit_color = lit_color / (lit_color + vec3<f32>(1.0));
 
     // Distance-based alpha fade (smooth, no discard — shader handles far objects gracefully)
     let dist = length(in.world_position.xyz - uniforms.camera_pos);

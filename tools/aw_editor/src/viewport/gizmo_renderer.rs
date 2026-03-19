@@ -201,6 +201,7 @@ impl GizmoRendererWgpu {
         camera: &OrbitCamera,
         gizmo_state: &GizmoState,
         entity_position: glam::IVec2,
+        entity_height: f32,
         hovered_axis: Option<AxisConstraint>,
         queue: &wgpu::Queue,
     ) -> Result<()> {
@@ -209,8 +210,8 @@ impl GizmoRendererWgpu {
             return Ok(());
         }
 
-        // Convert 2D grid position to 3D world position (Y=0 for ground plane)
-        let world_position = Vec3::new(entity_position.x as f32, 0.0, entity_position.y as f32);
+        // Convert 2D grid position to 3D world position
+        let world_position = Vec3::new(entity_position.x as f32, entity_height, entity_position.y as f32);
         let world_rotation = Quat::IDENTITY; // No rotation (top-down 2D game)
 
         // Update camera uniforms

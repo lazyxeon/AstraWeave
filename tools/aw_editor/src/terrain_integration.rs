@@ -1126,6 +1126,7 @@ pub struct ScatterPlacement {
     pub mesh_key: String,
     pub mesh_path: String,
     pub bounding_radius: f32,
+    pub tint: [f32; 4],
 }
 
 impl ScatterPlacement {
@@ -1133,26 +1134,29 @@ impl ScatterPlacement {
         // Per-type world-scale multiplier: Nature Kit models are tiny (~1 unit),
         // terrain spans hundreds of units. Trees need a much larger multiplier
         // than grass/flowers to look proportional.
-        let type_multiplier = match vi.vegetation_type.as_str() {
+        let (type_multiplier, sink_factor, tint) = match vi.vegetation_type.as_str() {
             // Trees — models are ~1.2–1.7 units tall, need to reach 15–30 units
-            s if s.contains("tree") || s.contains("pine") => 14.0,
+            s if s.contains("tree") || s.contains("pine") => (14.0, 0.06, [0.35, 0.55, 0.25, 1.0]),
             // Cacti — models ~0.75 units, need to be ~5–8 units
-            s if s.contains("cactus") => 8.0,
+            s if s.contains("cactus") => (8.0, 0.04, [0.45, 0.60, 0.30, 1.0]),
             // Bushes — models ~0.25 units, need to be ~2–3 units
-            s if s.contains("bush") => 7.0,
+            s if s.contains("bush") => (7.0, 0.04, [0.30, 0.58, 0.22, 1.0]),
             // Rocks — models ~0.26 units, need to be ~2–4 units
-            s if s.contains("rock") || s.contains("stone") => 8.0,
+            s if s.contains("rock") || s.contains("stone") => (8.0, 0.03, [0.60, 0.58, 0.55, 1.0]),
             // Mushrooms — small ground detail
-            s if s.contains("mushroom") => 5.0,
-            // Grass, flowers, ground cover — models ~0.2 units, OK at ~1–2 units
-            _ => 3.5,
+            s if s.contains("mushroom") => (5.0, 0.01, [0.70, 0.55, 0.40, 1.0]),
+            // Flowers — keep their original colors mostly
+            s if s.contains("flower") => (3.5, 0.02, [0.90, 0.85, 0.80, 1.0]),
+            // Grass, ground cover — models ~0.2 units, OK at ~1–2 units
+            _ => (3.5, 0.02, [0.40, 0.68, 0.28, 1.0]),
         };
         let world_scale = vi.scale * type_multiplier;
         // Sink base slightly below terrain to counteract bilinear-vs-triangle
         // height mismatch that causes objects to float above the rendered surface.
         // The base AO darkening in the shader hides the minor terrain intersection.
+        // Per-type sinking: small assets sink less, large assets sink more.
         let mut pos = vi.position;
-        pos.y -= 0.08 * world_scale;
+        pos.y -= sink_factor * world_scale;
         Self {
             position: pos,
             rotation: vi.rotation,
@@ -1160,6 +1164,7 @@ impl ScatterPlacement {
             mesh_key: vi.vegetation_type.clone(),
             mesh_path: vi.model_path.clone(),
             bounding_radius: world_scale * 2.0,
+            tint,
         }
     }
 }

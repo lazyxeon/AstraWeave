@@ -333,7 +333,7 @@ impl BiomeConfig {
                     VegetationType {
                         name: "oak_tree".to_string(),
                         weight: 0.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_oak.glb"
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_2_A_Color1.gltf"
                             .to_string(),
                         scale_range: (0.9, 1.4),
                         slope_tolerance: 25.0,
@@ -342,24 +342,51 @@ impl BiomeConfig {
                         name: "tree_default".to_string(),
                         weight: 0.4,
                         model_path:
-                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_default.glb"
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_5_A_Color1.gltf"
                                 .to_string(),
                         scale_range: (0.8, 1.3),
                         slope_tolerance: 25.0,
                     },
                     VegetationType {
+                        name: "tree_round".to_string(),
+                        weight: 0.3,
+                        model_path:
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_1_A_Color1.gltf"
+                                .to_string(),
+                        scale_range: (0.8, 1.3),
+                        slope_tolerance: 25.0,
+                    },
+                    VegetationType {
+                        name: "tree_willow".to_string(),
+                        weight: 0.2,
+                        model_path:
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_7_B_Color1.gltf"
+                                .to_string(),
+                        scale_range: (0.9, 1.4),
+                        slope_tolerance: 25.0,
+                    },
+                    VegetationType {
                         name: "plant_bush".to_string(),
                         weight: 1.2,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/plant_bush.glb"
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Bush_1_A_Color1.gltf"
                             .to_string(),
                         scale_range: (0.7, 1.2),
+                        slope_tolerance: 35.0,
+                    },
+                    VegetationType {
+                        name: "bush_round".to_string(),
+                        weight: 0.8,
+                        model_path:
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Bush_2_C_Color1.gltf"
+                                .to_string(),
+                        scale_range: (0.6, 1.1),
                         slope_tolerance: 35.0,
                     },
                     VegetationType {
                         name: "rock_small".to_string(),
                         weight: 0.6,
                         model_path:
-                            "assets/3D assets/Nature Kit/Models/GLTF format/rock_smallA.glb"
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Rock_1_A_Color1.gltf"
                                 .to_string(),
                         scale_range: (0.5, 1.0),
                         slope_tolerance: 50.0,
@@ -497,14 +524,14 @@ impl BiomeConfig {
                 vegetation_types: vec![
                     VegetationType {
                         name: "pine_tall".to_string(),
-                        weight: 3.0,
+                        weight: 2.0,
                         model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_pineTallA_detailed.glb".to_string(),
                         scale_range: (1.2, 2.0),
                         slope_tolerance: 35.0,
                     },
                     VegetationType {
                         name: "pine_round".to_string(),
-                        weight: 2.0,
+                        weight: 1.5,
                         model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_pineRoundA.glb".to_string(),
                         scale_range: (1.0, 1.6),
                         slope_tolerance: 30.0,
@@ -512,14 +539,35 @@ impl BiomeConfig {
                     VegetationType {
                         name: "tree_detailed".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_detailed.glb".to_string(),
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_2_C_Color1.gltf".to_string(),
                         scale_range: (1.0, 1.5),
+                        slope_tolerance: 30.0,
+                    },
+                    VegetationType {
+                        name: "tree_conifer".to_string(),
+                        weight: 1.5,
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_3_A_Color1.gltf".to_string(),
+                        scale_range: (1.0, 1.6),
+                        slope_tolerance: 35.0,
+                    },
+                    VegetationType {
+                        name: "tree_broad".to_string(),
+                        weight: 1.5,
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_4_B_Color1.gltf".to_string(),
+                        scale_range: (1.0, 1.5),
+                        slope_tolerance: 30.0,
+                    },
+                    VegetationType {
+                        name: "tree_canopy".to_string(),
+                        weight: 0.8,
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_6_A_Color1.gltf".to_string(),
+                        scale_range: (0.9, 1.4),
                         slope_tolerance: 30.0,
                     },
                     VegetationType {
                         name: "plant_bush_detailed".to_string(),
                         weight: 3.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/plant_bushDetailed.glb".to_string(),
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Bush_4_A_Color1.gltf".to_string(),
                         scale_range: (0.7, 1.3),
                         slope_tolerance: 45.0,
                     },
@@ -614,10 +662,18 @@ impl BiomeConfig {
                     VegetationType {
                         name: "tree_cone".to_string(),
                         weight: 0.8,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_cone.glb"
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_3_C_Color1.gltf"
                             .to_string(),
                         scale_range: (0.7, 1.1),
                         slope_tolerance: 40.0,
+                    },
+                    VegetationType {
+                        name: "tree_bare".to_string(),
+                        weight: 0.6,
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_Bare_1_A_Color1.gltf"
+                            .to_string(),
+                        scale_range: (0.7, 1.2),
+                        slope_tolerance: 50.0,
                     },
                     VegetationType {
                         name: "grass_leafs".to_string(),
@@ -652,6 +708,15 @@ impl BiomeConfig {
                             "assets/3D assets/Nature Kit/Models/GLTF format/stone_largeA.glb"
                                 .to_string(),
                         scale_range: (0.6, 1.8),
+                        slope_tolerance: 75.0,
+                    },
+                    VegetationType {
+                        name: "rock_kaykit".to_string(),
+                        weight: 1.0,
+                        model_path:
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Rock_3_A_Color1.gltf"
+                                .to_string(),
+                        scale_range: (0.8, 2.0),
                         slope_tolerance: 75.0,
                     },
                 ],
@@ -733,6 +798,24 @@ impl BiomeConfig {
                         scale_range: (0.4, 0.8),
                         slope_tolerance: 25.0,
                     },
+                    VegetationType {
+                        name: "tree_bare_tall".to_string(),
+                        weight: 0.8,
+                        model_path:
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color2/Tree_Bare_2_B_Color2.gltf"
+                                .to_string(),
+                        scale_range: (0.6, 1.0),
+                        slope_tolerance: 35.0,
+                    },
+                    VegetationType {
+                        name: "tree_bare_small".to_string(),
+                        weight: 0.6,
+                        model_path:
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color2/Tree_Bare_1_C_Color2.gltf"
+                                .to_string(),
+                        scale_range: (0.5, 0.9),
+                        slope_tolerance: 30.0,
+                    },
                 ],
                 size_variation: (0.4, 1.0),
                 random_rotation: true,
@@ -775,9 +858,18 @@ impl BiomeConfig {
                         name: "tree_default_dark".to_string(),
                         weight: 1.5,
                         model_path:
-                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_default_dark.glb"
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color2/Tree_Bare_1_B_Color2.gltf"
                                 .to_string(),
                         scale_range: (0.8, 1.5),
+                        slope_tolerance: 20.0,
+                    },
+                    VegetationType {
+                        name: "tree_swamp".to_string(),
+                        weight: 1.0,
+                        model_path:
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color2/Tree_6_C_Color2.gltf"
+                                .to_string(),
+                        scale_range: (0.8, 1.4),
                         slope_tolerance: 20.0,
                     },
                     VegetationType {
@@ -953,7 +1045,7 @@ impl BiomeConfig {
                         name: "tree_detailed".to_string(),
                         weight: 1.5,
                         model_path:
-                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_detailed.glb"
+                            "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_5_C_Color1.gltf"
                                 .to_string(),
                         scale_range: (0.9, 1.4),
                         slope_tolerance: 15.0,
@@ -961,7 +1053,7 @@ impl BiomeConfig {
                     VegetationType {
                         name: "tree_fat".to_string(),
                         weight: 0.8,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_fat.glb"
+                        model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_7_A_Color1.gltf"
                             .to_string(),
                         scale_range: (0.8, 1.3),
                         slope_tolerance: 15.0,

@@ -186,8 +186,11 @@ impl GridRenderer {
             _padding1: 0.0,
             grid_size: 1.0,         // 1 meter grid
             major_grid_every: 10.0, // Major grid every 10 lines
-            fade_distance: 200.0,   // Start fading at 200m (increased from 50m)
-            max_distance: 500.0,    // Completely fade by 500m (increased from 100m)
+            // Scale fade distances with camera height so the grid remains visible
+            // even at max zoom-out (orbit distance ~500). At close range the values
+            // reduce so we don't waste fragments on invisible distant grid lines.
+            fade_distance: (200.0_f32).max(camera.position().y.abs() * 3.0),
+            max_distance: (500.0_f32).max(camera.position().y.abs() * 6.0),
             grid_color,
             major_grid_color,
             x_axis_color: [1.0, 0.0, 0.0, 0.8], // Red X axis

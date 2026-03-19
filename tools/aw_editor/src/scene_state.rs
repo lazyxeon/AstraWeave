@@ -76,6 +76,7 @@ impl EditorSceneState {
                 x: transform.position.x.round() as i32,
                 y: transform.position.z.round() as i32,
             };
+            pose.height = transform.position.y;
             let (rx, ry, rz) = transform.rotation.to_euler(EulerRot::XYZ);
             pose.rotation_x = rx;
             pose.rotation = ry;
@@ -119,7 +120,7 @@ impl EditorSceneState {
             components: HashMap::new(),
         });
 
-        entry.position = Vec3::new(pose.pos.x as f32, 1.0, pose.pos.y as f32);
+        entry.position = Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
         entry.rotation = Quat::from_euler(
             EulerRot::XYZ,
             pose.rotation_x,
@@ -153,7 +154,7 @@ impl TransformableScene for EditorSceneState {
 
     fn snapshot_for(&self, entity: Entity) -> Option<TransformSnapshot> {
         self.world.pose(entity).map(|pose| TransformSnapshot {
-            position: Vec3::new(pose.pos.x as f32, 1.0, pose.pos.y as f32),
+            position: Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32),
             rotation: Quat::from_euler(
                 EulerRot::XYZ,
                 pose.rotation_x,
@@ -170,6 +171,7 @@ impl TransformableScene for EditorSceneState {
                 x: snapshot.position.x.round() as i32,
                 y: snapshot.position.z.round() as i32,
             };
+            pose.height = snapshot.position.y;
             let (rx, ry, rz) = snapshot.rotation.to_euler(EulerRot::XYZ);
             pose.rotation_x = rx;
             pose.rotation = ry;
@@ -182,7 +184,7 @@ impl TransformableScene for EditorSceneState {
 
 fn pose_to_transform(pose: Pose) -> Transform {
     Transform {
-        position: Vec3::new(pose.pos.x as f32, 1.0, pose.pos.y as f32),
+        position: Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32),
         rotation: Quat::from_euler(
             EulerRot::XYZ,
             pose.rotation_x,

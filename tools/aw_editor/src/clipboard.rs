@@ -286,6 +286,7 @@ impl ClipboardData {
         for &entity_id in entity_ids {
             let pose = world.pose(entity_id).unwrap_or(astraweave_core::Pose {
                 pos: IVec2 { x: 0, y: 0 },
+                height: 0.0,
                 rotation: 0.0,
                 rotation_x: 0.0,
                 rotation_z: 0.0,

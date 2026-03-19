@@ -492,7 +492,7 @@ impl EntityRenderer {
             if let Some(pose) = world.pose(entity) {
                 let x = pose.pos.x as f32;
                 let z = pose.pos.y as f32;
-                let position = Vec3::new(x, 1.0, z);
+                let position = Vec3::new(x, pose.height, z);
 
                 if !frustum.contains_sphere(position, ENTITY_RADIUS * pose.scale) {
                     continue;

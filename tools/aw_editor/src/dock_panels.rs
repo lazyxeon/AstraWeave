@@ -236,7 +236,7 @@ impl<'a> DockPanelContext<'a> {
                         ui.collapsing("Transform", |ui| {
                             ui.horizontal(|ui| {
                                 ui.label("Position:");
-                                ui.label(format!("X: {}  Y: {}", pose.pos.x, pose.pos.y));
+                                ui.label(format!("X: {}  H: {:.1}  Z: {}", pose.pos.x, pose.height, pose.pos.y));
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Rotation:");

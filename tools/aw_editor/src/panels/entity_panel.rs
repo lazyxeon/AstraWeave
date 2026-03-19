@@ -1134,7 +1134,7 @@ impl EntityPanel {
                                 ui.label(egui::RichText::new(team_name).color(team_color));
                             });
 
-                            ui.label(format!("Position: ({}, {})", pose.pos.x, pose.pos.y));
+                            ui.label(format!("Position: ({}, {:.1}, {})", pose.pos.x, pose.height, pose.pos.y));
                             ui.label(format!("❤️  Health: {}", health.hp));
                             ui.label(format!("🔫 Ammo: {}", ammo.rounds));
                         });

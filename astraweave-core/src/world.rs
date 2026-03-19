@@ -25,6 +25,7 @@ pub struct Cooldowns {
 #[derive(Clone, Copy, Debug)]
 pub struct Pose {
     pub pos: IVec2,
+    pub height: f32,   // Vertical position (Y axis in 3D)
     pub rotation: f32, // Rotation in radians around Y axis (primary, for compatibility)
     pub rotation_x: f32, // Pitch (rotation around X axis)
     pub rotation_z: f32, // Roll (rotation around Z axis)
@@ -90,6 +91,7 @@ impl World {
             id,
             Pose {
                 pos,
+                height: 0.0,
                 rotation: 0.0,
                 rotation_x: 0.0,
                 rotation_z: 0.0,

@@ -28,12 +28,12 @@
 use anyhow::{Context as _, Result};
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
 use super::camera::OrbitCamera;
-use super::terrain_renderer::TerrainFogParams;
+use super::terrain_renderer::{TerrainFogParams, TerrainLightingParams};
 
 // ─── GPU Data Structures ─────────────────────────────────────────────────────
 
@@ -78,6 +78,13 @@ struct ScatterUniforms {
     wind_strength: f32,
     wind_frequency: f32,
     cull_distance: f32,
+    // Lighting uniforms (matching terrain shader)
+    sun_dir: [f32; 3],
+    sun_intensity: f32,
+    sun_color: [f32; 3],
+    ambient_intensity: f32,
+    ambient_color: [f32; 3],
+    exposure: f32,
 }
 
 // ─── Cached Mesh ─────────────────────────────────────────────────────────────
@@ -127,6 +134,7 @@ pub struct ScatterRenderer {
     wind_frequency: f32,
     cull_distance: f32,
     fog_params: TerrainFogParams,
+    lighting_params: TerrainLightingParams,
     start_time: std::time::Instant,
 
     // Stats
@@ -294,6 +302,12 @@ impl ScatterRenderer {
                 wind_strength: 0.0,
                 wind_frequency: 1.0,
                 cull_distance: 800.0,
+                sun_dir: [0.5, 0.7, 0.35],
+                sun_intensity: 2.0,
+                sun_color: [1.0, 0.95, 0.85],
+                ambient_intensity: 0.7,
+                ambient_color: [0.72, 0.70, 0.68],
+                exposure: 1.8,
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -332,8 +346,9 @@ impl ScatterRenderer {
             mesh_cache: HashMap::new(),
             wind_strength: 0.5,
             wind_frequency: 1.2,
-            cull_distance: 500.0,
+            cull_distance: 700.0,
             fog_params: TerrainFogParams::default(),
+            lighting_params: TerrainLightingParams::default(),
             start_time: std::time::Instant::now(),
             last_instance_count: 0,
             last_draw_calls: 0,
@@ -365,6 +380,10 @@ impl ScatterRenderer {
 
     pub fn set_fog_params(&mut self, params: TerrainFogParams) {
         self.fog_params = params;
+    }
+
+    pub fn set_lighting_params(&mut self, params: TerrainLightingParams) {
+        self.lighting_params = params;
     }
 
     pub fn last_instance_count(&self) -> u32 {
@@ -439,6 +458,7 @@ impl ScatterRenderer {
             };
 
             let vertex_colors: Vec<[f32; 4]> = if let Some(colors) = reader.read_colors(0) {
+                tracing::info!("Scatter mesh '{key}': using explicit vertex colors");
                 colors.into_rgba_f32().collect()
             } else {
                 let material = primitive.material();
@@ -452,6 +472,8 @@ impl ScatterRenderer {
                 if let (Some(tex_info), Some(ref uv_coords)) = (pbr.base_color_texture(), &uvs) {
                     let tex_index = tex_info.texture().source().index();
                     if tex_index < images.len() {
+                        tracing::info!("Scatter mesh '{key}': UV texture baking (tex {tex_index}, factor=[{:.2},{:.2},{:.2},{:.2}])",
+                            base_color_factor[0], base_color_factor[1], base_color_factor[2], base_color_factor[3]);
                         let img = &images[tex_index];
                         let w = img.width as usize;
                         let h = img.height as usize;
@@ -492,9 +514,13 @@ impl ScatterRenderer {
                             })
                             .collect()
                     } else {
+                        tracing::info!("Scatter mesh '{key}': flat base_color_factor fallback [{:.2},{:.2},{:.2},{:.2}]",
+                            base_color_factor[0], base_color_factor[1], base_color_factor[2], base_color_factor[3]);
                         vec![base_color_factor; positions.len()]
                     }
                 } else {
+                    tracing::info!("Scatter mesh '{key}': flat base_color_factor fallback [{:.2},{:.2},{:.2},{:.2}]",
+                        base_color_factor[0], base_color_factor[1], base_color_factor[2], base_color_factor[3]);
                     vec![base_color_factor; positions.len()]
                 }
             };
@@ -603,6 +629,12 @@ impl ScatterRenderer {
                 wind_strength: self.wind_strength,
                 wind_frequency: self.wind_frequency,
                 cull_distance: self.cull_distance,
+                sun_dir: self.lighting_params.sun_dir,
+                sun_intensity: self.lighting_params.sun_intensity,
+                sun_color: self.lighting_params.sun_color,
+                ambient_intensity: self.lighting_params.ambient_intensity,
+                ambient_color: self.lighting_params.ambient_color,
+                exposure: self.lighting_params.exposure,
             }),
         );
 
@@ -628,13 +660,23 @@ impl ScatterRenderer {
         // The frustum near-plane is now correctly extracted for wgpu's [0,1] depth
         // (using just row2 instead of the OpenGL row3+row2 formula), which was
         // previously the root cause of frame-to-frame culling instability.
-        {
+        //
+        // Cache: skip rebuild when camera hasn't moved and placements haven't changed.
+        // This prevents per-frame allocation churn and eliminates flicker from
+        // non-deterministic HashMap iteration order (now uses BTreeMap for stable ordering).
+        let cam_moved = (camera_pos - self.cached_camera_pos).length_squared() > 0.01
+            || (camera.yaw() - self.cached_camera_yaw).abs() > 0.001
+            || (camera.pitch() - self.cached_camera_pitch).abs() > 0.001;
+        let placements_changed = placements.len() != self.cached_placement_count;
+
+        if cam_moved || placements_changed || !self.cache_valid {
             let frustum = camera.extract_frustum();
             // CPU cull at 10% beyond shader cull_distance so fade completes
             let cpu_cull = self.cull_distance * 1.10;
             let cull_dist_sq = cpu_cull * cpu_cull;
 
-            let mut grouped: HashMap<String, Vec<ScatterInstance>> = HashMap::new();
+            // BTreeMap for deterministic draw group ordering — eliminates flicker
+            let mut grouped: BTreeMap<String, Vec<ScatterInstance>> = BTreeMap::new();
 
             for placement in placements {
                 if !self.mesh_cache.contains_key(&placement.mesh_key) {
@@ -661,7 +703,7 @@ impl ScatterRenderer {
                     .or_default()
                     .push(ScatterInstance {
                         model_matrix: transform.to_cols_array_2d(),
-                        tint: [1.0, 1.0, 1.0, 1.0],
+                        tint: placement.tint,
                     });
             }
 
@@ -684,6 +726,12 @@ impl ScatterRenderer {
                     instance_count: count as u32,
                 });
             }
+
+            self.cached_camera_pos = camera_pos;
+            self.cached_camera_yaw = camera.yaw();
+            self.cached_camera_pitch = camera.pitch();
+            self.cached_placement_count = placements.len();
+            self.cache_valid = true;
         }
 
         if self.cached_instances.is_empty() {

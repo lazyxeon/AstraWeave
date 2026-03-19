@@ -119,8 +119,15 @@ impl InspectorUI for Pose {
                     .changed();
                 changed |= ui
                     .add(
+                        egui::DragValue::new(&mut self.height)
+                            .prefix("H: ")
+                            .speed(0.05),
+                    )
+                    .changed();
+                changed |= ui
+                    .add(
                         egui::DragValue::new(&mut self.pos.y)
-                            .prefix("Y: ")
+                            .prefix("Z: ")
                             .speed(0.1),
                     )
                     .changed();

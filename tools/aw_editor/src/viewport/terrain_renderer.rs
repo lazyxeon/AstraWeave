@@ -78,10 +78,10 @@ impl Default for TerrainLightingParams {
         Self {
             sun_dir: [0.5, 0.7, 0.35],
             sun_color: [1.0, 0.95, 0.85],
-            sun_intensity: 1.5,
-            ambient_color: [0.55, 0.60, 0.72],
+            sun_intensity: 2.0,
+            ambient_color: [0.72, 0.70, 0.68],
             ambient_intensity: 0.7,
-            exposure: 1.2,
+            exposure: 1.8,
         }
     }
 }
@@ -389,11 +389,11 @@ impl TerrainRenderer {
                 time: 0.0,
                 water_level: 0.0,
                 sun_dir: [0.5, 0.7, 0.35],
-                sun_intensity: 1.5,
+                sun_intensity: 2.0,
                 sun_color: [1.0, 0.95, 0.85],
                 ambient_intensity: 0.7,
-                ambient_color: [0.55, 0.60, 0.72],
-                exposure: 1.2,
+                ambient_color: [0.72, 0.70, 0.68],
+                exposure: 1.8,
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -414,6 +414,20 @@ impl TerrainRenderer {
             normal_data.len(),
             mra_data.len()
         );
+
+        // ── Diagnostic: sample center pixels of grass layer (index 0) ──────────
+        {
+            let layer_bytes = (BIOME_TEX_SIZE * BIOME_TEX_SIZE * 4) as usize;
+            let center = (BIOME_TEX_SIZE / 2 * BIOME_TEX_SIZE + BIOME_TEX_SIZE / 2) as usize * 4;
+            if albedo_data.len() >= layer_bytes {
+                let (r, g, b) = (albedo_data[center], albedo_data[center + 1], albedo_data[center + 2]);
+                eprintln!("[terrain] DIAG grass albedo center pixel: R={r} G={g} B={b}");
+            }
+            if mra_data.len() >= layer_bytes {
+                let (m, rough, ao) = (mra_data[center], mra_data[center + 1], mra_data[center + 2]);
+                eprintln!("[terrain] DIAG grass MRA center pixel: metallic={m} roughness={rough} ao={ao}");
+            }
+        }
 
         let mip_count = (BIOME_TEX_SIZE as f32).log2() as u32 + 1; // 2048 → 11 levels
 
@@ -688,6 +702,25 @@ impl TerrainRenderer {
         let view_proj = camera.view_projection_matrix();
         let camera_pos = camera.position();
 
+        let elapsed = self.start_time.elapsed().as_secs_f32();
+
+        // ── Diagnostic: dump key uniforms once per second ──
+        {
+            let sec = elapsed as u32;
+            static LAST_SEC: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
+            let prev = LAST_SEC.swap(sec, std::sync::atomic::Ordering::Relaxed);
+            if sec != prev {
+                let fc = self.fog_params.fog_color;
+                let ac = self.lighting_params.ambient_color;
+                let sc = self.lighting_params.sun_color;
+                let sd = self.lighting_params.sun_dir;
+                eprintln!(
+                    "[terrain] DIAG uniforms: fog=[{:.2},{:.2},{:.2}] ambient=[{:.2},{:.2},{:.2}] sun_color=[{:.2},{:.2},{:.2}] sun_dir=[{:.2},{:.2},{:.2}] exposure={:.2}",
+                    fc[0], fc[1], fc[2], ac[0], ac[1], ac[2], sc[0], sc[1], sc[2], sd[0], sd[1], sd[2], self.lighting_params.exposure,
+                );
+            }
+        }
+
         let uniforms = Uniforms {
             view_proj: view_proj.to_cols_array_2d(),
             camera_pos: camera_pos.to_array(),
@@ -696,7 +729,7 @@ impl TerrainRenderer {
             fog_density: self.fog_params.fog_density,
             fog_enabled: if self.fog_params.fog_enabled { 1 } else { 0 },
             weather_type: self.fog_params.weather_type,
-            time: self.start_time.elapsed().as_secs_f32(),
+            time: elapsed,
             water_level: self.water_level,
             sun_dir: self.lighting_params.sun_dir,
             sun_intensity: self.lighting_params.sun_intensity,

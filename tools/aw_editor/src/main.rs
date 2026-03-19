@@ -932,10 +932,10 @@ impl EditorApp {
 
             // Populate position from World pose
             if let Some(pose) = world.pose(entity_id) {
-                editor_entity.position = glam::Vec3::new(pose.pos.x as f32, pose.pos.y as f32, 0.0);
+                editor_entity.position = glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
                 editor_entity.components.insert(
                     "Transform".to_string(),
-                    serde_json::json!({"x": pose.pos.x, "y": pose.pos.y, "z": 0}),
+                    serde_json::json!({"x": pose.pos.x, "y": pose.height, "z": pose.pos.y}),
                 );
             }
 
@@ -3385,6 +3385,7 @@ impl EditorApp {
                         if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
                             pose.pos.x = x as i32;
                             pose.pos.y = z as i32; // World IVec2.y maps to world Z
+                            pose.height = y;
                         }
                         scene_state.sync_entity(entity);
                     }
@@ -4365,7 +4366,7 @@ impl EditorApp {
                         response.on_hover_ui(|ui| {
                             ui.label(format!("ID: {}", entity));
                             if let Some(pose) = pose {
-                                ui.label(format!("Position: ({}, {})", pose.pos.x, pose.pos.y));
+                                ui.label(format!("Position: ({}, {:.1}, {})", pose.pos.x, pose.height, pose.pos.y));
                                 ui.label(format!("Scale: {:.2}", pose.scale));
                             }
                             if let Some(health) = health {
@@ -4405,7 +4406,7 @@ impl EditorApp {
                         if let Some(pose) = world.pose(entity) {
                             ui.horizontal(|ui| {
                                 ui.label("Position:");
-                                ui.label(format!("({}, {})", pose.pos.x, pose.pos.y));
+                                ui.label(format!("({}, {:.1}, {})", pose.pos.x, pose.height, pose.pos.y));
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Rotation:");
@@ -4906,7 +4907,7 @@ impl EditorApp {
                             em_entity.set_mesh(mesh_path_str);
                             if let Some(pose) = scene_state.world().pose(entity) {
                                 em_entity.position =
-                                    glam::Vec3::new(pose.pos.x as f32, 1.0, pose.pos.y as f32);
+                                    glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
                             }
                             self.entity_manager.add(em_entity);
                         }
