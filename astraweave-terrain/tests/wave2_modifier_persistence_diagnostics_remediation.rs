@@ -6,11 +6,11 @@
 //!        TerrainModifier queue/tick, TerrainPersistence dirty tracking/auto-save,
 //!        HitchDetector p99/hitch_rate math, MemoryStats delta/total_mb.
 
-use astraweave_terrain::*;
 use astraweave_terrain::terrain_persistence::{
-    get_chunks_in_region, TerrainPersistence, TerrainPersistenceConfig,
-    TerrainSaveHeader, TERRAIN_SAVE_VERSION,
+    get_chunks_in_region, TerrainPersistence, TerrainPersistenceConfig, TerrainSaveHeader,
+    TERRAIN_SAVE_VERSION,
 };
+use astraweave_terrain::*;
 use glam::{IVec3, Vec3};
 use std::collections::HashMap;
 
@@ -169,7 +169,11 @@ fn modifier_tick_add_density() {
     let chunk = grid.get_chunk(coord).unwrap();
     let v = chunk.get_voxel(IVec3::new(0, 0, 0)).unwrap();
     // 0.3 + 0.5 = 0.8
-    assert!((v.density - 0.8).abs() < 0.01, "Density should be ~0.8, got {}", v.density);
+    assert!(
+        (v.density - 0.8).abs() < 0.01,
+        "Density should be ~0.8, got {}",
+        v.density
+    );
 }
 
 #[test]
@@ -181,13 +185,21 @@ fn modifier_tick_subtract_density() {
     let chunk = grid.get_or_create_chunk(coord);
     chunk.set_voxel(IVec3::new(0, 0, 0), Voxel::new(0.8, 1));
 
-    modifier.queue_operation(VoxelOp::subtract_density(IVec3::new(0, 0, 0), 0.5, "sub".into()));
+    modifier.queue_operation(VoxelOp::subtract_density(
+        IVec3::new(0, 0, 0),
+        0.5,
+        "sub".into(),
+    ));
     modifier.tick(&mut grid);
 
     let chunk = grid.get_chunk(coord).unwrap();
     let v = chunk.get_voxel(IVec3::new(0, 0, 0)).unwrap();
     // 0.8 - 0.5 = 0.3
-    assert!((v.density - 0.3).abs() < 0.01, "Density should be ~0.3, got {}", v.density);
+    assert!(
+        (v.density - 0.3).abs() < 0.01,
+        "Density should be ~0.3, got {}",
+        v.density
+    );
 }
 
 #[test]
@@ -199,12 +211,20 @@ fn modifier_tick_add_density_clamps_to_1() {
     let chunk = grid.get_or_create_chunk(coord);
     chunk.set_voxel(IVec3::new(0, 0, 0), Voxel::new(0.9, 1));
 
-    modifier.queue_operation(VoxelOp::add_density(IVec3::new(0, 0, 0), 0.5, "clamp".into()));
+    modifier.queue_operation(VoxelOp::add_density(
+        IVec3::new(0, 0, 0),
+        0.5,
+        "clamp".into(),
+    ));
     modifier.tick(&mut grid);
 
     let chunk = grid.get_chunk(coord).unwrap();
     let v = chunk.get_voxel(IVec3::new(0, 0, 0)).unwrap();
-    assert!((v.density - 1.0).abs() < 0.01, "Clamped to 1.0, got {}", v.density);
+    assert!(
+        (v.density - 1.0).abs() < 0.01,
+        "Clamped to 1.0, got {}",
+        v.density
+    );
 }
 
 #[test]
@@ -216,12 +236,20 @@ fn modifier_tick_subtract_density_clamps_to_0() {
     let chunk = grid.get_or_create_chunk(coord);
     chunk.set_voxel(IVec3::new(0, 0, 0), Voxel::new(0.2, 1));
 
-    modifier.queue_operation(VoxelOp::subtract_density(IVec3::new(0, 0, 0), 0.5, "clamp".into()));
+    modifier.queue_operation(VoxelOp::subtract_density(
+        IVec3::new(0, 0, 0),
+        0.5,
+        "clamp".into(),
+    ));
     modifier.tick(&mut grid);
 
     let chunk = grid.get_chunk(coord).unwrap();
     let v = chunk.get_voxel(IVec3::new(0, 0, 0)).unwrap();
-    assert!((v.density - 0.0).abs() < 0.01, "Clamped to 0.0, got {}", v.density);
+    assert!(
+        (v.density - 0.0).abs() < 0.01,
+        "Clamped to 0.0, got {}",
+        v.density
+    );
 }
 
 #[test]
@@ -229,13 +257,20 @@ fn modifier_drain_completed_requests() {
     let mut modifier = TerrainModifier::new(TerrainModifierConfig::default());
     let mut grid = VoxelGrid::new();
 
-    modifier.queue_operation(VoxelOp::set(IVec3::ZERO, Voxel::new(0.5, 0), "req-A".into()));
+    modifier.queue_operation(VoxelOp::set(
+        IVec3::ZERO,
+        Voxel::new(0.5, 0),
+        "req-A".into(),
+    ));
     modifier.queue_operation(VoxelOp::set(IVec3::ONE, Voxel::new(0.5, 0), "req-B".into()));
     modifier.tick(&mut grid);
 
     let completed = modifier.drain_completed_requests();
     assert!(completed.len() >= 2);
-    assert!(modifier.drain_completed_requests().is_empty(), "Second drain should be empty");
+    assert!(
+        modifier.drain_completed_requests().is_empty(),
+        "Second drain should be empty"
+    );
 }
 
 #[test]
@@ -326,7 +361,11 @@ fn modifier_take_navmesh_dirty_regions() {
     let mut grid = VoxelGrid::new();
 
     // Process an operation to generate dirty regions
-    modifier.queue_operation(VoxelOp::set(IVec3::new(0, 0, 0), Voxel::new(0.9, 1), "nav".into()));
+    modifier.queue_operation(VoxelOp::set(
+        IVec3::new(0, 0, 0),
+        Voxel::new(0.9, 1),
+        "nav".into(),
+    ));
     modifier.tick(&mut grid);
 
     let regions = modifier.take_navmesh_dirty_regions();
@@ -411,7 +450,11 @@ fn persistence_duplicate_dirty_no_double_count() {
     let c = ChunkCoord::new(5, 5, 5);
     p.mark_dirty(c);
     p.mark_dirty(c);
-    assert_eq!(p.dirty_count(), 1, "Duplicate dirty should not increase count");
+    assert_eq!(
+        p.dirty_count(),
+        1,
+        "Duplicate dirty should not increase count"
+    );
 }
 
 // ============================================================================
@@ -437,7 +480,10 @@ fn persistence_auto_save_disabled_when_no_dirty() {
     };
     let p = TerrainPersistence::new(config);
     // No dirty chunks
-    assert!(!p.should_auto_save(), "Auto-save disabled when no dirty chunks");
+    assert!(
+        !p.should_auto_save(),
+        "Auto-save disabled when no dirty chunks"
+    );
 }
 
 // ============================================================================
@@ -561,7 +607,11 @@ fn hitch_detector_hitch_rate() {
         d.record_frame(5.0);
     }
     // 10% hitch rate
-    assert!((d.hitch_rate() - 10.0).abs() < 0.5, "Hitch rate ~10%, got {}", d.hitch_rate());
+    assert!(
+        (d.hitch_rate() - 10.0).abs() < 0.5,
+        "Hitch rate ~10%, got {}",
+        d.hitch_rate()
+    );
 }
 
 // ============================================================================
@@ -592,7 +642,11 @@ fn memory_stats_peak_tracking() {
     let mut s = MemoryStats::default();
     s.update(100, 1024);
     s.update(50, 1024);
-    assert_eq!(s.peak_bytes, 100 * 1024, "Peak should stay at high-water mark");
+    assert_eq!(
+        s.peak_bytes,
+        100 * 1024,
+        "Peak should stay at high-water mark"
+    );
     s.update(150, 1024);
     assert_eq!(s.peak_bytes, 150 * 1024, "Peak should update to new high");
 }
@@ -608,7 +662,10 @@ fn memory_stats_total_mb() {
 fn memory_stats_delta_from_peak_at_peak() {
     let mut s = MemoryStats::default();
     s.update(100, 1024);
-    assert!((s.delta_from_peak_percent() - 0.0).abs() < 1e-4, "At peak → 0%");
+    assert!(
+        (s.delta_from_peak_percent() - 0.0).abs() < 1e-4,
+        "At peak → 0%"
+    );
 }
 
 #[test]
@@ -625,7 +682,10 @@ fn memory_stats_delta_from_peak_below() {
 #[test]
 fn memory_stats_delta_from_peak_zero_peak() {
     let s = MemoryStats::default();
-    assert!((s.delta_from_peak_percent() - 0.0).abs() < 1e-4, "Zero peak → 0%");
+    assert!(
+        (s.delta_from_peak_percent() - 0.0).abs() < 1e-4,
+        "Zero peak → 0%"
+    );
 }
 
 // ============================================================================
@@ -649,7 +709,10 @@ fn streaming_diag_update_camera() {
 #[test]
 fn streaming_diag_chunk_state_default_unloaded() {
     let d = StreamingDiagnostics::new(16.67, 100);
-    assert_eq!(d.get_chunk_state(ChunkId::new(99, 99)), ChunkLoadState::Unloaded);
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(99, 99)),
+        ChunkLoadState::Unloaded
+    );
 }
 
 #[test]
@@ -660,9 +723,18 @@ fn streaming_diag_update_chunk_states() {
     let pending = vec![ChunkId::new(3, 0)];
     d.update_chunk_states(&loaded, &loading, &pending);
 
-    assert_eq!(d.get_chunk_state(ChunkId::new(0, 0)), ChunkLoadState::Loaded);
-    assert_eq!(d.get_chunk_state(ChunkId::new(2, 0)), ChunkLoadState::Loading);
-    assert_eq!(d.get_chunk_state(ChunkId::new(3, 0)), ChunkLoadState::Pending);
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(0, 0)),
+        ChunkLoadState::Loaded
+    );
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(2, 0)),
+        ChunkLoadState::Loading
+    );
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(3, 0)),
+        ChunkLoadState::Pending
+    );
 }
 
 #[test]

@@ -150,17 +150,23 @@ fn noise_config_erosion_strength() {
 #[test]
 fn noise_mountains_amplitude_gt_base() {
     let c = NoiseConfig::default();
-    assert!(c.mountains.amplitude > c.base_elevation.amplitude,
+    assert!(
+        c.mountains.amplitude > c.base_elevation.amplitude,
         "Mountains amplitude {} should exceed base {}",
-        c.mountains.amplitude, c.base_elevation.amplitude);
+        c.mountains.amplitude,
+        c.base_elevation.amplitude
+    );
 }
 
 #[test]
 fn noise_detail_amplitude_lt_base() {
     let c = NoiseConfig::default();
-    assert!(c.detail.amplitude < c.base_elevation.amplitude,
+    assert!(
+        c.detail.amplitude < c.base_elevation.amplitude,
         "Detail amplitude {} should be less than base {}",
-        c.detail.amplitude, c.base_elevation.amplitude);
+        c.detail.amplitude,
+        c.base_elevation.amplitude
+    );
 }
 
 #[test]
@@ -172,9 +178,12 @@ fn noise_mountains_octaves_gt_base() {
 #[test]
 fn noise_detail_scale_gt_base() {
     let c = NoiseConfig::default();
-    assert!(c.detail.scale > c.base_elevation.scale,
+    assert!(
+        c.detail.scale > c.base_elevation.scale,
         "Detail should have higher frequency: {} vs {}",
-        c.detail.scale, c.base_elevation.scale);
+        c.detail.scale,
+        c.base_elevation.scale
+    );
 }
 
 // ============================================================================
@@ -188,7 +197,13 @@ fn terrain_noise_height_non_negative() {
     // Sample many points; all should be >= 0
     for i in 0..100 {
         let h = noise.sample_height(i as f64 * 10.0, i as f64 * 7.0);
-        assert!(h >= 0.0, "Height at ({}, {}) was negative: {}", i * 10, i * 7, h);
+        assert!(
+            h >= 0.0,
+            "Height at ({}, {}) was negative: {}",
+            i * 10,
+            i * 7,
+            h
+        );
     }
 }
 
@@ -212,7 +227,10 @@ fn terrain_noise_with_disabled_layers() {
     let noise = TerrainNoise::new(&config, 42);
     let h = noise.sample_height(100.0, 200.0);
     // All layers disabled → height = 0.0.max(0.0) = 0.0
-    assert!((h - 0.0).abs() < 1e-6, "All disabled should give 0.0, got {h}");
+    assert!(
+        (h - 0.0).abs() < 1e-6,
+        "All disabled should give 0.0, got {h}"
+    );
 }
 
 // ============================================================================
@@ -241,7 +259,9 @@ fn noise_config_detail_type_is_billow() {
 fn terrain_noise_generate_heightmap_correct_resolution() {
     let config = NoiseConfig::default();
     let noise = TerrainNoise::new(&config, 42);
-    let hm = noise.generate_heightmap(ChunkId::new(0, 0), 256.0, 32).unwrap();
+    let hm = noise
+        .generate_heightmap(ChunkId::new(0, 0), 256.0, 32)
+        .unwrap();
     assert_eq!(hm.resolution(), 32);
     assert_eq!(hm.data().len(), 1024);
 }
@@ -449,6 +469,11 @@ fn noise_preview_non_negative() {
     let noise = TerrainNoise::new(&config, 42);
     let preview = astraweave_terrain::noise_gen::utils::generate_preview(&noise, 16, 100.0);
     for (i, &v) in preview.iter().enumerate() {
-        assert!(v >= 0.0, "Preview height at index {} was negative: {}", i, v);
+        assert!(
+            v >= 0.0,
+            "Preview height at index {} was negative: {}",
+            i,
+            v
+        );
     }
 }

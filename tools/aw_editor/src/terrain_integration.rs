@@ -1,10 +1,11 @@
 #![allow(dead_code)]
 
 use astraweave_terrain::{
-    BiomeConfig, BiomeType, ChunkId, Heightmap, ScatterConfig, ScatterResult, TerrainChunk,
+    BiomeBlendConfig, BiomeBlender, BiomeConfig, BiomeType, ChunkId, Heightmap, PackedBiomeBlend,
+    ScatterConfig, SplatConfig, SplatMapGenerator, SplatRule, SplatWeights, TerrainChunk,
     VegetationInstance, VegetationScatter, WorldConfig, WorldGenerator,
 };
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 use std::collections::HashMap;
 
 /// Full noise preset for a biome — configures all three noise layers.
@@ -24,6 +25,9 @@ pub struct BiomeNoisePreset {
     pub detail_enabled: bool,
     pub detail_scale: f64,
     pub detail_amplitude: f32,
+    // Hydraulic erosion
+    pub erosion_enabled: bool,
+    pub erosion_strength: f32,
 }
 
 pub struct TerrainState {
@@ -48,18 +52,30 @@ pub struct TerrainVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
-    pub biome_id: u32,
-    _padding: [u32; 3],
+    pub biome_weights_0: [f32; 4],
+    pub biome_weights_1: [f32; 4],
+    pub splat_weights_0: [f32; 4],
+    pub splat_weights_1: [f32; 4],
 }
 
 impl TerrainVertex {
-    pub fn new(position: [f32; 3], normal: [f32; 3], uv: [f32; 2], biome_id: u32) -> Self {
+    pub fn new(
+        position: [f32; 3],
+        normal: [f32; 3],
+        uv: [f32; 2],
+        biome_weights_0: [f32; 4],
+        biome_weights_1: [f32; 4],
+        splat_weights_0: [f32; 4],
+        splat_weights_1: [f32; 4],
+    ) -> Self {
         Self {
             position,
             normal,
             uv,
-            biome_id,
-            _padding: [0; 3],
+            biome_weights_0,
+            biome_weights_1,
+            splat_weights_0,
+            splat_weights_1,
         }
     }
 }
@@ -128,6 +144,10 @@ impl TerrainState {
         self.config.noise.detail.scale = preset.detail_scale;
         self.config.noise.detail.amplitude = preset.detail_amplitude;
 
+        // Hydraulic erosion
+        self.config.noise.erosion_enabled = preset.erosion_enabled;
+        self.config.noise.erosion_strength = preset.erosion_strength;
+
         self.terrain_dirty = true;
     }
 
@@ -136,12 +156,62 @@ impl TerrainState {
 
         let mut biomes = vec![Self::biome_config_for_type(primary_type)];
 
-        for bt in BiomeType::all() {
-            if *bt != primary_type {
-                biomes.push(Self::biome_config_for_type(*bt));
+        // Only include biomes that are compatible with the primary biome.
+        // This prevents snow/tundra textures from appearing in grassland,
+        // and grassland textures from appearing in tundra, etc.
+        let compatible = Self::compatible_biomes(primary_type);
+        for bt in compatible {
+            if bt != primary_type {
+                biomes.push(Self::biome_config_for_type(bt));
             }
         }
         biomes
+    }
+
+    /// Return the set of biome types that make sense alongside the given primary biome.
+    fn compatible_biomes(primary: BiomeType) -> Vec<BiomeType> {
+        match primary {
+            BiomeType::Grassland => vec![
+                BiomeType::Grassland,
+                BiomeType::Forest,
+                BiomeType::River,
+                BiomeType::Swamp,
+            ],
+            BiomeType::Desert => vec![BiomeType::Desert, BiomeType::Beach, BiomeType::Grassland],
+            BiomeType::Forest => vec![
+                BiomeType::Forest,
+                BiomeType::Grassland,
+                BiomeType::River,
+                BiomeType::Swamp,
+                BiomeType::Mountain,
+            ],
+            BiomeType::Mountain => vec![
+                BiomeType::Mountain,
+                BiomeType::Tundra,
+                BiomeType::Forest,
+                BiomeType::Grassland,
+            ],
+            BiomeType::Tundra => vec![BiomeType::Tundra, BiomeType::Mountain, BiomeType::River],
+            BiomeType::Swamp => vec![
+                BiomeType::Swamp,
+                BiomeType::River,
+                BiomeType::Forest,
+                BiomeType::Grassland,
+            ],
+            BiomeType::Beach => vec![
+                BiomeType::Beach,
+                BiomeType::Desert,
+                BiomeType::Grassland,
+                BiomeType::River,
+            ],
+            BiomeType::River => vec![
+                BiomeType::River,
+                BiomeType::Grassland,
+                BiomeType::Forest,
+                BiomeType::Swamp,
+            ],
+            _ => vec![primary],
+        }
     }
 
     fn biome_config_for_type(bt: BiomeType) -> BiomeConfig {
@@ -161,6 +231,7 @@ impl TerrainState {
     pub fn generate_terrain(&mut self, chunk_radius: i32) -> anyhow::Result<usize> {
         self.generator = Some(WorldGenerator::new(self.config.clone()));
         self.generated_chunks.clear();
+        let primary_biome = self.primary_biome_type();
 
         let generator = self
             .generator
@@ -188,6 +259,8 @@ impl TerrainState {
                     chunk.biome_map(),
                     chunk_size,
                     world_offset,
+                    self.config.seed,
+                    primary_biome,
                 );
 
                 self.generated_chunks.insert(
@@ -213,33 +286,61 @@ impl TerrainState {
         biome_map: &[BiomeType],
         chunk_size: f32,
         world_offset: Vec3,
+        seed: u64,
+        primary_biome: BiomeType,
     ) -> (Vec<TerrainVertex>, Vec<u32>) {
         let resolution = heightmap.resolution() as usize;
         let cell_size = chunk_size / (resolution - 1) as f32;
+        let blender = BiomeBlender::new(BiomeBlendConfig::default(), seed);
+        let biome_blends = blender.blend_chunk(
+            heightmap,
+            biome_map,
+            chunk_size,
+            Vec2::new(world_offset.x, world_offset.z),
+        );
+        let mut heights = Vec::with_capacity(resolution * resolution);
+        let mut normals = Vec::with_capacity(resolution * resolution);
+        for z in 0..resolution {
+            for x in 0..resolution {
+                heights.push(heightmap.get_height(x as u32, z as u32));
+                normals.push(Self::calculate_normal(heightmap, x, z, cell_size));
+            }
+        }
+        let splat_generator = Self::create_local_splat_generator(seed, primary_biome);
+        let splat_map = splat_generator.generate_splat_map(&heights, &normals, resolution as u32);
 
         let mut vertices = Vec::with_capacity(resolution * resolution);
         let mut indices = Vec::with_capacity((resolution - 1) * (resolution - 1) * 6);
 
         for z in 0..resolution {
             for x in 0..resolution {
-                let height = heightmap.get_height(x as u32, z as u32);
+                let biome_idx = z * resolution + x;
+                let height = heights[biome_idx];
 
                 let world_x = world_offset.x + x as f32 * cell_size;
                 let world_z = world_offset.z + z as f32 * cell_size;
 
-                let normal = Self::calculate_normal(heightmap, x, z, cell_size);
+                let normal = normals[biome_idx];
 
-                let biome_idx = z * resolution + x;
-                let biome_id = biome_map
+                let (biome_weights_0, biome_weights_1) = biome_blends
                     .get(biome_idx)
-                    .map(|b| Self::biome_to_id(*b))
-                    .unwrap_or(0);
+                    .copied()
+                    .map(Self::packed_biome_to_weight_sets)
+                    .unwrap_or(([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]));
+                let (splat_weights_0, splat_weights_1) = splat_map
+                    .get(biome_idx)
+                    .copied()
+                    .map(Self::splat_weights_to_arrays)
+                    .unwrap_or(([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]));
 
                 vertices.push(TerrainVertex::new(
                     [world_x, height, world_z],
                     [normal.x, normal.y, normal.z],
                     [x as f32 / resolution as f32, z as f32 / resolution as f32],
-                    biome_id,
+                    biome_weights_0,
+                    biome_weights_1,
+                    splat_weights_0,
+                    splat_weights_1,
                 ));
             }
         }
@@ -307,6 +408,231 @@ impl TerrainState {
             BiomeType::River => 7,
             _ => 0, // Fallback for future biome types
         }
+    }
+
+    fn packed_biome_to_weight_sets(blend: PackedBiomeBlend) -> ([f32; 4], [f32; 4]) {
+        let mut weights_0 = [0.0; 4];
+        let mut weights_1 = [0.0; 4];
+
+        for index in 0..4 {
+            let biome_id = blend.biome_ids[index] as usize;
+            let weight = blend.weights[index];
+            if biome_id < 4 {
+                weights_0[biome_id] += weight;
+            } else if biome_id < 8 {
+                weights_1[biome_id - 4] += weight;
+            }
+        }
+
+        let total: f32 =
+            weights_0.iter().copied().sum::<f32>() + weights_1.iter().copied().sum::<f32>();
+        if total > 0.0001 {
+            for weight in &mut weights_0 {
+                *weight /= total;
+            }
+            for weight in &mut weights_1 {
+                *weight /= total;
+            }
+        } else {
+            weights_0[0] = 1.0;
+        }
+
+        (weights_0, weights_1)
+    }
+
+    fn splat_weights_to_arrays(weights: SplatWeights) -> ([f32; 4], [f32; 4]) {
+        (weights.weights_0.to_array(), weights.weights_1.to_array())
+    }
+
+    fn create_local_splat_generator(seed: u64, primary_biome: BiomeType) -> SplatMapGenerator {
+        let mut generator = SplatMapGenerator::new(SplatConfig::default(), seed);
+        match primary_biome {
+            BiomeType::Grassland => {
+                generator.add_rule(SplatRule::grass());
+                generator.add_rule(SplatRule::rock());
+                generator.add_rule(SplatRule {
+                    material_id: 2,
+                    min_height: 0.0,
+                    max_height: 92.0,
+                    min_slope: 3.0,
+                    max_slope: 34.0,
+                    priority: 14,
+                    weight: 0.95,
+                    height_falloff: 0.025,
+                    slope_falloff: 0.05,
+                });
+                generator.add_rule(SplatRule {
+                    material_id: 1,
+                    min_height: -4.0,
+                    max_height: 10.0,
+                    min_slope: 0.0,
+                    max_slope: 16.0,
+                    priority: 18,
+                    weight: 0.75,
+                    height_falloff: 0.10,
+                    slope_falloff: 0.07,
+                });
+            }
+            BiomeType::Desert | BiomeType::Beach => {
+                generator.add_rule(SplatRule::sand());
+                generator.add_rule(SplatRule::rock());
+                generator.add_rule(SplatRule {
+                    material_id: 3,
+                    min_height: -2.0,
+                    max_height: 55.0,
+                    min_slope: 2.0,
+                    max_slope: 28.0,
+                    priority: 13,
+                    weight: 0.55,
+                    height_falloff: 0.05,
+                    slope_falloff: 0.05,
+                });
+                generator.add_rule(SplatRule {
+                    material_id: 0,
+                    min_height: 4.0,
+                    max_height: 48.0,
+                    min_slope: 0.0,
+                    max_slope: 12.0,
+                    priority: 10,
+                    weight: 0.20,
+                    height_falloff: 0.06,
+                    slope_falloff: 0.08,
+                });
+            }
+            BiomeType::Forest => {
+                generator.add_rule(SplatRule::grass());
+                generator.add_rule(SplatRule {
+                    material_id: 2,
+                    min_height: 1.0,
+                    max_height: 110.0,
+                    min_slope: 0.0,
+                    max_slope: 42.0,
+                    priority: 16,
+                    weight: 1.10,
+                    height_falloff: 0.025,
+                    slope_falloff: 0.04,
+                });
+                generator.add_rule(SplatRule::rock());
+                generator.add_rule(SplatRule {
+                    material_id: 5,
+                    min_height: -8.0,
+                    max_height: 12.0,
+                    min_slope: 0.0,
+                    max_slope: 18.0,
+                    priority: 17,
+                    weight: 0.70,
+                    height_falloff: 0.10,
+                    slope_falloff: 0.06,
+                });
+            }
+            BiomeType::Mountain => {
+                generator.add_rule(SplatRule::rock());
+                generator.add_rule(SplatRule::snow());
+                // Stone at mid-to-high altitudes on moderate slopes
+                generator.add_rule(SplatRule {
+                    material_id: 7,
+                    min_height: 30.0,
+                    max_height: 350.0,
+                    min_slope: 0.0,
+                    max_slope: 35.0,
+                    priority: 14,
+                    weight: 0.75,
+                    height_falloff: 0.02,
+                    slope_falloff: 0.05,
+                });
+                // Forest-floor at lower mountain altitudes
+                generator.add_rule(SplatRule {
+                    material_id: 2,
+                    min_height: 0.0,
+                    max_height: 80.0,
+                    min_slope: 0.0,
+                    max_slope: 26.0,
+                    priority: 12,
+                    weight: 0.45,
+                    height_falloff: 0.03,
+                    slope_falloff: 0.07,
+                });
+                // Grass at base of mountains
+                generator.add_rule(SplatRule {
+                    material_id: 0,
+                    min_height: -4.0,
+                    max_height: 40.0,
+                    min_slope: 0.0,
+                    max_slope: 18.0,
+                    priority: 11,
+                    weight: 0.35,
+                    height_falloff: 0.06,
+                    slope_falloff: 0.10,
+                });
+            }
+            BiomeType::Tundra => {
+                generator.add_rule(SplatRule::snow());
+                generator.add_rule(SplatRule::rock());
+                generator.add_rule(SplatRule {
+                    material_id: 4,
+                    min_height: -4.0,
+                    max_height: 58.0,
+                    min_slope: 0.0,
+                    max_slope: 24.0,
+                    priority: 16,
+                    weight: 0.60,
+                    height_falloff: 0.05,
+                    slope_falloff: 0.06,
+                });
+                generator.add_rule(SplatRule {
+                    material_id: 5,
+                    min_height: -12.0,
+                    max_height: 4.0,
+                    min_slope: 0.0,
+                    max_slope: 14.0,
+                    priority: 12,
+                    weight: 0.35,
+                    height_falloff: 0.12,
+                    slope_falloff: 0.08,
+                });
+            }
+            BiomeType::Swamp | BiomeType::River => {
+                generator.add_rule(SplatRule {
+                    material_id: 5,
+                    min_height: -14.0,
+                    max_height: 16.0,
+                    min_slope: 0.0,
+                    max_slope: 20.0,
+                    priority: 22,
+                    weight: 1.25,
+                    height_falloff: 0.10,
+                    slope_falloff: 0.06,
+                });
+                generator.add_rule(SplatRule::sand());
+                generator.add_rule(SplatRule {
+                    material_id: 2,
+                    min_height: -2.0,
+                    max_height: 44.0,
+                    min_slope: 0.0,
+                    max_slope: 26.0,
+                    priority: 14,
+                    weight: 0.65,
+                    height_falloff: 0.05,
+                    slope_falloff: 0.05,
+                });
+                generator.add_rule(SplatRule::rock());
+            }
+            _ => {
+                generator.add_rule(SplatRule::grass());
+                generator.add_rule(SplatRule::rock());
+                generator.add_rule(SplatRule::sand());
+                generator.add_rule(SplatRule::snow());
+            }
+        }
+        generator
+    }
+
+    fn primary_biome_type(&self) -> BiomeType {
+        self.config
+            .biomes
+            .first()
+            .map(|b| b.biome_type)
+            .unwrap_or(BiomeType::Grassland)
     }
 
     fn id_to_biome(id: u32) -> BiomeType {
@@ -415,6 +741,31 @@ impl TerrainState {
         self.total_index_count() / 3
     }
 
+    /// Compute min, max, and average terrain height across all generated chunks.
+    pub fn height_stats(&self) -> (f32, f32, f32) {
+        let mut min_h = f32::MAX;
+        let mut max_h = f32::MIN;
+        let mut sum = 0.0f64;
+        let mut count = 0u64;
+        for gen_chunk in self.generated_chunks.values() {
+            for v in &gen_chunk.vertices {
+                let h = v.position[1];
+                if h < min_h {
+                    min_h = h;
+                }
+                if h > max_h {
+                    max_h = h;
+                }
+                sum += h as f64;
+                count += 1;
+            }
+        }
+        if count == 0 {
+            return (0.0, 0.0, 0.0);
+        }
+        (min_h, max_h, (sum / count as f64) as f32)
+    }
+
     /// Check if terrain has been generated
     pub fn has_terrain(&self) -> bool {
         !self.generated_chunks.is_empty()
@@ -438,6 +789,7 @@ impl TerrainState {
         brush_mode: u32,
     ) -> bool {
         let chunk_size = self.config.chunk_size;
+        let primary_biome = self.primary_biome_type();
         let mut modified = false;
 
         // Collect chunk IDs that might be affected
@@ -477,7 +829,11 @@ impl TerrainState {
                             }
                         }
                     }
-                    if count > 0 { sum / count as f32 } else { 0.0 }
+                    if count > 0 {
+                        sum / count as f32
+                    } else {
+                        0.0
+                    }
                 } else {
                     0.0
                 };
@@ -530,6 +886,8 @@ impl TerrainState {
                         gen_chunk.chunk.biome_map(),
                         chunk_size,
                         world_offset,
+                        self.config.seed,
+                        primary_biome,
                     );
                     gen_chunk.vertices = vertices;
                     gen_chunk.indices = indices;
@@ -553,6 +911,7 @@ impl TerrainState {
         biome_id: u32,
     ) -> bool {
         let chunk_size = self.config.chunk_size;
+        let primary_biome = self.primary_biome_type();
         let target_biome = Self::id_to_biome(biome_id);
         let mut modified = false;
 
@@ -600,6 +959,8 @@ impl TerrainState {
                         gen_chunk.chunk.biome_map(),
                         chunk_size,
                         world_offset,
+                        self.config.seed,
+                        primary_biome,
                     );
                     gen_chunk.vertices = vertices;
                     gen_chunk.indices = indices;
@@ -630,7 +991,10 @@ impl TerrainState {
     /// density rules. Returns a flat list of placements ready for the
     /// scatter renderer's GPU instancing pipeline.
     pub fn generate_scatter_placements(&self) -> Vec<ScatterPlacement> {
-        let scatter_config = ScatterConfig::default();
+        let scatter_config = ScatterConfig {
+            min_distance: 8.0,
+            ..ScatterConfig::default()
+        };
         let scatter = VegetationScatter::new(scatter_config);
         let chunk_size = self.config.chunk_size;
 
@@ -656,14 +1020,14 @@ impl TerrainState {
             let seed = self.config.seed + chunk_id.x as u64 * 1000 + chunk_id.z as u64;
 
             // Generate vegetation instances via the terrain scatter system
-            let vegetation = match scatter.scatter_vegetation(chunk, chunk_size, &biome_config, seed)
-            {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!("Scatter failed for chunk {:?}: {e}", chunk_id);
-                    continue;
-                }
-            };
+            let vegetation =
+                match scatter.scatter_vegetation(chunk, chunk_size, &biome_config, seed) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("Scatter failed for chunk {:?}: {e}", chunk_id);
+                        continue;
+                    }
+                };
 
             for vi in vegetation {
                 placements.push(ScatterPlacement::from_vegetation_instance(&vi));
@@ -766,13 +1130,36 @@ pub struct ScatterPlacement {
 
 impl ScatterPlacement {
     pub fn from_vegetation_instance(vi: &VegetationInstance) -> Self {
+        // Per-type world-scale multiplier: Nature Kit models are tiny (~1 unit),
+        // terrain spans hundreds of units. Trees need a much larger multiplier
+        // than grass/flowers to look proportional.
+        let type_multiplier = match vi.vegetation_type.as_str() {
+            // Trees — models are ~1.2–1.7 units tall, need to reach 15–30 units
+            s if s.contains("tree") || s.contains("pine") => 14.0,
+            // Cacti — models ~0.75 units, need to be ~5–8 units
+            s if s.contains("cactus") => 8.0,
+            // Bushes — models ~0.25 units, need to be ~2–3 units
+            s if s.contains("bush") => 7.0,
+            // Rocks — models ~0.26 units, need to be ~2–4 units
+            s if s.contains("rock") || s.contains("stone") => 8.0,
+            // Mushrooms — small ground detail
+            s if s.contains("mushroom") => 5.0,
+            // Grass, flowers, ground cover — models ~0.2 units, OK at ~1–2 units
+            _ => 3.5,
+        };
+        let world_scale = vi.scale * type_multiplier;
+        // Sink base slightly below terrain to counteract bilinear-vs-triangle
+        // height mismatch that causes objects to float above the rendered surface.
+        // The base AO darkening in the shader hides the minor terrain intersection.
+        let mut pos = vi.position;
+        pos.y -= 0.08 * world_scale;
         Self {
-            position: vi.position,
+            position: pos,
             rotation: vi.rotation,
-            scale: vi.scale,
+            scale: world_scale,
             mesh_key: vi.vegetation_type.clone(),
             mesh_path: vi.model_path.clone(),
-            bounding_radius: vi.scale * 1.5, // conservative estimate
+            bounding_radius: world_scale * 2.0,
         }
     }
 }

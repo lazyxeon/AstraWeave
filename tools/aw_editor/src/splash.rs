@@ -15,8 +15,8 @@ use std::time::Instant;
 
 const LOGO_PATH: &str = "assets/Astraweave_logo.jpg";
 const VIDEO_PATH: &str = "assets/8-second_Cinematic_logo_opening.mp4";
-const LOGO_PHASE_SECS: f32 = 0.8;
-const VIDEO_PHASE_SECS: f32 = 4.0;
+const LOGO_PHASE_SECS: f32 = 0.5;
+const VIDEO_PHASE_SECS: f32 = 2.0;
 
 /// A decoded video frame sent from the background thread.
 struct VideoFrame {
@@ -49,28 +49,19 @@ impl SplashScreen {
     pub fn new() -> Self {
         let logo_image = load_logo_image();
 
-        // Start background video decode immediately (buffers frames during logo phase)
-        let (tx, rx) = mpsc::sync_channel::<VideoFrame>(10);
-        let handle = std::thread::Builder::new()
-            .name("splash-video-decode".into())
-            .spawn(move || {
-                if let Err(e) = decode_video_frames(tx) {
-                    tracing::warn!("Splash video decode failed: {e}");
-                }
-            })
-            .ok();
-
+        // Skip video decode entirely for fast startup — logo-only splash.
+        // Video decode thread was spawning openh264 which can be slow on first use.
         SplashScreen {
             logo_image,
             logo_texture: None,
-            video_rx: Some(rx),
+            video_rx: None,
             video_texture: None,
             current_frame_image: None,
-            video_available: true,
+            video_available: false,
             phase: 0,
             start_time: Instant::now(),
             video_start_time: None,
-            _decoder_thread: handle,
+            _decoder_thread: None,
         }
     }
 
@@ -78,10 +69,7 @@ impl SplashScreen {
     /// Click anywhere or press any key to skip.
     pub fn show(&mut self, ctx: &egui::Context) -> bool {
         // Skip on click or key press
-        let skip = ctx.input(|i| {
-            i.pointer.any_pressed()
-                || i.keys_down.iter().next().is_some()
-        });
+        let skip = ctx.input(|i| i.pointer.any_pressed() || i.keys_down.iter().next().is_some());
         if skip {
             self.phase = 2;
             self.cleanup();
@@ -174,11 +162,8 @@ impl SplashScreen {
                                 (alpha * 255.0) as u8,
                             );
                             ui.add(
-                                egui::Image::new(egui::load::SizedTexture::new(
-                                    tex.id(),
-                                    [w, h],
-                                ))
-                                .tint(tint),
+                                egui::Image::new(egui::load::SizedTexture::new(tex.id(), [w, h]))
+                                    .tint(tint),
                             );
                         }
                     } else {
@@ -205,10 +190,8 @@ impl SplashScreen {
                         ui.allocate_exact_size(egui::vec2(bar_w, 3.0), egui::Sense::hover());
                     ui.painter()
                         .rect_filled(rect, 1.5, egui::Color32::from_rgb(30, 30, 44));
-                    let fill = egui::Rect::from_min_size(
-                        rect.min,
-                        egui::vec2(bar_w * progress, 3.0),
-                    );
+                    let fill =
+                        egui::Rect::from_min_size(rect.min, egui::vec2(bar_w * progress, 3.0));
                     ui.painter()
                         .rect_filled(fill, 1.5, egui::Color32::from_rgb(80, 120, 255));
 
@@ -238,8 +221,11 @@ impl SplashScreen {
             match rx.try_recv() {
                 Ok(frame) => {
                     // Got a frame — buffer it for later
-                    self.current_frame_image =
-                        Some(rgb8_to_color_image(&frame.rgb_data, frame.width, frame.height));
+                    self.current_frame_image = Some(rgb8_to_color_image(
+                        &frame.rgb_data,
+                        frame.width,
+                        frame.height,
+                    ));
                 }
                 Err(mpsc::TryRecvError::Disconnected) => {
                     self.video_available = false;
@@ -259,8 +245,7 @@ impl SplashScreen {
         loop {
             match rx.try_recv() {
                 Ok(frame) => {
-                    let img =
-                        rgb8_to_color_image(&frame.rgb_data, frame.width, frame.height);
+                    let img = rgb8_to_color_image(&frame.rgb_data, frame.width, frame.height);
                     self.current_frame_image = Some(img);
 
                     // If this frame is ahead of playback time, stop consuming
@@ -471,5 +456,3 @@ fn avcc_to_annex_b(data: &[u8], nal_length_size: usize) -> Vec<u8> {
 
     out
 }
-
-

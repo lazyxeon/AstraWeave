@@ -3,9 +3,9 @@
 //! Pins exact config defaults, enum match arms, size/rarity/spacing tables,
 //! diagnostic arithmetic, and morph factor calculations.
 
-use astraweave_terrain::*;
 use astraweave_terrain::meshing::ChunkMesh;
 use astraweave_terrain::voxel_data::ChunkCoord;
+use astraweave_terrain::*;
 
 // ============================================================================
 // StructureType: biome → allowed structures mapping
@@ -463,9 +463,9 @@ fn memory_stats_delta_from_peak_at_peak() {
 #[test]
 fn memory_stats_delta_from_peak_below() {
     let mut m = MemoryStats::default();
-    m.update(10, 1024);  // peak = 10240
-    m.update(5, 1024);   // current = 5120
-    // (5120/10240 - 1.0) * 100 = -50.0
+    m.update(10, 1024); // peak = 10240
+    m.update(5, 1024); // current = 5120
+                       // (5120/10240 - 1.0) * 100 = -50.0
     assert!((m.delta_from_peak_percent() - (-50.0)).abs() < 1e-4);
 }
 
@@ -599,7 +599,10 @@ fn diagnostics_new_no_chunk_states() {
 #[test]
 fn diagnostics_unknown_chunk_is_unloaded() {
     let d = StreamingDiagnostics::new(16.6, 100);
-    assert_eq!(d.get_chunk_state(ChunkId::new(99, 99)), ChunkLoadState::Unloaded);
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(99, 99)),
+        ChunkLoadState::Unloaded
+    );
 }
 
 #[test]
@@ -607,8 +610,14 @@ fn diagnostics_update_loaded_chunks() {
     let mut d = StreamingDiagnostics::new(16.6, 100);
     let loaded = vec![ChunkId::new(0, 0), ChunkId::new(1, 0)];
     d.update_chunk_states(&loaded, &[], &[]);
-    assert_eq!(d.get_chunk_state(ChunkId::new(0, 0)), ChunkLoadState::Loaded);
-    assert_eq!(d.get_chunk_state(ChunkId::new(1, 0)), ChunkLoadState::Loaded);
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(0, 0)),
+        ChunkLoadState::Loaded
+    );
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(1, 0)),
+        ChunkLoadState::Loaded
+    );
 }
 
 #[test]
@@ -616,7 +625,10 @@ fn diagnostics_update_loading_chunks() {
     let mut d = StreamingDiagnostics::new(16.6, 100);
     let loading = vec![ChunkId::new(2, 2)];
     d.update_chunk_states(&[], &loading, &[]);
-    assert_eq!(d.get_chunk_state(ChunkId::new(2, 2)), ChunkLoadState::Loading);
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(2, 2)),
+        ChunkLoadState::Loading
+    );
 }
 
 #[test]
@@ -624,7 +636,10 @@ fn diagnostics_update_pending_chunks() {
     let mut d = StreamingDiagnostics::new(16.6, 100);
     let pending = vec![ChunkId::new(5, 5)];
     d.update_chunk_states(&[], &[], &pending);
-    assert_eq!(d.get_chunk_state(ChunkId::new(5, 5)), ChunkLoadState::Pending);
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(5, 5)),
+        ChunkLoadState::Pending
+    );
 }
 
 #[test]
@@ -634,7 +649,10 @@ fn diagnostics_update_clears_old_states() {
     d.update_chunk_states(&loaded, &[], &[]);
     // Now update with empty → old state gone
     d.update_chunk_states(&[], &[], &[]);
-    assert_eq!(d.get_chunk_state(ChunkId::new(0, 0)), ChunkLoadState::Unloaded);
+    assert_eq!(
+        d.get_chunk_state(ChunkId::new(0, 0)),
+        ChunkLoadState::Unloaded
+    );
 }
 
 #[test]

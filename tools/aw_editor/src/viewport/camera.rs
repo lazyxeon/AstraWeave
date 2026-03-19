@@ -83,6 +83,9 @@ pub struct OrbitCamera {
 
     /// Maximum pitch angle (radians, slightly below π/2 to prevent gimbal lock)
     max_pitch: f32,
+
+    /// Target distance for smooth zoom animation
+    zoom_target: f32,
 }
 
 impl Default for OrbitCamera {
@@ -96,10 +99,11 @@ impl Default for OrbitCamera {
             aspect: 16.0 / 9.0,
             near: 0.01, // Very close near plane (10cm) to prevent clipping
             far: 1000.0,
-            min_distance: 0.1, // Allow camera to get very close (10cm from focal point)
-            max_distance: 200.0, // Allow zooming out further
+            min_distance: 0.02, // Allow camera to get very close (2cm from focal point)
+            max_distance: 500.0, // Allow zooming out further
             min_pitch: -std::f32::consts::PI / 2.0 + 0.01, // Prevent gimbal lock
             max_pitch: std::f32::consts::PI / 2.0 - 0.01, // Prevent gimbal lock
+            zoom_target: 25.0,
         }
     }
 }
@@ -119,6 +123,7 @@ impl OrbitCamera {
             distance,
             yaw,
             pitch,
+            zoom_target: distance,
             ..Default::default()
         }
     }
@@ -172,16 +177,35 @@ impl OrbitCamera {
     ///
     /// * `delta` - Scroll wheel delta (positive = zoom in, negative = zoom out)
     ///
-    /// Zoom speed scales logarithmically with distance for smooth feel.
+    /// Uses log-space zoom for perceptually uniform feel at all distances.
     ///
     /// # Performance
     ///
     /// O(1), typically <0.01ms
     pub fn zoom(&mut self, delta: f32) {
-        // Distance-based zoom with responsive 8% per scroll tick
-        // This gives ~3 scroll ticks to meaningfully change the view
-        let zoom_factor = 1.0 + (delta * 0.08); // 0.08 = 8% per tick
-        self.distance = (self.distance / zoom_factor).clamp(self.min_distance, self.max_distance);
+        // delta is raw scroll pixels; Windows standard mice send ±120 per notch,
+        // trackpads/smooth-scroll send smaller values more frequently.
+        // Normalize to notches and apply in log-space for perceptually uniform zoom.
+        let notches = (delta / 120.0).clamp(-3.0, 3.0);
+        let log_target = self.zoom_target.ln();
+        self.zoom_target = (log_target - notches * 0.15)
+            .exp()
+            .clamp(self.min_distance, self.max_distance);
+    }
+
+    /// Smoothly animate distance toward zoom target. Call once per frame.
+    pub fn smooth_update(&mut self) {
+        // Interpolate in log-space for perceptually smooth zoom at all distances.
+        let log_dist = self.distance.ln();
+        let log_target = self.zoom_target.ln();
+        let log_diff = log_target - log_dist;
+        if log_diff.abs() > 0.0005 {
+            // 15% of remaining log-gap per frame (~60fps → ~0.3s to 95% settle)
+            let new_log = log_dist + log_diff * 0.15;
+            self.distance = new_log.exp().clamp(self.min_distance, self.max_distance);
+        } else {
+            self.distance = self.zoom_target;
+        }
     }
 
     /// Translate camera (FPS-style WASD movement)
@@ -202,6 +226,18 @@ impl OrbitCamera {
     pub fn frame_entity(&mut self, entity_pos: Vec3, entity_radius: f32) {
         self.focal_point = entity_pos;
         self.distance = (entity_radius * 2.5).clamp(self.min_distance, self.max_distance);
+        self.zoom_target = self.distance;
+    }
+
+    /// Adjust the camera so generated terrain is visible.
+    ///
+    /// Sets focal_point.y to the average terrain height and pulls the camera
+    /// back far enough to see the full height range.
+    pub fn frame_terrain(&mut self, min_height: f32, max_height: f32, avg_height: f32) {
+        self.focal_point.y = avg_height;
+        let height_range = (max_height - min_height).max(10.0);
+        self.distance = (height_range * 1.8).clamp(self.min_distance, self.max_distance);
+        self.zoom_target = self.distance;
     }
 
     /// Reset camera to default starting position
@@ -218,6 +254,7 @@ impl OrbitCamera {
     pub fn reset_to_origin(&mut self) {
         self.focal_point = Vec3::ZERO;
         self.distance = 25.0;
+        self.zoom_target = 25.0;
         self.yaw = std::f32::consts::PI / 4.0; // 45°
         self.pitch = std::f32::consts::PI / 6.0; // 30°
     }
@@ -306,6 +343,7 @@ impl OrbitCamera {
     /// Set distance (for bookmark restore)
     pub fn set_distance(&mut self, distance: f32) {
         self.distance = distance.max(self.min_distance);
+        self.zoom_target = self.distance;
     }
 
     /// Set yaw angle (for bookmark restore)
@@ -411,6 +449,7 @@ impl OrbitCamera {
             self.distance = defaults.distance;
         }
         self.distance = self.distance.clamp(self.min_distance, self.max_distance);
+        self.zoom_target = self.distance;
 
         // Validate pitch constraints
         if self.min_pitch.is_nan() || self.max_pitch.is_nan() || self.min_pitch >= self.max_pitch {
@@ -519,12 +558,12 @@ impl Frustum {
     pub fn from_view_projection(vp: Mat4) -> Self {
         let m = vp.to_cols_array_2d();
         let planes = [
-            Self::extract_plane(m, 0, true),
-            Self::extract_plane(m, 0, false),
-            Self::extract_plane(m, 1, true),
-            Self::extract_plane(m, 1, false),
-            Self::extract_plane(m, 2, true),
-            Self::extract_plane(m, 2, false),
+            Self::extract_plane(m, 0, true),  // Left:   row3 + row0
+            Self::extract_plane(m, 0, false), // Right:  row3 - row0
+            Self::extract_plane(m, 1, true),  // Bottom: row3 + row1
+            Self::extract_plane(m, 1, false), // Top:    row3 - row1
+            Self::extract_near_plane(m),      // Near:   row2 (wgpu [0,1] depth)
+            Self::extract_plane(m, 2, false), // Far:    row3 - row2
         ];
         Self { planes }
     }
@@ -543,9 +582,29 @@ impl Frustum {
         }
     }
 
+    /// Near plane for wgpu/Vulkan [0,1] depth: z_ndc >= 0 => row2 · P >= 0
+    fn extract_near_plane(m: [[f32; 4]; 4]) -> FrustumPlane {
+        let a = m[0][2];
+        let b = m[1][2];
+        let c = m[2][2];
+        let d = m[3][2];
+        let len = (a * a + b * b + c * c).sqrt();
+        if len > 1e-6 {
+            FrustumPlane::new(Vec3::new(a / len, b / len, c / len), d / len)
+        } else {
+            FrustumPlane::new(Vec3::ZERO, 0.0)
+        }
+    }
+
+    /// Test whether a sphere is inside (or intersecting) the frustum.
+    ///
+    /// Includes a built-in guard band of 5 world-units on every plane to
+    /// prevent objects from popping in/out at frustum edges due to
+    /// bounding-sphere approximation errors.
     pub fn contains_sphere(&self, center: Vec3, radius: f32) -> bool {
+        const GUARD_BAND: f32 = 5.0;
         for plane in &self.planes {
-            if plane.distance_to_point(center) < -radius {
+            if plane.distance_to_point(center) < -(radius + GUARD_BAND) {
                 return false;
             }
         }
@@ -586,16 +645,22 @@ mod tests {
         let mut camera = OrbitCamera::default();
         let initial_dist = camera.distance; // 25.0
 
-        // Zoom in (positive delta = closer)
-        camera.zoom(5.0); // zoom_factor = 1.5, distance = 25/1.5 = 16.67
+        // Zoom in (positive delta = closer, ~120 per notch on standard mouse)
+        camera.zoom(120.0);
+        for _ in 0..60 {
+            camera.smooth_update();
+        }
         assert!(
             camera.distance < initial_dist,
             "Zoom in should decrease distance"
         );
         let after_zoom_in = camera.distance;
 
-        // Zoom out (small negative delta to stay positive)
-        camera.zoom(-3.0); // zoom_factor = 0.7, distance = 16.67/0.7 = 23.8
+        // Zoom out
+        camera.zoom(-120.0);
+        for _ in 0..60 {
+            camera.smooth_update();
+        }
         assert!(
             camera.distance > after_zoom_in,
             "Zoom out should increase distance"
@@ -606,17 +671,25 @@ mod tests {
     fn test_orbit_camera_zoom_clamp() {
         let mut camera = OrbitCamera::default();
 
-        // Zoom in fully (use iterative approach to avoid zoom_factor sign issues)
-        for _ in 0..100 {
-            camera.zoom(5.0); // Zoom in
+        // Zoom in fully (raw_scroll_delta is ~120 per notch on Windows)
+        for _ in 0..200 {
+            camera.zoom(120.0); // Zoom in
+            camera.smooth_update();
         }
-        assert_eq!(camera.distance, camera.min_distance);
+        for _ in 0..120 {
+            camera.smooth_update();
+        } // let animation settle
+        assert_relative_eq!(camera.distance, camera.min_distance, epsilon = 0.01);
 
         // Zoom out fully
-        for _ in 0..100 {
-            camera.zoom(-5.0); // Zoom out
+        for _ in 0..200 {
+            camera.zoom(-120.0); // Zoom out
+            camera.smooth_update();
         }
-        assert_eq!(camera.distance, camera.max_distance);
+        for _ in 0..120 {
+            camera.smooth_update();
+        }
+        assert_relative_eq!(camera.distance, camera.max_distance, epsilon = 0.01);
     }
 
     #[test]

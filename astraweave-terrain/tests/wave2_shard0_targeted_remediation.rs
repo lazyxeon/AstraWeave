@@ -115,9 +115,7 @@ fn desert_wind_strength_is_default() {
 fn desert_wind_saltation_distance_is_default() {
     let p = ErosionPreset::desert();
     let w = p.wind.as_ref().unwrap();
-    assert!(
-        (w.saltation_distance - WindErosionConfig::default().saltation_distance).abs() < 1e-9
-    );
+    assert!((w.saltation_distance - WindErosionConfig::default().saltation_distance).abs() < 1e-9);
 }
 
 #[test]
@@ -132,9 +130,7 @@ fn desert_wind_iterations_is_default() {
 fn mountain_hydraulic_evaporation_rate_is_default() {
     let p = ErosionPreset::mountain();
     let h = p.hydraulic.as_ref().unwrap();
-    assert!(
-        (h.evaporation_rate - HydraulicErosionConfig::default().evaporation_rate).abs() < 1e-9
-    );
+    assert!((h.evaporation_rate - HydraulicErosionConfig::default().evaporation_rate).abs() < 1e-9);
 }
 
 #[test]
@@ -176,8 +172,7 @@ fn mountain_hydraulic_sediment_capacity_factor_is_default() {
     let p = ErosionPreset::mountain();
     let h = p.hydraulic.as_ref().unwrap();
     assert!(
-        (h.sediment_capacity_factor
-            - HydraulicErosionConfig::default().sediment_capacity_factor)
+        (h.sediment_capacity_factor - HydraulicErosionConfig::default().sediment_capacity_factor)
             .abs()
             < 1e-9
     );
@@ -202,8 +197,7 @@ fn mountain_thermal_redistribution_rate_is_default() {
     let p = ErosionPreset::mountain();
     let t = p.thermal.as_ref().unwrap();
     assert!(
-        (t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs()
-            < 1e-9
+        (t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs() < 1e-9
     );
 }
 
@@ -258,8 +252,7 @@ fn coastal_thermal_redistribution_is_default() {
     let p = ErosionPreset::coastal();
     let t = p.thermal.as_ref().unwrap();
     assert!(
-        (t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs()
-            < 1e-9
+        (t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs() < 1e-9
     );
 }
 
@@ -293,18 +286,14 @@ fn coastal_wind_direction_is_default() {
 fn coastal_wind_suspension_height_is_default() {
     let p = ErosionPreset::coastal();
     let w = p.wind.as_ref().unwrap();
-    assert!(
-        (w.suspension_height - WindErosionConfig::default().suspension_height).abs() < 1e-9
-    );
+    assert!((w.suspension_height - WindErosionConfig::default().suspension_height).abs() < 1e-9);
 }
 
 #[test]
 fn coastal_wind_saltation_distance_is_default() {
     let p = ErosionPreset::coastal();
     let w = p.wind.as_ref().unwrap();
-    assert!(
-        (w.saltation_distance - WindErosionConfig::default().saltation_distance).abs() < 1e-9
-    );
+    assert!((w.saltation_distance - WindErosionConfig::default().saltation_distance).abs() < 1e-9);
 }
 
 #[test]
@@ -897,7 +886,10 @@ fn hydraulic_erosion_map_has_nonzero_entries() {
 
     let map = stats.erosion_map.as_ref().expect("Should have erosion map");
     let nonzero = map.iter().filter(|&&v| v.abs() > 1e-10).count();
-    assert!(nonzero > 0, "Erosion map should have nonzero entries on sloped terrain");
+    assert!(
+        nonzero > 0,
+        "Erosion map should have nonzero entries on sloped terrain"
+    );
 }
 
 #[test]
@@ -928,7 +920,11 @@ fn hydraulic_zero_droplets_no_change() {
     };
     let stats = sim.apply_hydraulic_erosion(&mut hm, &config);
 
-    assert_eq!(hm.data(), &before[..], "Zero droplets should not modify terrain");
+    assert_eq!(
+        hm.data(),
+        &before[..],
+        "Zero droplets should not modify terrain"
+    );
     assert!((stats.total_eroded - 0.0).abs() < 1e-10);
     assert!((stats.total_deposited - 0.0).abs() < 1e-10);
 }
@@ -947,7 +943,11 @@ fn apply_preset_coastal_uses_all_three_passes() {
 
     // Coastal runs thermal + hydraulic + wind → terrain should change significantly
     assert!(stats.total_eroded > 0.0, "Coastal preset should erode");
-    assert_ne!(hm.data(), &before[..], "Coastal preset should modify terrain");
+    assert_ne!(
+        hm.data(),
+        &before[..],
+        "Coastal preset should modify terrain"
+    );
 }
 
 #[test]
@@ -1007,7 +1007,10 @@ fn thermal_erosion_steep_terrain_reduces_slope() {
         peak_after < peak_before,
         "Peak should decrease: before={peak_before}, after={peak_after}"
     );
-    assert!(stats.total_eroded > 0.0, "Thermal should erode steep terrain");
+    assert!(
+        stats.total_eroded > 0.0,
+        "Thermal should erode steep terrain"
+    );
 }
 
 #[test]
@@ -1117,7 +1120,11 @@ fn thermal_iterations_zero_no_change() {
         ..Default::default()
     };
     let _stats = sim.apply_thermal_erosion(&mut hm, &config);
-    assert_eq!(hm.data(), &before[..], "Zero iterations should not change terrain");
+    assert_eq!(
+        hm.data(),
+        &before[..],
+        "Zero iterations should not change terrain"
+    );
 }
 
 // ============================================================================
@@ -1225,7 +1232,11 @@ fn wind_erosion_zero_iterations_no_change() {
         ..Default::default()
     };
     let _stats = sim.apply_wind_erosion(&mut hm, &config);
-    assert_eq!(hm.data(), &before[..], "Zero iterations should not change terrain");
+    assert_eq!(
+        hm.data(),
+        &before[..],
+        "Zero iterations should not change terrain"
+    );
 }
 
 // ============================================================================
@@ -1372,9 +1383,7 @@ fn world_generator_generate_chunk_with_scatter_returns_both() {
     let config = fast_scatter_config();
     let mut gen = WorldGenerator::new(config);
 
-    let (chunk, scatter) = gen
-        .generate_chunk_with_scatter(ChunkId::new(0, 0))
-        .unwrap();
+    let (chunk, scatter) = gen.generate_chunk_with_scatter(ChunkId::new(0, 0)).unwrap();
 
     // Should return a valid chunk
     assert!(!chunk.heightmap().data().is_empty());

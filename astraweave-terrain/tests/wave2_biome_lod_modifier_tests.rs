@@ -4,8 +4,8 @@
 //! LodLevel match arms, LodConfig hysteresis math, TerrainModifierConfig defaults,
 //! VoxelOp factory methods, and NavMeshRegion overlap/merge arithmetic.
 
-use astraweave_terrain::*;
 use astraweave_terrain::biome::{BiomeConditions, BiomeSky, BiomeVegetation};
+use astraweave_terrain::*;
 use glam::{IVec3, Vec3};
 
 // ============================================================================
@@ -157,7 +157,7 @@ fn biome_config_grassland_cloud_coverage() {
 #[test]
 fn biome_config_grassland_vegetation_density() {
     let c = BiomeConfig::grassland();
-    assert!((c.vegetation.density - 0.8).abs() < 1e-6);
+    assert!((c.vegetation.density - 0.5).abs() < 1e-6);
 }
 
 // ============================================================================

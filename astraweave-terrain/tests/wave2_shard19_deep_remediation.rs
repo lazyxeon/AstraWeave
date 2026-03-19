@@ -100,7 +100,10 @@ fn p99_distinguishable_from_max_and_median() {
 fn structure_types_are_diverse() {
     let chunk = make_chunk(0, 0);
     let structures = gather_structures(&chunk, 256.0, BiomeType::Forest, 5.0, 50);
-    assert!(!structures.is_empty(), "Need structures for distribution test");
+    assert!(
+        !structures.is_empty(),
+        "Need structures for distribution test"
+    );
 
     let types: HashSet<StructureType> = structures.iter().map(|s| s.structure_type).collect();
     assert!(
@@ -437,7 +440,8 @@ fn all_structures_have_model_paths() {
         assert!(
             !s.model_path.is_empty(),
             "Structure {:?} at {:?} has empty model path",
-            s.structure_type, s.position
+            s.structure_type,
+            s.position
         );
     }
 }
@@ -478,27 +482,17 @@ fn all_structures_valid_rotation() {
 fn different_biomes_produce_different_types() {
     let chunk = make_chunk(0, 0);
 
-    let forest_types: HashSet<StructureType> = gather_structures(
-        &chunk,
-        256.0,
-        BiomeType::Forest,
-        5.0,
-        30,
-    )
-    .into_iter()
-    .map(|s| s.structure_type)
-    .collect();
+    let forest_types: HashSet<StructureType> =
+        gather_structures(&chunk, 256.0, BiomeType::Forest, 5.0, 30)
+            .into_iter()
+            .map(|s| s.structure_type)
+            .collect();
 
-    let desert_types: HashSet<StructureType> = gather_structures(
-        &chunk,
-        256.0,
-        BiomeType::Desert,
-        5.0,
-        30,
-    )
-    .into_iter()
-    .map(|s| s.structure_type)
-    .collect();
+    let desert_types: HashSet<StructureType> =
+        gather_structures(&chunk, 256.0, BiomeType::Desert, 5.0, 30)
+            .into_iter()
+            .map(|s| s.structure_type)
+            .collect();
 
     // Forest and Desert should NOT have identical type sets
     if !forest_types.is_empty() && !desert_types.is_empty() {

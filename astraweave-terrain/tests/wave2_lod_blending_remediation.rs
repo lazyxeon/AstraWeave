@@ -264,7 +264,10 @@ fn morph_vertices_factor_one_returns_low_lod_positions() {
     ]);
     let morphed = blender.morph_vertices(&high, &low, 1.0);
     assert_eq!(morphed.morph_factor, 1.0);
-    assert_eq!(morphed.mesh.vertices[0].position, Vec3::new(10.0, 20.0, 30.0));
+    assert_eq!(
+        morphed.mesh.vertices[0].position,
+        Vec3::new(10.0, 20.0, 30.0)
+    );
 }
 
 // ============================================================================
@@ -321,11 +324,7 @@ fn morph_vertices_quarter_interpolation() {
     let morphed = blender.morph_vertices(&high, &low, 0.25);
     // vertex 0: lerp(0, 4, 0.25) = 1.0
     let p = morphed.mesh.vertices[0].position;
-    assert!(
-        (p.x - 1.0).abs() < 0.15,
-        "Expected x~1.0, got {}",
-        p.x
-    );
+    assert!((p.x - 1.0).abs() < 0.15, "Expected x~1.0, got {}", p.x);
 }
 
 // ============================================================================
@@ -341,11 +340,19 @@ fn morph_vertices_normals_are_normalized() {
     };
     let blender = LodBlender::new(cfg);
     let high = mesh_with_normals(
-        vec![Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0)],
+        vec![
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        ],
         vec![Vec3::Y, Vec3::Y, Vec3::Y],
     );
     let low = mesh_with_normals(
-        vec![Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0)],
+        vec![
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        ],
         vec![Vec3::X, Vec3::X, Vec3::X],
     );
     let morphed = blender.morph_vertices(&high, &low, 0.5);
@@ -401,7 +408,14 @@ fn morphed_mesh_vertex_count_matches() {
 
 #[test]
 fn morphed_mesh_triangle_count_div3() {
-    let mut mesh = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y, Vec3::Z, Vec3::ONE, Vec3::NEG_ONE]);
+    let mut mesh = mesh_with_verts(vec![
+        Vec3::ZERO,
+        Vec3::X,
+        Vec3::Y,
+        Vec3::Z,
+        Vec3::ONE,
+        Vec3::NEG_ONE,
+    ]);
     mesh.indices = vec![0, 1, 2, 3, 4, 5]; // 2 triangles
     let m = MorphedMesh::new(mesh);
     assert_eq!(m.triangle_count(), 2);
@@ -440,7 +454,11 @@ fn create_transition_mesh_at_start_returns_zero_factor() {
     };
     let blender = LodBlender::new(cfg);
     let high = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y]);
-    let low = mesh_with_verts(vec![Vec3::ONE, Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0)]);
+    let low = mesh_with_verts(vec![
+        Vec3::ONE,
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.0, 2.0, 0.0),
+    ]);
     let result = blender.create_transition_mesh(&high, &low, 50.0);
     assert_eq!(result.morph_factor, 0.0);
 }
@@ -454,7 +472,11 @@ fn create_transition_mesh_at_end_returns_one_factor() {
     };
     let blender = LodBlender::new(cfg);
     let high = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y]);
-    let low = mesh_with_verts(vec![Vec3::ONE, Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0)]);
+    let low = mesh_with_verts(vec![
+        Vec3::ONE,
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.0, 2.0, 0.0),
+    ]);
     let result = blender.create_transition_mesh(&high, &low, 250.0);
     assert_eq!(result.morph_factor, 1.0);
 }
@@ -468,7 +490,11 @@ fn create_transition_mesh_mid_distance_produces_intermediate() {
     };
     let blender = LodBlender::new(cfg);
     let high = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y]);
-    let low = mesh_with_verts(vec![Vec3::ONE, Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0)]);
+    let low = mesh_with_verts(vec![
+        Vec3::ONE,
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.0, 2.0, 0.0),
+    ]);
     let result = blender.create_transition_mesh(&high, &low, 150.0);
     assert!(result.morph_factor > 0.0 && result.morph_factor < 1.0);
     assert!((result.morph_factor - 0.5).abs() < 1e-6);
@@ -497,7 +523,11 @@ fn morphing_lod_manager_lod_count() {
 #[test]
 fn morphing_lod_manager_close_returns_low_morph_factor() {
     let lod0 = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y]);
-    let lod1 = mesh_with_verts(vec![Vec3::ONE, Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0)]);
+    let lod1 = mesh_with_verts(vec![
+        Vec3::ONE,
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.0, 2.0, 0.0),
+    ]);
     let mgr = MorphingLodManager::new(vec![lod0, lod1], vec![100.0, 200.0]);
     let mesh = mgr.get_mesh_for_distance(10.0);
     assert_eq!(mesh.morph_factor, 0.0);
@@ -506,7 +536,11 @@ fn morphing_lod_manager_close_returns_low_morph_factor() {
 #[test]
 fn morphing_lod_manager_far_returns_last_lod() {
     let lod0 = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y]);
-    let lod1 = mesh_with_verts(vec![Vec3::ONE, Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0)]);
+    let lod1 = mesh_with_verts(vec![
+        Vec3::ONE,
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.0, 2.0, 0.0),
+    ]);
     let mgr = MorphingLodManager::new(vec![lod0, lod1], vec![100.0, 200.0]);
     let mesh = mgr.get_mesh_for_distance(500.0);
     // Beyond all thresholds — should use last LOD
@@ -516,8 +550,16 @@ fn morphing_lod_manager_far_returns_last_lod() {
 #[test]
 fn morphing_lod_manager_three_levels() {
     let lod0 = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y]);
-    let lod1 = mesh_with_verts(vec![Vec3::ONE, Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0)]);
-    let lod2 = mesh_with_verts(vec![Vec3::new(5.0, 5.0, 5.0), Vec3::new(6.0, 0.0, 0.0), Vec3::new(0.0, 6.0, 0.0)]);
+    let lod1 = mesh_with_verts(vec![
+        Vec3::ONE,
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.0, 2.0, 0.0),
+    ]);
+    let lod2 = mesh_with_verts(vec![
+        Vec3::new(5.0, 5.0, 5.0),
+        Vec3::new(6.0, 0.0, 0.0),
+        Vec3::new(0.0, 6.0, 0.0),
+    ]);
     let mgr = MorphingLodManager::new(vec![lod0, lod1, lod2], vec![100.0, 200.0, 400.0]);
     assert_eq!(mgr.lod_count(), 3);
 
@@ -561,18 +603,42 @@ fn morph_vertices_preserves_material() {
     let high = ChunkMesh {
         coord: ChunkCoord::new(0, 0, 0),
         vertices: vec![
-            MeshVertex { position: Vec3::ZERO, normal: Vec3::Y, material: 42 },
-            MeshVertex { position: Vec3::X, normal: Vec3::Y, material: 42 },
-            MeshVertex { position: Vec3::Y, normal: Vec3::Y, material: 42 },
+            MeshVertex {
+                position: Vec3::ZERO,
+                normal: Vec3::Y,
+                material: 42,
+            },
+            MeshVertex {
+                position: Vec3::X,
+                normal: Vec3::Y,
+                material: 42,
+            },
+            MeshVertex {
+                position: Vec3::Y,
+                normal: Vec3::Y,
+                material: 42,
+            },
         ],
         indices: vec![0, 1, 2],
     };
     let low = ChunkMesh {
         coord: ChunkCoord::new(0, 0, 0),
         vertices: vec![
-            MeshVertex { position: Vec3::ZERO, normal: Vec3::Y, material: 99 },
-            MeshVertex { position: Vec3::X, normal: Vec3::Y, material: 99 },
-            MeshVertex { position: Vec3::Y, normal: Vec3::Y, material: 99 },
+            MeshVertex {
+                position: Vec3::ZERO,
+                normal: Vec3::Y,
+                material: 99,
+            },
+            MeshVertex {
+                position: Vec3::X,
+                normal: Vec3::Y,
+                material: 99,
+            },
+            MeshVertex {
+                position: Vec3::Y,
+                normal: Vec3::Y,
+                material: 99,
+            },
         ],
         indices: vec![0, 1, 2],
     };
@@ -614,7 +680,11 @@ fn morph_vertices_output_preserves_high_lod_vertex_count() {
     };
     let blender = LodBlender::new(cfg);
     let high = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y, Vec3::Z]);
-    let low = mesh_with_verts(vec![Vec3::ONE, Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0)]);
+    let low = mesh_with_verts(vec![
+        Vec3::ONE,
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.0, 2.0, 0.0),
+    ]);
     let morphed = blender.morph_vertices(&high, &low, 0.5);
     // Output should have same vertex count as high LOD (interpolated from high mesh)
     assert_eq!(morphed.vertex_count(), 4);
@@ -640,7 +710,12 @@ fn morph_vertices_empty_high_lod_returns_empty() {
 #[test]
 fn for_lod_transition_start_less_than_end() {
     let c = MorphConfig::for_lod_transition(0.0, 500.0);
-    assert!(c.morph_start < c.morph_end, "start {} should be < end {}", c.morph_start, c.morph_end);
+    assert!(
+        c.morph_start < c.morph_end,
+        "start {} should be < end {}",
+        c.morph_start,
+        c.morph_end
+    );
 }
 
 // ============================================================================
@@ -657,7 +732,13 @@ fn morph_factor_monotonically_increasing() {
     let mut prev = 0.0f32;
     for d in (0..200).step_by(5) {
         let f = b.compute_morph_factor(d as f32);
-        assert!(f >= prev, "morph_factor should be monotonically increasing: {} >= {} at d={}", f, prev, d);
+        assert!(
+            f >= prev,
+            "morph_factor should be monotonically increasing: {} >= {} at d={}",
+            f,
+            prev,
+            d
+        );
         prev = f;
     }
 }
@@ -675,7 +756,12 @@ fn morph_factor_always_in_unit_range() {
     });
     for d in 0..100 {
         let f = b.compute_morph_factor(d as f32);
-        assert!(f >= 0.0 && f <= 1.0, "morph_factor {} out of [0,1] at d={}", f, d);
+        assert!(
+            f >= 0.0 && f <= 1.0,
+            "morph_factor {} out of [0,1] at d={}",
+            f,
+            d
+        );
     }
 }
 
@@ -687,7 +773,11 @@ fn morph_factor_always_in_unit_range() {
 fn morph_vertices_factor_zero_morph_factor_field() {
     let b = LodBlender::default();
     let high = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y]);
-    let low = mesh_with_verts(vec![Vec3::ONE, Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0)]);
+    let low = mesh_with_verts(vec![
+        Vec3::ONE,
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.0, 2.0, 0.0),
+    ]);
     let m = b.morph_vertices(&high, &low, 0.0);
     assert_eq!(m.morph_factor, 0.0);
 }
@@ -696,7 +786,11 @@ fn morph_vertices_factor_zero_morph_factor_field() {
 fn morph_vertices_factor_one_morph_factor_field() {
     let b = LodBlender::default();
     let high = mesh_with_verts(vec![Vec3::ZERO, Vec3::X, Vec3::Y]);
-    let low = mesh_with_verts(vec![Vec3::ONE, Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0)]);
+    let low = mesh_with_verts(vec![
+        Vec3::ONE,
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.0, 2.0, 0.0),
+    ]);
     let m = b.morph_vertices(&high, &low, 1.0);
     assert_eq!(m.morph_factor, 1.0);
 }

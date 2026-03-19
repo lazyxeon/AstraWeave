@@ -4,8 +4,8 @@
 //! StreamingDiagnostics report generation — targeting operator mutations.
 
 use astraweave_terrain::{
-    ChunkId, ChunkLoadState, DiagnosticReport, FrameStats, HitchDetector, LodStats,
-    MemoryStats, StreamingDiagnostics, StreamingStats,
+    ChunkId, ChunkLoadState, DiagnosticReport, FrameStats, HitchDetector, LodStats, MemoryStats,
+    StreamingDiagnostics, StreamingStats,
 };
 use glam::Vec3;
 
@@ -77,9 +77,9 @@ fn hitch_detector_record_returns_true_for_hitch() {
 #[test]
 fn hitch_detector_hitch_count_increments() {
     let mut d = HitchDetector::new(100, 10.0);
-    d.record_frame(5.0);  // not hitch
+    d.record_frame(5.0); // not hitch
     d.record_frame(15.0); // hitch
-    d.record_frame(5.0);  // not hitch
+    d.record_frame(5.0); // not hitch
     d.record_frame(20.0); // hitch
     assert_eq!(d.hitch_count(), 2);
 }
@@ -184,7 +184,7 @@ fn hitch_detector_average_after_eviction() {
     assert_eq!(d.average_frame_time(), 20.0);
 
     d.record_frame(40.0); // evicts 10.0
-    // sum = 20+30+40 = 90, avg = 90/3 = 30.0
+                          // sum = 20+30+40 = 90, avg = 90/3 = 30.0
     assert_eq!(d.average_frame_time(), 30.0);
 }
 
@@ -221,7 +221,7 @@ fn memory_stats_update_sets_peak() {
 fn memory_stats_peak_tracks_maximum() {
     let mut s = MemoryStats::default();
     s.update(100, 1000); // peak = 100000
-    s.update(50, 1000);  // peak stays 100000
+    s.update(50, 1000); // peak stays 100000
     assert_eq!(s.peak_bytes, 100_000);
     assert_eq!(s.total_bytes, 50_000);
 
@@ -265,8 +265,8 @@ fn memory_stats_delta_from_peak_at_peak() {
 fn memory_stats_delta_from_peak_below() {
     let mut s = MemoryStats::default();
     s.update(100, 1000); // peak=100000
-    s.update(50, 1000);  // total=50000
-    // (50000/100000 - 1) * 100 = -50.0
+    s.update(50, 1000); // total=50000
+                        // (50000/100000 - 1) * 100 = -50.0
     assert_eq!(s.delta_from_peak_percent(), -50.0);
 }
 
@@ -295,61 +295,65 @@ fn diagnostics_new_initial_state() {
 #[test]
 fn diagnostics_chunk_states_loaded() {
     let mut diag = StreamingDiagnostics::new(16.67, 100);
-    diag.update_chunk_states(
-        &[ChunkId::new(0, 0), ChunkId::new(1, 0)],
-        &[],
-        &[],
+    diag.update_chunk_states(&[ChunkId::new(0, 0), ChunkId::new(1, 0)], &[], &[]);
+    assert_eq!(
+        diag.get_chunk_state(ChunkId::new(0, 0)),
+        ChunkLoadState::Loaded
     );
-    assert_eq!(diag.get_chunk_state(ChunkId::new(0, 0)), ChunkLoadState::Loaded);
-    assert_eq!(diag.get_chunk_state(ChunkId::new(1, 0)), ChunkLoadState::Loaded);
+    assert_eq!(
+        diag.get_chunk_state(ChunkId::new(1, 0)),
+        ChunkLoadState::Loaded
+    );
 }
 
 #[test]
 fn diagnostics_chunk_states_loading() {
     let mut diag = StreamingDiagnostics::new(16.67, 100);
-    diag.update_chunk_states(
-        &[],
-        &[ChunkId::new(5, 5)],
-        &[],
+    diag.update_chunk_states(&[], &[ChunkId::new(5, 5)], &[]);
+    assert_eq!(
+        diag.get_chunk_state(ChunkId::new(5, 5)),
+        ChunkLoadState::Loading
     );
-    assert_eq!(diag.get_chunk_state(ChunkId::new(5, 5)), ChunkLoadState::Loading);
 }
 
 #[test]
 fn diagnostics_chunk_states_pending() {
     let mut diag = StreamingDiagnostics::new(16.67, 100);
-    diag.update_chunk_states(
-        &[],
-        &[],
-        &[ChunkId::new(10, 10)],
+    diag.update_chunk_states(&[], &[], &[ChunkId::new(10, 10)]);
+    assert_eq!(
+        diag.get_chunk_state(ChunkId::new(10, 10)),
+        ChunkLoadState::Pending
     );
-    assert_eq!(diag.get_chunk_state(ChunkId::new(10, 10)), ChunkLoadState::Pending);
 }
 
 #[test]
 fn diagnostics_unknown_chunk_is_unloaded() {
     let diag = StreamingDiagnostics::new(16.67, 100);
-    assert_eq!(diag.get_chunk_state(ChunkId::new(99, 99)), ChunkLoadState::Unloaded);
+    assert_eq!(
+        diag.get_chunk_state(ChunkId::new(99, 99)),
+        ChunkLoadState::Unloaded
+    );
 }
 
 #[test]
 fn diagnostics_update_clears_old_states() {
     let mut diag = StreamingDiagnostics::new(16.67, 100);
-    diag.update_chunk_states(
-        &[ChunkId::new(0, 0)],
-        &[],
-        &[],
+    diag.update_chunk_states(&[ChunkId::new(0, 0)], &[], &[]);
+    assert_eq!(
+        diag.get_chunk_state(ChunkId::new(0, 0)),
+        ChunkLoadState::Loaded
     );
-    assert_eq!(diag.get_chunk_state(ChunkId::new(0, 0)), ChunkLoadState::Loaded);
 
     // Update with different chunks — old one should be gone
-    diag.update_chunk_states(
-        &[ChunkId::new(1, 1)],
-        &[],
-        &[],
+    diag.update_chunk_states(&[ChunkId::new(1, 1)], &[], &[]);
+    assert_eq!(
+        diag.get_chunk_state(ChunkId::new(0, 0)),
+        ChunkLoadState::Unloaded
     );
-    assert_eq!(diag.get_chunk_state(ChunkId::new(0, 0)), ChunkLoadState::Unloaded);
-    assert_eq!(diag.get_chunk_state(ChunkId::new(1, 1)), ChunkLoadState::Loaded);
+    assert_eq!(
+        diag.get_chunk_state(ChunkId::new(1, 1)),
+        ChunkLoadState::Loaded
+    );
 }
 
 #[test]

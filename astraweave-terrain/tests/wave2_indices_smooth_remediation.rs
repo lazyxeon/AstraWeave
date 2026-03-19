@@ -30,7 +30,11 @@ fn from_values(resolution: u32, data: Vec<f32>) -> Heightmap {
 fn generate_indices_2x2_grid() {
     let hm = make_heightmap(2);
     let indices = hm.generate_indices();
-    assert_eq!(indices.len(), 6, "2x2 grid → 1 cell → 2 triangles → 6 indices");
+    assert_eq!(
+        indices.len(),
+        6,
+        "2x2 grid → 1 cell → 2 triangles → 6 indices"
+    );
     // base = 0*2+0 = 0
     assert_eq!(&indices[..], &[0, 1, 2, 1, 3, 2]);
 }
@@ -66,7 +70,10 @@ fn generate_indices_valid_range() {
         let indices = hm.generate_indices();
         let max_vertex = n * n;
         for (i, &idx) in indices.iter().enumerate() {
-            assert!(idx < max_vertex, "res={n}: index[{i}]={idx} >= max={max_vertex}");
+            assert!(
+                idx < max_vertex,
+                "res={n}: index[{i}]={idx} >= max={max_vertex}"
+            );
         }
     }
 }
@@ -81,13 +88,13 @@ fn generate_indices_3x3_specific_values() {
     let indices = hm.generate_indices();
 
     // Cell (x=0,z=0): base = 0*3+0 = 0
-    assert_eq!(indices[0], 0);  // base
-    assert_eq!(indices[1], 1);  // base+1
-    assert_eq!(indices[2], 3);  // base+resolution
+    assert_eq!(indices[0], 0); // base
+    assert_eq!(indices[1], 1); // base+1
+    assert_eq!(indices[2], 3); // base+resolution
 
-    assert_eq!(indices[3], 1);  // base+1
-    assert_eq!(indices[4], 4);  // base+resolution+1
-    assert_eq!(indices[5], 3);  // base+resolution
+    assert_eq!(indices[3], 1); // base+1
+    assert_eq!(indices[4], 4); // base+resolution+1
+    assert_eq!(indices[5], 3); // base+resolution
 
     // Cell (x=1,z=0): base = 0*3+1 = 1
     assert_eq!(indices[6], 1);
@@ -110,7 +117,11 @@ fn generate_indices_row_offset_uses_multiplication() {
     // Cell at z=2, x=0: base = 2*4+0 = 8
     // Cell row: z=2 is the 3rd cell row. Each row has (4-1)=3 cells, each cell = 6 indices
     let cell_offset = 2 * 3 * 6; // z=2, x=0
-    assert_eq!(indices[cell_offset], 8, "base for z=2,x=0 should be 8 (not {})", indices[cell_offset]);
+    assert_eq!(
+        indices[cell_offset], 8,
+        "base for z=2,x=0 should be 8 (not {})",
+        indices[cell_offset]
+    );
     assert_eq!(indices[cell_offset + 1], 9);
     assert_eq!(indices[cell_offset + 2], 12); // base + resolution = 8+4
 }
@@ -120,7 +131,11 @@ fn generate_indices_divisible_by_3() {
     for n in 2u32..=10 {
         let hm = make_heightmap(n);
         let indices = hm.generate_indices();
-        assert_eq!(indices.len() % 3, 0, "indices must be multiple of 3 for res={n}");
+        assert_eq!(
+            indices.len() % 3,
+            0,
+            "indices must be multiple of 3 for res={n}"
+        );
     }
 }
 
@@ -166,7 +181,8 @@ fn smooth_spike_center() {
     // new = (0+0+0+0+100*4)/8 = 50.0
     assert!(
         (hm.data()[5] - 50.0).abs() < 1e-6,
-        "spike center: expected 50.0, got {}", hm.data()[5]
+        "spike center: expected 50.0, got {}",
+        hm.data()[5]
     );
 }
 
@@ -177,7 +193,8 @@ fn smooth_spike_right_neighbor() {
     // (2,1)=idx6: left=100, others=0, center=0 → (100+0+0+0+0)/8 = 12.5
     assert!(
         (hm.data()[6] - 12.5).abs() < 1e-6,
-        "right: expected 12.5, got {}", hm.data()[6]
+        "right: expected 12.5, got {}",
+        hm.data()[6]
     );
 }
 
@@ -188,7 +205,8 @@ fn smooth_spike_down_neighbor() {
     // (1,2)=idx9: up=100(spike), others=0 → 100/8 = 12.5
     assert!(
         (hm.data()[9] - 12.5).abs() < 1e-6,
-        "down: expected 12.5, got {}", hm.data()[9]
+        "down: expected 12.5, got {}",
+        hm.data()[9]
     );
 }
 
@@ -196,7 +214,11 @@ fn smooth_spike_down_neighbor() {
 fn smooth_spike_diagonal_unaffected() {
     let mut hm = spike_4x4();
     hm.smooth(1);
-    assert!(hm.data()[10].abs() < 1e-6, "diagonal: expected 0, got {}", hm.data()[10]);
+    assert!(
+        hm.data()[10].abs() < 1e-6,
+        "diagonal: expected 0, got {}",
+        hm.data()[10]
+    );
 }
 
 #[test]
@@ -225,7 +247,10 @@ fn smooth_multiple_iterations_converge() {
     let values: Vec<f32> = interior.iter().map(|&i| hm.data()[i]).collect();
     let avg = values.iter().sum::<f32>() / values.len() as f32;
     for (&i, &v) in interior.iter().zip(values.iter()) {
-        assert!((v - avg).abs() < 5.0, "cell {i}={v} should converge near avg={avg}");
+        assert!(
+            (v - avg).abs() < 5.0,
+            "cell {i}={v} should converge near avg={avg}"
+        );
     }
 }
 
@@ -234,7 +259,11 @@ fn smooth_updates_min_max() {
     let mut hm = spike_4x4();
     assert_eq!(hm.max_height(), 100.0);
     hm.smooth(1);
-    assert!(hm.max_height() < 100.0, "max should decrease: {}", hm.max_height());
+    assert!(
+        hm.max_height() < 100.0,
+        "max should decrease: {}",
+        hm.max_height()
+    );
     assert!(hm.min_height() <= hm.max_height());
 }
 
@@ -256,16 +285,17 @@ fn smooth_kernel_golden_asymmetric() {
     // new[5] = (20+40+10+50+30*4)/8 = (120+120)/8 = 30.0
     assert!(
         (hm.data()[5] - 30.0).abs() < 1e-6,
-        "exact kernel: expected 30.0, got {}", hm.data()[5]
+        "exact kernel: expected 30.0, got {}",
+        hm.data()[5]
     );
 }
 
 #[test]
 fn smooth_kernel_golden_all_different() {
     let mut data = vec![0.0f32; 16];
-    data[5] = 1.0;  // left of (2,1)=idx6
-    data[7] = 3.0;  // right
-    data[2] = 5.0;  // up
+    data[5] = 1.0; // left of (2,1)=idx6
+    data[7] = 3.0; // right
+    data[2] = 5.0; // up
     data[10] = 7.0; // down
     data[6] = 11.0; // center
     let mut hm = from_values(4, data);
@@ -273,7 +303,8 @@ fn smooth_kernel_golden_all_different() {
     // new[6] = (1+3+5+7+11*4)/8 = 60/8 = 7.5
     assert!(
         (hm.data()[6] - 7.5).abs() < 1e-6,
-        "expected 7.5, got {}", hm.data()[6]
+        "expected 7.5, got {}",
+        hm.data()[6]
     );
 }
 
@@ -286,7 +317,8 @@ fn smooth_left_neighbor_contribution() {
     // new[5] = (80+0+0+0+0*4)/8 = 10.0
     assert!(
         (hm.data()[5] - 10.0).abs() < 1e-6,
-        "left: expected 10.0, got {}", hm.data()[5]
+        "left: expected 10.0, got {}",
+        hm.data()[5]
     );
 }
 
@@ -298,7 +330,8 @@ fn smooth_right_neighbor_contribution() {
     hm.smooth(1);
     assert!(
         (hm.data()[5] - 10.0).abs() < 1e-6,
-        "right: expected 10.0, got {}", hm.data()[5]
+        "right: expected 10.0, got {}",
+        hm.data()[5]
     );
 }
 
@@ -310,7 +343,8 @@ fn smooth_up_neighbor_contribution() {
     hm.smooth(1);
     assert!(
         (hm.data()[5] - 10.0).abs() < 1e-6,
-        "up: expected 10.0, got {}", hm.data()[5]
+        "up: expected 10.0, got {}",
+        hm.data()[5]
     );
 }
 
@@ -322,7 +356,8 @@ fn smooth_down_neighbor_contribution() {
     hm.smooth(1);
     assert!(
         (hm.data()[5] - 10.0).abs() < 1e-6,
-        "down: expected 10.0, got {}", hm.data()[5]
+        "down: expected 10.0, got {}",
+        hm.data()[5]
     );
 }
 
@@ -335,6 +370,7 @@ fn smooth_center_self_weight_is_4() {
     // new[5] = (0+0+0+0+80*4)/8 = 40.0
     assert!(
         (hm.data()[5] - 40.0).abs() < 1e-6,
-        "center weight=4: expected 40.0, got {}", hm.data()[5]
+        "center weight=4: expected 40.0, got {}",
+        hm.data()[5]
     );
 }

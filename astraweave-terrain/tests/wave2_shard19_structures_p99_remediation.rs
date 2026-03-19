@@ -162,7 +162,10 @@ fn structure_positions_within_chunk_bounds_origin() {
             );
         }
     }
-    assert!(found_any, "At least one seed should produce structures at density 5.0");
+    assert!(
+        found_any,
+        "At least one seed should produce structures at density 5.0"
+    );
 }
 
 /// For a non-origin chunk, positions must be shifted by chunk_origin.
@@ -208,7 +211,10 @@ fn structure_positions_nonorigin_chunk_offset() {
             );
         }
     }
-    assert!(found_any, "At least one seed should produce structures for non-origin chunk");
+    assert!(
+        found_any,
+        "At least one seed should produce structures for non-origin chunk"
+    );
 }
 
 /// Negative chunk indices — positions should be correctly negative.
@@ -252,7 +258,10 @@ fn structure_positions_negative_chunk() {
             );
         }
     }
-    assert!(found_any, "At least one seed should produce structures for negative chunk");
+    assert!(
+        found_any,
+        "At least one seed should produce structures for negative chunk"
+    );
 }
 
 /// Extremely high density should produce many structures (area * density math).
@@ -498,10 +507,7 @@ fn structure_y_is_terrain_height() {
             found_any = true;
         }
         for s in &result.structures {
-            assert!(
-                !s.position.y.is_nan(),
-                "Structure Y should not be NaN"
-            );
+            assert!(!s.position.y.is_nan(), "Structure Y should not be NaN");
             // WorldConfig default max_height is 100.0
             assert!(
                 s.position.y >= -200.0 && s.position.y <= 200.0,
@@ -685,7 +691,11 @@ fn structure_heights_are_varied() {
         }
     }
 
-    assert!(heights.len() > 3, "Need multiple structures to check variation, got {}", heights.len());
+    assert!(
+        heights.len() > 3,
+        "Need multiple structures to check variation, got {}",
+        heights.len()
+    );
 
     // Count unique heights (round to nearest 0.1 to avoid float noise)
     let mut unique: std::collections::HashSet<i32> = std::collections::HashSet::new();
@@ -750,5 +760,8 @@ fn structure_height_matches_nonorigin_chunk() {
             }
         }
     }
-    assert!(verified > 0, "Need at least one verified structure for non-origin chunk");
+    assert!(
+        verified > 0,
+        "Need at least one verified structure for non-origin chunk"
+    );
 }

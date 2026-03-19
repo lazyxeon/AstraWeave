@@ -43,7 +43,10 @@ async fn stats_updated_after_activate_cell() {
     let stats = mgr.get_stats();
     // If update_stats is replaced with (), active_cells would stay 0
     // (stats is never written). active_cells is set inside update_stats.
-    assert_eq!(stats.active_cells, 1, "active_cells must be 1 after activation");
+    assert_eq!(
+        stats.active_cells, 1,
+        "active_cells must be 1 after activation"
+    );
     assert!(
         stats.loaded_chunks > 0,
         "loaded_chunks must be >0 after activation"
@@ -161,8 +164,14 @@ async fn memory_budget_event_reports_correct_usage() {
     match budget_event {
         Some(VoxelPartitionEvent::MemoryBudgetExceeded(used, budget)) => {
             // used = voxel_memory + mesh_memory = 65536 + 0 = 65536
-            assert_eq!(*used, 65536, "reported usage should be voxel_memory + mesh_memory");
-            assert_eq!(*budget, 1, "reported budget should be the configured budget");
+            assert_eq!(
+                *used, 65536,
+                "reported usage should be voxel_memory + mesh_memory"
+            );
+            assert_eq!(
+                *budget, 1,
+                "reported budget should be the configured budget"
+            );
         }
         _ => panic!("MemoryBudgetExceeded event not found"),
     }
@@ -266,7 +275,10 @@ async fn empty_meshes_not_stored() {
 async fn get_mesh_returns_none_for_unloaded_chunk() {
     let mgr = VoxelPartitionManager::new(small_cell_config());
     let result = mgr.get_mesh(ChunkCoord::new(999, 999, 999));
-    assert!(result.is_none(), "get_mesh should return None for unloaded chunk");
+    assert!(
+        result.is_none(),
+        "get_mesh should return None for unloaded chunk"
+    );
 }
 
 // ──────── get_all_meshes: returns actual map ─────────────────────
@@ -280,7 +292,10 @@ async fn get_all_meshes_returns_reference_to_internal_map() {
     // The pointer should be stable (not a leaked allocation)
     let ptr1 = meshes as *const _ as usize;
     let ptr2 = mgr.get_all_meshes() as *const _ as usize;
-    assert_eq!(ptr1, ptr2, "get_all_meshes must return reference to same internal map");
+    assert_eq!(
+        ptr1, ptr2,
+        "get_all_meshes must return reference to same internal map"
+    );
 }
 
 // ──────── get_voxel_grid: returns actual grid ────────────────────
@@ -398,10 +413,7 @@ async fn is_chunk_loaded_false_before_activation() {
     let mgr = VoxelPartitionManager::new(small_cell_config());
     // cell_size=32 → chunk (0,0,0) maps to partition (0,0,0)
     let loaded = mgr.is_chunk_loaded(ChunkCoord::new(0, 0, 0)).await;
-    assert!(
-        !loaded,
-        "chunk must not be loaded before activation"
-    );
+    assert!(!loaded, "chunk must not be loaded before activation");
 }
 
 #[tokio::test]
@@ -428,10 +440,7 @@ async fn is_chunk_loaded_false_after_deactivation() {
     mgr.deactivate_cell(cell).await.unwrap();
 
     let loaded = mgr.is_chunk_loaded(ChunkCoord::new(0, 0, 0)).await;
-    assert!(
-        !loaded,
-        "chunk must not be loaded after deactivation"
-    );
+    assert!(!loaded, "chunk must not be loaded after deactivation");
 }
 
 // ──────── with_memory_budget: config.memory_budget ───────────────
@@ -546,8 +555,8 @@ async fn stats_correct_after_partial_deactivation() {
 // ──────── Scatter vegetation tests ───────────────────────────────
 
 use astraweave_terrain::{
-    BiomeConfig, BiomeType, ChunkId, Heightmap, ScatterConfig, TerrainChunk,
-    VegetationScatter, WorldConfig,
+    BiomeConfig, BiomeType, ChunkId, Heightmap, ScatterConfig, TerrainChunk, VegetationScatter,
+    WorldConfig,
 };
 
 fn fast_scatter_config() -> WorldConfig {
@@ -598,7 +607,10 @@ fn scatter_target_count_uses_multiplication() {
     );
 
     // Critical: verify target_count > 0 (catches == vs != guard mutation)
-    assert!(expected_count > 0, "Forest density should produce non-zero target count");
+    assert!(
+        expected_count > 0,
+        "Forest density should produce non-zero target count"
+    );
     // And verify we actually got instances (catches != 0 guard that returns early)
     assert!(
         !instances.is_empty(),

@@ -284,68 +284,83 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::Rain,
             },
             vegetation: BiomeVegetation {
-                density: 0.8,
+                density: 0.5,
                 vegetation_types: vec![
                     VegetationType {
                         name: "grass".to_string(),
                         weight: 4.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/grass.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/grass.glb"
+                            .to_string(),
                         scale_range: (0.8, 1.4),
                         slope_tolerance: 45.0,
                     },
                     VegetationType {
                         name: "grass_large".to_string(),
                         weight: 2.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/grass_large.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/grass_large.glb"
+                                .to_string(),
                         scale_range: (0.9, 1.3),
                         slope_tolerance: 40.0,
                     },
                     VegetationType {
                         name: "flower_yellow".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/flower_yellowA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/flower_yellowA.glb"
+                                .to_string(),
                         scale_range: (0.7, 1.1),
                         slope_tolerance: 35.0,
                     },
                     VegetationType {
                         name: "flower_red".to_string(),
                         weight: 1.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/flower_redA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/flower_redA.glb"
+                                .to_string(),
                         scale_range: (0.7, 1.1),
                         slope_tolerance: 35.0,
                     },
                     VegetationType {
                         name: "flower_purple".to_string(),
                         weight: 0.8,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/flower_purpleA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/flower_purpleA.glb"
+                                .to_string(),
                         scale_range: (0.7, 1.0),
                         slope_tolerance: 35.0,
                     },
                     VegetationType {
                         name: "oak_tree".to_string(),
                         weight: 0.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_oak.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_oak.glb"
+                            .to_string(),
                         scale_range: (0.9, 1.4),
                         slope_tolerance: 25.0,
                     },
                     VegetationType {
                         name: "tree_default".to_string(),
                         weight: 0.4,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_default.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_default.glb"
+                                .to_string(),
                         scale_range: (0.8, 1.3),
                         slope_tolerance: 25.0,
                     },
                     VegetationType {
                         name: "plant_bush".to_string(),
                         weight: 1.2,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/plant_bush.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/plant_bush.glb"
+                            .to_string(),
                         scale_range: (0.7, 1.2),
                         slope_tolerance: 35.0,
                     },
                     VegetationType {
                         name: "rock_small".to_string(),
                         weight: 0.6,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/rock_smallA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/rock_smallA.glb"
+                                .to_string(),
                         scale_range: (0.5, 1.0),
                         slope_tolerance: 50.0,
                     },
@@ -395,35 +410,45 @@ impl BiomeConfig {
                     VegetationType {
                         name: "cactus_tall".to_string(),
                         weight: 2.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/cactus_tall.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/cactus_tall.glb"
+                                .to_string(),
                         scale_range: (0.7, 1.8),
                         slope_tolerance: 15.0,
                     },
                     VegetationType {
                         name: "cactus_short".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/cactus_short.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/cactus_short.glb"
+                                .to_string(),
                         scale_range: (0.6, 1.4),
                         slope_tolerance: 20.0,
                     },
                     VegetationType {
                         name: "rock_large".to_string(),
                         weight: 1.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/rock_largeA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/rock_largeA.glb"
+                                .to_string(),
                         scale_range: (0.8, 2.0),
                         slope_tolerance: 30.0,
                     },
                     VegetationType {
                         name: "stone_small".to_string(),
                         weight: 2.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/stone_smallA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/stone_smallA.glb"
+                                .to_string(),
                         scale_range: (0.5, 1.2),
                         slope_tolerance: 40.0,
                     },
                     VegetationType {
                         name: "plant_flat".to_string(),
                         weight: 0.8,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/plant_flatShort.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/plant_flatShort.glb"
+                                .to_string(),
                         scale_range: (0.5, 1.0),
                         slope_tolerance: 20.0,
                     },
@@ -468,7 +493,7 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::Rain,
             },
             vegetation: BiomeVegetation {
-                density: 1.5,
+                density: 0.8,
                 vegetation_types: vec![
                     VegetationType {
                         name: "pine_tall".to_string(),
@@ -560,7 +585,7 @@ impl BiomeConfig {
             name: "Rocky Mountains".to_string(),
             description: "High altitude peaks with rocky terrain and sparse vegetation".to_string(),
             conditions: BiomeConditions {
-                height_range: (60.0, 200.0),
+                height_range: (40.0, 350.0),
                 temperature_range: (0.0, 0.5),
                 moisture_range: (0.2, 0.7),
                 max_slope: 70.0,
@@ -580,42 +605,52 @@ impl BiomeConfig {
                     VegetationType {
                         name: "pine_small".to_string(),
                         weight: 1.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_pineSmallA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_pineSmallA.glb"
+                                .to_string(),
                         scale_range: (0.8, 1.2),
                         slope_tolerance: 45.0,
                     },
                     VegetationType {
                         name: "tree_cone".to_string(),
                         weight: 0.8,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_cone.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_cone.glb"
+                            .to_string(),
                         scale_range: (0.7, 1.1),
                         slope_tolerance: 40.0,
                     },
                     VegetationType {
                         name: "grass_leafs".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/grass_leafs.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/grass_leafs.glb"
+                                .to_string(),
                         scale_range: (0.5, 0.9),
                         slope_tolerance: 55.0,
                     },
                     VegetationType {
                         name: "rock_large".to_string(),
                         weight: 2.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/rock_largeB.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/rock_largeB.glb"
+                                .to_string(),
                         scale_range: (0.8, 2.5),
                         slope_tolerance: 80.0,
                     },
                     VegetationType {
                         name: "rock_tall".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/rock_tallA.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/rock_tallA.glb"
+                            .to_string(),
                         scale_range: (0.7, 2.0),
                         slope_tolerance: 70.0,
                     },
                     VegetationType {
                         name: "stone_large".to_string(),
                         weight: 1.2,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/stone_largeA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/stone_largeA.glb"
+                                .to_string(),
                         scale_range: (0.6, 1.8),
                         slope_tolerance: 75.0,
                     },
@@ -665,28 +700,36 @@ impl BiomeConfig {
                     VegetationType {
                         name: "pine_ground".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_pineGroundA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_pineGroundA.glb"
+                                .to_string(),
                         scale_range: (0.5, 0.9),
                         slope_tolerance: 30.0,
                     },
                     VegetationType {
                         name: "rock_small_flat".to_string(),
                         weight: 2.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/rock_smallFlatA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/rock_smallFlatA.glb"
+                                .to_string(),
                         scale_range: (0.6, 1.5),
                         slope_tolerance: 50.0,
                     },
                     VegetationType {
                         name: "stone_small".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/stone_smallA.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/stone_smallA.glb"
+                                .to_string(),
                         scale_range: (0.4, 1.0),
                         slope_tolerance: 45.0,
                     },
                     VegetationType {
                         name: "plant_bush_small".to_string(),
                         weight: 1.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/plant_bushSmall.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/plant_bushSmall.glb"
+                                .to_string(),
                         scale_range: (0.4, 0.8),
                         slope_tolerance: 25.0,
                     },
@@ -726,54 +769,66 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::Rain,
             },
             vegetation: BiomeVegetation {
-                density: 0.6,
+                density: 0.35,
                 vegetation_types: vec![
                     VegetationType {
                         name: "tree_default_dark".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_default_dark.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_default_dark.glb"
+                                .to_string(),
                         scale_range: (0.8, 1.5),
                         slope_tolerance: 20.0,
                     },
                     VegetationType {
                         name: "stump_old".to_string(),
                         weight: 1.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/stump_old.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/stump_old.glb"
+                            .to_string(),
                         scale_range: (0.7, 1.3),
                         slope_tolerance: 25.0,
                     },
                     VegetationType {
                         name: "grass_leafs_large".to_string(),
                         weight: 3.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/grass_leafsLarge.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/grass_leafsLarge.glb"
+                                .to_string(),
                         scale_range: (0.6, 1.2),
                         slope_tolerance: 30.0,
                     },
                     VegetationType {
                         name: "mushroom_red_tall".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/mushroom_redTall.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/mushroom_redTall.glb"
+                                .to_string(),
                         scale_range: (0.5, 1.0),
                         slope_tolerance: 40.0,
                     },
                     VegetationType {
                         name: "mushroom_tan_tall".to_string(),
                         weight: 1.2,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/mushroom_tanTall.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/mushroom_tanTall.glb"
+                                .to_string(),
                         scale_range: (0.5, 1.0),
                         slope_tolerance: 40.0,
                     },
                     VegetationType {
                         name: "lily_large".to_string(),
                         weight: 2.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/lily_large.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/lily_large.glb"
+                            .to_string(),
                         scale_range: (0.6, 1.1),
                         slope_tolerance: 15.0,
                     },
                     VegetationType {
                         name: "hanging_moss".to_string(),
                         weight: 0.8,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/hanging_moss.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/hanging_moss.glb"
+                                .to_string(),
                         scale_range: (0.7, 1.2),
                         slope_tolerance: 30.0,
                     },
@@ -818,35 +873,44 @@ impl BiomeConfig {
                     VegetationType {
                         name: "palm_tall".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_palmTall.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_palmTall.glb"
+                                .to_string(),
                         scale_range: (0.8, 1.3),
                         slope_tolerance: 15.0,
                     },
                     VegetationType {
                         name: "palm_bend".to_string(),
                         weight: 1.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_palmBend.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_palmBend.glb"
+                                .to_string(),
                         scale_range: (0.7, 1.2),
                         slope_tolerance: 15.0,
                     },
                     VegetationType {
                         name: "palm_short".to_string(),
                         weight: 0.8,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_palmShort.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_palmShort.glb"
+                                .to_string(),
                         scale_range: (0.7, 1.1),
                         slope_tolerance: 20.0,
                     },
                     VegetationType {
                         name: "rock_small_flat".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/rock_smallFlatB.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/rock_smallFlatB.glb"
+                                .to_string(),
                         scale_range: (0.5, 1.2),
                         slope_tolerance: 30.0,
                     },
                     VegetationType {
                         name: "grass".to_string(),
                         weight: 2.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/grass.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/grass.glb"
+                            .to_string(),
                         scale_range: (0.6, 1.0),
                         slope_tolerance: 25.0,
                     },
@@ -888,42 +952,52 @@ impl BiomeConfig {
                     VegetationType {
                         name: "tree_detailed".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_detailed.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/tree_detailed.glb"
+                                .to_string(),
                         scale_range: (0.9, 1.4),
                         slope_tolerance: 15.0,
                     },
                     VegetationType {
                         name: "tree_fat".to_string(),
                         weight: 0.8,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_fat.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/tree_fat.glb"
+                            .to_string(),
                         scale_range: (0.8, 1.3),
                         slope_tolerance: 15.0,
                     },
                     VegetationType {
                         name: "grass_large".to_string(),
                         weight: 3.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/grass_large.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/grass_large.glb"
+                                .to_string(),
                         scale_range: (0.6, 1.1),
                         slope_tolerance: 25.0,
                     },
                     VegetationType {
                         name: "grass_leafs".to_string(),
                         weight: 2.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/grass_leafsLarge.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/grass_leafsLarge.glb"
+                                .to_string(),
                         scale_range: (0.5, 1.0),
                         slope_tolerance: 20.0,
                     },
                     VegetationType {
                         name: "lily_small".to_string(),
                         weight: 1.5,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/lily_small.glb".to_string(),
+                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/lily_small.glb"
+                            .to_string(),
                         scale_range: (0.5, 0.9),
                         slope_tolerance: 10.0,
                     },
                     VegetationType {
                         name: "rock_small".to_string(),
                         weight: 1.0,
-                        model_path: "assets/3D assets/Nature Kit/Models/GLTF format/rock_smallB.glb".to_string(),
+                        model_path:
+                            "assets/3D assets/Nature Kit/Models/GLTF format/rock_smallB.glb"
+                                .to_string(),
                         scale_range: (0.5, 1.2),
                         slope_tolerance: 30.0,
                     },
@@ -955,7 +1029,7 @@ impl BiomeConfig {
             } else {
                 height - self.conditions.height_range.1
             };
-            score -= height_distance * 0.08; // Strong penalty — height is the primary biome signal
+            score -= height_distance * 0.5; // Strong penalty — height is the primary biome signal
         }
 
         // Temperature score

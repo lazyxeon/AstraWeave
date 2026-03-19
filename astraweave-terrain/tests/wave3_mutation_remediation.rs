@@ -4,10 +4,10 @@
 //! analysis. Each test pins exact values, boundary operators, and return-path
 //! semantics to prevent operator/constant mutations from surviving.
 
-use astraweave_terrain::*;
 use astraweave_terrain::climate::utils::classify_whittaker_biome;
-use astraweave_terrain::marching_cubes_tables::{MC_TRI_TABLE, MC_EDGE_TABLE, EDGE_ENDPOINTS};
-use astraweave_terrain::voxel_data::{Voxel, VoxelChunk, VoxelGrid, ChunkCoord, CHUNK_SIZE};
+use astraweave_terrain::marching_cubes_tables::{EDGE_ENDPOINTS, MC_EDGE_TABLE, MC_TRI_TABLE};
+use astraweave_terrain::voxel_data::{ChunkCoord, Voxel, VoxelChunk, VoxelGrid, CHUNK_SIZE};
+use astraweave_terrain::*;
 
 // ============================================================================
 // REMEDIATION 1: climate.rs — classify_whittaker_biome boundary operators
@@ -27,7 +27,11 @@ mod whittaker_boundary {
     #[test]
     fn not_tundra_at_t_0_2() {
         let biome = classify_whittaker_biome(0.2, 0.5);
-        assert_ne!(biome, BiomeType::Tundra, "t=0.2 must NOT be Tundra (strict <)");
+        assert_ne!(
+            biome,
+            BiomeType::Tundra,
+            "t=0.2 must NOT be Tundra (strict <)"
+        );
     }
 
     // Boundary: t < 0.4 && m < 0.3 → Tundra
@@ -35,24 +39,36 @@ mod whittaker_boundary {
     fn tundra_second_branch() {
         assert_eq!(classify_whittaker_biome(0.39, 0.29), BiomeType::Tundra);
         // At boundary m=0.3, should NOT be Tundra
-        assert_ne!(classify_whittaker_biome(0.39, 0.3), BiomeType::Tundra,
-            "t=0.39, m=0.3 must NOT be Tundra (m < 0.3 is strict)");
+        assert_ne!(
+            classify_whittaker_biome(0.39, 0.3),
+            BiomeType::Tundra,
+            "t=0.39, m=0.3 must NOT be Tundra (m < 0.3 is strict)"
+        );
         // At boundary t=0.4 with qualifying m, should NOT be Tundra
         // Kills mutation: t < 0.4 → t <= 0.4
-        assert_ne!(classify_whittaker_biome(0.4, 0.29), BiomeType::Tundra,
-            "t=0.4, m=0.29 must NOT be Tundra (t < 0.4 is strict)");
+        assert_ne!(
+            classify_whittaker_biome(0.4, 0.29),
+            BiomeType::Tundra,
+            "t=0.4, m=0.29 must NOT be Tundra (t < 0.4 is strict)"
+        );
     }
 
     // Boundary: t < 0.6 && m < 0.2 → Desert
     #[test]
     fn desert_low_moisture() {
         assert_eq!(classify_whittaker_biome(0.5, 0.19), BiomeType::Desert);
-        assert_ne!(classify_whittaker_biome(0.5, 0.2), BiomeType::Desert,
-            "t=0.5, m=0.2 must NOT be Desert (m < 0.2 is strict)");
+        assert_ne!(
+            classify_whittaker_biome(0.5, 0.2),
+            BiomeType::Desert,
+            "t=0.5, m=0.2 must NOT be Desert (m < 0.2 is strict)"
+        );
         // At boundary t=0.6 with qualifying m, should NOT be Desert
         // Kills mutation: t < 0.6 → t <= 0.6 (Desert arm)
-        assert_ne!(classify_whittaker_biome(0.6, 0.19), BiomeType::Desert,
-            "t=0.6, m=0.19 must NOT be Desert (t < 0.6 is strict)");
+        assert_ne!(
+            classify_whittaker_biome(0.6, 0.19),
+            BiomeType::Desert,
+            "t=0.6, m=0.19 must NOT be Desert (t < 0.6 is strict)"
+        );
     }
 
     // Kill mutation: t < 0.6 → t <= 0.6 (line 227 col 25)
@@ -65,8 +81,11 @@ mod whittaker_boundary {
     //   Default → Grassland
     #[test]
     fn desert_boundary_t_0_6_is_grassland() {
-        assert_eq!(classify_whittaker_biome(0.6, 0.19), BiomeType::Grassland,
-            "t=0.6, m=0.19 must be Grassland (t < 0.6 is strict, so Desert branch skipped)");
+        assert_eq!(
+            classify_whittaker_biome(0.6, 0.19),
+            BiomeType::Grassland,
+            "t=0.6, m=0.19 must be Grassland (t < 0.6 is strict, so Desert branch skipped)"
+        );
     }
 
     // Kill mutation: t < 0.6 → t == 0.6 (Desert arm)
@@ -76,27 +95,36 @@ mod whittaker_boundary {
     // Original gives Desert. Mutation gives Grassland. The `desert_low_moisture` test kills this.
 
     // Kill mutation: t < 0.6 → t > 0.6 (Desert arm)
-    // At t=0.5: t < 0.6 true → Desert. t > 0.6 false → skip Desert. 
+    // At t=0.5: t < 0.6 true → Desert. t > 0.6 false → skip Desert.
     // Same as above: killed by `desert_low_moisture` test.
 
     // Boundary: t > 0.7 && m < 0.4 → Desert
     #[test]
     fn desert_hot_dry() {
         assert_eq!(classify_whittaker_biome(0.71, 0.39), BiomeType::Desert);
-        assert_ne!(classify_whittaker_biome(0.7, 0.39), BiomeType::Desert,
-            "t=0.7 must NOT be Desert (t > 0.7 is strict)");
+        assert_ne!(
+            classify_whittaker_biome(0.7, 0.39),
+            BiomeType::Desert,
+            "t=0.7 must NOT be Desert (t > 0.7 is strict)"
+        );
         // At boundary m=0.4 with qualifying t, should NOT be Desert
         // Kills mutation: m < 0.4 → m <= 0.4
-        assert_ne!(classify_whittaker_biome(0.71, 0.4), BiomeType::Desert,
-            "t=0.71, m=0.4 must NOT be Desert (m < 0.4 is strict)");
+        assert_ne!(
+            classify_whittaker_biome(0.71, 0.4),
+            BiomeType::Desert,
+            "t=0.71, m=0.4 must NOT be Desert (m < 0.4 is strict)"
+        );
     }
 
     // Boundary: m > 0.8 → Swamp
     #[test]
     fn swamp_moisture_boundary() {
         assert_eq!(classify_whittaker_biome(0.5, 0.81), BiomeType::Swamp);
-        assert_ne!(classify_whittaker_biome(0.5, 0.8), BiomeType::Swamp,
-            "m=0.8 must NOT be Swamp (m > 0.8 is strict)");
+        assert_ne!(
+            classify_whittaker_biome(0.5, 0.8),
+            BiomeType::Swamp,
+            "m=0.8 must NOT be Swamp (m > 0.8 is strict)"
+        );
     }
 
     // Boundary: t > 0.6 && m > 0.6 → Forest
@@ -116,8 +144,11 @@ mod whittaker_boundary {
     // t=0.8, m=0.7 → t > 0.6 is true (Forest), but t == 0.6 is false → falls through
     #[test]
     fn forest_t_above_0_6() {
-        assert_eq!(classify_whittaker_biome(0.8, 0.7), BiomeType::Forest,
-            "t=0.8, m=0.7 must be Forest (t > 0.6 && m > 0.6)");
+        assert_eq!(
+            classify_whittaker_biome(0.8, 0.7),
+            BiomeType::Forest,
+            "t=0.8, m=0.7 must be Forest (t > 0.6 && m > 0.6)"
+        );
     }
 
     // Kill mutation: t > 0.6 → t < 0.6
@@ -136,7 +167,7 @@ mod whittaker_boundary {
     // t=0.61, m=0.65: original → Forest. m==0.6? No → falls to t>0.4 && m>0.4 → Forest. Equivalent!
     // t=0.61, m=0.6: original → not this branch → t>0.4 && m>0.4 → Forest. m==0.6? Yes → Forest. Same.
 
-    // Kill mutation: m > 0.6 → m < 0.6 in (t > 0.6 && m > 0.6) guard  
+    // Kill mutation: m > 0.6 → m < 0.6 in (t > 0.6 && m > 0.6) guard
     // t=0.65, m=0.65: m > 0.6 true → Forest. m < 0.6 false → falls to t>0.4,m>0.4 → Forest. Same!
     // These mutations on the t>0.6 && m>0.6 guard are all practically equivalent because
     // the next guard (t>0.4 && m>0.4) catches the same cases.
@@ -163,8 +194,11 @@ mod whittaker_boundary {
     fn forest_moderate_boundary() {
         assert_eq!(classify_whittaker_biome(0.41, 0.5), BiomeType::Forest);
         // At exactly (0.4, 0.5), t=0.4 does NOT satisfy t > 0.4 → falls to Grassland
-        assert_eq!(classify_whittaker_biome(0.4, 0.5), BiomeType::Grassland,
-            "t=0.4, m=0.5 must be Grassland (t > 0.4 is strict)");
+        assert_eq!(
+            classify_whittaker_biome(0.4, 0.5),
+            BiomeType::Grassland,
+            "t=0.4, m=0.5 must be Grassland (t > 0.4 is strict)"
+        );
     }
 
     // Both at boundary
@@ -176,8 +210,11 @@ mod whittaker_boundary {
     // Moisture exactly at 0.4 with t above threshold
     #[test]
     fn moisture_exactly_0_4_is_grassland() {
-        assert_eq!(classify_whittaker_biome(0.5, 0.4), BiomeType::Grassland,
-            "t=0.5, m=0.4 must be Grassland (m > 0.4 is strict)");
+        assert_eq!(
+            classify_whittaker_biome(0.5, 0.4),
+            BiomeType::Grassland,
+            "t=0.5, m=0.4 must be Grassland (m > 0.4 is strict)"
+        );
     }
 
     // Kill mutation: t > 0.6 && m > 0.6 → t > 0.6 || m > 0.6
@@ -185,16 +222,22 @@ mod whittaker_boundary {
     // t=0.3, m=0.7: must NOT be Forest (only m qualifies, t doesn't)
     #[test]
     fn grassland_low_t_high_m_not_forest() {
-        assert_eq!(classify_whittaker_biome(0.3, 0.7), BiomeType::Grassland,
-            "t=0.3, m=0.7 must be Grassland — t > 0.6 guard must use && not ||");
+        assert_eq!(
+            classify_whittaker_biome(0.3, 0.7),
+            BiomeType::Grassland,
+            "t=0.3, m=0.7 must be Grassland — t > 0.6 guard must use && not ||"
+        );
     }
 
     // Kill mutation: m > 0.6 → m < 0.6 in guard (t > 0.6 && m < 0.6 captures this wrongly)
     // t=0.65, m=0.1: must NOT be Forest (only t qualifies, m doesn't)
     #[test]
     fn grassland_high_t_low_m_not_forest() {
-        assert_eq!(classify_whittaker_biome(0.65, 0.1), BiomeType::Grassland,
-            "t=0.65, m=0.1 must be Grassland — m > 0.6 guard must not become m < 0.6");
+        assert_eq!(
+            classify_whittaker_biome(0.65, 0.1),
+            BiomeType::Grassland,
+            "t=0.65, m=0.1 must be Grassland — m > 0.6 guard must not become m < 0.6"
+        );
     }
 
     // Default fallthrough
@@ -233,10 +276,7 @@ mod dual_contouring_boundary {
             for z in 0..CHUNK_SIZE {
                 for y in 0..CHUNK_SIZE {
                     let density = if y < CHUNK_SIZE / 2 { 1.0 } else { -1.0 };
-                    chunk.set_voxel(
-                        glam::IVec3::new(x, y, z),
-                        Voxel::new(density, 0),
-                    );
+                    chunk.set_voxel(glam::IVec3::new(x, y, z), Voxel::new(density, 0));
                 }
             }
         }
@@ -274,7 +314,12 @@ mod dual_contouring_boundary {
         let mesh = dc.generate_mesh(grid.get_chunk(coord).unwrap());
         let vcount = mesh.vertices.len() as u32;
         for &idx in &mesh.indices {
-            assert!(idx < vcount, "Index {} exceeds vertex count {}", idx, vcount);
+            assert!(
+                idx < vcount,
+                "Index {} exceeds vertex count {}",
+                idx,
+                vcount
+            );
         }
         // Indices must come in triples (triangles)
         assert_eq!(mesh.indices.len() % 3, 0, "Indices must be multiple of 3");
@@ -304,7 +349,10 @@ mod dual_contouring_boundary {
 
         let mut dc = DualContouring::new();
         let mesh = dc.generate_mesh(grid.get_chunk(coord).unwrap());
-        assert!(!mesh.vertices.is_empty(), "Gradient surface should produce vertices");
+        assert!(
+            !mesh.vertices.is_empty(),
+            "Gradient surface should produce vertices"
+        );
 
         // All vertex positions should be in valid range
         for v in &mesh.vertices {
@@ -330,16 +378,23 @@ mod marching_cubes_sentinel {
             if let Some(pos) = row.iter().position(|&v| v == -1) {
                 // All entries after first -1 must also be -1
                 for j in pos..row.len() {
-                    assert_eq!(row[j], -1,
+                    assert_eq!(
+                        row[j], -1,
                         "MC_TRI_TABLE[{}][{}] should be -1 sentinel but was {}",
-                        case_idx, j, row[j]);
+                        case_idx, j, row[j]
+                    );
                 }
             }
             // Non-sentinel values must be valid vertex indices (0-11)
             for (j, &val) in row.iter().enumerate() {
                 if val != -1 {
-                    assert!(val >= 0 && val <= 11,
-                        "MC_TRI_TABLE[{}][{}] has invalid index {}", case_idx, j, val);
+                    assert!(
+                        val >= 0 && val <= 11,
+                        "MC_TRI_TABLE[{}][{}] has invalid index {}",
+                        case_idx,
+                        j,
+                        val
+                    );
                 }
             }
         }
@@ -363,8 +418,12 @@ mod marching_cubes_sentinel {
     fn row_103_has_valid_triangle_groups() {
         let row = &MC_TRI_TABLE[103];
         let valid_count = row.iter().filter(|&&v| v != -1).count();
-        assert_eq!(valid_count % 3, 0,
-            "Row 103 valid entries ({}) must be a multiple of 3", valid_count);
+        assert_eq!(
+            valid_count % 3,
+            0,
+            "Row 103 valid entries ({}) must be a multiple of 3",
+            valid_count
+        );
     }
 
     // Kill mutation: "delete -" at marching_cubes_tables.rs:103:38
@@ -376,12 +435,20 @@ mod marching_cubes_sentinel {
     fn all_rows_have_valid_triangle_count() {
         for (case_idx, row) in MC_TRI_TABLE.iter().enumerate() {
             let valid_count = row.iter().filter(|&&v| v != -1).count();
-            assert_eq!(valid_count % 3, 0,
+            assert_eq!(
+                valid_count % 3,
+                0,
                 "MC_TRI_TABLE[{}] has {} valid entries, must be a multiple of 3",
-                case_idx, valid_count);
+                case_idx,
+                valid_count
+            );
             // Max triangles per cell is 5 (15 indices)
-            assert!(valid_count <= 15,
-                "MC_TRI_TABLE[{}] has {} valid entries, max is 15", case_idx, valid_count);
+            assert!(
+                valid_count <= 15,
+                "MC_TRI_TABLE[{}] has {} valid entries, max is 15",
+                case_idx,
+                valid_count
+            );
         }
     }
 
@@ -390,8 +457,11 @@ mod marching_cubes_sentinel {
     fn row_69_exact_valid_count() {
         let row = &MC_TRI_TABLE[69];
         let valid_count = row.iter().filter(|&&v| v != -1).count();
-        assert_eq!(valid_count, 9,
-            "MC_TRI_TABLE[69] must have exactly 9 valid entries (3 triangles), got {}", valid_count);
+        assert_eq!(
+            valid_count, 9,
+            "MC_TRI_TABLE[69] must have exactly 9 valid entries (3 triangles), got {}",
+            valid_count
+        );
     }
 
     // Additional: verify that sentinels are CONTIGUOUS (-1s are never interrupted by non-sentinel)
@@ -417,7 +487,11 @@ mod marching_cubes_sentinel {
 
     #[test]
     fn edge_endpoints_exactly_12_entries() {
-        assert_eq!(EDGE_ENDPOINTS.len(), 12, "Must have exactly 12 edge endpoints");
+        assert_eq!(
+            EDGE_ENDPOINTS.len(),
+            12,
+            "Must have exactly 12 edge endpoints"
+        );
         // Each edge connects two different cube vertices (0-7)
         for (i, &(a, b)) in EDGE_ENDPOINTS.iter().enumerate() {
             assert!(a <= 7, "EDGE_ENDPOINTS[{}].0 = {} must be 0-7", i, a);
@@ -446,8 +520,14 @@ mod scatter_biome_matching {
 
     #[test]
     fn different_seed_different_terrain() {
-        let config1 = WorldConfig { seed: 1, ..WorldConfig::default() };
-        let config2 = WorldConfig { seed: 2, ..WorldConfig::default() };
+        let config1 = WorldConfig {
+            seed: 1,
+            ..WorldConfig::default()
+        };
+        let config2 = WorldConfig {
+            seed: 2,
+            ..WorldConfig::default()
+        };
         let gen1 = WorldGenerator::new(config1);
         let gen2 = WorldGenerator::new(config2);
         let chunk1 = gen1.generate_chunk(ChunkId::new(0, 0)).unwrap();
@@ -468,25 +548,36 @@ mod scatter_biome_matching {
     fn default_config_first_biome_is_grassland() {
         let config = WorldConfig::default();
         // The fallback `biomes[0]` is Grassland in default config
-        assert_eq!(config.biomes[0].biome_type, BiomeType::Grassland,
-            "Default config biomes[0] must be Grassland");
+        assert_eq!(
+            config.biomes[0].biome_type,
+            BiomeType::Grassland,
+            "Default config biomes[0] must be Grassland"
+        );
         // Verify there are multiple biome configs so the mutation finds a wrong one
-        assert!(config.biomes.len() > 1,
-            "Default config must have multiple biomes for mutation to be detectable");
+        assert!(
+            config.biomes.len() > 1,
+            "Default config must have multiple biomes for mutation to be detectable"
+        );
         // Verify biome configs have different vegetation densities so wrong selection matters
-        let grassland_density = config.biomes.iter()
+        let grassland_density = config
+            .biomes
+            .iter()
             .find(|b| b.biome_type == BiomeType::Grassland)
             .unwrap()
             .vegetation
             .density;
-        let other_density = config.biomes.iter()
+        let other_density = config
+            .biomes
+            .iter()
             .find(|b| b.biome_type != BiomeType::Grassland)
             .unwrap()
             .vegetation
             .density;
         // These should differ — the mutation would pick the wrong density
-        assert_ne!(grassland_density, other_density,
-            "Grassland and other biome should have different vegetation densities");
+        assert_ne!(
+            grassland_density, other_density,
+            "Grassland and other biome should have different vegetation densities"
+        );
     }
 }
 
@@ -608,7 +699,10 @@ mod structure_exact_values {
     #[test]
     fn for_biome_returns_nonempty() {
         let grassland = StructureType::for_biome(BiomeType::Grassland);
-        assert!(!grassland.is_empty(), "Grassland biome should have structures");
+        assert!(
+            !grassland.is_empty(),
+            "Grassland biome should have structures"
+        );
 
         let desert = StructureType::for_biome(BiomeType::Desert);
         assert!(!desert.is_empty(), "Desert biome should have structures");
@@ -692,8 +786,13 @@ mod heightmap_boundary {
         for x in 0..8u32 {
             for z in 0..8u32 {
                 let h = hm.get_height(x, z);
-                assert!((h - 5.0).abs() < 0.01,
-                    "Smooth of flat heightmap: ({},{}) = {}, expected 5.0", x, z, h);
+                assert!(
+                    (h - 5.0).abs() < 0.01,
+                    "Smooth of flat heightmap: ({},{}) = {}, expected 5.0",
+                    x,
+                    z,
+                    h
+                );
             }
         }
     }
@@ -713,12 +812,21 @@ mod heightmap_boundary {
         }
 
         let normal = hm.calculate_normal(4, 4, 1.0);
-        assert!((normal.y - 1.0).abs() < 0.01,
-            "Flat normal Y should be ~1.0, got {}", normal.y);
-        assert!(normal.x.abs() < 0.01,
-            "Flat normal X should be ~0, got {}", normal.x);
-        assert!(normal.z.abs() < 0.01,
-            "Flat normal Z should be ~0, got {}", normal.z);
+        assert!(
+            (normal.y - 1.0).abs() < 0.01,
+            "Flat normal Y should be ~1.0, got {}",
+            normal.y
+        );
+        assert!(
+            normal.x.abs() < 0.01,
+            "Flat normal X should be ~0, got {}",
+            normal.x
+        );
+        assert!(
+            normal.z.abs() < 0.01,
+            "Flat normal Z should be ~0, got {}",
+            normal.z
+        );
     }
 
     #[test]
@@ -782,7 +890,7 @@ mod streaming_diagnostics_exact {
     fn memory_stats_peak_tracks_max() {
         let mut stats = MemoryStats::default();
         stats.update(10, 1024); // total = 10240
-        stats.update(5, 1024);  // total = 5120, peak stays 10240
+        stats.update(5, 1024); // total = 5120, peak stays 10240
         assert_eq!(stats.total_bytes, 5120);
         assert_eq!(stats.peak_bytes, 10240, "Peak should not decrease");
     }
@@ -792,25 +900,35 @@ mod streaming_diagnostics_exact {
         let mut stats = MemoryStats::default();
         stats.update(10, 100);
         let delta = stats.delta_from_peak_percent();
-        assert!(delta.abs() < 0.01, "At peak, delta should be 0.0%, got {}", delta);
+        assert!(
+            delta.abs() < 0.01,
+            "At peak, delta should be 0.0%, got {}",
+            delta
+        );
     }
 
     #[test]
     fn delta_from_peak_below_peak() {
         let mut stats = MemoryStats::default();
-        stats.update(10, 100);  // total=1000, peak=1000
-        stats.update(5, 100);   // total=500, peak=1000
+        stats.update(10, 100); // total=1000, peak=1000
+        stats.update(5, 100); // total=500, peak=1000
         let delta = stats.delta_from_peak_percent();
         // (500/1000 - 1.0) * 100.0 = -50.0%
-        assert!((delta - (-50.0)).abs() < 0.01,
-            "Below peak, delta should be -50.0%, got {}", delta);
+        assert!(
+            (delta - (-50.0)).abs() < 0.01,
+            "Below peak, delta should be -50.0%, got {}",
+            delta
+        );
     }
 
     #[test]
     fn delta_from_peak_zero_peak() {
         let stats = MemoryStats::default();
-        assert_eq!(stats.delta_from_peak_percent(), 0.0,
-            "Zero peak → delta = 0.0");
+        assert_eq!(
+            stats.delta_from_peak_percent(),
+            0.0,
+            "Zero peak → delta = 0.0"
+        );
     }
 
     #[test]
@@ -902,7 +1020,7 @@ mod biome_config_exact {
     fn grassland_biome_type() {
         let bc = BiomeConfig::grassland();
         assert_eq!(bc.biome_type, BiomeType::Grassland);
-        assert_eq!(bc.vegetation.density, 0.8);
+        assert_eq!(bc.vegetation.density, 0.5);
     }
 
     #[test]
@@ -951,7 +1069,10 @@ mod biome_config_exact {
     fn score_conditions_returns_finite() {
         let bc = BiomeConfig::grassland();
         let score = bc.score_conditions(25.0, 0.5, 0.6);
-        assert!(score.is_finite(), "score_conditions must return finite value");
+        assert!(
+            score.is_finite(),
+            "score_conditions must return finite value"
+        );
         assert!(score >= 0.0, "score must be non-negative");
     }
 }
@@ -1001,9 +1122,7 @@ mod chunk_id_exact {
 
     #[test]
     fn chunks_in_radius() {
-        let chunks = ChunkId::get_chunks_in_radius(
-            glam::Vec3::new(128.0, 0.0, 128.0), 1, 256.0
-        );
+        let chunks = ChunkId::get_chunks_in_radius(glam::Vec3::new(128.0, 0.0, 128.0), 1, 256.0);
         // Radius 1 → 3×3 = 9 chunks
         assert_eq!(chunks.len(), 9);
     }

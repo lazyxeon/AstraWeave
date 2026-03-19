@@ -7,14 +7,12 @@
 //!   delete_save, config/dirty_chunks accessors, get_chunks_in_region
 //! - texture_splatting.rs (9 MISSED): SplatRule::evaluate height/slope boundaries
 
-use astraweave_terrain::{
-    ChunkCoord, TerrainModifier, TerrainModifierConfig, Voxel,
-    VoxelGrid, VoxelOp, VoxelOpType, CHUNK_SIZE,
-};
-use astraweave_terrain::terrain_persistence::{
-    TerrainPersistence, TerrainPersistenceConfig,
-};
+use astraweave_terrain::terrain_persistence::{TerrainPersistence, TerrainPersistenceConfig};
 use astraweave_terrain::texture_splatting::SplatRule;
+use astraweave_terrain::{
+    ChunkCoord, TerrainModifier, TerrainModifierConfig, Voxel, VoxelGrid, VoxelOp, VoxelOpType,
+    CHUNK_SIZE,
+};
 use glam::{IVec3, Vec3};
 use std::collections::HashMap;
 
@@ -81,7 +79,10 @@ fn tick_respects_max_ops_per_frame() {
     }
 
     let stats = modifier.tick(&mut grid);
-    assert_eq!(stats.ops_processed, 2, "Should process exactly max_ops_per_frame=2");
+    assert_eq!(
+        stats.ops_processed, 2,
+        "Should process exactly max_ops_per_frame=2"
+    );
     assert!(stats.ops_pending > 0, "Remaining ops should be pending");
 
     // Process next batch
@@ -90,7 +91,10 @@ fn tick_respects_max_ops_per_frame() {
 
     // Final tick gets the last one
     let stats3 = modifier.tick(&mut grid);
-    assert_eq!(stats3.ops_processed, 1, "Third tick should process remaining 1");
+    assert_eq!(
+        stats3.ops_processed, 1,
+        "Third tick should process remaining 1"
+    );
 }
 
 /// TARGETS: terrain_modifier.rs:293 replace < with ==, >, <= in tick
@@ -156,7 +160,10 @@ fn work_deferred_true_when_ops_remain() {
 
     let stats = modifier.tick(&mut grid);
     assert_eq!(stats.ops_processed, 1);
-    assert!(stats.work_deferred, "Should be deferred: ops remain in queue");
+    assert!(
+        stats.work_deferred,
+        "Should be deferred: ops remain in queue"
+    );
 }
 
 #[test]
@@ -215,12 +222,17 @@ fn subtract_density_actually_subtracts() {
     modifier.tick(&mut grid);
 
     let chunk_coord = ChunkCoord::from_world_pos(Vec3::new(1.0, 1.0, 1.0));
-    let local_pos = pos - IVec3::new(
-        (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
-    );
-    let voxel = grid.get_chunk(chunk_coord).unwrap().get_voxel(local_pos).unwrap();
+    let local_pos = pos
+        - IVec3::new(
+            (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
+        );
+    let voxel = grid
+        .get_chunk(chunk_coord)
+        .unwrap()
+        .get_voxel(local_pos)
+        .unwrap();
     assert!(
         voxel.density < 0.8,
         "SubtractDensity should lower density, got {}",
@@ -260,12 +272,17 @@ fn blend_factor_zero_keeps_original() {
     modifier.tick(&mut grid);
 
     let chunk_coord = ChunkCoord::from_world_pos(Vec3::new(1.0, 1.0, 1.0));
-    let local = pos - IVec3::new(
-        (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
-    );
-    let v = grid.get_chunk(chunk_coord).unwrap().get_voxel(local).unwrap();
+    let local = pos
+        - IVec3::new(
+            (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
+        );
+    let v = grid
+        .get_chunk(chunk_coord)
+        .unwrap()
+        .get_voxel(local)
+        .unwrap();
     assert!(
         (v.density - 0.8).abs() < 0.01,
         "factor=0 should keep original density 0.8, got {}",
@@ -295,12 +312,17 @@ fn blend_factor_one_uses_target() {
     modifier.tick(&mut grid);
 
     let chunk_coord = ChunkCoord::from_world_pos(Vec3::new(1.0, 1.0, 1.0));
-    let local = pos - IVec3::new(
-        (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
-    );
-    let v = grid.get_chunk(chunk_coord).unwrap().get_voxel(local).unwrap();
+    let local = pos
+        - IVec3::new(
+            (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
+        );
+    let v = grid
+        .get_chunk(chunk_coord)
+        .unwrap()
+        .get_voxel(local)
+        .unwrap();
     assert!(
         (v.density - 0.2).abs() < 0.01,
         "factor=1 should use target density 0.2, got {}",
@@ -331,12 +353,17 @@ fn blend_factor_half_averages() {
     modifier.tick(&mut grid);
 
     let chunk_coord = ChunkCoord::from_world_pos(Vec3::new(1.0, 1.0, 1.0));
-    let local = pos - IVec3::new(
-        (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
-    );
-    let v = grid.get_chunk(chunk_coord).unwrap().get_voxel(local).unwrap();
+    let local = pos
+        - IVec3::new(
+            (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
+        );
+    let v = grid
+        .get_chunk(chunk_coord)
+        .unwrap()
+        .get_voxel(local)
+        .unwrap();
     // 0.8 * 0.5 + 0.2 * 0.5 = 0.4 + 0.1 = 0.5
     assert!(
         (v.density - 0.5).abs() < 0.01,
@@ -371,13 +398,21 @@ fn blend_material_selection_by_factor() {
     modifier.tick(&mut grid);
 
     let chunk_coord = ChunkCoord::from_world_pos(Vec3::new(1.0, 1.0, 1.0));
-    let local = pos - IVec3::new(
-        (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
+    let local = pos
+        - IVec3::new(
+            (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
+        );
+    let v = grid
+        .get_chunk(chunk_coord)
+        .unwrap()
+        .get_voxel(local)
+        .unwrap();
+    assert_eq!(
+        v.material, 20,
+        "factor=0.8 > 0.5 should use target material 20"
     );
-    let v = grid.get_chunk(chunk_coord).unwrap().get_voxel(local).unwrap();
-    assert_eq!(v.material, 20, "factor=0.8 > 0.5 should use target material 20");
 
     // Now blend with material=30, factor=0.3 (<= 0.5 → should keep existing material 20)
     let blend_lo = VoxelOp {
@@ -392,8 +427,15 @@ fn blend_material_selection_by_factor() {
     modifier.queue_operation(blend_lo);
     modifier.tick(&mut grid);
 
-    let v2 = grid.get_chunk(chunk_coord).unwrap().get_voxel(local).unwrap();
-    assert_eq!(v2.material, 20, "factor=0.3 <= 0.5 should keep existing material 20");
+    let v2 = grid
+        .get_chunk(chunk_coord)
+        .unwrap()
+        .get_voxel(local)
+        .unwrap();
+    assert_eq!(
+        v2.material, 20,
+        "factor=0.3 <= 0.5 should keep existing material 20"
+    );
 }
 
 // ─────────── update_remesh_priority tests ───────────
@@ -424,7 +466,10 @@ fn remesh_prioritizes_near_camera() {
     // The nearest chunk should have been remeshed first
     // Second tick: remesh the remaining one
     let stats2 = modifier.tick(&mut grid);
-    assert_eq!(stats2.chunks_remeshed, 1, "Second tick should remesh remaining chunk");
+    assert_eq!(
+        stats2.chunks_remeshed, 1,
+        "Second tick should remesh remaining chunk"
+    );
 }
 
 /// TARGETS: terrain_modifier.rs:401 replace stats() with default
@@ -439,7 +484,10 @@ fn stats_accessor_returns_real_stats() {
     modifier.tick(&mut grid);
 
     let stats = modifier.stats();
-    assert_eq!(stats.ops_processed, 2, "stats() should reflect actual ops processed");
+    assert_eq!(
+        stats.ops_processed, 2,
+        "stats() should reflect actual ops processed"
+    );
     assert!(stats.ops_processed > 0);
 }
 
@@ -457,12 +505,17 @@ fn add_density_actually_adds() {
     modifier.tick(&mut grid);
 
     let chunk_coord = ChunkCoord::from_world_pos(Vec3::new(1.0, 1.0, 1.0));
-    let local = pos - IVec3::new(
-        (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
-        (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
-    );
-    let v = grid.get_chunk(chunk_coord).unwrap().get_voxel(local).unwrap();
+    let local = pos
+        - IVec3::new(
+            (chunk_coord.x as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.y as f32 * CHUNK_SIZE as f32) as i32,
+            (chunk_coord.z as f32 * CHUNK_SIZE as f32) as i32,
+        );
+    let v = grid
+        .get_chunk(chunk_coord)
+        .unwrap()
+        .get_voxel(local)
+        .unwrap();
     assert!(
         (v.density - 0.7).abs() < 0.01,
         "Should be ~0.7 after adding 0.4 to 0.3, got {}",
@@ -554,7 +607,9 @@ fn save_load_updates_stats_correctly() {
     persistence.mark_dirty(coord2);
 
     // Save
-    let result = persistence.save_chunks(&chunks, 42, Some("test_stats")).unwrap();
+    let result = persistence
+        .save_chunks(&chunks, 42, Some("test_stats"))
+        .unwrap();
     assert_eq!(result.chunks_saved, 2);
 
     let stats = persistence.stats();
@@ -574,7 +629,9 @@ fn save_load_updates_stats_correctly() {
 
     // Save again — stats should accumulate (+=), not multiply (*=)
     persistence.mark_dirty(coord1);
-    let _ = persistence.save_chunks(&chunks, 42, Some("test_stats2")).unwrap();
+    let _ = persistence
+        .save_chunks(&chunks, 42, Some("test_stats2"))
+        .unwrap();
     let stats = persistence.stats();
     assert_eq!(
         stats.total_chunks_saved, 3,
@@ -607,11 +664,16 @@ fn load_accepts_current_version() {
     chunks.insert(coord, astraweave_terrain::VoxelChunk::new(coord));
     persistence.mark_dirty(coord);
 
-    let save_result = persistence.save_chunks(&chunks, 42, Some("ver_test")).unwrap();
+    let save_result = persistence
+        .save_chunks(&chunks, 42, Some("ver_test"))
+        .unwrap();
 
     // Should successfully load a file we just saved (same version)
     let load_result = persistence.load_chunks(&save_result.path);
-    assert!(load_result.is_ok(), "Should accept current version save file");
+    assert!(
+        load_result.is_ok(),
+        "Should accept current version save file"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -636,11 +698,16 @@ fn delete_save_actually_deletes_file() {
     chunks.insert(coord, astraweave_terrain::VoxelChunk::new(coord));
     persistence.mark_dirty(coord);
 
-    let save_result = persistence.save_chunks(&chunks, 42, Some("del_test")).unwrap();
+    let save_result = persistence
+        .save_chunks(&chunks, 42, Some("del_test"))
+        .unwrap();
     assert!(save_result.path.exists(), "File should exist after save");
 
     persistence.delete_save(&save_result.path).unwrap();
-    assert!(!save_result.path.exists(), "File should be deleted after delete_save");
+    assert!(
+        !save_result.path.exists(),
+        "File should be deleted after delete_save"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -695,7 +762,11 @@ fn get_chunks_in_region_covers_correct_area() {
 
     // With radius = chunk_size, chunk_radius = ceil(1) = 1
     // So we get -1..=1 in x, y, z → 3^3 = 27 chunks
-    assert_eq!(chunks.len(), 27, "Should have 27 chunks for radius=chunk_size");
+    assert_eq!(
+        chunks.len(),
+        27,
+        "Should have 27 chunks for radius=chunk_size"
+    );
 
     // The center chunk should be included
     let center_coord = ChunkCoord::from_world_pos(center);
@@ -705,14 +776,16 @@ fn get_chunks_in_region_covers_correct_area() {
     );
 
     // Positive offset chunk should be included
-    let positive_chunk = ChunkCoord::new(center_coord.x + 1, center_coord.y + 1, center_coord.z + 1);
+    let positive_chunk =
+        ChunkCoord::new(center_coord.x + 1, center_coord.y + 1, center_coord.z + 1);
     assert!(
         chunks.contains(&positive_chunk),
         "Positive offset chunk should be in region"
     );
 
     // Negative offset chunk should be included
-    let negative_chunk = ChunkCoord::new(center_coord.x - 1, center_coord.y - 1, center_coord.z - 1);
+    let negative_chunk =
+        ChunkCoord::new(center_coord.x - 1, center_coord.y - 1, center_coord.z - 1);
     assert!(
         chunks.contains(&negative_chunk),
         "Negative offset chunk should be in region"
@@ -738,14 +811,8 @@ fn get_chunks_in_region_non_origin() {
             c.x,
             center_coord.x
         );
-        assert!(
-            (c.y - center_coord.y).abs() <= 1,
-            "Y offset too large"
-        );
-        assert!(
-            (c.z - center_coord.z).abs() <= 1,
-            "Z offset too large"
-        );
+        assert!((c.y - center_coord.y).abs() <= 1, "Y offset too large");
+        assert!((c.z - center_coord.z).abs() <= 1, "Z offset too large");
     }
 }
 

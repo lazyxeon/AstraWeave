@@ -96,7 +96,12 @@ fn peaked_erosion_center_cell_golden() {
     // Center (4,4) started at 100.0, should erode to ~56.18
     let mut hm = peaked_8x8();
     hm.apply_hydraulic_erosion(1.0).unwrap();
-    assert_close(hm.data()[4 * 8 + 4], 56.1815605164, TOL, "peaked center (4,4)");
+    assert_close(
+        hm.data()[4 * 8 + 4],
+        56.1815605164,
+        TOL,
+        "peaked center (4,4)",
+    );
 }
 
 #[test]
@@ -239,7 +244,8 @@ fn peaked_border_row0_unchanged() {
     hm.apply_hydraulic_erosion(1.0).unwrap();
     for x in 0..8 {
         assert_eq!(
-            hm.data()[x], before[x],
+            hm.data()[x],
+            before[x],
             "Row 0, col {x} should be unchanged after erosion"
         );
     }
@@ -296,12 +302,20 @@ fn ridge_border_cells_unchanged() {
     // Row 0 and row 7 (all zeros)
     for x in 0..8 {
         assert_eq!(hm.data()[x], before[x], "ridge row 0, col {x}");
-        assert_eq!(hm.data()[7 * 8 + x], before[7 * 8 + x], "ridge row 7, col {x}");
+        assert_eq!(
+            hm.data()[7 * 8 + x],
+            before[7 * 8 + x],
+            "ridge row 7, col {x}"
+        );
     }
     // Col 0 and col 7
     for z in 0..8 {
         assert_eq!(hm.data()[z * 8], before[z * 8], "ridge col 0, row {z}");
-        assert_eq!(hm.data()[z * 8 + 7], before[z * 8 + 7], "ridge col 7, row {z}");
+        assert_eq!(
+            hm.data()[z * 8 + 7],
+            before[z * 8 + 7],
+            "ridge col 7, row {z}"
+        );
     }
 }
 
@@ -389,11 +403,20 @@ fn peaked_deposition_vs_erosion_sign_check() {
     hm.apply_hydraulic_erosion(1.0).unwrap();
 
     // Near peak: erosion causes negative values
-    assert!(hm.data()[3 * 8 + 4] < 0.0, "(3,4) should be negative from erosion");
-    assert!(hm.data()[2 * 8 + 4] < 0.0, "(2,4) should be negative from erosion");
+    assert!(
+        hm.data()[3 * 8 + 4] < 0.0,
+        "(3,4) should be negative from erosion"
+    );
+    assert!(
+        hm.data()[2 * 8 + 4] < 0.0,
+        "(2,4) should be negative from erosion"
+    );
 
     // Far corner: deposition causes small positive values
-    assert!(hm.data()[1 * 8 + 1] > 0.0, "(1,1) should be positive from deposition");
+    assert!(
+        hm.data()[1 * 8 + 1] > 0.0,
+        "(1,1) should be positive from deposition"
+    );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -425,7 +448,12 @@ fn peaked_scan_order_asymmetry() {
     );
 
     // Exact golden values
-    assert_close(before_center, -17.0985431671, TOL, "peaked (3,4) scan-order");
+    assert_close(
+        before_center,
+        -17.0985431671,
+        TOL,
+        "peaked (3,4) scan-order",
+    );
     assert_close(after_center, -17.0985813141, TOL, "peaked (5,4) scan-order");
 }
 
@@ -502,62 +530,116 @@ fn ridge_all_inner_cells_golden() {
 
     // Row 1 inner cells (z=1, x=1..6)
     let row1_expected = [
-        -0.0287287701, -0.0286653042, -0.0286653042,
-        -0.0286653042, -0.0286653042, -0.0287287701,
+        -0.0287287701,
+        -0.0286653042,
+        -0.0286653042,
+        -0.0286653042,
+        -0.0286653042,
+        -0.0287287701,
     ];
     for (i, &expected) in row1_expected.iter().enumerate() {
         let x = i + 1;
-        assert_close(hm.data()[1 * 8 + x], expected, TOL, &format!("ridge (1,{x})"));
+        assert_close(
+            hm.data()[1 * 8 + x],
+            expected,
+            TOL,
+            &format!("ridge (1,{x})"),
+        );
     }
 
     // Row 2 inner cells
     let row2_expected = [
-        -0.6546280384, -0.6524378061, -0.6524378061,
-        -0.6524378061, -0.6524378061, -0.6546280384,
+        -0.6546280384,
+        -0.6524378061,
+        -0.6524378061,
+        -0.6524378061,
+        -0.6524378061,
+        -0.6546280384,
     ];
     for (i, &expected) in row2_expected.iter().enumerate() {
         let x = i + 1;
-        assert_close(hm.data()[2 * 8 + x], expected, TOL, &format!("ridge (2,{x})"));
+        assert_close(
+            hm.data()[2 * 8 + x],
+            expected,
+            TOL,
+            &format!("ridge (2,{x})"),
+        );
     }
 
     // Row 3 inner cells
     let row3_expected = [
-        -8.9842901230, -8.9439640045, -8.9439640045,
-        -8.9439640045, -8.9439640045, -8.9842901230,
+        -8.9842901230,
+        -8.9439640045,
+        -8.9439640045,
+        -8.9439640045,
+        -8.9439640045,
+        -8.9842901230,
     ];
     for (i, &expected) in row3_expected.iter().enumerate() {
         let x = i + 1;
-        assert_close(hm.data()[3 * 8 + x], expected, TOL, &format!("ridge (3,{x})"));
+        assert_close(
+            hm.data()[3 * 8 + x],
+            expected,
+            TOL,
+            &format!("ridge (3,{x})"),
+        );
     }
 
     // Row 4 inner cells (ridge row)
     let row4_expected = [
-        33.3996696472, 33.4792633057, 33.4792633057,
-        33.4792633057, 33.4792633057, 33.3996696472,
+        33.3996696472,
+        33.4792633057,
+        33.4792633057,
+        33.4792633057,
+        33.4792633057,
+        33.3996696472,
     ];
     for (i, &expected) in row4_expected.iter().enumerate() {
         let x = i + 1;
-        assert_close(hm.data()[4 * 8 + x], expected, TOL, &format!("ridge (4,{x})"));
+        assert_close(
+            hm.data()[4 * 8 + x],
+            expected,
+            TOL,
+            &format!("ridge (4,{x})"),
+        );
     }
 
     // Row 5 inner cells
     let row5_expected = [
-        -8.9843034744, -8.9439764023, -8.9439764023,
-        -8.9439764023, -8.9439764023, -8.9843034744,
+        -8.9843034744,
+        -8.9439764023,
+        -8.9439764023,
+        -8.9439764023,
+        -8.9439764023,
+        -8.9843034744,
     ];
     for (i, &expected) in row5_expected.iter().enumerate() {
         let x = i + 1;
-        assert_close(hm.data()[5 * 8 + x], expected, TOL, &format!("ridge (5,{x})"));
+        assert_close(
+            hm.data()[5 * 8 + x],
+            expected,
+            TOL,
+            &format!("ridge (5,{x})"),
+        );
     }
 
     // Row 6 inner cells
     let row6_expected = [
-        -0.6538521051, -0.6516621113, -0.6516621113,
-        -0.6516621113, -0.6516621113, -0.6538521051,
+        -0.6538521051,
+        -0.6516621113,
+        -0.6516621113,
+        -0.6516621113,
+        -0.6516621113,
+        -0.6538521051,
     ];
     for (i, &expected) in row6_expected.iter().enumerate() {
         let x = i + 1;
-        assert_close(hm.data()[6 * 8 + x], expected, TOL, &format!("ridge (6,{x})"));
+        assert_close(
+            hm.data()[6 * 8 + x],
+            expected,
+            TOL,
+            &format!("ridge (6,{x})"),
+        );
     }
 }
 
@@ -570,29 +652,66 @@ fn peaked_all_inner_cells_golden() {
     // Golden values for inner 6×6 block, row by row
     let expected: [[f32; 6]; 6] = [
         // Row 1
-        [0.0000002873, 0.0000295108, 0.0018464078, -0.0583410040, 0.0018464078, 0.0000295107],
+        [
+            0.0000002873,
+            0.0000295108,
+            0.0018464078,
+            -0.0583410040,
+            0.0018464078,
+            0.0000295107,
+        ],
         // Row 2
-        [0.0000295108, -0.0004636676, -0.0965780765, -1.2712671757, -0.0965780765, -0.0004638379],
+        [
+            0.0000295108,
+            -0.0004636676,
+            -0.0965780765,
+            -1.2712671757,
+            -0.0965780765,
+            -0.0004638379,
+        ],
         // Row 3
-        [0.0018464078, -0.0965780765, -1.7235434055, -17.0985431671, -1.7235438824, -0.0965881869],
+        [
+            0.0018464078,
+            -0.0965780765,
+            -1.7235434055,
+            -17.0985431671,
+            -1.7235438824,
+            -0.0965881869,
+        ],
         // Row 4
-        [-0.0583410040, -1.2712671757, -17.0985431671, 56.1815605164, -17.0985813141, -1.2695193291],
+        [
+            -0.0583410040,
+            -1.2712671757,
+            -17.0985431671,
+            56.1815605164,
+            -17.0985813141,
+            -1.2695193291,
+        ],
         // Row 5
-        [0.0018464078, -0.0965780765, -1.7235438824, -17.0985813141, -1.7235444784, -0.0965881944],
+        [
+            0.0018464078,
+            -0.0965780765,
+            -1.7235438824,
+            -17.0985813141,
+            -1.7235444784,
+            -0.0965881944,
+        ],
         // Row 6
-        [0.0000295107, -0.0004638379, -0.0965881869, -1.2695193291, -0.0965881944, -0.0004640076],
+        [
+            0.0000295107,
+            -0.0004638379,
+            -0.0965881869,
+            -1.2695193291,
+            -0.0965881944,
+            -0.0004640076,
+        ],
     ];
 
     for (zi, row) in expected.iter().enumerate() {
         let z = zi + 1;
         for (xi, &exp) in row.iter().enumerate() {
             let x = xi + 1;
-            assert_close(
-                hm.data()[z * 8 + x],
-                exp,
-                TOL,
-                &format!("peaked ({z},{x})"),
-            );
+            assert_close(hm.data()[z * 8 + x], exp, TOL, &format!("peaked ({z},{x})"));
         }
     }
 }
@@ -625,11 +744,19 @@ fn bowl_border_preservation() {
     // ALL border cells unchanged
     for x in 0..8 {
         assert_eq!(hm.data()[x], before[x], "bowl row 0, col {x}");
-        assert_eq!(hm.data()[7 * 8 + x], before[7 * 8 + x], "bowl row 7, col {x}");
+        assert_eq!(
+            hm.data()[7 * 8 + x],
+            before[7 * 8 + x],
+            "bowl row 7, col {x}"
+        );
     }
     for z in 1..7 {
         assert_eq!(hm.data()[z * 8], before[z * 8], "bowl col 0, row {z}");
-        assert_eq!(hm.data()[z * 8 + 7], before[z * 8 + 7], "bowl col 7, row {z}");
+        assert_eq!(
+            hm.data()[z * 8 + 7],
+            before[z * 8 + 7],
+            "bowl col 7, row {z}"
+        );
     }
 }
 
@@ -646,7 +773,8 @@ fn erosion_is_deterministic() {
 
     for i in 0..64 {
         assert_eq!(
-            hm1.data()[i], hm2.data()[i],
+            hm1.data()[i],
+            hm2.data()[i],
             "Erosion should be deterministic, cell {i} differs"
         );
     }
@@ -674,9 +802,11 @@ fn linear_gradient_no_change() {
 
     for i in 0..64 {
         assert_eq!(
-            hm.data()[i], before[i],
+            hm.data()[i],
+            before[i],
             "Linear gradient cell {i} should not change: before={}, after={}",
-            before[i], hm.data()[i]
+            before[i],
+            hm.data()[i]
         );
     }
 }

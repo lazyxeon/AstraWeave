@@ -74,8 +74,7 @@ pub struct CatalogEntry {
 pub fn build_catalog() -> Vec<CatalogEntry> {
     let mut entries = Vec::new();
 
-    let kaykit_root =
-        PathBuf::from("assets").join("The Complete KayKit Collection v4");
+    let kaykit_root = PathBuf::from("assets").join("The Complete KayKit Collection v4");
 
     if kaykit_root.is_dir() {
         scan_kaykit(&kaykit_root, &mut entries);
@@ -171,10 +170,7 @@ fn classify(name: &str, pack_hint: &str) -> EntityCategory {
     }
 
     // Robots and special characters
-    if n.contains("robot")
-        || n.contains("monstercostume")
-        || n.contains("orc")
-    {
+    if n.contains("robot") || n.contains("monstercostume") || n.contains("orc") {
         return EntityCategory::Special;
     }
 
@@ -291,11 +287,7 @@ fn scan_3d_assets(root: &Path, entries: &mut Vec<CatalogEntry>) {
                                 .unwrap_or_default()
                                 .to_string_lossy()
                                 .to_string();
-                            let display = format!(
-                                "{} / {}",
-                                pack_name,
-                                stem.replace('_', " ")
-                            );
+                            let display = format!("{} / {}", pack_name, stem.replace('_', " "));
                             let rel_path = file_path.display().to_string();
                             entries.push(CatalogEntry {
                                 display_name: display,
@@ -316,10 +308,7 @@ fn scan_3d_assets(root: &Path, entries: &mut Vec<CatalogEntry>) {
 // ---------------------------------------------------------------------------
 
 /// Generate a colored placeholder thumbnail for a catalog entry.
-fn generate_thumbnail(
-    ctx: &egui::Context,
-    entry: &CatalogEntry,
-) -> TextureHandle {
+fn generate_thumbnail(ctx: &egui::Context, entry: &CatalogEntry) -> TextureHandle {
     let size = 64usize;
     let mut pixels = vec![0u8; size * size * 4];
     let color = entry.category.color();
@@ -403,8 +392,8 @@ fn generate_thumbnail(
 
 /// State for the entity catalog panel.
 pub struct EntityCatalogState {
-    /// All catalog entries
-    entries: Vec<CatalogEntry>,
+    /// All catalog entries (None = not yet loaded)
+    entries: Option<Vec<CatalogEntry>>,
     /// Currently selected category filter (None = show all)
     selected_category: Option<EntityCategory>,
     /// Search filter
@@ -419,15 +408,26 @@ pub struct EntityCatalogState {
 
 impl EntityCatalogState {
     pub fn new() -> Self {
-        let entries = build_catalog();
-        tracing::info!("Entity catalog: {} entries found", entries.len());
+        // Deferred: catalog is built lazily on first show() to avoid blocking startup
         Self {
-            entries,
+            entries: None,
             selected_category: None,
             search: String::new(),
             thumbnails: HashMap::new(),
             pending_spawns: Vec::new(),
             thumb_size: 72.0,
+        }
+    }
+
+    /// Ensure the catalog is loaded (lazy init on first access).
+    fn ensure_loaded(&mut self) {
+        if self.entries.is_none() {
+            let entries = build_catalog();
+            tracing::info!(
+                "Entity catalog: {} entries found (lazy load)",
+                entries.len()
+            );
+            self.entries = Some(entries);
         }
     }
 
@@ -438,22 +438,26 @@ impl EntityCatalogState {
 
     /// Number of catalog entries.
     pub fn entry_count(&self) -> usize {
-        self.entries.len()
+        self.entries.as_ref().map_or(0, |e| e.len())
     }
 
     /// Show the entity catalog UI.
     pub fn show(&mut self, ui: &mut Ui, ctx: &egui::Context) {
+        // Lazy-load on first display
+        self.ensure_loaded();
+        let entries = self.entries.as_ref().unwrap();
+
         // Category tabs
         ui.horizontal_wrapped(|ui| {
             let all_selected = self.selected_category.is_none();
             if ui
-                .selectable_label(all_selected, format!("All ({})", self.entries.len()))
+                .selectable_label(all_selected, format!("All ({})", entries.len()))
                 .clicked()
             {
                 self.selected_category = None;
             }
             for &cat in EntityCategory::all() {
-                let count = self.entries.iter().filter(|e| e.category == cat).count();
+                let count = entries.iter().filter(|e| e.category == cat).count();
                 if count == 0 {
                     continue;
                 }
@@ -481,8 +485,7 @@ impl EntityCatalogState {
 
         // Thumbnail grid
         let search_lower = self.search.to_lowercase();
-        let filtered: Vec<&CatalogEntry> = self
-            .entries
+        let filtered: Vec<&CatalogEntry> = entries
             .iter()
             .filter(|e| {
                 if let Some(cat) = self.selected_category {
@@ -531,10 +534,8 @@ impl EntityCatalogState {
                                 let resp = ui.add(img.sense(Sense::click()));
 
                                 if resp.clicked() {
-                                    self.pending_spawns.push((
-                                        entry.display_name.clone(),
-                                        entry.path.clone(),
-                                    ));
+                                    self.pending_spawns
+                                        .push((entry.display_name.clone(), entry.path.clone()));
                                 }
 
                                 if resp.hovered() {
@@ -549,7 +550,10 @@ impl EntityCatalogState {
                                 // Truncated label
                                 let max_chars = (self.thumb_size / 6.0) as usize;
                                 let label = if entry.display_name.len() > max_chars {
-                                    format!("{}...", &entry.display_name[..max_chars.saturating_sub(3)])
+                                    format!(
+                                        "{}...",
+                                        &entry.display_name[..max_chars.saturating_sub(3)]
+                                    )
                                 } else {
                                     entry.display_name.clone()
                                 };

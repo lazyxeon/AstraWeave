@@ -1,8 +1,10 @@
 // ============================================================================
-// AstraWeave Procedural PBR Terrain Shader
+// AstraWeave PBR Terrain Shader — Texture-Based with Multi-Scale Detail
 // ============================================================================
-// Generates realistic terrain textures via procedural noise, triplanar mapping,
-// slope/height blending, and Cook-Torrance BRDF.
+// Samples real PBR textures (albedo, normal, MRA) from texture arrays using
+// triplanar mapping with dual-scale blending, hash-based tile rotation to
+// break repetition, amplified normal maps, slope blending, Cook-Torrance
+// BRDF, weather effects, ACES tone mapping, and atmospheric fog.
 
 struct Uniforms {
     view_proj: mat4x4<f32>,
@@ -14,13 +16,23 @@ struct Uniforms {
     weather_type: u32,
     time: f32,
     water_level: f32,
+    // Lighting uniforms
+    sun_dir: vec3<f32>,
+    sun_intensity: f32,
+    sun_color: vec3<f32>,
+    ambient_intensity: f32,
+    ambient_color: vec3<f32>,
+    exposure: f32,
 }
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
-    @location(3) biome_id: u32,
+    @location(3) biome_weights_0: vec4<f32>,
+    @location(4) biome_weights_1: vec4<f32>,
+    @location(5) splat_weights_0: vec4<f32>,
+    @location(6) splat_weights_1: vec4<f32>,
 }
 
 struct VertexOutput {
@@ -28,13 +40,28 @@ struct VertexOutput {
     @location(0) world_position: vec3<f32>,
     @location(1) world_normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
-    @location(3) @interpolate(flat) biome_id: u32,
+    @location(3) biome_weights_0: vec4<f32>,
+    @location(4) biome_weights_1: vec4<f32>,
+    @location(5) splat_weights_0: vec4<f32>,
+    @location(6) splat_weights_1: vec4<f32>,
 }
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
 
-// ─── Noise Functions ──────────────────────────────────────────────────────────
+@group(0) @binding(1)
+var biome_textures: texture_2d_array<f32>;
+
+@group(0) @binding(2)
+var biome_sampler: sampler;
+
+@group(0) @binding(3)
+var biome_normals: texture_2d_array<f32>;
+
+@group(0) @binding(4)
+var biome_mra: texture_2d_array<f32>;
+
+// ─── Hash / Noise Utilities ───────────────────────────────────────────────────
 
 fn hash21(p: vec2<f32>) -> f32 {
     var p3 = fract(vec3<f32>(p.x, p.y, p.x) * 0.1031);
@@ -48,12 +75,6 @@ fn hash22(p: vec2<f32>) -> vec2<f32> {
     return fract(vec2<f32>((p4.x + p4.y) * p4.z, (p4.x + p4.z) * p4.y));
 }
 
-fn hash31(p: vec3<f32>) -> f32 {
-    var p3 = fract(p * 0.1031);
-    p3 = p3 + dot(p3, vec3<f32>(p3.y + 33.33, p3.z + 33.33, p3.x + 33.33));
-    return fract((p3.x + p3.y) * p3.z);
-}
-
 fn noise2d(p: vec2<f32>) -> f32 {
     let i = floor(p);
     let f = fract(p);
@@ -65,75 +86,16 @@ fn noise2d(p: vec2<f32>) -> f32 {
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
-fn noise3d(p: vec3<f32>) -> f32 {
-    let i = floor(p);
-    let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f);
-    return mix(
-        mix(
-            mix(hash31(i + vec3<f32>(0.0, 0.0, 0.0)), hash31(i + vec3<f32>(1.0, 0.0, 0.0)), u.x),
-            mix(hash31(i + vec3<f32>(0.0, 1.0, 0.0)), hash31(i + vec3<f32>(1.0, 1.0, 0.0)), u.x),
-            u.y
-        ),
-        mix(
-            mix(hash31(i + vec3<f32>(0.0, 0.0, 1.0)), hash31(i + vec3<f32>(1.0, 0.0, 1.0)), u.x),
-            mix(hash31(i + vec3<f32>(0.0, 1.0, 1.0)), hash31(i + vec3<f32>(1.0, 1.0, 1.0)), u.x),
-            u.y
-        ),
-        u.z
-    );
-}
+// ─── Tiling-Break UV Rotation ─────────────────────────────────────────────────
+// Rotates UV by a hash-derived angle per tile to break visible repetition.
 
-fn fbm2d(p: vec2<f32>) -> f32 {
-    var value = 0.0;
-    var amplitude = 0.5;
-    var pos = p;
-    let rot = mat2x2<f32>(0.8, 0.6, -0.6, 0.8);
-    for (var i = 0; i < 5; i++) {
-        value += amplitude * noise2d(pos);
-        pos = rot * pos * 2.0;
-        amplitude *= 0.5;
-    }
-    return value;
-}
-
-fn fbm3d(p: vec3<f32>) -> f32 {
-    var value = 0.0;
-    var amplitude = 0.5;
-    var pos = p;
-    for (var i = 0; i < 4; i++) {
-        value += amplitude * noise3d(pos);
-        pos = pos * 2.03;
-        amplitude *= 0.5;
-    }
-    return value;
-}
-
-fn voronoi2d(p: vec2<f32>) -> vec2<f32> {
-    let n = floor(p);
-    let f = fract(p);
-    var md = 8.0;
-    var md2 = 8.0;
-    for (var j = -1; j <= 1; j++) {
-        for (var i = -1; i <= 1; i++) {
-            let g = vec2<f32>(f32(i), f32(j));
-            let o = hash22(n + g);
-            let r = g + o - f;
-            let d = dot(r, r);
-            if d < md {
-                md2 = md;
-                md = d;
-            } else if d < md2 {
-                md2 = d;
-            }
-        }
-    }
-    return vec2<f32>(sqrt(md), sqrt(md2));
-}
-
-fn warped_fbm(p: vec2<f32>) -> f32 {
-    let q = vec2<f32>(fbm2d(p), fbm2d(p + vec2<f32>(5.2, 1.3)));
-    return fbm2d(p + 4.0 * q);
+fn rotate_uv(uv: vec2<f32>, tile_id: vec2<f32>) -> vec2<f32> {
+    let angle = hash21(tile_id) * 6.2832; // 0..2π
+    let s = sin(angle);
+    let c = cos(angle);
+    let center = tile_id + 0.5;
+    let local = uv - center;
+    return vec2<f32>(local.x * c - local.y * s, local.x * s + local.y * c) + center;
 }
 
 // ─── Triplanar Mapping ────────────────────────────────────────────────────────
@@ -144,246 +106,436 @@ fn triplanar_weights(normal: vec3<f32>) -> vec3<f32> {
     return w / (w.x + w.y + w.z + 0.0001);
 }
 
-fn triplanar_noise(pos: vec3<f32>, normal: vec3<f32>, scale: f32) -> f32 {
-    let w = triplanar_weights(normal);
-    let xy = noise2d(pos.xy * scale);
-    let xz = noise2d(pos.xz * scale);
-    let yz = noise2d(pos.yz * scale);
-    return xy * w.z + xz * w.y + yz * w.x;
+fn triplanar_sample_albedo(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: i32) -> vec3<f32> {
+    let w = triplanar_weights(n);
+    let uv_xz = pos.xz * scale;
+    let uv_xy = pos.xy * scale;
+    let uv_yz = pos.yz * scale;
+    // Rotate each projection's UV to break tiling repetition
+    let r_xz = rotate_uv(uv_xz, floor(uv_xz));
+    let r_xy = rotate_uv(uv_xy, floor(uv_xy));
+    let r_yz = rotate_uv(uv_yz, floor(uv_yz));
+    // Negative mip bias prevents over-mipmapping at distance, keeping
+    // texture detail visible from far cameras instead of washing to flat color.
+    let bias = -1.5;
+    let t_xz = textureSampleBias(biome_textures, biome_sampler, r_xz, layer, bias).rgb;
+    let t_xy = textureSampleBias(biome_textures, biome_sampler, r_xy, layer, bias).rgb;
+    let t_yz = textureSampleBias(biome_textures, biome_sampler, r_yz, layer, bias).rgb;
+    return t_xz * w.y + t_xy * w.z + t_yz * w.x;
 }
 
-fn triplanar_fbm(pos: vec3<f32>, normal: vec3<f32>, scale: f32) -> f32 {
-    let w = triplanar_weights(normal);
-    let xy = fbm2d(pos.xy * scale);
-    let xz = fbm2d(pos.xz * scale);
-    let yz = fbm2d(pos.yz * scale);
-    return xy * w.z + xz * w.y + yz * w.x;
+fn triplanar_sample_normal_raw(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: i32) -> vec3<f32> {
+    let w = triplanar_weights(n);
+    let uv_xz = pos.xz * scale;
+    let uv_xy = pos.xy * scale;
+    let uv_yz = pos.yz * scale;
+    let r_xz = rotate_uv(uv_xz, floor(uv_xz));
+    let r_xy = rotate_uv(uv_xy, floor(uv_xy));
+    let r_yz = rotate_uv(uv_yz, floor(uv_yz));
+    let bias = -1.5;
+    let t_xz = textureSampleBias(biome_normals, biome_sampler, r_xz, layer, bias).rgb;
+    let t_xy = textureSampleBias(biome_normals, biome_sampler, r_xy, layer, bias).rgb;
+    let t_yz = textureSampleBias(biome_normals, biome_sampler, r_yz, layer, bias).rgb;
+    return t_xz * w.y + t_xy * w.z + t_yz * w.x;
 }
 
-// ─── Material ─────────────────────────────────────────────────────────────────
+fn triplanar_sample_mra(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: i32) -> vec3<f32> {
+    let w = triplanar_weights(n);
+    let uv_xz = pos.xz * scale;
+    let uv_xy = pos.xy * scale;
+    let uv_yz = pos.yz * scale;
+    // Rotate each projection's UV to break tiling repetition (matches albedo/normal)
+    let r_xz = rotate_uv(uv_xz, floor(uv_xz));
+    let r_xy = rotate_uv(uv_xy, floor(uv_xy));
+    let r_yz = rotate_uv(uv_yz, floor(uv_yz));
+    let bias = -1.5;
+    let t_xz = textureSampleBias(biome_mra, biome_sampler, r_xz, layer, bias).rgb;
+    let t_xy = textureSampleBias(biome_mra, biome_sampler, r_xy, layer, bias).rgb;
+    let t_yz = textureSampleBias(biome_mra, biome_sampler, r_yz, layer, bias).rgb;
+    return t_xz * w.y + t_xy * w.z + t_yz * w.x;
+}
+
+// ─── Normal Map Decoding with Strength ────────────────────────────────────────
+
+fn decode_normal_map(tex_normal: vec3<f32>, vertex_normal: vec3<f32>, strength: f32) -> vec3<f32> {
+    // Decode from [0,1] to [-1,1]
+    var tn = tex_normal * 2.0 - 1.0;
+
+    // Amplify tangent-space XY for more visible detail
+    tn = vec3<f32>(tn.x * strength, tn.y * strength, tn.z);
+
+    // Build tangent frame from vertex normal
+    let up = select(vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(1.0, 0.0, 0.0), abs(vertex_normal.y) < 0.999);
+    let tangent = normalize(cross(up, vertex_normal));
+    let bitangent = cross(vertex_normal, tangent);
+
+    // Transform tangent-space normal to world space
+    return normalize(tangent * tn.x + bitangent * tn.y + vertex_normal * tn.z);
+}
+
+// ─── Material Structure ───────────────────────────────────────────────────────
 
 struct Material {
     albedo: vec3<f32>,
     roughness: f32,
     metallic: f32,
     ao: f32,
+    normal: vec3<f32>,
+    height_proxy: f32,
 }
 
-fn material_grassland(pos: vec3<f32>, n: vec3<f32>) -> Material {
-    let base = triplanar_fbm(pos, n, 0.8);
-    let detail = triplanar_noise(pos, n, 3.0);
-    let clump = triplanar_fbm(pos, n, 0.15);
-    let green1 = vec3<f32>(0.12, 0.28, 0.04);
-    let green2 = vec3<f32>(0.18, 0.38, 0.06);
-    let green3 = vec3<f32>(0.14, 0.30, 0.03);
-    let dirt = vec3<f32>(0.14, 0.08, 0.03);
-    var color = mix(green1, green2, base);
-    color = mix(color, green3, detail * 0.4);
-    let dirt_f = smoothstep(0.25, 0.35, 1.0 - clump);
-    color = mix(color, dirt, dirt_f * 0.6);
-    let micro = triplanar_noise(pos, n, 12.0);
-    color *= 0.85 + micro * 0.3;
+fn dominant_biome_layer(weights_0: vec4<f32>, weights_1: vec4<f32>) -> i32 {
+    var best_index = 0i;
+    var best_weight = weights_0.x;
+
+    if weights_0.y > best_weight { best_weight = weights_0.y; best_index = 1; }
+    if weights_0.z > best_weight { best_weight = weights_0.z; best_index = 2; }
+    if weights_0.w > best_weight { best_weight = weights_0.w; best_index = 3; }
+    if weights_1.x > best_weight { best_weight = weights_1.x; best_index = 4; }
+    if weights_1.y > best_weight { best_weight = weights_1.y; best_index = 5; }
+    if weights_1.z > best_weight { best_weight = weights_1.z; best_index = 6; }
+    if weights_1.w > best_weight { best_weight = weights_1.w; best_index = 7; }
+
+    return best_index;
+}
+
+fn dominant_splat_layer(weights_0: vec4<f32>, weights_1: vec4<f32>) -> i32 {
+    var best_index = 0i;
+    var best_weight = weights_0.x;
+
+    if weights_0.y > best_weight { best_weight = weights_0.y; best_index = 1; }
+    if weights_0.z > best_weight { best_weight = weights_0.z; best_index = 2; }
+    if weights_0.w > best_weight { best_weight = weights_0.w; best_index = 3; }
+    if weights_1.x > best_weight { best_weight = weights_1.x; best_index = 4; }
+    if weights_1.y > best_weight { best_weight = weights_1.y; best_index = 5; }
+    if weights_1.z > best_weight { best_weight = weights_1.z; best_index = 6; }
+    if weights_1.w > best_weight { best_weight = weights_1.w; best_index = 7; }
+
+    return best_index;
+}
+
+fn splat_layer_to_material(splat_layer: i32, biome_weights_0: vec4<f32>, biome_weights_1: vec4<f32>) -> i32 {
+    // Splat weights are already indexed by material_id from the CPU-side SplatRule system.
+    // No remapping needed — the splat layer IS the material index.
+    return splat_layer;
+}
+
+fn luminance(c: vec3<f32>) -> f32 {
+    return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
+fn material_params(layer: i32) -> vec4<f32> {
+    switch layer {
+        case 0: { return vec4<f32>(0.115, 0.42, 1.9, 0.42); } // grass
+        case 1: { return vec4<f32>(0.085, 0.28, 1.2, 0.22); } // sand
+        case 2: { return vec4<f32>(0.110, 0.40, 2.0, 0.46); } // forest floor
+        case 3: { return vec4<f32>(0.072, 0.22, 2.1, 0.24); } // mountain rock
+        case 4: { return vec4<f32>(0.068, 0.21, 0.9, 0.18); } // snow
+        case 5: { return vec4<f32>(0.102, 0.32, 1.7, 0.34); } // mud
+        case 6: { return vec4<f32>(0.090, 0.30, 1.1, 0.24); } // beach sand
+        case 7: { return vec4<f32>(0.080, 0.26, 1.6, 0.28); } // river stone
+        case 8: { return vec4<f32>(0.074, 0.20, 2.2, 0.24); } // rock slate
+        case 9: { return vec4<f32>(0.102, 0.34, 1.55, 0.36); } // dirt
+        default: { return vec4<f32>(0.100, 0.35, 1.6, 0.30); }
+    }
+}
+
+fn macro_variation_masks(pos: vec3<f32>, layer: i32) -> vec3<f32> {
+    let layer_f = f32(layer);
+    let n0 = noise2d(pos.xz * 0.008 + vec2<f32>(layer_f * 1.73, layer_f * 0.91));
+    let n1 = noise2d(pos.xz * 0.017 + vec2<f32>(17.1 + layer_f * 0.61, 9.4 + layer_f * 1.27));
+    let n2 = noise2d(pos.xz * 0.031 + vec2<f32>(33.7 + layer_f * 1.11, 4.8 + layer_f * 0.53));
+    return vec3<f32>(n0, n1, n2);
+}
+
+fn warped_material_pos(pos: vec3<f32>, layer: i32) -> vec3<f32> {
+    let layer_f = f32(layer);
+    let warp_x = noise2d(pos.xz * 0.012 + vec2<f32>(layer_f * 2.13, 7.1)) - 0.5;
+    let warp_z = noise2d((pos.xz + vec2<f32>(31.7, 18.4)) * 0.012 + vec2<f32>(5.2, layer_f * 1.71)) - 0.5;
+    return pos + vec3<f32>(warp_x * 1.8, 0.0, warp_z * 1.8);
+}
+
+// ─── Multi-Scale PBR Sampling ─────────────────────────────────────────────────
+// Samples textures at two scales and blends for visible detail at all distances.
+
+fn sample_biome_material(pos: vec3<f32>, n: vec3<f32>, layer: i32) -> Material {
+    let params = material_params(layer);
+    let macro_scale = params.x;
+    let detail_scale = params.y;
+    let normal_strength = params.z;
+    let detail_mix = params.w;
+    let warped_pos = warped_material_pos(pos, layer);
+    let variation = macro_variation_masks(pos, layer);
+
+    // Distance-based LOD: fade detail at far range to save ALU
+    let cam_dist = distance(uniforms.camera_pos, pos);
+    let detail_fade = 1.0 - smoothstep(200.0, 500.0, cam_dist);
+
+    // Macro samples (always present)
+    let macro_albedo = triplanar_sample_albedo(warped_pos, n, macro_scale, layer);
+    let macro_nm = triplanar_sample_normal_raw(warped_pos, n, macro_scale, layer);
+    let macro_mra = triplanar_sample_mra(warped_pos, n, macro_scale, layer);
+
+    // Detail samples (fade out at distance)
+    var albedo = macro_albedo;
+    var nm_raw = macro_nm;
+    var roughness = macro_mra.g;
+    var metallic = macro_mra.r;
+    var ao = macro_mra.b;
+    if detail_fade > 0.01 {
+        let detail_albedo = triplanar_sample_albedo(warped_pos, n, detail_scale, layer);
+        let detail_nm = triplanar_sample_normal_raw(warped_pos, n, detail_scale, layer);
+        // Overlay detail: multiply-blend albedo for natural micro-variation
+        let detail_overlay = detail_albedo / max(macro_albedo, vec3<f32>(0.01));
+        let overlay_blended = mix(vec3<f32>(1.0), detail_overlay, detail_mix * detail_fade);
+        albedo = macro_albedo * overlay_blended;
+        // Blend normals: detail adds high-frequency perturbation
+        nm_raw = mix(macro_nm, detail_nm, (0.30 + detail_mix * 0.35) * detail_fade);
+    }
+
+    // Cheap macro breakup for color and surface response without extra texture fetches.
+    let tint = mix(vec3<f32>(0.92, 0.95, 0.98), vec3<f32>(1.08, 1.03, 0.96), variation.x);
+    let hue_bias = mix(vec3<f32>(0.98, 0.99, 1.02), vec3<f32>(1.03, 1.00, 0.96), variation.y);
+    albedo *= tint * hue_bias;
+    roughness = clamp(roughness + (variation.z - 0.5) * 0.14, 0.04, 1.0);
+    metallic = clamp(metallic + (variation.y - 0.5) * 0.03, 0.0, 1.0);
+    ao = clamp(ao * mix(0.92, 1.08, variation.x), 0.0, 1.0);
+
     var mat: Material;
-    mat.albedo = color;
-    mat.roughness = 0.75 + detail * 0.2;
-    mat.metallic = 0.0;
-    mat.ao = 0.7 + base * 0.3;
+    mat.albedo = albedo;
+    mat.normal = decode_normal_map(nm_raw, n, normal_strength);
+    mat.metallic = metallic;
+    mat.roughness = roughness;
+    mat.ao = ao;
+    mat.height_proxy = clamp(
+        0.45 * luminance(macro_albedo)
+            + 0.25 * macro_nm.z
+            + 0.20 * (1.0 - roughness)
+            + 0.10 * variation.x,
+        0.0,
+        1.0,
+    );
     return mat;
 }
 
-fn material_desert(pos: vec3<f32>, n: vec3<f32>) -> Material {
-    let base = triplanar_fbm(pos, n, 0.3);
-    let ripple = triplanar_noise(pos, n, 6.0);
-    let large = triplanar_fbm(pos, n, 0.05);
-    let sand1 = vec3<f32>(0.72, 0.55, 0.30);
-    let sand2 = vec3<f32>(0.82, 0.62, 0.35);
-    let rsand = vec3<f32>(0.65, 0.35, 0.15);
-    let rock = vec3<f32>(0.35, 0.28, 0.18);
-    var color = mix(sand1, sand2, base);
-    color = mix(color, rsand, large * 0.4);
-    color += vec3<f32>(0.02) * ripple;
-    let slope = 1.0 - max(dot(n, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
-    color = mix(color, rock, smoothstep(0.3, 0.6, slope));
-    let micro = triplanar_noise(pos, n, 15.0);
-    color *= 0.9 + micro * 0.2;
-    var mat: Material;
-    mat.albedo = color;
-    mat.roughness = 0.55 + base * 0.25;
-    mat.metallic = 0.0;
-    mat.ao = 0.8 + base * 0.2;
-    return mat;
+fn blend_biome_materials(pos: vec3<f32>, n: vec3<f32>, weights_0: vec4<f32>, weights_1: vec4<f32>) -> Material {
+    var total_weight = weights_0.x + weights_0.y + weights_0.z + weights_0.w
+        + weights_1.x + weights_1.y + weights_1.z + weights_1.w;
+    if total_weight < 0.0001 {
+        return sample_biome_material(pos, n, 0);
+    }
+
+    let inv_total = 1.0 / total_weight;
+    let w0 = weights_0 * inv_total;
+    let w1 = weights_1 * inv_total;
+
+    var albedo = vec3<f32>(0.0);
+    var roughness = 0.0;
+    var metallic = 0.0;
+    var ao = 0.0;
+    var normal_sum = vec3<f32>(0.0);
+    var height_sum = 0.0;
+
+    if w0.x > 0.001 {
+        let mat = sample_biome_material(pos, n, 0);
+        albedo += mat.albedo * w0.x;
+        roughness += mat.roughness * w0.x;
+        metallic += mat.metallic * w0.x;
+        ao += mat.ao * w0.x;
+        normal_sum += mat.normal * w0.x;
+        height_sum += mat.height_proxy * w0.x;
+    }
+    if w0.y > 0.001 {
+        let mat = sample_biome_material(pos, n, 1);
+        albedo += mat.albedo * w0.y;
+        roughness += mat.roughness * w0.y;
+        metallic += mat.metallic * w0.y;
+        ao += mat.ao * w0.y;
+        normal_sum += mat.normal * w0.y;
+        height_sum += mat.height_proxy * w0.y;
+    }
+    if w0.z > 0.001 {
+        let mat = sample_biome_material(pos, n, 2);
+        albedo += mat.albedo * w0.z;
+        roughness += mat.roughness * w0.z;
+        metallic += mat.metallic * w0.z;
+        ao += mat.ao * w0.z;
+        normal_sum += mat.normal * w0.z;
+        height_sum += mat.height_proxy * w0.z;
+    }
+    if w0.w > 0.001 {
+        let mat = sample_biome_material(pos, n, 3);
+        albedo += mat.albedo * w0.w;
+        roughness += mat.roughness * w0.w;
+        metallic += mat.metallic * w0.w;
+        ao += mat.ao * w0.w;
+        normal_sum += mat.normal * w0.w;
+        height_sum += mat.height_proxy * w0.w;
+    }
+    if w1.x > 0.001 {
+        let mat = sample_biome_material(pos, n, 4);
+        albedo += mat.albedo * w1.x;
+        roughness += mat.roughness * w1.x;
+        metallic += mat.metallic * w1.x;
+        ao += mat.ao * w1.x;
+        normal_sum += mat.normal * w1.x;
+        height_sum += mat.height_proxy * w1.x;
+    }
+    if w1.y > 0.001 {
+        let mat = sample_biome_material(pos, n, 5);
+        albedo += mat.albedo * w1.y;
+        roughness += mat.roughness * w1.y;
+        metallic += mat.metallic * w1.y;
+        ao += mat.ao * w1.y;
+        normal_sum += mat.normal * w1.y;
+        height_sum += mat.height_proxy * w1.y;
+    }
+    if w1.z > 0.001 {
+        let mat = sample_biome_material(pos, n, 6);
+        albedo += mat.albedo * w1.z;
+        roughness += mat.roughness * w1.z;
+        metallic += mat.metallic * w1.z;
+        ao += mat.ao * w1.z;
+        normal_sum += mat.normal * w1.z;
+        height_sum += mat.height_proxy * w1.z;
+    }
+    if w1.w > 0.001 {
+        let mat = sample_biome_material(pos, n, 7);
+        albedo += mat.albedo * w1.w;
+        roughness += mat.roughness * w1.w;
+        metallic += mat.metallic * w1.w;
+        ao += mat.ao * w1.w;
+        normal_sum += mat.normal * w1.w;
+        height_sum += mat.height_proxy * w1.w;
+    }
+
+    var result: Material;
+    result.albedo = albedo;
+    result.roughness = roughness;
+    result.metallic = metallic;
+    result.ao = ao;
+    result.normal = normalize(normal_sum);
+    result.height_proxy = height_sum;
+    return result;
 }
 
-fn material_forest(pos: vec3<f32>, n: vec3<f32>) -> Material {
-    let base = triplanar_fbm(pos, n, 0.5);
-    let leaf = triplanar_noise(pos, n, 4.0);
-    let moss = triplanar_fbm(pos, n, 1.5);
-    let earth = vec3<f32>(0.08, 0.05, 0.02);
-    let lg = vec3<f32>(0.06, 0.18, 0.03);
-    let lb = vec3<f32>(0.15, 0.08, 0.02);
-    let mg = vec3<f32>(0.05, 0.22, 0.04);
-    var color = mix(earth, lg, base * 0.7);
-    color = mix(color, lb, leaf * 0.35);
-    let flat_f = max(dot(n, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
-    color = mix(color, mg, moss * flat_f * 0.5);
-    let micro = triplanar_noise(pos, n, 10.0);
-    color *= 0.80 + micro * 0.4;
-    var mat: Material;
-    mat.albedo = color;
-    mat.roughness = 0.85 + leaf * 0.1;
-    mat.metallic = 0.0;
-    mat.ao = 0.5 + base * 0.3;
-    return mat;
+fn blend_local_splat_materials(
+    pos: vec3<f32>,
+    n: vec3<f32>,
+    biome_weights_0: vec4<f32>,
+    biome_weights_1: vec4<f32>,
+    splat_weights_0: vec4<f32>,
+    splat_weights_1: vec4<f32>,
+) -> Material {
+    let vegetated_affinity = biome_weights_0.x + biome_weights_0.z + biome_weights_1.y;
+    let sandy_affinity = biome_weights_0.y + biome_weights_1.z;
+    let alpine_affinity = biome_weights_0.w + biome_weights_1.x;
+    let wet_affinity = biome_weights_1.y + biome_weights_1.w;
+    let breakup_a = noise2d(pos.xz * 0.024 + vec2<f32>(4.1, 9.7));
+    let breakup_b = noise2d(pos.xz * 0.051 + vec2<f32>(17.0, 3.4));
+    let breakup_c = noise2d(pos.xz * 0.013 + vec2<f32>(27.3, 15.8));
+
+    var grass_w = splat_weights_0.x * clamp(0.85 * vegetated_affinity + 0.10 * (1.0 - sandy_affinity), 0.0, 1.0) * mix(0.88, 1.12, breakup_a);
+    var rock_w = splat_weights_0.y * clamp(0.45 + 0.55 * alpine_affinity + 0.25 * sandy_affinity + 0.15 * wet_affinity, 0.0, 1.0) * mix(0.82, 1.22, breakup_b);
+    var sand_w = splat_weights_0.z * clamp(0.15 + 0.85 * sandy_affinity + 0.25 * wet_affinity, 0.0, 1.0) * mix(0.84, 1.16, breakup_c);
+    var snow_w = splat_weights_0.w * clamp(alpine_affinity, 0.0, 1.0) * mix(0.90, 1.12, breakup_a);
+    var dirt_w = splat_weights_1.x * clamp(0.75 * vegetated_affinity + 0.35 * alpine_affinity + 0.10 * sandy_affinity, 0.0, 1.0) * mix(0.86, 1.18, breakup_b);
+    var mud_w = splat_weights_1.y * clamp(0.90 * wet_affinity + 0.20 * vegetated_affinity, 0.0, 1.0) * mix(0.84, 1.20, breakup_c);
+
+    let total_weight = grass_w + rock_w + sand_w + snow_w + dirt_w + mud_w;
+    if total_weight < 0.0001 {
+        return sample_biome_material(pos, n, 0);
+    }
+
+    let inv_total = 1.0 / total_weight;
+    grass_w *= inv_total;
+    rock_w *= inv_total;
+    sand_w *= inv_total;
+    snow_w *= inv_total;
+    dirt_w *= inv_total;
+    mud_w *= inv_total;
+
+    var albedo = vec3<f32>(0.0);
+    var roughness = 0.0;
+    var metallic = 0.0;
+    var ao = 0.0;
+    var normal_sum = vec3<f32>(0.0);
+    var height_sum = 0.0;
+
+    if grass_w > 0.001 {
+        let mat = sample_biome_material(pos, n, 0);
+        albedo += mat.albedo * grass_w;
+        roughness += mat.roughness * grass_w;
+        metallic += mat.metallic * grass_w;
+        ao += mat.ao * grass_w;
+        normal_sum += mat.normal * grass_w;
+        height_sum += mat.height_proxy * grass_w;
+    }
+    if rock_w > 0.001 {
+        let mat = sample_biome_material(pos, n, 8);
+        albedo += mat.albedo * rock_w;
+        roughness += mat.roughness * rock_w;
+        metallic += mat.metallic * rock_w;
+        ao += mat.ao * rock_w;
+        normal_sum += mat.normal * rock_w;
+        height_sum += mat.height_proxy * rock_w;
+    }
+    if sand_w > 0.001 {
+        let mat = sample_biome_material(pos, n, 1);
+        albedo += mat.albedo * sand_w;
+        roughness += mat.roughness * sand_w;
+        metallic += mat.metallic * sand_w;
+        ao += mat.ao * sand_w;
+        normal_sum += mat.normal * sand_w;
+        height_sum += mat.height_proxy * sand_w;
+    }
+    if snow_w > 0.001 {
+        let mat = sample_biome_material(pos, n, 4);
+        albedo += mat.albedo * snow_w;
+        roughness += mat.roughness * snow_w;
+        metallic += mat.metallic * snow_w;
+        ao += mat.ao * snow_w;
+        normal_sum += mat.normal * snow_w;
+        height_sum += mat.height_proxy * snow_w;
+    }
+    if dirt_w > 0.001 {
+        let mat = sample_biome_material(pos, n, 9);
+        albedo += mat.albedo * dirt_w;
+        roughness += mat.roughness * dirt_w;
+        metallic += mat.metallic * dirt_w;
+        ao += mat.ao * dirt_w;
+        normal_sum += mat.normal * dirt_w;
+        height_sum += mat.height_proxy * dirt_w;
+    }
+    if mud_w > 0.001 {
+        let mat = sample_biome_material(pos, n, 5);
+        albedo += mat.albedo * mud_w;
+        roughness += mat.roughness * mud_w;
+        metallic += mat.metallic * mud_w;
+        ao += mat.ao * mud_w;
+        normal_sum += mat.normal * mud_w;
+        height_sum += mat.height_proxy * mud_w;
+    }
+
+    var result: Material;
+    result.albedo = albedo;
+    result.roughness = roughness;
+    result.metallic = metallic;
+    result.ao = ao;
+    result.normal = normalize(normal_sum);
+    result.height_proxy = clamp(height_sum, 0.0, 1.0);
+    return result;
 }
 
-fn material_mountain(pos: vec3<f32>, n: vec3<f32>) -> Material {
-    let strata = triplanar_fbm(pos, n, 0.4);
-    let crack = voronoi2d(pos.xz * 2.0);
-    let detail = triplanar_noise(pos, n, 5.0);
-    let rock1 = vec3<f32>(0.30, 0.26, 0.22);
-    let rock2 = vec3<f32>(0.45, 0.38, 0.30);
-    let dark = vec3<f32>(0.12, 0.10, 0.08);
-    var color = mix(rock1, rock2, strata);
-    let crack_f = smoothstep(0.02, 0.08, crack.x);
-    color = mix(dark, color, crack_f);
-    let strata_line = sin(pos.y * 3.0 + strata * 4.0) * 0.5 + 0.5;
-    color = mix(color, color * 0.8, smoothstep(0.4, 0.5, strata_line) * 0.3);
-    let micro = triplanar_noise(pos, n, 8.0);
-    color *= 0.85 + micro * 0.3;
-    let height_snow = smoothstep(30.0, 50.0, pos.y);
-    let flat_f = max(dot(n, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
-    let snow_f = height_snow * smoothstep(0.5, 0.85, flat_f);
-    color = mix(color, vec3<f32>(0.85, 0.87, 0.90), snow_f);
-    var mat: Material;
-    mat.albedo = color;
-    mat.roughness = mix(0.65 + detail * 0.2, 0.3, snow_f);
-    mat.metallic = 0.0;
-    mat.ao = 0.6 + crack_f * 0.3;
-    return mat;
-}
-
-fn material_tundra(pos: vec3<f32>, n: vec3<f32>) -> Material {
-    let base = triplanar_fbm(pos, n, 0.6);
-    let ice = voronoi2d(pos.xz * 3.0);
-    let frost = triplanar_noise(pos, n, 8.0);
-    let snow = vec3<f32>(0.85, 0.88, 0.92);
-    let ice_blue = vec3<f32>(0.55, 0.68, 0.82);
-    let frozen = vec3<f32>(0.22, 0.20, 0.16);
-    var color = mix(snow, frozen, base * 0.3);
-    let ice_f = smoothstep(0.15, 0.25, ice.x);
-    color = mix(ice_blue, color, ice_f);
-    color += vec3<f32>(0.03) * frost;
-    var mat: Material;
-    mat.albedo = color;
-    mat.roughness = mix(0.15, 0.80, ice_f);
-    mat.metallic = mix(0.1, 0.0, ice_f);
-    mat.ao = 0.85 + base * 0.15;
-    return mat;
-}
-
-fn material_swamp(pos: vec3<f32>, n: vec3<f32>) -> Material {
-    let base = triplanar_fbm(pos, n, 0.4);
-    let mud = warped_fbm(pos.xz * 0.5);
-    let algae = triplanar_noise(pos, n, 2.0);
-    let mud_brown = vec3<f32>(0.12, 0.08, 0.03);
-    let swamp_green = vec3<f32>(0.06, 0.14, 0.03);
-    let dark_water = vec3<f32>(0.02, 0.06, 0.03);
-    let algae_green = vec3<f32>(0.08, 0.20, 0.04);
-    var color = mix(mud_brown, swamp_green, base);
-    let water_patch = smoothstep(0.4, 0.5, mud);
-    color = mix(color, dark_water, water_patch * 0.7);
-    color = mix(color, algae_green, algae * water_patch * 0.5);
-    let micro = triplanar_noise(pos, n, 6.0);
-    color *= 0.8 + micro * 0.4;
-    var mat: Material;
-    mat.albedo = color;
-    mat.roughness = mix(0.9, 0.15, water_patch);
-    mat.metallic = water_patch * 0.05;
-    mat.ao = 0.5 + base * 0.3;
-    return mat;
-}
-
-fn material_beach(pos: vec3<f32>, n: vec3<f32>) -> Material {
-    let base = triplanar_fbm(pos, n, 0.8);
-    let shell = voronoi2d(pos.xz * 8.0);
-    let wave_mark = sin(pos.x * 5.0 + pos.z * 0.5 + noise2d(pos.xz * 2.0) * 3.0);
-    let dry = vec3<f32>(0.78, 0.65, 0.42);
-    let wet = vec3<f32>(0.42, 0.34, 0.20);
-    let pebble = vec3<f32>(0.30, 0.26, 0.22);
-    let wet_f = smoothstep(2.0, -1.0, pos.y - uniforms.water_level);
-    var color = mix(dry, wet, wet_f);
-    color = mix(color, color * 1.1, base * 0.3);
-    let shell_f = smoothstep(0.12, 0.08, shell.x);
-    color = mix(color, pebble, shell_f * 0.5);
-    let mark = smoothstep(0.3, 0.5, wave_mark) * wet_f;
-    color = mix(color, color * 0.9, mark * 0.3);
-    let micro = triplanar_noise(pos, n, 20.0);
-    color *= 0.9 + micro * 0.2;
-    var mat: Material;
-    mat.albedo = color;
-    mat.roughness = mix(0.7, 0.3, wet_f);
-    mat.metallic = 0.0;
-    mat.ao = 0.9;
-    return mat;
-}
-
-fn material_river(pos: vec3<f32>, n: vec3<f32>) -> Material {
-    let stones = voronoi2d(pos.xz * 5.0);
-    let base = triplanar_fbm(pos, n, 1.0);
-    let wet_rock = vec3<f32>(0.15, 0.13, 0.10);
-    let sand = vec3<f32>(0.38, 0.30, 0.18);
-    let dark = vec3<f32>(0.06, 0.08, 0.06);
-    var color = mix(sand, wet_rock, base);
-    let stone_f = smoothstep(0.1, 0.15, stones.x);
-    color = mix(dark, color, stone_f);
-    let depth = max(0.0, uniforms.water_level - pos.y);
-    let underwater_tint = vec3<f32>(0.05, 0.15, 0.22);
-    color = mix(color, underwater_tint, smoothstep(0.0, 5.0, depth) * 0.4);
-    var mat: Material;
-    mat.albedo = color;
-    mat.roughness = 0.25;
-    mat.metallic = 0.02;
-    mat.ao = 0.6 + stone_f * 0.3;
-    return mat;
-}
+// ─── Rock Material (for slope blending, uses mountain_rock layer 3) ───────────
 
 fn rock_material(pos: vec3<f32>, n: vec3<f32>) -> Material {
-    let strata = triplanar_fbm(pos, n, 0.5);
-    let crack = voronoi2d(pos.xz * 3.0);
-    let detail = triplanar_noise(pos, n, 4.0);
-    let rock1 = vec3<f32>(0.32, 0.28, 0.24);
-    let rock2 = vec3<f32>(0.48, 0.40, 0.34);
-    let dark = vec3<f32>(0.14, 0.12, 0.10);
-    var color = mix(rock1, rock2, strata);
-    let crack_f = smoothstep(0.03, 0.1, crack.x);
-    color = mix(dark, color, crack_f);
-    let micro = triplanar_noise(pos, n, 10.0);
-    color *= 0.85 + micro * 0.3;
-    var mat: Material;
-    mat.albedo = color;
-    mat.roughness = 0.6 + detail * 0.2;
-    mat.metallic = 0.0;
-    mat.ao = 0.5 + crack_f * 0.4;
-    return mat;
-}
-
-fn get_biome_material(biome_id: u32, pos: vec3<f32>, n: vec3<f32>) -> Material {
-    switch biome_id {
-        case 0u: { return material_grassland(pos, n); }
-        case 1u: { return material_desert(pos, n); }
-        case 2u: { return material_forest(pos, n); }
-        case 3u: { return material_mountain(pos, n); }
-        case 4u: { return material_tundra(pos, n); }
-        case 5u: { return material_swamp(pos, n); }
-        case 6u: { return material_beach(pos, n); }
-        case 7u: { return material_river(pos, n); }
-        default: { return material_grassland(pos, n); }
-    }
+    return sample_biome_material(pos, n, 3);
 }
 
 fn apply_slope_blend(biome_mat: Material, pos: vec3<f32>, n: vec3<f32>) -> Material {
     let slope = 1.0 - max(dot(n, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
-    let rock_blend = smoothstep(0.5, 0.8, slope);
+    let rock_blend = smoothstep(0.72, 0.95, slope);
     if rock_blend < 0.01 {
         return biome_mat;
     }
@@ -393,6 +545,8 @@ fn apply_slope_blend(biome_mat: Material, pos: vec3<f32>, n: vec3<f32>) -> Mater
     result.roughness = mix(biome_mat.roughness, rock.roughness, rock_blend);
     result.metallic = mix(biome_mat.metallic, rock.metallic, rock_blend);
     result.ao = mix(biome_mat.ao, rock.ao, rock_blend);
+    result.normal = normalize(mix(biome_mat.normal, rock.normal, rock_blend));
+    result.height_proxy = mix(biome_mat.height_proxy, rock.height_proxy, rock_blend);
     return result;
 }
 
@@ -421,20 +575,9 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
     return f0 + (1.0 - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
 }
 
-fn perturb_normal(pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
-    let eps = 0.1;
-    let scale = 2.0;
-    let h0 = triplanar_fbm(pos, n, scale);
-    let hx = triplanar_fbm(pos + vec3<f32>(eps, 0.0, 0.0), n, scale);
-    let hz = triplanar_fbm(pos + vec3<f32>(0.0, 0.0, eps), n, scale);
-    let dx = (hx - h0) / eps;
-    let dz = (hz - h0) / eps;
-    return normalize(n + vec3<f32>(-dx, 0.0, -dz) * 0.5);
-}
-
 fn pbr_lighting(mat: Material, pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
-    let light_dir = normalize(vec3<f32>(0.4, 0.8, 0.3));
-    let light_color = vec3<f32>(1.4, 1.3, 1.1);
+    let light_dir = normalize(uniforms.sun_dir);
+    let light_color = uniforms.sun_color * uniforms.sun_intensity;
     let view_dir = normalize(uniforms.camera_pos - pos);
     let half_dir = normalize(light_dir + view_dir);
     let n_dot_l = max(dot(n, light_dir), 0.0);
@@ -449,12 +592,13 @@ fn pbr_lighting(mat: Material, pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     let kS = F;
     let kD = (vec3<f32>(1.0) - kS) * (1.0 - mat.metallic);
     let direct = (kD * mat.albedo / PI + spec) * light_color * n_dot_l;
-    let sky_c = vec3<f32>(0.5, 0.6, 0.8);
-    let ground_c = vec3<f32>(0.15, 0.12, 0.08);
+    // Hemisphere ambient from uniform colors
+    let ground_c = uniforms.ambient_color * 0.35;
     let amb_blend = n.y * 0.5 + 0.5;
-    let ambient = mix(ground_c, sky_c, amb_blend) * mat.albedo * mat.ao * 0.45;
-    let rim = pow(1.0 - n_dot_v, 3.0) * 0.06;
-    return direct + ambient + vec3<f32>(rim);
+    let ambient = mix(ground_c, uniforms.ambient_color, amb_blend) * mat.albedo * mat.ao * uniforms.ambient_intensity;
+    // Subtle warm rim
+    let rim = pow(1.0 - n_dot_v, 4.0) * 0.03;
+    return direct + ambient + vec3<f32>(rim * 1.0, rim * 0.9, rim * 0.7);
 }
 
 // ─── Vertex Shader ────────────────────────────────────────────────────────────
@@ -466,7 +610,10 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
     output.world_position = vertex.position;
     output.world_normal = normalize(vertex.normal);
     output.uv = vertex.uv;
-    output.biome_id = vertex.biome_id;
+    output.biome_weights_0 = vertex.biome_weights_0;
+    output.biome_weights_1 = vertex.biome_weights_1;
+    output.splat_weights_0 = vertex.splat_weights_0;
+    output.splat_weights_1 = vertex.splat_weights_1;
     return output;
 }
 
@@ -474,9 +621,18 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Unlit: raw albedo only
+    let n = normalize(in.world_normal);
+    let pos = in.world_position;
+    let cam_dist = distance(uniforms.camera_pos, pos);
+    // Smooth LOD tier blending — avoids hard ring boundaries around camera
+    let near_blend = 1.0 - smoothstep(75.0, 115.0, cam_dist);   // 1 close, 0 far
+    let mid_blend  = 1.0 - smoothstep(180.0, 240.0, cam_dist);  // 1 close, 0 far
+    let near_tier = cam_dist < 115.0;
+    let mid_tier = cam_dist < 240.0;
+
+    // Unlit: quick sample at macro scale only
     if uniforms.shading_mode == 1u {
-        let mat = get_biome_material(in.biome_id, in.world_position, in.world_normal);
+        let mat = sample_biome_material(pos, n, dominant_biome_layer(in.biome_weights_0, in.biome_weights_1));
         return vec4<f32>(mat.albedo, 1.0);
     }
     // Wireframe
@@ -484,45 +640,101 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(0.1, 0.1, 0.1, 1.0);
     }
 
-    // Full PBR lit
-    var mat = get_biome_material(in.biome_id, in.world_position, in.world_normal);
-    mat = apply_slope_blend(mat, in.world_position, in.world_normal);
-    let perturbed_n = perturb_normal(in.world_position, in.world_normal);
+    // Full PBR with multi-scale texture sampling
+    var biome_mat: Material;
+    if near_tier || mid_tier {
+        biome_mat = blend_biome_materials(pos, n, in.biome_weights_0, in.biome_weights_1);
+    } else {
+        biome_mat = sample_biome_material(pos, n, dominant_biome_layer(in.biome_weights_0, in.biome_weights_1));
+    }
+
+    var splat_mat: Material;
+    if near_tier {
+        splat_mat = blend_local_splat_materials(
+            pos,
+            n,
+            in.biome_weights_0,
+            in.biome_weights_1,
+            in.splat_weights_0,
+            in.splat_weights_1,
+        );
+    } else if mid_tier {
+        splat_mat = sample_biome_material(
+            pos,
+            n,
+            splat_layer_to_material(
+                dominant_splat_layer(in.splat_weights_0, in.splat_weights_1),
+                in.biome_weights_0,
+                in.biome_weights_1,
+            ),
+        );
+    } else {
+        splat_mat = biome_mat;
+    }
+    let local_breakup = clamp(
+        in.splat_weights_0.y + in.splat_weights_0.z + in.splat_weights_0.w + in.splat_weights_1.x + in.splat_weights_1.y,
+        0.0,
+        1.0,
+    );
+    let transition_noise = noise2d(pos.xz * 0.022 + vec2<f32>(8.7, 2.3));
+    let height_factor = smoothstep(-8.0, 120.0, pos.y);
+    let height_transition = smoothstep(-0.18, 0.22, splat_mat.height_proxy - biome_mat.height_proxy);
+    let base_local_mix = clamp(0.34 + 0.28 * local_breakup + 0.18 * transition_noise + 0.10 * height_factor, 0.26, 0.86);
+    // Smooth tier_mix using smoothstep blends instead of hard select()
+    let tier_mix = clamp(near_blend + (1.0 - near_blend) * mid_blend * 0.38, 0.0, 1.0);
+    let local_mix = clamp((base_local_mix * 0.82 + height_transition * 0.18) * tier_mix, 0.0, 0.88);
+
+    var mat: Material;
+    mat.albedo = mix(biome_mat.albedo, splat_mat.albedo, local_mix);
+    mat.roughness = mix(biome_mat.roughness, splat_mat.roughness, min(0.75, local_mix + 0.16));
+    mat.metallic = mix(biome_mat.metallic, splat_mat.metallic, min(0.72, local_mix + 0.12));
+    mat.ao = mix(biome_mat.ao, splat_mat.ao, min(0.72, local_mix + 0.12));
+    mat.normal = normalize(mix(biome_mat.normal, splat_mat.normal, min(0.82, local_mix + 0.22)));
+    mat.height_proxy = mix(biome_mat.height_proxy, splat_mat.height_proxy, local_mix);
+
+    // Slope-based rock blending (smoothly faded at distance)
+    let slope_blend_factor = 1.0 - smoothstep(220.0, 280.0, cam_dist);
+    if slope_blend_factor > 0.01 {
+        let slope_mat = apply_slope_blend(mat, pos, n);
+        mat.albedo = mix(mat.albedo, slope_mat.albedo, slope_blend_factor);
+        mat.roughness = mix(mat.roughness, slope_mat.roughness, slope_blend_factor);
+        mat.metallic = mix(mat.metallic, slope_mat.metallic, slope_blend_factor);
+        mat.ao = mix(mat.ao, slope_mat.ao, slope_blend_factor);
+        mat.normal = normalize(mix(mat.normal, slope_mat.normal, slope_blend_factor));
+        mat.height_proxy = mix(mat.height_proxy, slope_mat.height_proxy, slope_blend_factor);
+    }
 
     // Weather effects on material
     if uniforms.weather_type == 4u {
-        let flat_f = max(dot(in.world_normal, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
+        let flat_f = max(dot(n, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
         let snow_amt = smoothstep(0.4, 0.8, flat_f) * 0.7;
         mat.albedo = mix(mat.albedo, vec3<f32>(0.85, 0.87, 0.92), snow_amt);
         mat.roughness = mix(mat.roughness, 0.6, snow_amt);
-        let grain = triplanar_noise(in.world_position, in.world_normal, 15.0);
-        mat.albedo += vec3<f32>(grain * 0.02) * snow_amt;
     } else if uniforms.weather_type == 2u || uniforms.weather_type == 3u {
         let wet = select(0.4, 0.7, uniforms.weather_type == 3u);
         mat.roughness = mix(mat.roughness, 0.1, wet);
-        mat.albedo *= 1.0 - wet * 0.2;
+        mat.albedo *= 1.0 - wet * 0.15;
     } else if uniforms.weather_type == 6u {
-        mat.albedo = mix(mat.albedo, vec3<f32>(0.48, 0.28, 0.08), 0.25);
-        mat.roughness = min(mat.roughness + 0.15, 1.0);
+        mat.albedo = mix(mat.albedo, vec3<f32>(0.42, 0.25, 0.07), 0.2);
+        mat.roughness = min(mat.roughness + 0.1, 1.0);
     }
 
-    var color = pbr_lighting(mat, in.world_position, perturbed_n);
+    var color = pbr_lighting(mat, pos, mat.normal);
 
-    // Tone map (ACES Filmic — preserves color saturation better than Reinhard)
+    // Tone map — ACES with exposure control
+    color *= uniforms.exposure;
     let a = color * (2.51 * color + vec3<f32>(0.03));
     let b = color * (2.43 * color + vec3<f32>(0.59)) + vec3<f32>(0.14);
     color = clamp(a / b, vec3<f32>(0.0), vec3<f32>(1.0));
 
-    // Gamma correction (linear → sRGB)
-    color = pow(color, vec3<f32>(1.0 / 2.2));
-
-    // Fog (height-aware exponential)
+    // Fog (warm atmospheric, height-aware)
     if uniforms.fog_enabled == 1u {
-        let dist = distance(uniforms.camera_pos, in.world_position);
+        let dist = distance(uniforms.camera_pos, pos);
         let fog_base = 1.0 - exp(-uniforms.fog_density * dist);
-        let height_att = smoothstep(0.0, 30.0, in.world_position.y);
-        let fog_f = fog_base * mix(1.3, 0.7, height_att);
-        color = mix(color, uniforms.fog_color, clamp(fog_f, 0.0, 1.0));
+        let height_att = smoothstep(0.0, 40.0, pos.y);
+        let fog_f = fog_base * mix(1.2, 0.6, height_att);
+        let warm_fog = uniforms.fog_color * vec3<f32>(1.05, 1.0, 0.92);
+        color = mix(color, warm_fog, clamp(fog_f, 0.0, 1.0));
     }
 
     return vec4<f32>(color, 1.0);

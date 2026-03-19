@@ -8,11 +8,11 @@
 //!   - scatter_resources: area*density, count clamping
 //!   - ScatterResult: total_count, is_empty
 
-use astraweave_terrain::{
-    BiomeConfig, BiomeType, ChunkId, Heightmap, HeightmapConfig,
-    ScatterConfig, TerrainChunk, VegetationScatter, WorldConfig,
-};
 use astraweave_terrain::scatter::{ScatterResult, VegetationInstance};
+use astraweave_terrain::{
+    BiomeConfig, BiomeType, ChunkId, Heightmap, HeightmapConfig, ScatterConfig, TerrainChunk,
+    VegetationScatter, WorldConfig,
+};
 use glam::Vec3;
 
 // ─────────────────────────── Helpers ────────────────────────────
@@ -93,7 +93,8 @@ fn slope_filtering_rejects_steep_terrain_strictly() {
     assert!(
         instances.len() < target,
         "steep terrain with max_slope=1 should filter significantly (got {}/{})",
-        instances.len(), target
+        instances.len(),
+        target
     );
 }
 
@@ -225,18 +226,25 @@ fn random_scatter_positions_within_chunk_bounds() {
         assert!(
             inst.position.x >= origin.x && inst.position.x <= origin.x + chunk_size,
             "instance {} x={} out of chunk bounds [{}, {}]",
-            i, inst.position.x, origin.x, origin.x + chunk_size
+            i,
+            inst.position.x,
+            origin.x,
+            origin.x + chunk_size
         );
         assert!(
             inst.position.z >= origin.z && inst.position.z <= origin.z + chunk_size,
             "instance {} z={} out of chunk bounds [{}, {}]",
-            i, inst.position.z, origin.z, origin.z + chunk_size
+            i,
+            inst.position.z,
+            origin.z,
+            origin.z + chunk_size
         );
         // Height should match terrain
         assert!(
             (inst.position.y - 50.0).abs() < 1.0,
             "instance {} y={} should be near terrain height 50",
-            i, inst.position.y
+            i,
+            inst.position.y
         );
     }
 }
@@ -268,7 +276,10 @@ fn poisson_disk_respects_min_distance_property() {
                 assert!(
                     dist >= min_dist - 0.1,
                     "Poisson disk: instances {} and {} too close ({} < {})",
-                    i, j, dist, min_dist
+                    i,
+                    j,
+                    dist,
+                    min_dist
                 );
             }
         }
@@ -305,7 +316,8 @@ fn poisson_disk_produces_fewer_than_random_with_same_target() {
     assert!(
         p_instances.len() <= r_instances.len() + 5,
         "Poisson disk ({}) should not produce more than random ({})",
-        p_instances.len(), r_instances.len()
+        p_instances.len(),
+        r_instances.len()
     );
 }
 
@@ -331,12 +343,14 @@ fn vegetation_instances_have_valid_scale() {
         assert!(
             inst.scale > 0.0,
             "instance {} scale {} should be positive",
-            i, inst.scale
+            i,
+            inst.scale
         );
         assert!(
             inst.scale < 100.0,
             "instance {} scale {} should be reasonable",
-            i, inst.scale
+            i,
+            inst.scale
         );
     }
 }
@@ -361,7 +375,8 @@ fn vegetation_instances_have_valid_rotation() {
         assert!(
             inst.rotation >= 0.0 && inst.rotation <= std::f32::consts::TAU + 0.01,
             "instance {} rotation {} should be in [0, TAU]",
-            i, inst.rotation
+            i,
+            inst.rotation
         );
     }
 }
@@ -438,10 +453,7 @@ fn scatter_resources_count_clamped() {
         "resource count should be clamped to max 20, got {}",
         resources.len()
     );
-    assert!(
-        !resources.is_empty(),
-        "should produce at least 1 resource"
-    );
+    assert!(!resources.is_empty(), "should produce at least 1 resource");
 }
 
 #[test]
@@ -569,7 +581,8 @@ fn desert_produces_less_vegetation_than_forest() {
     assert!(
         forest_instances.len() >= desert_instances.len(),
         "Forest ({}) should have >= vegetation than Desert ({})",
-        forest_instances.len(), desert_instances.len()
+        forest_instances.len(),
+        desert_instances.len()
     );
 }
 
@@ -599,22 +612,30 @@ fn scatter_at_nonzero_chunk_uses_correct_origin() {
         assert!(
             inst.position.x >= origin.x,
             "instance {} x={} should be >= origin.x={}",
-            i, inst.position.x, origin.x
+            i,
+            inst.position.x,
+            origin.x
         );
         assert!(
             inst.position.z >= origin.z,
             "instance {} z={} should be >= origin.z={}",
-            i, inst.position.z, origin.z
+            i,
+            inst.position.z,
+            origin.z
         );
         assert!(
             inst.position.x <= origin.x + chunk_size,
             "instance {} x={} should be <= {}",
-            i, inst.position.x, origin.x + chunk_size
+            i,
+            inst.position.x,
+            origin.x + chunk_size
         );
         assert!(
             inst.position.z <= origin.z + chunk_size,
             "instance {} z={} should be <= {}",
-            i, inst.position.z, origin.z + chunk_size
+            i,
+            inst.position.z,
+            origin.z + chunk_size
         );
     }
 }
@@ -638,7 +659,9 @@ fn vegetation_types_are_selected_from_biome_config() {
         .unwrap();
 
     // All vegetation types should come from the biome config
-    let valid_types: Vec<String> = biome_config.vegetation.vegetation_types
+    let valid_types: Vec<String> = biome_config
+        .vegetation
+        .vegetation_types
         .iter()
         .map(|vt| vt.name.clone())
         .collect();
@@ -647,7 +670,9 @@ fn vegetation_types_are_selected_from_biome_config() {
         assert!(
             valid_types.contains(&inst.vegetation_type),
             "instance {} type '{}' not in biome config types {:?}",
-            i, inst.vegetation_type, valid_types
+            i,
+            inst.vegetation_type,
+            valid_types
         );
     }
 }
@@ -668,5 +693,8 @@ fn scatter_empty_vegetation_types_produces_nothing() {
         .scatter_vegetation(&chunk, chunk_size, &biome_config, 42)
         .unwrap();
 
-    assert!(instances.is_empty(), "empty vegetation_types should produce zero instances");
+    assert!(
+        instances.is_empty(),
+        "empty vegetation_types should produce zero instances"
+    );
 }

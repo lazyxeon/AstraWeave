@@ -167,7 +167,9 @@ impl ClimateMap {
 
     /// Estimate height at a position (temporary until we have proper integration)
     pub fn estimate_height(&self, x: f64, z: f64) -> f32 {
-        // Simple height estimation using noise
+        // Simple height estimation using noise — amplitude must roughly
+        // match the maximum terrain amplitude used by noise presets (e.g.
+        // mountain base_amplitude 120 + mountains_amplitude 150 ≈ ~270).
         let height_noise = self.sample_noise_fbm(
             &self.temperature_noise, // Reuse temperature noise for height
             &ClimateLayer {
@@ -175,7 +177,7 @@ impl ClimateMap {
                 octaves: 4,
                 persistence: 0.5,
                 lacunarity: 2.0,
-                amplitude: 50.0,
+                amplitude: 150.0,
                 offset: 10.0,
             },
             x,

@@ -293,6 +293,8 @@ pub struct LightingSettings {
     pub ambient_intensity: f32,
     pub sun_color: [f32; 3],
     pub sun_intensity: f32,
+    pub sun_elevation: f32,
+    pub sun_azimuth: f32,
     pub shadow_intensity: f32,
     pub shadow_softness: f32,
     pub fog_enabled: bool,
@@ -304,13 +306,32 @@ pub struct LightingSettings {
     pub gamma: f32,
 }
 
+impl LightingSettings {
+    /// Compute a normalized sun direction vector from elevation and azimuth angles (degrees).
+    pub fn sun_direction(&self) -> [f32; 3] {
+        let elev = self.sun_elevation.to_radians();
+        let azim = self.sun_azimuth.to_radians();
+        let y = elev.sin();
+        let xz = elev.cos();
+        let x = xz * azim.cos();
+        let z = xz * azim.sin();
+        let len = (x * x + y * y + z * z).sqrt();
+        if len < 0.0001 {
+            return [0.0, 1.0, 0.0];
+        }
+        [x / len, y / len, z / len]
+    }
+}
+
 impl Default for LightingSettings {
     fn default() -> Self {
         Self {
-            ambient_color: [0.4, 0.45, 0.55],
-            ambient_intensity: 0.3,
+            ambient_color: [0.55, 0.60, 0.72],
+            ambient_intensity: 0.7,
             sun_color: [1.0, 0.95, 0.85],
-            sun_intensity: 1.0,
+            sun_intensity: 1.5,
+            sun_elevation: 45.0,
+            sun_azimuth: 35.0,
             shadow_intensity: 0.7,
             shadow_softness: 0.5,
             fog_enabled: false,
@@ -318,7 +339,7 @@ impl Default for LightingSettings {
             fog_density: 0.01,
             fog_start: 50.0,
             fog_end: 500.0,
-            exposure: 1.0,
+            exposure: 1.2,
             gamma: 2.2,
         }
     }
@@ -524,6 +545,14 @@ impl WorldEventType {
 // WORLD PANEL
 // ═══════════════════════════════════════════════════════════════════════════════════
 
+/// Result sent back from the background terrain generation thread (world panel)
+struct WorldTerrainGenResult {
+    terrain_state: TerrainState,
+    chunk_count: usize,
+    seed: u64,
+    biome: String,
+}
+
 /// Comprehensive world/environment configuration panel
 pub struct WorldPanel {
     // Terrain
@@ -531,6 +560,10 @@ pub struct WorldPanel {
     chunk_radius: i32,
     generation_status: Option<String>,
     auto_regenerate: bool,
+    /// True while background terrain generation is in progress
+    terrain_generating: bool,
+    /// Receiver for completed background terrain generation
+    terrain_gen_rx: Option<std::sync::mpsc::Receiver<WorldTerrainGenResult>>,
 
     // Weather
     weather: WeatherSettings,
@@ -566,6 +599,8 @@ impl WorldPanel {
             chunk_radius: 2,
             generation_status: None,
             auto_regenerate: false,
+            terrain_generating: false,
+            terrain_gen_rx: None,
             weather: WeatherSettings::default(),
             time: TimeSettings::default(),
             lighting: LightingSettings::default(),
@@ -575,7 +610,7 @@ impl WorldPanel {
             max_events: 50,
             show_weather: true,
             show_time: true,
-            show_lighting: false,
+            show_lighting: true,
             show_bounds: false,
             show_events: true,
         }
@@ -595,19 +630,24 @@ impl WorldPanel {
             EnvironmentPreset::Sunny => {
                 self.weather.current = WeatherType::Clear;
                 self.time.current_hour = 12.0;
-                self.lighting.sun_intensity = 1.0;
+                self.lighting.sun_intensity = 1.5;
+                self.lighting.sun_elevation = 60.0;
+                self.lighting.ambient_intensity = 0.7;
+                self.lighting.exposure = 1.2;
                 self.lighting.fog_enabled = false;
             }
             EnvironmentPreset::Overcast => {
                 self.weather.current = WeatherType::Overcast;
                 self.time.current_hour = 12.0;
-                self.lighting.sun_intensity = 0.4;
-                self.lighting.ambient_intensity = 0.5;
+                self.lighting.sun_intensity = 0.6;
+                self.lighting.ambient_intensity = 0.9;
+                self.lighting.exposure = 1.0;
             }
             EnvironmentPreset::Rainy => {
                 self.weather.current = WeatherType::HeavyRain;
                 self.time.current_hour = 14.0;
-                self.lighting.sun_intensity = 0.3;
+                self.lighting.sun_intensity = 0.4;
+                self.lighting.ambient_intensity = 0.6;
                 self.lighting.fog_enabled = true;
                 self.lighting.fog_density = 0.02;
             }
@@ -615,7 +655,8 @@ impl WorldPanel {
                 self.weather.current = WeatherType::Thunderstorm;
                 self.weather.lightning_frequency = 0.3;
                 self.time.current_hour = 15.0;
-                self.lighting.sun_intensity = 0.2;
+                self.lighting.sun_intensity = 0.3;
+                self.lighting.ambient_intensity = 0.5;
             }
             EnvironmentPreset::Foggy => {
                 self.weather.current = WeatherType::Fog;
@@ -628,7 +669,10 @@ impl WorldPanel {
                 self.weather.current = WeatherType::Clear;
                 self.time.current_hour = 18.5;
                 self.lighting.sun_color = [1.0, 0.6, 0.3];
+                self.lighting.sun_elevation = 12.0;
+                self.lighting.sun_azimuth = 260.0;
                 self.lighting.ambient_color = [0.5, 0.35, 0.3];
+                self.lighting.exposure = 1.4;
             }
             EnvironmentPreset::Night => {
                 self.weather.current = WeatherType::Clear;
@@ -762,29 +806,74 @@ impl WorldPanel {
 
                 ui.add_space(5.0);
 
-                let generate_clicked = ui.button("Generate Terrain").clicked();
-
-                self.terrain_state.configure(level.seed, &level.biome);
-
-                let should_generate = generate_clicked
-                    || (self.auto_regenerate
-                        && (old_biome != level.biome || old_seed != level.seed));
-
-                if should_generate {
-                    match self.terrain_state.generate_terrain(self.chunk_radius) {
-                        Ok(count) => {
+                // Poll for completed background generation
+                if let Some(rx) = &self.terrain_gen_rx {
+                    match rx.try_recv() {
+                        Ok(result) => {
                             let msg = format!(
                                 "Generated {} chunks (seed={}, biome={})",
-                                count,
-                                level.seed,
-                                biome_display_name(&level.biome)
+                                result.chunk_count,
+                                result.seed,
+                                biome_display_name(&result.biome)
                             );
+                            self.terrain_state = result.terrain_state;
                             self.generation_status = Some(msg.clone());
                             self.add_event(WorldEventType::TerrainGenerated, msg);
+                            self.terrain_generating = false;
+                            self.terrain_gen_rx = None;
                         }
-                        Err(e) => {
-                            self.generation_status = Some(format!("Generation failed: {}", e));
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            // Still generating
                         }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            self.generation_status = Some("Generation failed".to_string());
+                            self.terrain_generating = false;
+                            self.terrain_gen_rx = None;
+                        }
+                    }
+                }
+
+                if self.terrain_generating {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("Generating terrain...");
+                    });
+                } else {
+                    let generate_clicked = ui.button("Generate Terrain").clicked();
+
+                    self.terrain_state.configure(level.seed, &level.biome);
+
+                    let should_generate = generate_clicked
+                        || (self.auto_regenerate
+                            && (old_biome != level.biome || old_seed != level.seed));
+
+                    if should_generate {
+                        // Run terrain generation on a background thread to avoid
+                        // freezing the UI.
+                        let mut state = TerrainState::new();
+                        state.configure(level.seed, &level.biome);
+                        let chunk_radius = self.chunk_radius;
+                        let seed = level.seed;
+                        let biome = level.biome.clone();
+
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        self.terrain_generating = true;
+                        self.terrain_gen_rx = Some(rx);
+                        self.generation_status = Some("Generating...".to_string());
+
+                        std::thread::spawn(move || match state.generate_terrain(chunk_radius) {
+                            Ok(count) => {
+                                let _ = tx.send(WorldTerrainGenResult {
+                                    terrain_state: state,
+                                    chunk_count: count,
+                                    seed,
+                                    biome,
+                                });
+                            }
+                            Err(e) => {
+                                tracing::error!("World panel terrain generation failed: {e}");
+                            }
+                        });
                     }
                 }
 
@@ -981,15 +1070,29 @@ impl WorldPanel {
                     ui.label("Sun Intensity:");
                     ui.add(egui::Slider::new(
                         &mut self.lighting.sun_intensity,
-                        0.0..=2.0,
+                        0.0..=3.0,
                     ));
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Sun Elevation:");
+                    ui.add(
+                        egui::Slider::new(&mut self.lighting.sun_elevation, 5.0..=90.0).suffix("°"),
+                    );
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Sun Azimuth:");
+                    ui.add(
+                        egui::Slider::new(&mut self.lighting.sun_azimuth, 0.0..=360.0).suffix("°"),
+                    );
                 });
 
                 ui.horizontal(|ui| {
                     ui.label("Ambient Intensity:");
                     ui.add(egui::Slider::new(
                         &mut self.lighting.ambient_intensity,
-                        0.0..=1.0,
+                        0.0..=2.0,
                     ));
                 });
 

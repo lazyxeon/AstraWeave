@@ -63,7 +63,11 @@ fn hitch_detector_average_frame_time() {
     detector.record_frame(10.0);
     detector.record_frame(20.0);
     let avg = detector.average_frame_time();
-    assert!((avg - 15.0).abs() < 0.01, "average of 10 and 20 should be 15, got {}", avg);
+    assert!(
+        (avg - 15.0).abs() < 0.01,
+        "average of 10 and 20 should be 15, got {}",
+        avg
+    );
 }
 
 #[test]
@@ -72,7 +76,7 @@ fn hitch_detector_hitch_rate_calculation() {
     // 2 hitches out of 4 frames = 50%
     detector.record_frame(10.0); // no hitch
     detector.record_frame(20.0); // hitch
-    detector.record_frame(5.0);  // no hitch
+    detector.record_frame(5.0); // no hitch
     detector.record_frame(30.0); // hitch
 
     let rate = detector.hitch_rate();
@@ -91,7 +95,11 @@ fn hitch_detector_p99_frame_time() {
     }
     let p99 = detector.p99_frame_time();
     // P99 of 0..99 should be ~99 (or close to the 99th percentile)
-    assert!(p99 > 90.0, "p99 should be above 90 for frames 0..99, got {}", p99);
+    assert!(
+        p99 > 90.0,
+        "p99 should be above 90 for frames 0..99, got {}",
+        p99
+    );
 }
 
 #[test]
@@ -114,7 +122,7 @@ fn hitch_detector_history_eviction() {
 #[test]
 fn hitch_detector_history_eviction_preserves_non_hitch_count() {
     let mut detector = HitchDetector::new(3, 16.0);
-    detector.record_frame(5.0);  // no hitch (will be evicted)
+    detector.record_frame(5.0); // no hitch (will be evicted)
     detector.record_frame(20.0); // hitch
     detector.record_frame(10.0);
     detector.record_frame(10.0); // evicts 5.0 (non-hitch)

@@ -1,4 +1,4 @@
-﻿//! Viewport Renderer
+//! Viewport Renderer
 //!
 //! Coordinates multi-pass rendering pipeline for 3D viewport.
 //! Renders in order: Grid → Entities → Gizmos → Selection Outline
@@ -30,9 +30,9 @@ use super::entity_renderer::EntityRenderer;
 use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
 use super::physics_renderer::PhysicsDebugRenderer;
+use super::rain_renderer::RainRenderer;
 use super::scatter_renderer::{ScatterPlacement, ScatterRenderer};
 use super::skybox_renderer::SkyboxRenderer;
-use super::rain_renderer::RainRenderer;
 use super::terrain_renderer::TerrainRenderer;
 use super::water_renderer::WaterRenderer;
 use crate::gizmo::GizmoState;
@@ -58,16 +58,18 @@ pub struct ViewportRenderer {
     /// wgpu queue (command submission)
     queue: Arc<wgpu::Queue>,
 
-    /// Sub-renderers
+    /// Sub-renderers (essential — created at startup)
     grid_renderer: GridRenderer,
     skybox_renderer: SkyboxRenderer,
     entity_renderer: EntityRenderer,
     gizmo_renderer: GizmoRendererWgpu,
-    physics_renderer: PhysicsDebugRenderer,
-    terrain_renderer: TerrainRenderer,
-    water_renderer: WaterRenderer,
-    rain_renderer: RainRenderer,
-    scatter_renderer: ScatterRenderer,
+
+    /// Sub-renderers (deferred — created lazily on first use)
+    physics_renderer: Option<PhysicsDebugRenderer>,
+    terrain_renderer: Option<TerrainRenderer>,
+    water_renderer: Option<WaterRenderer>,
+    rain_renderer: Option<RainRenderer>,
+    scatter_renderer: Option<ScatterRenderer>,
 
     /// Scatter placements for current frame
     scatter_placements: Vec<ScatterPlacement>,
@@ -104,24 +106,16 @@ impl ViewportRenderer {
     ///
     /// Returns error if sub-renderer creation fails.
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Result<Self> {
+        // Only create essential renderers at startup (grid, skybox, entities, gizmos).
+        // Non-essential renderers (terrain, water, rain, scatter, physics debug)
+        // are deferred to first use to minimize time-to-first-frame.
         let grid_renderer = GridRenderer::new(&device).context("Failed to create grid renderer")?;
         let skybox_renderer =
             SkyboxRenderer::new(&device).context("Failed to create skybox renderer")?;
-        let entity_renderer =
-            EntityRenderer::new(device.clone(), 10000).context("Failed to create entity renderer")?;
+        let entity_renderer = EntityRenderer::new(device.clone(), 10000)
+            .context("Failed to create entity renderer")?;
         let gizmo_renderer = GizmoRendererWgpu::new((*device).clone(), (*queue).clone(), 10000)
             .context("Failed to create gizmo renderer")?;
-        let physics_renderer =
-            PhysicsDebugRenderer::new((*device).clone(), (*queue).clone(), 50000)
-                .context("Failed to create physics debug renderer")?;
-        let terrain_renderer =
-            TerrainRenderer::new(&device).context("Failed to create terrain renderer")?;
-        let water_renderer =
-            WaterRenderer::new(&device).context("Failed to create water renderer")?;
-        let rain_renderer =
-            RainRenderer::new(&device).context("Failed to create rain renderer")?;
-        let scatter_renderer =
-            ScatterRenderer::new(device.clone()).context("Failed to create scatter renderer")?;
 
         Ok(Self {
             device,
@@ -130,11 +124,11 @@ impl ViewportRenderer {
             skybox_renderer,
             entity_renderer,
             gizmo_renderer,
-            physics_renderer,
-            terrain_renderer,
-            water_renderer,
-            rain_renderer,
-            scatter_renderer,
+            physics_renderer: None,
+            terrain_renderer: None,
+            water_renderer: None,
+            rain_renderer: None,
+            scatter_renderer: None,
             scatter_placements: Vec::new(),
             #[cfg(feature = "astraweave-render")]
             engine_adapter: None,
@@ -159,6 +153,58 @@ impl ViewportRenderer {
         let device = Arc::new(render_state.device.clone());
         let queue = Arc::new(render_state.queue.clone());
         Self::new(device, queue)
+    }
+
+    // ── Deferred renderer lazy-init helpers ─────────────────────────────
+
+    fn ensure_terrain_renderer(&mut self) -> Result<&mut TerrainRenderer> {
+        if self.terrain_renderer.is_none() {
+            self.terrain_renderer = Some(
+                TerrainRenderer::new(&self.device, &self.queue)
+                    .context("Failed to create terrain renderer (deferred)")?,
+            );
+        }
+        Ok(self.terrain_renderer.as_mut().unwrap())
+    }
+
+    fn ensure_water_renderer(&mut self) -> Result<&mut WaterRenderer> {
+        if self.water_renderer.is_none() {
+            self.water_renderer = Some(
+                WaterRenderer::new(&self.device)
+                    .context("Failed to create water renderer (deferred)")?,
+            );
+        }
+        Ok(self.water_renderer.as_mut().unwrap())
+    }
+
+    fn ensure_rain_renderer(&mut self) -> Result<&mut RainRenderer> {
+        if self.rain_renderer.is_none() {
+            self.rain_renderer = Some(
+                RainRenderer::new(&self.device)
+                    .context("Failed to create rain renderer (deferred)")?,
+            );
+        }
+        Ok(self.rain_renderer.as_mut().unwrap())
+    }
+
+    fn ensure_scatter_renderer(&mut self) -> Result<&mut ScatterRenderer> {
+        if self.scatter_renderer.is_none() {
+            self.scatter_renderer = Some(
+                ScatterRenderer::new(self.device.clone())
+                    .context("Failed to create scatter renderer (deferred)")?,
+            );
+        }
+        Ok(self.scatter_renderer.as_mut().unwrap())
+    }
+
+    fn ensure_physics_renderer(&mut self) -> Result<&mut PhysicsDebugRenderer> {
+        if self.physics_renderer.is_none() {
+            self.physics_renderer = Some(
+                PhysicsDebugRenderer::new((*self.device).clone(), (*self.queue).clone(), 5000)
+                    .context("Failed to create physics debug renderer (deferred)")?,
+            );
+        }
+        Ok(self.physics_renderer.as_mut().unwrap())
     }
 
     /// Resize viewport (recreates depth buffer)
@@ -253,6 +299,12 @@ impl ViewportRenderer {
         }
 
         let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Eagerly init scatter renderer before depth_view borrow (avoids self re-borrow)
+        if !self.scatter_placements.is_empty() && self.scatter_renderer.is_none() {
+            let _ = self.ensure_scatter_renderer();
+        }
+
         let depth_view = self
             .depth_view
             .as_ref()
@@ -283,38 +335,46 @@ impl ViewportRenderer {
                 .context("Grid render failed")?;
         }
 
-        // Pass 2.5: Terrain (generated terrain chunks)
-        self.terrain_renderer
-            .render(
-                &mut encoder,
-                &target_view,
-                depth_view,
-                camera,
-                &self.queue,
-                shading_mode,
-            )
-            .context("Terrain render failed")?;
-
-        // Pass 2.6: Scatter objects (GPU-instanced vegetation, rocks, props)
-        if !self.scatter_placements.is_empty() {
-            let placements = std::mem::take(&mut self.scatter_placements);
-            self.scatter_renderer
+        // Pass 2.5: Terrain (generated terrain chunks) — deferred init
+        if let Some(terrain) = self.terrain_renderer.as_mut() {
+            terrain
                 .render(
+                    &mut encoder,
+                    &target_view,
+                    depth_view,
+                    camera,
+                    &self.queue,
+                    shading_mode,
+                )
+                .context("Terrain render failed")?;
+        }
+
+        // Pass 2.6: Scatter objects (GPU-instanced vegetation, rocks, props) — deferred init
+        if !self.scatter_placements.is_empty() {
+            if let Some(scatter) = self.scatter_renderer.as_mut() {
+                // Take placements temporarily (borrow-checker requires this since
+                // scatter.render() borrows &mut self through scatter_renderer).
+                // CRITICAL: Always restore placements before propagating errors.
+                let placements = std::mem::take(&mut self.scatter_placements);
+                let result = scatter.render(
                     &mut encoder,
                     &target_view,
                     depth_view,
                     camera,
                     &placements,
                     &self.queue,
-                )
-                .context("Scatter render failed")?;
-            self.scatter_placements = placements;
+                );
+                self.scatter_placements = placements;
+                result.context("Scatter render failed")?;
+            }
         }
 
-        // Pass 2.7: Water plane (transparent, rendered after terrain)
-        self.water_renderer
-            .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
-            .context("Water render failed")?;
+        // Pass 2.7: Water plane (transparent, rendered after terrain) — deferred init
+        if let Some(water) = self.water_renderer.as_mut() {
+            water
+                .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+                .context("Water render failed")?;
+        }
 
         // Pass 3: Entities (engine renderer or cube fallback)
         #[cfg(feature = "astraweave-render")]
@@ -370,17 +430,20 @@ impl ViewportRenderer {
                 .context("Entity render failed")?;
         }
 
-        // Pass 4: Physics debug (collider wireframes)
+        // Pass 4: Physics debug (collider wireframes) — deferred init
         if let Some(debug_lines) = physics_debug_lines {
-            self.physics_renderer
-                .render(&mut encoder, &target_view, depth_view, camera, debug_lines)
-                .context("Physics debug render failed")?;
+            if let Some(physics) = self.physics_renderer.as_mut() {
+                physics
+                    .render(&mut encoder, &target_view, depth_view, camera, debug_lines)
+                    .context("Physics debug render failed")?;
+            }
         }
 
-        // Pass 4.5: Rain particles (transparent volumetric rain)
-        self.rain_renderer
-            .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
-            .context("Rain render failed")?;
+        // Pass 4.5: Rain particles (transparent volumetric rain) — deferred init
+        if let Some(rain) = self.rain_renderer.as_mut() {
+            rain.render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+                .context("Rain render failed")?;
+        }
 
         // Pass 5: Gizmos (if entity selected and gizmo active)
         if let (Some(selected), Some(gizmo)) = (self.selected_entity(), gizmo_state) {
@@ -519,41 +582,53 @@ impl ViewportRenderer {
         Ok(())
     }
 
-    /// Get physics debug options (mutable) for configuration
+    /// Get physics debug options (mutable) for configuration — lazily inits renderer
     pub fn physics_debug_options_mut(
         &mut self,
     ) -> &mut super::physics_renderer::PhysicsDebugOptions {
-        &mut self.physics_renderer.options
+        // Trigger lazy init so caller can configure it
+        let _ = self.ensure_physics_renderer();
+        &mut self.physics_renderer.as_mut().unwrap().options
     }
 
     pub fn upload_terrain_chunks(
         &mut self,
         chunks: &[(Vec<super::terrain_renderer::TerrainVertex>, Vec<u32>)],
     ) {
-        self.terrain_renderer.upload_chunks(chunks);
+        if let Ok(terrain) = self.ensure_terrain_renderer() {
+            terrain.upload_chunks(chunks);
+        }
     }
 
     pub fn clear_terrain(&mut self) {
-        self.terrain_renderer.clear_chunks();
+        if let Some(terrain) = self.terrain_renderer.as_mut() {
+            terrain.clear_chunks();
+        }
     }
 
     pub fn terrain_chunk_count(&self) -> usize {
-        self.terrain_renderer.chunk_count()
+        self.terrain_renderer
+            .as_ref()
+            .map_or(0, |t| t.chunk_count())
     }
 
     /// Check if physics debug rendering is enabled
     pub fn physics_debug_enabled(&self) -> bool {
-        self.physics_renderer.options.show_colliders
+        self.physics_renderer
+            .as_ref()
+            .map_or(false, |p| p.options.show_colliders)
     }
 
     /// Enable/disable physics debug rendering
     pub fn set_physics_debug_enabled(&mut self, enabled: bool) {
-        self.physics_renderer.options.show_colliders = enabled;
+        if let Ok(physics) = self.ensure_physics_renderer() {
+            physics.options.show_colliders = enabled;
+        }
     }
 
     /// Check if any animated weather effects are active (rain, etc.)
     pub fn has_active_effects(&self) -> bool {
-        self.rain_renderer.is_active()
+        self.rain_renderer.as_ref().map_or(false, |r| r.is_active())
     }
 
     /// Load an HDRI file and apply it as the skybox background
@@ -581,29 +656,54 @@ impl ViewportRenderer {
 
     /// Set fog and weather parameters for distance-based terrain fog
     pub fn set_fog_params(&mut self, params: super::terrain_renderer::TerrainFogParams) {
-        self.terrain_renderer.set_fog_params(params);
+        if let Ok(terrain) = self.ensure_terrain_renderer() {
+            terrain.set_fog_params(params);
+        }
         // Forward fog to water renderer
-        self.water_renderer
-            .set_fog(params.fog_enabled, params.fog_density, params.fog_color);
+        if let Ok(water) = self.ensure_water_renderer() {
+            water.set_fog(params.fog_enabled, params.fog_density, params.fog_color);
+        }
         // Forward fog to scatter renderer
-        self.scatter_renderer.set_fog_params(params);
+        if let Ok(scatter) = self.ensure_scatter_renderer() {
+            scatter.set_fog_params(params);
+        }
         // Enable rain for weather types 2 (Rain) and 3 (Storm)
         let rain_active = params.weather_type == 2 || params.weather_type == 3;
         let rain_intensity = if params.weather_type == 3 { 1.0 } else { 0.5 };
-        self.rain_renderer.set_active(rain_active, rain_intensity);
-        // Wind for storm
-        let (wx, wz) = match params.weather_type {
-            3 => (4.0, 2.0),
-            2 => (1.0, 0.5),
-            _ => (0.0, 0.0),
-        };
-        self.rain_renderer.set_wind(wx, wz);
+        if let Ok(rain) = self.ensure_rain_renderer() {
+            rain.set_active(rain_active, rain_intensity);
+            // Wind for storm
+            let (wx, wz) = match params.weather_type {
+                3 => (4.0, 2.0),
+                2 => (1.0, 0.5),
+                _ => (0.0, 0.0),
+            };
+            rain.set_wind(wx, wz);
+        }
+    }
+
+    /// Set lighting parameters for PBR terrain shading
+    pub fn set_lighting_params(&mut self, params: super::terrain_renderer::TerrainLightingParams) {
+        if let Ok(terrain) = self.ensure_terrain_renderer() {
+            terrain.set_lighting_params(params);
+        }
     }
 
     /// Set water level for volumetric water plane
     pub fn set_water_level(&mut self, level: f32) {
-        self.water_renderer.set_water_level(level);
-        self.terrain_renderer.set_water_level(level);
+        if let Ok(water) = self.ensure_water_renderer() {
+            water.set_water_level(level);
+        }
+        if let Ok(terrain) = self.ensure_terrain_renderer() {
+            terrain.set_water_level(level);
+        }
+    }
+
+    /// Enable or disable the volumetric water plane
+    pub fn set_water_enabled(&mut self, enabled: bool) {
+        if let Ok(water) = self.ensure_water_renderer() {
+            water.set_enabled(enabled);
+        }
     }
 
     // ── Scatter management ──────────────────────────────────────────────
@@ -615,27 +715,64 @@ impl ViewportRenderer {
 
     /// Ensure a scatter mesh is loaded and cached.
     pub fn ensure_scatter_mesh(&mut self, key: &str, path: &str) -> Result<()> {
-        self.scatter_renderer.ensure_mesh_loaded(key, path)
+        self.ensure_scatter_renderer()?
+            .ensure_mesh_loaded(key, path)
     }
 
     /// Set wind parameters for scatter vegetation animation.
     pub fn set_scatter_wind(&mut self, strength: f32, frequency: f32) {
-        self.scatter_renderer.set_wind(strength, frequency);
+        if let Ok(scatter) = self.ensure_scatter_renderer() {
+            scatter.set_wind(strength, frequency);
+        }
     }
 
     /// Set cull distance for scatter objects.
     pub fn set_scatter_cull_distance(&mut self, distance: f32) {
-        self.scatter_renderer.set_cull_distance(distance);
+        if let Ok(scatter) = self.ensure_scatter_renderer() {
+            scatter.set_cull_distance(distance);
+        }
     }
 
     /// Get the number of scatter instances rendered last frame.
     pub fn scatter_instance_count(&self) -> u32 {
-        self.scatter_renderer.last_instance_count()
+        self.scatter_renderer
+            .as_ref()
+            .map_or(0, |s| s.last_instance_count())
     }
 
     /// Get the number of scatter draw calls last frame.
     pub fn scatter_draw_calls(&self) -> u32 {
-        self.scatter_renderer.last_draw_calls()
+        self.scatter_renderer
+            .as_ref()
+            .map_or(0, |s| s.last_draw_calls())
+    }
+
+    /// Total triangles rendered by the terrain renderer.
+    pub fn terrain_triangles(&self) -> usize {
+        self.terrain_renderer
+            .as_ref()
+            .map_or(0, |t| t.total_triangles())
+    }
+
+    /// Total indices rendered by the terrain renderer.
+    pub fn terrain_indices(&self) -> usize {
+        self.terrain_renderer
+            .as_ref()
+            .map_or(0, |t| t.total_indices())
+    }
+
+    /// Total triangles rendered by the scatter renderer last frame.
+    pub fn scatter_triangles(&self) -> usize {
+        self.scatter_renderer
+            .as_ref()
+            .map_or(0, |s| s.last_total_triangles())
+    }
+
+    /// Total vertices rendered by the scatter renderer last frame.
+    pub fn scatter_vertices(&self) -> usize {
+        self.scatter_renderer
+            .as_ref()
+            .map_or(0, |s| s.last_total_vertices())
     }
 
     /// Check if engine rendering (PBR meshes) is enabled

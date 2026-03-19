@@ -73,7 +73,11 @@ fn golden_base_only_100_200() {
     cfg.mountains.enabled = false;
     cfg.detail.enabled = false;
     let noise = TerrainNoise::new(&cfg, SEED);
-    assert_close(noise.sample_height(100.0, 200.0), 28.8675, "base_only(100,200)");
+    assert_close(
+        noise.sample_height(100.0, 200.0),
+        28.8675,
+        "base_only(100,200)",
+    );
 }
 
 #[test]
@@ -82,7 +86,11 @@ fn golden_base_only_500_500() {
     cfg.mountains.enabled = false;
     cfg.detail.enabled = false;
     let noise = TerrainNoise::new(&cfg, SEED);
-    assert_close(noise.sample_height(500.0, 500.0), 14.4338, "base_only(500,500)");
+    assert_close(
+        noise.sample_height(500.0, 500.0),
+        14.4338,
+        "base_only(500,500)",
+    );
 }
 
 #[test]
@@ -165,12 +173,7 @@ fn sample_height_is_sum_of_layers() {
     // At (100,200): base=28.8675, mtn=14.6972, detail≈0 → sum≈43.5647
     // actual with .max(0.0) clamp = 37.5913 (because raw sum may differ slightly
     // due to noise interaction); verify each layer independently
-    for &(x, z) in &[
-        (100.0, 200.0),
-        (500.0, 500.0),
-        (250.0, 750.0),
-        (0.0, 0.0),
-    ] {
+    for &(x, z) in &[(100.0, 200.0), (500.0, 500.0), (250.0, 750.0), (0.0, 0.0)] {
         let base = noise_base.sample_height(x, z);
         let mtn = noise_mtn.sample_height(x, z);
         let det = noise_det.sample_height(x, z);
@@ -405,10 +408,14 @@ fn density_each_axis_contributes() {
     let d_z = noise.sample_density(73.0, 41.0, 159.0);
 
     // At least 2 of 3 axis changes should produce different values
-    let changed_count = [(d_x - d_base).abs(), (d_y - d_base).abs(), (d_z - d_base).abs()]
-        .iter()
-        .filter(|d| **d > 0.001)
-        .count();
+    let changed_count = [
+        (d_x - d_base).abs(),
+        (d_y - d_base).abs(),
+        (d_z - d_base).abs(),
+    ]
+    .iter()
+    .filter(|d| **d > 0.001)
+    .count();
     assert!(
         changed_count >= 2,
         "at least 2 axes should affect density (x_diff={}, y_diff={}, z_diff={})",

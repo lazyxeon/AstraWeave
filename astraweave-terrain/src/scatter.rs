@@ -106,6 +106,8 @@ impl VegetationScatter {
     }
 
     /// Generate scatter using Poisson disk sampling for natural distribution
+    ///
+    /// Uses a spatial grid for O(1) neighbor lookups instead of brute-force O(n²).
     fn generate_poisson_disk_scatter(
         &self,
         chunk: &TerrainChunk,
@@ -114,54 +116,77 @@ impl VegetationScatter {
         rng: &mut rand::rngs::StdRng,
         target_count: usize,
     ) -> anyhow::Result<Vec<VegetationInstance>> {
-        let mut instances = Vec::new();
+        let mut instances: Vec<VegetationInstance> = Vec::new();
         let chunk_origin = chunk.id().to_world_pos(chunk_size);
         let min_dist = self.config.min_distance;
+        let min_dist_sq = min_dist * min_dist;
 
-        // Simple Poisson disk sampling using rejection method
-        let max_attempts = target_count * 30; // Safety limit
+        // Build a spatial grid for O(1) neighbor lookups.
+        // Cell size = min_distance so we only need to check 3×3 neighborhood.
+        let cell_size = min_dist;
+        let grid_dim = ((chunk_size / cell_size).ceil() as usize).max(1);
+        // Each cell stores indices into `instances`
+        let mut grid: Vec<Vec<usize>> = vec![Vec::new(); grid_dim * grid_dim];
+
+        // Cap attempts to avoid pathologically long runs.
+        // At min_distance=2 on a 256m chunk, the theoretical max is ~16K placements.
+        let effective_target = target_count.min(16_384);
+        let max_attempts = effective_target * 15;
         let mut attempts = 0;
 
-        while instances.len() < target_count && attempts < max_attempts {
+        while instances.len() < effective_target && attempts < max_attempts {
             attempts += 1;
 
-            // Generate random position
             let local_x = rng.random::<f32>() * chunk_size;
             let local_z = rng.random::<f32>() * chunk_size;
             let mut world_pos = Vec3::new(chunk_origin.x + local_x, 0.0, chunk_origin.z + local_z);
 
-            // Get height and biome at this position
             if let Some(height) = chunk.get_height_at_world_pos(world_pos, chunk_size) {
                 world_pos.y = height;
 
-                // Check height filter
                 if let Some((min_height, max_height)) = self.config.height_filter {
                     if height < min_height || height > max_height {
                         continue;
                     }
                 }
 
-                // Check slope (simplified using nearby height samples)
                 let slope = self.estimate_slope(chunk, world_pos, chunk_size);
                 if slope > self.config.max_slope {
                     continue;
                 }
 
-                // Check minimum distance to existing instances
-                let too_close = instances.iter().any(|instance: &VegetationInstance| {
-                    let distance = (instance.position - world_pos).length();
-                    distance < min_dist
-                });
+                // Grid-accelerated minimum distance check (3×3 neighborhood)
+                let gx = ((local_x / cell_size) as usize).min(grid_dim - 1);
+                let gz = ((local_z / cell_size) as usize).min(grid_dim - 1);
+
+                let x_min = gx.saturating_sub(1);
+                let x_max = (gx + 1).min(grid_dim - 1);
+                let z_min = gz.saturating_sub(1);
+                let z_max = (gz + 1).min(grid_dim - 1);
+
+                let mut too_close = false;
+                'outer: for nz in z_min..=z_max {
+                    for nx in x_min..=x_max {
+                        for &idx in &grid[nz * grid_dim + nx] {
+                            let diff = instances[idx].position - world_pos;
+                            if diff.x * diff.x + diff.z * diff.z < min_dist_sq {
+                                too_close = true;
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
 
                 if too_close {
                     continue;
                 }
 
-                // Select vegetation type
                 if let Some(vegetation_instance) =
                     self.create_vegetation_instance(world_pos, biome_config, rng, slope)?
                 {
+                    let idx = instances.len();
                     instances.push(vegetation_instance);
+                    grid[gz * grid_dim + gx].push(idx);
                 }
             }
         }

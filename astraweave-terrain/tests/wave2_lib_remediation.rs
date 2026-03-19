@@ -20,7 +20,7 @@ fn fast_scatter_config() -> WorldConfig {
     let mut config = WorldConfig::default();
     config.heightmap_resolution = 16;
     config.chunk_size = 64.0; // 64×64 instead of 256×256 — scatter is ~16× faster
-    // Must be > 2*edge_buffer (20.0) to avoid empty range in structure generation
+                              // Must be > 2*edge_buffer (20.0) to avoid empty range in structure generation
     config
 }
 
@@ -75,7 +75,8 @@ fn config_returns_correct_seed() {
 
     // If config() is mutated to return Default, seed would be 12345
     assert_eq!(
-        gen.config().seed, 99999,
+        gen.config().seed,
+        99999,
         "config() must return the actual seed, not default"
     );
 }
@@ -99,7 +100,8 @@ fn config_returns_correct_resolution() {
     let gen = WorldGenerator::new(config);
 
     assert_eq!(
-        gen.config().heightmap_resolution, 64,
+        gen.config().heightmap_resolution,
+        64,
         "config() must return the actual heightmap resolution"
     );
 }
@@ -321,9 +323,7 @@ fn generate_chunk_with_scatter_returns_valid_chunk() {
     let config = fast_scatter_config();
     let mut gen = WorldGenerator::new(config);
 
-    let (chunk, scatter) = gen
-        .generate_chunk_with_scatter(ChunkId::new(0, 0))
-        .unwrap();
+    let (chunk, scatter) = gen.generate_chunk_with_scatter(ChunkId::new(0, 0)).unwrap();
 
     // If mutated to return (Default::default(), Default::default()):
     // - chunk heightmap would be empty
@@ -332,11 +332,7 @@ fn generate_chunk_with_scatter_returns_valid_chunk() {
         !chunk.heightmap().data().is_empty(),
         "chunk must have non-empty heightmap"
     );
-    assert_eq!(
-        chunk.id(),
-        ChunkId::new(0, 0),
-        "chunk must have correct id"
-    );
+    assert_eq!(chunk.id(), ChunkId::new(0, 0), "chunk must have correct id");
     assert_eq!(
         scatter.chunk_id,
         ChunkId::new(0, 0),
@@ -368,9 +364,7 @@ fn scatter_chunk_content_returns_matching_chunk_id() {
     let config = fast_scatter_config();
     let mut gen = WorldGenerator::new(config);
 
-    let chunk = gen
-        .generate_and_register_chunk(ChunkId::new(1, 1))
-        .unwrap();
+    let chunk = gen.generate_and_register_chunk(ChunkId::new(1, 1)).unwrap();
     let scatter = gen.scatter_chunk_content(&chunk).unwrap();
 
     // If scatter_chunk_content returns Default, chunk_id = (0,0)
@@ -390,9 +384,7 @@ fn scatter_chunk_content_biome_lookup_correct() {
     let mut gen = WorldGenerator::new(config);
 
     // Generate two chunks at the same position — scatter should be identical
-    let chunk = gen
-        .generate_and_register_chunk(ChunkId::new(0, 0))
-        .unwrap();
+    let chunk = gen.generate_and_register_chunk(ChunkId::new(0, 0)).unwrap();
     let scatter1 = gen.scatter_chunk_content(&chunk).unwrap();
     let scatter2 = gen.scatter_chunk_content(&chunk).unwrap();
 
@@ -424,12 +416,8 @@ fn scatter_seed_x_vs_z_differ() {
     let config = fast_scatter_config();
     let mut gen = WorldGenerator::new(config);
 
-    let chunk_10 = gen
-        .generate_and_register_chunk(ChunkId::new(1, 0))
-        .unwrap();
-    let chunk_01 = gen
-        .generate_and_register_chunk(ChunkId::new(0, 1))
-        .unwrap();
+    let chunk_10 = gen.generate_and_register_chunk(ChunkId::new(1, 0)).unwrap();
+    let chunk_01 = gen.generate_and_register_chunk(ChunkId::new(0, 1)).unwrap();
 
     let scatter_10 = gen.scatter_chunk_content(&chunk_10).unwrap();
     let scatter_01 = gen.scatter_chunk_content(&chunk_01).unwrap();
@@ -459,12 +447,8 @@ fn scatter_seed_x_position_matters() {
     let config = fast_scatter_config();
     let mut gen = WorldGenerator::new(config);
 
-    let chunk_a = gen
-        .generate_and_register_chunk(ChunkId::new(1, 0))
-        .unwrap();
-    let chunk_b = gen
-        .generate_and_register_chunk(ChunkId::new(2, 0))
-        .unwrap();
+    let chunk_a = gen.generate_and_register_chunk(ChunkId::new(1, 0)).unwrap();
+    let chunk_b = gen.generate_and_register_chunk(ChunkId::new(2, 0)).unwrap();
 
     let scatter_a = gen.scatter_chunk_content(&chunk_a).unwrap();
     let scatter_b = gen.scatter_chunk_content(&chunk_b).unwrap();
@@ -487,12 +471,8 @@ fn scatter_seed_z_position_matters() {
     let config = fast_scatter_config();
     let mut gen = WorldGenerator::new(config);
 
-    let chunk_a = gen
-        .generate_and_register_chunk(ChunkId::new(0, 1))
-        .unwrap();
-    let chunk_b = gen
-        .generate_and_register_chunk(ChunkId::new(0, 2))
-        .unwrap();
+    let chunk_a = gen.generate_and_register_chunk(ChunkId::new(0, 1)).unwrap();
+    let chunk_b = gen.generate_and_register_chunk(ChunkId::new(0, 2)).unwrap();
 
     let scatter_a = gen.scatter_chunk_content(&chunk_a).unwrap();
     let scatter_b = gen.scatter_chunk_content(&chunk_b).unwrap();
@@ -517,9 +497,7 @@ fn scatter_vegetation_and_resources_use_different_seeds() {
     let mut gen = WorldGenerator::new(config);
 
     // Use chunk at (1,1) where both x and z contribute to seed
-    let chunk = gen
-        .generate_and_register_chunk(ChunkId::new(1, 1))
-        .unwrap();
+    let chunk = gen.generate_and_register_chunk(ChunkId::new(1, 1)).unwrap();
     let scatter = gen.scatter_chunk_content(&chunk).unwrap();
 
     // With different seed multipliers (1000 vs 2000), the scatter positions

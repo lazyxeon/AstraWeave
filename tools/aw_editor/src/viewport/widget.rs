@@ -303,7 +303,10 @@ impl ViewportWidget {
 
         // Request continuous repaint when viewport is hovered, focused, or weather effects are active
         // This prevents cursor/focus issues when switching windows (alt-tab)
-        let effects_active = self.renderer.lock().map_or(false, |r| r.has_active_effects());
+        let effects_active = self
+            .renderer
+            .lock()
+            .map_or(false, |r| r.has_active_effects());
         if response.hovered() || self.has_focus || effects_active {
             ui.ctx().request_repaint();
         }
@@ -917,9 +920,11 @@ impl ViewportWidget {
         }
 
         // WASD + Space/Shift keyboard movement (FPS-style)
-        if can_control_camera && self.has_focus {
+        // Works when viewport is hovered — no click required
+        if can_control_camera {
             ctx.input(|i| {
-                let speed = 0.15;
+                // Scale speed with camera distance for consistent feel at any zoom level
+                let speed = (self.camera.distance() * 0.04).clamp(0.3, 15.0);
                 let mut move_delta = glam::Vec3::ZERO;
 
                 if i.key_down(egui::Key::W) {
@@ -952,15 +957,15 @@ impl ViewportWidget {
         // Zoom camera OR scale entity (scroll wheel) - only when hovered over viewport
         if response.hovered() {
             ctx.input(|i| {
-                // Use raw scroll delta
-                let scroll = i.smooth_scroll_delta.y;
-                if scroll.abs() > 0.1 {
-                    // CAMERA ZOOM: Clamp to ±3.0 for responsive yet smooth zoom
-                    let clamped_scroll = scroll.clamp(-3.0, 3.0);
-                    self.camera.zoom(clamped_scroll);
+                let scroll = i.raw_scroll_delta.y;
+                if scroll.abs() > 1.0 {
+                    self.camera.zoom(scroll);
                 }
             });
         }
+
+        // Animate smooth zoom each frame
+        self.camera.smooth_update();
 
         // Sync selected entity to gizmo state
         self.gizmo_state.selected_entity = self.selected_entity().map(|id| id as u32);
@@ -2026,12 +2031,7 @@ impl ViewportWidget {
     }
 
     /// Set the procedural sky gradient colors for skybox presets / time-of-day / weather
-    pub fn set_sky_colors(
-        &self,
-        sky_top: [f32; 4],
-        sky_horizon: [f32; 4],
-        ground_color: [f32; 4],
-    ) {
+    pub fn set_sky_colors(&self, sky_top: [f32; 4], sky_horizon: [f32; 4], ground_color: [f32; 4]) {
         if let Ok(mut renderer) = self.renderer.lock() {
             renderer.set_sky_colors(sky_top, sky_horizon, ground_color);
         }
@@ -2044,10 +2044,24 @@ impl ViewportWidget {
         }
     }
 
+    /// Set lighting parameters for PBR terrain shading
+    pub fn set_lighting_params(&self, params: super::terrain_renderer::TerrainLightingParams) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.set_lighting_params(params);
+        }
+    }
+
     /// Set water level for volumetric water plane
     pub fn set_water_level(&self, level: f32) {
         if let Ok(mut renderer) = self.renderer.lock() {
             renderer.set_water_level(level);
+        }
+    }
+
+    /// Enable or disable the volumetric water plane
+    pub fn set_water_enabled(&self, enabled: bool) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.set_water_enabled(enabled);
         }
     }
 

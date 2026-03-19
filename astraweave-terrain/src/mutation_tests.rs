@@ -1517,7 +1517,10 @@ mod chunk_height_at_world_pos_targeted {
         let chunk_size = 16.0;
         // World pos at (40, 0, 56) → local (8, 0, 8) → inside chunk
         let inside = chunk.get_height_at_world_pos(Vec3::new(40.0, 0.0, 56.0), chunk_size);
-        assert!(inside.is_some(), "Position inside non-origin chunk should return Some");
+        assert!(
+            inside.is_some(),
+            "Position inside non-origin chunk should return Some"
+        );
 
         // If `-` were `+`, local would be (40+32, 0, 56+48) = (72, 0, 104)
         // which is >= chunk_size=16 → would return None incorrectly
@@ -1531,7 +1534,10 @@ mod chunk_height_at_world_pos_targeted {
         let chunk_size = 16.0;
         // x = -1 (negative, outside), z = 8 (inside)
         let result = chunk.get_height_at_world_pos(Vec3::new(-1.0, 0.0, 8.0), chunk_size);
-        assert!(result.is_none(), "Outside x-only should be None (|| not &&)");
+        assert!(
+            result.is_none(),
+            "Outside x-only should be None (|| not &&)"
+        );
     }
 
     #[test]
@@ -1541,7 +1547,10 @@ mod chunk_height_at_world_pos_targeted {
         let chunk_size = 16.0;
         // x = 8 (inside), z = -1 (outside)
         let result = chunk.get_height_at_world_pos(Vec3::new(8.0, 0.0, -1.0), chunk_size);
-        assert!(result.is_none(), "Outside z-only should be None (|| not &&)");
+        assert!(
+            result.is_none(),
+            "Outside z-only should be None (|| not &&)"
+        );
     }
 
     #[test]
@@ -1579,8 +1588,14 @@ mod chunk_height_at_world_pos_targeted {
         // At world (0, 0, 0) → local (0,0,0) → u=0, v=0 → sample_bilinear(0,0) = data[0] = 0.0
         let chunk = make_chunk(0, 0);
         let chunk_size = 16.0;
-        let h = chunk.get_height_at_world_pos(Vec3::new(0.0, 0.0, 0.0), chunk_size).unwrap();
-        assert!((h - 0.0).abs() < 1e-4, "Height at origin should be 0.0, got {}", h);
+        let h = chunk
+            .get_height_at_world_pos(Vec3::new(0.0, 0.0, 0.0), chunk_size)
+            .unwrap();
+        assert!(
+            (h - 0.0).abs() < 1e-4,
+            "Height at origin should be 0.0, got {}",
+            h
+        );
     }
 
     #[test]
@@ -1590,8 +1605,14 @@ mod chunk_height_at_world_pos_targeted {
         let chunk = make_chunk(0, 0);
         let chunk_size = 16.0;
         let wx = chunk_size / 3.0; // = 16/3 ≈ 5.333
-        let h = chunk.get_height_at_world_pos(Vec3::new(wx, 0.0, 0.0), chunk_size).unwrap();
-        assert!((h - 0.5).abs() < 1e-4, "Height at u=1 should be 0.5, got {}", h);
+        let h = chunk
+            .get_height_at_world_pos(Vec3::new(wx, 0.0, 0.0), chunk_size)
+            .unwrap();
+        assert!(
+            (h - 0.5).abs() < 1e-4,
+            "Height at u=1 should be 0.5, got {}",
+            h
+        );
     }
 
     #[test]
@@ -1603,11 +1624,26 @@ mod chunk_height_at_world_pos_targeted {
         let chunk = make_chunk(0, 0);
         let chunk_size = 16.0;
         let wz = chunk_size / 3.0;
-        let h_z = chunk.get_height_at_world_pos(Vec3::new(0.0, 0.0, wz), chunk_size).unwrap();
-        let h_x = chunk.get_height_at_world_pos(Vec3::new(wz, 0.0, 0.0), chunk_size).unwrap();
-        assert!((h_z - 2.0).abs() < 1e-4, "Height at v=1 should be 2.0, got {}", h_z);
-        assert!((h_x - 0.5).abs() < 1e-4, "Height at u=1 should be 0.5, got {}", h_x);
-        assert!((h_z - h_x).abs() > 0.5, "x and z axes should give different heights");
+        let h_z = chunk
+            .get_height_at_world_pos(Vec3::new(0.0, 0.0, wz), chunk_size)
+            .unwrap();
+        let h_x = chunk
+            .get_height_at_world_pos(Vec3::new(wz, 0.0, 0.0), chunk_size)
+            .unwrap();
+        assert!(
+            (h_z - 2.0).abs() < 1e-4,
+            "Height at v=1 should be 2.0, got {}",
+            h_z
+        );
+        assert!(
+            (h_x - 0.5).abs() < 1e-4,
+            "Height at u=1 should be 0.5, got {}",
+            h_x
+        );
+        assert!(
+            (h_z - h_x).abs() > 0.5,
+            "x and z axes should give different heights"
+        );
     }
 
     #[test]
@@ -1616,8 +1652,14 @@ mod chunk_height_at_world_pos_targeted {
         // sample_bilinear(1.5, 0.0) = lerp(data[1], data[2], 0.5) = lerp(0.5, 1.0, 0.5) = 0.75
         let chunk = make_chunk(0, 0);
         let chunk_size = 16.0;
-        let h = chunk.get_height_at_world_pos(Vec3::new(8.0, 0.0, 0.0), chunk_size).unwrap();
-        assert!((h - 0.75).abs() < 1e-3, "Mid-chunk x height should be ~0.75, got {}", h);
+        let h = chunk
+            .get_height_at_world_pos(Vec3::new(8.0, 0.0, 0.0), chunk_size)
+            .unwrap();
+        assert!(
+            (h - 0.75).abs() < 1e-3,
+            "Mid-chunk x height should be ~0.75, got {}",
+            h
+        );
     }
 }
 
@@ -1633,9 +1675,21 @@ mod heightmap_normal_targeted {
         let hm = Heightmap::from_data(data, 4).unwrap();
         let normal = hm.calculate_normal(1, 1, 1.0);
         // On a flat surface, normal should be (0, 1, 0)
-        assert!(normal.y > 0.9, "Normal Y on flat surface should be ~1.0, got {}", normal.y);
-        assert!(normal.x.abs() < 0.1, "Normal X on flat surface should be ~0, got {}", normal.x);
-        assert!(normal.z.abs() < 0.1, "Normal Z on flat surface should be ~0, got {}", normal.z);
+        assert!(
+            normal.y > 0.9,
+            "Normal Y on flat surface should be ~1.0, got {}",
+            normal.y
+        );
+        assert!(
+            normal.x.abs() < 0.1,
+            "Normal X on flat surface should be ~0, got {}",
+            normal.x
+        );
+        assert!(
+            normal.z.abs() < 0.1,
+            "Normal Z on flat surface should be ~0, got {}",
+            normal.z
+        );
     }
 
     #[test]
@@ -1651,8 +1705,16 @@ mod heightmap_normal_targeted {
         let hm = Heightmap::from_data(data, 4).unwrap();
         let normal = hm.calculate_normal(1, 1, 1.0);
         // With +x slope, normal should tilt in -x direction
-        assert!(normal.x < -0.1, "Normal should tilt -x on +x slope, got x={}", normal.x);
-        assert!(normal.y > 0.0, "Normal Y should be positive, got {}", normal.y);
+        assert!(
+            normal.x < -0.1,
+            "Normal should tilt -x on +x slope, got x={}",
+            normal.x
+        );
+        assert!(
+            normal.y > 0.0,
+            "Normal Y should be positive, got {}",
+            normal.y
+        );
     }
 
     #[test]
@@ -1667,20 +1729,31 @@ mod heightmap_normal_targeted {
         let hm = Heightmap::from_data(data, 4).unwrap();
         let normal = hm.calculate_normal(1, 1, 1.0);
         // With +z slope, normal should tilt in -z direction
-        assert!(normal.z < -0.1, "Normal should tilt -z on +z slope, got z={}", normal.z);
-        assert!(normal.y > 0.0, "Normal Y should be positive, got {}", normal.y);
+        assert!(
+            normal.z < -0.1,
+            "Normal should tilt -z on +z slope, got z={}",
+            normal.z
+        );
+        assert!(
+            normal.y > 0.0,
+            "Normal Y should be positive, got {}",
+            normal.y
+        );
     }
 
     #[test]
     fn normal_is_normalized() {
-        let data = vec![0.0, 1.0, 2.0, 3.0,
-                        0.5, 1.5, 2.5, 3.5,
-                        1.0, 2.0, 3.0, 4.0,
-                        1.5, 2.5, 3.5, 4.5];
+        let data = vec![
+            0.0, 1.0, 2.0, 3.0, 0.5, 1.5, 2.5, 3.5, 1.0, 2.0, 3.0, 4.0, 1.5, 2.5, 3.5, 4.5,
+        ];
         let hm = Heightmap::from_data(data, 4).unwrap();
         let normal = hm.calculate_normal(1, 1, 1.0);
         let len = (normal.x * normal.x + normal.y * normal.y + normal.z * normal.z).sqrt();
-        assert!((len - 1.0).abs() < 1e-4, "Normal should be unit length, got {}", len);
+        assert!(
+            (len - 1.0).abs() < 1e-4,
+            "Normal should be unit length, got {}",
+            len
+        );
     }
 }
 
@@ -1692,54 +1765,66 @@ mod heightmap_bilinear_targeted {
     #[test]
     fn bilinear_at_grid_point_returns_exact() {
         // 4x4 heightmap with distinct values
-        let data = vec![1.0, 2.0, 3.0, 4.0,
-                        5.0, 6.0, 7.0, 8.0,
-                        9.0, 10.0, 11.0, 12.0,
-                        13.0, 14.0, 15.0, 16.0];
+        let data = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+        ];
         let hm = Heightmap::from_data(data, 4).unwrap();
         // At exact grid point (1, 1) should return height[1][1] = 6.0
         let val = hm.sample_bilinear(1.0, 1.0);
-        assert!((val - 6.0).abs() < 1e-4, "At grid point (1,1) should be 6.0, got {}", val);
+        assert!(
+            (val - 6.0).abs() < 1e-4,
+            "At grid point (1,1) should be 6.0, got {}",
+            val
+        );
     }
 
     #[test]
     fn bilinear_midpoint_is_average() {
         // At (0.5, 0.5) should interpolate between [0,0]=1, [1,0]=2, [0,1]=5, [1,1]=6
         // Bilinear: lerp(lerp(1,2,0.5), lerp(5,6,0.5), 0.5) = lerp(1.5, 5.5, 0.5) = 3.5
-        let data = vec![1.0, 2.0, 3.0, 4.0,
-                        5.0, 6.0, 7.0, 8.0,
-                        9.0, 10.0, 11.0, 12.0,
-                        13.0, 14.0, 15.0, 16.0];
+        let data = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+        ];
         let hm = Heightmap::from_data(data, 4).unwrap();
         let val = hm.sample_bilinear(0.5, 0.5);
-        assert!((val - 3.5).abs() < 1e-4, "Bilinear midpoint should be 3.5, got {}", val);
+        assert!(
+            (val - 3.5).abs() < 1e-4,
+            "Bilinear midpoint should be 3.5, got {}",
+            val
+        );
     }
 
     #[test]
     fn bilinear_at_quarter_x() {
         // At (0.25, 0.0) → lerp(1.0, 2.0, 0.25) = 1.25
-        let data = vec![1.0, 2.0, 3.0, 4.0,
-                        5.0, 6.0, 7.0, 8.0,
-                        9.0, 10.0, 11.0, 12.0,
-                        13.0, 14.0, 15.0, 16.0];
+        let data = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+        ];
         let hm = Heightmap::from_data(data, 4).unwrap();
         let val = hm.sample_bilinear(0.25, 0.0);
-        assert!((val - 1.25).abs() < 1e-4, "Bilinear (0.25,0) should be 1.25, got {}", val);
+        assert!(
+            (val - 1.25).abs() < 1e-4,
+            "Bilinear (0.25,0) should be 1.25, got {}",
+            val
+        );
     }
 
     #[test]
     fn bilinear_asymmetric_check() {
         // sample_bilinear(0.5, 0.0) != sample_bilinear(0.0, 0.5)
         // Kills * vs + and coordinate swap mutations
-        let data = vec![1.0, 3.0, 5.0, 7.0,
-                        2.0, 4.0, 6.0, 8.0,
-                        3.0, 5.0, 7.0, 9.0,
-                        4.0, 6.0, 8.0, 10.0];
+        let data = vec![
+            1.0, 3.0, 5.0, 7.0, 2.0, 4.0, 6.0, 8.0, 3.0, 5.0, 7.0, 9.0, 4.0, 6.0, 8.0, 10.0,
+        ];
         let hm = Heightmap::from_data(data, 4).unwrap();
         let val_x = hm.sample_bilinear(0.5, 0.0); // lerp(1,3,0.5) = 2.0
         let val_y = hm.sample_bilinear(0.0, 0.5); // lerp(1,2,0.5) = 1.5
-        assert!((val_x - val_y).abs() > 0.1,
-            "Bilinear should be direction-sensitive: ({}, {})", val_x, val_y);
+        assert!(
+            (val_x - val_y).abs() > 0.1,
+            "Bilinear should be direction-sensitive: ({}, {})",
+            val_x,
+            val_y
+        );
     }
 }
 
@@ -1757,8 +1842,12 @@ mod heightmap_smooth_targeted {
         let peak_before = hm.get_height(1, 1);
         hm.smooth(1);
         let peak_after = hm.get_height(1, 1);
-        assert!(peak_after < peak_before,
-            "Smoothing should reduce peak: before={}, after={}", peak_before, peak_after);
+        assert!(
+            peak_after < peak_before,
+            "Smoothing should reduce peak: before={}, after={}",
+            peak_before,
+            peak_after
+        );
     }
 
     #[test]
@@ -1770,8 +1859,12 @@ mod heightmap_smooth_targeted {
         let neighbor_before = hm.get_height(2, 1); // right neighbor
         hm.smooth(1);
         let neighbor_after = hm.get_height(2, 1);
-        assert!(neighbor_after > neighbor_before,
-            "Smoothing should raise neighbors: before={}, after={}", neighbor_before, neighbor_after);
+        assert!(
+            neighbor_after > neighbor_before,
+            "Smoothing should raise neighbors: before={}, after={}",
+            neighbor_before,
+            neighbor_after
+        );
     }
 
     #[test]
@@ -1783,8 +1876,13 @@ mod heightmap_smooth_targeted {
         for z in 0..4 {
             for x in 0..4 {
                 let h = hm.get_height(x, z);
-                assert!((h - 5.0).abs() < 1e-4,
-                    "Flat surface should stay flat after smoothing: ({},{})={}", x, z, h);
+                assert!(
+                    (h - 5.0).abs() < 1e-4,
+                    "Flat surface should stay flat after smoothing: ({},{})={}",
+                    x,
+                    z,
+                    h
+                );
             }
         }
     }
@@ -1799,8 +1897,12 @@ mod heightmap_smooth_targeted {
         hm2.smooth(5);
         let peak1 = hm1.get_height(1, 1);
         let peak2 = hm2.get_height(1, 1);
-        assert!(peak2 < peak1,
-            "More iterations should smooth more: 1iter={}, 5iter={}", peak1, peak2);
+        assert!(
+            peak2 < peak1,
+            "More iterations should smooth more: 1iter={}, 5iter={}",
+            peak1,
+            peak2
+        );
     }
 }
 
@@ -1821,11 +1923,12 @@ mod climate_temperature_targeted {
         let t_low = climate.sample_temperature(100.0, 100.0, 0.0);
         let t_high = climate.sample_temperature(100.0, 100.0, 100.0);
         // height * -0.0065: 100 * -0.0065 = -0.65 reduction
-        // If gradient sign were wrong or * became +, t_high would be higher  
+        // If gradient sign were wrong or * became +, t_high would be higher
         assert!(
             t_high < t_low,
             "Higher elevation should be cooler: low={}, high={}",
-            t_low, t_high
+            t_low,
+            t_high
         );
     }
 
@@ -1846,7 +1949,14 @@ mod climate_temperature_targeted {
             let z = i as f64 * 73.0;
             let h = (i as f32 * 50.0) % 200.0;
             let t = climate.sample_temperature(x, z, h);
-            assert!(t >= 0.0 && t <= 1.0, "Temperature should be [0,1]: {} at ({},{},{})", t, x, z, h);
+            assert!(
+                t >= 0.0 && t <= 1.0,
+                "Temperature should be [0,1]: {} at ({},{},{})",
+                t,
+                x,
+                z,
+                h
+            );
         }
     }
 
@@ -1861,7 +1971,9 @@ mod climate_temperature_targeted {
         assert!(
             t1 != t2 || t1 != t3,
             "Temperature should vary: t1={}, t2={}, t3={}",
-            t1, t2, t3
+            t1,
+            t2,
+            t3
         );
     }
 
@@ -1877,7 +1989,8 @@ mod climate_temperature_targeted {
         assert!(
             (t_equator - t_pole).abs() > 0.01,
             "Latitude should affect temperature: equator={}, pole={}",
-            t_equator, t_pole
+            t_equator,
+            t_pole
         );
     }
 
@@ -1908,10 +2021,13 @@ mod climate_temperature_targeted {
         // So with height=1, correct temp ~= base - 0.0065, mutated = 0.0
         let climate = make_climate();
         let t_h1 = climate.sample_temperature(500.0, 0.0, 1.0); // small height
-        // With correct formula, this should be very close to base temp (height=1 barely matters)
-        // With mutation, would be clamped to 0.0
-        assert!(t_h1 > 0.1,
-            "Height=1 shouldn't crush temperature to 0: got {}", t_h1);
+                                                                // With correct formula, this should be very close to base temp (height=1 barely matters)
+                                                                // With mutation, would be clamped to 0.0
+        assert!(
+            t_h1 > 0.1,
+            "Height=1 shouldn't crush temperature to 0: got {}",
+            t_h1
+        );
     }
 
     #[test]
@@ -1932,8 +2048,12 @@ mod climate_temperature_targeted {
         // With correct +=: t_pos > t_zero (latitude adds positive)
         // With mutated -=: t_pos < t_zero (latitude subtracts)
         // We know sin(0.7854) > 0, gradient > 0, so += makes it bigger
-        assert!(t_pos > t_zero - 0.01 || t_pos == 1.0,
-            "Positive latitude should increase temp: t_pos={}, t_zero={}", t_pos, t_zero);
+        assert!(
+            t_pos > t_zero - 0.01 || t_pos == 1.0,
+            "Positive latitude should increase temp: t_pos={}, t_zero={}",
+            t_pos,
+            t_zero
+        );
     }
 
     #[test]
@@ -1954,8 +2074,11 @@ mod climate_temperature_targeted {
         // vs mutated: sin(0.7854) / 2.0 ≈ 0.354
         let lat_effect = t_z_pos - t_z0;
         // Correct: ~1.414, Mutated: ~0.354 — difference is large enough
-        assert!(lat_effect > 0.3,
-            "Latitude effect should be significant: effect={}", lat_effect);
+        assert!(
+            lat_effect > 0.3,
+            "Latitude effect should be significant: effect={}",
+            lat_effect
+        );
     }
 }
 
@@ -1981,7 +2104,8 @@ mod climate_moisture_targeted {
         assert!(
             m_high <= m_low + 0.01,
             "Higher elevation should reduce moisture: low={}, high={}",
-            m_low, m_high
+            m_low,
+            m_high
         );
     }
 
@@ -1993,7 +2117,14 @@ mod climate_moisture_targeted {
             let z = i as f64 * 73.0;
             let h = (i as f32 * 50.0) % 200.0;
             let m = climate.sample_moisture(x, z, h);
-            assert!(m >= 0.0 && m <= 1.0, "Moisture should be [0,1]: {} at ({},{},{})", m, x, z, h);
+            assert!(
+                m >= 0.0 && m <= 1.0,
+                "Moisture should be [0,1]: {} at ({},{},{})",
+                m,
+                x,
+                z,
+                h
+            );
         }
     }
 
@@ -2014,7 +2145,9 @@ mod climate_moisture_targeted {
         assert!(
             m1 != m2 || m1 != m3,
             "Moisture should vary spatially: m1={}, m2={}, m3={}",
-            m1, m2, m3
+            m1,
+            m2,
+            m3
         );
     }
 
@@ -2031,7 +2164,9 @@ mod climate_moisture_targeted {
         assert!(
             m50 <= m0 + 0.01 && m200 <= m50 + 0.01,
             "Moisture should decrease with height: h0={}, h50={}, h200={}",
-            m0, m50, m200
+            m0,
+            m50,
+            m200
         );
     }
 
@@ -2062,25 +2197,46 @@ mod climate_stats_targeted {
     fn stats_min_max_consistent() {
         let climate = make_climate();
         let stats = utils::calculate_climate_stats(&climate, 0.0, 100.0, 0.0, 100.0, 5);
-        assert!(stats.temperature_min <= stats.temperature_avg,
-            "min {} should be <= avg {}", stats.temperature_min, stats.temperature_avg);
-        assert!(stats.temperature_avg <= stats.temperature_max,
-            "avg {} should be <= max {}", stats.temperature_avg, stats.temperature_max);
-        assert!(stats.moisture_min <= stats.moisture_avg,
-            "min {} should be <= avg {}", stats.moisture_min, stats.moisture_avg);
-        assert!(stats.moisture_avg <= stats.moisture_max,
-            "avg {} should be <= max {}", stats.moisture_avg, stats.moisture_max);
+        assert!(
+            stats.temperature_min <= stats.temperature_avg,
+            "min {} should be <= avg {}",
+            stats.temperature_min,
+            stats.temperature_avg
+        );
+        assert!(
+            stats.temperature_avg <= stats.temperature_max,
+            "avg {} should be <= max {}",
+            stats.temperature_avg,
+            stats.temperature_max
+        );
+        assert!(
+            stats.moisture_min <= stats.moisture_avg,
+            "min {} should be <= avg {}",
+            stats.moisture_min,
+            stats.moisture_avg
+        );
+        assert!(
+            stats.moisture_avg <= stats.moisture_max,
+            "avg {} should be <= max {}",
+            stats.moisture_avg,
+            stats.moisture_max
+        );
     }
 
     #[test]
     fn stats_different_regions_give_different_results() {
         let climate = make_climate();
         let stats1 = utils::calculate_climate_stats(&climate, 0.0, 100.0, 0.0, 100.0, 5);
-        let stats2 = utils::calculate_climate_stats(&climate, 10000.0, 10100.0, 10000.0, 10100.0, 5);
+        let stats2 =
+            utils::calculate_climate_stats(&climate, 10000.0, 10100.0, 10000.0, 10100.0, 5);
         let diff_t = (stats1.temperature_avg - stats2.temperature_avg).abs();
         let diff_m = (stats1.moisture_avg - stats2.moisture_avg).abs();
-        assert!(diff_t > 0.001 || diff_m > 0.001,
-            "Different regions should give different stats: dt={}, dm={}", diff_t, diff_m);
+        assert!(
+            diff_t > 0.001 || diff_m > 0.001,
+            "Different regions should give different stats: dt={}, dm={}",
+            diff_t,
+            diff_m
+        );
     }
 
     #[test]
@@ -2090,9 +2246,11 @@ mod climate_stats_targeted {
         let stats_narrow = utils::calculate_climate_stats(&climate, 0.0, 100.0, 0.0, 10.0, 5);
         let range_wide = stats_wide.temperature_max - stats_wide.temperature_min;
         let range_narrow = stats_narrow.temperature_max - stats_narrow.temperature_min;
-        assert!((stats_wide.temperature_avg - stats_narrow.temperature_avg).abs() > 0.0001
-            || (range_wide - range_narrow).abs() > 0.0001,
-            "Different z ranges should give different results");
+        assert!(
+            (stats_wide.temperature_avg - stats_narrow.temperature_avg).abs() > 0.0001
+                || (range_wide - range_narrow).abs() > 0.0001,
+            "Different z ranges should give different results"
+        );
     }
 
     #[test]
@@ -2122,8 +2280,12 @@ mod noise_fbm_indirect_targeted {
 
         let t1 = climate1.sample_temperature(200.0, 200.0, 0.0);
         let t2 = climate2.sample_temperature(200.0, 200.0, 0.0);
-        assert!(t1 != t2,
-            "Different amplitudes should give different temperatures: t1={}, t2={}", t1, t2);
+        assert!(
+            t1 != t2,
+            "Different amplitudes should give different temperatures: t1={}, t2={}",
+            t1,
+            t2
+        );
     }
 
     #[test]
@@ -2138,8 +2300,12 @@ mod noise_fbm_indirect_targeted {
 
         let t1 = climate1.sample_temperature(300.0, 300.0, 0.0);
         let t2 = climate2.sample_temperature(300.0, 300.0, 0.0);
-        assert!(t1 != t2,
-            "Different persistence should affect temperature: t1={}, t2={}", t1, t2);
+        assert!(
+            t1 != t2,
+            "Different persistence should affect temperature: t1={}, t2={}",
+            t1,
+            t2
+        );
     }
 
     #[test]
@@ -2154,8 +2320,12 @@ mod noise_fbm_indirect_targeted {
 
         let t1 = climate1.sample_temperature(400.0, 400.0, 0.0);
         let t2 = climate2.sample_temperature(400.0, 400.0, 0.0);
-        assert!(t1 != t2,
-            "Different lacunarity should affect temperature: t1={}, t2={}", t1, t2);
+        assert!(
+            t1 != t2,
+            "Different lacunarity should affect temperature: t1={}, t2={}",
+            t1,
+            t2
+        );
     }
 
     #[test]
@@ -2170,8 +2340,12 @@ mod noise_fbm_indirect_targeted {
 
         let t1 = climate1.sample_temperature(500.0, 500.0, 0.0);
         let t2 = climate2.sample_temperature(500.0, 500.0, 0.0);
-        assert!(t1 != t2,
-            "Different offset should affect temperature: t1={}, t2={}", t1, t2);
+        assert!(
+            t1 != t2,
+            "Different offset should affect temperature: t1={}, t2={}",
+            t1,
+            t2
+        );
     }
 
     #[test]
@@ -2191,8 +2365,12 @@ mod noise_fbm_indirect_targeted {
 
         let t1 = climate1.sample_temperature(600.0, 600.0, 0.0);
         let t2 = climate2.sample_temperature(600.0, 600.0, 0.0);
-        assert!(t1 != t2,
-            "Different octave counts should affect temperature: t1={}, t2={}", t1, t2);
+        assert!(
+            t1 != t2,
+            "Different octave counts should affect temperature: t1={}, t2={}",
+            t1,
+            t2
+        );
     }
 
     #[test]
@@ -2202,7 +2380,11 @@ mod noise_fbm_indirect_targeted {
         let t = climate.sample_temperature(100.0, 100.0, 0.0);
         let t2 = climate.sample_temperature(100.0, 100.0, 0.0);
         assert_eq!(t, t2, "Should be deterministic");
-        assert!(t > 0.01 && t < 0.99, "Temperature should be non-trivial: {}", t);
+        assert!(
+            t > 0.01 && t < 0.99,
+            "Temperature should be non-trivial: {}",
+            t
+        );
     }
 }
 
@@ -2228,20 +2410,64 @@ mod heightmap_generate_vertices_targeted {
         let verts = hm.generate_vertices(10.0, Vec3::new(100.0, 0.0, 200.0));
         // step = 10 / (2-1) = 10
         // Vertex (0,0): (100+0*10, height[0,0]=1.0, 200+0*10) = (100, 1, 200)
-        assert!((verts[0].x - 100.0).abs() < 1e-4, "v0.x should be 100, got {}", verts[0].x);
-        assert!((verts[0].y - 1.0).abs() < 1e-4, "v0.y should be 1.0, got {}", verts[0].y);
-        assert!((verts[0].z - 200.0).abs() < 1e-4, "v0.z should be 200, got {}", verts[0].z);
+        assert!(
+            (verts[0].x - 100.0).abs() < 1e-4,
+            "v0.x should be 100, got {}",
+            verts[0].x
+        );
+        assert!(
+            (verts[0].y - 1.0).abs() < 1e-4,
+            "v0.y should be 1.0, got {}",
+            verts[0].y
+        );
+        assert!(
+            (verts[0].z - 200.0).abs() < 1e-4,
+            "v0.z should be 200, got {}",
+            verts[0].z
+        );
         // Vertex (1,0): (100+1*10, height[0,1]=2.0, 200+0*10) = (110, 2, 200)
-        assert!((verts[1].x - 110.0).abs() < 1e-4, "v1.x should be 110, got {}", verts[1].x);
-        assert!((verts[1].y - 2.0).abs() < 1e-4, "v1.y should be 2.0, got {}", verts[1].y);
+        assert!(
+            (verts[1].x - 110.0).abs() < 1e-4,
+            "v1.x should be 110, got {}",
+            verts[1].x
+        );
+        assert!(
+            (verts[1].y - 2.0).abs() < 1e-4,
+            "v1.y should be 2.0, got {}",
+            verts[1].y
+        );
         // Vertex (0,1): (100+0*10, height[1,0]=3.0, 200+1*10) = (100, 3, 210)
-        assert!((verts[2].x - 100.0).abs() < 1e-4, "v2.x should be 100, got {}", verts[2].x);
-        assert!((verts[2].y - 3.0).abs() < 1e-4, "v2.y should be 3.0, got {}", verts[2].y);
-        assert!((verts[2].z - 210.0).abs() < 1e-4, "v2.z should be 210, got {}", verts[2].z);
+        assert!(
+            (verts[2].x - 100.0).abs() < 1e-4,
+            "v2.x should be 100, got {}",
+            verts[2].x
+        );
+        assert!(
+            (verts[2].y - 3.0).abs() < 1e-4,
+            "v2.y should be 3.0, got {}",
+            verts[2].y
+        );
+        assert!(
+            (verts[2].z - 210.0).abs() < 1e-4,
+            "v2.z should be 210, got {}",
+            verts[2].z
+        );
         // Vertex (1,1): (110, 4, 210)
-        assert!((verts[3].x - 110.0).abs() < 1e-4, "v3.x should be 110, got {}", verts[3].x);
-        assert!((verts[3].y - 4.0).abs() < 1e-4, "v3.y should be 4.0, got {}", verts[3].y);
-        assert!((verts[3].z - 210.0).abs() < 1e-4, "v3.z should be 210, got {}", verts[3].z);
+        assert!(
+            (verts[3].x - 110.0).abs() < 1e-4,
+            "v3.x should be 110, got {}",
+            verts[3].x
+        );
+        assert!(
+            (verts[3].y - 4.0).abs() < 1e-4,
+            "v3.y should be 4.0, got {}",
+            verts[3].y
+        );
+        assert!(
+            (verts[3].z - 210.0).abs() < 1e-4,
+            "v3.z should be 210, got {}",
+            verts[3].z
+        );
     }
 
     #[test]
@@ -2251,11 +2477,19 @@ mod heightmap_generate_vertices_targeted {
         let data = vec![0.0; 9];
         let hm = Heightmap::from_data(data, 3).unwrap();
         let verts = hm.generate_vertices(20.0, Vec3::ZERO);
-        // Last vertex x position should be at chunk_size  
+        // Last vertex x position should be at chunk_size
         // vertex (2,0): 0 + 2*10 = 20
-        assert!((verts[2].x - 20.0).abs() < 1e-4, "Last x should be 20, got {}", verts[2].x);
+        assert!(
+            (verts[2].x - 20.0).abs() < 1e-4,
+            "Last x should be 20, got {}",
+            verts[2].x
+        );
         // vertex (0,2): z = 0 + 2*10 = 20
-        assert!((verts[6].z - 20.0).abs() < 1e-4, "Last z should be 20, got {}", verts[6].z);
+        assert!(
+            (verts[6].z - 20.0).abs() < 1e-4,
+            "Last z should be 20, got {}",
+            verts[6].z
+        );
     }
 
     #[test]
@@ -2282,7 +2516,12 @@ mod heightmap_generate_indices_targeted {
         let data = vec![0.0; 4];
         let hm = Heightmap::from_data(data, 2).unwrap();
         let indices = hm.generate_indices();
-        assert_eq!(indices.len(), 6, "2x2 should have 6 indices, got {}", indices.len());
+        assert_eq!(
+            indices.len(),
+            6,
+            "2x2 should have 6 indices, got {}",
+            indices.len()
+        );
     }
 
     #[test]
@@ -2291,7 +2530,12 @@ mod heightmap_generate_indices_targeted {
         let data = vec![0.0; 9];
         let hm = Heightmap::from_data(data, 3).unwrap();
         let indices = hm.generate_indices();
-        assert_eq!(indices.len(), 24, "3x3 should have 24 indices, got {}", indices.len());
+        assert_eq!(
+            indices.len(),
+            24,
+            "3x3 should have 24 indices, got {}",
+            indices.len()
+        );
     }
 
     #[test]
@@ -2394,12 +2638,17 @@ mod calculate_normal_precise {
         // normal = Vec3(-2, 1, 0).normalize() = (-0.8944, 0.4472, 0)
         let hm = make_x_slope_5x5();
         let n = hm.calculate_normal(2, 2, 1.0);
-        assert!((n.x - (-0.8944)).abs() < 0.02,
-            "Normal.x should be -0.8944, got {}", n.x);
-        assert!((n.y - 0.4472).abs() < 0.02,
-            "Normal.y should be 0.4472, got {}", n.y);
-        assert!(n.z.abs() < 0.01,
-            "Normal.z should be ~0, got {}", n.z);
+        assert!(
+            (n.x - (-0.8944)).abs() < 0.02,
+            "Normal.x should be -0.8944, got {}",
+            n.x
+        );
+        assert!(
+            (n.y - 0.4472).abs() < 0.02,
+            "Normal.y should be 0.4472, got {}",
+            n.y
+        );
+        assert!(n.z.abs() < 0.01, "Normal.z should be ~0, got {}", n.z);
     }
 
     #[test]
@@ -2409,12 +2658,17 @@ mod calculate_normal_precise {
         // normal = Vec3(0, 1, -2).normalize() = (0, 0.4472, -0.8944)
         let hm = make_z_slope_5x5();
         let n = hm.calculate_normal(2, 2, 1.0);
-        assert!(n.x.abs() < 0.01,
-            "Normal.x should be ~0, got {}", n.x);
-        assert!((n.y - 0.4472).abs() < 0.02,
-            "Normal.y should be 0.4472, got {}", n.y);
-        assert!((n.z - (-0.8944)).abs() < 0.02,
-            "Normal.z should be -0.8944, got {}", n.z);
+        assert!(n.x.abs() < 0.01, "Normal.x should be ~0, got {}", n.x);
+        assert!(
+            (n.y - 0.4472).abs() < 0.02,
+            "Normal.y should be 0.4472, got {}",
+            n.y
+        );
+        assert!(
+            (n.z - (-0.8944)).abs() < 0.02,
+            "Normal.z should be -0.8944, got {}",
+            n.z
+        );
     }
 
     #[test]
@@ -2433,8 +2687,12 @@ mod calculate_normal_precise {
         // up = h(0,1) = 5.0, down = h(0,3) = 5.0, dz = 0
         // normal = Vec3(-1.5, 1, 0).normalize()
         let expected_x = -1.5 / (1.5_f32.powi(2) + 1.0).sqrt();
-        assert!((n.x - expected_x).abs() < 0.02,
-            "Boundary x=0 normal.x should be {}, got {}", expected_x, n.x);
+        assert!(
+            (n.x - expected_x).abs() < 0.02,
+            "Boundary x=0 normal.x should be {}, got {}",
+            expected_x,
+            n.x
+        );
     }
 
     #[test]
@@ -2446,10 +2704,16 @@ mod calculate_normal_precise {
         // left = h(3,2) = 6, right = h(4,2) = 8 (self, boundary)
         // dx = (8 - 6) / (2*1) = 1.0
         // normal = Vec3(-1, 1, 0).normalize() = (-0.7071, 0.7071, 0)
-        assert!((n.x - (-0.7071)).abs() < 0.02,
-            "Boundary x=max normal.x should be -0.7071, got {}", n.x);
-        assert!((n.y - 0.7071).abs() < 0.02,
-            "Boundary x=max normal.y should be 0.7071, got {}", n.y);
+        assert!(
+            (n.x - (-0.7071)).abs() < 0.02,
+            "Boundary x=max normal.x should be -0.7071, got {}",
+            n.x
+        );
+        assert!(
+            (n.y - 0.7071).abs() < 0.02,
+            "Boundary x=max normal.y should be 0.7071, got {}",
+            n.y
+        );
     }
 
     #[test]
@@ -2460,8 +2724,11 @@ mod calculate_normal_precise {
         // up = h(2,0) = 0 (self), down = h(2,1) = 2
         // dz = (2 - 0) / (2*1) = 1.0
         // normal = Vec3(0, 1, -1).normalize() = (0, 0.7071, -0.7071)
-        assert!((n.z - (-0.7071)).abs() < 0.02,
-            "Boundary z=0 normal.z should be -0.7071, got {}", n.z);
+        assert!(
+            (n.z - (-0.7071)).abs() < 0.02,
+            "Boundary z=0 normal.z should be -0.7071, got {}",
+            n.z
+        );
     }
 
     #[test]
@@ -2471,8 +2738,11 @@ mod calculate_normal_precise {
         let n = hm.calculate_normal(2, 4, 1.0);
         // up = h(2,3) = 6, down = h(2,4) = 8 (self, boundary)
         // dz = (8 - 6) / (2*1) = 1.0
-        assert!((n.z - (-0.7071)).abs() < 0.02,
-            "Boundary z=max normal.z should be -0.7071, got {}", n.z);
+        assert!(
+            (n.z - (-0.7071)).abs() < 0.02,
+            "Boundary z=max normal.z should be -0.7071, got {}",
+            n.z
+        );
     }
 
     #[test]
@@ -2487,13 +2757,25 @@ mod calculate_normal_precise {
         let len = (0.667_f32.powi(2) + 1.0).sqrt();
         let expected_x = -0.667 / len;
         let expected_y = 1.0 / len;
-        assert!((n_s3.x - expected_x).abs() < 0.02,
-            "Scale=3 normal.x should be {}, got {}", expected_x, n_s3.x);
-        assert!((n_s3.y - expected_y).abs() < 0.02,
-            "Scale=3 normal.y should be {}, got {}", expected_y, n_s3.y);
+        assert!(
+            (n_s3.x - expected_x).abs() < 0.02,
+            "Scale=3 normal.x should be {}, got {}",
+            expected_x,
+            n_s3.x
+        );
+        assert!(
+            (n_s3.y - expected_y).abs() < 0.02,
+            "Scale=3 normal.y should be {}, got {}",
+            expected_y,
+            n_s3.y
+        );
         // Ensure scale actually changes the result
-        assert!((n_s1.x - n_s3.x).abs() > 0.1,
-            "Different scales should give different normals: s1={}, s3={}", n_s1.x, n_s3.x);
+        assert!(
+            (n_s1.x - n_s3.x).abs() > 0.1,
+            "Different scales should give different normals: s1={}, s3={}",
+            n_s1.x,
+            n_s3.x
+        );
     }
 
     #[test]
@@ -2505,8 +2787,12 @@ mod calculate_normal_precise {
         // dx = 4/(2*0.5) = 4/1 = 4. normal = Vec3(-4, 1, 0).normalize()
         let len = (16.0_f32 + 1.0).sqrt();
         let expected_x = -4.0 / len;
-        assert!((n.x - expected_x).abs() < 0.02,
-            "Scale=0.5 normal.x should be {}, got {}", expected_x, n.x);
+        assert!(
+            (n.x - expected_x).abs() < 0.02,
+            "Scale=0.5 normal.x should be {}, got {}",
+            expected_x,
+            n.x
+        );
         // With mutation `* → +`: dx = 4/(2+0.5)=4/2.5=1.6
         // normal.x = -1.6/sqrt(3.56) = -0.848 vs expected -0.9701
         // Our assertion catches this
@@ -2520,9 +2806,9 @@ mod calculate_normal_precise {
         let mut data = vec![0.0; 25];
         // Set up: center(2,2)=10, unique neighbors
         data[2 * 5 + 2] = 10.0; // center
-        data[2 * 5 + 1] = 2.0;  // left
-        data[2 * 5 + 3] = 8.0;  // right
-        data[1 * 5 + 2] = 1.0;  // up
+        data[2 * 5 + 1] = 2.0; // left
+        data[2 * 5 + 3] = 8.0; // right
+        data[1 * 5 + 2] = 1.0; // up
         data[3 * 5 + 2] = 15.0; // down
         let hm = Heightmap::from_data(data, 5).unwrap();
         let n = hm.calculate_normal(2, 2, 1.0);
@@ -2531,10 +2817,18 @@ mod calculate_normal_precise {
         let len = (9.0 + 1.0 + 49.0_f32).sqrt(); // sqrt(59) ≈ 7.681
         let expected_x = -3.0 / len;
         let expected_z = -7.0 / len;
-        assert!((n.x - expected_x).abs() < 0.02,
-            "Asymmetric normal.x should be {}, got {}", expected_x, n.x);
-        assert!((n.z - expected_z).abs() < 0.02,
-            "Asymmetric normal.z should be {}, got {}", expected_z, n.z);
+        assert!(
+            (n.x - expected_x).abs() < 0.02,
+            "Asymmetric normal.x should be {}, got {}",
+            expected_x,
+            n.x
+        );
+        assert!(
+            (n.z - expected_z).abs() < 0.02,
+            "Asymmetric normal.z should be {}, got {}",
+            expected_z,
+            n.z
+        );
     }
 
     #[test]
@@ -2550,12 +2844,23 @@ mod calculate_normal_precise {
         let len = (0.667_f32.powi(2) + 1.0).sqrt();
         let expected_z = -0.667 / len;
         let expected_y = 1.0 / len;
-        assert!((n.z - expected_z).abs() < 0.02,
-            "Z-slope scale=3 normal.z should be {}, got {}", expected_z, n.z);
-        assert!((n.y - expected_y).abs() < 0.02,
-            "Z-slope scale=3 normal.y should be {}, got {}", expected_y, n.y);
-        assert!(n.x.abs() < 0.01,
-            "Z-slope normal.x should be ~0, got {}", n.x);
+        assert!(
+            (n.z - expected_z).abs() < 0.02,
+            "Z-slope scale=3 normal.z should be {}, got {}",
+            expected_z,
+            n.z
+        );
+        assert!(
+            (n.y - expected_y).abs() < 0.02,
+            "Z-slope scale=3 normal.y should be {}, got {}",
+            expected_y,
+            n.y
+        );
+        assert!(
+            n.x.abs() < 0.01,
+            "Z-slope normal.x should be ~0, got {}",
+            n.x
+        );
     }
 }
 
@@ -2572,10 +2877,18 @@ mod set_height_boundary {
         // x OOB, z valid: should be rejected
         hm.set_height(100, 0, 99.0);
         // Verify nothing changed
-        assert_eq!(hm.get_height(0, 0), 1.0, "Data should be unchanged after x-OOB set");
+        assert_eq!(
+            hm.get_height(0, 0),
+            1.0,
+            "Data should be unchanged after x-OOB set"
+        );
         // z OOB, x valid: should be rejected
         hm.set_height(0, 100, 99.0);
-        assert_eq!(hm.get_height(0, 0), 1.0, "Data should be unchanged after z-OOB set");
+        assert_eq!(
+            hm.get_height(0, 0),
+            1.0,
+            "Data should be unchanged after z-OOB set"
+        );
     }
 }
 
@@ -2598,8 +2911,12 @@ mod bilinear_boundary_tests {
         let val_oob = hm.sample_bilinear(10.0, 0.0);
         // At u=2.999, v=0.0: should give same result as clamped version
         let val_clamped = hm.sample_bilinear(2.999, 0.0);
-        assert!((val_oob - val_clamped).abs() < 0.01,
-            "OOB u should clamp same as near-max: oob={}, clamped={}", val_oob, val_clamped);
+        assert!(
+            (val_oob - val_clamped).abs() < 0.01,
+            "OOB u should clamp same as near-max: oob={}, clamped={}",
+            val_oob,
+            val_clamped
+        );
     }
 
     #[test]
@@ -2611,8 +2928,12 @@ mod bilinear_boundary_tests {
         let hm = Heightmap::from_data(data, 4).unwrap();
         let val_oob = hm.sample_bilinear(0.0, 10.0);
         let val_clamped = hm.sample_bilinear(0.0, 2.999);
-        assert!((val_oob - val_clamped).abs() < 0.01,
-            "OOB v should clamp same as near-max: oob={}, clamped={}", val_oob, val_clamped);
+        assert!(
+            (val_oob - val_clamped).abs() < 0.01,
+            "OOB v should clamp same as near-max: oob={}, clamped={}",
+            val_oob,
+            val_clamped
+        );
     }
 
     #[test]
@@ -2626,21 +2947,26 @@ mod bilinear_boundary_tests {
         let hm = Heightmap::from_data(data, 4).unwrap();
         let val = hm.sample_bilinear(2.5, 0.0);
         // lerp(20, 30, 0.5) = 25
-        assert!((val - 25.0).abs() < 0.01,
-            "Near boundary should interpolate: expected 25, got {}", val);
+        assert!(
+            (val - 25.0).abs() < 0.01,
+            "Near boundary should interpolate: expected 25, got {}",
+            val
+        );
     }
 
     #[test]
     fn negative_u_clamps_to_zero() {
-        let data = vec![100.0, 0.0, 0.0, 0.0,
-                        0.0, 0.0, 0.0, 0.0,
-                        0.0, 0.0, 0.0, 0.0,
-                        0.0, 0.0, 0.0, 0.0];
+        let data = vec![
+            100.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        ];
         let hm = Heightmap::from_data(data, 4).unwrap();
         let val = hm.sample_bilinear(-5.0, 0.0);
         // Should clamp to (0,0) = 100
-        assert!((val - 100.0).abs() < 0.01,
-            "Negative u should clamp to 0: expected 100, got {}", val);
+        assert!(
+            (val - 100.0).abs() < 0.01,
+            "Negative u should clamp to 0: expected 100, got {}",
+            val
+        );
     }
 
     #[test]
@@ -2650,16 +2976,19 @@ mod bilinear_boundary_tests {
         // OOB u=10: original clamps to 2.999 → interpolates between col 2 (0) and col 3 (100)
         // Mutation clamps to 3.996 → x0=3, x1=min(4,3)=3 → returns exactly 100
         let mut data = vec![0.0; 16];
-        data[3] = 100.0;  // (3,0)
-        data[7] = 100.0;  // (3,1)
+        data[3] = 100.0; // (3,0)
+        data[7] = 100.0; // (3,1)
         data[11] = 100.0; // (3,2)
         data[15] = 100.0; // (3,3)
         let hm = Heightmap::from_data(data, 4).unwrap();
         let val = hm.sample_bilinear(10.0, 0.0);
         // Original: x=2.999, interpolates 0*0.001+100*0.999 = 99.9
         // Mutation: x=3.996, gets 100.0 exactly
-        assert!((val - 99.9).abs() < 0.05,
-            "OOB u should clamp to 2.999 giving ~99.9, got {} (100.0 means clamp bound wrong)", val);
+        assert!(
+            (val - 99.9).abs() < 0.05,
+            "OOB u should clamp to 2.999 giving ~99.9, got {} (100.0 means clamp bound wrong)",
+            val
+        );
     }
 }
 
@@ -2691,8 +3020,11 @@ mod smooth_precise_values {
         // sum = 12 + 14 + 8 + 18 + 20*4 = 132
         // smoothed = 132/8 = 16.5
         let val = hm.get_height(2, 2);
-        assert!((val - 16.5).abs() < 0.01,
-            "Smoothed center should be 16.5, got {}", val);
+        assert!(
+            (val - 16.5).abs() < 0.01,
+            "Smoothed center should be 16.5, got {}",
+            val
+        );
     }
 
     #[test]
@@ -2711,8 +3043,11 @@ mod smooth_precise_values {
         hm.smooth(1);
 
         let val = hm.get_height(1, 1);
-        assert!((val - 7.0).abs() < 0.01,
-            "Smoothed (1,1) should be 7.0, got {}", val);
+        assert!(
+            (val - 7.0).abs() < 0.01,
+            "Smoothed (1,1) should be 7.0, got {}",
+            val
+        );
     }
 
     #[test]
@@ -2725,8 +3060,11 @@ mod smooth_precise_values {
         data[12] = 20.0;
 
         let original_boundary = vec![
-            (0, 0, 1.0), (1, 0, 2.0), (4, 0, 5.0),
-            (0, 4, 21.0), (4, 4, 25.0),
+            (0, 0, 1.0),
+            (1, 0, 2.0),
+            (4, 0, 5.0),
+            (0, 4, 21.0),
+            (4, 4, 25.0),
         ];
 
         let mut hm = Heightmap::from_data(data, 5).unwrap();
@@ -2734,9 +3072,14 @@ mod smooth_precise_values {
 
         for (x, z, expected) in &original_boundary {
             let val = hm.get_height(*x, *z);
-            assert!((val - expected).abs() < 0.01,
+            assert!(
+                (val - expected).abs() < 0.01,
                 "Boundary ({},{}) should be unchanged: expected {}, got {}",
-                x, z, expected, val);
+                x,
+                z,
+                expected,
+                val
+            );
         }
     }
 
@@ -2750,14 +3093,17 @@ mod smooth_precise_values {
             data[i] = (i + 1) as f32;
         }
         data[2 * 5 + 4] = 50.0; // Spike at (4,2) = data[14]
-        // Neighbors: left=data[13]=14, right=data[15]=16, up=data[9]=10, down=data[19]=20
-        // If smoothed: sum = 14+16+10+20+50*4 = 260, smoothed = 32.5
-        // But (4,2) is at x=resolution-1, should NOT be in the loop
+                                // Neighbors: left=data[13]=14, right=data[15]=16, up=data[9]=10, down=data[19]=20
+                                // If smoothed: sum = 14+16+10+20+50*4 = 260, smoothed = 32.5
+                                // But (4,2) is at x=resolution-1, should NOT be in the loop
         let mut hm = Heightmap::from_data(data, 5).unwrap();
         hm.smooth(1);
         let val = hm.get_height(4, 2);
-        assert!((val - 50.0).abs() < 0.01,
-            "Boundary x=4 should NOT be smoothed: expected 50.0, got {}", val);
+        assert!(
+            (val - 50.0).abs() < 0.01,
+            "Boundary x=4 should NOT be smoothed: expected 50.0, got {}",
+            val
+        );
     }
 
     #[test]
@@ -2767,10 +3113,10 @@ mod smooth_precise_values {
         let mut data = vec![10.0; 25];
         // At (2,2): set distinct neighbors
         data[2 * 5 + 1] = 100.0; // left = 100
-        data[2 * 5 + 3] = 1.0;   // right = 1
-        data[1 * 5 + 2] = 50.0;  // up = 50
+        data[2 * 5 + 3] = 1.0; // right = 1
+        data[1 * 5 + 2] = 50.0; // up = 50
         data[3 * 5 + 2] = 200.0; // down = 200
-        data[2 * 5 + 2] = 10.0;  // center = 10
+        data[2 * 5 + 2] = 10.0; // center = 10
 
         let mut hm = Heightmap::from_data(data, 5).unwrap();
         hm.smooth(1);
@@ -2778,8 +3124,11 @@ mod smooth_precise_values {
         // sum = 100 + 1 + 50 + 200 + 10*4 = 391
         // smoothed = 391/8 = 48.875
         let val = hm.get_height(2, 2);
-        assert!((val - 48.875).abs() < 0.01,
-            "Center with distinct neighbors should be 48.875, got {}", val);
+        assert!(
+            (val - 48.875).abs() < 0.01,
+            "Center with distinct neighbors should be 48.875, got {}",
+            val
+        );
     }
 }
 
@@ -2823,18 +3172,32 @@ mod climate_stats_precise {
         let expected_m_avg = moists.iter().sum::<f32>() / moists.len() as f32;
 
         // Now get stats from the function under test
-        let stats = utils::calculate_climate_stats(
-            &climate, min_x, max_x, min_z, max_z, samples,
-        );
+        let stats = utils::calculate_climate_stats(&climate, min_x, max_x, min_z, max_z, samples);
 
-        assert!((stats.temperature_avg - expected_t_avg).abs() < 1e-6,
-            "Temp avg mismatch: got {}, expected {}", stats.temperature_avg, expected_t_avg);
-        assert!((stats.temperature_min - expected_t_min).abs() < 1e-6,
-            "Temp min mismatch: got {}, expected {}", stats.temperature_min, expected_t_min);
-        assert!((stats.temperature_max - expected_t_max).abs() < 1e-6,
-            "Temp max mismatch: got {}, expected {}", stats.temperature_max, expected_t_max);
-        assert!((stats.moisture_avg - expected_m_avg).abs() < 1e-6,
-            "Moisture avg mismatch: got {}, expected {}", stats.moisture_avg, expected_m_avg);
+        assert!(
+            (stats.temperature_avg - expected_t_avg).abs() < 1e-6,
+            "Temp avg mismatch: got {}, expected {}",
+            stats.temperature_avg,
+            expected_t_avg
+        );
+        assert!(
+            (stats.temperature_min - expected_t_min).abs() < 1e-6,
+            "Temp min mismatch: got {}, expected {}",
+            stats.temperature_min,
+            expected_t_min
+        );
+        assert!(
+            (stats.temperature_max - expected_t_max).abs() < 1e-6,
+            "Temp max mismatch: got {}, expected {}",
+            stats.temperature_max,
+            expected_t_max
+        );
+        assert!(
+            (stats.moisture_avg - expected_m_avg).abs() < 1e-6,
+            "Moisture avg mismatch: got {}, expected {}",
+            stats.moisture_avg,
+            expected_m_avg
+        );
     }
 
     #[test]
@@ -2859,8 +3222,12 @@ mod climate_stats_precise {
             }
         }
         let expected_avg = temps.iter().sum::<f32>() / temps.len() as f32;
-        assert!((stats.temperature_avg - expected_avg).abs() < 1e-6,
-            "Stats should match manual: got {}, expected {}", stats.temperature_avg, expected_avg);
+        assert!(
+            (stats.temperature_avg - expected_avg).abs() < 1e-6,
+            "Stats should match manual: got {}, expected {}",
+            stats.temperature_avg,
+            expected_avg
+        );
     }
 
     #[test]
@@ -2881,8 +3248,12 @@ mod climate_stats_precise {
             }
         }
         let expected = temps.iter().sum::<f32>() / temps.len() as f32;
-        assert!((stats.temperature_avg - expected).abs() < 1e-6,
-            "Large region stats: got {}, expected {}", stats.temperature_avg, expected);
+        assert!(
+            (stats.temperature_avg - expected).abs() < 1e-6,
+            "Large region stats: got {}, expected {}",
+            stats.temperature_avg,
+            expected
+        );
     }
 }
 
@@ -2894,8 +3265,8 @@ mod moisture_precise_v3 {
     /// Create a climate map with zero-amplitude moisture noise (constant base=offset)
     fn make_controlled_climate() -> ClimateMap {
         let mut config = ClimateConfig::default();
-        config.moisture.amplitude = 0.0;  // No noise variation
-        config.moisture.offset = 0.5;     // Constant base moisture = 0.5
+        config.moisture.amplitude = 0.0; // No noise variation
+        config.moisture.offset = 0.5; // Constant base moisture = 0.5
         ClimateMap::new(&config, 42)
     }
 
@@ -2917,8 +3288,13 @@ mod moisture_precise_v3 {
         // With L106 `*→/`: hf=(50/0.01)→1.0, same as +
         // With L107 `*→+`: mult=1.0-0.5+0.3=0.8, diff=0.35-0.28=0.07
         // With L107 `*→/`: mult=1.0-0.5/0.3=-0.667, moisture goes very negative → clamped
-        assert!((diff - 0.0525).abs() < 0.01,
-            "Height effect diff should be ~0.0525, got {} (m0={}, m50={})", diff, m0, m50);
+        assert!(
+            (diff - 0.0525).abs() < 0.01,
+            "Height effect diff should be ~0.0525, got {} (m0={}, m50={})",
+            diff,
+            m0,
+            m50
+        );
     }
 
     #[test]
@@ -2933,8 +3309,11 @@ mod moisture_precise_v3 {
         // Expected diff = 0.5*(1-1*0.3) - 0.5*(1-0.005*0.3) cancels to...
         // Actually: 0.5*0.7 + w*0.3 - (0.5*0.9985*0.7 + w*0.3) = 0.5*0.7*(1-0.9985) = 0.000525
         // Very small! With `*→+` mutation: diff = 0.5*0.7*(1-0.847) = 0.0536. Much larger!
-        assert!(diff < 0.01,
-            "Height=0.5 should have tiny moisture effect: diff={}", diff);
+        assert!(
+            diff < 0.01,
+            "Height=0.5 should have tiny moisture effect: diff={}",
+            diff
+        );
     }
 
     #[test]
@@ -2969,8 +3348,12 @@ mod moisture_precise_v3 {
             .collect();
         let range = moistures.iter().copied().fold(f32::NEG_INFINITY, f32::max)
             - moistures.iter().copied().fold(f32::INFINITY, f32::min);
-        assert!(range > 0.01,
-            "Moisture should vary across positions: range={}, values={:?}", range, moistures);
+        assert!(
+            range > 0.01,
+            "Moisture should vary across positions: range={}, values={:?}",
+            range,
+            moistures
+        );
     }
 
     #[test]
@@ -2984,8 +3367,11 @@ mod moisture_precise_v3 {
         // Product mutation: 0.35 * 0.27 = 0.0945. Much smaller!
         let m = climate.sample_moisture(100.0, 100.0, 0.0);
         // The result should be > 0.2 (weighted sum gives at least 0.35)
-        assert!(m > 0.2,
-            "Moisture should be substantial with sum blend: got {}", m);
+        assert!(
+            m > 0.2,
+            "Moisture should be substantial with sum blend: got {}",
+            m
+        );
     }
 
     #[test]
@@ -2999,8 +3385,11 @@ mod moisture_precise_v3 {
         // Original: 0.35 + water*0.3 ≤ 0.65 for reasonable water_factor
         // Mutation: 0.714 + water*0.3 ≥ 0.714, likely clamped to 1.0
         // So original should be noticeably below 1.0
-        assert!(m < 0.95,
-            "Moisture with *0.7 should not be near 1.0: got {}", m);
+        assert!(
+            m < 0.95,
+            "Moisture with *0.7 should not be near 1.0: got {}",
+            m
+        );
     }
 }
 
@@ -3031,8 +3420,12 @@ mod fbm_targeted_v3 {
         let t1b = climate.sample_temperature(100.0, 0.0, 0.0);
         assert_eq!(t1, t1b, "Should be deterministic");
         // At least verify they're in valid range and different from offset
-        assert!(t1 != t2 || t1 != 0.5,
-            "Noise should produce variation: t1={}, t2={}", t1, t2);
+        assert!(
+            t1 != t2 || t1 != 0.5,
+            "Noise should produce variation: t1={}, t2={}",
+            t1,
+            t2
+        );
     }
 
     #[test]
@@ -3060,8 +3453,12 @@ mod fbm_targeted_v3 {
         let t1 = climate1.sample_temperature(300.0, 300.0, 0.0);
         let t2 = climate2.sample_temperature(300.0, 300.0, 0.0);
         // They should be different with correct multiplication
-        assert!((t1 - t2).abs() > 0.01 || (t1 == 0.0 && t2 == 0.0) || (t1 == 1.0 && t2 == 1.0),
-            "amp=2 vs amp=0.5 should differ: t1={}, t2={}", t1, t2);
+        assert!(
+            (t1 - t2).abs() > 0.01 || (t1 == 0.0 && t2 == 0.0) || (t1 == 1.0 && t2 == 1.0),
+            "amp=2 vs amp=0.5 should differ: t1={}, t2={}",
+            t1,
+            t2
+        );
     }
 
     #[test]
@@ -3085,8 +3482,12 @@ mod fbm_targeted_v3 {
         let t_near = climate.sample_temperature(1.0, 0.0, 0.0);
         // They should differ significantly since they sample very different noise positions
         // (unless both clamp to same bound)
-        assert!(t_far != t_near || t_far == 0.0 || t_far == 1.0,
-            "Different positions should give different noise: far={}, near={}", t_far, t_near);
+        assert!(
+            t_far != t_near || t_far == 0.0 || t_far == 1.0,
+            "Different positions should give different noise: far={}, near={}",
+            t_far,
+            t_near
+        );
     }
 
     #[test]
@@ -3135,8 +3536,11 @@ mod temperature_enhanced_v3 {
         let t10 = climate.sample_temperature(500.0, 0.0, 10.0);
         // height 10 * -0.0065 = -0.065 adjustment (small)
         // Should still be > 0.1 (base is ~0.5 from noise+offset)
-        assert!(t10 > 0.1,
-            "Height=10 should not crush temperature: got {}", t10);
+        assert!(
+            t10 > 0.1,
+            "Height=10 should not crush temperature: got {}",
+            t10
+        );
     }
 
     #[test]
@@ -3157,8 +3561,12 @@ mod temperature_enhanced_v3 {
         // t_high_z should be t0 + 0.673 (likely clamped to 1.0)
         // With -= mutation: t_high_z = t0 - 0.673 (likely 0.0)
         // So t_high_z should be > t0 (positive latitude effect)
-        assert!(t_high_z >= t0 - 0.01 || t_high_z == 1.0,
-            "Positive latitude should increase temp: z0={}, z_high={}", t0, t_high_z);
+        assert!(
+            t_high_z >= t0 - 0.01 || t_high_z == 1.0,
+            "Positive latitude should increase temp: z0={}, z_high={}",
+            t0,
+            t_high_z
+        );
     }
 }
 
@@ -3178,18 +3586,27 @@ mod golden_value_tests {
 
         // Position (300, 300): known moisture = 0.353239
         let m1 = climate.sample_moisture(300.0, 300.0, 0.0);
-        assert!((m1 - 0.353239).abs() < 0.001,
-            "Moisture at (300,300) should be 0.353239, got {}", m1);
+        assert!(
+            (m1 - 0.353239).abs() < 0.001,
+            "Moisture at (300,300) should be 0.353239, got {}",
+            m1
+        );
 
         // Position (500, 500): known moisture = 0.623433
         let m2 = climate.sample_moisture(500.0, 500.0, 0.0);
-        assert!((m2 - 0.623433).abs() < 0.001,
-            "Moisture at (500,500) should be 0.623433, got {}", m2);
+        assert!(
+            (m2 - 0.623433).abs() < 0.001,
+            "Moisture at (500,500) should be 0.623433, got {}",
+            m2
+        );
 
         // Position (1000, 1000): known moisture = 0.630198
         let m3 = climate.sample_moisture(1000.0, 1000.0, 0.0);
-        assert!((m3 - 0.630198).abs() < 0.001,
-            "Moisture at (1000,1000) should be 0.630198, got {}", m3);
+        assert!(
+            (m3 - 0.630198).abs() < 0.001,
+            "Moisture at (1000,1000) should be 0.630198, got {}",
+            m3
+        );
     }
 
     #[test]
@@ -3199,16 +3616,25 @@ mod golden_value_tests {
         let climate = ClimateMap::new(&config, 42);
 
         let t1 = climate.sample_temperature(300.0, 300.0, 0.0);
-        assert!((t1 - 0.640202).abs() < 0.001,
-            "Temperature at (300,300) should be 0.640202, got {}", t1);
+        assert!(
+            (t1 - 0.640202).abs() < 0.001,
+            "Temperature at (300,300) should be 0.640202, got {}",
+            t1
+        );
 
         let t2 = climate.sample_temperature(100.0, 100.0, 0.0);
-        assert!((t2 - 0.333779).abs() < 0.001,
-            "Temperature at (100,100) should be 0.333779, got {}", t2);
+        assert!(
+            (t2 - 0.333779).abs() < 0.001,
+            "Temperature at (100,100) should be 0.333779, got {}",
+            t2
+        );
 
         let t3 = climate.sample_temperature(1000.0, 1000.0, 0.0);
-        assert!((t3 - 0.508000).abs() < 0.001,
-            "Temperature at (1000,1000) should be 0.508000, got {}", t3);
+        assert!(
+            (t3 - 0.508000).abs() < 0.001,
+            "Temperature at (1000,1000) should be 0.508000, got {}",
+            t3
+        );
     }
 
     #[test]
@@ -3221,15 +3647,24 @@ mod golden_value_tests {
         let climate = ClimateMap::new(&config, 42);
 
         let m1 = climate.sample_moisture(300.0, 300.0, 0.0);
-        assert!((m1 - 0.589553).abs() < 0.001,
-            "Controlled moisture at (300,300) should be 0.589553, got {}", m1);
+        assert!(
+            (m1 - 0.589553).abs() < 0.001,
+            "Controlled moisture at (300,300) should be 0.589553, got {}",
+            m1
+        );
 
         let m2 = climate.sample_moisture(500.0, 500.0, 0.0);
-        assert!((m2 - 0.608050).abs() < 0.001,
-            "Controlled moisture at (500,500) should be 0.608050, got {}", m2);
+        assert!(
+            (m2 - 0.608050).abs() < 0.001,
+            "Controlled moisture at (500,500) should be 0.608050, got {}",
+            m2
+        );
 
         let m3 = climate.sample_moisture(100.0, 100.0, 0.0);
-        assert!((m3 - 0.521106).abs() < 0.001,
-            "Controlled moisture at (100,100) should be 0.521106, got {}", m3);
+        assert!(
+            (m3 - 0.521106).abs() < 0.001,
+            "Controlled moisture at (100,100) should be 0.521106, got {}",
+            m3
+        );
     }
 }

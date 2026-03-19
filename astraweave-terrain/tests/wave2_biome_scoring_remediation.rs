@@ -1,7 +1,7 @@
 //! Wave 2 Mutation Remediation — Biome Scoring & Classification
 //!
 //! Targets the 61 missed mutants in biome.rs by testing:
-//! - score_conditions: exact penalty magnitudes (height×0.08, temp×2.0, moisture×1.5)
+//! - score_conditions: exact penalty magnitudes (height×0.5, temp×2.0, moisture×1.5)
 //! - score_conditions: in-range bonuses (+1.0 each)
 //! - score_conditions: priority bonus (priority × 0.1)
 //! - score_conditions: boundary conditions (exactly at range edges)
@@ -69,29 +69,29 @@ fn score_priority_bonus_adds_correctly() {
 // SCORE_CONDITIONS — Height penalty
 // ============================================================================
 
-/// Height below range incurs penalty of distance * 0.08.
+/// Height below range incurs penalty of distance * 0.5.
 #[test]
 fn score_height_below_range_penalty() {
     let config = test_biome_config((50.0, 100.0), (0.0, 1.0), (0.0, 1.0), 0);
-    // height=0, distance below range = 50.0 - 0.0 = 50.0, penalty = 50.0 * 0.08 = 4.0
+    // height=0, distance below range = 50.0 - 0.0 = 50.0, penalty = 50.0 * 0.5 = 25.0
     let score = config.score_conditions(0.0, 0.5, 0.5);
-    // expected: -4.0 (height) + 1.0 (temp) + 1.0 (moisture) = -2.0
+    // expected: -25.0 (height) + 1.0 (temp) + 1.0 (moisture) = -23.0
     assert!(
-        (score - (-2.0)).abs() < 0.001,
-        "Height below: expected -2.0, got {score}"
+        (score - (-23.0)).abs() < 0.001,
+        "Height below: expected -23.0, got {score}"
     );
 }
 
-/// Height above range incurs penalty of distance * 0.08.
+/// Height above range incurs penalty of distance * 0.5.
 #[test]
 fn score_height_above_range_penalty() {
     let config = test_biome_config((0.0, 50.0), (0.0, 1.0), (0.0, 1.0), 0);
-    // height=150, distance above = 150 - 50 = 100, penalty = 100 * 0.08 = 8.0
+    // height=150, distance above = 150 - 50 = 100, penalty = 100 * 0.5 = 50.0
     let score = config.score_conditions(150.0, 0.5, 0.5);
-    // expected: -8.0 (height) + 1.0 (temp) + 1.0 (moisture) = -6.0
+    // expected: -50.0 (height) + 1.0 (temp) + 1.0 (moisture) = -48.0
     assert!(
-        (score - (-6.0)).abs() < 0.001,
-        "Height above: expected -6.0, got {score}"
+        (score - (-48.0)).abs() < 0.001,
+        "Height above: expected -48.0, got {score}"
     );
 }
 
@@ -209,11 +209,11 @@ fn score_moisture_at_boundary_in_range() {
 #[test]
 fn score_all_out_of_range() {
     let config = test_biome_config((100.0, 200.0), (0.4, 0.6), (0.4, 0.6), 0);
-    // height=0: dist=100, penalty=100*0.08=8.0 → score -= 8.0
+    // height=0: dist=100, penalty=100*0.5=50.0 → score -= 50.0
     // temp=0: dist=0.4, penalty=0.4*2.0=0.8 → score -= 0.8
     // moisture=0: dist=0.4, penalty=0.4*1.5=0.6 → score -= 0.6
     let score = config.score_conditions(0.0, 0.0, 0.0);
-    let expected = -8.0 - 0.8 - 0.6; // = -9.4
+    let expected = -50.0 - 0.8 - 0.6; // = -51.4
     assert!(
         (score - expected).abs() < 0.01,
         "All out of range: expected {expected}, got {score}"
@@ -225,8 +225,8 @@ fn score_all_out_of_range() {
 fn score_out_of_range_with_priority() {
     let config = test_biome_config((100.0, 200.0), (0.4, 0.6), (0.4, 0.6), 10);
     let score = config.score_conditions(0.0, 0.0, 0.0);
-    // -9.4 + 10 * 0.1 = -9.4 + 1.0 = -8.4
-    let expected = -9.4 + 1.0;
+    // -51.4 + 10 * 0.1 = -51.4 + 1.0 = -50.4
+    let expected = -51.4 + 1.0;
     assert!(
         (score - expected).abs() < 0.01,
         "Out of range + priority 10: expected {expected}, got {score}"
@@ -239,20 +239,20 @@ fn score_out_of_range_with_priority() {
 fn score_penalty_multiplier_verification() {
     // Set up so each dimension is exactly 1.0 unit outside range
     let config = test_biome_config((50.0, 50.0), (0.5, 0.5), (0.5, 0.5), 0);
-    
-    // Height 1.0 below → penalty = 1.0 * 0.08 = 0.08
+
+    // Height 1.0 below → penalty = 1.0 * 0.5 = 0.5
     let s_height = config.score_conditions(49.0, 0.5, 0.5);
-    // expected: -0.08 + 1.0 + 1.0 = 1.92
+    // expected: -0.5 + 1.0 + 1.0 = 1.5
     assert!(
-        (s_height - 1.92).abs() < 0.01,
-        "Height penalty 1.0 unit: expected ~1.92, got {s_height}"
+        (s_height - 1.5).abs() < 0.01,
+        "Height penalty 1.0 unit: expected ~1.5, got {s_height}"
     );
 
-    // Temp 1.0 below → penalty = 1.0 * 2.0 = 2.0  (but temp below 0.5 by... 
+    // Temp 1.0 below → penalty = 1.0 * 2.0 = 2.0  (but temp below 0.5 by...
     // Actually with range (0.5, 0.5), temp 0.0 is 0.5 below → penalty = 0.5 * 2.0 = 1.0
     // Let me use a value exactly 1.0 below (but temp is 0-1, so use more general range)
     let config2 = test_biome_config((0.0, 1000.0), (10.0, 10.0), (0.5, 0.5), 0);
-    let s_temp = config2.score_conditions(500.0, 9.0, 0.5); 
+    let s_temp = config2.score_conditions(500.0, 9.0, 0.5);
     // temp 1.0 below → penalty = 1.0 * 2.0 = 2.0
     // expected: 1.0 - 2.0 + 1.0 = 0.0
     assert!(
@@ -423,11 +423,11 @@ fn biome_config_river_priority() {
 fn desert_scores_well_in_hot_dry() {
     let desert = BiomeConfig::desert();
     let grassland = BiomeConfig::grassland();
-    
+
     // Hot, dry, low elevation conditions
     let desert_score = desert.score_conditions(200.0, 0.9, 0.1);
     let grassland_score = grassland.score_conditions(200.0, 0.9, 0.1);
-    
+
     assert!(
         desert_score > grassland_score || desert.priority > grassland.priority,
         "Desert should beat grassland in hot/dry: desert={desert_score} grassland={grassland_score}"

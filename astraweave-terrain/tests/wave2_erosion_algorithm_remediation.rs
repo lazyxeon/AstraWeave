@@ -203,10 +203,7 @@ fn same_seed_exact_match() {
 
     // Heights must be identical
     for (i, (a, b)) in hm1.data().iter().zip(hm2.data().iter()).enumerate() {
-        assert!(
-            (a - b).abs() < 1e-6,
-            "Cell {i} mismatch: {a} vs {b}"
-        );
+        assert!((a - b).abs() < 1e-6, "Cell {i} mismatch: {a} vs {b}");
     }
     // Stats must match
     assert_eq!(stats1.droplets_terminated, stats2.droplets_terminated);
@@ -262,7 +259,10 @@ fn hydraulic_erosion_map_correct_size() {
     let config = fast_hydraulic(500);
     let stats = sim.apply_hydraulic_erosion(&mut hm, &config);
 
-    let map = stats.erosion_map.as_ref().expect("erosion_map should be Some");
+    let map = stats
+        .erosion_map
+        .as_ref()
+        .expect("erosion_map should be Some");
     assert_eq!(map.len(), (16 * 16) as usize);
 }
 
@@ -279,7 +279,10 @@ fn hydraulic_erosion_map_has_both_signs() {
     let has_neg = map.iter().any(|&v| v < -0.001);
     let has_pos = map.iter().any(|&v| v > 0.001);
     assert!(has_neg, "erosion_map should have negative values (erosion)");
-    assert!(has_pos, "erosion_map should have positive values (deposition)");
+    assert!(
+        has_pos,
+        "erosion_map should have positive values (deposition)"
+    );
 }
 
 /// avg_droplet_lifetime should be > 0 and ≤ max_droplet_lifetime.
@@ -1054,7 +1057,10 @@ fn thermal_produces_erosion_map() {
     let config = ThermalErosionConfig::default();
     let stats = sim.apply_thermal_erosion(&mut hm, &config);
 
-    let map = stats.erosion_map.as_ref().expect("erosion_map should be Some");
+    let map = stats
+        .erosion_map
+        .as_ref()
+        .expect("erosion_map should be Some");
     assert_eq!(map.len(), 16 * 16);
 }
 
@@ -1396,7 +1402,9 @@ fn hydraulic_on_4x4_no_crash() {
 /// Thermal erosion on 4×4 should not crash.
 #[test]
 fn thermal_on_4x4_no_crash() {
-    let data: Vec<f32> = vec![10.0, 5.0, 2.0, 0.0, 8.0, 4.0, 1.0, 0.0, 6.0, 3.0, 0.5, 0.0, 4.0, 2.0, 0.0, 0.0];
+    let data: Vec<f32> = vec![
+        10.0, 5.0, 2.0, 0.0, 8.0, 4.0, 1.0, 0.0, 6.0, 3.0, 0.5, 0.0, 4.0, 2.0, 0.0, 0.0,
+    ];
     let mut hm = Heightmap::from_data(data, 4).unwrap();
     let sim = AdvancedErosionSimulator::new(42);
     let config = ThermalErosionConfig {
@@ -1411,7 +1419,9 @@ fn thermal_on_4x4_no_crash() {
 /// Wind erosion on 4×4 should not crash.
 #[test]
 fn wind_on_4x4_no_crash() {
-    let data: Vec<f32> = vec![0.0, 1.0, 3.0, 6.0, 0.0, 1.5, 4.0, 7.0, 0.0, 2.0, 5.0, 8.0, 0.0, 2.5, 6.0, 9.0];
+    let data: Vec<f32> = vec![
+        0.0, 1.0, 3.0, 6.0, 0.0, 1.5, 4.0, 7.0, 0.0, 2.0, 5.0, 8.0, 0.0, 2.5, 6.0, 9.0,
+    ];
     let mut hm = Heightmap::from_data(data, 4).unwrap();
     let sim = AdvancedErosionSimulator::new(42);
     let config = WindErosionConfig {
@@ -1441,10 +1451,7 @@ fn hydraulic_heights_non_negative() {
     sim.apply_hydraulic_erosion(&mut hm, &config);
 
     for (i, &h) in hm.data().iter().enumerate() {
-        assert!(
-            h >= 0.0,
-            "Height at index {i} is negative: {h}"
-        );
+        assert!(h >= 0.0, "Height at index {i} is negative: {h}");
     }
 }
 
@@ -1584,7 +1591,13 @@ fn hydraulic_deposited_correlates_with_height_gain() {
         .data()
         .iter()
         .zip(before.iter())
-        .map(|(&after, &before)| if after > before { (after - before) as f64 } else { 0.0 })
+        .map(|(&after, &before)| {
+            if after > before {
+                (after - before) as f64
+            } else {
+                0.0
+            }
+        })
         .sum();
 
     // Deposited amount should be in the same order of magnitude

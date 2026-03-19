@@ -163,7 +163,10 @@ async fn partition_manager_duplicate_activate() {
     mgr.activate_cell(cell).await.unwrap();
     // Second activation should return empty (already active)
     let result = mgr.activate_cell(cell).await.unwrap();
-    assert!(result.is_empty(), "Duplicate activation should return empty");
+    assert!(
+        result.is_empty(),
+        "Duplicate activation should return empty"
+    );
 }
 
 #[tokio::test]
@@ -181,7 +184,10 @@ async fn partition_manager_deactivate_inactive() {
     let mut mgr = VoxelPartitionManager::new(VoxelPartitionConfig::default());
     let cell = PartitionCoord::new(99, 99, 99);
     let result = mgr.deactivate_cell(cell).await.unwrap();
-    assert!(result.is_empty(), "Deactivating inactive cell returns empty");
+    assert!(
+        result.is_empty(),
+        "Deactivating inactive cell returns empty"
+    );
 }
 
 #[tokio::test]
@@ -271,24 +277,42 @@ fn terrain_material_dirt_preset() {
 #[test]
 fn splat_weights_from_weights_normalization() {
     let sw = SplatWeights::from_weights(&[0.5, 0.3, 0.2]);
-    let total = sw.weights_0.x + sw.weights_0.y + sw.weights_0.z + sw.weights_0.w
-        + sw.weights_1.x + sw.weights_1.y + sw.weights_1.z + sw.weights_1.w;
-    assert!((total - 1.0).abs() < 0.001, "Weights should sum to 1.0, got {total}");
+    let total = sw.weights_0.x
+        + sw.weights_0.y
+        + sw.weights_0.z
+        + sw.weights_0.w
+        + sw.weights_1.x
+        + sw.weights_1.y
+        + sw.weights_1.z
+        + sw.weights_1.w;
+    assert!(
+        (total - 1.0).abs() < 0.001,
+        "Weights should sum to 1.0, got {total}"
+    );
 }
 
 #[test]
 fn splat_weights_from_weights_zero_fallback() {
     let sw = SplatWeights::from_weights(&[0.0, 0.0, 0.0]);
     // All zero → fallback: first layer = 1.0
-    assert!((sw.weights_0.x - 1.0).abs() < 1e-6, "Zero weights fallback to layer 0");
+    assert!(
+        (sw.weights_0.x - 1.0).abs() < 1e-6,
+        "Zero weights fallback to layer 0"
+    );
 }
 
 #[test]
 fn splat_weights_from_weights_8_layers() {
     let w = [0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.1, 0.1];
     let sw = SplatWeights::from_weights(&w);
-    let total = sw.weights_0.x + sw.weights_0.y + sw.weights_0.z + sw.weights_0.w
-        + sw.weights_1.x + sw.weights_1.y + sw.weights_1.z + sw.weights_1.w;
+    let total = sw.weights_0.x
+        + sw.weights_0.y
+        + sw.weights_0.z
+        + sw.weights_0.w
+        + sw.weights_1.x
+        + sw.weights_1.y
+        + sw.weights_1.z
+        + sw.weights_1.w;
     assert!((total - 1.0).abs() < 0.001);
     // Layers 4 and 5 had highest raw weight, verify they're in weights_1.x and .y
     assert!(sw.weights_1.x > sw.weights_0.x);
@@ -369,7 +393,7 @@ fn splat_rule_grass_preset() {
 #[test]
 fn splat_rule_rock_preset() {
     let r = SplatRule::rock();
-    assert_eq!(r.material_id, 1);
+    assert_eq!(r.material_id, 7);
     assert!((r.min_slope - 35.0).abs() < 1e-4);
     assert!((r.max_slope - 90.0).abs() < 1e-4);
     assert_eq!(r.priority, 20);
@@ -378,7 +402,7 @@ fn splat_rule_rock_preset() {
 #[test]
 fn splat_rule_sand_preset() {
     let r = SplatRule::sand();
-    assert_eq!(r.material_id, 2);
+    assert_eq!(r.material_id, 1);
     assert!((r.min_height - (-5.0)).abs() < 1e-4);
     assert!((r.max_height - 8.0).abs() < 1e-4);
     assert_eq!(r.priority, 15);
@@ -388,7 +412,7 @@ fn splat_rule_sand_preset() {
 #[test]
 fn splat_rule_snow_preset() {
     let r = SplatRule::snow();
-    assert_eq!(r.material_id, 3);
+    assert_eq!(r.material_id, 4);
     assert!((r.min_height - 120.0).abs() < 1e-4);
     assert_eq!(r.max_height, f32::MAX);
     assert_eq!(r.priority, 25);
@@ -436,7 +460,7 @@ fn splat_rule_evaluate_below_min_slope() {
 #[test]
 fn splat_rule_evaluate_far_out_zero() {
     let r = SplatRule::grass(); // max_height=100, height_falloff=0.02
-    // At height 200: (200-100)*0.02 = 2.0. 1.0 - 2.0 = -1.0 → max(0.0) = 0.0
+                                // At height 200: (200-100)*0.02 = 2.0. 1.0 - 2.0 = -1.0 → max(0.0) = 0.0
     let w = r.evaluate(200.0, 15.0);
     assert!((w - 0.0).abs() < 1e-6, "Far outside range should be 0");
 }
@@ -469,14 +493,20 @@ fn triplanar_weights_vertical_cliff_z() {
 fn triplanar_weights_45deg_slope() {
     let normal = Vec3::new(0.707, 0.707, 0.0).normalize();
     let tw = TriplanarWeights::from_normal(normal, 4.0);
-    assert!((tw.x - tw.y).abs() < 0.05, "45° slope should have ~equal X and Y");
+    assert!(
+        (tw.x - tw.y).abs() < 0.05,
+        "45° slope should have ~equal X and Y"
+    );
 }
 
 #[test]
 fn triplanar_weights_sum_to_one() {
     let tw = TriplanarWeights::from_normal(Vec3::new(1.0, 2.0, 3.0).normalize(), 4.0);
     let total = tw.x + tw.y + tw.z;
-    assert!((total - 1.0).abs() < 0.01, "Weights should sum to ~1.0, got {total}");
+    assert!(
+        (total - 1.0).abs() < 0.01,
+        "Weights should sum to ~1.0, got {total}"
+    );
 }
 
 #[test]
@@ -501,7 +531,11 @@ fn triplanar_should_use_triplanar_steep() {
 fn splat_generator_with_default_rules_grass() {
     let gen = SplatMapGenerator::with_default_rules(SplatConfig::default(), 42);
     let w = gen.calculate_weights(50.0, Vec3::Y);
-    assert_eq!(w.dominant_layer(), 0, "Flat lowland should be grass (layer 0)");
+    assert_eq!(
+        w.dominant_layer(),
+        0,
+        "Flat lowland should be grass (layer 0)"
+    );
 }
 
 #[test]
@@ -509,34 +543,64 @@ fn splat_generator_with_default_rules_rock() {
     let gen = SplatMapGenerator::with_default_rules(SplatConfig::default(), 42);
     let steep_normal = Vec3::new(0.3, 0.3, 0.9).normalize();
     let w = gen.calculate_weights(50.0, steep_normal);
-    assert_eq!(w.dominant_layer(), 1, "Steep slope should be rock (layer 1)");
+    assert_eq!(
+        w.dominant_layer(),
+        7,
+        "Steep slope should be rock (layer 7)"
+    );
 }
 
 #[test]
 fn splat_generator_with_default_rules_sand() {
     let gen = SplatMapGenerator::with_default_rules(SplatConfig::default(), 42);
     let w = gen.calculate_weights(2.0, Vec3::Y);
-    assert_eq!(w.dominant_layer(), 2, "Low flat area should be sand (layer 2)");
+    assert_eq!(
+        w.dominant_layer(),
+        1,
+        "Low flat area should be sand (layer 1)"
+    );
 }
 
 #[test]
 fn splat_generator_with_default_rules_snow() {
     let gen = SplatMapGenerator::with_default_rules(SplatConfig::default(), 42);
     let w = gen.calculate_weights(180.0, Vec3::Y);
-    assert_eq!(w.dominant_layer(), 3, "High flat area should be snow (layer 3)");
+    assert_eq!(
+        w.dominant_layer(),
+        4,
+        "High flat area should be snow (layer 4)"
+    );
 }
 
 #[test]
 fn splat_generator_add_rule_sorts_by_priority() {
     let mut gen = SplatMapGenerator::new(SplatConfig::default(), 42);
-    gen.add_rule(SplatRule { priority: 5, ..SplatRule::default() });
-    gen.add_rule(SplatRule { priority: 20, ..SplatRule::default() });
-    gen.add_rule(SplatRule { priority: 10, ..SplatRule::default() });
+    gen.add_rule(SplatRule {
+        priority: 5,
+        ..SplatRule::default()
+    });
+    gen.add_rule(SplatRule {
+        priority: 20,
+        ..SplatRule::default()
+    });
+    gen.add_rule(SplatRule {
+        priority: 10,
+        ..SplatRule::default()
+    });
     // After sorting by priority (descending), weights calculation should work
     let w = gen.calculate_weights(50.0, Vec3::Y);
-    let total = w.weights_0.x + w.weights_0.y + w.weights_0.z + w.weights_0.w
-        + w.weights_1.x + w.weights_1.y + w.weights_1.z + w.weights_1.w;
-    assert!((total - 1.0).abs() < 0.01, "Normalized total should be ~1.0");
+    let total = w.weights_0.x
+        + w.weights_0.y
+        + w.weights_0.z
+        + w.weights_0.w
+        + w.weights_1.x
+        + w.weights_1.y
+        + w.weights_1.z
+        + w.weights_1.w;
+    assert!(
+        (total - 1.0).abs() < 0.01,
+        "Normalized total should be ~1.0"
+    );
 }
 
 #[test]
@@ -556,8 +620,14 @@ fn splat_generator_generate_splat_map_normalized() {
     let map = gen.generate_splat_map(&heights, &normals, 2);
 
     for (i, sw) in map.iter().enumerate() {
-        let total = sw.weights_0.x + sw.weights_0.y + sw.weights_0.z + sw.weights_0.w
-            + sw.weights_1.x + sw.weights_1.y + sw.weights_1.z + sw.weights_1.w;
+        let total = sw.weights_0.x
+            + sw.weights_0.y
+            + sw.weights_0.z
+            + sw.weights_0.w
+            + sw.weights_1.x
+            + sw.weights_1.y
+            + sw.weights_1.z
+            + sw.weights_1.w;
         assert!(
             (total - 1.0).abs() < 0.01,
             "Splat map entry {i} weights should sum to ~1.0, got {total}"

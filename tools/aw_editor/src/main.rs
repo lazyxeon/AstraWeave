@@ -417,12 +417,13 @@ struct EditorApp {
 impl Default for EditorApp {
     fn default() -> Self {
         let mut asset_db = AssetDatabase::new();
-        // Try to load from assets.json
+        // Try the fast path: load cached manifest (instant).
+        // If no manifest exists, start with empty DB — scanning 10.9 GB / 112K files
+        // at startup is prohibitive. User can trigger scan via Asset Inspector.
         if let Ok(()) = asset_db.load_manifest(&PathBuf::from("assets/assets.json")) {
-            // Loaded
+            tracing::info!("Asset manifest loaded: {} assets", asset_db.assets.len());
         } else {
-            // Scan assets directory
-            let _ = asset_db.scan_directory(&PathBuf::from("assets"));
+            tracing::info!("No asset manifest found — starting with empty asset DB (use Asset Inspector to scan)");
         }
 
         let prefs = editor_preferences::EditorPreferences::load();
@@ -494,8 +495,8 @@ impl Default for EditorApp {
             nav_mesh: NavMesh::bake(&[], 0.4, 60.0),
             nav_max_step: 0.4,
             nav_max_slope_deg: 60.0,
-            scene_state: Some(EditorSceneState::new(World::new())), // Start with empty scene
-            material_inspector: MaterialInspector::new(),           // NEW - Phase PBR-G Task 2
+            scene_state: None, // Created in EditorApp::new() — avoid double init
+            material_inspector: MaterialInspector::new(), // NEW - Phase PBR-G Task 2
             // Phase 1: Entity management
             entity_manager: EntityManager::new(),
             selected_entity: None,
@@ -544,7 +545,9 @@ impl Default for EditorApp {
             // Phase 4.2: Play-in-Editor
             editor_mode: EditorMode::default(),
             // Hot-reload file watcher
-            file_watcher: file_watcher::FileWatcher::new("assets").ok(),
+            // Defer file watcher setup — recursively watching 112K files is expensive.
+            // It will be created lazily on first frame instead.
+            file_watcher: None,
             // Phase 6: Dirty flag for unsaved changes
             is_dirty: false,
             show_quit_dialog: false,
@@ -2341,14 +2344,8 @@ impl EditorApp {
         app.scene_state = Some(EditorSceneState::new(default_world));
         app.console_logs.push("Default scene created".into());
 
-        // Scan for available 3D models from asset packs (Kenney etc.)
-        let spawnable_models = Self::scan_spawnable_models();
-        let model_count = spawnable_models.len();
-        app.dock_tab_viewer.set_spawnable_models(spawnable_models);
-        if model_count > 0 {
-            app.console_logs
-                .push(format!("Found {} 3D models in asset packs", model_count));
-        }
+        // Skip scan_spawnable_models(): entity catalog handles asset scanning lazily
+        // on first UI access, avoiding redundant blocking filesystem traversal at startup.
 
         // Week 7 Day 5: Check for crash recovery
         app.check_for_crash_recovery();
@@ -3102,8 +3099,9 @@ impl EditorApp {
                 let (pos, rot, scale) = entity.transform();
                 // Convert to 3D format: x, y, z, rotation_z, scale_x, scale_y, scale_z
                 let angle = rot.to_euler(glam::EulerRot::ZXY).0;
-                self.dock_tab_viewer
-                    .set_selected_transform(Some((pos.x, pos.y, pos.z, angle, scale.x, scale.y, scale.z)));
+                self.dock_tab_viewer.set_selected_transform(Some((
+                    pos.x, pos.y, pos.z, angle, scale.x, scale.y, scale.z,
+                )));
                 let entity_type = if entity.components.contains_key("Camera") {
                     "Camera".to_string()
                 } else if entity.components.contains_key("Light") {
@@ -3160,10 +3158,19 @@ impl EditorApp {
         // Get real render stats from viewport if available
         let (vp_draw_calls, vp_triangles, vp_memory_mb) = if let Some(viewport) = &self.viewport {
             let stats = &viewport.toolbar().stats;
-            // Actual draw calls: skybox(1) + grid(1) + entity_instances(1) + gizmos(1) + physics_debug(1)
-            let draw_calls = if entity_count > 0 { 5 } else { 3 };
-            // Actual triangles: each entity cube = 12 tris, grid = 2 tris, skybox = 2 tris
-            let triangles = entity_count * 12 + 4;
+            // Query actual draw calls and triangle counts from terrain + scatter renderers
+            let renderer = viewport.renderer().lock().unwrap();
+            // Base draw calls: skybox(1) + grid(1) + entity_instances + gizmos(1)
+            let base_draw_calls = if entity_count > 0 { 4 } else { 2 };
+            let terrain_draw_calls = renderer.terrain_triangles().min(1); // 0 or 1 terrain pass
+            let scatter_draw_calls = renderer.scatter_draw_calls() as usize;
+            let draw_calls = base_draw_calls + terrain_draw_calls + scatter_draw_calls;
+            // Real triangle counts from terrain and scatter renderers
+            let entity_tris = entity_count * 12; // cubes
+            let terrain_tris = renderer.terrain_triangles();
+            let scatter_tris = renderer.scatter_triangles();
+            let triangles = entity_tris + terrain_tris + scatter_tris + 4; // +4 for grid+skybox
+            drop(renderer);
             (draw_calls, triangles, stats.memory_usage_mb)
         } else {
             (0, 0, 0.0)
@@ -3315,10 +3322,9 @@ impl EditorApp {
             }
         }
 
-        // Sync environment settings (skybox preset, time-of-day, weather, fog) to viewport each frame
+        // Sync environment settings (skybox preset, time-of-day, weather, fog, lighting) to viewport each frame
         if let Some(viewport) = &self.viewport {
-            let (sky_top, sky_horizon, ground_color) =
-                self.dock_tab_viewer.compute_sky_colors();
+            let (sky_top, sky_horizon, ground_color) = self.dock_tab_viewer.compute_sky_colors();
             viewport.set_sky_colors(sky_top, sky_horizon, ground_color);
 
             // Compute fog color from sky horizon (fog blends toward sky color)
@@ -3332,7 +3338,18 @@ impl EditorApp {
                 weather_type,
             };
             viewport.set_fog_params(fog_params);
-            viewport.set_water_level(0.0);
+
+            // Sync lighting parameters from world panel to terrain shader
+            let lighting_params = self.dock_tab_viewer.lighting_params();
+            viewport.set_lighting_params(lighting_params);
+
+            // Only enable water plane for water-related biomes
+            let biome = self.dock_tab_viewer.terrain_primary_biome();
+            let water_biome = matches!(biome, "swamp" | "beach" | "river");
+            viewport.set_water_enabled(water_biome);
+            if water_biome {
+                viewport.set_water_level(0.0);
+            }
         }
 
         // Check for transform changes and emit events
@@ -3374,7 +3391,10 @@ impl EditorApp {
                     // Sync EntityManager position (full 3D)
                     self.entity_manager
                         .update_position(entity_id, glam::Vec3::new(x, y, z));
-                    self.status = format!("Entity {} position: ({:.2}, {:.2}, {:.2})", entity_id, x, y, z);
+                    self.status = format!(
+                        "Entity {} position: ({:.2}, {:.2}, {:.2})",
+                        entity_id, x, y, z
+                    );
                 }
                 tab_viewer::PanelEvent::TransformRotationChanged {
                     entity_id,
@@ -3925,29 +3945,34 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::TerrainReady => {
                     let src_chunks = self.dock_tab_viewer.terrain_gpu_chunks();
-                    let chunks: Vec<(Vec<crate::viewport::terrain_renderer::TerrainVertex>, Vec<u32>)> =
-                        src_chunks
-                            .into_iter()
-                            .map(|(verts, indices)| {
-                                let gpu_verts = verts
-                                    .iter()
-                                    .map(|v| crate::viewport::terrain_renderer::TerrainVertex {
-                                        position: v.position,
-                                        normal: v.normal,
-                                        uv: v.uv,
-                                        biome_id: v.biome_id,
-                                        _padding: [0; 3],
-                                    })
-                                    .collect();
-                                (gpu_verts, indices)
-                            })
-                            .collect();
+                    let chunks: Vec<(
+                        Vec<crate::viewport::terrain_renderer::TerrainVertex>,
+                        Vec<u32>,
+                    )> = src_chunks
+                        .into_iter()
+                        .map(|(verts, indices)| {
+                            let gpu_verts = verts
+                                .iter()
+                                .map(|v| crate::viewport::terrain_renderer::TerrainVertex {
+                                    position: v.position,
+                                    normal: v.normal,
+                                    uv: v.uv,
+                                    biome_weights_0: v.biome_weights_0,
+                                    biome_weights_1: v.biome_weights_1,
+                                    splat_weights_0: v.splat_weights_0,
+                                    splat_weights_1: v.splat_weights_1,
+                                })
+                                .collect();
+                            (gpu_verts, indices)
+                        })
+                        .collect();
                     if let Some(viewport) = &self.viewport {
                         viewport.upload_terrain_chunks(&chunks);
                     }
 
-                    // Generate scatter placements from terrain vegetation system
-                    let scatter_placements = self.dock_tab_viewer.generate_scatter_placements();
+                    // Use pre-computed scatter placements from background thread
+                    // (avoids expensive O(n²) Poisson disk sampling on the main thread)
+                    let scatter_placements = self.dock_tab_viewer.take_cached_scatter_placements();
                     if !scatter_placements.is_empty() {
                         if let Some(viewport) = &self.viewport {
                             if let Ok(mut renderer) = viewport.renderer().lock() {
@@ -3958,8 +3983,14 @@ impl EditorApp {
                         }
                     }
 
-                    self.status =
-                        format!("Terrain generated: {} chunks uploaded", chunks.len());
+                    self.status = format!("Terrain generated: {} chunks uploaded", chunks.len());
+
+                    // Auto-adjust camera so the terrain is visible (prevents camera
+                    // being submerged inside tall mountain terrain).
+                    let (min_h, max_h, avg_h) = self.dock_tab_viewer.terrain_height_stats();
+                    if let Some(viewport) = &mut self.viewport {
+                        viewport.camera_mut().frame_terrain(min_h, max_h, avg_h);
+                    }
                 }
             }
         }
@@ -4874,11 +4905,8 @@ impl EditorApp {
                                 entity_manager::EditorEntity::new(em_id, model_name.clone());
                             em_entity.set_mesh(mesh_path_str);
                             if let Some(pose) = scene_state.world().pose(entity) {
-                                em_entity.position = glam::Vec3::new(
-                                    pose.pos.x as f32,
-                                    1.0,
-                                    pose.pos.y as f32,
-                                );
+                                em_entity.position =
+                                    glam::Vec3::new(pose.pos.x as f32, 1.0, pose.pos.y as f32);
                             }
                             self.entity_manager.add(em_entity);
                         }
@@ -5720,9 +5748,13 @@ impl EditorApp {
                 ));
             } else {
                 let _ = self.asset_db.scan_directory(&PathBuf::from("assets"));
-                self.status = "Rescanned assets directory".into();
+                // Cache the manifest so subsequent startups are instant
+                let _ = self
+                    .asset_db
+                    .save_manifest(&PathBuf::from("assets/assets.json"));
+                self.status = "Rescanned assets directory (manifest cached)".into();
                 self.console_logs.push(format!(
-                    "Assets rescanned from directory: {} total",
+                    "Assets rescanned from directory: {} total (manifest saved)",
                     self.asset_db.assets.len()
                 ));
             }
@@ -6321,6 +6353,11 @@ impl eframe::App for EditorApp {
 
         self.profiler_panel.push_frame_time(frame_time * 1000.0);
 
+        // Hot-reload: lazily create file watcher (deferred from startup for fast window render)
+        if self.file_watcher.is_none() && self.splash.is_none() {
+            self.file_watcher = file_watcher::FileWatcher::new("assets").ok();
+        }
+
         // Hot-reload: poll file watcher for asset changes
         if let Some(watcher) = &self.file_watcher {
             for event in watcher.drain_events() {
@@ -6386,24 +6423,39 @@ impl eframe::App for EditorApp {
             .map(|s| s.world().entities().len())
             .unwrap_or(0);
 
-        // Week 5 Day 5: Enhanced scene statistics with mesh/texture/performance estimates
-        // Note: These are reasonable estimates until we have real mesh/texture tracking
-        let mesh_count = scene_entity_count; // Assume 1 mesh per entity
-        let avg_triangles_per_mesh = 500; // Reasonable for game models
-        let avg_vertices_per_mesh = 300;
-        let total_triangles = mesh_count * avg_triangles_per_mesh;
-        let total_vertices = mesh_count * avg_vertices_per_mesh;
-        let mesh_memory_kb = (total_vertices * 32 + total_triangles * 12) / 1024; // vertex attrs + indices
+        // Enhanced scene statistics: pull real data from terrain + scatter renderers
+        let (real_triangles, real_vertices, real_draw_calls, scatter_instances) =
+            if let Some(viewport) = &self.viewport {
+                let renderer = viewport.renderer().lock().unwrap();
+                let terrain_tris = renderer.terrain_triangles();
+                let terrain_indices = renderer.terrain_indices();
+                let scatter_tris = renderer.scatter_triangles();
+                let scatter_verts = renderer.scatter_vertices();
+                let scatter_dc = renderer.scatter_draw_calls() as usize;
+                let scatter_inst = renderer.scatter_instance_count() as usize;
+                (
+                    terrain_tris + scatter_tris + scene_entity_count * 12,
+                    terrain_indices + scatter_verts + scene_entity_count * 8,
+                    scatter_dc + scene_entity_count + 2, // +2 for terrain+grid
+                    scatter_inst,
+                )
+            } else {
+                let est_tris = scene_entity_count * 500;
+                let est_verts = scene_entity_count * 300;
+                (est_tris, est_verts, scene_entity_count, 0)
+            };
+
+        let mesh_count = scene_entity_count + scatter_instances;
+        let mesh_memory_kb = (real_vertices * 32 + real_triangles * 12) / 1024;
 
         // Texture estimates (could be replaced with actual tracking later)
-        let texture_count = (scene_entity_count / 5).max(1); // ~1 texture per 5 entities
+        let texture_count = (scene_entity_count / 5).max(1) + 10; // +10 for terrain biome textures
         let avg_texture_size_kb = 256; // 512x512 RGBA compressed
         let texture_memory_kb = texture_count * avg_texture_size_kb;
 
         // Material and draw call estimates
-        let material_count = (scene_entity_count / 3).max(1);
-        let unique_shader_count = 3; // Standard PBR, unlit, transparent
-        let estimated_draw_calls = mesh_count; // 1 draw per mesh (no batching assumed)
+        let material_count = (scene_entity_count / 3).max(1) + 2; // +2 for terrain+scatter shaders
+        let unique_shader_count = 4; // PBR, unlit, terrain, scatter
         let estimated_state_changes = material_count + unique_shader_count;
 
         self.scene_stats_panel.update_stats(SceneStats {
@@ -6419,17 +6471,16 @@ impl eframe::App for EditorApp {
                 .as_ref()
                 .map(|p| p.display().to_string()),
             is_dirty: self.is_dirty,
-            // Week 5 Day 5: New mesh/texture/performance fields
             mesh_count,
-            total_triangles,
-            total_vertices,
+            total_triangles: real_triangles,
+            total_vertices: real_vertices,
             mesh_memory_kb,
             texture_count,
             texture_memory_kb,
-            max_texture_resolution: (2048, 2048), // Assume max 2K textures
+            max_texture_resolution: (2048, 2048), // Terrain biome textures
             material_count,
             unique_shader_count,
-            estimated_draw_calls,
+            estimated_draw_calls: real_draw_calls,
             estimated_state_changes,
             performance_warning: None, // Calculated by panel
         });
@@ -6980,12 +7031,11 @@ fn main() -> Result<()> {
         wgpu_options: egui_wgpu::WgpuConfiguration {
             wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(egui_wgpu::WgpuSetupCreateNew {
                 device_descriptor: std::sync::Arc::new(|adapter| {
-                    let base_limits =
-                        if adapter.get_info().backend == wgpu::Backend::Gl {
-                            wgpu::Limits::downlevel_webgl2_defaults()
-                        } else {
-                            wgpu::Limits::default()
-                        };
+                    let base_limits = if adapter.get_info().backend == wgpu::Backend::Gl {
+                        wgpu::Limits::downlevel_webgl2_defaults()
+                    } else {
+                        wgpu::Limits::default()
+                    };
                     wgpu::DeviceDescriptor {
                         label: Some("egui wgpu device"),
                         required_features: wgpu::Features::default(),

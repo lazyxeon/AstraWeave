@@ -521,7 +521,11 @@ fn min_spacing_all_positive() {
         StructureType::Lighthouse,
     ];
     for t in &all_types {
-        assert!(t.min_spacing() > 0.0, "{:?} must have positive min_spacing", t);
+        assert!(
+            t.min_spacing() > 0.0,
+            "{:?} must have positive min_spacing",
+            t
+        );
     }
 }
 
@@ -547,7 +551,10 @@ fn structure_config_edge_buffer_is_20() {
     assert_eq!(cfg.edge_buffer, 20.0);
     // Valid range = (edge_buffer, chunk_size - edge_buffer)
     // For chunk_size=64: range = (20, 44)
-    assert!(64.0 - 2.0 * cfg.edge_buffer > 0.0, "64 chunk must have positive range");
+    assert!(
+        64.0 - 2.0 * cfg.edge_buffer > 0.0,
+        "64 chunk must have positive range"
+    );
 }
 
 // ============================================================================
@@ -567,14 +574,20 @@ fn structure_result_add_increments_count() {
     let mut result = StructureResult::new();
     result.add_structure(make_instance(StructureType::Cottage, Vec3::ZERO));
     assert_eq!(result.total_count(), 1);
-    assert_eq!(*result.counts_by_type.get(&StructureType::Cottage).unwrap(), 1);
+    assert_eq!(
+        *result.counts_by_type.get(&StructureType::Cottage).unwrap(),
+        1
+    );
 }
 
 #[test]
 fn structure_result_add_multiple_same_type() {
     let mut result = StructureResult::new();
     result.add_structure(make_instance(StructureType::Cave, Vec3::new(0.0, 0.0, 0.0)));
-    result.add_structure(make_instance(StructureType::Cave, Vec3::new(50.0, 0.0, 50.0)));
+    result.add_structure(make_instance(
+        StructureType::Cave,
+        Vec3::new(50.0, 0.0, 50.0),
+    ));
     assert_eq!(result.total_count(), 2);
     assert_eq!(*result.counts_by_type.get(&StructureType::Cave).unwrap(), 2);
 }
@@ -582,12 +595,24 @@ fn structure_result_add_multiple_same_type() {
 #[test]
 fn structure_result_add_multiple_different_types() {
     let mut result = StructureResult::new();
-    result.add_structure(make_instance(StructureType::Cottage, Vec3::new(0.0, 0.0, 0.0)));
-    result.add_structure(make_instance(StructureType::Fort, Vec3::new(200.0, 0.0, 200.0)));
-    result.add_structure(make_instance(StructureType::Well, Vec3::new(50.0, 0.0, 50.0)));
+    result.add_structure(make_instance(
+        StructureType::Cottage,
+        Vec3::new(0.0, 0.0, 0.0),
+    ));
+    result.add_structure(make_instance(
+        StructureType::Fort,
+        Vec3::new(200.0, 0.0, 200.0),
+    ));
+    result.add_structure(make_instance(
+        StructureType::Well,
+        Vec3::new(50.0, 0.0, 50.0),
+    ));
     assert_eq!(result.total_count(), 3);
     assert_eq!(result.counts_by_type.len(), 3);
-    assert_eq!(*result.counts_by_type.get(&StructureType::Cottage).unwrap(), 1);
+    assert_eq!(
+        *result.counts_by_type.get(&StructureType::Cottage).unwrap(),
+        1
+    );
     assert_eq!(*result.counts_by_type.get(&StructureType::Fort).unwrap(), 1);
     assert_eq!(*result.counts_by_type.get(&StructureType::Well).unwrap(), 1);
 }
@@ -596,10 +621,16 @@ fn structure_result_add_multiple_different_types() {
 fn structure_result_counts_by_type_mixed() {
     let mut result = StructureResult::new();
     for i in 0..5 {
-        result.add_structure(make_instance(StructureType::Wall, Vec3::new(i as f32 * 20.0, 0.0, 0.0)));
+        result.add_structure(make_instance(
+            StructureType::Wall,
+            Vec3::new(i as f32 * 20.0, 0.0, 0.0),
+        ));
     }
     for i in 0..3 {
-        result.add_structure(make_instance(StructureType::Gate, Vec3::new(0.0, 0.0, i as f32 * 20.0)));
+        result.add_structure(make_instance(
+            StructureType::Gate,
+            Vec3::new(0.0, 0.0, i as f32 * 20.0),
+        ));
     }
     assert_eq!(result.total_count(), 8);
     assert_eq!(*result.counts_by_type.get(&StructureType::Wall).unwrap(), 5);
@@ -637,7 +668,9 @@ fn generator_zero_density_returns_empty() {
         .generate_chunk(astraweave_terrain::ChunkId::new(0, 0))
         .unwrap();
 
-    let result = gen.generate_structures(&chunk, 256.0, BiomeType::Grassland).unwrap();
+    let result = gen
+        .generate_structures(&chunk, 256.0, BiomeType::Grassland)
+        .unwrap();
     assert_eq!(result.total_count(), 0);
 }
 
@@ -656,7 +689,9 @@ fn generator_negative_density_returns_empty() {
         .generate_chunk(astraweave_terrain::ChunkId::new(0, 0))
         .unwrap();
 
-    let result = gen.generate_structures(&chunk, 256.0, BiomeType::Grassland).unwrap();
+    let result = gen
+        .generate_structures(&chunk, 256.0, BiomeType::Grassland)
+        .unwrap();
     assert_eq!(result.total_count(), 0);
 }
 
@@ -674,7 +709,9 @@ fn generator_deterministic_with_same_seed() {
         ..Default::default()
     };
     let mut gen1 = StructureGenerator::new(config1);
-    let result1 = gen1.generate_structures(&chunk, 256.0, BiomeType::Grassland).unwrap();
+    let result1 = gen1
+        .generate_structures(&chunk, 256.0, BiomeType::Grassland)
+        .unwrap();
 
     let config2 = StructureConfig {
         density: 0.5,
@@ -682,7 +719,9 @@ fn generator_deterministic_with_same_seed() {
         ..Default::default()
     };
     let mut gen2 = StructureGenerator::new(config2);
-    let result2 = gen2.generate_structures(&chunk, 256.0, BiomeType::Grassland).unwrap();
+    let result2 = gen2
+        .generate_structures(&chunk, 256.0, BiomeType::Grassland)
+        .unwrap();
 
     assert_eq!(result1.total_count(), result2.total_count());
 }
@@ -704,13 +743,19 @@ fn generator_different_seeds_may_differ() {
             ..Default::default()
         };
         let mut gen = StructureGenerator::new(config);
-        let result = gen.generate_structures(&chunk, 256.0, BiomeType::Grassland).unwrap();
+        let result = gen
+            .generate_structures(&chunk, 256.0, BiomeType::Grassland)
+            .unwrap();
         counts.push(result.total_count());
     }
     let min = counts.iter().min().unwrap();
     let max = counts.iter().max().unwrap();
     // With 20 seeds and density 0.8, there should be SOME variation
-    assert!(max > min, "Expected variation across seeds, got all {}", min);
+    assert!(
+        max > min,
+        "Expected variation across seeds, got all {}",
+        min
+    );
 }
 
 #[test]
@@ -728,7 +773,9 @@ fn generator_exclude_ancient_filters_ruins() {
         ..Default::default()
     };
     let mut gen = StructureGenerator::new(config);
-    let result = gen.generate_structures(&chunk, 256.0, BiomeType::Desert).unwrap();
+    let result = gen
+        .generate_structures(&chunk, 256.0, BiomeType::Desert)
+        .unwrap();
 
     // No ancient structures should appear
     for s in &result.structures {
@@ -761,7 +808,9 @@ fn generator_exclude_defensive_filters_forts() {
         ..Default::default()
     };
     let mut gen = StructureGenerator::new(config);
-    let result = gen.generate_structures(&chunk, 256.0, BiomeType::Mountain).unwrap();
+    let result = gen
+        .generate_structures(&chunk, 256.0, BiomeType::Mountain)
+        .unwrap();
 
     // No defensive structures should appear
     for s in &result.structures {
@@ -797,7 +846,11 @@ fn all_biome_types_return_nonempty() {
     ];
     for b in &biomes {
         let types = StructureType::for_biome(*b);
-        assert!(!types.is_empty(), "{:?} biome returned no structure types", b);
+        assert!(
+            !types.is_empty(),
+            "{:?} biome returned no structure types",
+            b
+        );
     }
 }
 

@@ -17,13 +17,13 @@ use egui_dock::egui;
 
 use crate::command::UndoStack;
 use crate::entity_manager::EntityManager;
+use crate::panels::entity_catalog::EntityCatalogState;
 use crate::panels::{
     AssetBrowser, AudioPanel, CinematicsPanel, DialogueEditorPanel, FoliagePanel,
     InputBindingsPanel, LightingPanel, LocalizationPanel, LodConfigPanel, MaterialEditorPanel,
     NavigationPanel, NetworkingPanel, ParticleSystemPanel, PcgPanel, PhysicsPanel,
     PostProcessPanel, ProjectSettingsPanel, SplineEditorPanel, TerrainPanel, UiEditorPanel,
 };
-use crate::panels::entity_catalog::EntityCatalogState;
 use crate::prefab::PrefabManager;
 use crate::viewport::ViewportWidget;
 use astraweave_core::World;
@@ -304,7 +304,12 @@ pub enum PanelEvent {
     /// An entity was deselected
     EntityDeselected,
     /// Transform position changed
-    TransformPositionChanged { entity_id: u64, x: f32, y: f32, z: f32 },
+    TransformPositionChanged {
+        entity_id: u64,
+        x: f32,
+        y: f32,
+        z: f32,
+    },
     /// Transform rotation changed
     TransformRotationChanged { entity_id: u64, rotation: f32 },
     /// Transform scale changed
@@ -1136,6 +1141,18 @@ pub struct EditorTabViewer {
     world_fog_enabled: bool,
     /// World fog density
     world_fog_density: f32,
+    /// World sun intensity
+    world_sun_intensity: f32,
+    /// World sun elevation (degrees)
+    world_sun_elevation: f32,
+    /// World sun azimuth (degrees)
+    world_sun_azimuth: f32,
+    /// World sun color
+    world_sun_color: [f32; 3],
+    /// World ambient intensity
+    world_ambient_intensity: f32,
+    /// World exposure
+    world_exposure: f32,
     /// World gravity
     world_gravity: f32,
     /// Transform snap value (0 = disabled)
@@ -1393,14 +1410,20 @@ impl EditorTabViewer {
             asset_type_filter: 0, // All
             asset_view_mode: 0,   // List
             // World settings
-            world_ambient_color: [0.1, 0.1, 0.15],
+            world_ambient_color: [0.55, 0.60, 0.72],
             world_fog_enabled: false,
             world_fog_density: 0.01,
+            world_sun_intensity: 1.5,
+            world_sun_elevation: 45.0,
+            world_sun_azimuth: 35.0,
+            world_sun_color: [1.0, 0.95, 0.85],
+            world_ambient_intensity: 0.7,
+            world_exposure: 1.2,
             world_gravity: -9.81,
             // Transform settings
             transform_snap_value: 1.0,
             // Additional world settings
-            world_skybox_preset: 0,  // Clear Sky
+            world_skybox_preset: 0, // Clear Sky
             world_hdri_path: None,
             world_time_of_day: 12.0, // Noon
             world_weather_preset: 0, // Clear
@@ -1520,7 +1543,10 @@ impl EditorTabViewer {
     }
 
     /// Update selected entity's transform (synced from main editor)
-    pub fn set_selected_transform(&mut self, transform: Option<(f32, f32, f32, f32, f32, f32, f32)>) {
+    pub fn set_selected_transform(
+        &mut self,
+        transform: Option<(f32, f32, f32, f32, f32, f32, f32)>,
+    ) {
         // Only update if this is an external sync, not our own edit
         if self.selected_transform != transform {
             self.selected_transform = transform;
@@ -1628,9 +1654,26 @@ impl EditorTabViewer {
         self.terrain_panel.get_gpu_chunks()
     }
 
+    /// Returns (min_height, max_height, avg_height) from the last terrain generation.
+    pub fn terrain_height_stats(&self) -> (f32, f32, f32) {
+        self.terrain_panel.height_stats()
+    }
+
+    /// Returns the current primary biome name from the terrain panel.
+    pub fn terrain_primary_biome(&self) -> &str {
+        self.terrain_panel.primary_biome()
+    }
+
     /// Generate scatter placements from current terrain (vegetation, rocks, etc.)
     pub fn generate_scatter_placements(&self) -> Vec<crate::terrain_integration::ScatterPlacement> {
         self.terrain_panel.generate_scatter_placements()
+    }
+
+    /// Take pre-computed scatter placements (generated on background thread).
+    pub fn take_cached_scatter_placements(
+        &mut self,
+    ) -> Vec<crate::terrain_integration::ScatterPlacement> {
+        self.terrain_panel.take_cached_scatter_placements()
     }
 
     /// Returns true if terrain brush is active and terrain exists
@@ -1647,9 +1690,39 @@ impl EditorTabViewer {
     pub fn fog_weather_params(&self) -> (bool, f32, u32) {
         (
             self.world_fog_enabled || self.world_weather_preset == 5,
-            if self.world_weather_preset == 5 { 0.012 } else { self.world_fog_density },
+            if self.world_weather_preset == 5 {
+                0.012
+            } else {
+                self.world_fog_density
+            },
             self.world_weather_preset as u32,
         )
+    }
+
+    /// Returns lighting parameters for the terrain shader.
+    pub fn lighting_params(
+        &self,
+    ) -> crate::viewport::terrain_renderer::TerrainLightingParams {
+        let elev = self.world_sun_elevation.to_radians();
+        let azim = self.world_sun_azimuth.to_radians();
+        let y = elev.sin();
+        let xz = elev.cos();
+        let x = xz * azim.cos();
+        let z = xz * azim.sin();
+        let len = (x * x + y * y + z * z).sqrt();
+        let sun_dir = if len > 0.0001 {
+            [x / len, y / len, z / len]
+        } else {
+            [0.0, 1.0, 0.0]
+        };
+        crate::viewport::terrain_renderer::TerrainLightingParams {
+            sun_dir,
+            sun_color: self.world_sun_color,
+            sun_intensity: self.world_sun_intensity,
+            ambient_color: self.world_ambient_color,
+            ambient_intensity: self.world_ambient_intensity,
+            exposure: self.world_exposure,
+        }
     }
 
     /// Compute the current sky colors from skybox preset, time-of-day, and weather settings.
@@ -1710,7 +1783,9 @@ impl EditorTabViewer {
         } else {
             // Night: smooth transition
             let night_mid = if time > 18.0 { 24.0 } else { 0.0 };
-            let dist = (time - night_mid).abs().min((time - 24.0 + night_mid).abs());
+            let dist = (time - night_mid)
+                .abs()
+                .min((time - 24.0 + night_mid).abs());
             0.1 + 0.3 * (dist / 6.0).min(1.0) // 0.1 at midnight, 0.4 toward sunrise/sunset
         };
 
@@ -1754,7 +1829,11 @@ impl EditorTabViewer {
             }
             2 | 3 => {
                 // Rain / Storm — darker, more gray
-                let darken = if self.world_weather_preset == 3 { 0.3 } else { 0.5 };
+                let darken = if self.world_weather_preset == 3 {
+                    0.3
+                } else {
+                    0.5
+                };
                 for i in 0..3 {
                     top[i] *= darken;
                     horizon[i] *= darken;
@@ -1804,8 +1883,7 @@ impl EditorTabViewer {
             ];
             for i in 0..3 {
                 horizon[i] = horizon[i] * (1.0 - fog_blend) + fog_color[i] * fog_blend;
-                top[i] = top[i] * (1.0 - fog_blend * 0.5)
-                    + fog_color[i] * fog_blend * 0.5;
+                top[i] = top[i] * (1.0 - fog_blend * 0.5) + fog_color[i] * fog_blend * 0.5;
             }
         }
 
@@ -2619,8 +2697,15 @@ impl TabViewer for EditorTabViewer {
                     let mut transform_events = Vec::new();
 
                     ui.collapsing("Transform", |ui| {
-                        if let Some((mut x, mut y, mut z, mut rotation, mut scale_x, mut scale_y, mut scale_z)) =
-                            self.selected_transform
+                        if let Some((
+                            mut x,
+                            mut y,
+                            mut z,
+                            mut rotation,
+                            mut scale_x,
+                            mut scale_y,
+                            mut scale_z,
+                        )) = self.selected_transform
                         {
                             let orig_x = x;
                             let orig_y = y;
@@ -2691,7 +2776,10 @@ impl TabViewer for EditorTabViewer {
                             });
 
                             // Update transform and collect events
-                            if (x - orig_x).abs() > 0.0001 || (y - orig_y).abs() > 0.0001 || (z - orig_z).abs() > 0.0001 {
+                            if (x - orig_x).abs() > 0.0001
+                                || (y - orig_y).abs() > 0.0001
+                                || (z - orig_z).abs() > 0.0001
+                            {
                                 transform_events.push(PanelEvent::TransformPositionChanged {
                                     entity_id,
                                     x,
@@ -2718,7 +2806,8 @@ impl TabViewer for EditorTabViewer {
                             }
 
                             // Update cached transform
-                            self.selected_transform = Some((x, y, z, rotation, scale_x, scale_y, scale_z));
+                            self.selected_transform =
+                                Some((x, y, z, rotation, scale_x, scale_y, scale_z));
                         } else {
                             // Default transform when none set
                             ui.horizontal(|ui| {
@@ -4144,7 +4233,10 @@ impl TabViewer for EditorTabViewer {
                     });
 
                     // Check for changes and emit events
-                    if ((*x) - orig_x).abs() > 0.0001 || ((*y) - orig_y).abs() > 0.0001 || ((*z) - orig_z).abs() > 0.0001 {
+                    if ((*x) - orig_x).abs() > 0.0001
+                        || ((*y) - orig_y).abs() > 0.0001
+                        || ((*z) - orig_z).abs() > 0.0001
+                    {
                         transform_events.push(PanelEvent::TransformPositionChanged {
                             entity_id,
                             x: *x,
@@ -4284,11 +4376,16 @@ impl TabViewer for EditorTabViewer {
                         ui.horizontal(|ui| {
                             ui.label("HDRI:");
                             if let Some(path) = &self.world_hdri_path {
-                                let name = path.file_name()
+                                let name = path
+                                    .file_name()
                                     .and_then(|n| n.to_str())
                                     .unwrap_or("unknown");
                                 ui.label(name);
-                                if ui.small_button("\u{2715}").on_hover_text("Remove HDRI").clicked() {
+                                if ui
+                                    .small_button("\u{2715}")
+                                    .on_hover_text("Remove HDRI")
+                                    .clicked()
+                                {
                                     let was_some = self.world_hdri_path.is_some();
                                     self.world_hdri_path = None;
                                     if was_some {
@@ -4384,8 +4481,15 @@ impl TabViewer for EditorTabViewer {
                             "Fog",
                             "Sandstorm",
                         ];
-                        let weather_icons =
-                            ["\u{2600}", "\u{2601}", "\u{1F327}", "\u{26C8}", "\u{2744}", "\u{1F32B}", "\u{1F3DC}"];
+                        let weather_icons = [
+                            "\u{2600}",
+                            "\u{2601}",
+                            "\u{1F327}",
+                            "\u{26C8}",
+                            "\u{2744}",
+                            "\u{1F32B}",
+                            "\u{1F3DC}",
+                        ];
 
                         ui.horizontal(|ui| {
                             ui.label("Weather:");
@@ -4473,6 +4577,95 @@ impl TabViewer for EditorTabViewer {
                                 );
                             });
                         }
+                    });
+
+                ui.add_space(4.0);
+
+                // Lighting settings section
+                egui::CollapsingHeader::new("Lighting")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Sun Intensity:");
+                            ui.add(
+                                egui::Slider::new(&mut self.world_sun_intensity, 0.0..=3.0)
+                                    .text(""),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Sun Elevation:");
+                            ui.add(
+                                egui::Slider::new(&mut self.world_sun_elevation, 5.0..=90.0)
+                                    .suffix("°")
+                                    .text(""),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Sun Azimuth:");
+                            ui.add(
+                                egui::Slider::new(&mut self.world_sun_azimuth, 0.0..=360.0)
+                                    .suffix("°")
+                                    .text(""),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Sun Color:");
+                            let mut color = egui::Color32::from_rgb(
+                                (self.world_sun_color[0] * 255.0) as u8,
+                                (self.world_sun_color[1] * 255.0) as u8,
+                                (self.world_sun_color[2] * 255.0) as u8,
+                            );
+                            if ui.color_edit_button_srgba(&mut color).changed() {
+                                self.world_sun_color = [
+                                    color.r() as f32 / 255.0,
+                                    color.g() as f32 / 255.0,
+                                    color.b() as f32 / 255.0,
+                                ];
+                            }
+                        });
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.label("Ambient Intensity:");
+                            ui.add(
+                                egui::Slider::new(&mut self.world_ambient_intensity, 0.0..=2.0)
+                                    .text(""),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Exposure:");
+                            ui.add(
+                                egui::Slider::new(&mut self.world_exposure, 0.1..=3.0)
+                                    .text(""),
+                            );
+                        });
+
+                        // Quick presets
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.label("Presets:");
+                            if ui.small_button("Bright Day").clicked() {
+                                self.world_sun_intensity = 1.5;
+                                self.world_sun_elevation = 60.0;
+                                self.world_ambient_intensity = 0.7;
+                                self.world_exposure = 1.2;
+                                self.world_sun_color = [1.0, 0.95, 0.85];
+                            }
+                            if ui.small_button("Golden Hour").clicked() {
+                                self.world_sun_intensity = 1.2;
+                                self.world_sun_elevation = 15.0;
+                                self.world_sun_azimuth = 260.0;
+                                self.world_ambient_intensity = 0.5;
+                                self.world_exposure = 1.4;
+                                self.world_sun_color = [1.0, 0.65, 0.35];
+                            }
+                            if ui.small_button("Overcast").clicked() {
+                                self.world_sun_intensity = 0.5;
+                                self.world_sun_elevation = 45.0;
+                                self.world_ambient_intensity = 1.0;
+                                self.world_exposure = 1.0;
+                                self.world_sun_color = [0.85, 0.85, 0.9];
+                            }
+                        });
                     });
 
                 ui.add_space(4.0);
@@ -7026,7 +7219,10 @@ impl TabViewer for EditorTabViewer {
                 // Check for completed terrain generation
                 if self.terrain_panel.has_pending_actions() {
                     for action in self.terrain_panel.take_actions() {
-                        if matches!(action, crate::panels::terrain_panel::TerrainAction::Generate) {
+                        if matches!(
+                            action,
+                            crate::panels::terrain_panel::TerrainAction::Generate
+                        ) {
                             self.emit_event(PanelEvent::TerrainReady);
                         }
                     }

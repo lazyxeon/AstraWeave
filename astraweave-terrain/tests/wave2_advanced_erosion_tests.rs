@@ -389,7 +389,11 @@ fn thermal_erosion_stats_total_eroded_positive() {
         ..Default::default()
     };
     let stats = sim.apply_thermal_erosion(&mut hm, &config);
-    assert!(stats.total_eroded > 0.0, "Thermal erosion should move material: {}", stats.total_eroded);
+    assert!(
+        stats.total_eroded > 0.0,
+        "Thermal erosion should move material: {}",
+        stats.total_eroded
+    );
 }
 
 #[test]
@@ -399,7 +403,11 @@ fn thermal_erosion_flat_terrain_no_change() {
     let sim = AdvancedErosionSimulator::new(42);
     let config = ThermalErosionConfig::default();
     let stats = sim.apply_thermal_erosion(&mut hm, &config);
-    assert!(stats.total_eroded.abs() < 1e-6, "Flat terrain should not erode: {}", stats.total_eroded);
+    assert!(
+        stats.total_eroded.abs() < 1e-6,
+        "Flat terrain should not erode: {}",
+        stats.total_eroded
+    );
 }
 
 // ============================================================================
@@ -429,7 +437,10 @@ fn hydraulic_erosion_stats_populated() {
     let stats = sim.apply_hydraulic_erosion(&mut hm, &config);
     // Should have eroded something on a mountain
     assert!(stats.total_eroded > 0.0, "Should erode material");
-    assert!(stats.avg_droplet_lifetime > 0.0, "Droplets should survive some steps");
+    assert!(
+        stats.avg_droplet_lifetime > 0.0,
+        "Droplets should survive some steps"
+    );
 }
 
 #[test]
@@ -452,7 +463,9 @@ fn hydraulic_erosion_deterministic() {
         assert!(
             (h1.data()[i] - h2.data()[i]).abs() < 1e-6,
             "Same seed should give same result at index {}: {} vs {}",
-            i, h1.data()[i], h2.data()[i]
+            i,
+            h1.data()[i],
+            h2.data()[i]
         );
     }
 }
@@ -472,7 +485,11 @@ fn wind_erosion_moves_material_downwind() {
         ..Default::default()
     };
     let stats = sim.apply_wind_erosion(&mut hm, &config);
-    assert!(stats.total_eroded > 0.0, "Wind should erode: {}", stats.total_eroded);
+    assert!(
+        stats.total_eroded > 0.0,
+        "Wind should erode: {}",
+        stats.total_eroded
+    );
 }
 
 #[test]
@@ -482,7 +499,10 @@ fn wind_erosion_flat_terrain_no_change() {
     let sim = AdvancedErosionSimulator::new(42);
     let config = WindErosionConfig::default();
     let stats = sim.apply_wind_erosion(&mut hm, &config);
-    assert!(stats.total_eroded.abs() < 1e-6, "Flat terrain should not erode from wind");
+    assert!(
+        stats.total_eroded.abs() < 1e-6,
+        "Flat terrain should not erode from wind"
+    );
 }
 
 // ============================================================================
@@ -525,7 +545,10 @@ fn apply_preset_unknown_pass_ignored() {
         pass_order: vec!["unknown_pass_type".to_string()],
     };
     let stats = sim.apply_preset(&mut hm, &preset);
-    assert!(stats.total_eroded.abs() < 1e-6, "Unknown pass should do nothing");
+    assert!(
+        stats.total_eroded.abs() < 1e-6,
+        "Unknown pass should do nothing"
+    );
 }
 
 #[test]
@@ -594,7 +617,11 @@ fn erosion_preset_coastal_hydraulic_inertia_is_default() {
 fn erosion_preset_coastal_hydraulic_sediment_capacity() {
     let p = ErosionPreset::coastal();
     let h = p.hydraulic.as_ref().unwrap();
-    assert!((h.sediment_capacity_factor - HydraulicErosionConfig::default().sediment_capacity_factor).abs() < 1e-9);
+    assert!(
+        (h.sediment_capacity_factor - HydraulicErosionConfig::default().sediment_capacity_factor)
+            .abs()
+            < 1e-9
+    );
 }
 
 #[test]
@@ -615,7 +642,10 @@ fn erosion_preset_coastal_hydraulic_erode_speed() {
 fn erosion_preset_coastal_hydraulic_erosion_radius() {
     let p = ErosionPreset::coastal();
     let h = p.hydraulic.as_ref().unwrap();
-    assert_eq!(h.erosion_radius, HydraulicErosionConfig::default().erosion_radius);
+    assert_eq!(
+        h.erosion_radius,
+        HydraulicErosionConfig::default().erosion_radius
+    );
 }
 
 #[test]
@@ -629,14 +659,19 @@ fn erosion_preset_coastal_hydraulic_gravity() {
 fn erosion_preset_coastal_thermal_redistribution_rate() {
     let p = ErosionPreset::coastal();
     let t = p.thermal.as_ref().unwrap();
-    assert!((t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs() < 1e-9);
+    assert!(
+        (t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs() < 1e-9
+    );
 }
 
 #[test]
 fn erosion_preset_coastal_thermal_eight_directional() {
     let p = ErosionPreset::coastal();
     let t = p.thermal.as_ref().unwrap();
-    assert_eq!(t.eight_directional, ThermalErosionConfig::default().eight_directional);
+    assert_eq!(
+        t.eight_directional,
+        ThermalErosionConfig::default().eight_directional
+    );
 }
 
 #[test]
@@ -677,7 +712,9 @@ fn erosion_preset_mountain_hydraulic_gravity() {
 fn erosion_preset_mountain_thermal_redistribution_rate() {
     let p = ErosionPreset::mountain();
     let t = p.thermal.as_ref().unwrap();
-    assert!((t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs() < 1e-9);
+    assert!(
+        (t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs() < 1e-9
+    );
 }
 
 #[test]
@@ -695,7 +732,9 @@ fn erosion_preset_mountain_thermal_eight_directional() {
 fn erosion_preset_desert_thermal_redistribution_rate() {
     let p = ErosionPreset::desert();
     let t = p.thermal.as_ref().unwrap();
-    assert!((t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs() < 1e-9);
+    assert!(
+        (t.redistribution_rate - ThermalErosionConfig::default().redistribution_rate).abs() < 1e-9
+    );
 }
 
 #[test]
@@ -738,8 +777,12 @@ fn hydraulic_erosion_net_conservation_approximate() {
     let after_sum: f32 = hm.data().iter().sum();
 
     // Heights should change
-    assert!((before_sum - after_sum).abs() > 0.1,
-        "Hydraulic erosion should modify heights: before_sum={}, after_sum={}", before_sum, after_sum);
+    assert!(
+        (before_sum - after_sum).abs() > 0.1,
+        "Hydraulic erosion should modify heights: before_sum={}, after_sum={}",
+        before_sum,
+        after_sum
+    );
 }
 
 #[test]
@@ -759,8 +802,10 @@ fn hydraulic_erosion_stats_droplets_terminated() {
     };
     let stats = sim.apply_hydraulic_erosion(&mut hm, &config);
     // Some droplets should terminate (reach edge or water)
-    assert!(stats.droplets_terminated > 0,
-        "Expected some terminated droplets");
+    assert!(
+        stats.droplets_terminated > 0,
+        "Expected some terminated droplets"
+    );
 }
 
 #[test]
@@ -787,15 +832,20 @@ fn hydraulic_erosion_erodes_steep_more() {
     let stats_steep = sim1.apply_hydraulic_erosion(&mut hm_steep, &config);
     let stats_gentle = sim2.apply_hydraulic_erosion(&mut hm_gentle, &config);
 
-    assert!(stats_steep.total_eroded >= stats_gentle.total_eroded,
+    assert!(
+        stats_steep.total_eroded >= stats_gentle.total_eroded,
         "Steep ({}) should erode >= gentle ({})",
-        stats_steep.total_eroded, stats_gentle.total_eroded);
+        stats_steep.total_eroded,
+        stats_gentle.total_eroded
+    );
 }
 
 #[test]
 fn hydraulic_erosion_deterministic_same_seed() {
     let make_hm = || {
-        let data: Vec<f32> = (0..1024).map(|i| (i as f32 * 0.1).sin().abs() * 50.0).collect();
+        let data: Vec<f32> = (0..1024)
+            .map(|i| (i as f32 * 0.1).sin().abs() * 50.0)
+            .collect();
         Heightmap::from_data(data, 32).unwrap()
     };
     let mut hm1 = make_hm();
@@ -808,13 +858,19 @@ fn hydraulic_erosion_deterministic_same_seed() {
     let mut sim2 = AdvancedErosionSimulator::new(42);
     sim1.apply_hydraulic_erosion(&mut hm1, &config);
     sim2.apply_hydraulic_erosion(&mut hm2, &config);
-    assert_eq!(hm1.data(), hm2.data(), "Same seed must produce identical output");
+    assert_eq!(
+        hm1.data(),
+        hm2.data(),
+        "Same seed must produce identical output"
+    );
 }
 
 #[test]
 fn hydraulic_erosion_different_seed_different_output() {
     let make_hm = || {
-        let data: Vec<f32> = (0..1024).map(|i| (i as f32 * 0.1).sin().abs() * 50.0).collect();
+        let data: Vec<f32> = (0..1024)
+            .map(|i| (i as f32 * 0.1).sin().abs() * 50.0)
+            .collect();
         Heightmap::from_data(data, 32).unwrap()
     };
     let mut hm1 = make_hm();
@@ -827,7 +883,11 @@ fn hydraulic_erosion_different_seed_different_output() {
     let mut sim2 = AdvancedErosionSimulator::new(999);
     sim1.apply_hydraulic_erosion(&mut hm1, &config);
     sim2.apply_hydraulic_erosion(&mut hm2, &config);
-    assert_ne!(hm1.data(), hm2.data(), "Different seeds should produce different output");
+    assert_ne!(
+        hm1.data(),
+        hm2.data(),
+        "Different seeds should produce different output"
+    );
 }
 
 // ============================================================================
@@ -840,8 +900,10 @@ fn world_generator_generate_chunk_biome_not_empty() {
     let generator = WorldGenerator::new(config);
     let chunk = generator.generate_chunk(ChunkId::new(0, 0)).unwrap();
     // Biome map should have entries
-    assert!(!chunk.biome_map().is_empty(),
-        "Generated chunk should have biome assignments");
+    assert!(
+        !chunk.biome_map().is_empty(),
+        "Generated chunk should have biome assignments"
+    );
 }
 
 #[test]
@@ -860,7 +922,10 @@ fn world_generator_stream_chunks_loads_center() {
     let center = glam::Vec3::new(128.0, 0.0, 128.0);
     let loaded = generator.stream_chunks(center, 1).unwrap();
     // At least the center chunk should be loaded
-    assert!(!loaded.is_empty(), "stream_chunks with radius 1 should load at least 1 chunk");
+    assert!(
+        !loaded.is_empty(),
+        "stream_chunks with radius 1 should load at least 1 chunk"
+    );
 }
 
 #[test]

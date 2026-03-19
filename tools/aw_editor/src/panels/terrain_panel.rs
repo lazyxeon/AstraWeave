@@ -442,6 +442,7 @@ pub struct TerrainPanel {
     gen_receiver: Option<std::sync::mpsc::Receiver<TerrainGenResult>>,
 
     /// Brush settings for voxel editing
+    brush_enabled: bool,
     brush_mode: BrushMode,
     brush_radius: f32,
     brush_strength: f32,
@@ -449,6 +450,12 @@ pub struct TerrainPanel {
     /// Brush world position (X, Z) for applying brush strokes
     brush_pos_x: f32,
     brush_pos_z: f32,
+
+    /// Pre-computed scatter placements from background thread
+    cached_scatter_placements: Vec<crate::terrain_integration::ScatterPlacement>,
+
+    /// Height stats from last terrain generation: (min, max, avg)
+    last_height_stats: (f32, f32, f32),
 
     /// Action queue
     pending_actions: Vec<TerrainAction>,
@@ -459,6 +466,9 @@ struct TerrainGenResult {
     terrain_state: TerrainState,
     chunk_count: usize,
     elapsed_ms: f32,
+    scatter_placements: Vec<crate::terrain_integration::ScatterPlacement>,
+    /// (min_height, max_height, avg_height)
+    height_stats: (f32, f32, f32),
 }
 
 /// Brush modes for terrain sculpting
@@ -569,7 +579,7 @@ impl Default for TerrainPanel {
             seed: 12345,
             seed_string: "12345".to_string(),
             primary_biome: "grassland".to_string(),
-            chunk_radius: 2,
+            chunk_radius: 3,
             octaves: 6,
             lacunarity: 2.0,
             persistence: 0.5,
@@ -590,12 +600,15 @@ impl Default for TerrainPanel {
             generation_stats: GenerationStats::default(),
             generating: false,
             gen_receiver: None,
+            brush_enabled: false,
             brush_mode: BrushMode::Sculpt,
             brush_radius: 5.0,
             brush_strength: 0.5,
             selected_material: 0,
             brush_pos_x: 0.0,
             brush_pos_z: 0.0,
+            cached_scatter_placements: Vec::new(),
+            last_height_stats: (0.0, 0.0, 0.0),
             pending_actions: Vec::new(),
         }
     }
@@ -617,13 +630,33 @@ impl TerrainPanel {
     }
 
     /// Get terrain chunks ready for GPU upload
-    pub fn get_gpu_chunks(&self) -> Vec<(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)> {
+    pub fn get_gpu_chunks(
+        &self,
+    ) -> Vec<(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)> {
         self.terrain_state.get_gpu_chunks()
+    }
+
+    /// Returns (min_height, max_height, avg_height) from the last generation.
+    pub fn height_stats(&self) -> (f32, f32, f32) {
+        self.last_height_stats
+    }
+
+    /// Returns the current primary biome name (e.g. "mountain", "swamp", "grassland").
+    pub fn primary_biome(&self) -> &str {
+        &self.primary_biome
     }
 
     /// Generate scatter placements from the terrain vegetation system
     pub fn generate_scatter_placements(&self) -> Vec<crate::terrain_integration::ScatterPlacement> {
         self.terrain_state.generate_scatter_placements()
+    }
+
+    /// Take pre-computed scatter placements (generated on background thread).
+    /// Returns the cached placements and clears the cache.
+    pub fn take_cached_scatter_placements(
+        &mut self,
+    ) -> Vec<crate::terrain_integration::ScatterPlacement> {
+        std::mem::take(&mut self.cached_scatter_placements)
     }
 
     /// Queue an action for later processing
@@ -648,7 +681,7 @@ impl TerrainPanel {
 
     /// Returns true if a sculpting brush mode is active and terrain exists
     pub fn is_brush_active(&self) -> bool {
-        self.terrain_state.has_terrain()
+        self.brush_enabled && self.terrain_state.has_terrain()
     }
 
     /// Apply brush at the given world position using current brush settings.
@@ -846,6 +879,28 @@ impl TerrainPanel {
     fn show_brush_section(&mut self, ui: &mut Ui) {
         ui.add_space(10.0);
         ui.collapsing("🖌️ Sculpting Brushes", |ui| {
+            // On/off toggle for brush tool
+            let toggle_label = if self.brush_enabled {
+                "🔴 Brush Active"
+            } else {
+                "⚪ Brush Inactive"
+            };
+            if ui
+                .selectable_label(self.brush_enabled, toggle_label)
+                .clicked()
+            {
+                self.brush_enabled = !self.brush_enabled;
+            }
+            if self.brush_enabled {
+                ui.label(
+                    RichText::new("Left-click on terrain to sculpt/paint")
+                        .small()
+                        .italics()
+                        .color(egui::Color32::from_rgb(200, 140, 140)),
+                );
+            }
+            ui.add_space(5.0);
+
             ui.horizontal(|ui| {
                 ui.label("Mode:");
                 ui.selectable_value(&mut self.brush_mode, BrushMode::Sculpt, "Sculpt");
@@ -1487,53 +1542,133 @@ impl TerrainPanel {
         use crate::terrain_integration::BiomeNoisePreset;
         match biome {
             "mountain" => BiomeNoisePreset {
-                base_scale: 0.003, base_amplitude: 120.0, base_octaves: 6,
-                base_persistence: 0.55, base_lacunarity: 2.2,
-                mountains_enabled: true, mountains_scale: 0.002, mountains_amplitude: 150.0, mountains_octaves: 8,
-                detail_enabled: true, detail_scale: 0.03, detail_amplitude: 8.0,
+                base_scale: 0.003,
+                base_amplitude: 120.0,
+                base_octaves: 6,
+                base_persistence: 0.55,
+                base_lacunarity: 2.2,
+                mountains_enabled: true,
+                mountains_scale: 0.002,
+                mountains_amplitude: 150.0,
+                mountains_octaves: 8,
+                detail_enabled: true,
+                detail_scale: 0.03,
+                detail_amplitude: 8.0,
+                erosion_enabled: false,
+                erosion_strength: 0.0,
             },
             "desert" => BiomeNoisePreset {
-                base_scale: 0.002, base_amplitude: 20.0, base_octaves: 3,
-                base_persistence: 0.35, base_lacunarity: 2.5,
-                mountains_enabled: false, mountains_scale: 0.002, mountains_amplitude: 0.0, mountains_octaves: 4,
-                detail_enabled: true, detail_scale: 0.04, detail_amplitude: 3.0,
+                base_scale: 0.002,
+                base_amplitude: 20.0,
+                base_octaves: 3,
+                base_persistence: 0.35,
+                base_lacunarity: 2.5,
+                mountains_enabled: false,
+                mountains_scale: 0.002,
+                mountains_amplitude: 0.0,
+                mountains_octaves: 4,
+                detail_enabled: true,
+                detail_scale: 0.04,
+                detail_amplitude: 3.0,
+                erosion_enabled: true,
+                erosion_strength: 0.3,
             },
             "forest" => BiomeNoisePreset {
-                base_scale: 0.004, base_amplitude: 40.0, base_octaves: 5,
-                base_persistence: 0.50, base_lacunarity: 2.0,
-                mountains_enabled: true, mountains_scale: 0.003, mountains_amplitude: 25.0, mountains_octaves: 4,
-                detail_enabled: true, detail_scale: 0.02, detail_amplitude: 6.0,
+                base_scale: 0.004,
+                base_amplitude: 40.0,
+                base_octaves: 5,
+                base_persistence: 0.50,
+                base_lacunarity: 2.0,
+                mountains_enabled: true,
+                mountains_scale: 0.003,
+                mountains_amplitude: 25.0,
+                mountains_octaves: 4,
+                detail_enabled: true,
+                detail_scale: 0.02,
+                detail_amplitude: 6.0,
+                erosion_enabled: true,
+                erosion_strength: 0.3,
             },
             "tundra" => BiomeNoisePreset {
-                base_scale: 0.003, base_amplitude: 30.0, base_octaves: 4,
-                base_persistence: 0.40, base_lacunarity: 2.0,
-                mountains_enabled: true, mountains_scale: 0.002, mountains_amplitude: 40.0, mountains_octaves: 5,
-                detail_enabled: true, detail_scale: 0.015, detail_amplitude: 4.0,
+                base_scale: 0.003,
+                base_amplitude: 30.0,
+                base_octaves: 4,
+                base_persistence: 0.40,
+                base_lacunarity: 2.0,
+                mountains_enabled: true,
+                mountains_scale: 0.002,
+                mountains_amplitude: 40.0,
+                mountains_octaves: 5,
+                detail_enabled: true,
+                detail_scale: 0.015,
+                detail_amplitude: 4.0,
+                erosion_enabled: true,
+                erosion_strength: 0.3,
             },
             "swamp" => BiomeNoisePreset {
-                base_scale: 0.006, base_amplitude: 8.0, base_octaves: 4,
-                base_persistence: 0.60, base_lacunarity: 1.8,
-                mountains_enabled: false, mountains_scale: 0.002, mountains_amplitude: 0.0, mountains_octaves: 3,
-                detail_enabled: true, detail_scale: 0.03, detail_amplitude: 2.0,
+                base_scale: 0.006,
+                base_amplitude: 8.0,
+                base_octaves: 4,
+                base_persistence: 0.60,
+                base_lacunarity: 1.8,
+                mountains_enabled: false,
+                mountains_scale: 0.002,
+                mountains_amplitude: 0.0,
+                mountains_octaves: 3,
+                detail_enabled: true,
+                detail_scale: 0.03,
+                detail_amplitude: 2.0,
+                erosion_enabled: true,
+                erosion_strength: 0.3,
             },
             "beach" => BiomeNoisePreset {
-                base_scale: 0.008, base_amplitude: 5.0, base_octaves: 3,
-                base_persistence: 0.30, base_lacunarity: 2.0,
-                mountains_enabled: false, mountains_scale: 0.002, mountains_amplitude: 0.0, mountains_octaves: 3,
-                detail_enabled: true, detail_scale: 0.05, detail_amplitude: 1.5,
+                base_scale: 0.008,
+                base_amplitude: 5.0,
+                base_octaves: 3,
+                base_persistence: 0.30,
+                base_lacunarity: 2.0,
+                mountains_enabled: false,
+                mountains_scale: 0.002,
+                mountains_amplitude: 0.0,
+                mountains_octaves: 3,
+                detail_enabled: true,
+                detail_scale: 0.05,
+                detail_amplitude: 1.5,
+                erosion_enabled: true,
+                erosion_strength: 0.3,
             },
             "river" => BiomeNoisePreset {
-                base_scale: 0.004, base_amplitude: 25.0, base_octaves: 5,
-                base_persistence: 0.45, base_lacunarity: 2.0,
-                mountains_enabled: true, mountains_scale: 0.003, mountains_amplitude: 20.0, mountains_octaves: 4,
-                detail_enabled: true, detail_scale: 0.025, detail_amplitude: 4.0,
+                base_scale: 0.004,
+                base_amplitude: 25.0,
+                base_octaves: 5,
+                base_persistence: 0.45,
+                base_lacunarity: 2.0,
+                mountains_enabled: true,
+                mountains_scale: 0.003,
+                mountains_amplitude: 20.0,
+                mountains_octaves: 4,
+                detail_enabled: true,
+                detail_scale: 0.025,
+                detail_amplitude: 4.0,
+                erosion_enabled: true,
+                erosion_strength: 0.3,
             },
             _ => BiomeNoisePreset {
                 // grassland / default — gentle rolling hills
-                base_scale: 0.005, base_amplitude: 35.0, base_octaves: 4,
-                base_persistence: 0.50, base_lacunarity: 2.0,
-                mountains_enabled: true, mountains_scale: 0.003, mountains_amplitude: 15.0, mountains_octaves: 4,
-                detail_enabled: true, detail_scale: 0.02, detail_amplitude: 5.0,
+                base_scale: 0.005,
+                base_amplitude: 35.0,
+                base_octaves: 4,
+                base_persistence: 0.50,
+                base_lacunarity: 2.0,
+                mountains_enabled: true,
+                mountains_scale: 0.003,
+                mountains_amplitude: 15.0,
+                mountains_octaves: 4,
+                detail_enabled: true,
+                detail_scale: 0.02,
+                detail_amplitude: 5.0,
+                erosion_enabled: true,
+                erosion_strength: 0.3,
             },
         }
     }
@@ -1546,16 +1681,24 @@ impl TerrainPanel {
         // Prepare a fresh TerrainState with current config on the background thread
         let mut state = TerrainState::new();
         state.configure(self.seed, &self.primary_biome);
-        // Apply the full biome noise preset (all 3 layers)
-        let preset = Self::noise_preset_for_biome(&self.primary_biome);
-        state.apply_biome_noise_preset(&preset);
-        // Override base elevation with user-tweaked sliders
+        // Apply slider values first, then let the biome preset override them.
+        // This ensures the biome-specific amplitudes (e.g. mountain base_amplitude=120)
+        // are not clobbered by the slider's default (50).
         state.set_noise_params(
             self.octaves as usize,
             self.lacunarity as f64,
             self.persistence as f64,
             self.base_amplitude,
         );
+        let preset = Self::noise_preset_for_biome(&self.primary_biome);
+        state.apply_biome_noise_preset(&preset);
+
+        // Sync UI sliders to the active preset so they reflect the actual values
+        self.base_amplitude = preset.base_amplitude;
+        self.octaves = preset.base_octaves as u32;
+        self.persistence = preset.base_persistence as f32;
+        self.lacunarity = preset.base_lacunarity as f32;
+
         let chunk_radius = self.chunk_radius;
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -1566,11 +1709,17 @@ impl TerrainPanel {
             let start = std::time::Instant::now();
             match state.generate_terrain(chunk_radius) {
                 Ok(count) => {
+                    // Generate scatter placements on the background thread
+                    // to avoid blocking the UI with expensive O(n²) Poisson disk sampling.
+                    let scatter_placements = state.generate_scatter_placements();
+                    let height_stats = state.height_stats();
                     let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
                     let _ = tx.send(TerrainGenResult {
                         terrain_state: state,
                         chunk_count: count,
                         elapsed_ms,
+                        scatter_placements,
+                        height_stats,
                     });
                 }
                 Err(e) => {
@@ -1591,6 +1740,8 @@ impl TerrainPanel {
                     let triangle_count = result.terrain_state.total_triangle_count();
 
                     self.terrain_state = result.terrain_state;
+                    self.cached_scatter_placements = result.scatter_placements;
+                    self.last_height_stats = result.height_stats;
                     self.last_generation_time_ms = result.elapsed_ms;
                     self.generation_stats = GenerationStats {
                         chunks_generated: result.chunk_count,
@@ -1935,7 +2086,7 @@ mod tests {
         let panel = TerrainPanel::new();
         assert_eq!(panel.seed, 12345);
         assert_eq!(panel.primary_biome, "grassland");
-        assert_eq!(panel.chunk_radius, 2);
+        assert_eq!(panel.chunk_radius, 3);
     }
 
     #[test]

@@ -302,7 +302,7 @@ impl SplatRule {
     /// Create a rock rule (steep slopes)
     pub fn rock() -> Self {
         Self {
-            material_id: 1,
+            material_id: 7,
             min_height: f32::MIN,
             max_height: f32::MAX,
             min_slope: 35.0,
@@ -317,7 +317,7 @@ impl SplatRule {
     /// Create a sand rule (beaches/deserts)
     pub fn sand() -> Self {
         Self {
-            material_id: 2,
+            material_id: 1,
             min_height: -5.0,
             max_height: 8.0,
             min_slope: 0.0,
@@ -332,7 +332,7 @@ impl SplatRule {
     /// Create a snow rule (high elevations)
     pub fn snow() -> Self {
         Self {
-            material_id: 3,
+            material_id: 4,
             min_height: 120.0,
             max_height: f32::MAX,
             min_slope: 0.0,
@@ -607,15 +607,15 @@ mod tests {
 
         // High steep mountain
         let rock_weights = generator.calculate_weights(50.0, Vec3::new(0.3, 0.3, 0.9).normalize());
-        assert_eq!(rock_weights.dominant_layer(), 1); // Rock
+        assert_eq!(rock_weights.dominant_layer(), 7); // Rock (stone)
 
         // Beach
         let sand_weights = generator.calculate_weights(2.0, Vec3::Y);
-        assert_eq!(sand_weights.dominant_layer(), 2); // Sand
+        assert_eq!(sand_weights.dominant_layer(), 1); // Sand
 
         // Snow peak
         let snow_weights = generator.calculate_weights(180.0, Vec3::Y);
-        assert_eq!(snow_weights.dominant_layer(), 3); // Snow
+        assert_eq!(snow_weights.dominant_layer(), 4); // Snow
     }
 
     #[test]

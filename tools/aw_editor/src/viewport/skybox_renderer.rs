@@ -139,28 +139,27 @@ impl SkyboxRenderer {
             push_constant_ranges: &[],
         });
 
-        let procedural_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Skybox Procedural Pipeline"),
-                layout: Some(&procedural_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[],
-                    compilation_options: Default::default(),
-                },
-                primitive,
-                depth_stencil: Some(depth_stencil.clone()),
-                multisample,
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    targets: &targets,
-                    compilation_options: Default::default(),
-                }),
-                multiview: None,
-                cache: None,
-            });
+        let procedural_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Skybox Procedural Pipeline"),
+            layout: Some(&procedural_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            primitive,
+            depth_stencil: Some(depth_stencil.clone()),
+            multisample,
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &targets,
+                compilation_options: Default::default(),
+            }),
+            multiview: None,
+            cache: None,
+        });
 
         // -- HDRI pipeline --
         let hdri_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -339,7 +338,12 @@ impl SkyboxRenderer {
         self.hdri_bind_group = Some(hdri_bind_group);
         self.hdri_active = true;
 
-        tracing::info!("HDRI skybox loaded: {}x{} from {}", width, height, path.display());
+        tracing::info!(
+            "HDRI skybox loaded: {}x{} from {}",
+            width,
+            height,
+            path.display()
+        );
 
         Ok(())
     }

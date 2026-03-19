@@ -73,22 +73,43 @@ fn packed_blend_filters_tiny_weights() {
 #[test]
 fn packed_blend_caps_at_4_biomes() {
     let weights = vec![
-        BiomeWeight { biome: BiomeType::Grassland, weight: 1.0 },
-        BiomeWeight { biome: BiomeType::Forest, weight: 0.9 },
-        BiomeWeight { biome: BiomeType::Desert, weight: 0.8 },
-        BiomeWeight { biome: BiomeType::Mountain, weight: 0.7 },
-        BiomeWeight { biome: BiomeType::Tundra, weight: 0.6 },
-        BiomeWeight { biome: BiomeType::Swamp, weight: 0.5 },
+        BiomeWeight {
+            biome: BiomeType::Grassland,
+            weight: 1.0,
+        },
+        BiomeWeight {
+            biome: BiomeType::Forest,
+            weight: 0.9,
+        },
+        BiomeWeight {
+            biome: BiomeType::Desert,
+            weight: 0.8,
+        },
+        BiomeWeight {
+            biome: BiomeType::Mountain,
+            weight: 0.7,
+        },
+        BiomeWeight {
+            biome: BiomeType::Tundra,
+            weight: 0.6,
+        },
+        BiomeWeight {
+            biome: BiomeType::Swamp,
+            weight: 0.5,
+        },
     ];
     let packed = PackedBiomeBlend::from_weights(&weights);
     let sum: f32 = packed.weights.iter().sum();
     assert!((sum - 1.0).abs() < 0.001, "Sum should be 1.0: {sum}");
-    
+
     // First 4 should have weights, last shouldn't appear
     // Actually the 5th and 6th are dropped, and only top 4 remain
     // Just verify normalization works with >4 inputs
     let nonzero_count = packed.weights.iter().filter(|&&w| w > 0.001).count();
-    assert!(nonzero_count <= 4, "Max 4 non-zero weights: {nonzero_count}");
+    assert!(
+        nonzero_count <= 4,
+        "Max 4 non-zero weights: {nonzero_count}"
+    );
 }
 
 /// Single biome weight should normalize to 1.0.
@@ -191,7 +212,11 @@ fn blend_weights_single_neighbor_at_origin() {
     let packed = blender.calculate_blend_weights(Vec2::new(10.0, 10.0), 0.0, &neighbors);
 
     assert_eq!(packed.dominant_biome(), BiomeType::Forest);
-    assert!(packed.weights[0] > 0.99, "Single neighbor should dominate: {}", packed.weights[0]);
+    assert!(
+        packed.weights[0] > 0.99,
+        "Single neighbor should dominate: {}",
+        packed.weights[0]
+    );
 }
 
 /// Two equidistant neighbors of different biomes should have roughly equal weight.
@@ -253,7 +278,7 @@ fn blend_weights_closer_is_stronger() {
     let blender = BiomeBlender::new(config, 42);
     let neighbors = vec![
         (Vec2::new(5.0, 0.0), BiomeType::Forest),  // Close
-        (Vec2::new(80.0, 0.0), BiomeType::Desert),  // Far
+        (Vec2::new(80.0, 0.0), BiomeType::Desert), // Far
     ];
     let packed = blender.calculate_blend_weights(Vec2::ZERO, 0.0, &neighbors);
 
@@ -282,7 +307,7 @@ fn blend_weights_falloff_power_effect() {
 
     let blender_linear = BiomeBlender::new(config_linear, 42);
     let blender_sharp = BiomeBlender::new(config_sharp, 42);
-    
+
     let neighbors = vec![
         (Vec2::new(10.0, 0.0), BiomeType::Forest),
         (Vec2::new(50.0, 0.0), BiomeType::Desert),

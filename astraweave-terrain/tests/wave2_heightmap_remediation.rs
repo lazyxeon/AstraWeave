@@ -233,7 +233,10 @@ fn bilinear_midpoint_interpolation() {
     let hm = Heightmap::from_data(data, 2).unwrap();
     let mid = hm.sample_bilinear(0.5, 0.5);
     // Expected: (0 + 10 + 20 + 30) / 4 = 15
-    assert!((mid - 15.0).abs() < 0.01, "Midpoint should be 15.0, got {mid}");
+    assert!(
+        (mid - 15.0).abs() < 0.01,
+        "Midpoint should be 15.0, got {mid}"
+    );
 }
 
 #[test]
@@ -242,7 +245,10 @@ fn bilinear_x_interpolation() {
     let hm = Heightmap::from_data(data, 2).unwrap();
     // At z=0, interpolate between 0 and 10
     let val = hm.sample_bilinear(0.5, 0.0);
-    assert!((val - 5.0).abs() < 0.01, "x-interp should be 5.0, got {val}");
+    assert!(
+        (val - 5.0).abs() < 0.01,
+        "x-interp should be 5.0, got {val}"
+    );
 }
 
 #[test]
@@ -251,7 +257,10 @@ fn bilinear_z_interpolation() {
     let hm = Heightmap::from_data(data, 2).unwrap();
     // At x=0, interpolate between 0 and 10
     let val = hm.sample_bilinear(0.0, 0.5);
-    assert!((val - 5.0).abs() < 0.01, "z-interp should be 5.0, got {val}");
+    assert!(
+        (val - 5.0).abs() < 0.01,
+        "z-interp should be 5.0, got {val}"
+    );
 }
 
 #[test]
@@ -259,7 +268,10 @@ fn bilinear_clamp_negative_coords() {
     let data = vec![42.0, 0.0, 0.0, 0.0];
     let hm = Heightmap::from_data(data, 2).unwrap();
     let val = hm.sample_bilinear(-5.0, -5.0);
-    assert!((val - 42.0).abs() < 0.1, "Clamped to (0,0) should be 42.0, got {val}");
+    assert!(
+        (val - 42.0).abs() < 0.1,
+        "Clamped to (0,0) should be 42.0, got {val}"
+    );
 }
 
 #[test]
@@ -278,7 +290,10 @@ fn normal_on_flat_terrain_points_up() {
     let data = vec![5.0; 9];
     let hm = Heightmap::from_data(data, 3).unwrap();
     let n = hm.calculate_normal(1, 1, 1.0);
-    assert!((n.y - 1.0).abs() < 0.01, "Flat normal should be (0,1,0), got {n:?}");
+    assert!(
+        (n.y - 1.0).abs() < 0.01,
+        "Flat normal should be (0,1,0), got {n:?}"
+    );
     assert!(n.x.abs() < 0.01);
     assert!(n.z.abs() < 0.01);
 }
@@ -480,7 +495,7 @@ fn erosion_velocity_calculation_affects_result() {
     // Create terrain with specific height difference pattern
     // If velocity calc is wrong (e.g., * replaced with +), result differs
     let mut data = vec![10.0f32; 64]; // 8x8
-    // Create a valley in the middle
+                                      // Create a valley in the middle
     for z in 2..6 {
         for x in 2..6 {
             data[(z * 8 + x) as usize] = 5.0; // Lower center
@@ -540,7 +555,11 @@ fn vertices_step_size_correct() {
     let hm = make_heightmap(4);
     let verts = hm.generate_vertices(300.0, Vec3::ZERO);
     // step = 300 / (4-1) = 100
-    assert!((verts[1].x - 100.0).abs() < 0.01, "Step should be 100.0, got x={}", verts[1].x);
+    assert!(
+        (verts[1].x - 100.0).abs() < 0.01,
+        "Step should be 100.0, got x={}",
+        verts[1].x
+    );
 }
 
 #[test]
@@ -558,8 +577,14 @@ fn vertices_z_varies_by_row() {
     let verts = hm.generate_vertices(300.0, Vec3::ZERO);
     // step = 300/3 = 100
     // Row 0: z=0, Row 1: z=100, Row 2: z=200
-    assert!((verts[4].z - 100.0).abs() < 0.01, "z at row 1 should be 100");
-    assert!((verts[8].z - 200.0).abs() < 0.01, "z at row 2 should be 200");
+    assert!(
+        (verts[4].z - 100.0).abs() < 0.01,
+        "z at row 1 should be 100"
+    );
+    assert!(
+        (verts[8].z - 200.0).abs() < 0.01,
+        "z at row 2 should be 200"
+    );
 }
 
 // ─── generate_indices ─────────────────────────────────────────────────────
@@ -586,10 +611,7 @@ fn indices_in_valid_range() {
     let idx = hm.generate_indices();
     let max_vertex = 5 * 5 - 1;
     for &i in &idx {
-        assert!(
-            i <= max_vertex,
-            "Index {i} exceeds max vertex {max_vertex}"
-        );
+        assert!(i <= max_vertex, "Index {i} exceeds max vertex {max_vertex}");
     }
 }
 
@@ -657,13 +679,21 @@ fn smooth_borders_unchanged() {
     hm.smooth(3);
 
     for i in 0..8 {
-        assert_eq!(hm.get_height(i, 0), data[i as usize], "Top border unchanged");
+        assert_eq!(
+            hm.get_height(i, 0),
+            data[i as usize],
+            "Top border unchanged"
+        );
         assert_eq!(
             hm.get_height(i, 7),
             data[(7 * 8 + i) as usize],
             "Bottom border unchanged"
         );
-        assert_eq!(hm.get_height(0, i), data[(i * 8) as usize], "Left border unchanged");
+        assert_eq!(
+            hm.get_height(0, i),
+            data[(i * 8) as usize],
+            "Left border unchanged"
+        );
         assert_eq!(
             hm.get_height(7, i),
             data[(i * 8 + 7) as usize],

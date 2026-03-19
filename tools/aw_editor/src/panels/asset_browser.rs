@@ -661,7 +661,7 @@ impl AssetBrowser {
     pub fn new(root_path: PathBuf) -> Self {
         // Canonicalize the root path to ensure consistent path operations
         let canonical_root = root_path.canonicalize().unwrap_or(root_path);
-        let mut browser = Self {
+        Self {
             root_path: canonical_root.clone(),
             current_path: canonical_root,
             entries: Vec::new(),
@@ -679,9 +679,8 @@ impl AssetBrowser {
             texture_type_filter: None,
             pending_actions: Vec::new(),
             show_texture_badges: true,
-        };
-        browser.scan_current_directory();
-        browser
+        }
+        // Deferred: scan_current_directory() runs lazily on first show() to avoid blocking startup
     }
 
     /// Take any pending asset actions for processing by main editor
@@ -913,9 +912,7 @@ impl AssetBrowser {
                 // Draw horizontal bars for audio
                 for y in 0..size {
                     let bar_h = size / 8;
-                    let in_bar = (y / bar_h) % 2 == 0
-                        && y > size / 4
-                        && y < size * 3 / 4;
+                    let in_bar = (y / bar_h) % 2 == 0 && y > size / 4 && y < size * 3 / 4;
                     if in_bar {
                         for x in size / 4..size * 3 / 4 {
                             let idx = (y * size + x) * 4;
@@ -966,6 +963,11 @@ impl AssetBrowser {
     }
 
     pub fn show(&mut self, ui: &mut Ui) {
+        // Lazy-load entries on first display to avoid blocking startup
+        if self.entries.is_empty() && self.search_query.is_empty() {
+            self.scan_current_directory();
+        }
+
         ui.heading("Asset Browser");
         ui.separator();
 
@@ -1137,7 +1139,8 @@ impl AssetBrowser {
                                     });
                                 } else if entry.asset_type == AssetType::Texture {
                                     // Double-click on texture applies it to selected entity
-                                    let tex_type = entry.texture_type.unwrap_or(TextureType::Albedo);
+                                    let tex_type =
+                                        entry.texture_type.unwrap_or(TextureType::Albedo);
                                     self.pending_actions.push(AssetAction::ApplyTexture {
                                         path: entry.path.clone(),
                                         texture_type: tex_type,
@@ -1330,7 +1333,8 @@ impl AssetBrowser {
                                                 );
                                             } else if entry_asset_type == AssetType::Texture {
                                                 // Double-click on texture applies it to selected entity
-                                                let tex_type = entry_texture_type.unwrap_or(TextureType::Albedo);
+                                                let tex_type = entry_texture_type
+                                                    .unwrap_or(TextureType::Albedo);
                                                 self.pending_actions.push(
                                                     AssetAction::ApplyTexture {
                                                         path: entry_path.clone(),

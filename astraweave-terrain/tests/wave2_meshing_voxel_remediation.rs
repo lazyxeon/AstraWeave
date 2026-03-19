@@ -53,9 +53,21 @@ fn chunk_mesh_memory_usage_increases_with_data() {
     let filled = ChunkMesh {
         coord: ChunkCoord::new(0, 0, 0),
         vertices: vec![
-            MeshVertex { position: Vec3::ZERO, normal: Vec3::Y, material: 1 },
-            MeshVertex { position: Vec3::X, normal: Vec3::Y, material: 1 },
-            MeshVertex { position: Vec3::Y, normal: Vec3::Y, material: 1 },
+            MeshVertex {
+                position: Vec3::ZERO,
+                normal: Vec3::Y,
+                material: 1,
+            },
+            MeshVertex {
+                position: Vec3::X,
+                normal: Vec3::Y,
+                material: 1,
+            },
+            MeshVertex {
+                position: Vec3::Y,
+                normal: Vec3::Y,
+                material: 1,
+            },
         ],
         indices: vec![0, 1, 2],
     };
@@ -115,7 +127,10 @@ fn dual_contouring_single_solid_voxel_generates_vertices() {
     let mut chunk = VoxelChunk::new(ChunkCoord::new(0, 0, 0));
     chunk.set_voxel(IVec3::new(5, 5, 5), Voxel::new(1.0, 1));
     let mesh = dc.generate_mesh(&chunk);
-    assert!(!mesh.is_empty(), "single solid voxel should produce mesh vertices");
+    assert!(
+        !mesh.is_empty(),
+        "single solid voxel should produce mesh vertices"
+    );
 }
 
 #[test]
@@ -137,7 +152,11 @@ fn dual_contouring_solid_block_generates_surface() {
         assert!(v.normal.length() > 0.0, "normals should be non-zero");
     }
     // Indices should be multiples of 3 (triangles)
-    assert_eq!(mesh.indices.len() % 3, 0, "indices should form complete triangles");
+    assert_eq!(
+        mesh.indices.len() % 3,
+        0,
+        "indices should form complete triangles"
+    );
 }
 
 #[test]
@@ -202,7 +221,11 @@ fn lod_mesh_generator_various_distances() {
     // All should produce empty meshes from empty chunk
     for dist in [10.0, 150.0, 400.0, 800.0, 5000.0] {
         let m = gen.generate_mesh_lod(&chunk, dist);
-        assert!(m.is_empty(), "empty chunk should always produce empty mesh at dist {}", dist);
+        assert!(
+            m.is_empty(),
+            "empty chunk should always produce empty mesh at dist {}",
+            dist
+        );
     }
 }
 
@@ -239,7 +262,10 @@ fn voxel_default_is_empty() {
 #[test]
 fn voxel_is_solid_threshold() {
     // density > 0.5 is solid
-    assert!(!Voxel::new(0.5, 0).is_solid(), "0.5 should NOT be solid (> 0.5 required)");
+    assert!(
+        !Voxel::new(0.5, 0).is_solid(),
+        "0.5 should NOT be solid (> 0.5 required)"
+    );
     assert!(Voxel::new(0.51, 0).is_solid(), "0.51 should be solid");
     assert!(Voxel::new(1.0, 0).is_solid());
     assert!(!Voxel::new(0.49, 0).is_solid());
@@ -250,7 +276,10 @@ fn voxel_is_empty_threshold() {
     // density < 0.01 is empty
     assert!(Voxel::new(0.0, 0).is_empty());
     assert!(Voxel::new(0.005, 0).is_empty());
-    assert!(!Voxel::new(0.01, 0).is_empty(), "0.01 should NOT be empty (< 0.01 required)");
+    assert!(
+        !Voxel::new(0.01, 0).is_empty(),
+        "0.01 should NOT be empty (< 0.01 required)"
+    );
     assert!(!Voxel::new(0.5, 0).is_empty());
 }
 
@@ -419,7 +448,10 @@ fn voxel_chunk_memory_increases_with_data() {
     let mut c = VoxelChunk::new(ChunkCoord::new(0, 0, 0));
     let m0 = c.memory_usage();
     c.set_voxel(IVec3::new(0, 0, 0), Voxel::new(1.0, 1));
-    assert!(c.memory_usage() > m0, "memory should increase after adding voxel");
+    assert!(
+        c.memory_usage() > m0,
+        "memory should increase after adding voxel"
+    );
 }
 
 // ============================================================================

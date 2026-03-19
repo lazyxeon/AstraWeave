@@ -8,8 +8,8 @@
 //!   world_to_local (line 273), memory_usage (line 289), estimate_tree_size (lines 295-300)
 
 use astraweave_terrain::{
-    ChunkCoord, SplatConfig, SplatMapGenerator, SplatRule, SplatWeights,
-    TriplanarWeights, Voxel, VoxelChunk, CHUNK_SIZE, MAX_SPLAT_LAYERS,
+    ChunkCoord, SplatConfig, SplatMapGenerator, SplatRule, SplatWeights, TriplanarWeights, Voxel,
+    VoxelChunk, CHUNK_SIZE, MAX_SPLAT_LAYERS,
 };
 use glam::{IVec3, Vec3};
 
@@ -37,10 +37,13 @@ fn calculate_weights_flat_terrain_grass_dominant() {
     let w = gen.calculate_weights(50.0, Vec3::Y);
     let weights = weights_array(&w);
     // Grass (id=0) must be positive
-    assert!(weights[0] > 0.0, "Grass weight should be positive at h=50 flat");
+    assert!(
+        weights[0] > 0.0,
+        "Grass weight should be positive at h=50 flat"
+    );
     // Grass should be dominant
     assert!(
-        weights[0] >= weights[1],
+        weights[0] >= weights[7],
         "Grass should dominate over rock on flat terrain"
     );
 }
@@ -53,8 +56,8 @@ fn calculate_weights_steep_slope_rock_dominant() {
     let gen = make_generator(42);
     let w = gen.calculate_weights(50.0, normal);
     let weights = weights_array(&w);
-    // Rock (id=1) should be present with high weight
-    assert!(weights[1] > 0.0, "Rock should have weight on steep slope");
+    // Rock (id=7) should be present with high weight
+    assert!(weights[7] > 0.0, "Rock should have weight on steep slope");
 }
 
 #[test]
@@ -67,8 +70,8 @@ fn calculate_weights_respects_rule_height_range() {
     let w_in = gen.calculate_weights(3.0, Vec3::Y);
     let w_out = gen.calculate_weights(50.0, Vec3::Y);
 
-    let in_sand = weights_array(&w_in)[2]; // sand = material_id 2
-    let out_sand = weights_array(&w_out)[2];
+    let in_sand = weights_array(&w_in)[1]; // sand = material_id 1
+    let out_sand = weights_array(&w_out)[1];
 
     assert!(in_sand > out_sand, "Sand should be higher at h=3 than h=50");
 }
@@ -83,7 +86,7 @@ fn calculate_weights_positive_weight_and_rule_match_required() {
     let mut grass = SplatRule::grass(); // material_id=0, weight=1.0
     grass.weight = 1.0;
     gen.add_rule(grass);
-    let mut rock = SplatRule::rock(); // material_id=1, weight=1.0
+    let mut rock = SplatRule::rock(); // material_id=7, weight=1.0
     rock.weight = 1.0;
     gen.add_rule(rock);
 
@@ -144,7 +147,10 @@ fn calculate_weights_noise_preserves_positive_weights() {
     for h in [0.0f32, 10.0, 20.0, 50.0, 80.0, 99.0] {
         let w = gen.calculate_weights(h, Vec3::Y);
         for &val in weights_array(&w).iter() {
-            assert!(val >= 0.0, "Weight should never go negative at h={h}, got {val}");
+            assert!(
+                val >= 0.0,
+                "Weight should never go negative at h={h}, got {val}"
+            );
         }
     }
 }
@@ -155,7 +161,11 @@ fn calculate_weights_deterministic_same_seed() {
     let gen2 = make_generator(42);
     let w1 = gen1.calculate_weights(50.0, Vec3::Y);
     let w2 = gen2.calculate_weights(50.0, Vec3::Y);
-    assert_eq!(weights_array(&w1), weights_array(&w2), "Same seed should give same weights");
+    assert_eq!(
+        weights_array(&w1),
+        weights_array(&w2),
+        "Same seed should give same weights"
+    );
 }
 
 #[test]
@@ -236,7 +246,7 @@ fn should_use_triplanar_at_threshold_boundary() {
     // Tests line 501: `self.y < threshold` — exactly at boundary should be false
     // Create a weight where y is exactly set to a known value
     let tw = TriplanarWeights::from_normal(Vec3::Y, 1.0); // sharpness=1 makes all equal to abs(n)
-    // For Vec3::Y with sharpness=1: x=0, y=1.0, z=0
+                                                          // For Vec3::Y with sharpness=1: x=0, y=1.0, z=0
     assert!(
         !tw.should_use_triplanar(1.0),
         "At exact threshold (y=1.0, threshold=1.0), < should return false"
@@ -274,14 +284,14 @@ fn voxel_chunk_all_octants_addressable() {
     // Place voxels in all 8 octants of the chunk
     let half = CHUNK_SIZE / 2;
     let test_positions = [
-        IVec3::new(0, 0, 0),                   // octant 0: all < half
-        IVec3::new(half, 0, 0),                 // octant 1: x >= half
-        IVec3::new(0, half, 0),                 // octant 2: y >= half
-        IVec3::new(half, half, 0),              // octant 3: x,y >= half
-        IVec3::new(0, 0, half),                 // octant 4: z >= half
-        IVec3::new(half, 0, half),              // octant 5: x,z >= half
-        IVec3::new(0, half, half),              // octant 6: y,z >= half
-        IVec3::new(half, half, half),           // octant 7: all >= half
+        IVec3::new(0, 0, 0),          // octant 0: all < half
+        IVec3::new(half, 0, 0),       // octant 1: x >= half
+        IVec3::new(0, half, 0),       // octant 2: y >= half
+        IVec3::new(half, half, 0),    // octant 3: x,y >= half
+        IVec3::new(0, 0, half),       // octant 4: z >= half
+        IVec3::new(half, 0, half),    // octant 5: x,z >= half
+        IVec3::new(0, half, half),    // octant 6: y,z >= half
+        IVec3::new(half, half, half), // octant 7: all >= half
     ];
 
     for (i, &pos) in test_positions.iter().enumerate() {
@@ -291,9 +301,9 @@ fn voxel_chunk_all_octants_addressable() {
 
     // Verify all 8 octant positions are retrievable with correct data
     for (i, &pos) in test_positions.iter().enumerate() {
-        let v = chunk.get_voxel(pos).unwrap_or_else(|| {
-            panic!("Voxel at octant {i} pos {pos:?} not found")
-        });
+        let v = chunk
+            .get_voxel(pos)
+            .unwrap_or_else(|| panic!("Voxel at octant {i} pos {pos:?} not found"));
         assert_eq!(v.material, i as u16, "Material mismatch at octant {i}");
     }
 }
@@ -315,7 +325,10 @@ fn voxel_chunk_child_index_boundary_half() {
     let v_below = chunk.get_voxel(below).unwrap();
     let v_at = chunk.get_voxel(at_half).unwrap();
 
-    assert_eq!(v_below.material, 100, "Below half should be in lower octant");
+    assert_eq!(
+        v_below.material, 100,
+        "Below half should be in lower octant"
+    );
     assert_eq!(v_at.material, 200, "At half should be in upper octant");
 }
 
@@ -385,7 +398,10 @@ fn voxel_chunk_world_to_local_different_coords() {
 
     assert_eq!(v1.material, 10);
     assert_eq!(v2.material, 20);
-    assert_ne!(v1.material, v2.material, "Distinct positions should have distinct values");
+    assert_ne!(
+        v1.material, v2.material,
+        "Distinct positions should have distinct values"
+    );
 }
 
 // ─── VoxelChunk::memory_usage / estimate_tree_size ──────────────────────────
@@ -396,7 +412,10 @@ fn voxel_chunk_empty_memory_usage() {
     let mem = chunk.memory_usage();
     // Empty chunk: just sizeof(Self) + 0 tree overhead
     assert!(mem > 0, "Even empty chunk has base memory");
-    assert!(mem < 1024, "Empty chunk should use minimal memory (got {mem})");
+    assert!(
+        mem < 1024,
+        "Empty chunk should use minimal memory (got {mem})"
+    );
 }
 
 #[test]
@@ -434,10 +453,7 @@ fn voxel_chunk_memory_addition_not_multiplication() {
         mem < 5000,
         "Memory {mem} should be reasonable (not multiplicative), self_size={self_size}"
     );
-    assert!(
-        mem >= self_size,
-        "Memory should be at least sizeof(Self)"
-    );
+    assert!(mem >= self_size, "Memory should be at least sizeof(Self)");
 }
 
 #[test]

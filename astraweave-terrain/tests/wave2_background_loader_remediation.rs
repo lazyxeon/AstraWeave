@@ -48,14 +48,26 @@ fn rate_limiter_active_count_starts_at_zero() {
 fn rate_limiter_cooldown_blocks_player() {
     let mut limiter = TerrainRateLimiter::new(10.0, 4);
     limiter.record_request("player1", 0.0);
-    
+
     // Before cooldown expires
-    assert!(!limiter.can_request("player1", 5.0), "Should be blocked at 5s (cooldown=10s)");
-    assert!(!limiter.can_request("player1", 9.9), "Should be blocked at 9.9s");
-    
+    assert!(
+        !limiter.can_request("player1", 5.0),
+        "Should be blocked at 5s (cooldown=10s)"
+    );
+    assert!(
+        !limiter.can_request("player1", 9.9),
+        "Should be blocked at 9.9s"
+    );
+
     // After cooldown expires
-    assert!(limiter.can_request("player1", 10.0), "Should be allowed at 10.0s");
-    assert!(limiter.can_request("player1", 15.0), "Should be allowed at 15.0s");
+    assert!(
+        limiter.can_request("player1", 10.0),
+        "Should be allowed at 10.0s"
+    );
+    assert!(
+        limiter.can_request("player1", 15.0),
+        "Should be allowed at 15.0s"
+    );
 }
 
 /// Different players have independent cooldowns.
@@ -63,10 +75,10 @@ fn rate_limiter_cooldown_blocks_player() {
 fn rate_limiter_independent_cooldowns() {
     let mut limiter = TerrainRateLimiter::new(10.0, 4);
     limiter.record_request("player1", 0.0);
-    
+
     // player2 has never requested, should be allowed
     assert!(limiter.can_request("player2", 5.0));
-    
+
     // player1 is still on cooldown
     assert!(!limiter.can_request("player1", 5.0));
 }
@@ -76,15 +88,18 @@ fn rate_limiter_independent_cooldowns() {
 fn rate_limiter_remaining_cooldown_values() {
     let mut limiter = TerrainRateLimiter::new(10.0, 4);
     limiter.record_request("player1", 0.0);
-    
+
     // At time 3.0, remaining = 10.0 - 3.0 = 7.0
     let remaining = limiter.remaining_cooldown("player1", 3.0);
-    assert!((remaining - 7.0).abs() < 0.01, "remaining at 3s: {remaining}");
-    
+    assert!(
+        (remaining - 7.0).abs() < 0.01,
+        "remaining at 3s: {remaining}"
+    );
+
     // At time 10.0, remaining = 0.0
     let remaining = limiter.remaining_cooldown("player1", 10.0);
     assert_eq!(remaining, 0.0, "remaining at 10s: {remaining}");
-    
+
     // At time 15.0, remaining = 0.0 (clamped)
     let remaining = limiter.remaining_cooldown("player1", 15.0);
     assert_eq!(remaining, 0.0, "remaining at 15s: {remaining}");
@@ -105,15 +120,18 @@ fn rate_limiter_unknown_player_zero_cooldown() {
 #[test]
 fn rate_limiter_max_concurrent_blocks() {
     let mut limiter = TerrainRateLimiter::new(1.0, 2); // Max 2 concurrent
-    
+
     limiter.record_request("p1", 0.0);
     limiter.record_request("p2", 0.0);
-    
+
     // Active count should be 2
     assert_eq!(limiter.active_count(), 2);
-    
+
     // Even though p3 has no cooldown, max concurrent reached
-    assert!(!limiter.can_request("p3", 100.0), "Should be blocked by max concurrent");
+    assert!(
+        !limiter.can_request("p3", 100.0),
+        "Should be blocked by max concurrent"
+    );
 }
 
 /// task_completed decrements active count.
@@ -123,10 +141,10 @@ fn rate_limiter_task_completed_decrements() {
     limiter.record_request("p1", 0.0);
     limiter.record_request("p2", 0.0);
     assert_eq!(limiter.active_count(), 2);
-    
+
     limiter.task_completed();
     assert_eq!(limiter.active_count(), 1);
-    
+
     limiter.task_completed();
     assert_eq!(limiter.active_count(), 0);
 }
@@ -135,7 +153,7 @@ fn rate_limiter_task_completed_decrements() {
 #[test]
 fn rate_limiter_task_completed_saturates() {
     let mut limiter = TerrainRateLimiter::new(10.0, 4);
-    limiter.task_completed();  // Already at 0
+    limiter.task_completed(); // Already at 0
     assert_eq!(limiter.active_count(), 0);
 }
 
@@ -145,13 +163,13 @@ fn rate_limiter_freed_slot_allows_new_request() {
     let mut limiter = TerrainRateLimiter::new(1.0, 2);
     limiter.record_request("p1", 0.0);
     limiter.record_request("p2", 0.0);
-    
+
     // Can't add p3
     assert!(!limiter.can_request("p3", 100.0));
-    
+
     // Complete one task
     limiter.task_completed();
-    
+
     // Now p3 should be allowed (cooldown doesn't apply, slot freed)
     assert!(limiter.can_request("p3", 100.0));
 }
@@ -166,12 +184,12 @@ fn rate_limiter_cleanup_removes_old_entries() {
     let mut limiter = TerrainRateLimiter::new(10.0, 4);
     limiter.record_request("old_player", 0.0);
     limiter.record_request("recent_player", 90.0);
-    
+
     // Cleanup at time 110 should remove entries older than 110 - 10*10 = 10
     // old_player at 0.0 < 10.0, should be removed
-    // recent_player at 90.0 >= 10.0, should remain  
+    // recent_player at 90.0 >= 10.0, should remain
     limiter.cleanup(110.0);
-    
+
     // old_player's cooldown data should be gone → remaining = 0
     assert_eq!(limiter.remaining_cooldown("old_player", 110.0), 0.0);
     // recent_player should still have data
@@ -197,7 +215,7 @@ fn chunk_priority_frustum_over_non_frustum() {
         in_frustum: false,
         timestamp: 0,
     };
-    
+
     // Higher priority means "should be loaded first" = should compare as Greater
     assert!(
         frustum > non_frustum,
@@ -218,11 +236,8 @@ fn chunk_priority_closer_is_higher() {
         in_frustum: true,
         timestamp: 0,
     };
-    
-    assert!(
-        close > far,
-        "Closer chunk should have higher priority"
-    );
+
+    assert!(close > far, "Closer chunk should have higher priority");
 }
 
 /// Equal distance and frustum → newer timestamp wins (most-recent priority).
@@ -238,7 +253,7 @@ fn chunk_priority_newer_timestamp_wins() {
         in_frustum: true,
         timestamp: 100,
     };
-    
+
     // Newer timestamp has higher Ord value (most-recent priority order)
     assert!(
         new > old,
@@ -330,10 +345,10 @@ fn terrain_task_revert_request_id() {
 fn rate_limiter_exact_cooldown_boundary() {
     let mut limiter = TerrainRateLimiter::new(5.0, 10);
     limiter.record_request("p1", 10.0);
-    
+
     // At exactly 15.0, elapsed = 5.0 >= 5.0 seconds cooldown → allowed
     assert!(limiter.can_request("p1", 15.0));
-    
+
     // At 14.99, elapsed = 4.99 < 5.0 → blocked
     assert!(!limiter.can_request("p1", 14.99));
 }
@@ -343,16 +358,16 @@ fn rate_limiter_exact_cooldown_boundary() {
 fn rate_limiter_rerecord_updates_timestamp() {
     let mut limiter = TerrainRateLimiter::new(5.0, 10);
     limiter.record_request("p1", 0.0);
-    
+
     // At 5.0, cooldown expired
     assert!(limiter.can_request("p1", 5.0));
-    
+
     // Re-record at 5.0
     limiter.record_request("p1", 5.0);
-    
+
     // Now cooldown is from 5.0, so 7.0 should be blocked
     assert!(!limiter.can_request("p1", 7.0));
-    
+
     // 10.0 should be allowed
     assert!(limiter.can_request("p1", 10.0));
 }
@@ -362,7 +377,7 @@ fn rate_limiter_rerecord_updates_timestamp() {
 fn rate_limiter_zero_cooldown_always_allowed() {
     let mut limiter = TerrainRateLimiter::new(0.0, 10);
     limiter.record_request("p1", 0.0);
-    
+
     // Even at same time, cooldown 0.0 means elapsed >= 0.0 is always true
     assert!(limiter.can_request("p1", 0.0));
 }

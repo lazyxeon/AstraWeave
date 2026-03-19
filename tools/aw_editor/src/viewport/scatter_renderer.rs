@@ -32,7 +32,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
-use super::camera::{Frustum, OrbitCamera};
+use super::camera::OrbitCamera;
 use super::terrain_renderer::TerrainFogParams;
 
 // ─── GPU Data Structures ─────────────────────────────────────────────────────
@@ -87,6 +87,7 @@ struct CachedMesh {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     index_count: u32,
+    vertex_count: u32,
     index_format: wgpu::IndexFormat,
 }
 
@@ -131,6 +132,18 @@ pub struct ScatterRenderer {
     // Stats
     last_instance_count: u32,
     last_draw_calls: u32,
+
+    // Instance cache: avoid rebuilding every frame when camera is stationary
+    cached_camera_pos: Vec3,
+    cached_camera_yaw: f32,
+    cached_camera_pitch: f32,
+    cached_instances: Vec<ScatterInstance>,
+    cached_draw_groups: Vec<DrawGroup>,
+    cached_placement_count: usize,
+    cache_valid: bool,
+
+    // Diagnostic logging
+    last_log_second: u32,
 }
 
 impl ScatterRenderer {
@@ -233,7 +246,7 @@ impl ScatterRenderer {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Bgra8UnormSrgb,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -252,7 +265,13 @@ impl ScatterRenderer {
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
+                // Negative depth bias pushes scatter fragments slightly closer to the
+                // camera than terrain, eliminating z-fighting at the terrain surface.
+                bias: wgpu::DepthBiasState {
+                    constant: -4,
+                    slope_scale: -2.0,
+                    clamp: 0.0,
+                },
             }),
             multisample: wgpu::MultisampleState {
                 count: 1,
@@ -274,7 +293,7 @@ impl ScatterRenderer {
                 fog_enabled: 0,
                 wind_strength: 0.0,
                 wind_frequency: 1.0,
-                cull_distance: 200.0,
+                cull_distance: 800.0,
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -313,11 +332,19 @@ impl ScatterRenderer {
             mesh_cache: HashMap::new(),
             wind_strength: 0.5,
             wind_frequency: 1.2,
-            cull_distance: 200.0,
+            cull_distance: 500.0,
             fog_params: TerrainFogParams::default(),
             start_time: std::time::Instant::now(),
             last_instance_count: 0,
             last_draw_calls: 0,
+            cached_camera_pos: Vec3::ZERO,
+            cached_camera_yaw: 0.0,
+            cached_camera_pitch: 0.0,
+            cached_instances: Vec::new(),
+            cached_draw_groups: Vec::new(),
+            cached_placement_count: 0,
+            cache_valid: false,
+            last_log_second: u32::MAX,
         })
     }
 
@@ -329,7 +356,11 @@ impl ScatterRenderer {
     }
 
     pub fn set_cull_distance(&mut self, distance: f32) {
-        self.cull_distance = distance.max(10.0);
+        let new_dist = distance.max(10.0);
+        if (new_dist - self.cull_distance).abs() > 0.01 {
+            self.cache_valid = false;
+        }
+        self.cull_distance = new_dist;
     }
 
     pub fn set_fog_params(&mut self, params: TerrainFogParams) {
@@ -344,6 +375,34 @@ impl ScatterRenderer {
         self.last_draw_calls
     }
 
+    /// Total triangles rendered last frame (instances × mesh triangles per draw group).
+    pub fn last_total_triangles(&self) -> usize {
+        self.cached_draw_groups
+            .iter()
+            .map(|g| {
+                let mesh_tris = self
+                    .mesh_cache
+                    .get(&g.mesh_key)
+                    .map_or(0, |m| m.index_count as usize / 3);
+                mesh_tris * g.instance_count as usize
+            })
+            .sum()
+    }
+
+    /// Total vertices rendered last frame (instances × mesh vertices per draw group).
+    pub fn last_total_vertices(&self) -> usize {
+        self.cached_draw_groups
+            .iter()
+            .map(|g| {
+                let mesh_verts = self
+                    .mesh_cache
+                    .get(&g.mesh_key)
+                    .map_or(0, |m| m.vertex_count as usize);
+                mesh_verts * g.instance_count as usize
+            })
+            .sum()
+    }
+
     // ─── Mesh Management ─────────────────────────────────────────────────────
 
     /// Load a GLTF/GLB mesh and cache it by key. No-op if already cached.
@@ -355,63 +414,124 @@ impl ScatterRenderer {
     }
 
     fn load_gltf_mesh(&mut self, key: &str, path: &str) -> Result<()> {
-        let (document, buffers, _images) =
+        let (document, buffers, images) =
             gltf::import(path).with_context(|| format!("Failed to import glTF: {path}"))?;
 
-        let mesh = document
-            .meshes()
-            .next()
-            .context("No meshes in glTF file")?;
-        let primitive = mesh
-            .primitives()
-            .next()
-            .context("No primitives in mesh")?;
+        let mesh = document.meshes().next().context("No meshes in glTF file")?;
 
-        let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+        // Merge ALL primitives into one vertex/index buffer so every material
+        // (e.g. leaves + bark) is rendered in a single draw call with correct colors.
+        let mut all_vertices: Vec<ScatterVertex> = Vec::new();
+        let mut all_indices: Vec<u32> = Vec::new();
 
-        let positions: Vec<[f32; 3]> = reader
-            .read_positions()
-            .context("No position data in mesh")?
-            .collect();
+        for primitive in mesh.primitives() {
+            let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
-        let normals: Vec<[f32; 3]> = if let Some(normals) = reader.read_normals() {
-            normals.collect()
-        } else {
-            vec![[0.0, 1.0, 0.0]; positions.len()]
-        };
+            let positions: Vec<[f32; 3]> = match reader.read_positions() {
+                Some(p) => p.collect(),
+                None => continue,
+            };
 
-        let vertex_colors: Vec<[f32; 4]> = if let Some(colors) = reader.read_colors(0) {
-            colors.into_rgba_f32().collect()
-        } else {
-            let base_color = primitive
-                .material()
-                .pbr_metallic_roughness()
-                .base_color_factor();
-            vec![base_color; positions.len()]
-        };
+            let normals: Vec<[f32; 3]> = if let Some(normals) = reader.read_normals() {
+                normals.collect()
+            } else {
+                vec![[0.0, 1.0, 0.0]; positions.len()]
+            };
 
-        let indices: Vec<u32> = reader
-            .read_indices()
-            .context("No index data in mesh")?
-            .into_u32()
-            .collect();
+            let vertex_colors: Vec<[f32; 4]> = if let Some(colors) = reader.read_colors(0) {
+                colors.into_rgba_f32().collect()
+            } else {
+                let material = primitive.material();
+                let pbr = material.pbr_metallic_roughness();
+                let base_color_factor = pbr.base_color_factor();
 
-        let vertices: Vec<ScatterVertex> = positions
-            .iter()
-            .zip(normals.iter())
-            .zip(vertex_colors.iter())
-            .map(|((p, n), c)| ScatterVertex {
-                position: *p,
-                normal: *n,
-                color: *c,
-            })
-            .collect();
+                // Try texture baking if available
+                let uvs: Option<Vec<[f32; 2]>> =
+                    reader.read_tex_coords(0).map(|tc| tc.into_f32().collect());
+
+                if let (Some(tex_info), Some(ref uv_coords)) = (pbr.base_color_texture(), &uvs) {
+                    let tex_index = tex_info.texture().source().index();
+                    if tex_index < images.len() {
+                        let img = &images[tex_index];
+                        let w = img.width as usize;
+                        let h = img.height as usize;
+                        uv_coords
+                            .iter()
+                            .map(|uv| {
+                                let u = (uv[0].fract() + 1.0).fract();
+                                let v = (uv[1].fract() + 1.0).fract();
+                                let px = ((u * w as f32) as usize).min(w.saturating_sub(1));
+                                let py = ((v * h as f32) as usize).min(h.saturating_sub(1));
+                                let bpp = match img.format {
+                                    gltf::image::Format::R8G8B8A8 => 4,
+                                    gltf::image::Format::R8G8B8 => 3,
+                                    _ => 0,
+                                };
+                                if bpp >= 3 {
+                                    let idx = (py * w + px) * bpp;
+                                    if idx + 2 < img.pixels.len() {
+                                        [
+                                            (img.pixels[idx] as f32 / 255.0) * base_color_factor[0],
+                                            (img.pixels[idx + 1] as f32 / 255.0)
+                                                * base_color_factor[1],
+                                            (img.pixels[idx + 2] as f32 / 255.0)
+                                                * base_color_factor[2],
+                                            if bpp == 4 && idx + 3 < img.pixels.len() {
+                                                (img.pixels[idx + 3] as f32 / 255.0)
+                                                    * base_color_factor[3]
+                                            } else {
+                                                base_color_factor[3]
+                                            },
+                                        ]
+                                    } else {
+                                        base_color_factor
+                                    }
+                                } else {
+                                    base_color_factor
+                                }
+                            })
+                            .collect()
+                    } else {
+                        vec![base_color_factor; positions.len()]
+                    }
+                } else {
+                    vec![base_color_factor; positions.len()]
+                }
+            };
+
+            let indices: Vec<u32> = match reader.read_indices() {
+                Some(idx) => idx.into_u32().collect(),
+                None => continue,
+            };
+
+            // Offset indices by current vertex count to merge into one buffer
+            let base_vertex = all_vertices.len() as u32;
+
+            for ((p, n), c) in positions
+                .iter()
+                .zip(normals.iter())
+                .zip(vertex_colors.iter())
+            {
+                all_vertices.push(ScatterVertex {
+                    position: *p,
+                    normal: *n,
+                    color: *c,
+                });
+            }
+
+            for idx in &indices {
+                all_indices.push(idx + base_vertex);
+            }
+        }
+
+        anyhow::ensure!(!all_vertices.is_empty(), "No vertex data in any primitive");
+        anyhow::ensure!(!all_indices.is_empty(), "No index data in any primitive");
 
         let vertex_buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Scatter VB: {key}")),
-                contents: bytemuck::cast_slice(&vertices),
+                contents: bytemuck::cast_slice(&all_vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
 
@@ -419,14 +539,14 @@ impl ScatterRenderer {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Scatter IB: {key}")),
-                contents: bytemuck::cast_slice(&indices),
+                contents: bytemuck::cast_slice(&all_indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
 
         tracing::info!(
             "Scatter: loaded mesh '{key}': {} verts, {} tris",
-            vertices.len(),
-            indices.len() / 3
+            all_vertices.len(),
+            all_indices.len() / 3
         );
 
         self.mesh_cache.insert(
@@ -434,7 +554,8 @@ impl ScatterRenderer {
             CachedMesh {
                 vertex_buffer,
                 index_buffer,
-                index_count: indices.len() as u32,
+                index_count: all_indices.len() as u32,
+                vertex_count: all_vertices.len() as u32,
                 index_format: wgpu::IndexFormat::Uint32,
             },
         );
@@ -464,7 +585,7 @@ impl ScatterRenderer {
             return Ok(());
         }
 
-        // Update uniforms
+        // Update uniforms (always needed — time changes, wind animates)
         let view_proj = camera.view_projection_matrix();
         let camera_pos = camera.position();
         let time = self.start_time.elapsed().as_secs_f32();
@@ -485,10 +606,7 @@ impl ScatterRenderer {
             }),
         );
 
-        let frustum = camera.extract_frustum();
-        let cull_dist_sq = self.cull_distance * self.cull_distance;
-
-        // Lazy-load meshes
+        // Lazy-load meshes (may invalidate cache if new meshes loaded)
         let paths_to_load: Vec<(String, String)> = placements
             .iter()
             .filter(|p| !self.mesh_cache.contains_key(&p.mesh_key))
@@ -497,105 +615,109 @@ impl ScatterRenderer {
             .into_iter()
             .collect();
 
-        for (key, path) in paths_to_load {
-            if let Err(e) = self.load_gltf_mesh(&key, &path) {
+        for (key, path) in &paths_to_load {
+            if let Err(e) = self.load_gltf_mesh(key, path) {
                 tracing::warn!("Scatter: failed to load mesh '{key}': {e}");
             }
         }
-
-        // CPU frustum + distance cull and group by mesh key
-        let mut grouped: HashMap<String, Vec<ScatterInstance>> = HashMap::new();
-
-        for placement in placements {
-            // Distance cull
-            let delta = placement.position - camera_pos;
-            if delta.length_squared() > cull_dist_sq {
-                continue;
-            }
-
-            // Frustum cull
-            if !frustum.contains_sphere(placement.position, placement.bounding_radius) {
-                continue;
-            }
-
-            // Skip meshes we couldn't load
-            if !self.mesh_cache.contains_key(&placement.mesh_key) {
-                continue;
-            }
-
-            let rotation = Quat::from_rotation_y(placement.rotation);
-            let transform = Mat4::from_scale_rotation_translation(
-                Vec3::splat(placement.scale),
-                rotation,
-                placement.position,
-            );
-
-            grouped
-                .entry(placement.mesh_key.clone())
-                .or_default()
-                .push(ScatterInstance {
-                    model_matrix: transform.to_cols_array_2d(),
-                    tint: [1.0, 1.0, 1.0, 1.0],
-                });
+        if !paths_to_load.is_empty() {
+            self.cache_valid = false;
         }
 
-        if grouped.is_empty() {
+        // Rebuild instance list with distance + frustum culling.
+        // The frustum near-plane is now correctly extracted for wgpu's [0,1] depth
+        // (using just row2 instead of the OpenGL row3+row2 formula), which was
+        // previously the root cause of frame-to-frame culling instability.
+        {
+            let frustum = camera.extract_frustum();
+            // CPU cull at 10% beyond shader cull_distance so fade completes
+            let cpu_cull = self.cull_distance * 1.10;
+            let cull_dist_sq = cpu_cull * cpu_cull;
+
+            let mut grouped: HashMap<String, Vec<ScatterInstance>> = HashMap::new();
+
+            for placement in placements {
+                if !self.mesh_cache.contains_key(&placement.mesh_key) {
+                    continue;
+                }
+                let delta = placement.position - camera_pos;
+                if delta.length_squared() > cull_dist_sq {
+                    continue;
+                }
+                let cull_radius = placement.bounding_radius.max(3.0);
+                if !frustum.contains_sphere(placement.position, cull_radius) {
+                    continue;
+                }
+
+                let rotation = Quat::from_rotation_y(placement.rotation);
+                let transform = Mat4::from_scale_rotation_translation(
+                    Vec3::splat(placement.scale),
+                    rotation,
+                    placement.position,
+                );
+
+                grouped
+                    .entry(placement.mesh_key.clone())
+                    .or_default()
+                    .push(ScatterInstance {
+                        model_matrix: transform.to_cols_array_2d(),
+                        tint: [1.0, 1.0, 1.0, 1.0],
+                    });
+            }
+
+            // Flatten into cached arrays, respecting the MAX_SCATTER_INSTANCES cap.
+            self.cached_instances.clear();
+            self.cached_draw_groups.clear();
+            let instance_cap = MAX_SCATTER_INSTANCES as usize;
+
+            for (mesh_key, instances) in &grouped {
+                let remaining = instance_cap.saturating_sub(self.cached_instances.len());
+                if remaining == 0 {
+                    break;
+                }
+                let count = instances.len().min(remaining);
+                let first = self.cached_instances.len() as u32;
+                self.cached_instances.extend_from_slice(&instances[..count]);
+                self.cached_draw_groups.push(DrawGroup {
+                    mesh_key: mesh_key.clone(),
+                    first_instance: first,
+                    instance_count: count as u32,
+                });
+            }
+        }
+
+        if self.cached_instances.is_empty() {
             self.last_instance_count = 0;
             self.last_draw_calls = 0;
             return Ok(());
         }
 
-        // Flatten instances and build draw groups
-        let mut all_instances: Vec<ScatterInstance> = Vec::new();
-        let mut draw_groups: Vec<DrawGroup> = Vec::new();
+        let total = self.cached_instances.len();
+        debug_assert!(total <= MAX_SCATTER_INSTANCES as usize);
+        self.last_instance_count = total as u32;
+        self.last_draw_calls = self.cached_draw_groups.len() as u32;
 
-        for (mesh_key, instances) in &grouped {
-            let first = all_instances.len() as u32;
-            let count = instances.len() as u32;
-            all_instances.extend_from_slice(instances);
-            draw_groups.push(DrawGroup {
-                mesh_key: mesh_key.clone(),
-                first_instance: first,
-                instance_count: count,
-            });
+        // Diagnostic: log scatter stats once per second
+        let elapsed_secs = time as u32;
+        if elapsed_secs != self.last_log_second {
+            self.last_log_second = elapsed_secs;
+            tracing::info!(
+                "Scatter: {} placements, {} meshes cached, {} instances, {} draw groups",
+                placements.len(),
+                self.mesh_cache.len(),
+                total,
+                self.cached_draw_groups.len(),
+            );
         }
 
-        let total = all_instances.len().min(MAX_SCATTER_INSTANCES as usize);
-        self.last_instance_count = total as u32;
-        self.last_draw_calls = draw_groups.len() as u32;
-
-        // Upload instance data
+        // Upload instance data (already capped at MAX_SCATTER_INSTANCES)
         queue.write_buffer(
             &self.instance_buffer,
             0,
-            bytemuck::cast_slice(&all_instances[..total]),
+            bytemuck::cast_slice(&self.cached_instances),
         );
 
-        // Build and upload indirect draw args
-        let mut indirect_args: Vec<DrawIndexedIndirectArgs> = Vec::new();
-        for group in &draw_groups {
-            if let Some(mesh) = self.mesh_cache.get(&group.mesh_key) {
-                indirect_args.push(DrawIndexedIndirectArgs {
-                    index_count: mesh.index_count,
-                    instance_count: group.instance_count,
-                    first_index: 0,
-                    base_vertex: 0,
-                    first_instance: group.first_instance,
-                });
-            }
-        }
-
-        if indirect_args.is_empty() {
-            return Ok(());
-        }
-
-        queue.write_buffer(
-            &self.indirect_buffer,
-            0,
-            bytemuck::cast_slice(&indirect_args),
-        );
-
-        // ── Render pass ──────────────────────────────────────────────────────
+        // ── Render pass (direct draw calls — more reliable than indirect) ─────
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Scatter Render Pass"),
@@ -623,13 +745,16 @@ impl ScatterRenderer {
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
-        // Issue one indirect draw per mesh type
-        let stride = std::mem::size_of::<DrawIndexedIndirectArgs>() as u64;
-        for (i, group) in draw_groups.iter().enumerate() {
+        // Issue one direct draw per mesh type (simpler and more portable than indirect draws)
+        for group in &self.cached_draw_groups {
             if let Some(mesh) = self.mesh_cache.get(&group.mesh_key) {
                 pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                 pass.set_index_buffer(mesh.index_buffer.slice(..), mesh.index_format);
-                pass.draw_indexed_indirect(&self.indirect_buffer, i as u64 * stride);
+                pass.draw_indexed(
+                    0..mesh.index_count,
+                    0,
+                    group.first_instance..group.first_instance + group.instance_count,
+                );
             }
         }
 

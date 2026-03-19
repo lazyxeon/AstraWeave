@@ -23,9 +23,21 @@ fn simple_mesh() -> ChunkMesh {
     ChunkMesh {
         coord: ChunkCoord::new(0, 0, 0),
         vertices: vec![
-            MeshVertex { position: Vec3::ZERO, normal: Vec3::Y, material: 1 },
-            MeshVertex { position: Vec3::X, normal: Vec3::Y, material: 1 },
-            MeshVertex { position: Vec3::Y, normal: Vec3::Y, material: 1 },
+            MeshVertex {
+                position: Vec3::ZERO,
+                normal: Vec3::Y,
+                material: 1,
+            },
+            MeshVertex {
+                position: Vec3::X,
+                normal: Vec3::Y,
+                material: 1,
+            },
+            MeshVertex {
+                position: Vec3::Y,
+                normal: Vec3::Y,
+                material: 1,
+            },
         ],
         indices: vec![0, 1, 2],
     }
@@ -156,10 +168,13 @@ fn get_threshold_half_quarter_symmetric() {
     let c = LodConfig::default();
     // base = 512
     let down = c.get_threshold(LodLevel::Half, LodLevel::Quarter, false); // 512 * 1.1 = 563.2
-    let up = c.get_threshold(LodLevel::Quarter, LodLevel::Half, true);     // 512 * 0.9 = 460.8
+    let up = c.get_threshold(LodLevel::Quarter, LodLevel::Half, true); // 512 * 0.9 = 460.8
     assert!((down - 563.2).abs() < 0.1);
     assert!((up - 460.8).abs() < 0.1);
-    assert!(down > up, "decreasing threshold should be greater than increasing");
+    assert!(
+        down > up,
+        "decreasing threshold should be greater than increasing"
+    );
 }
 
 #[test]
@@ -167,7 +182,7 @@ fn get_threshold_quarter_skybox() {
     let c = LodConfig::default();
     // base = 1024
     let down = c.get_threshold(LodLevel::Quarter, LodLevel::Skybox, false); // 1024 * 1.1 = 1126.4
-    let up = c.get_threshold(LodLevel::Skybox, LodLevel::Quarter, true);     // 1024 * 0.9 = 921.6
+    let up = c.get_threshold(LodLevel::Skybox, LodLevel::Quarter, true); // 1024 * 0.9 = 921.6
     assert!((down - 1126.4).abs() < 0.1);
     assert!((up - 921.6).abs() < 0.1);
 }
@@ -175,8 +190,14 @@ fn get_threshold_quarter_skybox() {
 #[test]
 fn get_threshold_invalid_transition_returns_max() {
     let c = LodConfig::default();
-    assert_eq!(c.get_threshold(LodLevel::Full, LodLevel::Skybox, true), f32::MAX);
-    assert_eq!(c.get_threshold(LodLevel::Full, LodLevel::Quarter, false), f32::MAX);
+    assert_eq!(
+        c.get_threshold(LodLevel::Full, LodLevel::Skybox, true),
+        f32::MAX
+    );
+    assert_eq!(
+        c.get_threshold(LodLevel::Full, LodLevel::Quarter, false),
+        f32::MAX
+    );
 }
 
 // ============================================================================
@@ -236,7 +257,9 @@ fn cache_mesh_then_retrieve() {
 fn cache_miss_returns_none() {
     let cfg = LodConfig::default();
     let mut mgr = LodManager::new(cfg, 256.0);
-    assert!(mgr.get_cached_mesh(ChunkId::new(99, 99), LodLevel::Full).is_none());
+    assert!(mgr
+        .get_cached_mesh(ChunkId::new(99, 99), LodLevel::Full)
+        .is_none());
 }
 
 #[test]
@@ -277,7 +300,10 @@ fn cache_memory_after_caching() {
     let mut mgr = LodManager::new(cfg, 256.0);
     let mesh = Arc::new(simple_mesh());
     mgr.cache_mesh(ChunkId::new(0, 0), LodLevel::Full, mesh);
-    assert!(mgr.cache_memory_usage() > 0, "should have non-zero memory after caching");
+    assert!(
+        mgr.cache_memory_usage() > 0,
+        "should have non-zero memory after caching"
+    );
 }
 
 // ============================================================================

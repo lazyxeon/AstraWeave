@@ -79,7 +79,10 @@ fn bilinear_clamp_below_zero() {
     let data = vec![42.0, 0.0, 0.0, 0.0];
     let hm = Heightmap::from_data(data, 2).unwrap();
     let v = hm.sample_bilinear(-5.0, -5.0);
-    assert!((v - 42.0).abs() < 1e-4, "Negative coords should clamp to corner: {v}");
+    assert!(
+        (v - 42.0).abs() < 1e-4,
+        "Negative coords should clamp to corner: {v}"
+    );
 }
 
 // ============================================================================
@@ -111,16 +114,34 @@ fn normal_slope_in_x() {
     let n = hm.calculate_normal(1, 1, 1.0);
 
     // dx = (20-0)/(2*1) = 10, normal.x = -10 pre-normalize
-    assert!(n.x < -0.5, "Normal should point against +X slope: x={}", n.x);
+    assert!(
+        n.x < -0.5,
+        "Normal should point against +X slope: x={}",
+        n.x
+    );
     assert!(n.y > 0.0, "Normal should have positive Y: y={}", n.y);
-    assert!(n.z.abs() < 1e-4, "No Z component for pure X slope: z={}", n.z);
+    assert!(
+        n.z.abs() < 1e-4,
+        "No Z component for pure X slope: z={}",
+        n.z
+    );
 
     // Verify exact normalized values: normalize(-10, 1, 0) = (-10, 1, 0) / sqrt(101)
     let mag = (10.0f32 * 10.0 + 1.0).sqrt();
     let expected_x = -10.0 / mag;
     let expected_y = 1.0 / mag;
-    assert!((n.x - expected_x).abs() < 1e-4, "x: {} vs {}", n.x, expected_x);
-    assert!((n.y - expected_y).abs() < 1e-4, "y: {} vs {}", n.y, expected_y);
+    assert!(
+        (n.x - expected_x).abs() < 1e-4,
+        "x: {} vs {}",
+        n.x,
+        expected_x
+    );
+    assert!(
+        (n.y - expected_y).abs() < 1e-4,
+        "y: {} vs {}",
+        n.y,
+        expected_y
+    );
 }
 
 #[test]
@@ -135,7 +156,11 @@ fn normal_slope_in_z() {
     let n = hm.calculate_normal(1, 1, 1.0);
 
     // dz = (20-0)/(2*1) = 10, normal.z = -10 pre-normalize
-    assert!(n.z < -0.5, "Normal should point against +Z slope: z={}", n.z);
+    assert!(
+        n.z < -0.5,
+        "Normal should point against +Z slope: z={}",
+        n.z
+    );
     assert!(n.x.abs() < 1e-4, "No X component: x={}", n.x);
 }
 
@@ -143,19 +168,25 @@ fn normal_slope_in_z() {
 fn normal_with_scale_factor() {
     // Same as normal_slope_in_x but with scale=2.0
     // dx = (20-0)/(2*2) = 5, normal = normalize(-5, 1, 0)
-    let data = vec![
-        0.0, 10.0, 20.0,
-        0.0, 10.0, 20.0,
-        0.0, 10.0, 20.0,
-    ];
+    let data = vec![0.0, 10.0, 20.0, 0.0, 10.0, 20.0, 0.0, 10.0, 20.0];
     let hm = Heightmap::from_data(data, 3).unwrap();
     let n = hm.calculate_normal(1, 1, 2.0);
 
     let mag = (5.0f32 * 5.0 + 1.0).sqrt();
     let expected_x = -5.0 / mag;
     let expected_y = 1.0 / mag;
-    assert!((n.x - expected_x).abs() < 1e-4, "x with scale: {} vs {}", n.x, expected_x);
-    assert!((n.y - expected_y).abs() < 1e-4, "y with scale: {} vs {}", n.y, expected_y);
+    assert!(
+        (n.x - expected_x).abs() < 1e-4,
+        "x with scale: {} vs {}",
+        n.x,
+        expected_x
+    );
+    assert!(
+        (n.y - expected_y).abs() < 1e-4,
+        "y with scale: {} vs {}",
+        n.y,
+        expected_y
+    );
 }
 
 #[test]
@@ -190,7 +221,10 @@ fn smooth_single_iteration_center_value() {
     let mut hm = Heightmap::from_data(data, 3).unwrap();
     hm.smooth(1);
     let center = hm.get_height(1, 1);
-    assert!((center - 4.0).abs() < 1e-4, "After 1 smooth iteration, center should be 4.0, got {center}");
+    assert!(
+        (center - 4.0).abs() < 1e-4,
+        "After 1 smooth iteration, center should be 4.0, got {center}"
+    );
 }
 
 #[test]
@@ -213,7 +247,10 @@ fn smooth_updates_min_max() {
     data[12] = 100.0; // center of 5×5
     let mut hm = Heightmap::from_data(data, 5).unwrap();
     hm.smooth(1);
-    assert!(hm.max_height() < 100.0, "Max should decrease after smoothing");
+    assert!(
+        hm.max_height() < 100.0,
+        "Max should decrease after smoothing"
+    );
     assert!(hm.min_height() >= 0.0, "Min should stay non-negative");
 }
 
@@ -309,7 +346,7 @@ fn indices_3x3_count_and_quad_pattern() {
     // Check second quad (1,0): base=1
     assert_eq!(idx[6], 1);
     assert_eq!(idx[7], 2);
-    assert_eq!(idx[8], 4);  // 1 + 3
+    assert_eq!(idx[8], 4); // 1 + 3
     assert_eq!(idx[9], 2);
     assert_eq!(idx[10], 5); // 1 + 3 + 1
     assert_eq!(idx[11], 4);
@@ -378,11 +415,19 @@ fn thermal_erosion_lowers_spike() {
     astraweave_terrain::erosion::apply_thermal_erosion(&mut hm, 5, 30.0).unwrap();
 
     let center_after = hm.get_height(2, 2);
-    assert!(center_after < center_before, "Spike should erode: {} >= {}", center_after, center_before);
+    assert!(
+        center_after < center_before,
+        "Spike should erode: {} >= {}",
+        center_after,
+        center_before
+    );
 
     // Neighbors should gain material
     let n_right = hm.get_height(3, 2);
-    assert!(n_right > 0.0, "Right neighbor should receive material: {n_right}");
+    assert!(
+        n_right > 0.0,
+        "Right neighbor should receive material: {n_right}"
+    );
 }
 
 #[test]
@@ -429,7 +474,8 @@ fn hydraulic_erosion_delegates_to_heightmap() {
     let mut data = vec![0.0; 1024]; // 32×32
     for x in 0..32u32 {
         for z in 0..32u32 {
-            data[(z * 32 + x) as usize] = ((x as f32 - 16.0).powi(2) + (z as f32 - 16.0).powi(2)).sqrt() * 3.0;
+            data[(z * 32 + x) as usize] =
+                ((x as f32 - 16.0).powi(2) + (z as f32 - 16.0).powi(2)).sqrt() * 3.0;
         }
     }
     let mut hm = Heightmap::from_data(data.clone(), 32).unwrap();
@@ -546,7 +592,10 @@ fn climate_different_seeds_differ() {
     let (t2, m2) = c2.sample_climate(1000.0, 1000.0, 10.0);
 
     // Very unlikely to be identical with different seeds
-    assert!(t1 != t2 || m1 != m2, "Different seeds should produce different climate");
+    assert!(
+        t1 != t2 || m1 != m2,
+        "Different seeds should produce different climate"
+    );
 }
 
 #[test]
@@ -557,7 +606,10 @@ fn climate_height_gradient_reduces_temperature() {
     let (t_low, _) = climate.sample_climate(100.0, 100.0, 0.0);
     let (t_high, _) = climate.sample_climate(100.0, 100.0, 200.0);
 
-    assert!(t_high < t_low, "Higher elevation should be cooler: t_low={t_low}, t_high={t_high}");
+    assert!(
+        t_high < t_low,
+        "Higher elevation should be cooler: t_low={t_low}, t_high={t_high}"
+    );
 }
 
 // ============================================================================
@@ -571,50 +623,101 @@ fn packed_blend_single_biome_full_weight() {
         weight: 5.0,
     }];
     let packed = PackedBiomeBlend::from_weights(&weights);
-    assert!((packed.weights[0] - 1.0).abs() < 1e-4, "Single biome should normalize to 1.0");
+    assert!(
+        (packed.weights[0] - 1.0).abs() < 1e-4,
+        "Single biome should normalize to 1.0"
+    );
     assert_eq!(packed.dominant_biome(), BiomeType::Desert);
 }
 
 #[test]
 fn packed_blend_two_biomes_proportional() {
     let weights = vec![
-        BiomeWeight { biome: BiomeType::Grassland, weight: 3.0 },
-        BiomeWeight { biome: BiomeType::Forest, weight: 1.0 },
+        BiomeWeight {
+            biome: BiomeType::Grassland,
+            weight: 3.0,
+        },
+        BiomeWeight {
+            biome: BiomeType::Forest,
+            weight: 1.0,
+        },
     ];
     let packed = PackedBiomeBlend::from_weights(&weights);
     let sum: f32 = packed.weights.iter().sum();
-    assert!((sum - 1.0).abs() < 1e-4, "Weights should sum to 1.0, got {sum}");
-    assert!((packed.weights[0] - 0.75).abs() < 1e-4, "3:1 ratio → 0.75, got {}", packed.weights[0]);
-    assert!((packed.weights[1] - 0.25).abs() < 1e-4, "3:1 ratio → 0.25, got {}", packed.weights[1]);
+    assert!(
+        (sum - 1.0).abs() < 1e-4,
+        "Weights should sum to 1.0, got {sum}"
+    );
+    assert!(
+        (packed.weights[0] - 0.75).abs() < 1e-4,
+        "3:1 ratio → 0.75, got {}",
+        packed.weights[0]
+    );
+    assert!(
+        (packed.weights[1] - 0.25).abs() < 1e-4,
+        "3:1 ratio → 0.25, got {}",
+        packed.weights[1]
+    );
 }
 
 #[test]
 fn packed_blend_zero_weights_fallback() {
     let weights: Vec<BiomeWeight> = vec![];
     let packed = PackedBiomeBlend::from_weights(&weights);
-    assert!((packed.weights[0] - 1.0).abs() < 1e-4, "Empty input should fallback to 1.0");
-    assert_eq!(packed.dominant_biome(), BiomeType::Grassland, "Empty should default to Grassland");
+    assert!(
+        (packed.weights[0] - 1.0).abs() < 1e-4,
+        "Empty input should fallback to 1.0"
+    );
+    assert_eq!(
+        packed.dominant_biome(),
+        BiomeType::Grassland,
+        "Empty should default to Grassland"
+    );
 }
 
 #[test]
 fn packed_blend_tiny_weights_culled() {
     let weights = vec![
-        BiomeWeight { biome: BiomeType::Forest, weight: 1.0 },
-        BiomeWeight { biome: BiomeType::Desert, weight: 0.0005 }, // below 0.001 threshold
+        BiomeWeight {
+            biome: BiomeType::Forest,
+            weight: 1.0,
+        },
+        BiomeWeight {
+            biome: BiomeType::Desert,
+            weight: 0.0005,
+        }, // below 0.001 threshold
     ];
     let packed = PackedBiomeBlend::from_weights(&weights);
     // Desert should be filtered out
-    assert!((packed.weights[0] - 1.0).abs() < 1e-3, "Tiny weight should be culled");
+    assert!(
+        (packed.weights[0] - 1.0).abs() < 1e-3,
+        "Tiny weight should be culled"
+    );
 }
 
 #[test]
 fn packed_blend_five_biomes_drops_lowest() {
     let weights = vec![
-        BiomeWeight { biome: BiomeType::Grassland, weight: 0.5 },
-        BiomeWeight { biome: BiomeType::Forest, weight: 0.3 },
-        BiomeWeight { biome: BiomeType::Mountain, weight: 0.2 },
-        BiomeWeight { biome: BiomeType::Desert, weight: 0.1 },
-        BiomeWeight { biome: BiomeType::Tundra, weight: 0.05 },
+        BiomeWeight {
+            biome: BiomeType::Grassland,
+            weight: 0.5,
+        },
+        BiomeWeight {
+            biome: BiomeType::Forest,
+            weight: 0.3,
+        },
+        BiomeWeight {
+            biome: BiomeType::Mountain,
+            weight: 0.2,
+        },
+        BiomeWeight {
+            biome: BiomeType::Desert,
+            weight: 0.1,
+        },
+        BiomeWeight {
+            biome: BiomeType::Tundra,
+            weight: 0.05,
+        },
     ];
     let packed = PackedBiomeBlend::from_weights(&weights);
     // Only top 4 should survive
@@ -631,13 +734,16 @@ fn splat_rule_perfect_match() {
     let rule = SplatRule::grass();
     // height=50 in [0,100], slope=15 in [0,30] → base weight 1.0
     let w = rule.evaluate(50.0, 15.0);
-    assert!((w - 1.0).abs() < 1e-4, "Perfect match should give weight 1.0, got {w}");
+    assert!(
+        (w - 1.0).abs() < 1e-4,
+        "Perfect match should give weight 1.0, got {w}"
+    );
 }
 
 #[test]
 fn splat_rule_below_min_height_falloff() {
     let rule = SplatRule::grass(); // min_height=0, height_falloff=0.02
-    // height=-10 → penalty = (0 - (-10)) * 0.02 = 0.2 → weight = 1.0 * (1 - 0.2) = 0.8
+                                   // height=-10 → penalty = (0 - (-10)) * 0.02 = 0.2 → weight = 1.0 * (1 - 0.2) = 0.8
     let w = rule.evaluate(-10.0, 15.0);
     assert!((w - 0.8).abs() < 1e-4, "Expected 0.8, got {w}");
 }
@@ -645,7 +751,7 @@ fn splat_rule_below_min_height_falloff() {
 #[test]
 fn splat_rule_above_max_height_falloff() {
     let rule = SplatRule::grass(); // max_height=100, height_falloff=0.02
-    // height=130 → penalty = (130-100)*0.02 = 0.6 → weight = 1.0*(1-0.6) = 0.4
+                                   // height=130 → penalty = (130-100)*0.02 = 0.6 → weight = 1.0*(1-0.6) = 0.4
     let w = rule.evaluate(130.0, 15.0);
     assert!((w - 0.4).abs() < 1e-4, "Expected 0.4, got {w}");
 }
@@ -653,7 +759,7 @@ fn splat_rule_above_max_height_falloff() {
 #[test]
 fn splat_rule_above_max_slope_falloff() {
     let rule = SplatRule::grass(); // max_slope=30, slope_falloff=0.05
-    // slope=40 → penalty = (40-30)*0.05 = 0.5 → weight = 1.0*(1-0.5) = 0.5
+                                   // slope=40 → penalty = (40-30)*0.05 = 0.5 → weight = 1.0*(1-0.5) = 0.5
     let w = rule.evaluate(50.0, 40.0);
     assert!((w - 0.5).abs() < 1e-4, "Expected 0.5, got {w}");
 }
@@ -661,9 +767,12 @@ fn splat_rule_above_max_slope_falloff() {
 #[test]
 fn splat_rule_extreme_height_clamps_to_zero() {
     let rule = SplatRule::grass(); // height_falloff=0.02
-    // height=200 → penalty = (200-100)*0.02 = 2.0 → max(0, 1-2) = 0.0
+                                   // height=200 → penalty = (200-100)*0.02 = 2.0 → max(0, 1-2) = 0.0
     let w = rule.evaluate(200.0, 15.0);
-    assert!(w.abs() < 1e-4, "Far outside range should clamp to 0, got {w}");
+    assert!(
+        w.abs() < 1e-4,
+        "Far outside range should clamp to 0, got {w}"
+    );
 }
 
 // ============================================================================
@@ -675,7 +784,11 @@ fn triplanar_pure_y_up() {
     let tw = TriplanarWeights::from_normal(Vec3::Y, 4.0);
     // abs_normal = (0, 1, 0)
     // x^4=0, y^4=1, z^4=0, sum=1
-    assert!((tw.y - 1.0).abs() < 1e-4, "Pure Y-up should give y=1.0, got {}", tw.y);
+    assert!(
+        (tw.y - 1.0).abs() < 1e-4,
+        "Pure Y-up should give y=1.0, got {}",
+        tw.y
+    );
     assert!(tw.x < 1e-4);
     assert!(tw.z < 1e-4);
 }
@@ -692,7 +805,12 @@ fn triplanar_equal_xy_sharpness_1() {
     // (0.707, 0.707, 0) with sharpness=1 → equal component → 50/50
     let n = Vec3::new(1.0, 1.0, 0.0).normalize();
     let tw = TriplanarWeights::from_normal(n, 1.0);
-    assert!((tw.x - tw.y).abs() < 0.05, "Equal components should give equal weights: x={}, y={}", tw.x, tw.y);
+    assert!(
+        (tw.x - tw.y).abs() < 0.05,
+        "Equal components should give equal weights: x={}, y={}",
+        tw.x,
+        tw.y
+    );
     assert!((tw.x + tw.y - 1.0).abs() < 0.05);
 }
 
@@ -700,13 +818,19 @@ fn triplanar_equal_xy_sharpness_1() {
 fn triplanar_should_use_triplanar_steep() {
     // Steep surface (mostly X-facing) → y weight is low
     let tw = TriplanarWeights::from_normal(Vec3::X, 4.0);
-    assert!(tw.should_use_triplanar(0.5), "Vertical cliff should use triplanar");
+    assert!(
+        tw.should_use_triplanar(0.5),
+        "Vertical cliff should use triplanar"
+    );
 }
 
 #[test]
 fn triplanar_should_not_use_triplanar_flat() {
     let tw = TriplanarWeights::from_normal(Vec3::Y, 4.0);
-    assert!(!tw.should_use_triplanar(0.5), "Flat surface should not use triplanar");
+    assert!(
+        !tw.should_use_triplanar(0.5),
+        "Flat surface should not use triplanar"
+    );
 }
 
 // ============================================================================
@@ -757,7 +881,11 @@ fn splat_generator_beach_is_sand() {
     let config = SplatConfig::default();
     let gen = SplatMapGenerator::with_default_rules(config, 42);
     let w = gen.calculate_weights(2.0, Vec3::Y);
-    assert_eq!(w.dominant_layer(), 2, "Beach height should give sand (layer 2)");
+    assert_eq!(
+        w.dominant_layer(),
+        1,
+        "Beach height should give sand (layer 1)"
+    );
 }
 
 #[test]
@@ -765,7 +893,11 @@ fn splat_generator_high_flat_is_snow() {
     let config = SplatConfig::default();
     let gen = SplatMapGenerator::with_default_rules(config, 42);
     let w = gen.calculate_weights(180.0, Vec3::Y);
-    assert_eq!(w.dominant_layer(), 3, "High flat terrain should give snow (layer 3)");
+    assert_eq!(
+        w.dominant_layer(),
+        4,
+        "High flat terrain should give snow (layer 4)"
+    );
 }
 
 #[test]
@@ -774,7 +906,11 @@ fn splat_generator_steep_is_rock() {
     let gen = SplatMapGenerator::with_default_rules(config, 42);
     let n = Vec3::new(0.3, 0.3, 0.9).normalize();
     let w = gen.calculate_weights(50.0, n);
-    assert_eq!(w.dominant_layer(), 1, "Steep slope should give rock (layer 1)");
+    assert_eq!(
+        w.dominant_layer(),
+        7,
+        "Steep slope should give rock (layer 7)"
+    );
 }
 
 // ============================================================================
@@ -881,7 +1017,7 @@ fn splat_rule_grass_preset_values() {
 #[test]
 fn splat_rule_rock_preset_values() {
     let r = SplatRule::rock();
-    assert_eq!(r.material_id, 1);
+    assert_eq!(r.material_id, 7);
     assert!((r.min_slope - 35.0).abs() < 1e-4);
     assert!((r.max_slope - 90.0).abs() < 1e-4);
     assert_eq!(r.priority, 20);
@@ -891,7 +1027,7 @@ fn splat_rule_rock_preset_values() {
 #[test]
 fn splat_rule_sand_preset_values() {
     let r = SplatRule::sand();
-    assert_eq!(r.material_id, 2);
+    assert_eq!(r.material_id, 1);
     assert!((r.min_height - (-5.0)).abs() < 1e-4);
     assert!((r.max_height - 8.0).abs() < 1e-4);
     assert_eq!(r.priority, 15);
@@ -902,7 +1038,7 @@ fn splat_rule_sand_preset_values() {
 #[test]
 fn splat_rule_snow_preset_values() {
     let r = SplatRule::snow();
-    assert_eq!(r.material_id, 3);
+    assert_eq!(r.material_id, 4);
     assert!((r.min_height - 120.0).abs() < 1e-4);
     assert_eq!(r.priority, 25);
     assert!((r.slope_falloff - 0.08).abs() < 1e-4);
@@ -975,7 +1111,10 @@ fn world_generator_chunk_heightmap_populated() {
     let chunk = gen.generate_chunk(ChunkId::new(0, 0)).unwrap();
     let hm = chunk.heightmap();
     // Noise-generated heightmap should have non-zero variation
-    assert!(hm.max_height() > hm.min_height(), "Heightmap should have variation");
+    assert!(
+        hm.max_height() > hm.min_height(),
+        "Heightmap should have variation"
+    );
 }
 
 #[test]
@@ -984,7 +1123,10 @@ fn world_generator_register_and_get() {
     let mut gen = WorldGenerator::new(cfg);
     let id = ChunkId::new(1, 1);
     gen.generate_and_register_chunk(id).unwrap();
-    assert!(gen.get_chunk(id).is_some(), "Registered chunk should be retrievable");
+    assert!(
+        gen.get_chunk(id).is_some(),
+        "Registered chunk should be retrievable"
+    );
 }
 
 #[test]
@@ -999,7 +1141,10 @@ fn world_generator_streaming_loads_chunks() {
     let cfg = WorldConfig::default();
     let mut gen = WorldGenerator::new(cfg);
     let loaded = gen.stream_chunks(Vec3::ZERO, 1).unwrap();
-    assert!(!loaded.is_empty(), "stream_chunks should load at least one chunk");
+    assert!(
+        !loaded.is_empty(),
+        "stream_chunks should load at least one chunk"
+    );
 }
 
 // ============================================================================
@@ -1042,9 +1187,18 @@ fn heightmap_config_exact_defaults() {
 #[test]
 fn climate_config_height_gradient_sign() {
     let cfg = ClimateConfig::default();
-    assert!(cfg.temperature_height_gradient < 0.0, "Temperature should decrease with height");
-    assert!(cfg.temperature_latitude_gradient > 0.0, "Latitude gradient should be positive");
-    assert!(cfg.moisture_distance_falloff > 0.0, "Moisture falloff should be positive");
+    assert!(
+        cfg.temperature_height_gradient < 0.0,
+        "Temperature should decrease with height"
+    );
+    assert!(
+        cfg.temperature_latitude_gradient > 0.0,
+        "Latitude gradient should be positive"
+    );
+    assert!(
+        cfg.moisture_distance_falloff > 0.0,
+        "Moisture falloff should be positive"
+    );
 }
 
 #[test]
@@ -1073,7 +1227,8 @@ fn climate_config_layer_values() {
 fn climate_preview_correct_size() {
     let config = ClimateConfig::default();
     let climate = ClimateMap::new(&config, 42);
-    let (temps, moist) = astraweave_terrain::climate::utils::generate_climate_preview(&climate, 8, 100.0);
+    let (temps, moist) =
+        astraweave_terrain::climate::utils::generate_climate_preview(&climate, 8, 100.0);
     assert_eq!(temps.len(), 64); // 8*8
     assert_eq!(moist.len(), 64);
 }
@@ -1082,7 +1237,8 @@ fn climate_preview_correct_size() {
 fn biome_classification_map_correct_size() {
     let config = ClimateConfig::default();
     let climate = ClimateMap::new(&config, 42);
-    let biomes = astraweave_terrain::climate::utils::generate_biome_classification_map(&climate, 8, 100.0);
+    let biomes =
+        astraweave_terrain::climate::utils::generate_biome_classification_map(&climate, 8, 100.0);
     assert_eq!(biomes.len(), 64);
 }
 
@@ -1090,7 +1246,9 @@ fn biome_classification_map_correct_size() {
 fn climate_stats_temperature_range() {
     let config = ClimateConfig::default();
     let climate = ClimateMap::new(&config, 42);
-    let stats = astraweave_terrain::climate::utils::calculate_climate_stats(&climate, 0.0, 1000.0, 0.0, 1000.0, 10);
+    let stats = astraweave_terrain::climate::utils::calculate_climate_stats(
+        &climate, 0.0, 1000.0, 0.0, 1000.0, 10,
+    );
     assert!(stats.temperature_min <= stats.temperature_avg);
     assert!(stats.temperature_avg <= stats.temperature_max);
     assert!(stats.moisture_min <= stats.moisture_avg);
@@ -1117,14 +1275,25 @@ fn biome_blender_beach_preferred_at_low_height() {
     // At high height=100, beach should be suppressed
     let blend_high = blender.calculate_blend_weights(center, 100.0, &neighbors);
 
-    let beach_low = blend_low.weights.iter().zip(blend_low.biome_ids.iter())
+    let beach_low = blend_low
+        .weights
+        .iter()
+        .zip(blend_low.biome_ids.iter())
         .find(|(_, &id)| id == BiomeType::Beach as u8)
-        .map(|(w, _)| *w).unwrap_or(0.0);
-    let beach_high = blend_high.weights.iter().zip(blend_high.biome_ids.iter())
+        .map(|(w, _)| *w)
+        .unwrap_or(0.0);
+    let beach_high = blend_high
+        .weights
+        .iter()
+        .zip(blend_high.biome_ids.iter())
         .find(|(_, &id)| id == BiomeType::Beach as u8)
-        .map(|(w, _)| *w).unwrap_or(0.0);
+        .map(|(w, _)| *w)
+        .unwrap_or(0.0);
 
-    assert!(beach_low >= beach_high, "Beach should be more prominent at low height: low={beach_low}, high={beach_high}");
+    assert!(
+        beach_low >= beach_high,
+        "Beach should be more prominent at low height: low={beach_low}, high={beach_high}"
+    );
 }
 
 // ============================================================================
