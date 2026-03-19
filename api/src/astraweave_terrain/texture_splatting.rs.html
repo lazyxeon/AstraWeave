@@ -302,7 +302,7 @@
 <a href=#302 id=302 data-nosnippet>302</a>    <span class="doccomment">/// Create a rock rule (steep slopes)
 <a href=#303 id=303 data-nosnippet>303</a>    </span><span class="kw">pub fn </span>rock() -&gt; <span class="self">Self </span>{
 <a href=#304 id=304 data-nosnippet>304</a>        <span class="self">Self </span>{
-<a href=#305 id=305 data-nosnippet>305</a>            material_id: <span class="number">1</span>,
+<a href=#305 id=305 data-nosnippet>305</a>            material_id: <span class="number">7</span>,
 <a href=#306 id=306 data-nosnippet>306</a>            min_height: f32::MIN,
 <a href=#307 id=307 data-nosnippet>307</a>            max_height: f32::MAX,
 <a href=#308 id=308 data-nosnippet>308</a>            min_slope: <span class="number">35.0</span>,
@@ -317,7 +317,7 @@
 <a href=#317 id=317 data-nosnippet>317</a>    <span class="doccomment">/// Create a sand rule (beaches/deserts)
 <a href=#318 id=318 data-nosnippet>318</a>    </span><span class="kw">pub fn </span>sand() -&gt; <span class="self">Self </span>{
 <a href=#319 id=319 data-nosnippet>319</a>        <span class="self">Self </span>{
-<a href=#320 id=320 data-nosnippet>320</a>            material_id: <span class="number">2</span>,
+<a href=#320 id=320 data-nosnippet>320</a>            material_id: <span class="number">1</span>,
 <a href=#321 id=321 data-nosnippet>321</a>            min_height: -<span class="number">5.0</span>,
 <a href=#322 id=322 data-nosnippet>322</a>            max_height: <span class="number">8.0</span>,
 <a href=#323 id=323 data-nosnippet>323</a>            min_slope: <span class="number">0.0</span>,
@@ -332,7 +332,7 @@
 <a href=#332 id=332 data-nosnippet>332</a>    <span class="doccomment">/// Create a snow rule (high elevations)
 <a href=#333 id=333 data-nosnippet>333</a>    </span><span class="kw">pub fn </span>snow() -&gt; <span class="self">Self </span>{
 <a href=#334 id=334 data-nosnippet>334</a>        <span class="self">Self </span>{
-<a href=#335 id=335 data-nosnippet>335</a>            material_id: <span class="number">3</span>,
+<a href=#335 id=335 data-nosnippet>335</a>            material_id: <span class="number">4</span>,
 <a href=#336 id=336 data-nosnippet>336</a>            min_height: <span class="number">120.0</span>,
 <a href=#337 id=337 data-nosnippet>337</a>            max_height: f32::MAX,
 <a href=#338 id=338 data-nosnippet>338</a>            min_slope: <span class="number">0.0</span>,
@@ -607,15 +607,15 @@
 <a href=#607 id=607 data-nosnippet>607</a>
 <a href=#608 id=608 data-nosnippet>608</a>        // High steep mountain
 <a href=#609 id=609 data-nosnippet>609</a>        </span><span class="kw">let </span>rock_weights = generator.calculate_weights(<span class="number">50.0</span>, Vec3::new(<span class="number">0.3</span>, <span class="number">0.3</span>, <span class="number">0.9</span>).normalize());
-<a href=#610 id=610 data-nosnippet>610</a>        <span class="macro">assert_eq!</span>(rock_weights.dominant_layer(), <span class="number">1</span>); <span class="comment">// Rock
+<a href=#610 id=610 data-nosnippet>610</a>        <span class="macro">assert_eq!</span>(rock_weights.dominant_layer(), <span class="number">7</span>); <span class="comment">// Rock (stone)
 <a href=#611 id=611 data-nosnippet>611</a>
 <a href=#612 id=612 data-nosnippet>612</a>        // Beach
 <a href=#613 id=613 data-nosnippet>613</a>        </span><span class="kw">let </span>sand_weights = generator.calculate_weights(<span class="number">2.0</span>, Vec3::Y);
-<a href=#614 id=614 data-nosnippet>614</a>        <span class="macro">assert_eq!</span>(sand_weights.dominant_layer(), <span class="number">2</span>); <span class="comment">// Sand
+<a href=#614 id=614 data-nosnippet>614</a>        <span class="macro">assert_eq!</span>(sand_weights.dominant_layer(), <span class="number">1</span>); <span class="comment">// Sand
 <a href=#615 id=615 data-nosnippet>615</a>
 <a href=#616 id=616 data-nosnippet>616</a>        // Snow peak
 <a href=#617 id=617 data-nosnippet>617</a>        </span><span class="kw">let </span>snow_weights = generator.calculate_weights(<span class="number">180.0</span>, Vec3::Y);
-<a href=#618 id=618 data-nosnippet>618</a>        <span class="macro">assert_eq!</span>(snow_weights.dominant_layer(), <span class="number">3</span>); <span class="comment">// Snow
+<a href=#618 id=618 data-nosnippet>618</a>        <span class="macro">assert_eq!</span>(snow_weights.dominant_layer(), <span class="number">4</span>); <span class="comment">// Snow
 <a href=#619 id=619 data-nosnippet>619</a>    </span>}
 <a href=#620 id=620 data-nosnippet>620</a>
 <a href=#621 id=621 data-nosnippet>621</a>    <span class="attr">#[test]
