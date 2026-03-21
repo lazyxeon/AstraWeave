@@ -228,8 +228,9 @@ impl PhysicsDebugRenderer {
             return Ok(());
         }
 
-        // Update camera uniforms
-        let view_proj = camera.view_projection_matrix();
+        // Update camera uniforms — camera-relative VP to avoid f32 jitter far from origin
+        let view_proj = camera.view_projection_matrix_relative();
+        let cam_pos = camera.position();
         let uniforms = PhysicsDebugUniforms {
             view_proj: view_proj.to_cols_array_2d(),
         };
@@ -241,12 +242,21 @@ impl PhysicsDebugRenderer {
         let mut vertices: Vec<PhysicsDebugVertex> = Vec::with_capacity(debug_lines.len() * 2);
 
         for line in debug_lines {
+            // Offset positions to camera-relative coordinates (VP matrix has eye at origin)
             vertices.push(PhysicsDebugVertex {
-                position: line.start,
+                position: [
+                    line.start[0] - cam_pos.x,
+                    line.start[1] - cam_pos.y,
+                    line.start[2] - cam_pos.z,
+                ],
                 color: line.color,
             });
             vertices.push(PhysicsDebugVertex {
-                position: line.end,
+                position: [
+                    line.end[0] - cam_pos.x,
+                    line.end[1] - cam_pos.y,
+                    line.end[2] - cam_pos.z,
+                ],
                 color: line.color,
             });
         }

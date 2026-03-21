@@ -579,7 +579,7 @@ impl Default for TerrainPanel {
             seed: 12345,
             seed_string: "12345".to_string(),
             primary_biome: "grassland".to_string(),
-            chunk_radius: 3,
+            chunk_radius: 5,
             octaves: 6,
             lacunarity: 2.0,
             persistence: 0.5,
@@ -767,7 +767,7 @@ impl TerrainPanel {
         ui.horizontal(|ui| {
             ui.label("Chunk Radius:");
             if ui
-                .add(egui::Slider::new(&mut self.chunk_radius, 1..=5))
+                .add(egui::Slider::new(&mut self.chunk_radius, 1..=12))
                 .changed()
             {
                 self.terrain_state.configure(self.seed, &self.primary_biome);
@@ -1680,7 +1680,10 @@ impl TerrainPanel {
 
         tracing::info!(
             "regenerate_terrain: biome='{}', seed={}, chunk_radius={}, base_amp={}",
-            self.primary_biome, self.seed, self.chunk_radius, self.base_amplitude
+            self.primary_biome,
+            self.seed,
+            self.chunk_radius,
+            self.base_amplitude
         );
 
         // Prepare a fresh TerrainState with current config on the background thread
@@ -2104,7 +2107,7 @@ mod tests {
         let panel = TerrainPanel::new();
         assert_eq!(panel.seed, 12345);
         assert_eq!(panel.primary_biome, "grassland");
-        assert_eq!(panel.chunk_radius, 3);
+        assert_eq!(panel.chunk_radius, 5);
     }
 
     #[test]

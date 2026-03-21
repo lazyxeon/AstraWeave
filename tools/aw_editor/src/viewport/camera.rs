@@ -98,9 +98,9 @@ impl Default for OrbitCamera {
             fov: 60.0,
             aspect: 16.0 / 9.0,
             near: 0.01, // Very close near plane (10cm) to prevent clipping
-            far: 1000.0,
+            far: 5000.0,
             min_distance: 0.02, // Allow camera to get very close (2cm from focal point)
-            max_distance: 500.0, // Allow zooming out further
+            max_distance: 2000.0, // Allow zooming out to see full terrain
             min_pitch: -std::f32::consts::PI / 2.0 + 0.01, // Prevent gimbal lock
             max_pitch: std::f32::consts::PI / 2.0 - 0.01, // Prevent gimbal lock
             zoom_target: 25.0,
@@ -210,7 +210,7 @@ impl OrbitCamera {
         let log_diff = log_target - log_dist;
 
         // Snap when close enough to prevent micro-oscillation
-        if log_diff.abs() < 0.001 {
+        if log_diff.abs() < 0.0002 {
             self.distance = self.zoom_target;
             return false;
         }
@@ -406,6 +406,30 @@ impl OrbitCamera {
     /// Transforms vertices from world space directly to clip space.
     pub fn view_projection_matrix(&self) -> Mat4 {
         self.projection_matrix() * self.view_matrix()
+    }
+
+    /// Get camera-relative view matrix (eye at origin).
+    ///
+    /// Eliminates f32 precision loss at large world coordinates by placing
+    /// the camera at the origin. Geometry must be offset by −camera_pos
+    /// before being transformed by this matrix.
+    pub fn view_matrix_relative(&self) -> Mat4 {
+        // Spherical offset from focal point (always small, high precision)
+        let x = self.distance * self.yaw.cos() * self.pitch.cos();
+        let y = self.distance * self.pitch.sin();
+        let z = self.distance * self.yaw.sin() * self.pitch.cos();
+        let eye_offset = Vec3::new(x, y, z);
+        // Camera at origin, looking toward −offset direction
+        Mat4::look_at_rh(Vec3::ZERO, -eye_offset, Vec3::Y)
+    }
+
+    /// Get camera-relative view-projection matrix.
+    ///
+    /// Use this for rendering to avoid f32 jitter far from the origin.
+    /// All world-space positions must be offset by −camera_pos before
+    /// being multiplied by this matrix.
+    pub fn view_projection_matrix_relative(&self) -> Mat4 {
+        self.projection_matrix() * self.view_matrix_relative()
     }
 
     /// Get inverse view-projection matrix

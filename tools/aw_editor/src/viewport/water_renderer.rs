@@ -249,7 +249,8 @@ impl WaterRenderer {
         }
 
         let elapsed = self.start_time.elapsed().as_secs_f32();
-        let view_proj = camera.view_projection_matrix();
+        // Camera-relative VP to avoid f32 jitter far from origin
+        let view_proj = camera.view_projection_matrix_relative();
         let camera_pos = camera.position();
 
         let uniforms = WaterUniforms {

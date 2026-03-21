@@ -54,7 +54,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     let pos = QUAD_VERTICES[vertex_index];
     out.position = vec4<f32>(pos, 0.0, 1.0);
     
-    // Unproject to world space (near and far plane)
+    // Unproject to camera-relative space (near and far plane)
     let near = uniforms.inv_view_proj * vec4<f32>(pos, -1.0, 1.0);
     let far = uniforms.inv_view_proj * vec4<f32>(pos, 1.0, 1.0);
     
@@ -67,26 +67,32 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 // Fragment shader (compute grid)
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Ray from camera through fragment
+    // Ray from camera through fragment (camera-relative, small values)
     let ray_dir = normalize(in.far_point - in.near_point);
     
-    // Intersect ray with Y=0 plane (ground)
-    let t = -in.near_point.y / ray_dir.y;
+    // Intersect ray with Y=0 plane (relative to camera)
+    // Camera-relative near_point.y = near_point_world.y - camera_pos.y
+    // We need t such that near_point.y + camera_pos.y + ray_dir.y * t = 0
+    let t = -(in.near_point.y + uniforms.camera_pos.y) / ray_dir.y;
     
     // Discard if ray doesn't hit ground plane or hits behind camera
     if t < 0.0 {
         discard;
     }
     
-    let world_pos = in.near_point + ray_dir * t;
+    // Camera-relative intersection point (high precision)
+    let rel_pos = in.near_point + ray_dir * t;
     
-    // Distance from camera (for fading)
-    let distance = length(world_pos - uniforms.camera_pos);
+    // Distance from camera (camera-relative — just length of rel_pos, no subtraction needed)
+    let distance = length(rel_pos);
     
     // Fade grid at distance (prevent aliasing)
     if distance > uniforms.max_distance {
         discard;
     }
+    
+    // World position (for grid pattern and axis detection)
+    let world_pos = rel_pos + uniforms.camera_pos;
     
     // LOD: smoothly blend between grid scales based on camera height
     let cam_height = abs(uniforms.camera_pos.y);

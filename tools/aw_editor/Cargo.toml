@@ -55,6 +55,7 @@ astraweave-profiling = { path = "../../astraweave-profiling" }
 astraweave-render = { path = "../../astraweave-render", optional = true, features = ["gltf-assets", "textures"] }
 astraweave-author = { path = "../../astraweave-author" }
 astraweave-asset = { path = "../../astraweave-asset" }
+astraweave-audio = { path = "../../astraweave-audio" }
 astraweave-behavior = { path = "../../astraweave-behavior" }
 astraweave-dialogue = { path = "../../astraweave-dialogue" }
 astraweave-quests = { path = "../../astraweave-quests" }

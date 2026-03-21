@@ -314,6 +314,18 @@ impl EntityArchetype {
             Self::Camera => 0,
         }
     }
+
+    /// Returns the default KayKit model path for this archetype, if applicable.
+    pub fn default_mesh(&self) -> Option<&'static str> {
+        match self {
+            Self::Player => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"),
+            Self::Companion => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Knight.glb"),
+            Self::Enemy => Some("assets/The Complete KayKit Collection v4/KayKit Skeletons 1.1/characters/gltf/Skeleton_Warrior.glb"),
+            Self::Boss => Some("assets/The Complete KayKit Collection v4/KayKit Skeletons 1.1/characters/gltf/Skeleton_Golem.glb"),
+            Self::NPC => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Mage.glb"),
+            _ => None,
+        }
+    }
 }
 
 /// Entity filter criteria
@@ -419,6 +431,9 @@ pub struct EntityPanel {
     // Action queue for external processing
     pending_actions: Vec<EntityAction>,
 
+    /// Mesh assignments from archetype spawns. Drained by main loop to sync with EntityManager.
+    pub pending_mesh_assignments: Vec<(u32, String)>,
+
     /// Property/component search filter for the inspector.
     property_search: String,
     /// Disabled components: (entity, component_type) pairs skipped during simulation.
@@ -439,6 +454,7 @@ impl EntityPanel {
             show_stats: true,
             search_results: Vec::new(),
             pending_actions: Vec::new(),
+            pending_mesh_assignments: Vec::new(),
             property_search: String::new(),
             disabled_components: HashSet::new(),
         }
@@ -629,7 +645,7 @@ impl EntityPanel {
 
     /// Spawn entity from archetype
     fn spawn_from_archetype(
-        &self,
+        &mut self,
         world: &mut World,
         archetype: &EntityArchetype,
         position: IVec2,
@@ -637,7 +653,7 @@ impl EntityPanel {
         let count = world.entities().len();
         let name = format!("{archetype:?}_{count}");
 
-        world.spawn(
+        let entity = world.spawn(
             &name,
             position,
             Team {
@@ -649,7 +665,15 @@ impl EntityPanel {
             },
             archetype.default_health(),
             archetype.default_damage(),
-        )
+        );
+
+        // Queue mesh assignment for entity_manager sync
+        if let Some(mesh_path) = archetype.default_mesh() {
+            self.pending_mesh_assignments
+                .push((entity, mesh_path.to_string()));
+        }
+
+        entity
     }
 
     /// Show entity panel with real world integration
@@ -885,12 +909,12 @@ impl EntityPanel {
 
         // Handle spawn selected archetype
         if spawn_selected {
-            if let Some(ref archetype) = self.selected_archetype {
+            if let Some(archetype) = self.selected_archetype.clone() {
                 let pos = IVec2 {
                     x: rand::random::<i32>() % 30,
                     y: rand::random::<i32>() % 30,
                 };
-                let entity = self.spawn_from_archetype(scene_state.world_mut(), archetype, pos);
+                let entity = self.spawn_from_archetype(scene_state.world_mut(), &archetype, pos);
                 scene_state.sync_entity(entity);
                 debug!(
                     "Spawned {:?} entity #{} at ({}, {})",
@@ -901,13 +925,14 @@ impl EntityPanel {
 
         // Handle bulk spawn
         if spawn_bulk {
-            if let Some(ref archetype) = self.selected_archetype {
+            if let Some(archetype) = self.selected_archetype.clone() {
                 for _ in 0..self.bulk_spawn_count {
                     let pos = IVec2 {
                         x: rand::random::<i32>() % 30,
                         y: rand::random::<i32>() % 30,
                     };
-                    let entity = self.spawn_from_archetype(scene_state.world_mut(), archetype, pos);
+                    let entity =
+                        self.spawn_from_archetype(scene_state.world_mut(), &archetype, pos);
                     scene_state.sync_entity(entity);
                 }
                 debug!("Spawned {} {:?} entities", self.bulk_spawn_count, archetype);
@@ -1134,7 +1159,10 @@ impl EntityPanel {
                                 ui.label(egui::RichText::new(team_name).color(team_color));
                             });
 
-                            ui.label(format!("Position: ({}, {:.1}, {})", pose.pos.x, pose.height, pose.pos.y));
+                            ui.label(format!(
+                                "Position: ({}, {:.1}, {})",
+                                pose.pos.x, pose.height, pose.pos.y
+                            ));
                             ui.label(format!("❤️  Health: {}", health.hp));
                             ui.label(format!("🔫 Ammo: {}", ammo.rounds));
                         });
@@ -2230,7 +2258,7 @@ mod tests {
 
     #[test]
     fn test_spawn_from_archetype_player() {
-        let panel = EntityPanel::new();
+        let mut panel = EntityPanel::new();
         let mut world = World::new();
         let entity =
             panel.spawn_from_archetype(&mut world, &EntityArchetype::Player, IVec2::new(10, 20));
@@ -2241,7 +2269,7 @@ mod tests {
 
     #[test]
     fn test_spawn_from_archetype_companion() {
-        let panel = EntityPanel::new();
+        let mut panel = EntityPanel::new();
         let mut world = World::new();
         let entity =
             panel.spawn_from_archetype(&mut world, &EntityArchetype::Companion, IVec2::new(10, 20));
@@ -2251,7 +2279,7 @@ mod tests {
 
     #[test]
     fn test_spawn_from_archetype_enemy() {
-        let panel = EntityPanel::new();
+        let mut panel = EntityPanel::new();
         let mut world = World::new();
         let entity =
             panel.spawn_from_archetype(&mut world, &EntityArchetype::Enemy, IVec2::new(10, 20));
@@ -2261,7 +2289,7 @@ mod tests {
 
     #[test]
     fn test_spawn_from_archetype_boss() {
-        let panel = EntityPanel::new();
+        let mut panel = EntityPanel::new();
         let mut world = World::new();
         let entity =
             panel.spawn_from_archetype(&mut world, &EntityArchetype::Boss, IVec2::new(10, 20));
@@ -2271,7 +2299,7 @@ mod tests {
 
     #[test]
     fn test_spawn_from_archetype_with_position() {
-        let panel = EntityPanel::new();
+        let mut panel = EntityPanel::new();
         let mut world = World::new();
         let pos = IVec2::new(15, 25);
         let entity = panel.spawn_from_archetype(&mut world, &EntityArchetype::Player, pos);
@@ -2281,7 +2309,7 @@ mod tests {
 
     #[test]
     fn test_spawn_from_archetype_with_team() {
-        let panel = EntityPanel::new();
+        let mut panel = EntityPanel::new();
         let mut world = World::new();
         let entity =
             panel.spawn_from_archetype(&mut world, &EntityArchetype::Player, IVec2::new(0, 0));
@@ -2291,7 +2319,7 @@ mod tests {
 
     #[test]
     fn test_spawn_from_archetype_enemy_team() {
-        let panel = EntityPanel::new();
+        let mut panel = EntityPanel::new();
         let mut world = World::new();
         let entity =
             panel.spawn_from_archetype(&mut world, &EntityArchetype::Enemy, IVec2::new(0, 0));
@@ -2301,7 +2329,7 @@ mod tests {
 
     #[test]
     fn test_spawn_from_archetype_damage() {
-        let panel = EntityPanel::new();
+        let mut panel = EntityPanel::new();
         let mut world = World::new();
         let entity =
             panel.spawn_from_archetype(&mut world, &EntityArchetype::Player, IVec2::new(0, 0));
@@ -2312,7 +2340,7 @@ mod tests {
 
     #[test]
     fn test_spawn_from_archetype_npc_no_damage() {
-        let panel = EntityPanel::new();
+        let mut panel = EntityPanel::new();
         let mut world = World::new();
         let entity =
             panel.spawn_from_archetype(&mut world, &EntityArchetype::NPC, IVec2::new(0, 0));

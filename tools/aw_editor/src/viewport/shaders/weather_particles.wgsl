@@ -17,6 +17,10 @@ struct WeatherUniforms {
     streak_length: f32,     // for line particles
     particle_scale: f32,    // for quad particles
     transition_alpha: f32,  // 0..1 crossfade between weather states
+    lightning_flash: f32,   // 0..1 storm lightning flash intensity
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
 }
 
 struct VertexInput {
@@ -64,9 +68,10 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
         world_pos += streak_dir * vertex.local_pos.y * slen;
 
         let dist = distance(u.camera_pos, world_pos);
-        let dist_fade = 1.0 - smoothstep(u.volume_size * 0.4, u.volume_size * 0.85, dist);
-        let endpoint_fade = 1.0 - abs(vertex.local_pos.y * 2.0 - 1.0);
-        output.alpha = endpoint_fade * dist_fade * u.intensity * 0.35 * u.transition_alpha;
+        let dist_fade = 1.0 - smoothstep(u.volume_size * 0.3, u.volume_size * 0.9, dist);
+        // Fade along the streak: bright at head (y=0), dimmer at tail (y=1)
+        let streak_fade = 1.0 - vertex.local_pos.y * 0.5;
+        output.alpha = streak_fade * dist_fade * u.intensity * u.transition_alpha;
 
     } else if kind == 2u || kind == 3u || kind == 5u {
         // === SNOW / HAIL / BLIZZARD: Billboard quad particles ===
@@ -94,7 +99,9 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
         output.alpha = 0.0;
     }
 
-    output.clip_position = u.view_proj * vec4<f32>(world_pos, 1.0);
+    // Camera-relative transform: subtract camera_pos to avoid f32 jitter far from origin
+    let rel_pos = world_pos - u.camera_pos;
+    output.clip_position = u.view_proj * vec4<f32>(rel_pos, 1.0);
     return output;
 }
 
@@ -102,20 +109,49 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let kind = u32(u.weather_kind);
 
+    // Lightning flash: brighten particles toward white and boost alpha
+    let flash = u.lightning_flash;
+    let flash_color = vec3<f32>(1.0, 1.0, 1.0);
+    let flash_alpha_boost = 1.0 + flash * 4.0;
+
     if kind == 2u || kind == 5u {
         // Snow/blizzard: soft circular particle
         let center = input.uv - vec2<f32>(0.5, 0.5);
         let r = length(center) * 2.0;
         let circle_alpha = 1.0 - smoothstep(0.6, 1.0, r);
-        return vec4<f32>(u.particle_color.rgb, input.alpha * circle_alpha * u.particle_color.a);
+        let base_color = mix(u.particle_color.rgb, flash_color, flash);
+        return vec4<f32>(base_color, input.alpha * circle_alpha * u.particle_color.a * flash_alpha_boost);
     } else if kind == 3u {
         // Hail: harder-edged circle
         let center = input.uv - vec2<f32>(0.5, 0.5);
         let r = length(center) * 2.0;
         let circle_alpha = 1.0 - smoothstep(0.8, 1.0, r);
-        return vec4<f32>(u.particle_color.rgb, input.alpha * circle_alpha * u.particle_color.a);
+        let base_color = mix(u.particle_color.rgb, flash_color, flash);
+        return vec4<f32>(base_color, input.alpha * circle_alpha * u.particle_color.a * flash_alpha_boost);
     } else {
         // Rain/sandstorm: line color
-        return vec4<f32>(u.particle_color.rgb, input.alpha * u.particle_color.a);
+        let base_color = mix(u.particle_color.rgb, flash_color, flash);
+        return vec4<f32>(base_color, input.alpha * u.particle_color.a * flash_alpha_boost);
     }
+}
+
+// ============================================================================
+// Lightning Flash Overlay (full-screen white flash for storms)
+// ============================================================================
+
+@vertex
+fn vs_flash(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {
+    // Full-screen triangle covering entire viewport (3 verts, no vertex buffers)
+    var pos = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0)
+    );
+    return vec4<f32>(pos[vi], 0.0, 1.0);
+}
+
+@fragment
+fn fs_flash() -> @location(0) vec4<f32> {
+    // Bright white flash, intensity from uniform (peaks at ~0.35 alpha for dramatic effect)
+    return vec4<f32>(1.0, 1.0, 1.0, u.lightning_flash * 0.35);
 }

@@ -35,6 +35,8 @@ struct LoadedMesh {
     index_buffer: wgpu::Buffer,
     index_count: u32,
     index_format: wgpu::IndexFormat,
+    /// Per-mesh texture bind group (albedo + normal). `None` → use vertex colors.
+    texture_bind_group: Option<wgpu::BindGroup>,
 }
 
 /// Entity renderer for viewport
@@ -77,6 +79,18 @@ pub struct EntityRenderer {
 
     /// Mapping from World entity ID to mesh file path
     entity_meshes: HashMap<Entity, String>,
+
+    /// Bind group layout for per-mesh textures (albedo + sampler)
+    texture_bind_group_layout: wgpu::BindGroupLayout,
+
+    /// Queue reference for texture uploads
+    queue: Arc<wgpu::Queue>,
+
+    /// 1×1 white fallback texture bind group (used when mesh has no textures)
+    fallback_texture_bind_group: wgpu::BindGroup,
+
+    /// Pipeline for textured meshes (uses texture bind group at group 1)
+    textured_pipeline: wgpu::RenderPipeline,
 }
 
 impl EntityRenderer {
@@ -90,7 +104,11 @@ impl EntityRenderer {
     /// # Errors
     ///
     /// Returns error if shader compilation or buffer creation fails.
-    pub fn new(device: Arc<wgpu::Device>, max_instances: u32) -> Result<Self> {
+    pub fn new(
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        max_instances: u32,
+    ) -> Result<Self> {
         // Load shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Entity Shader"),
@@ -127,7 +145,7 @@ impl EntityRenderer {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 buffers: &[
-                    // Vertex buffer (position + normal + color)
+                    // Vertex buffer (position + normal + color + uv)
                     wgpu::VertexBufferLayout {
                         array_stride: std::mem::size_of::<Vertex>() as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
@@ -146,6 +164,11 @@ impl EntityRenderer {
                                 offset: 24,
                                 shader_location: 2,
                                 format: wgpu::VertexFormat::Float32x4, // vertex color
+                            },
+                            wgpu::VertexAttribute {
+                                offset: 40,
+                                shader_location: 8,
+                                format: wgpu::VertexFormat::Float32x2, // uv
                             },
                         ],
                     },
@@ -263,6 +286,184 @@ impl EntityRenderer {
             mapped_at_creation: false,
         });
 
+        // --- Texture bind group layout (group 1): albedo texture + sampler ---
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Entity Texture Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        // Build a 1×1 white fallback texture for meshes without textures
+        let fallback_tex = device.create_texture_with_data(
+            &queue,
+            &wgpu::TextureDescriptor {
+                label: Some("Entity Fallback White Texture"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::LayerMajor,
+            &[255u8, 255, 255, 255],
+        );
+        let fallback_view = fallback_tex.create_view(&Default::default());
+        let fallback_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Entity Fallback Sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let fallback_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Entity Fallback Texture BG"),
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&fallback_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&fallback_sampler),
+                },
+            ],
+        });
+
+        // --- Textured pipeline (group 0 = uniforms, group 1 = texture) ---
+        let textured_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Entity Textured Pipeline Layout"),
+                bind_group_layouts: &[&bind_group_layout, &texture_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+        let vertex_buffers = [
+            wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<Vertex>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[
+                    wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x3,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: 12,
+                        shader_location: 1,
+                        format: wgpu::VertexFormat::Float32x3,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: 24,
+                        shader_location: 2,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: 40,
+                        shader_location: 8,
+                        format: wgpu::VertexFormat::Float32x2,
+                    },
+                ],
+            },
+            wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<Instance>() as u64,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &[
+                    wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 3,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: 16,
+                        shader_location: 4,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: 32,
+                        shader_location: 5,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: 48,
+                        shader_location: 6,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: 64,
+                        shader_location: 7,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                ],
+            },
+        ];
+
+        let textured_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Entity Textured Render Pipeline"),
+            layout: Some(&textured_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &vertex_buffers,
+                compilation_options: Default::default(),
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_textured"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            multiview: None,
+            cache: None,
+        });
+
         Ok(Self {
             device,
             pipeline,
@@ -276,6 +477,10 @@ impl EntityRenderer {
             index_count,
             mesh_cache: HashMap::new(),
             entity_meshes: HashMap::new(),
+            texture_bind_group_layout,
+            queue,
+            fallback_texture_bind_group,
+            textured_pipeline,
         })
     }
 
@@ -284,62 +489,154 @@ impl EntityRenderer {
         self.entity_meshes = meshes;
     }
 
+    /// Collect the transform matrix for a glTF node (decomposed TRS → Mat4).
+    fn gltf_node_transform(node: &gltf::Node) -> Mat4 {
+        let (translation, rotation, scale) = node.transform().decomposed();
+        let t = Mat4::from_translation(Vec3::from(translation));
+        let r = Mat4::from_quat(glam::Quat::from_array(rotation));
+        let s = Mat4::from_scale(Vec3::from(scale));
+        t * r * s
+    }
+
+    /// Recursively walk the scene graph, collecting (mesh_index, world_transform) pairs.
+    fn collect_mesh_nodes(node: &gltf::Node, parent_transform: Mat4, out: &mut Vec<(usize, Mat4)>) {
+        let local = Self::gltf_node_transform(node);
+        let world = parent_transform * local;
+        if let Some(mesh) = node.mesh() {
+            out.push((mesh.index(), world));
+        }
+        for child in node.children() {
+            Self::collect_mesh_nodes(&child, world, out);
+        }
+    }
+
     /// Load a GLTF/GLB mesh from disk and cache the GPU buffers.
+    ///
+    /// Iterates ALL meshes, ALL primitives, and applies node transforms from
+    /// the scene graph so that multi-part models (e.g. KayKit characters with
+    /// separate body/hair/armor meshes) render correctly as a single unit.
     fn load_gltf_mesh(&mut self, path: &str) -> Result<()> {
-        let (document, buffers, _images) =
+        let (document, buffers, images) =
             gltf::import(path).with_context(|| format!("Failed to import glTF: {path}"))?;
 
-        let mesh = document.meshes().next().context("No meshes in glTF file")?;
-        let primitive = mesh.primitives().next().context("No primitives in mesh")?;
+        // Walk scene graph to get per-node transforms for each mesh
+        let mut mesh_nodes: Vec<(usize, Mat4)> = Vec::new();
+        if let Some(scene) = document
+            .default_scene()
+            .or_else(|| document.scenes().next())
+        {
+            for node in scene.nodes() {
+                Self::collect_mesh_nodes(&node, Mat4::IDENTITY, &mut mesh_nodes);
+            }
+        }
 
-        let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+        // If scene graph is empty, fall back to rendering all meshes at identity
+        if mesh_nodes.is_empty() {
+            for mesh in document.meshes() {
+                mesh_nodes.push((mesh.index(), Mat4::IDENTITY));
+            }
+        }
 
-        let positions: Vec<[f32; 3]> = reader
-            .read_positions()
-            .context("No position data in mesh")?
-            .collect();
+        let mut all_vertices: Vec<Vertex> = Vec::new();
+        let mut all_indices: Vec<u32> = Vec::new();
+        // Track the first albedo texture index we encounter
+        let mut first_albedo_image_idx: Option<usize> = None;
 
-        let normals: Vec<[f32; 3]> = if let Some(normals) = reader.read_normals() {
-            normals.collect()
-        } else {
-            // Generate default up-facing normals as fallback
-            vec![[0.0, 1.0, 0.0]; positions.len()]
-        };
+        for (mesh_idx, node_transform) in &mesh_nodes {
+            let mesh = document
+                .meshes()
+                .nth(*mesh_idx)
+                .context("Mesh index out of range")?;
 
-        // Read per-vertex colors (common in Kenney models)
-        let vertex_colors: Vec<[f32; 4]> = if let Some(colors) = reader.read_colors(0) {
-            colors.into_rgba_f32().collect()
-        } else {
-            // Fall back to material base color factor
-            let base_color = primitive
-                .material()
-                .pbr_metallic_roughness()
-                .base_color_factor();
-            vec![base_color; positions.len()]
-        };
+            // Extract normal matrix (inverse-transpose of upper-left 3×3)
+            let normal_mat = node_transform.inverse().transpose();
 
-        let indices: Vec<u32> = reader
-            .read_indices()
-            .context("No index data in mesh")?
-            .into_u32()
-            .collect();
+            for primitive in mesh.primitives() {
+                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
-        let vertices: Vec<Vertex> = positions
-            .iter()
-            .zip(normals.iter())
-            .zip(vertex_colors.iter())
-            .map(|((p, n), c)| Vertex {
-                position: *p,
-                normal: *n,
-                color: *c,
-            })
-            .collect();
+                let Some(pos_iter) = reader.read_positions() else {
+                    continue;
+                };
+                let positions: Vec<[f32; 3]> = pos_iter.collect();
+
+                let normals: Vec<[f32; 3]> = if let Some(n) = reader.read_normals() {
+                    n.collect()
+                } else {
+                    vec![[0.0, 1.0, 0.0]; positions.len()]
+                };
+
+                // Per-vertex colors (common in KayKit/Kenney models)
+                let vertex_colors: Vec<[f32; 4]> = if let Some(colors) = reader.read_colors(0) {
+                    colors.into_rgba_f32().collect()
+                } else {
+                    // Fall back to material base color factor
+                    let base_color = primitive
+                        .material()
+                        .pbr_metallic_roughness()
+                        .base_color_factor();
+                    vec![base_color; positions.len()]
+                };
+
+                // UV coordinates (set 0)
+                let uvs: Vec<[f32; 2]> = if let Some(tc) = reader.read_tex_coords(0) {
+                    tc.into_f32().collect()
+                } else {
+                    vec![[0.0, 0.0]; positions.len()]
+                };
+
+                // Extract albedo texture index from the first textured primitive
+                if first_albedo_image_idx.is_none() {
+                    if let Some(tex_info) = primitive
+                        .material()
+                        .pbr_metallic_roughness()
+                        .base_color_texture()
+                    {
+                        first_albedo_image_idx = Some(tex_info.texture().source().index());
+                    }
+                }
+
+                let Some(idx_iter) = reader.read_indices() else {
+                    continue;
+                };
+                let prim_indices: Vec<u32> = idx_iter.into_u32().collect();
+
+                // Base index for this primitive's vertices in the merged buffer
+                let base_vertex = all_vertices.len() as u32;
+
+                for (((p, n), c), uv) in positions
+                    .iter()
+                    .zip(normals.iter())
+                    .zip(vertex_colors.iter())
+                    .zip(uvs.iter())
+                {
+                    // Apply node transform to position
+                    let tp = *node_transform * glam::Vec4::new(p[0], p[1], p[2], 1.0);
+                    // Apply normal matrix to normal and re-normalize
+                    let tn = (normal_mat * glam::Vec4::new(n[0], n[1], n[2], 0.0)).truncate();
+                    let tn = tn.normalize_or(Vec3::Y);
+                    all_vertices.push(Vertex {
+                        position: [tp.x, tp.y, tp.z],
+                        normal: [tn.x, tn.y, tn.z],
+                        color: *c,
+                        uv: *uv,
+                    });
+                }
+
+                for idx in &prim_indices {
+                    all_indices.push(base_vertex + idx);
+                }
+            }
+        }
+
+        if all_vertices.is_empty() {
+            anyhow::bail!("No renderable geometry found in glTF: {path}");
+        }
 
         let vertex_buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Mesh VB: {path}")),
-                contents: bytemuck::cast_slice(&vertices),
+                contents: bytemuck::cast_slice(&all_vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
 
@@ -347,15 +644,28 @@ impl EntityRenderer {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Mesh IB: {path}")),
-                contents: bytemuck::cast_slice(&indices),
+                contents: bytemuck::cast_slice(&all_indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
 
+        // --- Extract albedo texture from embedded GLTF images ---
+        let texture_bind_group = if let Some(img_idx) = first_albedo_image_idx {
+            images
+                .get(img_idx)
+                .and_then(|img_data| self.create_texture_bind_group_from_gltf_image(img_data, path))
+        } else {
+            None
+        };
+
+        let has_texture = texture_bind_group.is_some();
         tracing::info!(
-            "Loaded glTF mesh '{}': {} vertices, {} indices",
+            "Loaded glTF mesh '{}': {} vertices, {} indices ({} meshes, {} nodes, textured={})",
             path,
-            vertices.len(),
-            indices.len()
+            all_vertices.len(),
+            all_indices.len(),
+            document.meshes().count(),
+            mesh_nodes.len(),
+            has_texture,
         );
 
         self.mesh_cache.insert(
@@ -363,12 +673,100 @@ impl EntityRenderer {
             LoadedMesh {
                 vertex_buffer,
                 index_buffer,
-                index_count: indices.len() as u32,
+                index_count: all_indices.len() as u32,
                 index_format: wgpu::IndexFormat::Uint32,
+                texture_bind_group,
             },
         );
 
         Ok(())
+    }
+
+    /// Convert a glTF image buffer into a GPU texture + bind group.
+    fn create_texture_bind_group_from_gltf_image(
+        &self,
+        img_data: &gltf::image::Data,
+        label: &str,
+    ) -> Option<wgpu::BindGroup> {
+        let width = img_data.width;
+        let height = img_data.height;
+
+        // Convert to RGBA8 regardless of source format
+        let rgba_pixels: Vec<u8> = match img_data.format {
+            gltf::image::Format::R8G8B8A8 => img_data.pixels.clone(),
+            gltf::image::Format::R8G8B8 => {
+                let mut rgba = Vec::with_capacity(img_data.pixels.len() / 3 * 4);
+                for chunk in img_data.pixels.chunks_exact(3) {
+                    rgba.extend_from_slice(chunk);
+                    rgba.push(255);
+                }
+                rgba
+            }
+            gltf::image::Format::R8 => {
+                let mut rgba = Vec::with_capacity(img_data.pixels.len() * 4);
+                for &v in &img_data.pixels {
+                    rgba.extend_from_slice(&[v, v, v, 255]);
+                }
+                rgba
+            }
+            gltf::image::Format::R8G8 => {
+                let mut rgba = Vec::with_capacity(img_data.pixels.len() / 2 * 4);
+                for chunk in img_data.pixels.chunks_exact(2) {
+                    rgba.extend_from_slice(&[chunk[0], chunk[1], 0, 255]);
+                }
+                rgba
+            }
+            _ => {
+                tracing::warn!("Unsupported glTF image format for {label}");
+                return None;
+            }
+        };
+
+        let tex = self.device.create_texture_with_data(
+            &self.queue,
+            &wgpu::TextureDescriptor {
+                label: Some(&format!("Albedo: {label}")),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::LayerMajor,
+            &rgba_pixels,
+        );
+
+        let view = tex.create_view(&Default::default());
+        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some(&format!("Sampler: {label}")),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            ..Default::default()
+        });
+
+        Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("TexBG: {label}")),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        }))
     }
 
     /// Render all entities in the World
@@ -384,8 +782,8 @@ impl EntityRenderer {
         queue: &wgpu::Queue,
         shading_mode: u32,
     ) -> Result<()> {
-        // Update camera uniforms
-        let view_proj = camera.view_projection_matrix();
+        // Update camera uniforms — camera-relative VP to avoid f32 jitter far from origin
+        let view_proj = camera.view_projection_matrix_relative();
         let camera_pos = camera.position();
 
         let uniforms = EntityUniforms {
@@ -448,7 +846,6 @@ impl EntityRenderer {
             occlusion_query_set: None,
         });
 
-        pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
@@ -460,12 +857,25 @@ impl EntityRenderer {
             match mesh_path {
                 Some(path) if self.mesh_cache.contains_key(path) => {
                     let mesh = &self.mesh_cache[path];
+                    // Use textured pipeline if mesh has a texture bind group
+                    if mesh.texture_bind_group.is_some() {
+                        pass.set_pipeline(&self.textured_pipeline);
+                        let tex_bg = mesh
+                            .texture_bind_group
+                            .as_ref()
+                            .unwrap_or(&self.fallback_texture_bind_group);
+                        pass.set_bind_group(1, tex_bg, &[]);
+                    } else {
+                        pass.set_pipeline(&self.pipeline);
+                    }
+                    pass.set_bind_group(0, &self.bind_group, &[]);
                     pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                     pass.set_index_buffer(mesh.index_buffer.slice(..), mesh.index_format);
                     pass.draw_indexed(0..mesh.index_count, 0, *start..*start + *count);
                 }
                 _ => {
-                    // Fallback to default cube
+                    // Fallback to default cube (untextured pipeline)
+                    pass.set_pipeline(&self.pipeline);
                     pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
                     pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                     pass.draw_indexed(0..self.index_count, 0, *start..*start + *count);
@@ -565,13 +975,14 @@ impl EntityRenderer {
     }
 }
 
-/// Vertex data (position + normal + color)
+/// Vertex data (position + normal + color + uv)
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 struct Vertex {
     position: [f32; 3],
     normal: [f32; 3],
     color: [f32; 4],
+    uv: [f32; 2],
 }
 
 /// Instance data (per-entity transform + color)
@@ -591,137 +1002,172 @@ struct EntityUniforms {
     shading_mode: u32,
 }
 
-/// Create cube mesh (vertices + indices)
+/// Create humanoid-proportioned mesh (vertices + indices)
 ///
-/// Returns (vertices, indices) for a 1×1×1 cube centered at origin.
+/// Returns (vertices, indices) for a tall capsule-like box (0.5×1.8×0.5)
+/// with the base at Y=0. This gives entities a vertical humanoid silhouette
+/// when no GLTF mesh is available.
 fn create_cube_mesh() -> (Vec<Vertex>, Vec<u16>) {
     let white = [1.0, 1.0, 1.0, 1.0];
+
+    // Half-extents: 0.25 wide, 0.9 tall (1.8 total), 0.25 deep
+    // Y range: 0.0 to 1.8 (base at origin so entity stands on ground)
+    let x0: f32 = -0.25;
+    let x1: f32 = 0.25;
+    let y0: f32 = 0.0;
+    let y1: f32 = 1.8;
+    let z0: f32 = -0.25;
+    let z1: f32 = 0.25;
     let vertices = vec![
         // Front face (+Z)
         Vertex {
-            position: [-0.5, -0.5, 0.5],
+            position: [x0, y0, z1],
             normal: [0.0, 0.0, 1.0],
             color: white,
+            uv: [0.0, 1.0],
         },
         Vertex {
-            position: [0.5, -0.5, 0.5],
+            position: [x1, y0, z1],
             normal: [0.0, 0.0, 1.0],
             color: white,
+            uv: [1.0, 1.0],
         },
         Vertex {
-            position: [0.5, 0.5, 0.5],
+            position: [x1, y1, z1],
             normal: [0.0, 0.0, 1.0],
             color: white,
+            uv: [1.0, 0.0],
         },
         Vertex {
-            position: [-0.5, 0.5, 0.5],
+            position: [x0, y1, z1],
             normal: [0.0, 0.0, 1.0],
             color: white,
+            uv: [0.0, 0.0],
         },
         // Back face (-Z)
         Vertex {
-            position: [0.5, -0.5, -0.5],
+            position: [x1, y0, z0],
             normal: [0.0, 0.0, -1.0],
             color: white,
+            uv: [0.0, 1.0],
         },
         Vertex {
-            position: [-0.5, -0.5, -0.5],
+            position: [x0, y0, z0],
             normal: [0.0, 0.0, -1.0],
             color: white,
+            uv: [1.0, 1.0],
         },
         Vertex {
-            position: [-0.5, 0.5, -0.5],
+            position: [x0, y1, z0],
             normal: [0.0, 0.0, -1.0],
             color: white,
+            uv: [1.0, 0.0],
         },
         Vertex {
-            position: [0.5, 0.5, -0.5],
+            position: [x1, y1, z0],
             normal: [0.0, 0.0, -1.0],
             color: white,
+            uv: [0.0, 0.0],
         },
         // Right face (+X)
         Vertex {
-            position: [0.5, -0.5, 0.5],
+            position: [x1, y0, z1],
             normal: [1.0, 0.0, 0.0],
             color: white,
+            uv: [0.0, 1.0],
         },
         Vertex {
-            position: [0.5, -0.5, -0.5],
+            position: [x1, y0, z0],
             normal: [1.0, 0.0, 0.0],
             color: white,
+            uv: [1.0, 1.0],
         },
         Vertex {
-            position: [0.5, 0.5, -0.5],
+            position: [x1, y1, z0],
             normal: [1.0, 0.0, 0.0],
             color: white,
+            uv: [1.0, 0.0],
         },
         Vertex {
-            position: [0.5, 0.5, 0.5],
+            position: [x1, y1, z1],
             normal: [1.0, 0.0, 0.0],
             color: white,
+            uv: [0.0, 0.0],
         },
         // Left face (-X)
         Vertex {
-            position: [-0.5, -0.5, -0.5],
+            position: [x0, y0, z0],
             normal: [-1.0, 0.0, 0.0],
             color: white,
+            uv: [0.0, 1.0],
         },
         Vertex {
-            position: [-0.5, -0.5, 0.5],
+            position: [x0, y0, z1],
             normal: [-1.0, 0.0, 0.0],
             color: white,
+            uv: [1.0, 1.0],
         },
         Vertex {
-            position: [-0.5, 0.5, 0.5],
+            position: [x0, y1, z1],
             normal: [-1.0, 0.0, 0.0],
             color: white,
+            uv: [1.0, 0.0],
         },
         Vertex {
-            position: [-0.5, 0.5, -0.5],
+            position: [x0, y1, z0],
             normal: [-1.0, 0.0, 0.0],
             color: white,
+            uv: [0.0, 0.0],
         },
         // Top face (+Y)
         Vertex {
-            position: [-0.5, 0.5, 0.5],
+            position: [x0, y1, z1],
             normal: [0.0, 1.0, 0.0],
             color: white,
+            uv: [0.0, 1.0],
         },
         Vertex {
-            position: [0.5, 0.5, 0.5],
+            position: [x1, y1, z1],
             normal: [0.0, 1.0, 0.0],
             color: white,
+            uv: [1.0, 1.0],
         },
         Vertex {
-            position: [0.5, 0.5, -0.5],
+            position: [x1, y1, z0],
             normal: [0.0, 1.0, 0.0],
             color: white,
+            uv: [1.0, 0.0],
         },
         Vertex {
-            position: [-0.5, 0.5, -0.5],
+            position: [x0, y1, z0],
             normal: [0.0, 1.0, 0.0],
             color: white,
+            uv: [0.0, 0.0],
         },
         // Bottom face (-Y)
         Vertex {
-            position: [-0.5, -0.5, -0.5],
+            position: [x0, y0, z0],
             normal: [0.0, -1.0, 0.0],
             color: white,
+            uv: [0.0, 1.0],
         },
         Vertex {
-            position: [0.5, -0.5, -0.5],
+            position: [x1, y0, z0],
             normal: [0.0, -1.0, 0.0],
             color: white,
+            uv: [1.0, 1.0],
         },
         Vertex {
-            position: [0.5, -0.5, 0.5],
+            position: [x1, y0, z1],
             normal: [0.0, -1.0, 0.0],
             color: white,
+            uv: [1.0, 0.0],
         },
         Vertex {
-            position: [-0.5, -0.5, 0.5],
+            position: [x0, y0, z1],
             normal: [0.0, -1.0, 0.0],
             color: white,
+            uv: [0.0, 0.0],
         },
     ];
 

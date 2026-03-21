@@ -579,7 +579,9 @@ fn pbr_lighting(mat: Material, pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
 @vertex
 fn vs_main(vertex: VertexInput) -> VertexOutput {
     var output: VertexOutput;
-    output.clip_position = uniforms.view_proj * vec4<f32>(vertex.position, 1.0);
+    // Camera-relative transform: subtract camera_pos to avoid f32 jitter far from origin
+    let rel_pos = vertex.position - uniforms.camera_pos;
+    output.clip_position = uniforms.view_proj * vec4<f32>(rel_pos, 1.0);
     output.world_position = vertex.position;
     output.world_normal = normalize(vertex.normal);
     output.uv = vertex.uv;

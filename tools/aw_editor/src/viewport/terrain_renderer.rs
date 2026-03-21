@@ -420,12 +420,18 @@ impl TerrainRenderer {
             let layer_bytes = (BIOME_TEX_SIZE * BIOME_TEX_SIZE * 4) as usize;
             let center = (BIOME_TEX_SIZE / 2 * BIOME_TEX_SIZE + BIOME_TEX_SIZE / 2) as usize * 4;
             if albedo_data.len() >= layer_bytes {
-                let (r, g, b) = (albedo_data[center], albedo_data[center + 1], albedo_data[center + 2]);
+                let (r, g, b) = (
+                    albedo_data[center],
+                    albedo_data[center + 1],
+                    albedo_data[center + 2],
+                );
                 eprintln!("[terrain] DIAG grass albedo center pixel: R={r} G={g} B={b}");
             }
             if mra_data.len() >= layer_bytes {
                 let (m, rough, ao) = (mra_data[center], mra_data[center + 1], mra_data[center + 2]);
-                eprintln!("[terrain] DIAG grass MRA center pixel: metallic={m} roughness={rough} ao={ao}");
+                eprintln!(
+                    "[terrain] DIAG grass MRA center pixel: metallic={m} roughness={rough} ao={ao}"
+                );
             }
         }
 
@@ -699,7 +705,8 @@ impl TerrainRenderer {
             return Ok(());
         }
 
-        let view_proj = camera.view_projection_matrix();
+        // Camera-relative VP to avoid f32 jitter far from origin
+        let view_proj = camera.view_projection_matrix_relative();
         let camera_pos = camera.position();
 
         let elapsed = self.start_time.elapsed().as_secs_f32();
@@ -707,7 +714,8 @@ impl TerrainRenderer {
         // ── Diagnostic: dump key uniforms once per second ──
         {
             let sec = elapsed as u32;
-            static LAST_SEC: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
+            static LAST_SEC: std::sync::atomic::AtomicU32 =
+                std::sync::atomic::AtomicU32::new(u32::MAX);
             let prev = LAST_SEC.swap(sec, std::sync::atomic::Ordering::Relaxed);
             if sec != prev {
                 let fc = self.fog_params.fog_color;

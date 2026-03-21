@@ -611,8 +611,8 @@ impl ScatterRenderer {
             return Ok(());
         }
 
-        // Update uniforms (always needed — time changes, wind animates)
-        let view_proj = camera.view_projection_matrix();
+        // Update uniforms — camera-relative VP to avoid f32 jitter far from origin
+        let view_proj = camera.view_projection_matrix_relative();
         let camera_pos = camera.position();
         let time = self.start_time.elapsed().as_secs_f32();
 
@@ -691,7 +691,16 @@ impl ScatterRenderer {
                     continue;
                 }
 
-                let rotation = Quat::from_rotation_y(placement.rotation);
+                let is_tree =
+                    placement.mesh_key.contains("tree") || placement.mesh_key.contains("pine");
+                let rotation = if is_tree {
+                    // Trees stay upright (Y-axis only) for natural appearance
+                    Quat::from_rotation_y(placement.rotation)
+                } else {
+                    // Rocks, bushes, grass etc. tilt to match terrain surface normal
+                    let up_to_normal = Quat::from_rotation_arc(Vec3::Y, placement.terrain_normal);
+                    up_to_normal * Quat::from_rotation_y(placement.rotation)
+                };
                 let transform = Mat4::from_scale_rotation_translation(
                     Vec3::splat(placement.scale),
                     rotation,

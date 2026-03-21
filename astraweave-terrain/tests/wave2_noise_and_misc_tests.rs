@@ -378,7 +378,7 @@ fn scatter_config_default_min_distance() {
 #[test]
 fn scatter_config_default_max_slope() {
     let c = ScatterConfig::default();
-    assert!((c.max_slope - 45.0).abs() < 1e-6);
+    assert!((c.max_slope - 35.0).abs() < 1e-6);
 }
 
 #[test]

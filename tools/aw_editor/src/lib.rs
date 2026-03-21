@@ -3,7 +3,9 @@
 
 extern crate self as aw_editor_lib;
 
+pub mod animation_bridge;
 pub mod asset_pack;
+pub mod audio_bridge;
 pub mod behavior_graph;
 pub mod clipboard;
 pub mod command;
@@ -16,6 +18,7 @@ pub mod entity_manager;
 pub mod file_watcher;
 pub mod game_project;
 pub mod level_doc;
+pub mod movement_scripts;
 pub mod panel_type;
 pub mod panels;
 pub mod plugin;

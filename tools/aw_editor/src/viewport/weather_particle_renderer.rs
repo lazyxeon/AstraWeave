@@ -22,10 +22,10 @@ impl WeatherKind {
     pub fn from_weather_type(weather_type: u32) -> Self {
         match weather_type {
             0 | 1 | 5 => WeatherKind::None, // Clear, Cloudy, Fog
-            2 => WeatherKind::Rain,          // Rain
-            3 => WeatherKind::Rain,          // Storm (heavy rain)
-            4 => WeatherKind::Snow,          // Snow
-            6 => WeatherKind::Sandstorm,     // Sandstorm
+            2 => WeatherKind::Rain,         // Rain
+            3 => WeatherKind::Rain,         // Storm (heavy rain)
+            4 => WeatherKind::Snow,         // Snow
+            6 => WeatherKind::Sandstorm,    // Sandstorm
             _ => WeatherKind::None,
         }
     }
@@ -33,13 +33,13 @@ impl WeatherKind {
     /// Map the 11-type world_panel weather to WeatherKind
     pub fn from_world_panel(weather_type: u32) -> Self {
         match weather_type {
-            0..=2 | 8 => WeatherKind::None,  // Clear, Cloudy, Overcast, Fog
-            3 => WeatherKind::Rain,           // LightRain
-            4 | 5 => WeatherKind::Rain,       // HeavyRain, Thunderstorm
-            6 => WeatherKind::Snow,           // Snow
-            7 => WeatherKind::Blizzard,       // Blizzard
-            9 => WeatherKind::Sandstorm,      // Sandstorm
-            10 => WeatherKind::Hail,          // Hail
+            0..=2 | 8 => WeatherKind::None, // Clear, Cloudy, Overcast, Fog
+            3 => WeatherKind::Rain,         // LightRain
+            4 | 5 => WeatherKind::Rain,     // HeavyRain, Thunderstorm
+            6 => WeatherKind::Snow,         // Snow
+            7 => WeatherKind::Blizzard,     // Blizzard
+            9 => WeatherKind::Sandstorm,    // Sandstorm
+            10 => WeatherKind::Hail,        // Hail
             _ => WeatherKind::None,
         }
     }
@@ -49,7 +49,10 @@ impl WeatherKind {
     }
 
     fn is_quad_particle(self) -> bool {
-        matches!(self, WeatherKind::Snow | WeatherKind::Hail | WeatherKind::Blizzard)
+        matches!(
+            self,
+            WeatherKind::Snow | WeatherKind::Hail | WeatherKind::Blizzard
+        )
     }
 }
 
@@ -76,13 +79,13 @@ fn preset_for(kind: WeatherKind) -> WeatherPreset {
             speed_variation: 0.0,
         },
         WeatherKind::Rain => WeatherPreset {
-            particle_count: 12000,
+            particle_count: 20000,
             color: [0.7, 0.75, 0.85, 0.9],
-            volume_size: 40.0,
-            streak_length: 0.3,
+            volume_size: 50.0,
+            streak_length: 0.6,
             particle_scale: 0.0,
-            base_speed: 15.0,
-            speed_variation: 12.0,
+            base_speed: 18.0,
+            speed_variation: 10.0,
         },
         WeatherKind::Snow => WeatherPreset {
             particle_count: 8000,
@@ -153,11 +156,14 @@ struct WeatherUniforms {
     streak_length: f32,
     particle_scale: f32,
     transition_alpha: f32,
+    lightning_flash: f32,
+    _pad: [f32; 3],
 }
 
 pub struct WeatherParticleRenderer {
     line_pipeline: wgpu::RenderPipeline,
     quad_pipeline: wgpu::RenderPipeline,
+    flash_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
     // Line geometry (2 verts per line)
@@ -178,15 +184,17 @@ pub struct WeatherParticleRenderer {
     wind_x: f32,
     wind_z: f32,
     active: bool,
+    // Lightning flash state (storms only)
+    lightning_flash: f32,
+    lightning_cooldown: f32,
+    lightning_rng_state: u32,
 }
 
 impl WeatherParticleRenderer {
     pub fn new(device: &wgpu::Device) -> Result<Self> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Weather Particle Shader"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("shaders/weather_particles.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/weather_particles.wgsl").into()),
         });
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -317,7 +325,37 @@ impl WeatherParticleRenderer {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: Some(depth_stencil),
+            depth_stencil: Some(depth_stencil.clone()),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        // Flash overlay pipeline (full-screen white flash for lightning)
+        let flash_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Weather Flash Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_flash"),
+                buffers: &[], // No vertex buffers — uses vertex_index
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_flash"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    blend: Some(blend_state),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None, // No depth test for full-screen overlay
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
@@ -339,6 +377,8 @@ impl WeatherParticleRenderer {
                 streak_length: 0.3,
                 particle_scale: 0.1,
                 transition_alpha: 1.0,
+                lightning_flash: 0.0,
+                _pad: [0.0; 3],
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -406,6 +446,7 @@ impl WeatherParticleRenderer {
         Ok(Self {
             line_pipeline,
             quad_pipeline,
+            flash_pipeline,
             bind_group,
             uniform_buffer,
             line_vertex_buffer,
@@ -422,6 +463,9 @@ impl WeatherParticleRenderer {
             wind_x: 0.0,
             wind_z: 0.0,
             active: false,
+            lightning_flash: 0.0,
+            lightning_cooldown: 3.0,
+            lightning_rng_state: 42,
         })
     }
 
@@ -450,12 +494,7 @@ impl WeatherParticleRenderer {
         instances
     }
 
-    pub fn set_weather(
-        &mut self,
-        kind: WeatherKind,
-        intensity: f32,
-        queue: &wgpu::Queue,
-    ) {
+    pub fn set_weather(&mut self, kind: WeatherKind, intensity: f32, queue: &wgpu::Queue) {
         if kind == self.current_kind {
             self.intensity = intensity;
             self.active = kind != WeatherKind::None;
@@ -464,7 +503,7 @@ impl WeatherParticleRenderer {
 
         // Start transition
         self.target_kind = kind;
-        self.transition_alpha = 0.0;
+        self.transition_alpha = 0.3;
 
         let preset = preset_for(kind);
         let count = preset.particle_count.min(self.max_instances);
@@ -478,11 +517,7 @@ impl WeatherParticleRenderer {
             preset.speed_variation,
         );
         if !instances.is_empty() {
-            queue.write_buffer(
-                &self.instance_buffer,
-                0,
-                bytemuck::cast_slice(&instances),
-            );
+            queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
         }
 
         self.intensity = intensity;
@@ -498,6 +533,12 @@ impl WeatherParticleRenderer {
         self.active
     }
 
+    /// Returns the current lightning flash intensity (0.0–1.0).
+    /// Can be used by the main renderer to brighten the scene during flashes.
+    pub fn lightning_flash_intensity(&self) -> f32 {
+        self.lightning_flash
+    }
+
     pub fn render(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
@@ -507,12 +548,15 @@ impl WeatherParticleRenderer {
         queue: &wgpu::Queue,
     ) -> Result<()> {
         let now = std::time::Instant::now();
-        let dt = now.duration_since(self.last_frame_time).as_secs_f32().min(0.1);
+        let dt = now
+            .duration_since(self.last_frame_time)
+            .as_secs_f32()
+            .min(0.1);
         self.last_frame_time = now;
 
-        // Advance transition (2-second crossfade)
+        // Advance transition (~0.2-second crossfade)
         if self.transition_alpha < 1.0 {
-            self.transition_alpha = (self.transition_alpha + dt * 0.5).min(1.0);
+            self.transition_alpha = (self.transition_alpha + dt * 6.0).min(1.0);
             if self.transition_alpha >= 1.0 {
                 self.current_kind = self.target_kind;
             }
@@ -525,12 +569,37 @@ impl WeatherParticleRenderer {
         };
 
         if render_kind == WeatherKind::None || self.instance_count == 0 || self.intensity <= 0.0 {
+            self.lightning_flash = 0.0;
             return Ok(());
+        }
+
+        // Lightning flash logic for storms (weather_kind == Rain with high intensity)
+        let is_storm = render_kind == WeatherKind::Rain && self.intensity >= 0.9;
+        if is_storm {
+            self.lightning_cooldown -= dt;
+            if self.lightning_cooldown <= 0.0 {
+                // Trigger a flash
+                self.lightning_flash = 1.0;
+                // Simple LCG for next interval (3-8 seconds)
+                self.lightning_rng_state = self
+                    .lightning_rng_state
+                    .wrapping_mul(1103515245)
+                    .wrapping_add(12345);
+                let r = (self.lightning_rng_state >> 16) as f32 / 65535.0;
+                self.lightning_cooldown = 3.0 + r * 5.0;
+            }
+            // Rapid decay: flash lasts ~0.15 seconds
+            if self.lightning_flash > 0.0 {
+                self.lightning_flash = (self.lightning_flash - dt * 8.0).max(0.0);
+            }
+        } else {
+            self.lightning_flash = 0.0;
         }
 
         let preset = preset_for(render_kind);
         let elapsed = self.start_time.elapsed().as_secs_f32();
-        let view_proj = camera.view_projection_matrix();
+        // Camera-relative VP to avoid f32 jitter far from origin
+        let view_proj = camera.view_projection_matrix_relative();
         let camera_pos = camera.position();
 
         let uniforms = WeatherUniforms {
@@ -546,6 +615,8 @@ impl WeatherParticleRenderer {
             streak_length: preset.streak_length,
             particle_scale: preset.particle_scale,
             transition_alpha: self.transition_alpha,
+            lightning_flash: self.lightning_flash,
+            _pad: [0.0; 3],
         };
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
@@ -585,6 +656,29 @@ impl WeatherParticleRenderer {
             pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
             pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             pass.draw(0..6, 0..self.instance_count);
+        }
+
+        drop(pass);
+
+        // Lightning flash overlay (full-screen white flash during storms)
+        if self.lightning_flash > 0.01 {
+            let mut flash_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Lightning Flash Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            flash_pass.set_pipeline(&self.flash_pipeline);
+            flash_pass.set_bind_group(0, &self.bind_group, &[]);
+            flash_pass.draw(0..3, 0..1);
         }
 
         Ok(())

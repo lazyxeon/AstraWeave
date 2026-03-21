@@ -121,6 +121,17 @@ pub struct ViewportWidget {
 
     /// Queued terrain brush hits (world X, Z) from mouse clicks in viewport
     terrain_brush_hits: Vec<[f32; 2]>,
+
+    /// Throttle: last time a brush hit was emitted (limits to ~15 Hz during drag)
+    last_brush_time: std::time::Instant,
+
+    /// Drag offset: the XZ distance between entity center and initial click point.
+    /// Stored on drag start to prevent center-snap when clicking off-center.
+    drag_offset: Option<glam::Vec3>,
+
+    /// The Y height of the drag plane, captured at drag start.
+    /// Keeps dragging stable on a flat plane instead of intersecting uneven terrain.
+    drag_plane_y: f32,
 }
 
 impl ViewportWidget {
@@ -188,6 +199,9 @@ impl ViewportWidget {
             clipboard: None,
             terrain_brush_active: false,
             terrain_brush_hits: Vec::new(),
+            last_brush_time: std::time::Instant::now(),
+            drag_offset: None,
+            drag_plane_y: 0.0,
         })
     }
 
@@ -591,36 +605,36 @@ impl ViewportWidget {
                             };
 
                             if constraint == crate::gizmo::AxisConstraint::None {
-                                // FREE MOVEMENT: Entity follows mouse pointer on ground plane
-                                // Get current mouse position in screen space
+                                // FREE MOVEMENT: Entity follows mouse pointer on camera-facing plane
+                                // Uses drag_offset to prevent center-snap and drag_plane_y for stable dragging
                                 if let Some(mouse_pos_abs) = response.hover_pos() {
                                     let viewport_size = response.rect.size();
-                                    // Convert absolute screen position to viewport-relative (0,0 = top-left of viewport)
                                     let mouse_pos = egui::Pos2 {
                                         x: mouse_pos_abs.x - response.rect.min.x,
                                         y: mouse_pos_abs.y - response.rect.min.y,
                                     };
 
-                                    // Cast ray from mouse through camera
                                     let ray = self.camera.ray_from_screen(mouse_pos, viewport_size);
 
-                                    // Intersect ray with ground plane (Y=0)
+                                    // Intersect ray with horizontal plane at entity's drag height
                                     let plane_normal = glam::Vec3::Y;
-                                    let plane_point = glam::Vec3::ZERO;
+                                    let plane_point = glam::Vec3::new(0.0, self.drag_plane_y, 0.0);
                                     let denom = ray.direction.dot(plane_normal);
 
                                     if denom.abs() > 0.0001 {
                                         let t =
                                             (plane_point - ray.origin).dot(plane_normal) / denom;
                                         if t >= 0.0 {
-                                            // Ground plane intersection point
-                                            let world_pos = ray.origin + ray.direction * t;
+                                            let hit = ray.origin + ray.direction * t;
 
-                                            // Check if Ctrl is held for grid snapping
+                                            // Subtract drag offset so entity stays where user grabbed it
+                                            let offset =
+                                                self.drag_offset.unwrap_or(glam::Vec3::ZERO);
+                                            let world_pos = hit - offset;
+
                                             let snap_enabled = ctx
                                                 .input(|i| i.modifiers.ctrl || i.modifiers.command);
 
-                                            // Apply grid snapping if enabled
                                             let final_x = if snap_enabled {
                                                 self.snap_to_grid(world_pos.x)
                                             } else {
@@ -632,7 +646,6 @@ impl ViewportWidget {
                                                 world_pos.z
                                             };
 
-                                            // Set entity position directly (no delta, just follow mouse)
                                             let new_x = final_x.round() as i32;
                                             let new_z = final_z.round() as i32;
 
@@ -640,15 +653,11 @@ impl ViewportWidget {
                                                 world.pose_mut(selected_id as u32)
                                             {
                                                 pose_mut.pos.x = new_x;
-                                                pose_mut.pos.y = new_z; // IVec2.y = world Z
+                                                pose_mut.pos.y = new_z;
 
                                                 debug!(
                                                     entity = ?selected_id,
                                                     snap_enabled,
-                                                    mouse_abs_x = mouse_pos_abs.x,
-                                                    mouse_abs_y = mouse_pos_abs.y,
-                                                    mouse_rel_x = mouse_pos.x,
-                                                    mouse_rel_y = mouse_pos.y,
                                                     world_x = world_pos.x,
                                                     world_z = world_pos.z,
                                                     new_x,
@@ -687,17 +696,20 @@ impl ViewportWidget {
                                     // Cast ray from mouse through camera
                                     let ray = self.camera.ray_from_screen(mouse_pos, viewport_size);
 
-                                    // Intersect ray with ground plane (Y=0)
+                                    // Intersect ray with horizontal plane at entity's drag height
                                     let plane_normal = glam::Vec3::Y;
-                                    let plane_point = glam::Vec3::ZERO;
+                                    let plane_point = glam::Vec3::new(0.0, self.drag_plane_y, 0.0);
                                     let denom = ray.direction.dot(plane_normal);
 
                                     if denom.abs() > 0.0001 {
                                         let t =
                                             (plane_point - ray.origin).dot(plane_normal) / denom;
                                         if t >= 0.0 {
-                                            // Ground plane intersection point
-                                            let world_pos = ray.origin + ray.direction * t;
+                                            let hit = ray.origin + ray.direction * t;
+                                            // Apply drag offset for smooth grab
+                                            let offset =
+                                                self.drag_offset.unwrap_or(glam::Vec3::ZERO);
+                                            let world_pos = hit - offset;
 
                                             // Check if Ctrl is held for grid snapping
                                             let snap_enabled = ctx
@@ -745,7 +757,10 @@ impl ViewportWidget {
                                                 pose_mut.pos.y = new_z; // IVec2.y = world Z
 
                                                 // Y-axis constraint: use mouse vertical delta to adjust height
-                                                if matches!(constraint, crate::gizmo::AxisConstraint::Y) {
+                                                if matches!(
+                                                    constraint,
+                                                    crate::gizmo::AxisConstraint::Y
+                                                ) {
                                                     let dy = ctx.input(|i| i.pointer.delta().y);
                                                     let height_sensitivity = 0.05;
                                                     pose_mut.height -= dy * height_sensitivity;
@@ -891,24 +906,32 @@ impl ViewportWidget {
         }
 
         // Terrain brush: raycast mouse to ground plane on click/drag
+        // Throttle to max ~15 Hz during drag to prevent FPS collapse
+        // (each hit triggers full mesh regeneration on the main thread)
         if self.terrain_brush_active
             && !self.gizmo_state.is_active()
             && (response.dragged_by(egui::PointerButton::Primary)
                 || response.clicked_by(egui::PointerButton::Primary))
         {
-            if let Some(mouse_pos_abs) = response.hover_pos() {
-                let viewport_size = response.rect.size();
-                let mouse_pos = egui::Pos2 {
-                    x: mouse_pos_abs.x - response.rect.min.x,
-                    y: mouse_pos_abs.y - response.rect.min.y,
-                };
-                let ray = self.camera.ray_from_screen(mouse_pos, viewport_size);
-                let denom = ray.direction.dot(glam::Vec3::Y);
-                if denom.abs() > 0.0001 {
-                    let t = (glam::Vec3::ZERO - ray.origin).dot(glam::Vec3::Y) / denom;
-                    if t >= 0.0 {
-                        let world_pos = ray.origin + ray.direction * t;
-                        self.terrain_brush_hits.push([world_pos.x, world_pos.z]);
+            let is_click = response.clicked_by(egui::PointerButton::Primary);
+            let elapsed = self.last_brush_time.elapsed();
+            let throttle_ok = is_click || elapsed.as_millis() >= 66; // ~15 Hz for drags
+            if throttle_ok {
+                if let Some(mouse_pos_abs) = response.hover_pos() {
+                    let viewport_size = response.rect.size();
+                    let mouse_pos = egui::Pos2 {
+                        x: mouse_pos_abs.x - response.rect.min.x,
+                        y: mouse_pos_abs.y - response.rect.min.y,
+                    };
+                    let ray = self.camera.ray_from_screen(mouse_pos, viewport_size);
+                    let denom = ray.direction.dot(glam::Vec3::Y);
+                    if denom.abs() > 0.0001 {
+                        let t = (glam::Vec3::ZERO - ray.origin).dot(glam::Vec3::Y) / denom;
+                        if t >= 0.0 {
+                            let world_pos = ray.origin + ray.direction * t;
+                            self.terrain_brush_hits.push([world_pos.x, world_pos.z]);
+                            self.last_brush_time = std::time::Instant::now();
+                        }
                     }
                 }
             }
@@ -930,22 +953,25 @@ impl ViewportWidget {
         // Works when viewport is hovered — no click required
         if can_control_camera {
             ctx.input(|i| {
-                // Scale speed with camera distance for consistent feel at any zoom level
-                let speed = (self.camera.distance() * 0.04).clamp(0.3, 15.0);
+                let dt = i.stable_dt.clamp(0.001, 0.1);
+                // Speed is per-second, scaled by camera distance for consistent feel
+                let speed = (self.camera.distance() * 2.5).clamp(18.0, 900.0) * dt;
                 let mut move_delta = glam::Vec3::ZERO;
 
+                // Cache forward/right vectors once per frame
+                let fwd = self.camera.forward();
+                let right = fwd.cross(glam::Vec3::Y).normalize();
+
                 if i.key_down(egui::Key::W) {
-                    move_delta += self.camera.forward() * speed;
+                    move_delta += fwd * speed;
                 }
                 if i.key_down(egui::Key::S) {
-                    move_delta -= self.camera.forward() * speed;
+                    move_delta -= fwd * speed;
                 }
                 if i.key_down(egui::Key::A) {
-                    let right = self.camera.forward().cross(glam::Vec3::Y).normalize();
                     move_delta -= right * speed;
                 }
                 if i.key_down(egui::Key::D) {
-                    let right = self.camera.forward().cross(glam::Vec3::Y).normalize();
                     move_delta += right * speed;
                 }
                 if i.key_down(egui::Key::Space) {
@@ -985,6 +1011,7 @@ impl ViewportWidget {
         if self.selected_entity().is_none() && self.gizmo_state.is_active() {
             self.gizmo_state.mode = GizmoMode::Inactive;
             self.gizmo_state.start_transform = None;
+            self.drag_offset = None;
         }
 
         // Capture start transform when beginning a new operation
@@ -1006,6 +1033,33 @@ impl ViewportWidget {
                         rotation: rotation_quat, // Store all 3 rotation axes
                         scale: glam::Vec3::splat(pose.scale),
                     });
+
+                    // Capture drag offset for translate mode:
+                    // Raycast from current mouse position to a plane at entity height.
+                    // The offset prevents center-snapping when clicking off-center.
+                    if matches!(self.gizmo_state.mode, GizmoMode::Translate { .. }) {
+                        self.drag_plane_y = pose.height;
+                        if let Some(mouse_pos_abs) = response.hover_pos() {
+                            let viewport_size = response.rect.size();
+                            let mouse_pos = egui::Pos2 {
+                                x: mouse_pos_abs.x - response.rect.min.x,
+                                y: mouse_pos_abs.y - response.rect.min.y,
+                            };
+                            let ray = self.camera.ray_from_screen(mouse_pos, viewport_size);
+                            let plane_normal = glam::Vec3::Y;
+                            let plane_point = glam::Vec3::new(0.0, pose.height, 0.0);
+                            let denom = ray.direction.dot(plane_normal);
+                            if denom.abs() > 0.0001 {
+                                let t = (plane_point - ray.origin).dot(plane_normal) / denom;
+                                if t >= 0.0 {
+                                    let hit = ray.origin + ray.direction * t;
+                                    let entity_center = glam::Vec3::new(x, pose.height, z);
+                                    self.drag_offset = Some(hit - entity_center);
+                                }
+                            }
+                        }
+                    }
+
                     debug!(
                         x,
                         z,
@@ -1111,10 +1165,12 @@ impl ViewportWidget {
             // Confirm/cancel gizmo operation
             if i.key_pressed(egui::Key::Enter) {
                 self.gizmo_state.handle_key(KeyCode::Enter);
+                self.drag_offset = None;
                 debug!("Gizmo: Confirm");
             }
             if i.key_pressed(egui::Key::Escape) {
                 self.gizmo_state.handle_key(KeyCode::Escape);
+                self.drag_offset = None;
                 debug!("Gizmo: Cancel");
             }
 
@@ -1449,6 +1505,7 @@ impl ViewportWidget {
                     if self.gizmo_state.is_active() {
                         self.gizmo_state.mode = GizmoMode::Inactive;
                         self.gizmo_state.start_transform = None;
+                        self.drag_offset = None;
                     }
                     debug!(
                         "Click at ({:.1}, {:.1}) - No entity hit (selection cleared)",
@@ -2185,6 +2242,7 @@ impl ViewportWidget {
         if self.gizmo_state.is_active() {
             self.gizmo_state.mode = GizmoMode::Inactive;
             self.gizmo_state.start_transform = None;
+            self.drag_offset = None;
         }
     }
 

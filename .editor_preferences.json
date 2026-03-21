@@ -1,34 +1,36 @@
 {
-  "show_grid": false,
+  "show_grid": true,
   "auto_save_enabled": false,
-  "auto_save_interval_secs": 300.0,
+  "auto_save_interval_secs": 3600.0,
   "auto_save_keep_count": 3,
-  "auto_save_to_separate_dir": false,
+  "auto_save_to_separate_dir": true,
   "show_hierarchy_panel": true,
   "show_inspector_panel": true,
   "show_console_panel": true,
   "camera": {
     "focal_point": [
-      46.564663,
-      44.481995,
-      20.67714
+      279.31595,
+      165.46736,
+      33.56405
     ],
-    "distance": 0.1519646,
-    "yaw": 0.42139834,
-    "pitch": 0.6407964,
+    "distance": 46.431446,
+    "yaw": 0.045398325,
+    "pitch": 0.24479632,
     "fov": 60.0,
-    "aspect": 1.7958585,
+    "aspect": 2.2611258,
     "near": 0.01,
     "far": 1000.0,
-    "min_distance": 0.1,
-    "max_distance": 200.0,
+    "min_distance": 0.02,
+    "max_distance": 500.0,
     "min_pitch": -1.5607964,
-    "max_pitch": 1.5607964
+    "max_pitch": 1.5607964,
+    "zoom_target": 46.431446
   },
   "snapping": {
     "grid_size": 1.0,
     "angle_increment": 15.0,
-    "grid_enabled": false,
+    "grid_enabled": true,
     "angle_enabled": true
-  }
+  },
+  "layout_json": "{\n  \"panels\": [\n    \"Console\",\n    \"Profiler\",\n    \"Performance\",\n    \"SceneStats\",\n    \"Hierarchy\",\n    \"Viewport\"\n  ]\n}"
 }

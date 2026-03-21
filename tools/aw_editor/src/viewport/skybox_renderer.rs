@@ -375,8 +375,8 @@ impl SkyboxRenderer {
         camera: &OrbitCamera,
         queue: &wgpu::Queue,
     ) -> Result<()> {
-        // Update uniforms
-        let view_proj = camera.view_projection_matrix();
+        // Update uniforms — camera-relative VP to avoid f32 jitter far from origin
+        let view_proj = camera.view_projection_matrix_relative();
         let inv_view_proj = view_proj.inverse();
 
         let uniforms = SkyboxUniforms {

@@ -68,7 +68,9 @@ impl Toast {
     }
 }
 
+mod animation_bridge;
 mod asset_pack;
+mod audio_bridge;
 mod behavior_graph;
 mod brdf_preview;
 mod clipboard; // Phase 3.4 - Copy/Paste/Duplicate
@@ -84,6 +86,7 @@ mod gizmo;
 mod interaction; // Phase 8.1 Week 5 Day 3 - Gizmo interaction helpers (auto-tracking)
 mod level_doc; // Level document types
 mod material_inspector;
+mod movement_scripts;
 mod panels;
 mod polish;
 mod prefab; // Phase 4.1 - Prefab System
@@ -312,7 +315,6 @@ struct EditorApp {
     undo_stack: command::UndoStack,
     // Phase 2.2: Scene Save/Load
     current_scene_path: Option<PathBuf>,
-    last_autosave: std::time::Instant,
     // Phase 3.4: Copy/Paste/Duplicate
     clipboard: Option<clipboard::ClipboardData>,
     // Astract panels
@@ -415,6 +417,16 @@ struct EditorApp {
     /// Cached environment params to avoid redundant GPU updates each frame
     cached_fog_params: Option<crate::viewport::terrain_renderer::TerrainFogParams>,
     cached_sky_colors: Option<([f32; 4], [f32; 4], [f32; 4])>,
+    /// Measured subsystem timings (from previous frame, in ms)
+    measured_render_ms: f32,
+    measured_tick_ms: f32,
+    measured_ui_setup_ms: f32,
+    /// Audio bridge: owns the audio engine and processes panel actions
+    audio_bridge: audio_bridge::EditorAudioBridge,
+    /// Animation bridge: owns clip library and per-entity animation state
+    animation_bridge: animation_bridge::EditorAnimationBridge,
+    /// Movement script system: ticks entity movement behaviors in play mode
+    movement_system: movement_scripts::MovementSystem,
 }
 
 impl Default for EditorApp {
@@ -507,7 +519,6 @@ impl Default for EditorApp {
             undo_stack: command::UndoStack::new(100), // Store last 100 commands
             // Phase 2.2: Scene Save/Load
             current_scene_path: None,
-            last_autosave: std::time::Instant::now(),
             // Phase 3.4: Copy/Paste/Duplicate
             clipboard: None,
             // Initialize Astract panels
@@ -608,6 +619,12 @@ impl Default for EditorApp {
             splash: Some(splash::SplashScreen::new()),
             cached_fog_params: None,
             cached_sky_colors: None,
+            measured_render_ms: 0.0,
+            measured_tick_ms: 0.0,
+            measured_ui_setup_ms: 0.0,
+            audio_bridge: audio_bridge::EditorAudioBridge::new(),
+            animation_bridge: animation_bridge::EditorAnimationBridge::new(),
+            movement_system: movement_scripts::MovementSystem::new(),
         }
     }
 }
@@ -937,7 +954,8 @@ impl EditorApp {
 
             // Populate position from World pose
             if let Some(pose) = world.pose(entity_id) {
-                editor_entity.position = glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
+                editor_entity.position =
+                    glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
                 editor_entity.components.insert(
                     "Transform".to_string(),
                     serde_json::json!({"x": pose.pos.x, "y": pose.height, "z": pose.pos.y}),
@@ -2355,6 +2373,32 @@ impl EditorApp {
         // Week 7 Day 5: Check for crash recovery
         app.check_for_crash_recovery();
 
+        // Seed discovered audio tracks into the audio panel
+        if !app.audio_bridge.discovered_tracks.is_empty() {
+            let entries: Vec<panels::audio_panel::MusicTrackEntry> = app
+                .audio_bridge
+                .discovered_tracks
+                .iter()
+                .map(|p| panels::audio_panel::MusicTrackEntry {
+                    name: p
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    path: p.display().to_string(),
+                    ..Default::default()
+                })
+                .collect();
+            app.dock_tab_viewer.set_audio_tracks(entries);
+            app.console_logs.push(format!(
+                "Audio: discovered {} tracks",
+                app.audio_bridge.discovered_tracks.len()
+            ));
+        }
+        if let Some(err) = app.audio_bridge.init_error() {
+            app.console_logs
+                .push(format!("Audio device unavailable: {}", err));
+        }
+
         // Week 7 Day 5: Create lock file for this session
         app.create_lock_file();
 
@@ -3144,6 +3188,38 @@ impl EditorApp {
                         rotation: rot_v,
                         scale: sc_v,
                     }));
+            } else if let Some(w) = &world_ref {
+                // Entity exists in World but not in entity_manager — read directly
+                let eid = entity_id as u32;
+                if let Some(pose) = w.pose(eid) {
+                    let name = w.name(eid).unwrap_or("Entity").to_string();
+                    self.dock_tab_viewer.set_selected_transform(Some((
+                        pose.pos.x as f32,
+                        pose.height,
+                        pose.pos.y as f32,
+                        pose.rotation,
+                        pose.scale,
+                        pose.scale,
+                        pose.scale,
+                    )));
+                    self.dock_tab_viewer
+                        .set_selected_entity_info(Some(EntityInfo {
+                            id: entity_id,
+                            name,
+                            components: Vec::new(),
+                            entity_type: "Entity".to_string(),
+                            hp: w.health(eid).map(|h| h.hp),
+                            team_id: w.team(eid).map(|t| t.id),
+                            ammo: w.ammo(eid).map(|a| a.rounds),
+                            pos_x: Some(pose.pos.x),
+                            pos_y: Some(pose.pos.y),
+                            rotation: Some(pose.rotation),
+                            scale: Some(pose.scale),
+                        }));
+                } else {
+                    self.dock_tab_viewer.set_selected_transform(None);
+                    self.dock_tab_viewer.set_selected_entity_info(None);
+                }
             } else {
                 self.dock_tab_viewer.set_selected_transform(None);
                 self.dock_tab_viewer.set_selected_entity_info(None);
@@ -3195,12 +3271,12 @@ impl EditorApp {
             tick_count: self.runtime.stats().tick_count,
             is_playing: self.runtime.is_playing(),
             is_paused: self.runtime.is_paused(),
-            // Subsystem timings: 0 when not running (editor mode)
-            render_time_ms: 0.0,
-            physics_time_ms: 0.0,
+            // Subsystem timings measured from previous frame
+            render_time_ms: self.measured_render_ms,
+            physics_time_ms: self.measured_tick_ms,
             ai_time_ms: 0.0,
             script_time_ms: 0.0,
-            audio_time_ms: 0.0,
+            audio_time_ms: self.audio_bridge.last_tick_ms,
             draw_calls: vp_draw_calls,
             triangles: vp_triangles,
             gpu_memory_bytes,
@@ -3552,6 +3628,19 @@ impl EditorApp {
                                 _ => {}
                             }
                         }
+                        // Assign default KayKit mesh based on archetype
+                        let mesh_path = match archetype.as_str() {
+                            "Player" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"),
+                            "Companion" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Knight.glb"),
+                            "Enemy" => Some("assets/The Complete KayKit Collection v4/KayKit Skeletons 1.1/characters/gltf/Skeleton_Warrior.glb"),
+                            "Boss" => Some("assets/The Complete KayKit Collection v4/KayKit Skeletons 1.1/characters/gltf/Skeleton_Golem.glb"),
+                            "NPC" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Mage.glb"),
+                            _ => None,
+                        };
+                        if let Some(path) = mesh_path {
+                            em_entity_new.set_mesh(path.to_string());
+                        }
+
                         self.entity_manager.add(em_entity_new);
 
                         self.selected_entity = Some(em_id);
@@ -3746,6 +3835,9 @@ impl EditorApp {
                             "Collider" => serde_json::json!({"shape": "box", "size": [1, 1, 1]}),
                             "RigidBody" => serde_json::json!({"type": "dynamic", "mass": 1.0}),
                             "Script" => serde_json::json!({"path": ""}),
+                            "MovementScript" => {
+                                movement_scripts::MovementScript::default().to_json()
+                            }
                             "Audio" => serde_json::json!({"clip": "", "volume": 1.0}),
                             "Light" => serde_json::json!({"type": "point", "intensity": 1.0}),
                             "Camera" => {
@@ -4219,8 +4311,11 @@ impl EditorApp {
                         }
 
                         // Sync selected entity from viewport to app state
-                        if let Some(selected) = viewport.selected_entity() {
-                            self.selected_entity = Some(selected);
+                        // (handles both selection and deselection)
+                        let vp_selected = viewport.selected_entity();
+                        if vp_selected != self.selected_entity {
+                            self.selected_entity = vp_selected;
+                            self.selection_set.primary = vp_selected;
                         }
 
                         // Sync snapping settings from viewport toolbar to EditorApp
@@ -4378,7 +4473,10 @@ impl EditorApp {
                         response.on_hover_ui(|ui| {
                             ui.label(format!("ID: {}", entity));
                             if let Some(pose) = pose {
-                                ui.label(format!("Position: ({}, {:.1}, {})", pose.pos.x, pose.height, pose.pos.y));
+                                ui.label(format!(
+                                    "Position: ({}, {:.1}, {})",
+                                    pose.pos.x, pose.height, pose.pos.y
+                                ));
                                 ui.label(format!("Scale: {:.2}", pose.scale));
                             }
                             if let Some(health) = health {
@@ -4418,7 +4516,10 @@ impl EditorApp {
                         if let Some(pose) = world.pose(entity) {
                             ui.horizontal(|ui| {
                                 ui.label("Position:");
-                                ui.label(format!("({}, {:.1}, {})", pose.pos.x, pose.height, pose.pos.y));
+                                ui.label(format!(
+                                    "({}, {:.1}, {})",
+                                    pose.pos.x, pose.height, pose.pos.y
+                                ));
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Rotation:");
@@ -4918,8 +5019,11 @@ impl EditorApp {
                                 entity_manager::EditorEntity::new(em_id, model_name.clone());
                             em_entity.set_mesh(mesh_path_str);
                             if let Some(pose) = scene_state.world().pose(entity) {
-                                em_entity.position =
-                                    glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
+                                em_entity.position = glam::Vec3::new(
+                                    pose.pos.x as f32,
+                                    pose.height,
+                                    pose.pos.y as f32,
+                                );
                             }
                             self.entity_manager.add(em_entity);
                         }
@@ -6352,6 +6456,33 @@ impl eframe::App for EditorApp {
         self.process_hierarchy_actions();
         self.sync_hierarchy_prefab_instances();
 
+        // Drain entity panel mesh assignments (from archetype spawns)
+        {
+            let assignments = std::mem::take(&mut self.entity_panel.pending_mesh_assignments);
+            for (entity_id, mesh_path) in assignments {
+                let em_id = entity_id as u64;
+                if let Some(em_entity) = self.entity_manager.get_mut(em_id) {
+                    em_entity.set_mesh(mesh_path);
+                } else {
+                    let name = self
+                        .scene_state
+                        .as_ref()
+                        .and_then(|s| s.world().name(entity_id))
+                        .unwrap_or("Entity")
+                        .to_string();
+                    let mut em_entity = entity_manager::EditorEntity::new(em_id, name);
+                    em_entity.set_mesh(mesh_path);
+                    if let Some(s) = self.scene_state.as_ref() {
+                        if let Some(pose) = s.world().pose(entity_id) {
+                            em_entity.position =
+                                glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
+                        }
+                    }
+                    self.entity_manager.add(em_entity);
+                }
+            }
+        }
+
         // Process asset browser actions (drag-drop, double-click, context actions)
         self.process_asset_browser_actions();
 
@@ -6363,6 +6494,8 @@ impl eframe::App for EditorApp {
         } else {
             60.0
         };
+
+        let ui_setup_start = std::time::Instant::now();
 
         self.profiler_panel.push_frame_time(frame_time * 1000.0);
 
@@ -6954,30 +7087,7 @@ impl eframe::App for EditorApp {
             }
         });
 
-        // Phase 2.2: Autosave every 5 minutes
-        if self.last_autosave.elapsed().as_secs() >= 300 {
-            if let Some(world) = self.edit_world() {
-                let autosave_dir = self.content_root.join(".autosave");
-                let _ = fs::create_dir_all(&autosave_dir);
-                let timestamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let autosave_path = autosave_dir.join(format!("autosave_{}.scene.ron", timestamp));
-
-                match scene_serialization::save_scene(world, &autosave_path) {
-                    Ok(()) => {
-                        self.console_logs
-                            .push(format!("Autosaved to {:?}", autosave_path));
-                        self.last_auto_save = std::time::Instant::now();
-                    }
-                    Err(e) => {
-                        self.console_logs.push(format!("Autosave failed: {}", e));
-                        self.last_auto_save = std::time::Instant::now();
-                    }
-                }
-            }
-        }
+        // Phase 2.2 legacy autosave removed — handled by Week 7 enhanced autosave
 
         let stats = self.runtime.stats().clone();
         self.performance_panel.set_frame_time(frame_time * 1000.0);
@@ -7000,6 +7110,10 @@ impl eframe::App for EditorApp {
         self.world_panel.update();
         self.animation_panel.update(frame_time);
 
+        self.measured_ui_setup_ms = ui_setup_start.elapsed().as_secs_f32() * 1000.0;
+
+        let render_start = std::time::Instant::now();
+
         self.show_top_panel(ctx);
 
         self.show_status_bar(ctx);
@@ -7018,10 +7132,81 @@ impl eframe::App for EditorApp {
 
         self.render_toasts(ctx);
 
+        self.measured_render_ms = render_start.elapsed().as_secs_f32() * 1000.0;
+
+        // --- Audio subsystem: process panel actions and tick engine ---
+        let audio_start = std::time::Instant::now();
+        let audio_actions = self.dock_tab_viewer.take_audio_actions();
+        if !audio_actions.is_empty() {
+            self.audio_bridge.process_actions(audio_actions);
+        }
+        self.audio_bridge.tick(frame_time);
+        // Push live stats back into the audio panel
+        self.dock_tab_viewer
+            .set_audio_stats(self.audio_bridge.stats());
+        let measured_audio_ms = audio_start.elapsed().as_secs_f32() * 1000.0;
+
+        // Update listener position to match the camera
+        if let Some(viewport) = &self.viewport {
+            let cam = viewport.camera();
+            self.audio_bridge
+                .update_listener(cam.position(), cam.forward(), cam.up());
+        }
+
+        // --- Animation subsystem: sync panel playback state to bridge ---
+        {
+            let panel = &self.animation_panel;
+            // If the panel's editor is actively playing, bridge that to the entity
+            if panel.playback_state == panels::animation::PlaybackState::Playing {
+                if let Some(entity_id) = panel.selected_entity {
+                    self.animation_bridge
+                        .assign_clip(entity_id as u64, panel.selected_clip_idx.unwrap_or(0));
+                }
+            }
+        }
+        self.animation_bridge.tick(frame_time);
+
+        // --- Movement scripts: tick entity movement in play mode ---
+        if self.runtime.is_playing() {
+            let mut scripted: Vec<(
+                u64,
+                movement_scripts::MovementScript,
+                glam::Vec3,
+                glam::Quat,
+            )> = Vec::new();
+            for entity in self.entity_manager.entities().values() {
+                if let Some(script_val) = entity.components.get("MovementScript") {
+                    if let Some(script) = movement_scripts::MovementScript::from_json(script_val) {
+                        scripted.push((entity.id, script, entity.position, entity.rotation));
+                    }
+                }
+            }
+            if !scripted.is_empty() {
+                let results = self.movement_system.tick_all(&scripted, frame_time);
+                for (id, new_pos, new_rot) in results {
+                    self.entity_manager
+                        .update_transform(id, new_pos, new_rot, glam::Vec3::ONE);
+                }
+            }
+        }
+
+        let tick_start = std::time::Instant::now();
         if let Err(e) = self.runtime.tick(frame_time) {
             self.console_logs
                 .push(format!("Runtime tick failed: {}", e));
         }
+        self.measured_tick_ms = tick_start.elapsed().as_secs_f32() * 1000.0;
+
+        // Push subsystem timings to profiler panel
+        self.profiler_panel.push_subsystem_timings(
+            crate::panels::profiler_panel::SubsystemTimings {
+                render: self.measured_render_ms,
+                physics: self.measured_tick_ms,
+                audio: measured_audio_ms,
+                ui: self.measured_ui_setup_ms,
+                ..Default::default()
+            },
+        );
     }
 }
 

@@ -114,7 +114,9 @@ fn vs_main(
     }
 
     var output: VertexOutput;
-    output.clip_position = uniforms.view_proj * world_position;
+    // Camera-relative transform: subtract camera_pos to avoid f32 jitter far from origin
+    let rel_pos = world_position.xyz - uniforms.camera_pos;
+    output.clip_position = uniforms.view_proj * vec4<f32>(rel_pos, 1.0);
     output.world_position = world_position.xyz;
     output.world_normal = world_normal;
     output.color = vertex.vertex_color * instance.tint;

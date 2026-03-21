@@ -1,4 +1,4 @@
-﻿//! Gizmo Renderer (wgpu integration)
+//! Gizmo Renderer (wgpu integration)
 //!
 //! Renders translate/rotate/scale gizmos using wgpu line rendering.
 //! Integrates with existing gizmo module for geometry generation.
@@ -211,11 +211,16 @@ impl GizmoRendererWgpu {
         }
 
         // Convert 2D grid position to 3D world position
-        let world_position = Vec3::new(entity_position.x as f32, entity_height, entity_position.y as f32);
+        let world_position = Vec3::new(
+            entity_position.x as f32,
+            entity_height,
+            entity_position.y as f32,
+        );
         let world_rotation = Quat::IDENTITY; // No rotation (top-down 2D game)
 
-        // Update camera uniforms
-        let view_proj = camera.view_projection_matrix();
+        // Update camera uniforms — camera-relative VP to avoid f32 jitter far from origin
+        let view_proj = camera.view_projection_matrix_relative();
+        let cam_pos = camera.position();
         let uniforms = GizmoUniforms {
             view_proj: view_proj.to_cols_array_2d(),
         };
@@ -256,8 +261,15 @@ impl GizmoRendererWgpu {
             GizmoMode::Inactive => return Ok(()),
         };
 
-        // Convert geometries to vertices
-        let vertices = self.geometries_to_vertices(&geometries, world_position, world_rotation);
+        // Convert geometries to vertices (world space)
+        let mut vertices = self.geometries_to_vertices(&geometries, world_position, world_rotation);
+
+        // Offset to camera-relative coordinates (VP matrix has eye at origin)
+        for v in &mut vertices {
+            v.position[0] -= cam_pos.x;
+            v.position[1] -= cam_pos.y;
+            v.position[2] -= cam_pos.z;
+        }
 
         if vertices.is_empty() {
             return Ok(());

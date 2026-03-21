@@ -31,10 +31,10 @@ use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
 use super::physics_renderer::PhysicsDebugRenderer;
 use super::scatter_renderer::{ScatterPlacement, ScatterRenderer};
-use super::weather_particle_renderer::{WeatherKind, WeatherParticleRenderer};
 use super::skybox_renderer::SkyboxRenderer;
 use super::terrain_renderer::TerrainRenderer;
 use super::water_renderer::WaterRenderer;
+use super::weather_particle_renderer::{WeatherKind, WeatherParticleRenderer};
 use crate::gizmo::GizmoState;
 use astraweave_core::{Entity, World};
 
@@ -112,7 +112,7 @@ impl ViewportRenderer {
         let grid_renderer = GridRenderer::new(&device).context("Failed to create grid renderer")?;
         let skybox_renderer =
             SkyboxRenderer::new(&device).context("Failed to create skybox renderer")?;
-        let entity_renderer = EntityRenderer::new(device.clone(), 10000)
+        let entity_renderer = EntityRenderer::new(device.clone(), queue.clone(), 10000)
             .context("Failed to create entity renderer")?;
         let gizmo_renderer = GizmoRendererWgpu::new((*device).clone(), (*queue).clone(), 10000)
             .context("Failed to create gizmo renderer")?;
@@ -443,7 +443,8 @@ impl ViewportRenderer {
 
         // Pass 4.5: Weather particles (rain, snow, hail, sandstorm, blizzard) — deferred init
         if let Some(weather) = self.weather_renderer.as_mut() {
-            weather.render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+            weather
+                .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
                 .context("Weather particle render failed")?;
         }
 
@@ -631,7 +632,9 @@ impl ViewportRenderer {
 
     /// Check if any animated weather effects are active (rain, etc.)
     pub fn has_active_effects(&self) -> bool {
-        self.weather_renderer.as_ref().map_or(false, |r| r.is_active())
+        self.weather_renderer
+            .as_ref()
+            .map_or(false, |r| r.is_active())
     }
 
     /// Load an HDRI file and apply it as the skybox background
@@ -674,16 +677,16 @@ impl ViewportRenderer {
         let kind = WeatherKind::from_weather_type(params.weather_type);
         if kind != WeatherKind::None {
             let intensity = match params.weather_type {
-                3 => 1.0,  // Storm = heavy
-                _ => 0.5,
+                3 => 1.0, // Storm = heavy
+                _ => 0.7,
             };
             let queue = self.queue.clone();
             if let Ok(weather) = self.ensure_weather_renderer() {
                 weather.set_weather(kind, intensity, &queue);
                 let (wx, wz) = match params.weather_type {
-                    3 => (4.0, 2.0),
-                    2 => (1.0, 0.5),
-                    6 => (6.0, 3.0),  // Sandstorm = strong wind
+                    3 => (5.0, 3.0),
+                    2 => (1.5, 0.8),
+                    6 => (6.0, 3.0), // Sandstorm = strong wind
                     _ => (0.0, 0.0),
                 };
                 weather.set_wind(wx, wz);

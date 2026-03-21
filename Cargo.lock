@@ -2024,6 +2024,7 @@ dependencies = [
  "astract",
  "astraweave-asset",
  "astraweave-asset-pipeline",
+ "astraweave-audio",
  "astraweave-author",
  "astraweave-behavior",
  "astraweave-core",

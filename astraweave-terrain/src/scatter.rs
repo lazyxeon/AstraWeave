@@ -19,6 +19,8 @@ pub struct VegetationInstance {
     pub vegetation_type: String,
     /// Model path for rendering
     pub model_path: String,
+    /// Terrain surface normal at placement point
+    pub terrain_normal: Vec3,
 }
 
 /// A scatter pattern configuration
@@ -41,7 +43,7 @@ impl Default for ScatterConfig {
         Self {
             use_poisson_disk: true,
             min_distance: 2.0,
-            max_slope: 45.0,
+            max_slope: 35.0,
             height_filter: None,
             seed_offset: 0,
         }
@@ -150,7 +152,8 @@ impl VegetationScatter {
                     }
                 }
 
-                let slope = self.estimate_slope(chunk, world_pos, chunk_size);
+                let (slope, terrain_normal) =
+                    self.estimate_slope_and_normal(chunk, world_pos, chunk_size);
                 if slope > self.config.max_slope {
                     continue;
                 }
@@ -181,9 +184,13 @@ impl VegetationScatter {
                     continue;
                 }
 
-                if let Some(vegetation_instance) =
-                    self.create_vegetation_instance(world_pos, biome_config, rng, slope)?
-                {
+                if let Some(vegetation_instance) = self.create_vegetation_instance(
+                    world_pos,
+                    biome_config,
+                    rng,
+                    slope,
+                    terrain_normal,
+                )? {
                     let idx = instances.len();
                     instances.push(vegetation_instance);
                     grid[gz * grid_dim + gx].push(idx);
@@ -224,15 +231,20 @@ impl VegetationScatter {
                 }
 
                 // Check slope
-                let slope = self.estimate_slope(chunk, world_pos, chunk_size);
+                let (slope, terrain_normal) =
+                    self.estimate_slope_and_normal(chunk, world_pos, chunk_size);
                 if slope > self.config.max_slope {
                     continue;
                 }
 
                 // Create vegetation instance
-                if let Some(vegetation_instance) =
-                    self.create_vegetation_instance(world_pos, biome_config, rng, slope)?
-                {
+                if let Some(vegetation_instance) = self.create_vegetation_instance(
+                    world_pos,
+                    biome_config,
+                    rng,
+                    slope,
+                    terrain_normal,
+                )? {
                     instances.push(vegetation_instance);
                 }
             }
@@ -241,8 +253,14 @@ impl VegetationScatter {
         Ok(instances)
     }
 
-    /// Estimate slope at a position using nearby height samples
-    fn estimate_slope(&self, chunk: &TerrainChunk, world_pos: Vec3, chunk_size: f32) -> f32 {
+    /// Estimate slope at a position using nearby height samples.
+    /// Returns (slope_degrees, terrain_normal).
+    fn estimate_slope_and_normal(
+        &self,
+        chunk: &TerrainChunk,
+        world_pos: Vec3,
+        chunk_size: f32,
+    ) -> (f32, Vec3) {
         let offset = 1.0; // Sample distance
 
         let height_center = world_pos.y;
@@ -257,7 +275,12 @@ impl VegetationScatter {
         let dz = height_z - height_center;
         let slope_radians = (dx * dx + dz * dz).sqrt().atan2(offset);
 
-        slope_radians.to_degrees()
+        // Calculate terrain normal from height gradient
+        // tangent_x = (offset, dx, 0), tangent_z = (0, dz, offset)
+        // normal = cross(tangent_z, tangent_x)
+        let normal = Vec3::new(-dx, offset, -dz).normalize_or(Vec3::Y);
+
+        (slope_radians.to_degrees(), normal)
     }
 
     /// Create a vegetation instance with appropriate type and scaling
@@ -267,6 +290,7 @@ impl VegetationScatter {
         biome_config: &BiomeConfig,
         rng: &mut rand::rngs::StdRng,
         slope: f32,
+        terrain_normal: Vec3,
     ) -> anyhow::Result<Option<VegetationInstance>> {
         // Filter vegetation types by slope tolerance
         let suitable_types: Vec<_> = biome_config
@@ -318,6 +342,7 @@ impl VegetationScatter {
             scale,
             vegetation_type: selected_type.name.clone(),
             model_path: selected_type.model_path.clone(),
+            terrain_normal,
         }))
     }
 
@@ -471,7 +496,7 @@ mod tests {
         let chunk = TerrainChunk::new(chunk_id, heightmap, biome_map);
 
         let test_pos = Vec3::new(64.0, 50.0, 64.0);
-        let slope = scatter.estimate_slope(&chunk, test_pos, 256.0);
+        let (slope, _normal) = scatter.estimate_slope_and_normal(&chunk, test_pos, 256.0);
 
         // Should detect steep slope
         assert!(slope > 30.0);
@@ -489,6 +514,7 @@ mod tests {
             scale: 1.0,
             vegetation_type: "test".to_string(),
             model_path: "test.glb".to_string(),
+            terrain_normal: Vec3::Y,
         });
 
         assert!(!result.is_empty());

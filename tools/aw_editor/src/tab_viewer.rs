@@ -1893,6 +1893,21 @@ impl EditorTabViewer {
         self.asset_browser_panel.take_pending_actions()
     }
 
+    /// Drain pending audio panel actions for the audio bridge.
+    pub fn take_audio_actions(&mut self) -> Vec<crate::panels::audio_panel::AudioAction> {
+        self.audio_panel.take_actions()
+    }
+
+    /// Push live audio stats back into the panel for display.
+    pub fn set_audio_stats(&mut self, stats: crate::panels::audio_panel::AudioStats) {
+        self.audio_panel.set_audio_stats(stats);
+    }
+
+    /// Push discovered music tracks into the audio panel's playlist.
+    pub fn set_audio_tracks(&mut self, tracks: Vec<crate::panels::audio_panel::MusicTrackEntry>) {
+        self.audio_panel.set_music_tracks(tracks);
+    }
+
     /// Take dragged prefab from the asset browser
     pub fn take_asset_browser_dragged_prefab(&mut self) -> Option<std::path::PathBuf> {
         self.asset_browser_panel.take_dragged_prefab()
@@ -2860,6 +2875,7 @@ impl TabViewer for EditorTabViewer {
                                     "Sprite",
                                     "Collider",
                                     "Script",
+                                    "MovementScript",
                                     "AudioSource",
                                     "Light",
                                 ];
@@ -5746,6 +5762,7 @@ impl TabViewer for EditorTabViewer {
                                 "Collider",
                                 "RigidBody",
                                 "Script",
+                                "MovementScript",
                                 "Audio",
                                 "Light",
                                 "Camera",

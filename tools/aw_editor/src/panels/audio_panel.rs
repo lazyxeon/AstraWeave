@@ -1479,6 +1479,16 @@ impl AudioPanel {
     pub fn add_music_track(&mut self, track: MusicTrackEntry) {
         self.music_tracks.push(track);
     }
+
+    /// Replace the audio stats displayed in the mixer tab.
+    pub fn set_audio_stats(&mut self, stats: AudioStats) {
+        self.audio_stats = stats;
+    }
+
+    /// Replace the music track list shown in the Music tab.
+    pub fn set_music_tracks(&mut self, tracks: Vec<MusicTrackEntry>) {
+        self.music_tracks = tracks;
+    }
 }
 
 impl Panel for AudioPanel {

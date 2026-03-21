@@ -41,12 +41,12 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 
     let ndc_pos = positions[vertex_index];
 
-    // Unproject to world space (at far plane)
+    // Unproject to camera-relative space (at far plane)
     let far_point = uniforms.inv_view_proj * vec4<f32>(ndc_pos, 1.0, 1.0);
-    let world_pos = far_point.xyz / far_point.w;
+    let rel_pos = far_point.xyz / far_point.w;
 
-    // View direction from camera
-    let view_dir = normalize(world_pos - uniforms.camera_pos);
+    // View direction from camera (camera is at origin in relative space)
+    let view_dir = normalize(rel_pos);
 
     var output: VertexOutput;
     output.clip_position = vec4<f32>(ndc_pos, 1.0, 1.0); // Render at far plane

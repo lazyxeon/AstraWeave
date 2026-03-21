@@ -789,7 +789,7 @@ impl TerrainState {
         brush_mode: u32,
     ) -> bool {
         let chunk_size = self.config.chunk_size;
-        let primary_biome = self.primary_biome_type();
+        let _primary_biome = self.primary_biome_type();
         let mut modified = false;
 
         // Collect chunk IDs that might be affected
@@ -879,18 +879,26 @@ impl TerrainState {
                 }
 
                 if chunk_modified {
-                    // Regenerate mesh for this chunk
-                    let world_offset = Vec3::new(chunk_origin_x, 0.0, chunk_origin_z);
-                    let (vertices, indices) = Self::generate_heightmap_mesh(
-                        gen_chunk.chunk.heightmap(),
-                        gen_chunk.chunk.biome_map(),
-                        chunk_size,
-                        world_offset,
-                        self.config.seed,
-                        primary_biome,
-                    );
-                    gen_chunk.vertices = vertices;
-                    gen_chunk.indices = indices;
+                    // Fast path: patch vertex heights and normals in-place
+                    // (avoids expensive biome blending and splat map generation)
+                    let cell_size_patch = chunk_size / (resolution - 1) as f32;
+                    for gz in 0..resolution as usize {
+                        for gx in 0..resolution as usize {
+                            let idx = gz * resolution as usize + gx;
+                            if idx < gen_chunk.vertices.len() {
+                                let new_h =
+                                    gen_chunk.chunk.heightmap().get_height(gx as u32, gz as u32);
+                                gen_chunk.vertices[idx].position[1] = new_h;
+                                let normal = Self::calculate_normal(
+                                    gen_chunk.chunk.heightmap(),
+                                    gx,
+                                    gz,
+                                    cell_size_patch,
+                                );
+                                gen_chunk.vertices[idx].normal = [normal.x, normal.y, normal.z];
+                            }
+                        }
+                    }
                     modified = true;
                 }
             }
@@ -1007,15 +1015,15 @@ impl TerrainState {
             // Biome-dependent minimum distance: open biomes get wider spacing,
             // dense biomes (forest, swamp) get tighter packing.
             let min_dist = match center_biome {
-                BiomeType::Forest => 6.0,
-                BiomeType::Swamp => 8.0,
-                BiomeType::River => 8.0,
-                BiomeType::Grassland => 14.0,
-                BiomeType::Mountain => 16.0,
-                BiomeType::Desert => 20.0,
-                BiomeType::Tundra => 18.0,
-                BiomeType::Beach => 16.0,
-                _ => 12.0,
+                BiomeType::Forest => 18.0,
+                BiomeType::Swamp => 14.0,
+                BiomeType::River => 14.0,
+                BiomeType::Grassland => 18.0,
+                BiomeType::Mountain => 22.0,
+                BiomeType::Desert => 24.0,
+                BiomeType::Tundra => 22.0,
+                BiomeType::Beach => 20.0,
+                _ => 16.0,
             };
             let scatter = VegetationScatter::new(ScatterConfig {
                 min_distance: min_dist,
@@ -1030,7 +1038,9 @@ impl TerrainState {
                 .cloned()
                 .unwrap_or_else(BiomeConfig::grassland);
 
-            let seed = self.config.seed
+            let seed = self
+                .config
+                .seed
                 .wrapping_add((chunk_id.x as u64).wrapping_mul(1000))
                 .wrapping_add(chunk_id.z as u64);
 
@@ -1142,6 +1152,7 @@ pub struct ScatterPlacement {
     pub mesh_path: String,
     pub bounding_radius: f32,
     pub tint: [f32; 4],
+    pub terrain_normal: Vec3,
 }
 
 impl ScatterPlacement {
@@ -1180,6 +1191,7 @@ impl ScatterPlacement {
             mesh_path: vi.model_path.clone(),
             bounding_radius: world_scale * 2.0,
             tint,
+            terrain_normal: vi.terrain_normal,
         }
     }
 }
@@ -1418,7 +1430,10 @@ mod tests {
         assert!(!min_h.is_nan(), "min height is NaN");
         assert!(!max_h.is_nan(), "max height is NaN");
         assert!(!avg_h.is_nan(), "avg height is NaN");
-        assert!(max_h > 0.0, "Max height should be positive for mountain terrain");
+        assert!(
+            max_h > 0.0,
+            "Max height should be positive for mountain terrain"
+        );
 
         // Step 7: Check GPU chunks (what gets uploaded to renderer)
         let gpu_chunks = state.get_gpu_chunks();

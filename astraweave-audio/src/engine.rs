@@ -216,6 +216,54 @@ impl AudioEngine {
         self.pan_mode = mode;
     }
 
+    /// Set the base volume for the music bus (0.0 – 1.0).
+    pub fn set_music_volume(&mut self, v: f32) {
+        self.music_base_volume = v.clamp(0.0, 1.0);
+        self.music
+            .set_volume(self.music_base_volume * self.master_volume);
+    }
+
+    /// Set the base volume for the voice bus (0.0 – 1.0).
+    pub fn set_voice_volume(&mut self, v: f32) {
+        self.voice_base_volume = v.clamp(0.0, 1.0);
+        self.voice
+            .set_volume(self.voice_base_volume * self.master_volume);
+    }
+
+    /// Set the base volume for the SFX bus (0.0 – 1.0).
+    pub fn set_sfx_volume(&mut self, v: f32) {
+        self.sfx_base_volume = v.clamp(0.0, 1.0);
+        self.sfx_bus
+            .set_volume(self.sfx_base_volume * self.master_volume);
+    }
+
+    /// Set ear separation distance for spatial audio (meters).
+    pub fn set_ear_separation(&mut self, sep: f32) {
+        self.ear_sep = sep.clamp(0.05, 1.0);
+        let ears = self.compute_ears();
+        for sink in self.spat.values_mut() {
+            sink.set_left_ear_position(ears.0);
+            sink.set_right_ear_position(ears.1);
+        }
+    }
+
+    /// Set the voice ducking factor (0.0 = full duck, 1.0 = no duck).
+    pub fn set_duck_factor(&mut self, factor: f32) {
+        self.duck_factor = factor.clamp(0.0, 1.0);
+    }
+
+    /// Get the number of active spatial emitters.
+    pub fn active_emitter_count(&self) -> usize {
+        self.spat.len()
+    }
+
+    /// Remove a spatial emitter by ID.
+    pub fn remove_emitter(&mut self, id: EmitterId) {
+        if let Some(sink) = self.spat.remove(&id) {
+            sink.stop();
+        }
+    }
+
     pub fn update_listener(&mut self, pose: ListenerPose) {
         self.listener = pose;
         let ears = self.compute_ears();

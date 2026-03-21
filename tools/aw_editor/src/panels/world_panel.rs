@@ -596,7 +596,7 @@ impl WorldPanel {
     pub fn new() -> Self {
         Self {
             terrain_state: TerrainState::new(),
-            chunk_radius: 2,
+            chunk_radius: 4,
             generation_status: None,
             auto_regenerate: false,
             terrain_generating: false,
@@ -796,7 +796,7 @@ impl WorldPanel {
 
                 ui.horizontal(|ui| {
                     ui.label("Chunk Radius:");
-                    ui.add(egui::Slider::new(&mut self.chunk_radius, 1..=5).text(""));
+                    ui.add(egui::Slider::new(&mut self.chunk_radius, 1..=12).text(""));
                 });
 
                 let chunks_to_generate = (self.chunk_radius * 2 + 1).pow(2);
@@ -1502,7 +1502,7 @@ mod tests {
     #[test]
     fn test_world_panel_creation() {
         let panel = WorldPanel::new();
-        assert_eq!(panel.chunk_radius, 2);
+        assert_eq!(panel.chunk_radius, 4);
         assert!(!panel.auto_regenerate);
         assert_eq!(panel.current_preset, EnvironmentPreset::Sunny);
     }

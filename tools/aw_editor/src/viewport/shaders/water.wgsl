@@ -84,7 +84,9 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
     let wave_n = sum_waves_norm(base_xz);
 
     var output: VertexOutput;
-    output.clip_position = u.view_proj * vec4<f32>(pos, 1.0);
+    // Camera-relative transform: subtract camera_pos to avoid f32 jitter far from origin
+    let rel_pos = pos - u.camera_pos;
+    output.clip_position = u.view_proj * vec4<f32>(rel_pos, 1.0);
     output.world_position = pos;
     output.world_normal = wave_n;
     return output;
