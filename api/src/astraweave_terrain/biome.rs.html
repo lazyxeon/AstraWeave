@@ -205,7 +205,7 @@
 <a href=#205 id=205 data-nosnippet>205</a><span class="kw">impl </span>Default <span class="kw">for </span>BiomeVegetation {
 <a href=#206 id=206 data-nosnippet>206</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
 <a href=#207 id=207 data-nosnippet>207</a>        <span class="self">Self </span>{
-<a href=#208 id=208 data-nosnippet>208</a>            density: <span class="number">0.1</span>,
+<a href=#208 id=208 data-nosnippet>208</a>            density: <span class="number">0.005</span>,
 <a href=#209 id=209 data-nosnippet>209</a>            vegetation_types: <span class="macro">vec!</span>[VegetationType {
 <a href=#210 id=210 data-nosnippet>210</a>                name: <span class="string">"grass"</span>.to_string(),
 <a href=#211 id=211 data-nosnippet>211</a>                weight: <span class="number">1.0</span>,
@@ -284,7 +284,7 @@
 <a href=#284 id=284 data-nosnippet>284</a>                precipitation: PrecipitationType::Rain,
 <a href=#285 id=285 data-nosnippet>285</a>            },
 <a href=#286 id=286 data-nosnippet>286</a>            vegetation: BiomeVegetation {
-<a href=#287 id=287 data-nosnippet>287</a>                density: <span class="number">0.5</span>,
+<a href=#287 id=287 data-nosnippet>287</a>                density: <span class="number">0.003</span>,
 <a href=#288 id=288 data-nosnippet>288</a>                vegetation_types: <span class="macro">vec!</span>[
 <a href=#289 id=289 data-nosnippet>289</a>                    VegetationType {
 <a href=#290 id=290 data-nosnippet>290</a>                        name: <span class="string">"grass"</span>.to_string(),
@@ -332,7 +332,7 @@
 <a href=#332 id=332 data-nosnippet>332</a>                    },
 <a href=#333 id=333 data-nosnippet>333</a>                    VegetationType {
 <a href=#334 id=334 data-nosnippet>334</a>                        name: <span class="string">"oak_tree"</span>.to_string(),
-<a href=#335 id=335 data-nosnippet>335</a>                        weight: <span class="number">0.5</span>,
+<a href=#335 id=335 data-nosnippet>335</a>                        weight: <span class="number">0.08</span>,
 <a href=#336 id=336 data-nosnippet>336</a>                        model_path: <span class="string">"assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_2_A_Color1.gltf"
 <a href=#337 id=337 data-nosnippet>337</a>                            </span>.to_string(),
 <a href=#338 id=338 data-nosnippet>338</a>                        scale_range: (<span class="number">0.9</span>, <span class="number">1.4</span>),
@@ -340,7 +340,7 @@
 <a href=#340 id=340 data-nosnippet>340</a>                    },
 <a href=#341 id=341 data-nosnippet>341</a>                    VegetationType {
 <a href=#342 id=342 data-nosnippet>342</a>                        name: <span class="string">"tree_default"</span>.to_string(),
-<a href=#343 id=343 data-nosnippet>343</a>                        weight: <span class="number">0.4</span>,
+<a href=#343 id=343 data-nosnippet>343</a>                        weight: <span class="number">0.06</span>,
 <a href=#344 id=344 data-nosnippet>344</a>                        model_path:
 <a href=#345 id=345 data-nosnippet>345</a>                            <span class="string">"assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_5_A_Color1.gltf"
 <a href=#346 id=346 data-nosnippet>346</a>                                </span>.to_string(),
@@ -349,7 +349,7 @@
 <a href=#349 id=349 data-nosnippet>349</a>                    },
 <a href=#350 id=350 data-nosnippet>350</a>                    VegetationType {
 <a href=#351 id=351 data-nosnippet>351</a>                        name: <span class="string">"tree_round"</span>.to_string(),
-<a href=#352 id=352 data-nosnippet>352</a>                        weight: <span class="number">0.3</span>,
+<a href=#352 id=352 data-nosnippet>352</a>                        weight: <span class="number">0.04</span>,
 <a href=#353 id=353 data-nosnippet>353</a>                        model_path:
 <a href=#354 id=354 data-nosnippet>354</a>                            <span class="string">"assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_1_A_Color1.gltf"
 <a href=#355 id=355 data-nosnippet>355</a>                                </span>.to_string(),
@@ -358,7 +358,7 @@
 <a href=#358 id=358 data-nosnippet>358</a>                    },
 <a href=#359 id=359 data-nosnippet>359</a>                    VegetationType {
 <a href=#360 id=360 data-nosnippet>360</a>                        name: <span class="string">"tree_willow"</span>.to_string(),
-<a href=#361 id=361 data-nosnippet>361</a>                        weight: <span class="number">0.2</span>,
+<a href=#361 id=361 data-nosnippet>361</a>                        weight: <span class="number">0.02</span>,
 <a href=#362 id=362 data-nosnippet>362</a>                        model_path:
 <a href=#363 id=363 data-nosnippet>363</a>                            <span class="string">"assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_7_B_Color1.gltf"
 <a href=#364 id=364 data-nosnippet>364</a>                                </span>.to_string(),
@@ -367,7 +367,7 @@
 <a href=#367 id=367 data-nosnippet>367</a>                    },
 <a href=#368 id=368 data-nosnippet>368</a>                    VegetationType {
 <a href=#369 id=369 data-nosnippet>369</a>                        name: <span class="string">"plant_bush"</span>.to_string(),
-<a href=#370 id=370 data-nosnippet>370</a>                        weight: <span class="number">1.2</span>,
+<a href=#370 id=370 data-nosnippet>370</a>                        weight: <span class="number">0.25</span>,
 <a href=#371 id=371 data-nosnippet>371</a>                        model_path: <span class="string">"assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Bush_1_A_Color1.gltf"
 <a href=#372 id=372 data-nosnippet>372</a>                            </span>.to_string(),
 <a href=#373 id=373 data-nosnippet>373</a>                        scale_range: (<span class="number">0.7</span>, <span class="number">1.2</span>),
@@ -375,7 +375,7 @@
 <a href=#375 id=375 data-nosnippet>375</a>                    },
 <a href=#376 id=376 data-nosnippet>376</a>                    VegetationType {
 <a href=#377 id=377 data-nosnippet>377</a>                        name: <span class="string">"bush_round"</span>.to_string(),
-<a href=#378 id=378 data-nosnippet>378</a>                        weight: <span class="number">0.8</span>,
+<a href=#378 id=378 data-nosnippet>378</a>                        weight: <span class="number">0.15</span>,
 <a href=#379 id=379 data-nosnippet>379</a>                        model_path:
 <a href=#380 id=380 data-nosnippet>380</a>                            <span class="string">"assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Bush_2_C_Color1.gltf"
 <a href=#381 id=381 data-nosnippet>381</a>                                </span>.to_string(),
@@ -432,7 +432,7 @@
 <a href=#432 id=432 data-nosnippet>432</a>                precipitation: PrecipitationType::Sandstorm,
 <a href=#433 id=433 data-nosnippet>433</a>            },
 <a href=#434 id=434 data-nosnippet>434</a>            vegetation: BiomeVegetation {
-<a href=#435 id=435 data-nosnippet>435</a>                density: <span class="number">0.1</span>,
+<a href=#435 id=435 data-nosnippet>435</a>                density: <span class="number">0.002</span>,
 <a href=#436 id=436 data-nosnippet>436</a>                vegetation_types: <span class="macro">vec!</span>[
 <a href=#437 id=437 data-nosnippet>437</a>                    VegetationType {
 <a href=#438 id=438 data-nosnippet>438</a>                        name: <span class="string">"cactus_tall"</span>.to_string(),
@@ -520,7 +520,7 @@
 <a href=#520 id=520 data-nosnippet>520</a>                precipitation: PrecipitationType::Rain,
 <a href=#521 id=521 data-nosnippet>521</a>            },
 <a href=#522 id=522 data-nosnippet>522</a>            vegetation: BiomeVegetation {
-<a href=#523 id=523 data-nosnippet>523</a>                density: <span class="number">0.8</span>,
+<a href=#523 id=523 data-nosnippet>523</a>                density: <span class="number">0.012</span>,
 <a href=#524 id=524 data-nosnippet>524</a>                vegetation_types: <span class="macro">vec!</span>[
 <a href=#525 id=525 data-nosnippet>525</a>                    VegetationType {
 <a href=#526 id=526 data-nosnippet>526</a>                        name: <span class="string">"pine_tall"</span>.to_string(),
@@ -648,7 +648,7 @@
 <a href=#648 id=648 data-nosnippet>648</a>                precipitation: PrecipitationType::Snow,
 <a href=#649 id=649 data-nosnippet>649</a>            },
 <a href=#650 id=650 data-nosnippet>650</a>            vegetation: BiomeVegetation {
-<a href=#651 id=651 data-nosnippet>651</a>                density: <span class="number">0.3</span>,
+<a href=#651 id=651 data-nosnippet>651</a>                density: <span class="number">0.004</span>,
 <a href=#652 id=652 data-nosnippet>652</a>                vegetation_types: <span class="macro">vec!</span>[
 <a href=#653 id=653 data-nosnippet>653</a>                    VegetationType {
 <a href=#654 id=654 data-nosnippet>654</a>                        name: <span class="string">"pine_small"</span>.to_string(),
@@ -760,7 +760,7 @@
 <a href=#760 id=760 data-nosnippet>760</a>                precipitation: PrecipitationType::Snow,
 <a href=#761 id=761 data-nosnippet>761</a>            },
 <a href=#762 id=762 data-nosnippet>762</a>            vegetation: BiomeVegetation {
-<a href=#763 id=763 data-nosnippet>763</a>                density: <span class="number">0.15</span>,
+<a href=#763 id=763 data-nosnippet>763</a>                density: <span class="number">0.003</span>,
 <a href=#764 id=764 data-nosnippet>764</a>                vegetation_types: <span class="macro">vec!</span>[
 <a href=#765 id=765 data-nosnippet>765</a>                    VegetationType {
 <a href=#766 id=766 data-nosnippet>766</a>                        name: <span class="string">"pine_ground"</span>.to_string(),
@@ -852,7 +852,7 @@
 <a href=#852 id=852 data-nosnippet>852</a>                precipitation: PrecipitationType::Rain,
 <a href=#853 id=853 data-nosnippet>853</a>            },
 <a href=#854 id=854 data-nosnippet>854</a>            vegetation: BiomeVegetation {
-<a href=#855 id=855 data-nosnippet>855</a>                density: <span class="number">0.35</span>,
+<a href=#855 id=855 data-nosnippet>855</a>                density: <span class="number">0.008</span>,
 <a href=#856 id=856 data-nosnippet>856</a>                vegetation_types: <span class="macro">vec!</span>[
 <a href=#857 id=857 data-nosnippet>857</a>                    VegetationType {
 <a href=#858 id=858 data-nosnippet>858</a>                        name: <span class="string">"tree_default_dark"</span>.to_string(),
@@ -960,7 +960,7 @@
 <a href=#960 id=960 data-nosnippet>960</a>                precipitation: PrecipitationType::None,
 <a href=#961 id=961 data-nosnippet>961</a>            },
 <a href=#962 id=962 data-nosnippet>962</a>            vegetation: BiomeVegetation {
-<a href=#963 id=963 data-nosnippet>963</a>                density: <span class="number">0.15</span>,
+<a href=#963 id=963 data-nosnippet>963</a>                density: <span class="number">0.002</span>,
 <a href=#964 id=964 data-nosnippet>964</a>                vegetation_types: <span class="macro">vec!</span>[
 <a href=#965 id=965 data-nosnippet>965</a>                    VegetationType {
 <a href=#966 id=966 data-nosnippet>966</a>                        name: <span class="string">"palm_tall"</span>.to_string(),
@@ -1039,7 +1039,7 @@
 <a href=#1039 id=1039 data-nosnippet>1039</a>                precipitation: PrecipitationType::None,
 <a href=#1040 id=1040 data-nosnippet>1040</a>            },
 <a href=#1041 id=1041 data-nosnippet>1041</a>            vegetation: BiomeVegetation {
-<a href=#1042 id=1042 data-nosnippet>1042</a>                density: <span class="number">0.4</span>,
+<a href=#1042 id=1042 data-nosnippet>1042</a>                density: <span class="number">0.006</span>,
 <a href=#1043 id=1043 data-nosnippet>1043</a>                vegetation_types: <span class="macro">vec!</span>[
 <a href=#1044 id=1044 data-nosnippet>1044</a>                    VegetationType {
 <a href=#1045 id=1045 data-nosnippet>1045</a>                        name: <span class="string">"tree_detailed"</span>.to_string(),
