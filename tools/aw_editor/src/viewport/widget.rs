@@ -965,14 +965,18 @@ impl ViewportWidget {
         if response.hovered() {
             ctx.input(|i| {
                 let scroll = i.raw_scroll_delta.y;
-                if scroll.abs() > 1.0 {
+                if scroll.abs() > 0.5 {
                     self.camera.zoom(scroll);
                 }
             });
         }
 
-        // Animate smooth zoom each frame
-        self.camera.smooth_update();
+        // Animate smooth zoom each frame (use real dt for frame-rate independence)
+        let dt = ctx.input(|i| i.stable_dt);
+        let zoom_animating = self.camera.smooth_update(dt);
+        if zoom_animating {
+            ctx.request_repaint();
+        }
 
         // Sync selected entity to gizmo state
         self.gizmo_state.selected_entity = self.selected_entity().map(|id| id as u32);

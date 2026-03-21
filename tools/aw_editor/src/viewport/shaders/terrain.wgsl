@@ -597,9 +597,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let n = normalize(in.world_normal);
     let pos = in.world_position;
     let cam_dist = distance(uniforms.camera_pos, pos);
-    // Smooth LOD blend factors — continuous, no hard boolean transitions
-    let near_blend = 1.0 - smoothstep(50.0, 80.0, cam_dist);   // 1 close, 0 far
-    let mid_blend  = 1.0 - smoothstep(130.0, 180.0, cam_dist);  // 1 close, 0 far
+    // Noise-perturbed distance breaks the perfect circular LOD boundary
+    let lod_noise = noise2d(pos.xz * 0.04 + vec2<f32>(5.3, 11.7));
+    let perturbed_dist = cam_dist + (lod_noise - 0.5) * 30.0;
+    // Smooth LOD blend factors — wide transition zones prevent visible rings
+    let near_blend = 1.0 - smoothstep(40.0, 120.0, perturbed_dist);  // 1 close, 0 far
+    let mid_blend  = 1.0 - smoothstep(100.0, 250.0, perturbed_dist); // 1 close, 0 far
 
     // Unlit: quick sample at macro scale only
     if uniforms.shading_mode == 1u {
@@ -655,8 +658,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let height_factor = smoothstep(-8.0, 120.0, pos.y);
     let height_transition = smoothstep(-0.18, 0.22, splat_mat.height_proxy - biome_mat.height_proxy);
     let base_local_mix = clamp(0.34 + 0.28 * local_breakup + 0.18 * transition_noise + 0.10 * height_factor, 0.26, 0.86);
-    // Smooth tier_mix using smoothstep blends instead of hard select()
-    let tier_mix = clamp(near_blend + (1.0 - near_blend) * mid_blend * 0.38, 0.0, 1.0);
+    // Smooth tier_mix — gradual falloff, no abrupt drops
+    let tier_mix = clamp(near_blend + (1.0 - near_blend) * mid_blend * 0.5, 0.0, 1.0);
     let local_mix = clamp((base_local_mix * 0.82 + height_transition * 0.18) * tier_mix, 0.0, 0.88);
 
     var mat: Material;
@@ -667,8 +670,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     mat.normal = normalize(mix(biome_mat.normal, splat_mat.normal, min(0.82, local_mix + 0.22)));
     mat.height_proxy = mix(biome_mat.height_proxy, splat_mat.height_proxy, local_mix);
 
-    // Slope-based rock blending (smoothly faded at distance)
-    let slope_blend_factor = 1.0 - smoothstep(150.0, 200.0, cam_dist);
+    // Slope-based rock blending (smoothly faded at distance, noise-perturbed)
+    let slope_blend_factor = 1.0 - smoothstep(120.0, 280.0, perturbed_dist);
     if slope_blend_factor > 0.01 {
         let slope_mat = apply_slope_blend(mat, pos, n);
         mat.albedo = mix(mat.albedo, slope_mat.albedo, slope_blend_factor);

@@ -157,7 +157,7 @@ fn biome_config_grassland_cloud_coverage() {
 #[test]
 fn biome_config_grassland_vegetation_density() {
     let c = BiomeConfig::grassland();
-    assert!((c.vegetation.density - 0.5).abs() < 1e-6);
+    assert!((c.vegetation.density - 0.003).abs() < 1e-6);
 }
 
 // ============================================================================
@@ -230,7 +230,7 @@ fn biome_sky_default_zenith_color() {
 #[test]
 fn biome_vegetation_default_density() {
     let v = BiomeVegetation::default();
-    assert!((v.density - 0.1).abs() < 1e-6);
+    assert!((v.density - 0.005).abs() < 1e-6);
 }
 
 #[test]

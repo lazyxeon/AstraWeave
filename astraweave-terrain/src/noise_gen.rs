@@ -1,7 +1,7 @@
 //! Noise generation for terrain heightmaps
 
 use crate::{ChunkId, Heightmap, HeightmapConfig};
-use noise::{Billow, Fbm, NoiseFn, Perlin, RidgedMulti};
+use noise::{Billow, Fbm, MultiFractal, NoiseFn, Perlin, RidgedMulti};
 use serde::{Deserialize, Serialize};
 
 /// Configuration for noise generation
@@ -113,24 +113,24 @@ impl TerrainNoise {
         match layer.noise_type {
             NoiseType::Perlin => Box::new(Perlin::new(seed as u32)),
             NoiseType::RidgedNoise => {
-                let mut noise = RidgedMulti::<Perlin>::new(seed as u32);
-                noise.octaves = layer.octaves;
-                noise.persistence = layer.persistence;
-                noise.lacunarity = layer.lacunarity;
+                let noise = RidgedMulti::<Perlin>::new(seed as u32)
+                    .set_octaves(layer.octaves)
+                    .set_persistence(layer.persistence)
+                    .set_lacunarity(layer.lacunarity);
                 Box::new(noise)
             }
             NoiseType::Billow => {
-                let mut noise = Billow::<Perlin>::new(seed as u32);
-                noise.octaves = layer.octaves;
-                noise.persistence = layer.persistence;
-                noise.lacunarity = layer.lacunarity;
+                let noise = Billow::<Perlin>::new(seed as u32)
+                    .set_octaves(layer.octaves)
+                    .set_persistence(layer.persistence)
+                    .set_lacunarity(layer.lacunarity);
                 Box::new(noise)
             }
             NoiseType::Fbm => {
-                let mut noise = Fbm::<Perlin>::new(seed as u32);
-                noise.octaves = layer.octaves;
-                noise.persistence = layer.persistence;
-                noise.lacunarity = layer.lacunarity;
+                let noise = Fbm::<Perlin>::new(seed as u32)
+                    .set_octaves(layer.octaves)
+                    .set_persistence(layer.persistence)
+                    .set_lacunarity(layer.lacunarity);
                 Box::new(noise)
             }
         }

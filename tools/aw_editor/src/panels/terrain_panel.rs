@@ -1543,13 +1543,13 @@ impl TerrainPanel {
         match biome {
             "mountain" => BiomeNoisePreset {
                 base_scale: 0.003,
-                base_amplitude: 120.0,
+                base_amplitude: 55.0,
                 base_octaves: 6,
                 base_persistence: 0.55,
                 base_lacunarity: 2.2,
                 mountains_enabled: true,
                 mountains_scale: 0.002,
-                mountains_amplitude: 150.0,
+                mountains_amplitude: 210.0,
                 mountains_octaves: 8,
                 detail_enabled: true,
                 detail_scale: 0.03,
@@ -1678,6 +1678,11 @@ impl TerrainPanel {
             return;
         }
 
+        tracing::info!(
+            "regenerate_terrain: biome='{}', seed={}, chunk_radius={}, base_amp={}",
+            self.primary_biome, self.seed, self.chunk_radius, self.base_amplitude
+        );
+
         // Prepare a fresh TerrainState with current config on the background thread
         let mut state = TerrainState::new();
         state.configure(self.seed, &self.primary_biome);
@@ -1706,27 +1711,40 @@ impl TerrainPanel {
         self.gen_receiver = Some(rx);
 
         std::thread::spawn(move || {
-            let start = std::time::Instant::now();
-            match state.generate_terrain(chunk_radius) {
-                Ok(count) => {
-                    // Generate scatter placements on the background thread
-                    // to avoid blocking the UI with expensive O(n²) Poisson disk sampling.
-                    let scatter_placements = state.generate_scatter_placements();
-                    let height_stats = state.height_stats();
-                    let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
-                    let _ = tx.send(TerrainGenResult {
-                        terrain_state: state,
-                        chunk_count: count,
-                        elapsed_ms,
-                        scatter_placements,
-                        height_stats,
-                    });
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let start = std::time::Instant::now();
+                match state.generate_terrain(chunk_radius) {
+                    Ok(count) => {
+                        // Generate scatter placements on the background thread
+                        // to avoid blocking the UI with expensive O(n²) Poisson disk sampling.
+                        let scatter_placements = state.generate_scatter_placements();
+                        let height_stats = state.height_stats();
+                        let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
+                        tracing::info!(
+                            "Terrain gen OK: {count} chunks, heights=({:.1}, {:.1}, {:.1}), {:.0}ms, {} scatter",
+                            height_stats.0, height_stats.1, height_stats.2,
+                            elapsed_ms, scatter_placements.len()
+                        );
+                        let _ = tx.send(TerrainGenResult {
+                            terrain_state: state,
+                            chunk_count: count,
+                            elapsed_ms,
+                            scatter_placements,
+                            height_stats,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::error!("Terrain generation FAILED for biome: {}", e);
+                    }
                 }
-                Err(e) => {
-                    tracing::error!("Terrain generation failed: {}", e);
-                    // Don't send anything — the panel will stop spinning
-                    // when it sees the channel is disconnected.
-                }
+            }));
+            if let Err(panic) = result {
+                let msg = panic
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+                    .or_else(|| panic.downcast_ref::<&str>().copied())
+                    .unwrap_or("unknown panic");
+                tracing::error!("Terrain generation thread PANICKED: {msg}");
             }
         });
     }

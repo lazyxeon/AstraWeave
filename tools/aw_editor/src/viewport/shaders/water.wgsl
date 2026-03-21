@@ -162,11 +162,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Tone map (Reinhard)
     color = color / (color + vec3<f32>(1.0));
 
-    // Fog
+    // Fog — capped at 0.65 to match terrain shader
     if u.fog_enabled == 1u {
         let dist = cam_dist;
         let fog_f = 1.0 - exp(-u.fog_density * dist);
-        color = mix(color, u.fog_color, clamp(fog_f, 0.0, 1.0));
+        color = mix(color, u.fog_color, clamp(fog_f, 0.0, 0.65));
     }
 
     // Depth-based alpha (more opaque closer, transparent at edges)

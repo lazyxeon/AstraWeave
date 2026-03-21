@@ -103,12 +103,14 @@ fn vs_main(
     let world_position = model_matrix * vec4<f32>(local_pos, 1.0);
     let world_normal = normalize((model_matrix * vec4<f32>(vertex.normal, 0.0)).xyz);
 
-    // Fog calculation
+    // Fog calculation — height-aware to match terrain shader
     let dist = length(world_position.xyz - uniforms.camera_pos);
     var fog_factor = 0.0;
     if uniforms.fog_enabled > 0u {
+        let height_att = saturate(world_position.y / 200.0);
+        let fog_mult = mix(0.7, 0.35, height_att);
         fog_factor = 1.0 - exp(-uniforms.fog_density * dist);
-        fog_factor = clamp(fog_factor * 0.7, 0.0, 0.65);
+        fog_factor = clamp(fog_factor * fog_mult, 0.0, 0.65);
     }
 
     var output: VertexOutput;

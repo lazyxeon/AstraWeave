@@ -991,11 +991,6 @@ impl TerrainState {
     /// density rules. Returns a flat list of placements ready for the
     /// scatter renderer's GPU instancing pipeline.
     pub fn generate_scatter_placements(&self) -> Vec<ScatterPlacement> {
-        let scatter_config = ScatterConfig {
-            min_distance: 8.0,
-            ..ScatterConfig::default()
-        };
-        let scatter = VegetationScatter::new(scatter_config);
         let chunk_size = self.config.chunk_size;
 
         let mut placements = Vec::new();
@@ -1009,6 +1004,24 @@ impl TerrainState {
                 .get_biome_at_world_pos(chunk_center, chunk_size)
                 .unwrap_or(BiomeType::Grassland);
 
+            // Biome-dependent minimum distance: open biomes get wider spacing,
+            // dense biomes (forest, swamp) get tighter packing.
+            let min_dist = match center_biome {
+                BiomeType::Forest => 6.0,
+                BiomeType::Swamp => 8.0,
+                BiomeType::River => 8.0,
+                BiomeType::Grassland => 14.0,
+                BiomeType::Mountain => 16.0,
+                BiomeType::Desert => 20.0,
+                BiomeType::Tundra => 18.0,
+                BiomeType::Beach => 16.0,
+                _ => 12.0,
+            };
+            let scatter = VegetationScatter::new(ScatterConfig {
+                min_distance: min_dist,
+                ..ScatterConfig::default()
+            });
+
             let biome_config = self
                 .config
                 .biomes
@@ -1017,7 +1030,9 @@ impl TerrainState {
                 .cloned()
                 .unwrap_or_else(BiomeConfig::grassland);
 
-            let seed = self.config.seed + chunk_id.x as u64 * 1000 + chunk_id.z as u64;
+            let seed = self.config.seed
+                .wrapping_add((chunk_id.x as u64).wrapping_mul(1000))
+                .wrapping_add(chunk_id.z as u64);
 
             // Generate vegetation instances via the terrain scatter system
             let vegetation =
@@ -1339,5 +1354,177 @@ mod tests {
         let options = all_biome_options();
         assert_eq!(options.len(), 8);
         assert_eq!(options[0], ("grassland", "Grassland"));
+    }
+
+    /// Reproduce the exact editor flow for mountain terrain generation.
+    /// This test replicates regenerate_terrain() from terrain_panel.rs.
+    #[test]
+    #[ignore] // ~7 min in debug mode — run explicitly with --ignored
+    fn test_mountain_generation_full_flow() {
+        let seed = 42u64;
+        let chunk_radius = 2i32;
+
+        // Step 1: Create fresh TerrainState (same as regenerate_terrain)
+        let mut state = TerrainState::new();
+
+        // Step 2: Configure for mountain biome
+        state.configure(seed, "mountain");
+
+        // Step 3: set_noise_params with defaults (slider values)
+        state.set_noise_params(6, 2.0, 0.5, 50.0);
+
+        // Step 4: Apply mountain noise preset (overrides set_noise_params)
+        let preset = BiomeNoisePreset {
+            base_scale: 0.003,
+            base_amplitude: 55.0,
+            base_octaves: 6,
+            base_persistence: 0.55,
+            base_lacunarity: 2.2,
+            mountains_enabled: true,
+            mountains_scale: 0.002,
+            mountains_amplitude: 210.0,
+            mountains_octaves: 8,
+            detail_enabled: true,
+            detail_scale: 0.03,
+            detail_amplitude: 8.0,
+            erosion_enabled: false,
+            erosion_strength: 0.0,
+        };
+        state.apply_biome_noise_preset(&preset);
+
+        // Step 5: Generate terrain (this is what runs on the background thread)
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            state.generate_terrain(chunk_radius)
+        }));
+
+        match &result {
+            Ok(Ok(count)) => {
+                eprintln!("Mountain generation OK: {count} chunks");
+            }
+            Ok(Err(e)) => {
+                panic!("Mountain generation returned error: {e}");
+            }
+            Err(panic_info) => {
+                panic!("Mountain generation PANICKED: {panic_info:?}");
+            }
+        }
+
+        let count = result.unwrap().unwrap();
+        assert!(count > 0, "Should generate at least 1 chunk");
+
+        // Step 6: Check height stats
+        let (min_h, max_h, avg_h) = state.height_stats();
+        eprintln!("Heights: min={min_h:.1}, max={max_h:.1}, avg={avg_h:.1}");
+        assert!(!min_h.is_nan(), "min height is NaN");
+        assert!(!max_h.is_nan(), "max height is NaN");
+        assert!(!avg_h.is_nan(), "avg height is NaN");
+        assert!(max_h > 0.0, "Max height should be positive for mountain terrain");
+
+        // Step 7: Check GPU chunks (what gets uploaded to renderer)
+        let gpu_chunks = state.get_gpu_chunks();
+        eprintln!("GPU chunks: {}", gpu_chunks.len());
+        assert!(!gpu_chunks.is_empty(), "GPU chunks should not be empty");
+
+        let total_verts: usize = gpu_chunks.iter().map(|(v, _)| v.len()).sum();
+        let total_indices: usize = gpu_chunks.iter().map(|(_, i)| i.len()).sum();
+        eprintln!("Total vertices: {total_verts}, indices: {total_indices}");
+        assert!(total_verts > 0, "Should have vertices");
+        assert!(total_indices > 0, "Should have indices");
+
+        // Step 8: Verify no NaN in vertex positions
+        for (chunk_idx, (verts, _)) in gpu_chunks.iter().enumerate() {
+            for (v_idx, v) in verts.iter().enumerate() {
+                assert!(
+                    !v.position[0].is_nan() && !v.position[1].is_nan() && !v.position[2].is_nan(),
+                    "NaN position in chunk {chunk_idx}, vertex {v_idx}: {:?}",
+                    v.position
+                );
+                assert!(
+                    !v.normal[0].is_nan() && !v.normal[1].is_nan() && !v.normal[2].is_nan(),
+                    "NaN normal in chunk {chunk_idx}, vertex {v_idx}: {:?}",
+                    v.normal
+                );
+            }
+        }
+
+        // Step 9: Generate scatter (also runs on the thread)
+        let scatter_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            state.generate_scatter_placements()
+        }));
+        match &scatter_result {
+            Ok(placements) => {
+                eprintln!("Scatter OK: {} placements", placements.len());
+            }
+            Err(panic_info) => {
+                panic!("Scatter generation PANICKED: {panic_info:?}");
+            }
+        }
+
+        eprintln!("=== Mountain full flow test PASSED ===");
+    }
+
+    /// Test ALL biomes generate terrain successfully (not just mountain)
+    #[test]
+    #[ignore] // ~18 min in debug mode — run explicitly with --ignored
+    fn test_all_biomes_generate_terrain() {
+        for (biome_name, _display) in all_biome_options() {
+            let mut state = TerrainState::new();
+            state.configure(42, biome_name);
+            state.set_noise_params(6, 2.0, 0.5, 50.0);
+
+            // Use the same preset logic as the editor
+            let preset = match *biome_name {
+                "mountain" => BiomeNoisePreset {
+                    base_scale: 0.003,
+                    base_amplitude: 55.0,
+                    base_octaves: 6,
+                    base_persistence: 0.55,
+                    base_lacunarity: 2.2,
+                    mountains_enabled: true,
+                    mountains_scale: 0.002,
+                    mountains_amplitude: 210.0,
+                    mountains_octaves: 8,
+                    detail_enabled: true,
+                    detail_scale: 0.03,
+                    detail_amplitude: 8.0,
+                    erosion_enabled: false,
+                    erosion_strength: 0.0,
+                },
+                _ => BiomeNoisePreset {
+                    base_scale: 0.005,
+                    base_amplitude: 50.0,
+                    base_octaves: 6,
+                    base_persistence: 0.5,
+                    base_lacunarity: 2.0,
+                    mountains_enabled: false,
+                    mountains_scale: 0.002,
+                    mountains_amplitude: 0.0,
+                    mountains_octaves: 4,
+                    detail_enabled: true,
+                    detail_scale: 0.03,
+                    detail_amplitude: 5.0,
+                    erosion_enabled: false,
+                    erosion_strength: 0.0,
+                },
+            };
+            state.apply_biome_noise_preset(&preset);
+
+            let result = state.generate_terrain(1);
+            match result {
+                Ok(count) => {
+                    let (min_h, max_h, avg_h) = state.height_stats();
+                    let gpu = state.get_gpu_chunks();
+                    eprintln!(
+                        "{biome_name}: {count} chunks, heights=({min_h:.1}, {max_h:.1}, {avg_h:.1}), gpu_chunks={}",
+                        gpu.len()
+                    );
+                    assert!(count > 0, "{biome_name}: no chunks generated");
+                    assert!(!gpu.is_empty(), "{biome_name}: no GPU chunks");
+                }
+                Err(e) => {
+                    panic!("{biome_name}: generation failed: {e}");
+                }
+            }
+        }
     }
 }

@@ -43,7 +43,7 @@ struct Uniforms {
 }
 
 /// Fog and weather parameters passed to the terrain shader.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TerrainFogParams {
     pub fog_enabled: bool,
     pub fog_density: f32,
@@ -63,7 +63,7 @@ impl Default for TerrainFogParams {
 }
 
 /// Lighting parameters passed to the terrain shader.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TerrainLightingParams {
     pub sun_dir: [f32; 3],
     pub sun_color: [f32; 3],

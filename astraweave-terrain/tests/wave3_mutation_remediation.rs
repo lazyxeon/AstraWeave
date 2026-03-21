@@ -1020,7 +1020,7 @@ mod biome_config_exact {
     fn grassland_biome_type() {
         let bc = BiomeConfig::grassland();
         assert_eq!(bc.biome_type, BiomeType::Grassland);
-        assert_eq!(bc.vegetation.density, 0.5);
+        assert!((bc.vegetation.density - 0.003).abs() < 1e-6);
     }
 
     #[test]

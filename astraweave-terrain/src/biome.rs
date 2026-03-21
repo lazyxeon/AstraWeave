@@ -205,7 +205,7 @@ pub struct BiomeVegetation {
 impl Default for BiomeVegetation {
     fn default() -> Self {
         Self {
-            density: 0.1,
+            density: 0.005,
             vegetation_types: vec![VegetationType {
                 name: "grass".to_string(),
                 weight: 1.0,
@@ -284,7 +284,7 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::Rain,
             },
             vegetation: BiomeVegetation {
-                density: 0.5,
+                density: 0.003,
                 vegetation_types: vec![
                     VegetationType {
                         name: "grass".to_string(),
@@ -332,7 +332,7 @@ impl BiomeConfig {
                     },
                     VegetationType {
                         name: "oak_tree".to_string(),
-                        weight: 0.5,
+                        weight: 0.08,
                         model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_2_A_Color1.gltf"
                             .to_string(),
                         scale_range: (0.9, 1.4),
@@ -340,7 +340,7 @@ impl BiomeConfig {
                     },
                     VegetationType {
                         name: "tree_default".to_string(),
-                        weight: 0.4,
+                        weight: 0.06,
                         model_path:
                             "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_5_A_Color1.gltf"
                                 .to_string(),
@@ -349,7 +349,7 @@ impl BiomeConfig {
                     },
                     VegetationType {
                         name: "tree_round".to_string(),
-                        weight: 0.3,
+                        weight: 0.04,
                         model_path:
                             "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_1_A_Color1.gltf"
                                 .to_string(),
@@ -358,7 +358,7 @@ impl BiomeConfig {
                     },
                     VegetationType {
                         name: "tree_willow".to_string(),
-                        weight: 0.2,
+                        weight: 0.02,
                         model_path:
                             "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_7_B_Color1.gltf"
                                 .to_string(),
@@ -367,7 +367,7 @@ impl BiomeConfig {
                     },
                     VegetationType {
                         name: "plant_bush".to_string(),
-                        weight: 1.2,
+                        weight: 0.25,
                         model_path: "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Bush_1_A_Color1.gltf"
                             .to_string(),
                         scale_range: (0.7, 1.2),
@@ -375,7 +375,7 @@ impl BiomeConfig {
                     },
                     VegetationType {
                         name: "bush_round".to_string(),
-                        weight: 0.8,
+                        weight: 0.15,
                         model_path:
                             "assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Bush_2_C_Color1.gltf"
                                 .to_string(),
@@ -432,7 +432,7 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::Sandstorm,
             },
             vegetation: BiomeVegetation {
-                density: 0.1,
+                density: 0.002,
                 vegetation_types: vec![
                     VegetationType {
                         name: "cactus_tall".to_string(),
@@ -520,7 +520,7 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::Rain,
             },
             vegetation: BiomeVegetation {
-                density: 0.8,
+                density: 0.012,
                 vegetation_types: vec![
                     VegetationType {
                         name: "pine_tall".to_string(),
@@ -648,7 +648,7 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::Snow,
             },
             vegetation: BiomeVegetation {
-                density: 0.3,
+                density: 0.004,
                 vegetation_types: vec![
                     VegetationType {
                         name: "pine_small".to_string(),
@@ -760,7 +760,7 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::Snow,
             },
             vegetation: BiomeVegetation {
-                density: 0.15,
+                density: 0.003,
                 vegetation_types: vec![
                     VegetationType {
                         name: "pine_ground".to_string(),
@@ -852,7 +852,7 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::Rain,
             },
             vegetation: BiomeVegetation {
-                density: 0.35,
+                density: 0.008,
                 vegetation_types: vec![
                     VegetationType {
                         name: "tree_default_dark".to_string(),
@@ -960,7 +960,7 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::None,
             },
             vegetation: BiomeVegetation {
-                density: 0.15,
+                density: 0.002,
                 vegetation_types: vec![
                     VegetationType {
                         name: "palm_tall".to_string(),
@@ -1039,7 +1039,7 @@ impl BiomeConfig {
                 precipitation: PrecipitationType::None,
             },
             vegetation: BiomeVegetation {
-                density: 0.4,
+                density: 0.006,
                 vegetation_types: vec![
                     VegetationType {
                         name: "tree_detailed".to_string(),

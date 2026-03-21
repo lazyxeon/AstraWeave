@@ -64,7 +64,7 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
         world_pos += streak_dir * vertex.local_pos.y * slen;
 
         let dist = distance(u.camera_pos, world_pos);
-        let dist_fade = 1.0 - smoothstep(30.0, 60.0, dist);
+        let dist_fade = 1.0 - smoothstep(u.volume_size * 0.4, u.volume_size * 0.85, dist);
         let endpoint_fade = 1.0 - abs(vertex.local_pos.y * 2.0 - 1.0);
         output.alpha = endpoint_fade * dist_fade * u.intensity * 0.35 * u.transition_alpha;
 
@@ -86,7 +86,7 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
         world_pos += up * (vertex.local_pos.y - 0.5) * scale;
 
         let dist = distance(u.camera_pos, world_pos);
-        let dist_fade = 1.0 - smoothstep(35.0, 65.0, dist);
+        let dist_fade = 1.0 - smoothstep(u.volume_size * 0.4, u.volume_size * 0.85, dist);
         output.alpha = dist_fade * u.intensity * 0.5 * u.transition_alpha;
 
     } else {

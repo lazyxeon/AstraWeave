@@ -371,7 +371,6 @@ impl ViewportRenderer {
 
         // Pass 2.7: Water plane (transparent, rendered after terrain) — deferred init
         if let Some(water) = self.water_renderer.as_mut() {
-            eprintln!("[renderer] DIAG water_renderer is Some! enabled={}", water.is_enabled());
             if water.is_enabled() {
                 water
                     .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
@@ -667,26 +666,32 @@ impl ViewportRenderer {
         if let Some(water) = self.water_renderer.as_mut() {
             water.set_fog(params.fog_enabled, params.fog_density, params.fog_color);
         }
-        // Forward fog to scatter renderer
-        if let Ok(scatter) = self.ensure_scatter_renderer() {
+        // Forward fog to scatter renderer only if it already exists (don't create it)
+        if let Some(scatter) = self.scatter_renderer.as_mut() {
             scatter.set_fog_params(params);
         }
-        // Map weather type to particle weather kind
+        // Map weather type to particle weather kind — only create renderer if weather is active
         let kind = WeatherKind::from_weather_type(params.weather_type);
-        let intensity = match params.weather_type {
-            3 => 1.0,  // Storm = heavy
-            _ => 0.5,
-        };
-        let queue = self.queue.clone();
-        if let Ok(weather) = self.ensure_weather_renderer() {
-            weather.set_weather(kind, intensity, &queue);
-            let (wx, wz) = match params.weather_type {
-                3 => (4.0, 2.0),
-                2 => (1.0, 0.5),
-                6 => (6.0, 3.0),  // Sandstorm = strong wind
-                _ => (0.0, 0.0),
+        if kind != WeatherKind::None {
+            let intensity = match params.weather_type {
+                3 => 1.0,  // Storm = heavy
+                _ => 0.5,
             };
-            weather.set_wind(wx, wz);
+            let queue = self.queue.clone();
+            if let Ok(weather) = self.ensure_weather_renderer() {
+                weather.set_weather(kind, intensity, &queue);
+                let (wx, wz) = match params.weather_type {
+                    3 => (4.0, 2.0),
+                    2 => (1.0, 0.5),
+                    6 => (6.0, 3.0),  // Sandstorm = strong wind
+                    _ => (0.0, 0.0),
+                };
+                weather.set_wind(wx, wz);
+            }
+        } else if let Some(weather) = self.weather_renderer.as_mut() {
+            // Weather off — deactivate existing renderer without creating one
+            let queue = self.queue.clone();
+            weather.set_weather(WeatherKind::None, 0.0, &queue);
         }
     }
 
@@ -695,8 +700,8 @@ impl ViewportRenderer {
         if let Ok(terrain) = self.ensure_terrain_renderer() {
             terrain.set_lighting_params(params);
         }
-        // Forward lighting to scatter renderer so vegetation matches terrain
-        if let Ok(scatter) = self.ensure_scatter_renderer() {
+        // Forward lighting to scatter renderer only if it already exists
+        if let Some(scatter) = self.scatter_renderer.as_mut() {
             scatter.set_lighting_params(params);
         }
     }

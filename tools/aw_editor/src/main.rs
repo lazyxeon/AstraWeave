@@ -412,6 +412,9 @@ struct EditorApp {
     last_resource_sample: std::time::Instant,
     /// Startup splash screen (Some while active, None after transition)
     splash: Option<splash::SplashScreen>,
+    /// Cached environment params to avoid redundant GPU updates each frame
+    cached_fog_params: Option<crate::viewport::terrain_renderer::TerrainFogParams>,
+    cached_sky_colors: Option<([f32; 4], [f32; 4], [f32; 4])>,
 }
 
 impl Default for EditorApp {
@@ -603,6 +606,8 @@ impl Default for EditorApp {
             resource_usage: ui::ResourceUsage::new(),
             last_resource_sample: std::time::Instant::now(),
             splash: Some(splash::SplashScreen::new()),
+            cached_fog_params: None,
+            cached_sky_colors: None,
         }
     }
 }
@@ -3322,10 +3327,14 @@ impl EditorApp {
             }
         }
 
-        // Sync environment settings (skybox preset, time-of-day, weather, fog, lighting) to viewport each frame
+        // Sync environment settings to viewport — skip when params unchanged (perf)
         if let Some(viewport) = &self.viewport {
             let (sky_top, sky_horizon, ground_color) = self.dock_tab_viewer.compute_sky_colors();
-            viewport.set_sky_colors(sky_top, sky_horizon, ground_color);
+            let sky_key = (sky_top, sky_horizon, ground_color);
+            if self.cached_sky_colors.as_ref() != Some(&sky_key) {
+                viewport.set_sky_colors(sky_top, sky_horizon, ground_color);
+                self.cached_sky_colors = Some(sky_key);
+            }
 
             // Compute fog color from sky horizon (fog blends toward sky color)
             let fog_color = [sky_horizon[0], sky_horizon[1], sky_horizon[2]];
@@ -3337,7 +3346,10 @@ impl EditorApp {
                 fog_color,
                 weather_type,
             };
-            viewport.set_fog_params(fog_params);
+            if self.cached_fog_params.as_ref() != Some(&fog_params) {
+                viewport.set_fog_params(fog_params);
+                self.cached_fog_params = Some(fog_params);
+            }
 
             // Sync lighting parameters from world panel to terrain shader
             let lighting_params = self.dock_tab_viewer.lighting_params();

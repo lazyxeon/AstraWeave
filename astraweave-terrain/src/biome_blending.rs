@@ -280,7 +280,7 @@ impl BiomeBlender {
         let height_preference = match biome {
             BiomeType::Beach => 1.0 - (height / 20.0).clamp(0.0, 1.0),
             BiomeType::River => 1.0 - (height / 10.0).clamp(0.0, 1.0),
-            BiomeType::Mountain => (height / 100.0 - 0.5).clamp(0.0, 1.0),
+            BiomeType::Mountain => (height / 150.0).clamp(0.2, 1.0),
             BiomeType::Tundra => (height / 80.0 - 0.3).clamp(0.0, 1.0),
             BiomeType::Swamp => 1.0 - (height / 30.0).clamp(0.0, 1.0),
             _ => 1.0, // Grassland, Desert, Forest work at any height

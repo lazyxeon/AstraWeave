@@ -175,40 +175,53 @@ impl OrbitCamera {
     ///
     /// # Arguments
     ///
-    /// * `delta` - Scroll wheel delta (positive = zoom in, negative = zoom out)
+    /// * `delta` - Scroll delta in points (egui raw_scroll_delta.y).
+    ///   Standard mice: ~24 pts per notch. Trackpads: smaller, high-frequency.
     ///
-    /// Uses log-space zoom for perceptually uniform feel at all distances.
+    /// Applies zoom directly in log-space for perceptually uniform feel.
     ///
     /// # Performance
     ///
     /// O(1), typically <0.01ms
     pub fn zoom(&mut self, delta: f32) {
-        // delta is raw scroll pixels; Windows standard mice send ±120 per notch,
-        // trackpads/smooth-scroll send smaller values more frequently.
-        // Normalize to notches and apply in log-space for perceptually uniform zoom.
-        let notches = (delta / 120.0).clamp(-3.0, 3.0);
+        // egui 0.32 raw_scroll_delta is in points (~24 per mouse notch).
+        // Normalize so one standard mouse notch ≈ 0.15 in log-space.
+        let zoom_amount = delta * (0.15 / 24.0);
         let log_target = self.zoom_target.ln();
-        self.zoom_target = (log_target - notches * 0.15)
+        self.zoom_target = (log_target - zoom_amount)
             .exp()
             .clamp(self.min_distance, self.max_distance);
     }
 
     /// Smoothly animate distance toward zoom target. Call once per frame.
-    pub fn smooth_update(&mut self) {
+    ///
+    /// Returns `true` if zoom animation is still in progress (caller should
+    /// request a repaint).
+    pub fn smooth_update(&mut self, dt: f32) -> bool {
+        if (self.distance - self.zoom_target).abs() < 0.0001 {
+            self.distance = self.zoom_target;
+            return false;
+        }
+
         // Interpolate in log-space for perceptually smooth zoom at all distances.
-        // Uses frame-rate independent exponential decay (targets ~10 fps-independent
-        // half-life of ~0.08s → 95% settle in ~0.35s).
+        // High decay rate (k=25) for snappy response — settles in ~3 frames at 60fps.
         let log_dist = self.distance.ln();
         let log_target = self.zoom_target.ln();
         let log_diff = log_target - log_dist;
 
-        // Continuous exponential decay — no threshold snap to avoid end-of-zoom jerk.
-        // decay_rate chosen so that per-frame factor ≈ 0.15 at 60fps:
-        //   1 - e^(-10 * 1/60) ≈ 0.154
-        let dt = 1.0 / 60.0_f32; // Assume 60fps; TODO: pass real dt if available
-        let factor = 1.0 - (-10.0 * dt).exp();
+        // Snap when close enough to prevent micro-oscillation
+        if log_diff.abs() < 0.001 {
+            self.distance = self.zoom_target;
+            return false;
+        }
+
+        // Frame-rate independent exponential decay.
+        // k=25: at 60fps factor≈0.34, at 35fps factor≈0.51 — fast and consistent.
+        let dt_clamped = dt.clamp(0.001, 0.1);
+        let factor = 1.0 - (-25.0 * dt_clamped).exp();
         let new_log = log_dist + log_diff * factor;
         self.distance = new_log.exp().clamp(self.min_distance, self.max_distance);
+        true
     }
 
     /// Translate camera (FPS-style WASD movement)
@@ -648,10 +661,10 @@ mod tests {
         let mut camera = OrbitCamera::default();
         let initial_dist = camera.distance; // 25.0
 
-        // Zoom in (positive delta = closer, ~120 per notch on standard mouse)
-        camera.zoom(120.0);
+        // Zoom in (positive delta = closer, ~24 pts per notch in egui)
+        camera.zoom(24.0);
         for _ in 0..60 {
-            camera.smooth_update();
+            camera.smooth_update(1.0 / 60.0);
         }
         assert!(
             camera.distance < initial_dist,
@@ -660,9 +673,9 @@ mod tests {
         let after_zoom_in = camera.distance;
 
         // Zoom out
-        camera.zoom(-120.0);
+        camera.zoom(-24.0);
         for _ in 0..60 {
-            camera.smooth_update();
+            camera.smooth_update(1.0 / 60.0);
         }
         assert!(
             camera.distance > after_zoom_in,
@@ -674,23 +687,23 @@ mod tests {
     fn test_orbit_camera_zoom_clamp() {
         let mut camera = OrbitCamera::default();
 
-        // Zoom in fully (raw_scroll_delta is ~120 per notch on Windows)
-        for _ in 0..200 {
-            camera.zoom(120.0); // Zoom in
-            camera.smooth_update();
+        // Zoom in fully (raw_scroll_delta is ~24 pts per notch in egui 0.32)
+        for _ in 0..500 {
+            camera.zoom(24.0); // Zoom in
+            camera.smooth_update(1.0 / 60.0);
         }
         for _ in 0..120 {
-            camera.smooth_update();
+            camera.smooth_update(1.0 / 60.0);
         } // let animation settle
         assert_relative_eq!(camera.distance, camera.min_distance, epsilon = 0.01);
 
         // Zoom out fully
-        for _ in 0..200 {
-            camera.zoom(-120.0); // Zoom out
-            camera.smooth_update();
+        for _ in 0..500 {
+            camera.zoom(-24.0); // Zoom out
+            camera.smooth_update(1.0 / 60.0);
         }
         for _ in 0..120 {
-            camera.smooth_update();
+            camera.smooth_update(1.0 / 60.0);
         }
         assert_relative_eq!(camera.distance, camera.max_distance, epsilon = 0.01);
     }
