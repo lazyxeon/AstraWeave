@@ -49,6 +49,8 @@ pub struct TerrainFogParams {
     pub fog_density: f32,
     pub fog_color: [f32; 3],
     pub weather_type: u32,
+    /// Optional override for particle count (None = use default for weather type)
+    pub particle_count_override: Option<u32>,
 }
 
 impl Default for TerrainFogParams {
@@ -56,6 +58,7 @@ impl Default for TerrainFogParams {
         Self {
             fog_enabled: false,
             fog_density: 0.01,
+            particle_count_override: None,
             fog_color: [0.6, 0.6, 0.62],
             weather_type: 0,
         }

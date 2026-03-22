@@ -36,7 +36,7 @@
 pub mod camera;
 #[cfg(feature = "astraweave-render")]
 mod engine_adapter;
-mod entity_renderer;
+pub(crate) mod entity_renderer;
 mod gizmo_renderer;
 mod grid_renderer;
 mod physics_renderer;
@@ -55,6 +55,7 @@ mod widget;
 pub use physics_renderer::{PhysicsDebugOptions, PhysicsDebugRenderer};
 #[allow(unused_imports)]
 pub use terrain_renderer::{TerrainFogParams, TerrainRenderer, TerrainVertex};
+pub use widget::ViewportLayout;
 pub use widget::ViewportWidget;
 
 #[allow(unused_imports)]

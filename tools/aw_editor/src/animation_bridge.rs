@@ -4,6 +4,9 @@
 //! and ticks clip playback each frame to produce transforms for skinned entities.
 
 use crate::panels::animation_panel::AnimationAction;
+use crate::viewport::entity_renderer::{
+    GltfAnimationClip, GltfChannelProperty, GltfInterpolation, GltfSkeleton,
+};
 use glam::{Mat4, Quat, Vec3};
 use std::collections::HashMap;
 
@@ -82,6 +85,10 @@ pub struct EditorAnimationBridge {
     /// Time spent in last tick (ms), for profiling.
     pub last_tick_ms: f32,
     next_clip_id: u32,
+    /// Per-entity skeleton data (from GLTF extraction).
+    entity_skeletons: HashMap<u64, GltfSkeleton>,
+    /// Per-entity animation clips (from GLTF extraction).
+    entity_anim_clips: HashMap<u64, Vec<GltfAnimationClip>>,
 }
 
 impl Default for EditorAnimationBridge {
@@ -98,6 +105,8 @@ impl EditorAnimationBridge {
             preview_state: EntityAnimationState::default(),
             last_tick_ms: 0.0,
             next_clip_id: 1,
+            entity_skeletons: HashMap::new(),
+            entity_anim_clips: HashMap::new(),
         }
     }
 
@@ -263,5 +272,180 @@ impl EditorAnimationBridge {
     /// Remove animation state for a deleted entity.
     pub fn remove_entity(&mut self, entity_id: u64) {
         self.entity_states.remove(&entity_id);
+        self.entity_skeletons.remove(&entity_id);
+        self.entity_anim_clips.remove(&entity_id);
+    }
+
+    // ========================================================================
+    // Phase 4: Skeleton storage & skinning
+    // ========================================================================
+
+    /// Store a skeleton for an entity (extracted from its GLTF mesh).
+    pub fn set_entity_skeleton(&mut self, entity_id: u64, skeleton: GltfSkeleton) {
+        self.entity_skeletons.insert(entity_id, skeleton);
+    }
+
+    /// Store animation clips for an entity.
+    pub fn set_entity_clips(&mut self, entity_id: u64, clips: Vec<GltfAnimationClip>) {
+        // Also register clips in the bridge library
+        for clip in &clips {
+            let exists = self.clips.iter().any(|c| c.name == clip.name);
+            if !exists {
+                self.register_clip(&clip.name, clip.duration, clip.channels.len());
+            }
+        }
+        self.entity_anim_clips.insert(entity_id, clips);
+    }
+
+    /// Check if an entity has a skeleton.
+    pub fn has_skeleton(&self, entity_id: u64) -> bool {
+        self.entity_skeletons.contains_key(&entity_id)
+    }
+
+    /// Sample an animation clip at a given time, producing per-joint local transforms.
+    fn sample_clip(
+        clip: &GltfAnimationClip,
+        skeleton: &GltfSkeleton,
+        time: f32,
+    ) -> Vec<JointTransform> {
+        let mut transforms: Vec<JointTransform> = skeleton
+            .joints
+            .iter()
+            .map(|j| {
+                // Decompose rest-pose local transform
+                let (_, rot, _) = j.local_transform.to_scale_rotation_translation();
+                let trans = j.local_transform.col(3).truncate();
+                let scale_x = j.local_transform.col(0).truncate().length();
+                let scale_y = j.local_transform.col(1).truncate().length();
+                let scale_z = j.local_transform.col(2).truncate().length();
+                JointTransform {
+                    translation: trans,
+                    rotation: rot,
+                    scale: Vec3::new(scale_x, scale_y, scale_z),
+                }
+            })
+            .collect();
+
+        // Apply animation channels
+        for channel in &clip.channels {
+            if channel.times.is_empty() || channel.values.is_empty() {
+                continue;
+            }
+            if channel.joint_index >= transforms.len() {
+                continue;
+            }
+
+            let t = time.clamp(0.0, clip.duration);
+            let value = Self::interpolate_channel(channel, t);
+
+            match channel.property {
+                GltfChannelProperty::Translation => {
+                    if value.len() >= 3 {
+                        transforms[channel.joint_index].translation =
+                            Vec3::new(value[0], value[1], value[2]);
+                    }
+                }
+                GltfChannelProperty::Rotation => {
+                    if value.len() >= 4 {
+                        transforms[channel.joint_index].rotation =
+                            Quat::from_xyzw(value[0], value[1], value[2], value[3]).normalize();
+                    }
+                }
+                GltfChannelProperty::Scale => {
+                    if value.len() >= 3 {
+                        transforms[channel.joint_index].scale =
+                            Vec3::new(value[0], value[1], value[2]);
+                    }
+                }
+            }
+        }
+
+        transforms
+    }
+
+    /// Interpolate a channel at a given time, returning the interpolated value.
+    fn interpolate_channel(
+        channel: &crate::viewport::entity_renderer::GltfAnimChannel,
+        time: f32,
+    ) -> Vec<f32> {
+        let times = &channel.times;
+        let values = &channel.values;
+
+        if times.len() <= 1 || values.is_empty() {
+            return values.first().cloned().unwrap_or_default();
+        }
+
+        // Find the two keyframes surrounding `time`
+        let mut i = 0;
+        while i < times.len() - 1 && times[i + 1] < time {
+            i += 1;
+        }
+
+        if i >= times.len() - 1 {
+            return values.last().cloned().unwrap_or_default();
+        }
+
+        let t0 = times[i];
+        let t1 = times[i + 1];
+        let alpha = if (t1 - t0).abs() > f32::EPSILON {
+            ((time - t0) / (t1 - t0)).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+
+        let v0 = &values[i];
+        let v1 = &values.get(i + 1).unwrap_or(v0);
+
+        match channel.interpolation {
+            GltfInterpolation::Step => v0.clone(),
+            GltfInterpolation::Linear | GltfInterpolation::CubicSpline => {
+                // For quaternions (4 components), use slerp
+                if v0.len() == 4 {
+                    let q0 = Quat::from_xyzw(v0[0], v0[1], v0[2], v0[3]).normalize();
+                    let q1 = Quat::from_xyzw(v1[0], v1[1], v1[2], v1[3]).normalize();
+                    let q = q0.slerp(q1, alpha);
+                    vec![q.x, q.y, q.z, q.w]
+                } else {
+                    // Linear interpolation for translation/scale
+                    v0.iter()
+                        .zip(v1.iter())
+                        .map(|(&a, &b)| a + (b - a) * alpha)
+                        .collect()
+                }
+            }
+        }
+    }
+
+    /// Compute joint matrices for an entity based on its current animation state.
+    /// Returns `None` if the entity has no skeleton or no active animation.
+    pub fn compute_joint_matrices(&self, entity_id: u64) -> Option<Vec<Mat4>> {
+        let skeleton = self.entity_skeletons.get(&entity_id)?;
+        let state = self.entity_states.get(&entity_id)?;
+        let clip_index = state.clip_index?;
+        let clips = self.entity_anim_clips.get(&entity_id)?;
+        let clip = clips.get(clip_index)?;
+
+        let local_transforms = Self::sample_clip(clip, skeleton, state.time);
+
+        // Build world-space joint matrices: parent_world * local * inverse_bind
+        let mut world_matrices = vec![Mat4::IDENTITY; skeleton.joints.len()];
+        let mut joint_matrices = vec![Mat4::IDENTITY; skeleton.joints.len()];
+
+        for ji in 0..skeleton.joints.len() {
+            let jt = &local_transforms[ji];
+            let local =
+                Mat4::from_scale_rotation_translation(jt.scale, jt.rotation, jt.translation);
+
+            let world = if let Some(pi) = skeleton.joints[ji].parent_index {
+                world_matrices[pi] * local
+            } else {
+                local
+            };
+
+            world_matrices[ji] = world;
+            joint_matrices[ji] = world * skeleton.joints[ji].inverse_bind_matrix;
+        }
+
+        Some(joint_matrices)
     }
 }

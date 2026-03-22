@@ -828,7 +828,12 @@ impl AssetBrowser {
                     }
                 }
             }
-            AssetType::Model | AssetType::Audio | AssetType::Material | AssetType::Prefab => {
+            AssetType::Model
+            | AssetType::Audio
+            | AssetType::Material
+            | AssetType::Prefab
+            | AssetType::Scene
+            | AssetType::Config => {
                 // Generate a colored placeholder thumbnail for non-image assets
                 return self.generate_placeholder_thumbnail(ctx, path, asset_type);
             }
@@ -877,65 +882,265 @@ impl AssetBrowser {
         let color = asset_type.color();
         let [r, g, b, _] = color.to_array();
 
-        // Fill with a darker version of the type color for the background
-        let bg_r = (r as u16 * 40 / 100) as u8;
-        let bg_g = (g as u16 * 40 / 100) as u8;
-        let bg_b = (b as u16 * 40 / 100) as u8;
-        for pixel in pixels.chunks_exact_mut(4) {
-            pixel[0] = bg_r;
-            pixel[1] = bg_g;
-            pixel[2] = bg_b;
-            pixel[3] = 255;
+        // Fill with a subtle radial-gradient background tinted to the type color
+        let cx = size as f32 / 2.0;
+        let cy = size as f32 / 2.0;
+        let max_dist = cx * 1.41; // corner distance
+        for y in 0..size {
+            for x in 0..size {
+                let dx = x as f32 - cx;
+                let dy = y as f32 - cy;
+                let dist = (dx * dx + dy * dy).sqrt();
+                let t = (dist / max_dist).min(1.0);
+                // Center is brighter, edges darker
+                let factor = 0.30 - t * 0.15;
+                let idx = (y * size + x) * 4;
+                pixels[idx] = (r as f32 * factor) as u8;
+                pixels[idx + 1] = (g as f32 * factor) as u8;
+                pixels[idx + 2] = (b as f32 * factor) as u8;
+                pixels[idx + 3] = 255;
+            }
         }
 
-        // Draw a centered icon-like shape based on asset type
+        // Helper: set a pixel with bounds checking
+        let s = size;
+        let set_px = |px: &mut [u8], x: usize, y: usize, pr: u8, pg: u8, pb: u8| {
+            if x < s && y < s {
+                let idx = (y * s + x) * 4;
+                px[idx] = pr;
+                px[idx + 1] = pg;
+                px[idx + 2] = pb;
+                px[idx + 3] = 255;
+            }
+        };
+
+        // Helper: draw a line (Bresenham) between two points
+        let draw_line =
+            |px: &mut [u8], x0: i32, y0: i32, x1: i32, y1: i32, lr: u8, lg: u8, lb: u8| {
+                let mut x = x0;
+                let mut y = y0;
+                let dx_abs = (x1 - x0).abs();
+                let dy_abs = (y1 - y0).abs();
+                let sx: i32 = if x0 < x1 { 1 } else { -1 };
+                let sy: i32 = if y0 < y1 { 1 } else { -1 };
+                let mut err = dx_abs - dy_abs;
+                loop {
+                    if (x as usize) < s && (y as usize) < s {
+                        let idx = (y as usize * s + x as usize) * 4;
+                        px[idx] = lr;
+                        px[idx + 1] = lg;
+                        px[idx + 2] = lb;
+                        px[idx + 3] = 255;
+                    }
+                    if x == x1 && y == y1 {
+                        break;
+                    }
+                    let e2 = 2 * err;
+                    if e2 > -dy_abs {
+                        err -= dy_abs;
+                        x += sx;
+                    }
+                    if e2 < dx_abs {
+                        err += dx_abs;
+                        y += sy;
+                    }
+                }
+            };
+
         let center = size / 2;
-        let radius = size / 4;
+
         match asset_type {
             AssetType::Model => {
-                // Draw a diamond shape for 3D models
-                for y in 0..size {
-                    for x in 0..size {
-                        let dx = (x as i32 - center as i32).unsigned_abs() as usize;
-                        let dy = (y as i32 - center as i32).unsigned_abs() as usize;
-                        if dx + dy <= radius {
-                            let idx = (y * size + x) * 4;
-                            pixels[idx] = r;
-                            pixels[idx + 1] = g;
-                            pixels[idx + 2] = b;
-                            pixels[idx + 3] = 255;
-                        }
-                    }
-                }
+                // Draw an isometric cube wireframe — instantly recognizable as 3D
+                let c = center as i32;
+                let h = 12i32; // half-side
+                               // Front face corners
+                let fl = (c - h, c);
+                let fr = (c + h, c);
+                let ft = (c, c - h);
+                let fb = (c, c + h);
+                // Back face (offset up-right for isometric look)
+                let off = 6i32;
+                let bl = (fl.0 + off, fl.1 - off);
+                let br = (fr.0 + off, fr.1 - off);
+                let bt = (ft.0 + off, ft.1 - off);
+                // Front diamond
+                draw_line(&mut pixels, fl.0, fl.1, ft.0, ft.1, r, g, b);
+                draw_line(&mut pixels, ft.0, ft.1, fr.0, fr.1, r, g, b);
+                draw_line(&mut pixels, fr.0, fr.1, fb.0, fb.1, r, g, b);
+                draw_line(&mut pixels, fb.0, fb.1, fl.0, fl.1, r, g, b);
+                // Back edges (lighter)
+                let lr = r.saturating_sub(40);
+                let lg = g.saturating_sub(40);
+                let lb = b.saturating_sub(40);
+                draw_line(&mut pixels, bl.0, bl.1, bt.0, bt.1, lr, lg, lb);
+                draw_line(&mut pixels, bt.0, bt.1, br.0, br.1, lr, lg, lb);
+                // Depth connectors
+                draw_line(&mut pixels, fl.0, fl.1, bl.0, bl.1, lr, lg, lb);
+                draw_line(&mut pixels, ft.0, ft.1, bt.0, bt.1, lr, lg, lb);
+                draw_line(&mut pixels, fr.0, fr.1, br.0, br.1, lr, lg, lb);
             }
             AssetType::Audio => {
-                // Draw horizontal bars for audio
-                for y in 0..size {
-                    let bar_h = size / 8;
-                    let in_bar = (y / bar_h) % 2 == 0 && y > size / 4 && y < size * 3 / 4;
-                    if in_bar {
-                        for x in size / 4..size * 3 / 4 {
-                            let idx = (y * size + x) * 4;
-                            pixels[idx] = r;
-                            pixels[idx + 1] = g;
-                            pixels[idx + 2] = b;
-                            pixels[idx + 3] = 255;
+                // Draw vertical equalizer bars — 5 bars with varying heights
+                let bar_w = 4usize;
+                let gap = 3usize;
+                let total_w = 5 * bar_w + 4 * gap;
+                let start_x = center - total_w / 2;
+                let heights = [10usize, 18, 14, 20, 12]; // asymmetric for visual interest
+                for (i, &h) in heights.iter().enumerate() {
+                    let bx = start_x + i * (bar_w + gap);
+                    let by = center - h / 2;
+                    for y in by..by + h {
+                        for x in bx..bx + bar_w {
+                            // Gradient: brighter at top
+                            let t = (y - by) as f32 / h as f32;
+                            let pr = (r as f32 * (1.0 - t * 0.3)) as u8;
+                            let pg = (g as f32 * (1.0 - t * 0.3)) as u8;
+                            let pb = (b as f32 * (1.0 - t * 0.3)) as u8;
+                            set_px(&mut pixels, x, y, pr, pg, pb);
                         }
                     }
                 }
             }
-            _ => {
-                // Draw a simple circle for other types
+            AssetType::Material => {
+                // Draw a sphere with shading — material preview ball
+                let radius = 14i32;
                 for y in 0..size {
                     for x in 0..size {
                         let dx = x as i32 - center as i32;
                         let dy = y as i32 - center as i32;
-                        if (dx * dx + dy * dy) <= (radius * radius) as i32 {
-                            let idx = (y * size + x) * 4;
-                            pixels[idx] = r;
-                            pixels[idx + 1] = g;
-                            pixels[idx + 2] = b;
-                            pixels[idx + 3] = 255;
+                        let dist_sq = dx * dx + dy * dy;
+                        if dist_sq <= radius * radius {
+                            let dist = (dist_sq as f32).sqrt();
+                            // Simple Lambertian-like shading: light from upper-left
+                            let nx = dx as f32 / radius as f32;
+                            let ny = dy as f32 / radius as f32;
+                            let nz = (1.0 - nx * nx - ny * ny).max(0.0).sqrt();
+                            let light_dot = (-0.5 * nx + -0.5 * ny + 0.707 * nz).max(0.0);
+                            let brightness = 0.3 + 0.7 * light_dot;
+                            // Anti-alias at the edge
+                            let edge_aa = ((radius as f32 - dist) * 2.0).min(1.0);
+                            let pr = (r as f32 * brightness * edge_aa) as u8;
+                            let pg = (g as f32 * brightness * edge_aa) as u8;
+                            let pb = (b as f32 * brightness * edge_aa) as u8;
+                            set_px(&mut pixels, x, y, pr, pg, pb);
+                        }
+                    }
+                }
+                // Specular highlight dot
+                let hx = center - 5;
+                let hy = center - 5;
+                for dy in -2i32..=2 {
+                    for dx in -2i32..=2 {
+                        if dx * dx + dy * dy <= 4 {
+                            let px_x = (hx as i32 + dx) as usize;
+                            let px_y = (hy as i32 + dy) as usize;
+                            set_px(
+                                &mut pixels,
+                                px_x,
+                                px_y,
+                                r.saturating_add(80),
+                                g.saturating_add(80),
+                                b.saturating_add(80),
+                            );
+                        }
+                    }
+                }
+            }
+            AssetType::Prefab => {
+                // Draw stacked rectangles — "blueprint" / package icon
+                let rects: [(i32, i32, i32, i32); 3] = [
+                    (18, 26, 28, 14), // bottom
+                    (20, 22, 24, 12), // middle (offset)
+                    (22, 18, 20, 10), // top (offset)
+                ];
+                for (i, &(rx, ry, rw, rh)) in rects.iter().enumerate() {
+                    let brightness = 0.6 + i as f32 * 0.2;
+                    let pr = (r as f32 * brightness) as u8;
+                    let pg = (g as f32 * brightness) as u8;
+                    let pb = (b as f32 * brightness) as u8;
+                    for y in ry..ry + rh {
+                        for x in rx..rx + rw {
+                            set_px(&mut pixels, x as usize, y as usize, pr, pg, pb);
+                        }
+                    }
+                    // Border on each rect
+                    for x in rx..rx + rw {
+                        set_px(&mut pixels, x as usize, ry as usize, r, g, b);
+                        set_px(&mut pixels, x as usize, (ry + rh - 1) as usize, r, g, b);
+                    }
+                    for y in ry..ry + rh {
+                        set_px(&mut pixels, rx as usize, y as usize, r, g, b);
+                        set_px(&mut pixels, (rx + rw - 1) as usize, y as usize, r, g, b);
+                    }
+                }
+            }
+            _ => {
+                // Scene / Config / unknown — draw a document icon with lines
+                // Page outline
+                let px_l = 18usize;
+                let px_r = 46usize;
+                let py_t = 12usize;
+                let py_b = 50usize;
+                for x in px_l..=px_r {
+                    set_px(&mut pixels, x, py_t, r, g, b);
+                    set_px(&mut pixels, x, py_b, r, g, b);
+                }
+                for y in py_t..=py_b {
+                    set_px(&mut pixels, px_l, y, r, g, b);
+                    set_px(&mut pixels, px_r, y, r, g, b);
+                }
+                // Text lines inside
+                let line_color_r = (r as u16 * 70 / 100) as u8;
+                let line_color_g = (g as u16 * 70 / 100) as u8;
+                let line_color_b = (b as u16 * 70 / 100) as u8;
+                for (li, &width) in [22usize, 18, 20, 14].iter().enumerate() {
+                    let ly = py_t + 8 + li * 6;
+                    for x in (px_l + 4)..(px_l + 4 + width).min(px_r) {
+                        if ly < py_b {
+                            set_px(&mut pixels, x, ly, line_color_r, line_color_g, line_color_b);
+                            set_px(
+                                &mut pixels,
+                                x,
+                                ly + 1,
+                                line_color_r,
+                                line_color_g,
+                                line_color_b,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Draw file extension label at the bottom of the thumbnail
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            let label = ext.to_uppercase();
+            let label_bytes = label.as_bytes();
+            let char_w = 4usize;
+            let label_w = label_bytes.len().min(5) * (char_w + 1);
+            let lx = (size - label_w) / 2;
+            let ly = size - 10;
+            // Dark background bar for readability
+            for y in ly.saturating_sub(1)..size.min(ly + 7) {
+                for x in lx.saturating_sub(2)..size.min(lx + label_w + 2) {
+                    set_px(&mut pixels, x, y, 20, 20, 25);
+                }
+            }
+            // Draw each character as a simple 3×5 dot pattern
+            for (ci, &ch) in label_bytes.iter().take(5).enumerate() {
+                let glyph = Self::tiny_glyph(ch);
+                for gy in 0..5usize {
+                    for gx in 0..3usize {
+                        if glyph[gy] & (1 << (2 - gx)) != 0 {
+                            set_px(
+                                &mut pixels,
+                                lx + ci * (char_w + 1) + gx,
+                                ly + gy,
+                                220,
+                                220,
+                                230,
+                            );
                         }
                     }
                 }
@@ -960,6 +1165,44 @@ impl AssetBrowser {
         self.thumbnail_lru.push_back(path.to_path_buf());
 
         Some(texture)
+    }
+
+    /// 3×5 pixel font glyphs for file extension labels on thumbnails.
+    /// Each entry is 5 rows, each row is 3 bits (MSB = left pixel).
+    fn tiny_glyph(ch: u8) -> [u8; 5] {
+        match ch {
+            b'A' => [0b010, 0b101, 0b111, 0b101, 0b101],
+            b'B' => [0b110, 0b101, 0b110, 0b101, 0b110],
+            b'C' => [0b011, 0b100, 0b100, 0b100, 0b011],
+            b'D' => [0b110, 0b101, 0b101, 0b101, 0b110],
+            b'E' => [0b111, 0b100, 0b110, 0b100, 0b111],
+            b'F' => [0b111, 0b100, 0b110, 0b100, 0b100],
+            b'G' => [0b011, 0b100, 0b101, 0b101, 0b011],
+            b'H' => [0b101, 0b101, 0b111, 0b101, 0b101],
+            b'I' => [0b111, 0b010, 0b010, 0b010, 0b111],
+            b'J' => [0b111, 0b001, 0b001, 0b101, 0b010],
+            b'K' => [0b101, 0b101, 0b110, 0b101, 0b101],
+            b'L' => [0b100, 0b100, 0b100, 0b100, 0b111],
+            b'M' => [0b101, 0b111, 0b111, 0b101, 0b101],
+            b'N' => [0b101, 0b111, 0b111, 0b101, 0b101],
+            b'O' => [0b010, 0b101, 0b101, 0b101, 0b010],
+            b'P' => [0b110, 0b101, 0b110, 0b100, 0b100],
+            b'Q' => [0b010, 0b101, 0b101, 0b111, 0b011],
+            b'R' => [0b110, 0b101, 0b110, 0b101, 0b101],
+            b'S' => [0b011, 0b100, 0b010, 0b001, 0b110],
+            b'T' => [0b111, 0b010, 0b010, 0b010, 0b010],
+            b'U' => [0b101, 0b101, 0b101, 0b101, 0b010],
+            b'V' => [0b101, 0b101, 0b101, 0b010, 0b010],
+            b'W' => [0b101, 0b101, 0b111, 0b111, 0b101],
+            b'X' => [0b101, 0b101, 0b010, 0b101, 0b101],
+            b'Y' => [0b101, 0b101, 0b010, 0b010, 0b010],
+            b'Z' => [0b111, 0b001, 0b010, 0b100, 0b111],
+            b'0' => [0b010, 0b101, 0b101, 0b101, 0b010],
+            b'1' => [0b010, 0b110, 0b010, 0b010, 0b111],
+            b'2' => [0b110, 0b001, 0b010, 0b100, 0b111],
+            b'3' => [0b110, 0b001, 0b010, 0b001, 0b110],
+            _ => [0b000, 0b000, 0b010, 0b000, 0b000], // dot fallback
+        }
     }
 
     pub fn show(&mut self, ui: &mut Ui) {

@@ -23,6 +23,7 @@ pub enum DistributeDirection {
 /// Handler for menu bar actions
 pub trait MenuActionHandler {
     fn on_new(&mut self);
+    fn on_new_world_wizard(&mut self);
     fn on_open(&mut self);
     fn on_save(&mut self);
     fn on_save_json(&mut self);
@@ -59,6 +60,10 @@ pub trait MenuActionHandler {
     fn is_grid_visible(&self) -> bool;
     fn toggle_grid(&mut self);
 
+    // Viewport layout
+    fn viewport_layout(&self) -> crate::viewport::ViewportLayout;
+    fn set_viewport_layout(&mut self, layout: crate::viewport::ViewportLayout);
+
     // Window
     fn is_docking_enabled(&self) -> bool;
     fn toggle_docking(&mut self);
@@ -85,6 +90,10 @@ pub trait MenuActionHandler {
 
     fn on_diff_assets(&mut self);
     fn on_clear_console(&mut self);
+
+    // Help
+    fn on_show_tutorial(&mut self);
+    fn on_show_about(&mut self);
 }
 
 /// Main Menu Bar Component
@@ -96,6 +105,10 @@ impl MenuBar {
         ui.menu_button("File", |ui| {
             if ui.button("New                  Ctrl+N").clicked() {
                 handler.on_new();
+                ui.close();
+            }
+            if ui.button("New World (Wizard)...").clicked() {
+                handler.on_new_world_wizard();
                 ui.close();
             }
             if ui.button("Open                Ctrl+O").clicked() {
@@ -277,6 +290,24 @@ impl MenuBar {
             if ui.checkbox(&mut g, "Grid").changed() {
                 handler.toggle_grid();
             }
+
+            ui.separator();
+            ui.label("Viewport Layout:");
+            let current_layout = handler.viewport_layout();
+            for layout in &[
+                crate::viewport::ViewportLayout::Single,
+                crate::viewport::ViewportLayout::SideBySide,
+                crate::viewport::ViewportLayout::TopBottom,
+                crate::viewport::ViewportLayout::Quad,
+            ] {
+                if ui
+                    .selectable_label(current_layout == *layout, layout.label())
+                    .clicked()
+                {
+                    handler.set_viewport_layout(*layout);
+                    ui.close();
+                }
+            }
         });
 
         // Window
@@ -438,6 +469,19 @@ impl MenuBar {
 
             if ui.button("Clear Console").clicked() {
                 handler.on_clear_console();
+                ui.close();
+            }
+        });
+
+        // Help menu
+        ui.menu_button("Help", |ui| {
+            if ui.button("Tutorial").clicked() {
+                handler.on_show_tutorial();
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("About AstraWeave").clicked() {
+                handler.on_show_about();
                 ui.close();
             }
         });

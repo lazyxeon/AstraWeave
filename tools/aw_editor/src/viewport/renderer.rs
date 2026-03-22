@@ -92,6 +92,9 @@ pub struct ViewportRenderer {
 
     /// Currently selected entities (for highlighting) - supports multi-selection
     selected_entities: Vec<Entity>,
+
+    /// Component gizmo debug lines (light radius, collider shapes, audio range)
+    component_gizmo_lines: Vec<astraweave_physics::DebugLine>,
 }
 
 impl ViewportRenderer {
@@ -137,6 +140,7 @@ impl ViewportRenderer {
             depth_view: None,
             size: (0, 0),
             selected_entities: Vec::new(),
+            component_gizmo_lines: Vec::new(),
         })
     }
 
@@ -164,7 +168,9 @@ impl ViewportRenderer {
                     .context("Failed to create terrain renderer (deferred)")?,
             );
         }
-        Ok(self.terrain_renderer.as_mut().unwrap())
+        self.terrain_renderer
+            .as_mut()
+            .context("terrain renderer not initialized after creation")
     }
 
     fn ensure_water_renderer(&mut self) -> Result<&mut WaterRenderer> {
@@ -174,7 +180,9 @@ impl ViewportRenderer {
                     .context("Failed to create water renderer (deferred)")?,
             );
         }
-        Ok(self.water_renderer.as_mut().unwrap())
+        self.water_renderer
+            .as_mut()
+            .context("water renderer not initialized after creation")
     }
 
     fn ensure_weather_renderer(&mut self) -> Result<&mut WeatherParticleRenderer> {
@@ -184,7 +192,9 @@ impl ViewportRenderer {
                     .context("Failed to create weather particle renderer (deferred)")?,
             );
         }
-        Ok(self.weather_renderer.as_mut().unwrap())
+        self.weather_renderer
+            .as_mut()
+            .context("weather renderer not initialized after creation")
     }
 
     fn ensure_scatter_renderer(&mut self) -> Result<&mut ScatterRenderer> {
@@ -194,7 +204,9 @@ impl ViewportRenderer {
                     .context("Failed to create scatter renderer (deferred)")?,
             );
         }
-        Ok(self.scatter_renderer.as_mut().unwrap())
+        self.scatter_renderer
+            .as_mut()
+            .context("scatter renderer not initialized after creation")
     }
 
     fn ensure_physics_renderer(&mut self) -> Result<&mut PhysicsDebugRenderer> {
@@ -204,7 +216,9 @@ impl ViewportRenderer {
                     .context("Failed to create physics debug renderer (deferred)")?,
             );
         }
-        Ok(self.physics_renderer.as_mut().unwrap())
+        self.physics_renderer
+            .as_mut()
+            .context("physics renderer not initialized after creation")
     }
 
     /// Resize viewport (recreates depth buffer)
@@ -303,6 +317,13 @@ impl ViewportRenderer {
         // Eagerly init scatter renderer before depth_view borrow (avoids self re-borrow)
         if !self.scatter_placements.is_empty() && self.scatter_renderer.is_none() {
             let _ = self.ensure_scatter_renderer();
+        }
+
+        // Eagerly init physics renderer if component gizmo lines or physics lines exist
+        if (!self.component_gizmo_lines.is_empty() || physics_debug_lines.is_some())
+            && self.physics_renderer.is_none()
+        {
+            let _ = self.ensure_physics_renderer();
         }
 
         let depth_view = self
@@ -432,12 +453,25 @@ impl ViewportRenderer {
                 .context("Entity render failed")?;
         }
 
-        // Pass 4: Physics debug (collider wireframes) — deferred init
-        if let Some(debug_lines) = physics_debug_lines {
-            if let Some(physics) = self.physics_renderer.as_mut() {
-                physics
-                    .render(&mut encoder, &target_view, depth_view, camera, debug_lines)
-                    .context("Physics debug render failed")?;
+        // Pass 4: Physics debug + component gizmos (collider wireframes, light radii, etc.)
+        {
+            let mut combined_lines: Vec<astraweave_physics::DebugLine> =
+                self.component_gizmo_lines.clone();
+            if let Some(debug_lines) = physics_debug_lines {
+                combined_lines.extend_from_slice(debug_lines);
+            }
+            if !combined_lines.is_empty() {
+                if let Some(physics) = self.physics_renderer.as_mut() {
+                    physics
+                        .render(
+                            &mut encoder,
+                            &target_view,
+                            depth_view,
+                            camera,
+                            &combined_lines,
+                        )
+                        .context("Physics debug render failed")?;
+                }
             }
         }
 
@@ -528,12 +562,12 @@ impl ViewportRenderer {
     }
 
     /// Get wgpu device
-    pub fn device(&self) -> &wgpu::Device {
+    pub fn device(&self) -> &Arc<wgpu::Device> {
         &self.device
     }
 
     /// Get wgpu queue
-    pub fn queue(&self) -> &wgpu::Queue {
+    pub fn queue(&self) -> &Arc<wgpu::Queue> {
         &self.queue
     }
 
@@ -542,9 +576,45 @@ impl ViewportRenderer {
         self.selected_entities = entities.to_vec();
     }
 
+    /// Set component gizmo debug lines (light radii, collider shapes, audio ranges).
+    /// These are rendered in the physics debug pass.
+    pub fn set_component_gizmo_lines(&mut self, lines: Vec<astraweave_physics::DebugLine>) {
+        self.component_gizmo_lines = lines;
+    }
+
     /// Set the entity-to-mesh mapping so models render with actual GLTF geometry
     pub fn set_entity_meshes(&mut self, meshes: std::collections::HashMap<Entity, String>) {
         self.entity_renderer.set_entity_meshes(meshes);
+    }
+
+    /// Set per-entity external texture overrides (entity → texture file path).
+    pub fn set_entity_texture_overrides(
+        &mut self,
+        overrides: std::collections::HashMap<Entity, String>,
+    ) {
+        self.entity_renderer.set_entity_texture_overrides(overrides);
+    }
+
+    /// Get skeleton for a mesh (delegates to entity renderer).
+    pub fn get_mesh_skeleton(
+        &self,
+        mesh_path: &str,
+    ) -> Option<&super::entity_renderer::GltfSkeleton> {
+        self.entity_renderer.get_mesh_skeleton(mesh_path)
+    }
+
+    /// Get animation clips for a mesh (delegates to entity renderer).
+    pub fn get_mesh_animations(
+        &self,
+        mesh_path: &str,
+    ) -> &[super::entity_renderer::GltfAnimationClip] {
+        self.entity_renderer.get_mesh_animations(mesh_path)
+    }
+
+    /// Apply CPU skinning to a mesh (delegates to entity renderer).
+    pub fn apply_cpu_skinning(&mut self, mesh_path: &str, joint_matrices: &[glam::Mat4]) {
+        self.entity_renderer
+            .apply_cpu_skinning(mesh_path, joint_matrices, &self.queue);
     }
 
     /// Set selected entity (for backward compatibility)
@@ -589,10 +659,13 @@ impl ViewportRenderer {
     /// Get physics debug options (mutable) for configuration — lazily inits renderer
     pub fn physics_debug_options_mut(
         &mut self,
-    ) -> &mut super::physics_renderer::PhysicsDebugOptions {
-        // Trigger lazy init so caller can configure it
-        let _ = self.ensure_physics_renderer();
-        &mut self.physics_renderer.as_mut().unwrap().options
+    ) -> Result<&mut super::physics_renderer::PhysicsDebugOptions> {
+        self.ensure_physics_renderer()?;
+        Ok(&mut self
+            .physics_renderer
+            .as_mut()
+            .context("physics renderer not available")?
+            .options)
     }
 
     pub fn upload_terrain_chunks(
@@ -682,6 +755,7 @@ impl ViewportRenderer {
             };
             let queue = self.queue.clone();
             if let Ok(weather) = self.ensure_weather_renderer() {
+                weather.set_particle_count_override(params.particle_count_override);
                 weather.set_weather(kind, intensity, &queue);
                 let (wx, wz) = match params.weather_type {
                     3 => (5.0, 3.0),
@@ -698,7 +772,7 @@ impl ViewportRenderer {
         }
     }
 
-    /// Set lighting parameters for PBR terrain shading
+    /// Set lighting parameters for PBR terrain shading (also syncs to entity renderer)
     pub fn set_lighting_params(&mut self, params: super::terrain_renderer::TerrainLightingParams) {
         if let Ok(terrain) = self.ensure_terrain_renderer() {
             terrain.set_lighting_params(params);
@@ -707,6 +781,16 @@ impl ViewportRenderer {
         if let Some(scatter) = self.scatter_renderer.as_mut() {
             scatter.set_lighting_params(params);
         }
+        // Sync sun/ambient to entity renderer so entities share the same directional light
+        self.entity_renderer
+            .set_sun(params.sun_dir, params.sun_color, params.sun_intensity);
+        self.entity_renderer
+            .set_ambient(params.ambient_color, params.ambient_intensity);
+    }
+
+    /// Set scene point lights from entity Light components (forwarded to entity renderer)
+    pub fn set_scene_lights(&mut self, lights: Vec<super::entity_renderer::SceneLight>) {
+        self.entity_renderer.set_scene_lights(lights);
     }
 
     /// Set water level for volumetric water plane

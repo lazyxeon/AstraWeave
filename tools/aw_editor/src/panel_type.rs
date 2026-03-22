@@ -216,6 +216,9 @@ pub enum PanelType {
 
     /// Input bindings configuration
     InputBindings,
+
+    /// GPU frame debugger — per-pass timing and draw call breakdown
+    FrameDebugger,
 }
 
 impl PanelType {
@@ -262,6 +265,7 @@ impl PanelType {
             Self::Physics => "Physics",
             Self::PostProcess => "Post Process",
             Self::InputBindings => "Input Bindings",
+            Self::FrameDebugger => "Frame Debugger",
         }
     }
 
@@ -308,6 +312,7 @@ impl PanelType {
             Self::Physics => "[Ph]",
             Self::PostProcess => "[PP]",
             Self::InputBindings => "[In]",
+            Self::FrameDebugger => "[FD]",
         }
     }
 
@@ -351,9 +356,11 @@ impl PanelType {
             Self::AssetBrowser => PanelCategory::Assets,
 
             // Debug panels
-            Self::Console | Self::Profiler | Self::Performance | Self::SceneStats => {
-                PanelCategory::Debug
-            }
+            Self::Console
+            | Self::Profiler
+            | Self::Performance
+            | Self::SceneStats
+            | Self::FrameDebugger => PanelCategory::Debug,
 
             // Tool panels
             Self::Charts
@@ -429,6 +436,7 @@ impl PanelType {
             Self::Physics => "Physics simulation settings",
             Self::PostProcess => "Post-processing effects configuration",
             Self::InputBindings => "Configure keyboard and controller bindings",
+            Self::FrameDebugger => "GPU render pass timing and draw call breakdown",
         }
     }
 
@@ -507,6 +515,7 @@ impl PanelType {
             Self::Physics,
             Self::PostProcess,
             Self::InputBindings,
+            Self::FrameDebugger,
         ]
     }
 

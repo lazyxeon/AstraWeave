@@ -700,6 +700,7 @@ impl Default for BuildConfig {
 pub enum SettingsTab {
     #[default]
     Project,
+    Gameplay,
     Rendering,
     Physics,
     Audio,
@@ -876,6 +877,7 @@ impl SettingsTab {
     pub fn name(&self) -> &'static str {
         match self {
             SettingsTab::Project => "Project",
+            SettingsTab::Gameplay => "Gameplay",
             SettingsTab::Rendering => "Rendering",
             SettingsTab::Physics => "Physics",
             SettingsTab::Audio => "Audio",
@@ -889,6 +891,7 @@ impl SettingsTab {
     pub fn icon(&self) -> &'static str {
         match self {
             SettingsTab::Project => "[Dir]",
+            SettingsTab::Gameplay => "[Sword]",
             SettingsTab::Rendering => "[Art]",
             SettingsTab::Physics => "⚙️",
             SettingsTab::Audio => "[Snd]",
@@ -902,6 +905,7 @@ impl SettingsTab {
     pub fn all() -> &'static [SettingsTab] {
         &[
             SettingsTab::Project,
+            SettingsTab::Gameplay,
             SettingsTab::Rendering,
             SettingsTab::Physics,
             SettingsTab::Audio,
@@ -922,6 +926,9 @@ pub struct ProjectSettingsPanel {
     project_version: String,
     company_name: String,
     default_scene: String,
+
+    // Gameplay genre preset
+    gameplay_preset: super::gameplay_presets::GameplayPreset,
 
     // Settings
     rendering_settings: RenderingSettings,
@@ -959,6 +966,8 @@ impl Default for ProjectSettingsPanel {
             project_version: "0.1.0".to_string(),
             company_name: "AstraWeave Studios".to_string(),
             default_scene: "scenes/main.scene".to_string(),
+
+            gameplay_preset: super::gameplay_presets::GameplayPreset::Custom,
 
             rendering_settings: RenderingSettings::default(),
             physics_settings: PhysicsSettings::default(),
@@ -1353,6 +1362,71 @@ impl ProjectSettingsPanel {
                     ui.end_row();
                 });
         });
+    }
+
+    fn show_gameplay_tab(&mut self, ui: &mut Ui) {
+        ui.heading("Gameplay Template");
+        ui.add_space(10.0);
+
+        if let Some(new_preset) =
+            super::gameplay_presets::show_preset_selector(ui, self.gameplay_preset)
+        {
+            self.gameplay_preset = new_preset;
+        }
+
+        // Show component schema details for the selected preset
+        if self.gameplay_preset != super::gameplay_presets::GameplayPreset::Custom {
+            ui.add_space(10.0);
+            ui.group(|ui| {
+                ui.label(RichText::new("Component Schemas").strong());
+                ui.add_space(4.0);
+                for schema in self.gameplay_preset.component_schemas() {
+                    egui::CollapsingHeader::new(RichText::new(schema.name).strong().monospace())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            for (field_name, field_type) in schema.fields {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        RichText::new(*field_name)
+                                            .monospace()
+                                            .color(egui::Color32::from_rgb(140, 190, 255)),
+                                    );
+                                    ui.label(
+                                        RichText::new(format!(": {}", field_type))
+                                            .monospace()
+                                            .color(egui::Color32::from_rgb(160, 160, 175)),
+                                    );
+                                });
+                            }
+                        });
+                }
+            });
+
+            ui.add_space(10.0);
+            ui.group(|ui| {
+                ui.label(RichText::new("Starter Entities").strong());
+                ui.add_space(4.0);
+                for entity in self.gameplay_preset.starter_entities() {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(entity.name)
+                                .strong()
+                                .color(egui::Color32::from_rgb(200, 200, 210)),
+                        );
+                        ui.label(
+                            RichText::new(format!("({})", entity.archetype))
+                                .color(egui::Color32::from_rgb(140, 140, 155)),
+                        );
+                    });
+                    ui.label(
+                        RichText::new(entity.description)
+                            .small()
+                            .color(egui::Color32::from_rgb(120, 120, 130)),
+                    );
+                    ui.add_space(2.0);
+                }
+            });
+        }
     }
 
     fn show_rendering_tab(&mut self, ui: &mut Ui) {
@@ -2087,6 +2161,7 @@ impl Panel for ProjectSettingsPanel {
 
         match self.active_tab {
             SettingsTab::Project => self.show_project_tab(ui),
+            SettingsTab::Gameplay => self.show_gameplay_tab(ui),
             SettingsTab::Rendering => self.show_rendering_tab(ui),
             SettingsTab::Physics => self.show_physics_tab(ui),
             SettingsTab::Audio => self.show_audio_tab(ui),

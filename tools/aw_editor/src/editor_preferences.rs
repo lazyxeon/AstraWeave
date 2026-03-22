@@ -23,6 +23,9 @@ pub struct EditorPreferences {
     /// Serialized dock layout JSON for persistence
     #[serde(default)]
     pub layout_json: Option<String>,
+    /// Whether the first-run tutorial has been completed or skipped.
+    #[serde(default)]
+    pub tutorial_completed: bool,
 }
 
 fn default_auto_save_count() -> usize {
@@ -43,6 +46,7 @@ impl Default for EditorPreferences {
             camera: None,
             snapping: None,
             layout_json: None,
+            tutorial_completed: false,
         }
     }
 }

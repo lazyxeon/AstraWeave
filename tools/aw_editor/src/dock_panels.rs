@@ -214,6 +214,12 @@ impl<'a> DockPanelContext<'a> {
             PanelType::InputBindings => {
                 self.input_bindings_panel.show(ui);
             }
+            PanelType::FrameDebugger => {
+                ui.heading("Frame Debugger");
+                ui.separator();
+                ui.label("Frame debugger is available in the docking layout.");
+                ui.label("Switch to docking mode (Window > Use Docking Layout).");
+            }
         }
     }
 

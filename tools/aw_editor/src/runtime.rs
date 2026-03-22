@@ -421,6 +421,31 @@ impl RuntimeStats {
     }
 }
 
+/// Captured game input state for a single frame during play mode.
+///
+/// This struct is populated by the viewport widget from egui input and injected
+/// into the runtime so the simulation can read player intent.
+#[derive(Debug, Clone, Default)]
+pub struct GameInput {
+    /// Movement axes: W/S for forward/back, A/D for left/right (−1.0..1.0)
+    pub move_x: f32,
+    pub move_y: f32,
+
+    /// Mouse position in viewport-local coordinates (pixels)
+    pub mouse_pos: [f32; 2],
+
+    /// Mouse buttons held this frame
+    pub mouse_left: bool,
+    pub mouse_right: bool,
+
+    /// Action keys (jump, interact, ability slots)
+    pub jump: bool,
+    pub interact: bool,
+    pub ability_1: bool,
+    pub ability_2: bool,
+    pub ability_3: bool,
+}
+
 /// Editor simulation runtime
 ///
 /// Manages the play/pause/stop lifecycle with deterministic snapshots.
@@ -451,6 +476,9 @@ pub struct EditorRuntime {
 
     /// Accumulated time waiting to be consumed by fixed steps
     time_accumulator: f32,
+
+    /// Input captured from the viewport during play mode
+    game_input: GameInput,
 }
 
 impl Default for EditorRuntime {
@@ -472,6 +500,7 @@ impl EditorRuntime {
             last_frame_time: None,
             fixed_dt: 1.0 / 60.0,
             time_accumulator: 0.0,
+            game_input: GameInput::default(),
         }
     }
 
@@ -496,6 +525,16 @@ impl EditorRuntime {
     /// Check if simulation is paused
     pub fn is_paused(&self) -> bool {
         self.state == RuntimeState::Paused
+    }
+
+    /// Inject player input for the current frame (called by viewport before tick)
+    pub fn inject_input(&mut self, input: GameInput) {
+        self.game_input = input;
+    }
+
+    /// Read the latest game input (available to simulation systems)
+    pub fn game_input(&self) -> &GameInput {
+        &self.game_input
     }
 
     /// Get simulation world (if running)

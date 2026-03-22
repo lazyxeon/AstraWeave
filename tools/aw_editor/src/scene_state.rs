@@ -118,6 +118,7 @@ impl EditorSceneState {
             mesh: None,
             material: crate::entity_manager::EntityMaterial::new(),
             components: HashMap::new(),
+            parent: None,
         });
 
         entry.position = Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);

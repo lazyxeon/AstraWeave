@@ -22,6 +22,12 @@ pub enum HierarchyAction {
     ApplyOverridesToPrefab(Entity),
     /// Week 5 Day 3-4: Revert overrides to original prefab values
     RevertToOriginalPrefab(Entity),
+    /// Set parent of child entity (child, parent)
+    SetParent(Entity, Entity),
+    /// Remove entity from its parent (make it a root)
+    Unparent(Entity),
+    /// Open the prefab source for in-place editing
+    EditPrefab(Entity),
 }
 
 impl std::fmt::Display for HierarchyAction {
@@ -40,6 +46,9 @@ impl HierarchyAction {
             HierarchyAction::BreakPrefabConnection(_) => "Break Prefab Connection",
             HierarchyAction::ApplyOverridesToPrefab(_) => "Apply Overrides",
             HierarchyAction::RevertToOriginalPrefab(_) => "Revert to Original",
+            HierarchyAction::SetParent(_, _) => "Set Parent",
+            HierarchyAction::Unparent(_) => "Unparent",
+            HierarchyAction::EditPrefab(_) => "Edit Prefab",
         }
     }
 
@@ -52,6 +61,9 @@ impl HierarchyAction {
             HierarchyAction::BreakPrefabConnection(_) => "[Link]",
             HierarchyAction::ApplyOverridesToPrefab(_) => "[ok]",
             HierarchyAction::RevertToOriginalPrefab(_) => "↩️",
+            HierarchyAction::SetParent(_, _) => "[P+]",
+            HierarchyAction::Unparent(_) => "[P-]",
+            HierarchyAction::EditPrefab(_) => "[Ed]",
         }
     }
 
@@ -182,6 +194,41 @@ impl HierarchyPanel {
                     entity,
                     children: Vec::new(),
                 });
+                self.root_entities.push(entity);
+            }
+        }
+    }
+
+    /// Rebuild the parent-child tree from EntityManager parent fields.
+    /// Call after loading a scene to restore persisted hierarchy.
+    pub fn rebuild_from_parents(&mut self, parent_map: &[(Entity, Option<Entity>)]) {
+        // Clear all children lists
+        for node in self.hierarchy.values_mut() {
+            node.children.clear();
+        }
+        self.root_entities.clear();
+
+        // Collect all known entities
+        let all_entities: Vec<Entity> = self.hierarchy.keys().copied().collect();
+
+        for &entity in &all_entities {
+            // Find parent from the supplied map
+            let parent = parent_map
+                .iter()
+                .find(|(e, _)| *e == entity)
+                .and_then(|(_, p)| *p)
+                .map(|pid| pid as Entity);
+
+            if let Some(parent_id) = parent {
+                if self.hierarchy.contains_key(&parent_id) && parent_id != entity {
+                    if let Some(parent_node) = self.hierarchy.get_mut(&parent_id) {
+                        parent_node.children.push(entity);
+                    }
+                } else {
+                    // Parent doesn't exist or self-reference — make root
+                    self.root_entities.push(entity);
+                }
+            } else {
                 self.root_entities.push(entity);
             }
         }
@@ -431,6 +478,8 @@ impl HierarchyPanel {
                 if let Some(source) = self.drag_source.take() {
                     if source != entity {
                         self.add_child_to_parent(source, entity);
+                        self.pending_actions
+                            .push(HierarchyAction::SetParent(source, entity));
                     }
                 }
             }
@@ -528,12 +577,19 @@ impl HierarchyPanel {
                             .push(HierarchyAction::BreakPrefabConnection(entity));
                         ui.close();
                     }
+
+                    if ui.button("✏️ Edit Prefab Source").clicked() {
+                        self.pending_actions
+                            .push(HierarchyAction::EditPrefab(entity));
+                        ui.close();
+                    }
                 }
 
                 ui.separator();
 
                 if ui.button("📤 Unparent").clicked() {
                     self.remove_from_parent(entity);
+                    self.pending_actions.push(HierarchyAction::Unparent(entity));
                     ui.close();
                 }
             });

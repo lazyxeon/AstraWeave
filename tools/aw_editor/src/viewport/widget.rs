@@ -47,6 +47,46 @@ use crate::gizmo::{
 };
 use astraweave_core::{Entity, World};
 
+/// Layout mode for multi-viewport splitting
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewportLayout {
+    /// Single full-size viewport
+    Single,
+    /// Two viewports, side by side (left | right)
+    SideBySide,
+    /// Two viewports, stacked (top / bottom)
+    TopBottom,
+    /// Four viewports in a 2×2 grid
+    Quad,
+}
+
+impl Default for ViewportLayout {
+    fn default() -> Self {
+        Self::Single
+    }
+}
+
+impl ViewportLayout {
+    /// Number of viewports this layout needs
+    pub fn viewport_count(&self) -> usize {
+        match self {
+            Self::Single => 1,
+            Self::SideBySide | Self::TopBottom => 2,
+            Self::Quad => 4,
+        }
+    }
+
+    /// Label for UI display
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Single => "Single",
+            Self::SideBySide => "Side by Side",
+            Self::TopBottom => "Top / Bottom",
+            Self::Quad => "Quad (2\u{00d7}2)",
+        }
+    }
+}
+
 /// Camera bookmark for F1-F12 quick recall
 #[derive(Clone, Debug)]
 struct CameraBookmark {
@@ -132,6 +172,12 @@ pub struct ViewportWidget {
     /// The Y height of the drag plane, captured at drag start.
     /// Keeps dragging stable on a flat plane instead of intersecting uneven terrain.
     drag_plane_y: f32,
+
+    /// Game input captured this frame (populated during play mode)
+    pending_game_input: Option<crate::runtime::GameInput>,
+
+    /// Last viewport rect (for ground-plane raycasting from outside the show() method)
+    last_viewport_rect: Option<egui::Rect>,
 }
 
 impl ViewportWidget {
@@ -202,6 +248,58 @@ impl ViewportWidget {
             last_brush_time: std::time::Instant::now(),
             drag_offset: None,
             drag_plane_y: 0.0,
+            pending_game_input: None,
+            last_viewport_rect: None,
+        })
+    }
+
+    /// Create a new viewport widget that shares GPU resources with an existing one.
+    ///
+    /// The new viewport has its own camera, gizmo state, and selection,
+    /// but shares the underlying wgpu device and queue.
+    pub fn new_additional(existing: &ViewportWidget) -> Result<Self> {
+        let (device, queue) = {
+            let renderer = existing
+                .renderer
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Failed to lock renderer: {}", e))?;
+            (renderer.device().clone(), renderer.queue().clone())
+        };
+
+        let renderer = Arc::new(Mutex::new(
+            ViewportRenderer::new(device, queue)
+                .context("Failed to create additional viewport renderer")?,
+        ));
+
+        Ok(Self {
+            renderer,
+            camera: OrbitCamera::default(),
+            render_texture: None,
+            staging_buffer: None,
+            egui_texture: None,
+            last_size: (0, 0),
+            has_focus: false,
+            toolbar: ViewportToolbar::default(),
+            selected_entities: Vec::new(),
+            mouse_pressed_pos: None,
+            last_frame_time: std::time::Instant::now(),
+            frame_times: Vec::with_capacity(60),
+            gizmo_state: GizmoState::new(),
+            gizmo_picker: GizmoPicker::default(),
+            hovered_handle: None,
+            grid_snap_size: 1.0,
+            angle_snap_increment: 15.0_f32.to_radians(),
+            camera_bookmarks: [
+                None, None, None, None, None, None, None, None, None, None, None, None,
+            ],
+            clipboard: None,
+            terrain_brush_active: false,
+            terrain_brush_hits: Vec::new(),
+            last_brush_time: std::time::Instant::now(),
+            drag_offset: None,
+            drag_plane_y: 0.0,
+            pending_game_input: None,
+            last_viewport_rect: None,
         })
     }
 
@@ -218,6 +316,11 @@ impl ViewportWidget {
     /// Take all pending terrain brush hits (world X, Z coordinates)
     pub fn take_terrain_brush_hits(&mut self) -> Vec<[f32; 2]> {
         std::mem::take(&mut self.terrain_brush_hits)
+    }
+
+    /// Take captured game input (returns None if not in play mode or no input this frame)
+    pub fn take_game_input(&mut self) -> Option<crate::runtime::GameInput> {
+        self.pending_game_input.take()
     }
 
     /// Get access to the underlying renderer
@@ -260,6 +363,7 @@ impl ViewportWidget {
         entity_manager: &mut EntityManager,
         undo_stack: &mut crate::command::UndoStack, // Phase 2.1: Command integration
         opt_prefab_mgr: Option<&mut crate::prefab::PrefabManager>, // Phase 8.1 Week 5 Day 3: Auto-tracking
+        is_playing: bool, // When true, capture game input alongside camera controls
     ) -> Result<()> {
         // Update frame time tracking
         let now = std::time::Instant::now();
@@ -282,6 +386,9 @@ impl ViewportWidget {
         let available = ui.available_size();
         let viewport_size = egui::vec2(available.x, available.y);
         let (rect, response) = ui.allocate_exact_size(viewport_size, egui::Sense::click_and_drag());
+
+        // Store viewport rect for external ground-position queries
+        self.last_viewport_rect = Some(rect);
 
         // Request focus only on click (not hover) to avoid stealing focus from other panels
         if response.clicked() {
@@ -314,6 +421,47 @@ impl ViewportWidget {
             undo_stack,
             opt_prefab_mgr,
         )?;
+
+        // Capture game input for play mode (WASD, mouse, action keys)
+        if is_playing && self.has_focus {
+            let gi = ui.ctx().input(|i| {
+                let mut inp = crate::runtime::GameInput::default();
+                if i.key_down(egui::Key::W) {
+                    inp.move_y += 1.0;
+                }
+                if i.key_down(egui::Key::S) {
+                    inp.move_y -= 1.0;
+                }
+                if i.key_down(egui::Key::A) {
+                    inp.move_x -= 1.0;
+                }
+                if i.key_down(egui::Key::D) {
+                    inp.move_x += 1.0;
+                }
+                if i.key_down(egui::Key::Space) {
+                    inp.jump = true;
+                }
+                if i.key_down(egui::Key::E) {
+                    inp.interact = true;
+                }
+                if i.key_down(egui::Key::Num1) {
+                    inp.ability_1 = true;
+                }
+                if i.key_down(egui::Key::Num2) {
+                    inp.ability_2 = true;
+                }
+                if i.key_down(egui::Key::Num3) {
+                    inp.ability_3 = true;
+                }
+                if let Some(pos) = i.pointer.hover_pos() {
+                    inp.mouse_pos = [pos.x - response.rect.min.x, pos.y - response.rect.min.y];
+                }
+                inp.mouse_left = i.pointer.button_down(egui::PointerButton::Primary);
+                inp.mouse_right = i.pointer.button_down(egui::PointerButton::Secondary);
+                inp
+            });
+            self.pending_game_input = Some(gi);
+        }
 
         // Request continuous repaint when viewport is hovered, focused, or weather effects are active
         // This prevents cursor/focus issues when switching windows (alt-tab)
@@ -358,6 +506,54 @@ impl ViewportWidget {
                     })
                     .collect();
                 renderer.set_entity_meshes(mesh_map);
+
+                // Build entity-to-texture override mapping from EntityMaterial.texture_slots
+                let tex_overrides: std::collections::HashMap<u32, String> = entity_manager
+                    .entities()
+                    .iter()
+                    .filter_map(|(&id, entity)| {
+                        entity
+                            .material
+                            .get_texture(crate::entity_manager::MaterialSlot::Albedo)
+                            .and_then(|p| p.to_str())
+                            .map(|s| (id as u32, s.to_string()))
+                    })
+                    .collect();
+                if !tex_overrides.is_empty() {
+                    renderer.set_entity_texture_overrides(tex_overrides);
+                }
+
+                // Collect point lights from entities with Light components
+                let scene_lights: Vec<super::entity_renderer::SceneLight> = entity_manager
+                    .entities()
+                    .iter()
+                    .filter_map(|(_, entity)| {
+                        let data = entity.components.get("Light")?;
+                        let ltype = data.get("type")?.as_str().unwrap_or("point");
+                        if ltype != "point" {
+                            return None;
+                        }
+                        Some(super::entity_renderer::SceneLight {
+                            position: [entity.position.x, entity.position.y, entity.position.z],
+                            range: data.get("range").and_then(|v| v.as_f64()).unwrap_or(10.0)
+                                as f32,
+                            color: [
+                                data.get("color_r").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                                data.get("color_g").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                                data.get("color_b").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                            ],
+                            intensity: data
+                                .get("intensity")
+                                .and_then(|v| v.as_f64())
+                                .unwrap_or(1.0) as f32,
+                        })
+                    })
+                    .collect();
+                renderer.set_scene_lights(scene_lights);
+
+                // Generate component gizmo lines (light radius, collider shapes, audio range)
+                let gizmo_lines = Self::generate_component_gizmo_lines(entity_manager);
+                renderer.set_component_gizmo_lines(gizmo_lines);
             }
         }
 
@@ -1711,6 +1907,31 @@ impl ViewportWidget {
         &self.camera
     }
 
+    /// Compute the ground-plane (Y=0) intersection for a given screen position.
+    /// Returns `Some((x, z))` if the ray intersects the ground, `None` otherwise.
+    pub fn ground_position_at_screen_pos(&self, screen_pos: egui::Pos2) -> Option<(f32, f32)> {
+        let rect = self.last_viewport_rect?;
+        if !rect.contains(screen_pos) {
+            return None;
+        }
+        let local_pos = screen_pos - rect.min;
+        let viewport_size = rect.size();
+        let ray = self
+            .camera
+            .ray_from_screen(egui::pos2(local_pos.x, local_pos.y), viewport_size);
+        // Intersect with Y=0 ground plane
+        let denom = ray.direction.y;
+        if denom.abs() < 1e-6 {
+            return None; // Ray parallel to ground
+        }
+        let t = -ray.origin.y / denom;
+        if t < 0.0 {
+            return None; // Intersection behind camera
+        }
+        let hit = ray.at(t);
+        Some((hit.x, hit.z))
+    }
+
     /// Get camera (mutable)
     pub fn camera_mut(&mut self) -> &mut OrbitCamera {
         &mut self.camera
@@ -1796,6 +2017,221 @@ impl ViewportWidget {
             Some(tmax)
         } else {
             None
+        }
+    }
+
+    /// Generate debug lines for component gizmos (light radius, collider, audio range)
+    fn generate_component_gizmo_lines(
+        entity_manager: &crate::entity_manager::EntityManager,
+    ) -> Vec<astraweave_physics::DebugLine> {
+        let mut lines = Vec::new();
+        let segments = 32;
+
+        for (_, entity) in entity_manager.entities() {
+            let pos = [entity.position.x, entity.position.y, entity.position.z];
+
+            // Light: yellow wireframe sphere at light range
+            if let Some(data) = entity.components.get("Light") {
+                let range = data.get("range").and_then(|v| v.as_f64()).unwrap_or(10.0) as f32;
+                let color = [1.0, 0.9, 0.2]; // warm yellow
+                Self::add_wireframe_sphere(&mut lines, pos, range, color, segments);
+            }
+
+            // Collider: green wireframe box/sphere/capsule
+            if let Some(data) = entity.components.get("Collider") {
+                let color = [0.2, 1.0, 0.3]; // green
+                let shape = data.get("shape").and_then(|v| v.as_str()).unwrap_or("box");
+                match shape {
+                    "sphere" => {
+                        let r = data.get("radius").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+                        Self::add_wireframe_sphere(&mut lines, pos, r, color, segments);
+                    }
+                    "capsule" => {
+                        let r = data.get("radius").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+                        let hh = data
+                            .get("half_height")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(1.0) as f32;
+                        // Two circles at top/bottom + 4 vertical lines
+                        let top = [pos[0], pos[1] + hh, pos[2]];
+                        let bot = [pos[0], pos[1] - hh, pos[2]];
+                        Self::add_circle_xz(&mut lines, top, r, color, segments);
+                        Self::add_circle_xz(&mut lines, bot, r, color, segments);
+                        for &(dx, dz) in &[(r, 0.0), (-r, 0.0), (0.0, r), (0.0, -r)] {
+                            lines.push(astraweave_physics::DebugLine::new(
+                                [pos[0] + dx, pos[1] - hh, pos[2] + dz],
+                                [pos[0] + dx, pos[1] + hh, pos[2] + dz],
+                                color,
+                            ));
+                        }
+                    }
+                    _ => {
+                        // Box (default)
+                        let size = data
+                            .get("size")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| {
+                                let x = arr.first().and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+                                let y = arr.get(1).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+                                let z = arr.get(2).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+                                [x, y, z]
+                            })
+                            .unwrap_or([1.0, 1.0, 1.0]);
+                        Self::add_wireframe_box(&mut lines, pos, size, color);
+                    }
+                }
+            }
+
+            // Audio: cyan wireframe sphere at max_distance
+            if let Some(data) = entity.components.get("Audio") {
+                let spatial = data
+                    .get("spatial")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                if spatial {
+                    let max_dist = data
+                        .get("max_distance")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(10.0) as f32;
+                    let color = [0.2, 0.8, 1.0]; // cyan
+                    Self::add_wireframe_sphere(&mut lines, pos, max_dist, color, segments);
+                }
+            }
+        }
+        lines
+    }
+
+    /// Add a wireframe sphere (3 perpendicular circles) to debug lines
+    fn add_wireframe_sphere(
+        lines: &mut Vec<astraweave_physics::DebugLine>,
+        center: [f32; 3],
+        radius: f32,
+        color: [f32; 3],
+        segments: usize,
+    ) {
+        Self::add_circle_xz(lines, center, radius, color, segments);
+        Self::add_circle_xy(lines, center, radius, color, segments);
+        Self::add_circle_yz(lines, center, radius, color, segments);
+    }
+
+    fn add_circle_xz(
+        lines: &mut Vec<astraweave_physics::DebugLine>,
+        center: [f32; 3],
+        radius: f32,
+        color: [f32; 3],
+        segments: usize,
+    ) {
+        for i in 0..segments {
+            let a0 = (i as f32 / segments as f32) * std::f32::consts::TAU;
+            let a1 = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
+            lines.push(astraweave_physics::DebugLine::new(
+                [
+                    center[0] + radius * a0.cos(),
+                    center[1],
+                    center[2] + radius * a0.sin(),
+                ],
+                [
+                    center[0] + radius * a1.cos(),
+                    center[1],
+                    center[2] + radius * a1.sin(),
+                ],
+                color,
+            ));
+        }
+    }
+
+    fn add_circle_xy(
+        lines: &mut Vec<astraweave_physics::DebugLine>,
+        center: [f32; 3],
+        radius: f32,
+        color: [f32; 3],
+        segments: usize,
+    ) {
+        for i in 0..segments {
+            let a0 = (i as f32 / segments as f32) * std::f32::consts::TAU;
+            let a1 = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
+            lines.push(astraweave_physics::DebugLine::new(
+                [
+                    center[0] + radius * a0.cos(),
+                    center[1] + radius * a0.sin(),
+                    center[2],
+                ],
+                [
+                    center[0] + radius * a1.cos(),
+                    center[1] + radius * a1.sin(),
+                    center[2],
+                ],
+                color,
+            ));
+        }
+    }
+
+    fn add_circle_yz(
+        lines: &mut Vec<astraweave_physics::DebugLine>,
+        center: [f32; 3],
+        radius: f32,
+        color: [f32; 3],
+        segments: usize,
+    ) {
+        for i in 0..segments {
+            let a0 = (i as f32 / segments as f32) * std::f32::consts::TAU;
+            let a1 = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
+            lines.push(astraweave_physics::DebugLine::new(
+                [
+                    center[0],
+                    center[1] + radius * a0.cos(),
+                    center[2] + radius * a0.sin(),
+                ],
+                [
+                    center[0],
+                    center[1] + radius * a1.cos(),
+                    center[2] + radius * a1.sin(),
+                ],
+                color,
+            ));
+        }
+    }
+
+    fn add_wireframe_box(
+        lines: &mut Vec<astraweave_physics::DebugLine>,
+        center: [f32; 3],
+        size: [f32; 3],
+        color: [f32; 3],
+    ) {
+        let hx = size[0] * 0.5;
+        let hy = size[1] * 0.5;
+        let hz = size[2] * 0.5;
+        let c = center;
+        // 8 corners
+        let corners = [
+            [c[0] - hx, c[1] - hy, c[2] - hz],
+            [c[0] + hx, c[1] - hy, c[2] - hz],
+            [c[0] + hx, c[1] - hy, c[2] + hz],
+            [c[0] - hx, c[1] - hy, c[2] + hz],
+            [c[0] - hx, c[1] + hy, c[2] - hz],
+            [c[0] + hx, c[1] + hy, c[2] - hz],
+            [c[0] + hx, c[1] + hy, c[2] + hz],
+            [c[0] - hx, c[1] + hy, c[2] + hz],
+        ];
+        // 12 edges
+        let edges: [(usize, usize); 12] = [
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 0), // bottom
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (7, 4), // top
+            (0, 4),
+            (1, 5),
+            (2, 6),
+            (3, 7), // vertical
+        ];
+        for (a, b) in edges {
+            lines.push(astraweave_physics::DebugLine::new(
+                corners[a], corners[b], color,
+            ));
         }
     }
 

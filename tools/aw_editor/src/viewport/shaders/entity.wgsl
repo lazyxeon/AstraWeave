@@ -1,7 +1,7 @@
 // Entity Shader
 //
 // Renders entities with instance rendering and per-vertex colors.
-// Uses basic directional lighting for 3D perception.
+// Supports scene lights (directional sun + up to 4 point lights).
 // Supports shading modes: 0=Lit, 1=Unlit, 2=Wireframe
 // Textured variant samples albedo from group(1) texture.
 
@@ -9,6 +9,19 @@ struct Uniforms {
     view_proj: mat4x4<f32>,
     camera_pos: vec3<f32>,
     shading_mode: u32,
+    // Scene lighting (vec4 packed)
+    sun_dir_and_count: vec4<f32>,       // xyz=sun direction, w=point light count
+    sun_color_and_intensity: vec4<f32>, // xyz=sun color, w=sun intensity
+    ambient_color_and_intensity: vec4<f32>, // xyz=ambient color, w=ambient intensity
+    // Point lights (position+range, color+intensity)
+    light0_pos_range: vec4<f32>,
+    light0_color_intensity: vec4<f32>,
+    light1_pos_range: vec4<f32>,
+    light1_color_intensity: vec4<f32>,
+    light2_pos_range: vec4<f32>,
+    light2_color_intensity: vec4<f32>,
+    light3_pos_range: vec4<f32>,
+    light3_color_intensity: vec4<f32>,
 }
 
 struct VertexInput {
@@ -64,6 +77,58 @@ fn vs_main(
     return output;
 }
 
+// Calculate point light contribution with distance attenuation
+fn calc_point_light(light_pos_range: vec4<f32>, light_color_intensity: vec4<f32>, world_pos: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+    let light_pos = light_pos_range.xyz;
+    let light_range = light_pos_range.w;
+    let light_color = light_color_intensity.xyz;
+    let light_intensity = light_color_intensity.w;
+
+    let light_vec = light_pos - world_pos;
+    let dist = length(light_vec);
+    if dist > light_range || dist < 0.001 {
+        return vec3<f32>(0.0);
+    }
+    let light_dir = light_vec / dist;
+    let ndotl = max(dot(normal, light_dir), 0.0);
+    // Smooth distance attenuation
+    let atten = saturate(1.0 - (dist / light_range)) * saturate(1.0 - (dist / light_range));
+    return light_color * light_intensity * ndotl * atten;
+}
+
+// Full scene lighting calculation
+fn calc_lighting(world_pos: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+    let sun_dir = normalize(uniforms.sun_dir_and_count.xyz);
+    let point_count = u32(uniforms.sun_dir_and_count.w);
+    let sun_color = uniforms.sun_color_and_intensity.xyz;
+    let sun_intensity = uniforms.sun_color_and_intensity.w;
+    let ambient_color = uniforms.ambient_color_and_intensity.xyz;
+    let ambient_intensity = uniforms.ambient_color_and_intensity.w;
+
+    // Ambient
+    var lighting = ambient_color * ambient_intensity;
+
+    // Directional sun light
+    let sun_ndotl = max(dot(normal, sun_dir), 0.0);
+    lighting += sun_color * sun_intensity * sun_ndotl;
+
+    // Point lights
+    if point_count >= 1u {
+        lighting += calc_point_light(uniforms.light0_pos_range, uniforms.light0_color_intensity, world_pos, normal);
+    }
+    if point_count >= 2u {
+        lighting += calc_point_light(uniforms.light1_pos_range, uniforms.light1_color_intensity, world_pos, normal);
+    }
+    if point_count >= 3u {
+        lighting += calc_point_light(uniforms.light2_pos_range, uniforms.light2_color_intensity, world_pos, normal);
+    }
+    if point_count >= 4u {
+        lighting += calc_point_light(uniforms.light3_pos_range, uniforms.light3_color_intensity, world_pos, normal);
+    }
+
+    return lighting;
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if uniforms.shading_mode == 1u {
@@ -73,28 +138,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     if uniforms.shading_mode == 2u {
         // Wireframe: edge detection via screen-space derivatives of the world normal
-        // At cube edges, normals change abruptly, producing large derivative magnitudes
         let dn = fwidth(in.world_normal);
         let edge = length(dn);
-        // Threshold: values > ~0.3 indicate we're near a geometric edge
         let edge_factor = smoothstep(0.1, 0.5, edge);
-        // Dark fill with bright white edges  
         let fill_color = vec4<f32>(0.15, 0.15, 0.18, 0.6);
         let edge_color = vec4<f32>(0.9, 0.95, 1.0, 1.0);
         return mix(fill_color, edge_color, edge_factor);
     }
     
-    // Lit: directional lighting
-    let light_dir = normalize(vec3<f32>(0.5, 1.0, 0.3));
-    let ambient = 0.3;
-    let diffuse = max(dot(in.world_normal, light_dir), 0.0) * 0.7;
-    let lighting = ambient + diffuse;
+    // Lit: scene lighting
+    let lighting = calc_lighting(in.world_position, in.world_normal);
     let lit_color = in.color.rgb * lighting;
 
     return vec4<f32>(lit_color, in.color.a);
 }
 
-// Textured fragment shader — samples albedo texture and applies lighting
+// Textured fragment shader — samples albedo texture and applies scene lighting
 @group(1) @binding(0)
 var albedo_texture: texture_2d<f32>;
 @group(1) @binding(1)
@@ -117,10 +176,7 @@ fn fs_textured(in: VertexOutput) -> @location(0) vec4<f32> {
         return mix(fill_color, edge_color, edge_factor);
     }
 
-    let light_dir = normalize(vec3<f32>(0.5, 1.0, 0.3));
-    let ambient = 0.3;
-    let diffuse = max(dot(in.world_normal, light_dir), 0.0) * 0.7;
-    let lighting = ambient + diffuse;
+    let lighting = calc_lighting(in.world_position, in.world_normal);
     let base = tex_color * in.color;
     let lit_color = base.rgb * lighting;
 

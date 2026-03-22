@@ -209,6 +209,8 @@ pub struct EditorEntity {
     pub mesh: Option<String>,
     pub material: EntityMaterial,
     pub components: HashMap<String, serde_json::Value>,
+    /// Parent entity ID (None = root)
+    pub parent: Option<EntityId>,
 }
 
 #[allow(dead_code)]
@@ -223,6 +225,7 @@ impl EditorEntity {
             mesh: None,
             material: EntityMaterial::new(),
             components: HashMap::new(),
+            parent: None,
         }
     }
 

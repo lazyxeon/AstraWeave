@@ -31,6 +31,7 @@ pub mod dialogue_editor_panel;
 pub mod distribution_panel;
 pub mod entity_panel;
 pub mod foliage_panel;
+pub mod frame_debugger;
 pub mod graph_panel;
 pub mod hierarchy_panel;
 pub mod input_bindings_panel;
@@ -64,6 +65,12 @@ pub mod environment_preset_panel;
 pub mod import_doctor_panel;
 pub mod procedural_filler_panel;
 pub mod ready_asset_store_panel;
+
+// World creation wizard
+pub mod world_wizard;
+
+// Gameplay genre presets
+pub mod gameplay_presets;
 
 // Re-exports
 pub use advanced_widgets_panel::AdvancedWidgetsPanel;
@@ -123,6 +130,7 @@ pub use foliage_panel::{
     BrushSettings, BrushTool, DistributionType, FoliageAction, FoliageCategory, FoliageLayer,
     FoliageTab, FoliageType, ProceduralRule,
 };
+pub use frame_debugger::FrameDebuggerPanel;
 #[allow(unused_imports)]
 pub use input_bindings_panel::{
     ActionCategory, BindingPreset, GamepadButton, InputBindingAction, InputBindingsPanel,
@@ -205,6 +213,8 @@ pub use environment_preset_panel::{
     TimeOfDay, Tonemapper, WeatherCondition,
 };
 #[allow(unused_imports)]
+pub use gameplay_presets::{ComponentSchema, GameplayPreset, StarterEntity};
+#[allow(unused_imports)]
 pub use import_doctor_panel::{
     ImportAction, ImportDoctorPanel, ImportIssue, ImportSettings, IssueSeverity, IssueType,
     QuickFix, SourceEngine, TexturePackingFormat, UpAxis,
@@ -219,3 +229,5 @@ pub use ready_asset_store_panel::{
     AssetChecklist, AssetStoreAction, AssetStoreCategory, ChecklistItem, ReadinessLevel,
     ReadyAsset, ReadyAssetStorePanel, SortBy,
 };
+#[allow(unused_imports)]
+pub use world_wizard::{WizardStep, WorldTemplate, WorldWizard, WorldWizardAction};

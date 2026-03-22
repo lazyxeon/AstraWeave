@@ -64,7 +64,7 @@ pub use prefab::{
     PrefabData, PrefabEntitySnapshot, PrefabHierarchySnapshot, PrefabInstance,
     PrefabInstanceSnapshot, PrefabManager,
 };
-pub use runtime::{EditorRuntime, RuntimeState, RuntimeStats};
+pub use runtime::{EditorRuntime, GameInput, RuntimeState, RuntimeStats};
 pub use scene_serialization::{EntityData, SceneData};
 pub use scene_state::{EditorSceneState, TransformableScene};
 pub use tab_viewer::{EditorTabViewer, PanelEvent, SimpleTabViewer};

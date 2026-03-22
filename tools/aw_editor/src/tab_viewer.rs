@@ -46,11 +46,18 @@ pub struct EditorDrawContext<'a> {
     pub undo_stack: Option<&'a mut UndoStack>,
     /// Prefab manager for instantiation
     pub prefab_manager: Option<&'a mut PrefabManager>,
+    /// Additional viewports for multi-viewport layouts
+    pub extra_viewports: &'a mut Vec<ViewportWidget>,
+    /// Current multi-viewport layout mode
+    pub viewport_layout: crate::viewport::ViewportLayout,
 }
 
 impl<'a> EditorDrawContext<'a> {
     /// Create a new draw context with just the tab viewer (minimal)
-    pub fn new(tab_viewer: &'a mut EditorTabViewer) -> Self {
+    pub fn new(
+        tab_viewer: &'a mut EditorTabViewer,
+        extra_viewports: &'a mut Vec<ViewportWidget>,
+    ) -> Self {
         Self {
             tab_viewer,
             viewport: None,
@@ -58,6 +65,8 @@ impl<'a> EditorDrawContext<'a> {
             entity_manager: None,
             undo_stack: None,
             prefab_manager: None,
+            extra_viewports,
+            viewport_layout: crate::viewport::ViewportLayout::Single,
         }
     }
 
@@ -90,6 +99,12 @@ impl<'a> EditorDrawContext<'a> {
         self.prefab_manager = Some(prefab_manager);
         self
     }
+
+    /// Set viewport layout mode
+    pub fn with_viewport_layout(mut self, layout: crate::viewport::ViewportLayout) -> Self {
+        self.viewport_layout = layout;
+        self
+    }
 }
 
 impl<'a> TabViewer for EditorDrawContext<'a> {
@@ -103,20 +118,177 @@ impl<'a> TabViewer for EditorDrawContext<'a> {
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
         match tab {
             PanelType::Viewport => {
-                // Use ViewportWidget if available for professional 3D rendering
+                // Multi-viewport rendering: split the available rect based on layout
                 if let (Some(viewport), Some(world), Some(entity_manager), Some(undo_stack)) = (
                     self.viewport.as_mut(),
                     self.world.as_mut(),
                     self.entity_manager.as_mut(),
                     self.undo_stack.as_mut(),
                 ) {
-                    // Render the actual 3D viewport
                     let prefab_mgr = self.prefab_manager.as_deref_mut();
-                    if let Err(e) = viewport.ui(ui, world, entity_manager, undo_stack, prefab_mgr) {
-                        // Show error in viewport if rendering fails
-                        ui.centered_and_justified(|ui| {
-                            ui.colored_label(egui::Color32::RED, format!("Viewport Error: {}", e));
-                        });
+                    let layout = self.viewport_layout;
+
+                    use crate::viewport::ViewportLayout;
+                    match layout {
+                        ViewportLayout::Single => {
+                            if let Err(e) = viewport.ui(
+                                ui,
+                                world,
+                                entity_manager,
+                                undo_stack,
+                                prefab_mgr,
+                                false,
+                            ) {
+                                ui.centered_and_justified(|ui| {
+                                    ui.colored_label(
+                                        egui::Color32::RED,
+                                        format!("Viewport Error: {}", e),
+                                    );
+                                });
+                            }
+                        }
+                        ViewportLayout::SideBySide => {
+                            let columns = [ui
+                                .available_rect_before_wrap()
+                                .split_left_right_at_fraction(0.5)];
+                            let (left_rect, right_rect) = columns[0];
+                            // Primary viewport (left)
+                            let mut left_ui =
+                                ui.new_child(egui::UiBuilder::new().max_rect(left_rect));
+                            if let Err(e) = viewport.ui(
+                                &mut left_ui,
+                                world,
+                                entity_manager,
+                                undo_stack,
+                                prefab_mgr,
+                                false,
+                            ) {
+                                left_ui.colored_label(
+                                    egui::Color32::RED,
+                                    format!("Viewport 1 Error: {}", e),
+                                );
+                            }
+                            // Secondary viewport (right)
+                            if let Some(vp2) = self.extra_viewports.get_mut(0) {
+                                let mut right_ui =
+                                    ui.new_child(egui::UiBuilder::new().max_rect(right_rect));
+                                if let Err(e) = vp2.ui(
+                                    &mut right_ui,
+                                    world,
+                                    entity_manager,
+                                    undo_stack,
+                                    None,
+                                    false,
+                                ) {
+                                    right_ui.colored_label(
+                                        egui::Color32::RED,
+                                        format!("Viewport 2 Error: {}", e),
+                                    );
+                                }
+                            }
+                        }
+                        ViewportLayout::TopBottom => {
+                            let avail = ui.available_rect_before_wrap();
+                            let (top_rect, bottom_rect) = avail.split_top_bottom_at_fraction(0.5);
+                            // Primary viewport (top)
+                            let mut top_ui =
+                                ui.new_child(egui::UiBuilder::new().max_rect(top_rect));
+                            if let Err(e) = viewport.ui(
+                                &mut top_ui,
+                                world,
+                                entity_manager,
+                                undo_stack,
+                                prefab_mgr,
+                                false,
+                            ) {
+                                top_ui.colored_label(
+                                    egui::Color32::RED,
+                                    format!("Viewport 1 Error: {}", e),
+                                );
+                            }
+                            // Secondary viewport (bottom)
+                            if let Some(vp2) = self.extra_viewports.get_mut(0) {
+                                let mut bottom_ui =
+                                    ui.new_child(egui::UiBuilder::new().max_rect(bottom_rect));
+                                if let Err(e) = vp2.ui(
+                                    &mut bottom_ui,
+                                    world,
+                                    entity_manager,
+                                    undo_stack,
+                                    None,
+                                    false,
+                                ) {
+                                    bottom_ui.colored_label(
+                                        egui::Color32::RED,
+                                        format!("Viewport 2 Error: {}", e),
+                                    );
+                                }
+                            }
+                        }
+                        ViewportLayout::Quad => {
+                            let avail = ui.available_rect_before_wrap();
+                            let (top, bottom) = avail.split_top_bottom_at_fraction(0.5);
+                            let (tl, tr) = top.split_left_right_at_fraction(0.5);
+                            let (bl, br) = bottom.split_left_right_at_fraction(0.5);
+
+                            // Viewport 1 (top-left) — primary
+                            let mut ui_tl = ui.new_child(egui::UiBuilder::new().max_rect(tl));
+                            if let Err(e) = viewport.ui(
+                                &mut ui_tl,
+                                world,
+                                entity_manager,
+                                undo_stack,
+                                prefab_mgr,
+                                false,
+                            ) {
+                                ui_tl.colored_label(egui::Color32::RED, format!("VP1: {}", e));
+                            }
+
+                            // Viewport 2 (top-right)
+                            if let Some(vp2) = self.extra_viewports.get_mut(0) {
+                                let mut ui_tr = ui.new_child(egui::UiBuilder::new().max_rect(tr));
+                                if let Err(e) = vp2.ui(
+                                    &mut ui_tr,
+                                    world,
+                                    entity_manager,
+                                    undo_stack,
+                                    None,
+                                    false,
+                                ) {
+                                    ui_tr.colored_label(egui::Color32::RED, format!("VP2: {}", e));
+                                }
+                            }
+
+                            // Viewport 3 (bottom-left)
+                            if let Some(vp3) = self.extra_viewports.get_mut(1) {
+                                let mut ui_bl = ui.new_child(egui::UiBuilder::new().max_rect(bl));
+                                if let Err(e) = vp3.ui(
+                                    &mut ui_bl,
+                                    world,
+                                    entity_manager,
+                                    undo_stack,
+                                    None,
+                                    false,
+                                ) {
+                                    ui_bl.colored_label(egui::Color32::RED, format!("VP3: {}", e));
+                                }
+                            }
+
+                            // Viewport 4 (bottom-right)
+                            if let Some(vp4) = self.extra_viewports.get_mut(2) {
+                                let mut ui_br = ui.new_child(egui::UiBuilder::new().max_rect(br));
+                                if let Err(e) = vp4.ui(
+                                    &mut ui_br,
+                                    world,
+                                    entity_manager,
+                                    undo_stack,
+                                    None,
+                                    false,
+                                ) {
+                                    ui_br.colored_label(egui::Color32::RED, format!("VP4: {}", e));
+                                }
+                            }
+                        }
                     }
                 } else {
                     // Fallback to placeholder if resources unavailable
@@ -379,6 +551,24 @@ pub enum PanelEvent {
     TeamChanged { entity_id: u64, new_team_id: u8 },
     /// Ammo component value changed
     AmmoChanged { entity_id: u64, new_ammo: i32 },
+    /// Generic component data changed (Light, Collider, RigidBody, Audio, Camera, Script, etc.)
+    ComponentDataChanged {
+        entity_id: u64,
+        component_type: String,
+        data: serde_json::Value,
+    },
+    /// Material PBR property changed
+    MaterialPropertyChanged {
+        entity_id: u64,
+        property: String,
+        value: serde_json::Value,
+    },
+    /// Material texture slot changed
+    MaterialTextureChanged {
+        entity_id: u64,
+        slot: String,
+        path: String,
+    },
     /// Entity name changed
     EntityRenamed { entity_id: u64, new_name: String },
     /// Viewport view mode changed (0=Shaded, 1=Wireframe, 2=Unlit, 3=Normals, 4=UVs)
@@ -490,6 +680,39 @@ impl std::fmt::Display for PanelEvent {
             } => {
                 write!(f, "Ammo Changed: {} -> {}", entity_id, new_ammo)
             }
+            PanelEvent::ComponentDataChanged {
+                entity_id,
+                ref component_type,
+                ..
+            } => {
+                write!(
+                    f,
+                    "Component Data Changed: {} on {}",
+                    component_type, entity_id
+                )
+            }
+            PanelEvent::MaterialPropertyChanged {
+                entity_id,
+                ref property,
+                ..
+            } => {
+                write!(
+                    f,
+                    "Material Property Changed: {} on {}",
+                    property, entity_id
+                )
+            }
+            PanelEvent::MaterialTextureChanged {
+                entity_id,
+                ref slot,
+                ref path,
+            } => {
+                write!(
+                    f,
+                    "Material Texture Changed: {} = {} on {}",
+                    slot, path, entity_id
+                )
+            }
             PanelEvent::EntityRenamed {
                 entity_id,
                 ref new_name,
@@ -557,7 +780,10 @@ impl PanelEvent {
             | PanelEvent::RemoveComponent { .. }
             | PanelEvent::HealthChanged { .. }
             | PanelEvent::TeamChanged { .. }
-            | PanelEvent::AmmoChanged { .. } => "Component",
+            | PanelEvent::AmmoChanged { .. }
+            | PanelEvent::ComponentDataChanged { .. } => "Component",
+            PanelEvent::MaterialPropertyChanged { .. }
+            | PanelEvent::MaterialTextureChanged { .. } => "Material",
             PanelEvent::EntityRenamed { .. } => "Entity",
             PanelEvent::ViewportViewModeChanged(_)
             | PanelEvent::ViewportGizmoModeChanged(_)
@@ -630,7 +856,10 @@ impl PanelEvent {
             | PanelEvent::TransformRotationChanged { entity_id: id, .. }
             | PanelEvent::TransformScaleChanged { entity_id: id, .. }
             | PanelEvent::AddComponent { entity_id: id, .. }
-            | PanelEvent::RemoveComponent { entity_id: id, .. } => Some(*id),
+            | PanelEvent::RemoveComponent { entity_id: id, .. }
+            | PanelEvent::ComponentDataChanged { entity_id: id, .. }
+            | PanelEvent::MaterialPropertyChanged { entity_id: id, .. }
+            | PanelEvent::MaterialTextureChanged { entity_id: id, .. } => Some(*id),
             _ => None,
         }
     }
@@ -654,6 +883,14 @@ pub struct EntityInfo {
     pub pos_y: Option<i32>,
     pub rotation: Option<f32>,
     pub scale: Option<f32>,
+    /// Component JSON data for rich inspector editing
+    pub component_data: std::collections::HashMap<String, serde_json::Value>,
+    /// Material info for PBR editing
+    pub material_base_color: [f32; 4],
+    pub material_metallic: f32,
+    pub material_roughness: f32,
+    pub material_emissive: [f32; 3],
+    pub material_textures: std::collections::HashMap<String, String>,
 }
 
 /// Runtime statistics for profiler display
@@ -1165,6 +1402,10 @@ pub struct EditorTabViewer {
     world_time_of_day: f32,
     /// World weather preset
     world_weather_preset: usize,
+    /// Weather particle count override (None = use default for weather type)
+    world_particle_count_override_enabled: bool,
+    /// The particle count value when override is enabled
+    world_particle_count_value: u32,
     /// Scene has unsaved changes
     scene_modified: bool,
     /// Current scene name
@@ -1206,6 +1447,8 @@ pub struct EditorTabViewer {
     post_process_panel: PostProcessPanel,
     /// Input bindings panel
     input_bindings_panel: InputBindingsPanel,
+    /// Frame debugger panel
+    frame_debugger_panel: crate::panels::FrameDebuggerPanel,
     /// Material editor panel
     material_editor_panel: MaterialEditorPanel,
     /// Available 3D models from asset packs (name, path)
@@ -1214,6 +1457,21 @@ pub struct EditorTabViewer {
     entity_catalog: EntityCatalogState,
     /// Real filesystem-backed asset browser panel
     asset_browser_panel: AssetBrowser,
+    /// Pending events from component inspectors (drained each frame)
+    pending_events: Vec<PanelEvent>,
+    // === Play Session Profiling ===
+    /// When the current play session started
+    play_session_start: Option<std::time::Instant>,
+    /// Total frames during this play session
+    play_total_frames: u64,
+    /// Frames that exceeded the 16.67ms budget
+    play_budget_violations: u64,
+    /// Peak frame time during this session
+    play_peak_frame_ms: f32,
+    /// Accumulated frame time for computing average
+    play_total_frame_ms: f64,
+    /// Previous is_playing state for detecting transitions
+    play_was_playing: bool,
 }
 
 impl Default for EditorTabViewer {
@@ -1427,6 +1685,8 @@ impl EditorTabViewer {
             world_hdri_path: None,
             world_time_of_day: 12.0, // Noon
             world_weather_preset: 0, // Clear
+            world_particle_count_override_enabled: false,
+            world_particle_count_value: 20000,
             // Scene state
             scene_modified: false,
             scene_name: "Untitled".to_string(),
@@ -1450,10 +1710,18 @@ impl EditorTabViewer {
             physics_panel: PhysicsPanel::new(),
             post_process_panel: PostProcessPanel::new(),
             input_bindings_panel: InputBindingsPanel::new(),
+            frame_debugger_panel: crate::panels::FrameDebuggerPanel::new(),
             material_editor_panel: MaterialEditorPanel::new(),
             spawnable_models: Vec::new(),
             entity_catalog: EntityCatalogState::new(),
             asset_browser_panel: AssetBrowser::new(std::path::PathBuf::from("assets")),
+            pending_events: Vec::new(),
+            play_session_start: None,
+            play_total_frames: 0,
+            play_budget_violations: 0,
+            play_peak_frame_ms: 0.0,
+            play_total_frame_ms: 0.0,
+            play_was_playing: false,
         }
     }
 
@@ -1602,12 +1870,58 @@ impl EditorTabViewer {
         self.runtime_stats = stats;
     }
 
+    /// Track play session metrics each frame.
+    /// Call after `set_runtime_stats` so the latest stats are available.
+    pub fn update_play_session(&mut self) {
+        let is_playing = self.runtime_stats.is_playing;
+        // Detect play → stop transition: reset session
+        if self.play_was_playing && !is_playing {
+            self.play_session_start = None;
+            self.play_total_frames = 0;
+            self.play_budget_violations = 0;
+            self.play_peak_frame_ms = 0.0;
+            self.play_total_frame_ms = 0.0;
+        }
+        // Detect stop → play transition: start session
+        if !self.play_was_playing && is_playing {
+            self.play_session_start = Some(std::time::Instant::now());
+            self.play_total_frames = 0;
+            self.play_budget_violations = 0;
+            self.play_peak_frame_ms = 0.0;
+            self.play_total_frame_ms = 0.0;
+        }
+        // Accumulate while playing (and not paused)
+        if is_playing && !self.runtime_stats.is_paused {
+            let ft = self.runtime_stats.frame_time_ms;
+            self.play_total_frames += 1;
+            self.play_total_frame_ms += ft as f64;
+            if ft > self.play_peak_frame_ms {
+                self.play_peak_frame_ms = ft;
+            }
+            if ft > 16.67 {
+                self.play_budget_violations += 1;
+            }
+        }
+        self.play_was_playing = is_playing;
+    }
+
     /// Push a frame time to the history graph
     pub fn push_frame_time(&mut self, frame_time_ms: f32) {
         if self.frame_time_history.len() >= 120 {
             self.frame_time_history.remove(0);
         }
         self.frame_time_history.push(frame_time_ms);
+    }
+
+    /// Feed the frame debugger with current-frame render timing data.
+    pub fn update_frame_debugger(
+        &mut self,
+        render_ms: f32,
+        entity_count: usize,
+        terrain_active: bool,
+    ) {
+        self.frame_debugger_panel
+            .build_snapshot(render_ms, entity_count, terrain_active);
     }
 
     /// Update scene statistics
@@ -1644,6 +1958,8 @@ impl EditorTabViewer {
 
     /// Drain and return events that were emitted this frame
     pub fn take_events(&mut self) -> Vec<PanelEvent> {
+        // Merge pending inspector events
+        self.events.append(&mut self.pending_events);
         std::mem::take(&mut self.events)
     }
 
@@ -1681,13 +1997,30 @@ impl EditorTabViewer {
         self.terrain_panel.is_brush_active()
     }
 
+    /// Whether terrain rendering should be active (has generated terrain).
+    pub fn is_terrain_active(&self) -> bool {
+        self.terrain_panel.has_generated()
+    }
+
+    /// Configure terrain panel and trigger background generation.
+    /// Used by the World Wizard pipeline.
+    pub fn trigger_terrain_generation(&mut self, seed: u64, biome: &str, chunk_radius: i32) {
+        self.terrain_panel
+            .configure_and_generate(seed, biome, chunk_radius);
+    }
+
     /// Apply terrain brush at world coordinates (forwarded from viewport)
     pub fn apply_terrain_brush_at(&mut self, world_x: f32, world_z: f32) {
         self.terrain_panel.apply_brush_at(world_x, world_z);
     }
 
-    /// Returns (fog_enabled, fog_density, weather_preset) for the current world settings.
-    pub fn fog_weather_params(&self) -> (bool, f32, u32) {
+    /// Returns (fog_enabled, fog_density, weather_preset, particle_count_override) for the current world settings.
+    pub fn fog_weather_params(&self) -> (bool, f32, u32, Option<u32>) {
+        let particle_override = if self.world_particle_count_override_enabled {
+            Some(self.world_particle_count_value)
+        } else {
+            None
+        };
         (
             self.world_fog_enabled || self.world_weather_preset == 5,
             if self.world_weather_preset == 5 {
@@ -1696,6 +2029,7 @@ impl EditorTabViewer {
                 self.world_fog_density
             },
             self.world_weather_preset as u32,
+            particle_override,
         )
     }
 
@@ -1916,6 +2250,980 @@ impl EditorTabViewer {
     /// Emit a panel event
     fn emit_event(&mut self, event: PanelEvent) {
         self.events.push(event);
+    }
+
+    // ==================== Component Inspectors ====================
+
+    fn show_light_inspector(
+        ui: &mut egui::Ui,
+        entity_id: u64,
+        data: &serde_json::Value,
+        events: &mut Vec<PanelEvent>,
+    ) {
+        let light_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("point");
+        let mut type_idx = match light_type {
+            "directional" => 0,
+            "point" => 1,
+            "spot" => 2,
+            _ => 1,
+        };
+        ui.horizontal(|ui| {
+            ui.label("Type:");
+            let changed = egui::ComboBox::from_id_salt(format!("light_type_{}", entity_id))
+                .selected_text(match type_idx {
+                    0 => "Directional",
+                    1 => "Point",
+                    2 => "Spot",
+                    _ => "Point",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut type_idx, 0, "Directional")
+                        .changed()
+                        | ui.selectable_value(&mut type_idx, 1, "Point").changed()
+                        | ui.selectable_value(&mut type_idx, 2, "Spot").changed()
+                })
+                .inner
+                .unwrap_or(false);
+            if changed {
+                let type_str = match type_idx {
+                    0 => "directional",
+                    2 => "spot",
+                    _ => "point",
+                };
+                let mut new_data = data.clone();
+                new_data["type"] = serde_json::json!(type_str);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Light".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let mut intensity = data
+            .get("intensity")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0) as f32;
+        ui.horizontal(|ui| {
+            ui.label("Intensity:");
+            if ui
+                .add(egui::Slider::new(&mut intensity, 0.0..=100.0).logarithmic(true))
+                .changed()
+            {
+                let mut new_data = data.clone();
+                new_data["intensity"] = serde_json::json!(intensity);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Light".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let r = data.get("color_r").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+        let g = data.get("color_g").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+        let b = data.get("color_b").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+        let mut color = [r, g, b];
+        ui.horizontal(|ui| {
+            ui.label("Color:");
+            if ui.color_edit_button_rgb(&mut color).changed() {
+                let mut new_data = data.clone();
+                new_data["color_r"] = serde_json::json!(color[0]);
+                new_data["color_g"] = serde_json::json!(color[1]);
+                new_data["color_b"] = serde_json::json!(color[2]);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Light".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        if light_type == "point" || light_type == "spot" {
+            let mut range = data.get("range").and_then(|v| v.as_f64()).unwrap_or(10.0) as f32;
+            ui.horizontal(|ui| {
+                ui.label("Range:");
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut range)
+                            .speed(0.1)
+                            .range(0.1..=1000.0),
+                    )
+                    .changed()
+                {
+                    let mut new_data = data.clone();
+                    new_data["range"] = serde_json::json!(range);
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "Light".to_string(),
+                        data: new_data,
+                    });
+                }
+            });
+        }
+        if light_type == "spot" {
+            let mut angle = data
+                .get("spot_angle")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(45.0) as f32;
+            ui.horizontal(|ui| {
+                ui.label("Spot Angle:");
+                if ui
+                    .add(egui::Slider::new(&mut angle, 1.0..=179.0).suffix("°"))
+                    .changed()
+                {
+                    let mut new_data = data.clone();
+                    new_data["spot_angle"] = serde_json::json!(angle);
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "Light".to_string(),
+                        data: new_data,
+                    });
+                }
+            });
+        }
+
+        let mut cast_shadows = data
+            .get("cast_shadows")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        ui.horizontal(|ui| {
+            ui.label("Cast Shadows:");
+            if ui.checkbox(&mut cast_shadows, "").changed() {
+                let mut new_data = data.clone();
+                new_data["cast_shadows"] = serde_json::json!(cast_shadows);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Light".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+    }
+
+    fn show_collider_inspector(
+        ui: &mut egui::Ui,
+        entity_id: u64,
+        data: &serde_json::Value,
+        events: &mut Vec<PanelEvent>,
+    ) {
+        let shape = data.get("shape").and_then(|v| v.as_str()).unwrap_or("box");
+        let mut shape_idx = match shape {
+            "box" => 0,
+            "sphere" => 1,
+            "capsule" => 2,
+            "mesh" => 3,
+            _ => 0,
+        };
+        ui.horizontal(|ui| {
+            ui.label("Shape:");
+            let changed = egui::ComboBox::from_id_salt(format!("collider_shape_{}", entity_id))
+                .selected_text(match shape_idx {
+                    0 => "Box",
+                    1 => "Sphere",
+                    2 => "Capsule",
+                    3 => "Mesh",
+                    _ => "Box",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut shape_idx, 0, "Box").changed()
+                        | ui.selectable_value(&mut shape_idx, 1, "Sphere").changed()
+                        | ui.selectable_value(&mut shape_idx, 2, "Capsule").changed()
+                        | ui.selectable_value(&mut shape_idx, 3, "Mesh").changed()
+                })
+                .inner
+                .unwrap_or(false);
+            if changed {
+                let shape_str = match shape_idx {
+                    1 => "sphere",
+                    2 => "capsule",
+                    3 => "mesh",
+                    _ => "box",
+                };
+                let mut new_data = data.clone();
+                new_data["shape"] = serde_json::json!(shape_str);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Collider".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        match shape {
+            "box" => {
+                let size = data
+                    .get("size")
+                    .and_then(|v| v.as_array())
+                    .map(|a| {
+                        [
+                            a.first().and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                            a.get(1).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                            a.get(2).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                        ]
+                    })
+                    .unwrap_or([1.0, 1.0, 1.0]);
+                let mut sx = size[0];
+                let mut sy = size[1];
+                let mut sz = size[2];
+                ui.horizontal(|ui| {
+                    ui.label("Size:");
+                    let c = ui
+                        .add(
+                            egui::DragValue::new(&mut sx)
+                                .prefix("X:")
+                                .speed(0.1)
+                                .range(0.01..=100.0),
+                        )
+                        .changed()
+                        | ui.add(
+                            egui::DragValue::new(&mut sy)
+                                .prefix("Y:")
+                                .speed(0.1)
+                                .range(0.01..=100.0),
+                        )
+                        .changed()
+                        | ui.add(
+                            egui::DragValue::new(&mut sz)
+                                .prefix("Z:")
+                                .speed(0.1)
+                                .range(0.01..=100.0),
+                        )
+                        .changed();
+                    if c {
+                        let mut new_data = data.clone();
+                        new_data["size"] = serde_json::json!([sx, sy, sz]);
+                        events.push(PanelEvent::ComponentDataChanged {
+                            entity_id,
+                            component_type: "Collider".to_string(),
+                            data: new_data,
+                        });
+                    }
+                });
+            }
+            "sphere" => {
+                let mut radius = data.get("radius").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+                ui.horizontal(|ui| {
+                    ui.label("Radius:");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut radius)
+                                .speed(0.05)
+                                .range(0.01..=100.0),
+                        )
+                        .changed()
+                    {
+                        let mut new_data = data.clone();
+                        new_data["radius"] = serde_json::json!(radius);
+                        events.push(PanelEvent::ComponentDataChanged {
+                            entity_id,
+                            component_type: "Collider".to_string(),
+                            data: new_data,
+                        });
+                    }
+                });
+            }
+            "capsule" => {
+                let mut radius = data.get("radius").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+                let mut half_height = data
+                    .get("half_height")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(1.0) as f32;
+                ui.horizontal(|ui| {
+                    ui.label("Radius:");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut radius)
+                                .speed(0.05)
+                                .range(0.01..=100.0),
+                        )
+                        .changed()
+                    {
+                        let mut new_data = data.clone();
+                        new_data["radius"] = serde_json::json!(radius);
+                        events.push(PanelEvent::ComponentDataChanged {
+                            entity_id,
+                            component_type: "Collider".to_string(),
+                            data: new_data,
+                        });
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Half Height:");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut half_height)
+                                .speed(0.05)
+                                .range(0.01..=100.0),
+                        )
+                        .changed()
+                    {
+                        let mut new_data = data.clone();
+                        new_data["half_height"] = serde_json::json!(half_height);
+                        events.push(PanelEvent::ComponentDataChanged {
+                            entity_id,
+                            component_type: "Collider".to_string(),
+                            data: new_data,
+                        });
+                    }
+                });
+            }
+            "mesh" => {
+                ui.label("Uses entity mesh for collision");
+            }
+            _ => {}
+        }
+
+        let mut is_trigger = data
+            .get("is_trigger")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        ui.horizontal(|ui| {
+            ui.label("Is Trigger:");
+            if ui.checkbox(&mut is_trigger, "").changed() {
+                let mut new_data = data.clone();
+                new_data["is_trigger"] = serde_json::json!(is_trigger);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Collider".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+    }
+
+    fn show_rigidbody_inspector(
+        ui: &mut egui::Ui,
+        entity_id: u64,
+        data: &serde_json::Value,
+        events: &mut Vec<PanelEvent>,
+    ) {
+        let body_type = data
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("dynamic");
+        let mut type_idx = match body_type {
+            "static" => 0,
+            "kinematic" => 1,
+            "dynamic" => 2,
+            _ => 2,
+        };
+        ui.horizontal(|ui| {
+            ui.label("Body Type:");
+            let changed = egui::ComboBox::from_id_salt(format!("rb_type_{}", entity_id))
+                .selected_text(match type_idx {
+                    0 => "Static",
+                    1 => "Kinematic",
+                    2 => "Dynamic",
+                    _ => "Dynamic",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut type_idx, 0, "Static").changed()
+                        | ui.selectable_value(&mut type_idx, 1, "Kinematic").changed()
+                        | ui.selectable_value(&mut type_idx, 2, "Dynamic").changed()
+                })
+                .inner
+                .unwrap_or(false);
+            if changed {
+                let type_str = match type_idx {
+                    0 => "static",
+                    1 => "kinematic",
+                    _ => "dynamic",
+                };
+                let mut new_data = data.clone();
+                new_data["type"] = serde_json::json!(type_str);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "RigidBody".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        if body_type == "dynamic" {
+            let mut mass = data.get("mass").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+            ui.horizontal(|ui| {
+                ui.label("Mass:");
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut mass)
+                            .speed(0.1)
+                            .range(0.001..=10000.0),
+                    )
+                    .changed()
+                {
+                    let mut new_data = data.clone();
+                    new_data["mass"] = serde_json::json!(mass);
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "RigidBody".to_string(),
+                        data: new_data,
+                    });
+                }
+            });
+
+            let mut drag = data.get("drag").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            ui.horizontal(|ui| {
+                ui.label("Drag:");
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut drag)
+                            .speed(0.01)
+                            .range(0.0..=100.0),
+                    )
+                    .changed()
+                {
+                    let mut new_data = data.clone();
+                    new_data["drag"] = serde_json::json!(drag);
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "RigidBody".to_string(),
+                        data: new_data,
+                    });
+                }
+            });
+
+            let mut angular_drag = data
+                .get("angular_drag")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.05) as f32;
+            ui.horizontal(|ui| {
+                ui.label("Angular Drag:");
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut angular_drag)
+                            .speed(0.01)
+                            .range(0.0..=100.0),
+                    )
+                    .changed()
+                {
+                    let mut new_data = data.clone();
+                    new_data["angular_drag"] = serde_json::json!(angular_drag);
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "RigidBody".to_string(),
+                        data: new_data,
+                    });
+                }
+            });
+
+            let mut use_gravity = data
+                .get("use_gravity")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            ui.horizontal(|ui| {
+                ui.label("Use Gravity:");
+                if ui.checkbox(&mut use_gravity, "").changed() {
+                    let mut new_data = data.clone();
+                    new_data["use_gravity"] = serde_json::json!(use_gravity);
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "RigidBody".to_string(),
+                        data: new_data,
+                    });
+                }
+            });
+        }
+    }
+
+    fn show_audio_inspector(
+        ui: &mut egui::Ui,
+        entity_id: u64,
+        data: &serde_json::Value,
+        events: &mut Vec<PanelEvent>,
+    ) {
+        let clip = data
+            .get("clip")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let mut clip_buf = clip.clone();
+        ui.horizontal(|ui| {
+            ui.label("Clip:");
+            if ui.text_edit_singleline(&mut clip_buf).lost_focus() && clip_buf != clip {
+                let mut new_data = data.clone();
+                new_data["clip"] = serde_json::json!(clip_buf);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Audio".to_string(),
+                    data: new_data,
+                });
+            }
+            if ui
+                .small_button("📂")
+                .on_hover_text("Browse for audio file")
+                .clicked()
+            {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Audio", &["wav", "ogg", "mp3", "flac"])
+                    .pick_file()
+                {
+                    let mut new_data = data.clone();
+                    new_data["clip"] = serde_json::json!(path.to_string_lossy().to_string());
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "Audio".to_string(),
+                        data: new_data,
+                    });
+                }
+            }
+        });
+
+        let mut volume = data.get("volume").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+        ui.horizontal(|ui| {
+            ui.label("Volume:");
+            if ui.add(egui::Slider::new(&mut volume, 0.0..=2.0)).changed() {
+                let mut new_data = data.clone();
+                new_data["volume"] = serde_json::json!(volume);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Audio".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let mut spatial = data
+            .get("spatial")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        ui.horizontal(|ui| {
+            ui.label("Spatial:");
+            if ui.checkbox(&mut spatial, "3D audio").changed() {
+                let mut new_data = data.clone();
+                new_data["spatial"] = serde_json::json!(spatial);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Audio".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        if spatial {
+            let mut min_dist = data
+                .get("min_distance")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1.0) as f32;
+            let mut max_dist = data
+                .get("max_distance")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(50.0) as f32;
+            ui.horizontal(|ui| {
+                ui.label("Min Distance:");
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut min_dist)
+                            .speed(0.1)
+                            .range(0.1..=100.0),
+                    )
+                    .changed()
+                {
+                    let mut new_data = data.clone();
+                    new_data["min_distance"] = serde_json::json!(min_dist);
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "Audio".to_string(),
+                        data: new_data,
+                    });
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Max Distance:");
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut max_dist)
+                            .speed(0.5)
+                            .range(1.0..=1000.0),
+                    )
+                    .changed()
+                {
+                    let mut new_data = data.clone();
+                    new_data["max_distance"] = serde_json::json!(max_dist);
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "Audio".to_string(),
+                        data: new_data,
+                    });
+                }
+            });
+        }
+
+        let mut looping = data
+            .get("looping")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        ui.horizontal(|ui| {
+            ui.label("Loop:");
+            if ui.checkbox(&mut looping, "").changed() {
+                let mut new_data = data.clone();
+                new_data["looping"] = serde_json::json!(looping);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Audio".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let mut play_on_start = data
+            .get("play_on_start")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        ui.horizontal(|ui| {
+            ui.label("Play on Start:");
+            if ui.checkbox(&mut play_on_start, "").changed() {
+                let mut new_data = data.clone();
+                new_data["play_on_start"] = serde_json::json!(play_on_start);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Audio".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+    }
+
+    fn show_camera_inspector(
+        ui: &mut egui::Ui,
+        entity_id: u64,
+        data: &serde_json::Value,
+        events: &mut Vec<PanelEvent>,
+    ) {
+        let mut fov = data.get("fov").and_then(|v| v.as_f64()).unwrap_or(60.0) as f32;
+        ui.horizontal(|ui| {
+            ui.label("FOV:");
+            if ui
+                .add(egui::Slider::new(&mut fov, 10.0..=120.0).suffix("°"))
+                .changed()
+            {
+                let mut new_data = data.clone();
+                new_data["fov"] = serde_json::json!(fov);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Camera".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let mut near = data.get("near").and_then(|v| v.as_f64()).unwrap_or(0.1) as f32;
+        ui.horizontal(|ui| {
+            ui.label("Near Clip:");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut near)
+                        .speed(0.01)
+                        .range(0.001..=10.0),
+                )
+                .changed()
+            {
+                let mut new_data = data.clone();
+                new_data["near"] = serde_json::json!(near);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Camera".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let mut far = data.get("far").and_then(|v| v.as_f64()).unwrap_or(1000.0) as f32;
+        ui.horizontal(|ui| {
+            ui.label("Far Clip:");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut far)
+                        .speed(1.0)
+                        .range(1.0..=100000.0),
+                )
+                .changed()
+            {
+                let mut new_data = data.clone();
+                new_data["far"] = serde_json::json!(far);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Camera".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let projection_str = data
+            .get("projection")
+            .and_then(|v| v.as_str())
+            .unwrap_or("perspective");
+        let mut proj_idx = if projection_str == "orthographic" {
+            1
+        } else {
+            0
+        };
+        ui.horizontal(|ui| {
+            ui.label("Projection:");
+            let changed = egui::ComboBox::from_id_salt(format!("cam_proj_{}", entity_id))
+                .selected_text(if proj_idx == 0 {
+                    "Perspective"
+                } else {
+                    "Orthographic"
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut proj_idx, 0, "Perspective")
+                        .changed()
+                        | ui.selectable_value(&mut proj_idx, 1, "Orthographic")
+                            .changed()
+                })
+                .inner
+                .unwrap_or(false);
+            if changed {
+                let mut new_data = data.clone();
+                new_data["projection"] = serde_json::json!(if proj_idx == 0 {
+                    "perspective"
+                } else {
+                    "orthographic"
+                });
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Camera".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+    }
+
+    fn show_script_inspector(
+        ui: &mut egui::Ui,
+        entity_id: u64,
+        data: &serde_json::Value,
+        events: &mut Vec<PanelEvent>,
+    ) {
+        let path = data
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let mut path_buf = path.clone();
+        ui.horizontal(|ui| {
+            ui.label("Script:");
+            if ui.text_edit_singleline(&mut path_buf).lost_focus() && path_buf != path {
+                let mut new_data = data.clone();
+                new_data["path"] = serde_json::json!(path_buf);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Script".to_string(),
+                    data: new_data,
+                });
+            }
+            if ui
+                .small_button("📂")
+                .on_hover_text("Browse for script file")
+                .clicked()
+            {
+                if let Some(file_path) = rfd::FileDialog::new()
+                    .add_filter("Scripts", &["lua", "rhai", "wasm", "rs"])
+                    .pick_file()
+                {
+                    let mut new_data = data.clone();
+                    new_data["path"] = serde_json::json!(file_path.to_string_lossy().to_string());
+                    events.push(PanelEvent::ComponentDataChanged {
+                        entity_id,
+                        component_type: "Script".to_string(),
+                        data: new_data,
+                    });
+                }
+            }
+        });
+
+        let mut enabled = data
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        ui.horizontal(|ui| {
+            ui.label("Enabled:");
+            if ui.checkbox(&mut enabled, "").changed() {
+                let mut new_data = data.clone();
+                new_data["enabled"] = serde_json::json!(enabled);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Script".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+    }
+
+    fn show_particle_inspector(
+        ui: &mut egui::Ui,
+        entity_id: u64,
+        data: &serde_json::Value,
+        events: &mut Vec<PanelEvent>,
+    ) {
+        let mut emission_rate = data
+            .get("emission_rate")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(10.0) as f32;
+        ui.horizontal(|ui| {
+            ui.label("Emission Rate:");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut emission_rate)
+                        .speed(1.0)
+                        .range(0.0..=10000.0),
+                )
+                .changed()
+            {
+                let mut new_data = data.clone();
+                new_data["emission_rate"] = serde_json::json!(emission_rate);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Particle".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let mut lifetime = data.get("lifetime").and_then(|v| v.as_f64()).unwrap_or(2.0) as f32;
+        ui.horizontal(|ui| {
+            ui.label("Lifetime:");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut lifetime)
+                        .speed(0.1)
+                        .range(0.01..=60.0)
+                        .suffix("s"),
+                )
+                .changed()
+            {
+                let mut new_data = data.clone();
+                new_data["lifetime"] = serde_json::json!(lifetime);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Particle".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let mut start_size = data
+            .get("start_size")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.1) as f32;
+        ui.horizontal(|ui| {
+            ui.label("Start Size:");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut start_size)
+                        .speed(0.01)
+                        .range(0.001..=10.0),
+                )
+                .changed()
+            {
+                let mut new_data = data.clone();
+                new_data["start_size"] = serde_json::json!(start_size);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Particle".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let mut speed = data.get("speed").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32;
+        ui.horizontal(|ui| {
+            ui.label("Speed:");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut speed)
+                        .speed(0.1)
+                        .range(0.0..=100.0),
+                )
+                .changed()
+            {
+                let mut new_data = data.clone();
+                new_data["speed"] = serde_json::json!(speed);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Particle".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let r = data.get("color_r").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+        let g = data.get("color_g").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+        let b = data.get("color_b").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+        let a = data.get("color_a").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+        let mut color = [r, g, b, a];
+        ui.horizontal(|ui| {
+            ui.label("Color:");
+            if ui.color_edit_button_rgba_unmultiplied(&mut color).changed() {
+                let mut new_data = data.clone();
+                new_data["color_r"] = serde_json::json!(color[0]);
+                new_data["color_g"] = serde_json::json!(color[1]);
+                new_data["color_b"] = serde_json::json!(color[2]);
+                new_data["color_a"] = serde_json::json!(color[3]);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Particle".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let shape_str = data.get("shape").and_then(|v| v.as_str()).unwrap_or("cone");
+        let mut shape_idx = match shape_str {
+            "sphere" => 0,
+            "cone" => 1,
+            "box" => 2,
+            _ => 1,
+        };
+        ui.horizontal(|ui| {
+            ui.label("Shape:");
+            let changed = egui::ComboBox::from_id_salt(format!("particle_shape_{}", entity_id))
+                .selected_text(match shape_idx {
+                    0 => "Sphere",
+                    1 => "Cone",
+                    2 => "Box",
+                    _ => "Cone",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut shape_idx, 0, "Sphere").changed()
+                        | ui.selectable_value(&mut shape_idx, 1, "Cone").changed()
+                        | ui.selectable_value(&mut shape_idx, 2, "Box").changed()
+                })
+                .inner
+                .unwrap_or(false);
+            if changed {
+                let s = match shape_idx {
+                    0 => "sphere",
+                    2 => "box",
+                    _ => "cone",
+                };
+                let mut new_data = data.clone();
+                new_data["shape"] = serde_json::json!(s);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Particle".to_string(),
+                    data: new_data,
+                });
+            }
+        });
+
+        let mut looping = data
+            .get("looping")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        ui.horizontal(|ui| {
+            ui.label("Loop:");
+            if ui.checkbox(&mut looping, "").changed() {
+                let mut new_data = data.clone();
+                new_data["looping"] = serde_json::json!(looping);
+                events.push(PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type: "Particle".to_string(),
+                    data: new_data,
+                });
+            }
+        });
     }
 
     /// Clear frame state (call at start of each frame)
@@ -2871,13 +4179,15 @@ impl TabViewer for EditorTabViewer {
                             ui.separator();
                             ui.menu_button("Add Component", |ui| {
                                 let available = [
-                                    "Physics",
                                     "Sprite",
                                     "Collider",
+                                    "RigidBody",
                                     "Script",
                                     "MovementScript",
-                                    "AudioSource",
+                                    "Audio",
                                     "Light",
+                                    "Camera",
+                                    "Particle",
                                 ];
                                 for comp_type in available {
                                     if ui.button(comp_type).clicked() {
@@ -3803,6 +5113,121 @@ impl TabViewer for EditorTabViewer {
                         });
                     });
                 }
+
+                // Play Session Stats (visible only when playing or just paused)
+                if self.play_session_start.is_some() {
+                    ui.add_space(8.0);
+                    ui.collapsing("Play Session", |ui| {
+                        // Duration
+                        let elapsed = self
+                            .play_session_start
+                            .map(|s| s.elapsed())
+                            .unwrap_or_default();
+                        let secs = elapsed.as_secs();
+                        let duration_str = if secs >= 3600 {
+                            format!(
+                                "{}h {:02}m {:02}s",
+                                secs / 3600,
+                                (secs % 3600) / 60,
+                                secs % 60
+                            )
+                        } else if secs >= 60 {
+                            format!("{}m {:02}s", secs / 60, secs % 60)
+                        } else {
+                            format!("{}s", secs)
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label("Duration:");
+                            ui.strong(&duration_str);
+                        });
+
+                        // Average FPS
+                        let avg_frame_ms = if self.play_total_frames > 0 {
+                            self.play_total_frame_ms / self.play_total_frames as f64
+                        } else {
+                            0.0
+                        };
+                        let avg_fps = if avg_frame_ms > 0.0 {
+                            1000.0 / avg_frame_ms
+                        } else {
+                            0.0
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label("Avg FPS:");
+                            let color = if avg_fps >= 60.0 {
+                                egui::Color32::GREEN
+                            } else if avg_fps >= 30.0 {
+                                egui::Color32::YELLOW
+                            } else {
+                                egui::Color32::RED
+                            };
+                            ui.colored_label(color, format!("{:.1}", avg_fps));
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Avg Frame:");
+                            ui.strong(format!("{:.2}ms", avg_frame_ms));
+                        });
+
+                        // Peak frame time
+                        ui.horizontal(|ui| {
+                            ui.label("Peak Frame:");
+                            let peak_color = if self.play_peak_frame_ms <= 16.67 {
+                                egui::Color32::GREEN
+                            } else if self.play_peak_frame_ms <= 33.33 {
+                                egui::Color32::YELLOW
+                            } else {
+                                egui::Color32::RED
+                            };
+                            ui.colored_label(
+                                peak_color,
+                                format!("{:.2}ms", self.play_peak_frame_ms),
+                            );
+                        });
+
+                        // Budget violations
+                        let violation_pct = if self.play_total_frames > 0 {
+                            (self.play_budget_violations as f64 / self.play_total_frames as f64)
+                                * 100.0
+                        } else {
+                            0.0
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label("Budget Violations:");
+                            let violation_color = if violation_pct < 1.0 {
+                                egui::Color32::GREEN
+                            } else if violation_pct < 5.0 {
+                                egui::Color32::YELLOW
+                            } else {
+                                egui::Color32::RED
+                            };
+                            ui.colored_label(
+                                violation_color,
+                                format!("{} ({:.1}%)", self.play_budget_violations, violation_pct),
+                            );
+                        });
+
+                        // Frames counted
+                        ui.horizontal(|ui| {
+                            ui.label("Frames:");
+                            ui.weak(format!("{}", self.play_total_frames));
+                        });
+
+                        // Stability grade
+                        let stability = if violation_pct < 1.0 {
+                            ("Excellent", egui::Color32::GREEN)
+                        } else if violation_pct < 5.0 {
+                            ("Good", egui::Color32::from_rgb(150, 255, 100))
+                        } else if violation_pct < 15.0 {
+                            ("Fair", egui::Color32::YELLOW)
+                        } else {
+                            ("Poor", egui::Color32::RED)
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label("Stability:");
+                            ui.colored_label(stability.1, stability.0);
+                        });
+                    });
+                }
             }
             PanelType::SceneStats => {
                 // Clone the data we need to avoid borrow conflicts
@@ -4542,6 +5967,34 @@ impl TabViewer for EditorTabViewer {
                             ui.weak("Effects:");
                             ui.label(weather_effects);
                         });
+
+                        // Particle count override slider
+                        if self.world_weather_preset >= 2 && self.world_weather_preset != 5 {
+                            ui.add_space(4.0);
+                            let default_count = match self.world_weather_preset {
+                                2 => 20000u32, // Rain
+                                3 => 20000,    // Storm (heavy rain)
+                                4 => 8000,     // Snow
+                                6 => 6000,     // Sandstorm
+                                _ => 0,
+                            };
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut self.world_particle_count_override_enabled, "");
+                                if self.world_particle_count_override_enabled {
+                                    ui.label("Particles:");
+                                    ui.add(
+                                        egui::Slider::new(
+                                            &mut self.world_particle_count_value,
+                                            100..=50000,
+                                        )
+                                        .logarithmic(true)
+                                        .text(""),
+                                    );
+                                } else {
+                                    ui.weak(format!("Particles: {} (default)", default_count));
+                                }
+                            });
+                        }
                     });
 
                 ui.add_space(4.0);
@@ -5695,7 +7148,7 @@ impl TabViewer for EditorTabViewer {
                                 });
                         }
 
-                        // -- Other components (display-only with remove buttons) --
+                        // -- Rich component inspectors --
                         let other_comps: Vec<String> = info
                             .components
                             .iter()
@@ -5706,39 +7159,106 @@ impl TabViewer for EditorTabViewer {
                             .collect();
                         if !other_comps.is_empty() {
                             let mut comp_to_remove = None;
-                            egui::CollapsingHeader::new(format!(
-                                "Other Components ({})",
-                                other_comps.len()
-                            ))
-                            .default_open(true)
-                            .show(ui, |ui| {
-                                for comp in &other_comps {
-                                    let icon = match comp.as_str() {
-                                        "Sprite" | "Renderer" => "R",
-                                        "Collider" | "RigidBody" => "⬜",
-                                        "Script" => "S",
-                                        "Audio" => "A",
-                                        "Light" => "L",
-                                        "Camera" => "[C]",
-                                        _ => "•",
-                                    };
-                                    ui.horizontal(|ui| {
-                                        ui.label(format!("{} {}", icon, comp));
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                if ui
-                                                    .small_button("X")
-                                                    .on_hover_text(format!("Remove {}", comp))
-                                                    .clicked()
-                                                {
-                                                    comp_to_remove = Some(comp.clone());
-                                                }
-                                            },
-                                        );
+                            let comp_data = info.component_data.clone();
+                            for comp in &other_comps {
+                                let data = comp_data
+                                    .get(comp.as_str())
+                                    .cloned()
+                                    .unwrap_or(serde_json::json!({}));
+                                let header_label = match comp.as_str() {
+                                    "Light" => "💡 Light",
+                                    "Collider" => "⬜ Collider",
+                                    "RigidBody" => "🔵 RigidBody",
+                                    "Audio" => "🔊 Audio Source",
+                                    "Camera" => "📷 Camera",
+                                    "Script" => "📜 Script",
+                                    "Particle" => "✨ Particle System",
+                                    "Sprite" => "🖼️ Sprite",
+                                    "MovementScript" => "🏃 Movement Script",
+                                    _ => comp.as_str(),
+                                };
+                                egui::CollapsingHeader::new(header_label)
+                                    .default_open(true)
+                                    .id_salt(format!("comp_{}", comp))
+                                    .show(ui, |ui| {
+                                        match comp.as_str() {
+                                            "Light" => {
+                                                Self::show_light_inspector(
+                                                    ui,
+                                                    entity_id,
+                                                    &data,
+                                                    &mut self.pending_events,
+                                                );
+                                            }
+                                            "Collider" => {
+                                                Self::show_collider_inspector(
+                                                    ui,
+                                                    entity_id,
+                                                    &data,
+                                                    &mut self.pending_events,
+                                                );
+                                            }
+                                            "RigidBody" => {
+                                                Self::show_rigidbody_inspector(
+                                                    ui,
+                                                    entity_id,
+                                                    &data,
+                                                    &mut self.pending_events,
+                                                );
+                                            }
+                                            "Audio" => {
+                                                Self::show_audio_inspector(
+                                                    ui,
+                                                    entity_id,
+                                                    &data,
+                                                    &mut self.pending_events,
+                                                );
+                                            }
+                                            "Camera" => {
+                                                Self::show_camera_inspector(
+                                                    ui,
+                                                    entity_id,
+                                                    &data,
+                                                    &mut self.pending_events,
+                                                );
+                                            }
+                                            "Script" => {
+                                                Self::show_script_inspector(
+                                                    ui,
+                                                    entity_id,
+                                                    &data,
+                                                    &mut self.pending_events,
+                                                );
+                                            }
+                                            "Particle" => {
+                                                Self::show_particle_inspector(
+                                                    ui,
+                                                    entity_id,
+                                                    &data,
+                                                    &mut self.pending_events,
+                                                );
+                                            }
+                                            _ => {
+                                                // Fallback: display raw JSON
+                                                ui.label(format!("{}", data));
+                                            }
+                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    if ui
+                                                        .small_button("🗑 Remove")
+                                                        .on_hover_text(format!("Remove {}", comp))
+                                                        .clicked()
+                                                    {
+                                                        comp_to_remove = Some(comp.clone());
+                                                    }
+                                                },
+                                            );
+                                        });
                                     });
-                                }
-                            });
+                            }
                             if let Some(comp) = comp_to_remove {
                                 self.emit_event(PanelEvent::RemoveComponent {
                                     entity_id,
@@ -5746,6 +7266,118 @@ impl TabViewer for EditorTabViewer {
                                 });
                             }
                         }
+
+                        // -- Material editing --
+                        egui::CollapsingHeader::new("🎨 Material")
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                let mut bc = info.material_base_color;
+                                ui.horizontal(|ui| {
+                                    ui.label("Base Color:");
+                                    if ui.color_edit_button_rgba_unmultiplied(&mut bc).changed() {
+                                        self.emit_event(PanelEvent::MaterialPropertyChanged {
+                                            entity_id,
+                                            property: "base_color".to_string(),
+                                            value: serde_json::json!([bc[0], bc[1], bc[2], bc[3]]),
+                                        });
+                                    }
+                                });
+                                let mut met = info.material_metallic;
+                                ui.horizontal(|ui| {
+                                    ui.label("Metallic:");
+                                    if ui.add(egui::Slider::new(&mut met, 0.0..=1.0)).changed() {
+                                        self.emit_event(PanelEvent::MaterialPropertyChanged {
+                                            entity_id,
+                                            property: "metallic".to_string(),
+                                            value: serde_json::json!(met),
+                                        });
+                                    }
+                                });
+                                let mut rough = info.material_roughness;
+                                ui.horizontal(|ui| {
+                                    ui.label("Roughness:");
+                                    if ui.add(egui::Slider::new(&mut rough, 0.0..=1.0)).changed() {
+                                        self.emit_event(PanelEvent::MaterialPropertyChanged {
+                                            entity_id,
+                                            property: "roughness".to_string(),
+                                            value: serde_json::json!(rough),
+                                        });
+                                    }
+                                });
+                                let mut em = info.material_emissive;
+                                ui.horizontal(|ui| {
+                                    ui.label("Emissive:");
+                                    let mut col3 = [em[0], em[1], em[2]];
+                                    if ui.color_edit_button_rgb(&mut col3).changed() {
+                                        em = col3;
+                                        self.emit_event(PanelEvent::MaterialPropertyChanged {
+                                            entity_id,
+                                            property: "emissive".to_string(),
+                                            value: serde_json::json!([em[0], em[1], em[2]]),
+                                        });
+                                    }
+                                });
+
+                                ui.separator();
+                                ui.label("Texture Slots:");
+                                let tex_slots = [
+                                    "Albedo",
+                                    "Normal",
+                                    "Roughness",
+                                    "Metallic",
+                                    "AO",
+                                    "Emission",
+                                ];
+                                let tex_snapshot = info.material_textures.clone();
+                                for slot in &tex_slots {
+                                    let current =
+                                        tex_snapshot.get(*slot).cloned().unwrap_or_default();
+                                    ui.horizontal(|ui| {
+                                        ui.label(format!("{}:", slot));
+                                        if current.is_empty() {
+                                            ui.weak("(none)");
+                                        } else {
+                                            ui.weak(&current);
+                                        }
+                                        if ui
+                                            .small_button("📂")
+                                            .on_hover_text(format!("Browse for {} texture", slot))
+                                            .clicked()
+                                        {
+                                            if let Some(path) = rfd::FileDialog::new()
+                                                .add_filter(
+                                                    "Images",
+                                                    &["png", "jpg", "jpeg", "bmp", "tga"],
+                                                )
+                                                .pick_file()
+                                            {
+                                                self.emit_event(
+                                                    PanelEvent::MaterialTextureChanged {
+                                                        entity_id,
+                                                        slot: slot.to_string(),
+                                                        path: path.to_string_lossy().to_string(),
+                                                    },
+                                                );
+                                            }
+                                        }
+                                        if !current.is_empty() {
+                                            if ui
+                                                .small_button("✕")
+                                                .on_hover_text("Clear texture")
+                                                .clicked()
+                                            {
+                                                self.emit_event(
+                                                    PanelEvent::MaterialTextureChanged {
+                                                        entity_id,
+                                                        slot: slot.to_string(),
+                                                        path: String::new(),
+                                                    },
+                                                );
+                                            }
+                                        }
+                                    });
+                                }
+                            });
 
                         ui.add_space(4.0);
 
@@ -5766,6 +7398,7 @@ impl TabViewer for EditorTabViewer {
                                 "Audio",
                                 "Light",
                                 "Camera",
+                                "Particle",
                             ];
                             for comp_name in &available {
                                 let already_has =
@@ -7308,6 +8941,9 @@ impl TabViewer for EditorTabViewer {
             PanelType::InputBindings => {
                 use crate::panels::Panel;
                 self.input_bindings_panel.show(ui);
+            }
+            PanelType::FrameDebugger => {
+                self.frame_debugger_panel.show(ui);
             }
         }
     }

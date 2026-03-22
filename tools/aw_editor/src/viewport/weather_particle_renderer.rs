@@ -184,6 +184,8 @@ pub struct WeatherParticleRenderer {
     wind_x: f32,
     wind_z: f32,
     active: bool,
+    /// Optional override for particle count (from editor UI)
+    particle_count_override: Option<u32>,
     // Lightning flash state (storms only)
     lightning_flash: f32,
     lightning_cooldown: f32,
@@ -463,6 +465,7 @@ impl WeatherParticleRenderer {
             wind_x: 0.0,
             wind_z: 0.0,
             active: false,
+            particle_count_override: None,
             lightning_flash: 0.0,
             lightning_cooldown: 3.0,
             lightning_rng_state: 42,
@@ -506,7 +509,10 @@ impl WeatherParticleRenderer {
         self.transition_alpha = 0.3;
 
         let preset = preset_for(kind);
-        let count = preset.particle_count.min(self.max_instances);
+        let base_count = self
+            .particle_count_override
+            .unwrap_or(preset.particle_count);
+        let count = base_count.min(self.max_instances);
         self.instance_count = count;
 
         // Regenerate instances with preset parameters
@@ -527,6 +533,16 @@ impl WeatherParticleRenderer {
     pub fn set_wind(&mut self, x: f32, z: f32) {
         self.wind_x = x;
         self.wind_z = z;
+    }
+
+    /// Set an optional override for particle count (None = use weather-type defaults)
+    pub fn set_particle_count_override(&mut self, count: Option<u32>) {
+        self.particle_count_override = count;
+    }
+
+    /// Returns the default particle count for a given weather kind
+    pub fn default_particle_count(kind: WeatherKind) -> u32 {
+        preset_for(kind).particle_count
     }
 
     pub fn is_active(&self) -> bool {

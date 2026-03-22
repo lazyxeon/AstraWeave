@@ -324,6 +324,23 @@ impl BiomePreset {
         }
     }
 
+    /// Map to the terrain system's biome string identifier.
+    pub fn terrain_biome_key(&self) -> &'static str {
+        match self {
+            BiomePreset::Custom => "grassland",
+            BiomePreset::TemperateForest => "forest",
+            BiomePreset::TropicalJungle => "forest",
+            BiomePreset::DesertDunes => "desert",
+            BiomePreset::ArcticTundra => "tundra",
+            BiomePreset::MediterraneanCoast => "beach",
+            BiomePreset::AlpineMeadow => "mountain",
+            BiomePreset::Swampland => "swamp",
+            BiomePreset::GrasslandPrairie => "grassland",
+            BiomePreset::VolcanicWasteland => "desert",
+            BiomePreset::MysticWoods => "forest",
+        }
+    }
+
     /// Suggested tree density for this biome
     pub fn tree_density(&self) -> f32 {
         match self {

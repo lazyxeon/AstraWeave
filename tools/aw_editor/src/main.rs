@@ -96,6 +96,7 @@ mod scene_serialization; // Phase 2.2 - Scene Save/Load
 mod scene_state; // Week 1 - Canonical edit-mode world owner
 mod splash; // Startup splash screen with logo + cinematic video
 mod terrain_integration; // Terrain generation integration
+mod tutorial; // First-run tutorial walkthrough
 mod ui; // Phase 3 - UI components (StatusBar, etc.)
 mod viewport; // Phase 1.1 - 3D Viewport
 mod voxel_tools; // Phase 10: Voxel editing tools // Phase 2: Asset packaging and compression
@@ -127,7 +128,7 @@ mod plugin;
 mod tab_viewer;
 use dock_layout::{DockLayout, LayoutPreset};
 use panel_type::PanelType;
-use prefab::PrefabManager;
+use prefab::{PrefabData, PrefabManager};
 use recent_files::RecentFilesManager;
 use runtime::{EditorRuntime, RuntimeState};
 use scene_state::{EditorSceneState, TransformableScene};
@@ -368,6 +369,7 @@ struct EditorApp {
     toasts: Vec<Toast>,
     // Phase 7: Help dialog
     show_help_dialog: bool,
+    show_about_dialog: bool,
     // Phase 8: Viewport settings
     show_grid: bool,
     // Phase 8: Auto-save
@@ -427,6 +429,18 @@ struct EditorApp {
     animation_bridge: animation_bridge::EditorAnimationBridge,
     /// Movement script system: ticks entity movement behaviors in play mode
     movement_system: movement_scripts::MovementSystem,
+    /// Prefab editing: path to the prefab being edited in-place (None = normal scene)
+    editing_prefab_path: Option<PathBuf>,
+    /// Multi-viewport layout mode (Single, SideBySide, TopBottom, Quad)
+    viewport_layout: crate::viewport::ViewportLayout,
+    /// Additional viewports for multi-viewport layouts (up to 3 extra)
+    extra_viewports: Vec<ViewportWidget>,
+    /// Cached cursor ground-plane position for position-aware asset dropping
+    last_cursor_ground_pos: Option<(i32, i32)>,
+    /// World creation wizard (modal dialog)
+    world_wizard: panels::WorldWizard,
+    /// First-run tutorial walkthrough overlay
+    tutorial: tutorial::Tutorial,
 }
 
 impl Default for EditorApp {
@@ -571,6 +585,7 @@ impl Default for EditorApp {
             toasts: Vec::new(), // Legacy, kept for migration
             // Phase 7: Help dialog
             show_help_dialog: false,
+            show_about_dialog: false,
             // Phase 8: Viewport settings
             show_grid: prefs.show_grid,
             // Phase 8: Auto-save
@@ -625,6 +640,18 @@ impl Default for EditorApp {
             audio_bridge: audio_bridge::EditorAudioBridge::new(),
             animation_bridge: animation_bridge::EditorAnimationBridge::new(),
             movement_system: movement_scripts::MovementSystem::new(),
+            editing_prefab_path: None,
+            viewport_layout: crate::viewport::ViewportLayout::default(),
+            extra_viewports: Vec::new(),
+            last_cursor_ground_pos: None,
+            world_wizard: panels::WorldWizard::new(),
+            tutorial: {
+                let mut t = tutorial::Tutorial::new();
+                if !prefs.tutorial_completed {
+                    t.start();
+                }
+                t
+            },
         }
     }
 }
@@ -838,6 +865,7 @@ impl EditorApp {
             camera: self.viewport.as_ref().map(|v| v.camera().clone()),
             snapping: Some(self.snapping_config),
             layout_json: self.dock_layout.to_json().ok(),
+            tutorial_completed: !self.tutorial.active,
         };
         prefs.save();
     }
@@ -871,6 +899,7 @@ impl EditorApp {
             camera: viewport.as_ref().map(|v| v.camera().clone()),
             snapping: Some(self.snapping_config),
             layout_json: self.dock_layout.to_json().ok(),
+            tutorial_completed: !self.tutorial.active,
         };
         *self = Self::default();
         self.viewport = viewport;
@@ -922,6 +951,15 @@ impl EditorApp {
                     self.hierarchy_panel
                         .sync_with_world(scene_state.world_mut());
                 }
+
+                // Rebuild parent-child hierarchy from EntityManager
+                let parent_map: Vec<(u32, Option<u32>)> = self
+                    .entity_manager
+                    .entities()
+                    .iter()
+                    .map(|(&id, entity)| (id as u32, entity.parent.map(|p| p as u32)))
+                    .collect();
+                self.hierarchy_panel.rebuild_from_parents(&parent_map);
 
                 info!("Loaded scene: {}", scene_name);
                 self.toast_success(format!("Loaded scene: {}", scene_name));
@@ -1486,27 +1524,101 @@ impl EditorApp {
             return;
         }
 
-        // For now, just log the intent - full hierarchy grouping requires ECS parent-child support
+        // Compute average position of selected entities for group pivot
+        let mut avg_pos = glam::Vec3::ZERO;
+        let mut count = 0u32;
+        for &id in &selected_ids {
+            if let Some(entity) = self.entity_manager.get(id) {
+                avg_pos += entity.position;
+                count += 1;
+            }
+        }
+        if count > 0 {
+            avg_pos /= count as f32;
+        }
+
+        // Create the group parent entity
+        let group_id = self
+            .entity_manager
+            .create(format!("Group ({})", selected_ids.len()));
+        if let Some(group_entity) = self.entity_manager.get_mut(group_id) {
+            group_entity.position = avg_pos;
+            group_entity.components.insert(
+                "Group".to_string(),
+                serde_json::json!({ "children_count": selected_ids.len() }),
+            );
+        }
+
+        // Reparent each selected entity under the group
+        for &id in &selected_ids {
+            if let Some(entity) = self.entity_manager.get_mut(id) {
+                entity.parent = Some(group_id);
+            }
+        }
+
+        // Select the new group
+        self.selection_set.primary = Some(group_id);
+        self.selection_set.entities.clear();
+        self.selection_set.entities.insert(group_id);
+        self.selected_entity = Some(group_id);
+
+        self.is_dirty = true;
         self.log(format!(
-            "Grouping {} entities (hierarchy support pending)",
-            selected_ids.len()
+            "Grouped {} entities under Group #{}",
+            selected_ids.len(),
+            group_id
         ));
-        self.toast_info(format!(
-            "Group {} entities - hierarchy pending",
-            selected_ids.len()
-        ));
-        self.status = format!("Group {} entities - pending", selected_ids.len());
+        self.toast_info(format!("Grouped {} entities", selected_ids.len()));
+        self.status = format!("Grouped {} entities", selected_ids.len());
     }
 
     /// Ungroup the selected entity (if it's a group)
     fn ungroup_selection(&mut self) {
-        if let Some(primary) = self.selection_set.primary {
-            self.log(format!("Ungrouped entity #{}", primary));
-            self.toast_info("Ungroup: Children promoted to scene root".to_string());
-            self.status = "Ungrouped selection".to_string();
-        } else {
-            self.log("No group selected to ungroup".to_string());
+        let primary = match self.selection_set.primary {
+            Some(id) => id,
+            None => {
+                self.log("No group selected to ungroup".to_string());
+                return;
+            }
+        };
+
+        // Check if this entity is actually a group (has children parented to it)
+        let child_ids: Vec<u64> = self
+            .entity_manager
+            .entities()
+            .values()
+            .filter(|e| e.parent == Some(primary))
+            .map(|e| e.id)
+            .collect();
+
+        if child_ids.is_empty() {
+            self.log(format!("Entity #{} has no children to ungroup", primary));
+            return;
         }
+
+        // Clear parent on all children (promote to scene root)
+        for &child_id in &child_ids {
+            if let Some(entity) = self.entity_manager.get_mut(child_id) {
+                entity.parent = None;
+            }
+        }
+
+        // Remove the group entity itself
+        self.entity_manager.remove(primary);
+
+        // Clear selection
+        self.selection_set.primary = None;
+        self.selection_set.entities.clear();
+        self.selected_entity = None;
+
+        self.is_dirty = true;
+        self.log(format!(
+            "Ungrouped {} children from Group #{}",
+            child_ids.len(),
+            primary
+        ));
+        self.toast_info(format!("Ungrouped {} children", child_ids.len()));
+        self.status = format!("Ungrouped {} children", child_ids.len());
     }
 
     /// Align selected entities in the specified direction
@@ -2415,6 +2527,9 @@ impl EditorApp {
         self.render_new_confirm_dialog(ctx);
         self.render_open_confirm_dialog(ctx);
         self.render_recovery_dialog(ctx);
+        self.render_world_wizard(ctx);
+        self.render_tutorial(ctx);
+        self.render_about_dialog(ctx);
     }
 
     /// Render the quit confirmation dialog
@@ -3015,6 +3130,168 @@ impl EditorApp {
             });
     }
 
+    /// Render the World Creation Wizard modal & process its output.
+    fn render_world_wizard(&mut self, ctx: &egui::Context) {
+        if let Some(action) = self.world_wizard.show(ctx) {
+            match action {
+                panels::WorldWizardAction::Generate {
+                    template,
+                    gameplay,
+                    filler_action,
+                } => {
+                    self.toast_success(format!(
+                        "Generating world from \"{}\" template (genre: {})...",
+                        template.name(),
+                        gameplay.name()
+                    ));
+                    self.console_logs.push(format!(
+                        "[WorldWizard] Generate: template={}, gameplay={}, action={:?}",
+                        template.name(),
+                        gameplay.name(),
+                        filler_action
+                    ));
+
+                    // --- Terrain generation pipeline ---
+                    if let panels::procedural_filler_panel::FillerAction::GenerateFullScene {
+                        seed,
+                        biome,
+                        area_radius,
+                        ..
+                    } = &filler_action
+                    {
+                        let biome_key = biome.terrain_biome_key();
+                        // Convert area_radius to chunk_radius (each chunk ~32 units)
+                        let chunk_radius = ((*area_radius / 32.0).ceil() as i32).clamp(1, 12);
+                        self.dock_tab_viewer.trigger_terrain_generation(
+                            *seed,
+                            biome_key,
+                            chunk_radius,
+                        );
+                        self.console_logs.push(format!(
+                            "[WorldWizard] Terrain: seed={}, biome='{}', chunks={}",
+                            seed, biome_key, chunk_radius
+                        ));
+                    }
+
+                    // --- Spawn starter entities from gameplay preset ---
+                    if gameplay != panels::GameplayPreset::Custom {
+                        let starters = gameplay.starter_entities();
+                        if let Some(scene_state) = self.scene_state.as_mut() {
+                            for starter in starters {
+                                let entity = scene_state.world_mut().spawn(
+                                    &starter.name,
+                                    IVec2 { x: 0, y: 0 },
+                                    Team { id: 0 },
+                                    0,
+                                    0,
+                                );
+                                scene_state.sync_entity(entity);
+                                let em_id = entity as u64;
+                                let mut em_entity = entity_manager::EditorEntity::new(
+                                    em_id,
+                                    starter.name.to_string(),
+                                );
+                                em_entity.components.insert(
+                                    "Transform".to_string(),
+                                    serde_json::json!({"x": 0, "y": 0, "z": 0}),
+                                );
+                                // Add genre-specific component stubs
+                                for schema in gameplay.component_schemas() {
+                                    let fields: serde_json::Map<String, serde_json::Value> = schema
+                                        .fields
+                                        .iter()
+                                        .map(|(k, _)| (k.to_string(), serde_json::Value::Null))
+                                        .collect();
+                                    em_entity.components.insert(
+                                        schema.name.to_string(),
+                                        serde_json::Value::Object(fields),
+                                    );
+                                }
+                                self.entity_manager.add(em_entity);
+                            }
+                            self.hierarchy_panel
+                                .sync_with_world(scene_state.world_mut());
+                            self.console_logs.push(format!(
+                                "[WorldWizard] Spawned {} starter entities for {}",
+                                starters.len(),
+                                gameplay.name()
+                            ));
+                        }
+                    }
+
+                    self.status = format!("World generated: {}", template.name());
+                    self.is_dirty = true;
+                }
+                panels::WorldWizardAction::Cancelled => {
+                    self.toast_info("World wizard cancelled.");
+                }
+            }
+        }
+    }
+
+    /// Render the tutorial overlay & process its actions.
+    fn render_tutorial(&mut self, ctx: &egui::Context) {
+        if let Some(action) = self.tutorial.show(ctx) {
+            match action {
+                tutorial::TutorialAction::OpenWorldWizard => {
+                    self.world_wizard.open();
+                }
+                tutorial::TutorialAction::Completed | tutorial::TutorialAction::Skipped => {
+                    self.save_preferences();
+                    self.toast_success("Tutorial complete — happy building!");
+                }
+            }
+        }
+    }
+
+    /// Render the About dialog.
+    fn render_about_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_about_dialog {
+            return;
+        }
+
+        dialogs::show_modal_overlay(ctx, "about_dialog_overlay");
+
+        egui::Window::new("About AstraWeave")
+            .collapsible(false)
+            .resizable(false)
+            .default_width(360.0)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(8.0);
+                    ui.label(
+                        egui::RichText::new("AstraWeave Engine")
+                            .size(22.0)
+                            .strong()
+                            .color(egui::Color32::from_rgb(80, 160, 255)),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                            .color(egui::Color32::from_rgb(160, 160, 170)),
+                    );
+                    ui.add_space(6.0);
+                    ui.label("AI-Native Game Engine");
+                    ui.label("Built iteratively by AI — zero human-written code.");
+                    ui.add_space(8.0);
+                    ui.label(
+                        egui::RichText::new("Rust · wgpu · egui · ECS")
+                            .color(egui::Color32::from_rgb(120, 120, 140))
+                            .italics(),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("License: MIT")
+                            .color(egui::Color32::from_rgb(120, 120, 140)),
+                    );
+                    ui.add_space(12.0);
+                    if ui.button("Close").clicked() {
+                        self.show_about_dialog = false;
+                    }
+                });
+            });
+    }
+
     fn show_status_bar(&mut self, ctx: &egui::Context) {
         // Week 6 Day 5: Sample resource usage periodically (every 500ms)
         if self.last_resource_sample.elapsed() > std::time::Duration::from_millis(500) {
@@ -3137,6 +3414,26 @@ impl EditorApp {
                     pos_y,
                     rotation,
                     scale,
+                    component_data: entity.components.clone(),
+                    material_base_color: [
+                        entity.material.base_color.x,
+                        entity.material.base_color.y,
+                        entity.material.base_color.z,
+                        entity.material.base_color.w,
+                    ],
+                    material_metallic: entity.material.metallic,
+                    material_roughness: entity.material.roughness,
+                    material_emissive: [
+                        entity.material.emissive.x,
+                        entity.material.emissive.y,
+                        entity.material.emissive.z,
+                    ],
+                    material_textures: entity
+                        .material
+                        .texture_slots
+                        .iter()
+                        .map(|(k, v)| (format!("{:?}", k), v.to_string_lossy().to_string()))
+                        .collect(),
                 }
             })
             .collect();
@@ -3187,6 +3484,26 @@ impl EditorApp {
                         pos_y: py,
                         rotation: rot_v,
                         scale: sc_v,
+                        component_data: entity.components.clone(),
+                        material_base_color: [
+                            entity.material.base_color.x,
+                            entity.material.base_color.y,
+                            entity.material.base_color.z,
+                            entity.material.base_color.w,
+                        ],
+                        material_metallic: entity.material.metallic,
+                        material_roughness: entity.material.roughness,
+                        material_emissive: [
+                            entity.material.emissive.x,
+                            entity.material.emissive.y,
+                            entity.material.emissive.z,
+                        ],
+                        material_textures: entity
+                            .material
+                            .texture_slots
+                            .iter()
+                            .map(|(k, v)| (format!("{:?}", k), v.to_string_lossy().to_string()))
+                            .collect(),
                     }));
             } else if let Some(w) = &world_ref {
                 // Entity exists in World but not in entity_manager — read directly
@@ -3215,6 +3532,12 @@ impl EditorApp {
                             pos_y: Some(pose.pos.y),
                             rotation: Some(pose.rotation),
                             scale: Some(pose.scale),
+                            component_data: std::collections::HashMap::new(),
+                            material_base_color: [1.0, 1.0, 1.0, 1.0],
+                            material_metallic: 0.0,
+                            material_roughness: 0.5,
+                            material_emissive: [0.0, 0.0, 0.0],
+                            material_textures: std::collections::HashMap::new(),
                         }));
                 } else {
                     self.dock_tab_viewer.set_selected_transform(None);
@@ -3240,19 +3563,22 @@ impl EditorApp {
         let (vp_draw_calls, vp_triangles, vp_memory_mb) = if let Some(viewport) = &self.viewport {
             let stats = &viewport.toolbar().stats;
             // Query actual draw calls and triangle counts from terrain + scatter renderers
-            let renderer = viewport.renderer().lock().unwrap();
-            // Base draw calls: skybox(1) + grid(1) + entity_instances + gizmos(1)
-            let base_draw_calls = if entity_count > 0 { 4 } else { 2 };
-            let terrain_draw_calls = renderer.terrain_triangles().min(1); // 0 or 1 terrain pass
-            let scatter_draw_calls = renderer.scatter_draw_calls() as usize;
-            let draw_calls = base_draw_calls + terrain_draw_calls + scatter_draw_calls;
-            // Real triangle counts from terrain and scatter renderers
-            let entity_tris = entity_count * 12; // cubes
-            let terrain_tris = renderer.terrain_triangles();
-            let scatter_tris = renderer.scatter_triangles();
-            let triangles = entity_tris + terrain_tris + scatter_tris + 4; // +4 for grid+skybox
-            drop(renderer);
-            (draw_calls, triangles, stats.memory_usage_mb)
+            if let Ok(renderer) = viewport.renderer().lock() {
+                // Base draw calls: skybox(1) + grid(1) + entity_instances + gizmos(1)
+                let base_draw_calls = if entity_count > 0 { 4 } else { 2 };
+                let terrain_draw_calls = renderer.terrain_triangles().min(1); // 0 or 1 terrain pass
+                let scatter_draw_calls = renderer.scatter_draw_calls() as usize;
+                let draw_calls = base_draw_calls + terrain_draw_calls + scatter_draw_calls;
+                // Real triangle counts from terrain and scatter renderers
+                let entity_tris = entity_count * 12; // cubes
+                let terrain_tris = renderer.terrain_triangles();
+                let scatter_tris = renderer.scatter_triangles();
+                let triangles = entity_tris + terrain_tris + scatter_tris + 4; // +4 for grid+skybox
+                drop(renderer);
+                (draw_calls, triangles, stats.memory_usage_mb)
+            } else {
+                (0, 0, stats.memory_usage_mb)
+            }
         } else {
             (0, 0, 0.0)
         };
@@ -3282,6 +3608,7 @@ impl EditorApp {
             gpu_memory_bytes,
         };
         self.dock_tab_viewer.set_runtime_stats(runtime_stats);
+        self.dock_tab_viewer.update_play_session();
 
         // Sync scene stats - count actual component types from entities
         let entities = self.entity_manager.entities();
@@ -3363,6 +3690,17 @@ impl EditorApp {
         self.dock_tab_viewer
             .push_frame_time(self.runtime.stats().frame_time_ms);
 
+        // Feed frame debugger with render timing data
+        {
+            let entity_count = self.entity_manager.entities().len();
+            let terrain_active = self.dock_tab_viewer.is_terrain_active();
+            self.dock_tab_viewer.update_frame_debugger(
+                self.measured_render_ms,
+                entity_count,
+                terrain_active,
+            );
+        }
+
         // Render the docking layout with EditorDrawContext for viewport integration
         // We need to carefully structure borrows to avoid conflicts
         // Use CentralPanel with no frame to render dock in remaining space (after side panels)
@@ -3378,7 +3716,9 @@ impl EditorApp {
                 let brush_active = self.dock_tab_viewer.is_terrain_brush_active();
 
                 // Unified context rendering to avoid type-switching issues
-                let mut context = EditorDrawContext::new(&mut self.dock_tab_viewer);
+                let viewport_layout = self.viewport_layout;
+                let mut context =
+                    EditorDrawContext::new(&mut self.dock_tab_viewer, &mut self.extra_viewports);
 
                 if let (Some(world), Some(viewport)) = (world_opt, self.viewport.as_mut()) {
                     // Sync terrain brush state: tell viewport when brush is active
@@ -3389,7 +3729,8 @@ impl EditorApp {
                         .with_world(world)
                         .with_entity_manager(&mut self.entity_manager)
                         .with_undo_stack(&mut self.undo_stack)
-                        .with_prefab_manager(&mut self.prefab_manager);
+                        .with_prefab_manager(&mut self.prefab_manager)
+                        .with_viewport_layout(viewport_layout);
                 }
 
                 self.dock_layout.show_inside(ui, &mut context);
@@ -3414,13 +3755,14 @@ impl EditorApp {
 
             // Compute fog color from sky horizon (fog blends toward sky color)
             let fog_color = [sky_horizon[0], sky_horizon[1], sky_horizon[2]];
-            let (fog_enabled, fog_density, weather_type) =
+            let (fog_enabled, fog_density, weather_type, particle_count_override) =
                 self.dock_tab_viewer.fog_weather_params();
             let fog_params = crate::viewport::terrain_renderer::TerrainFogParams {
                 fog_enabled,
                 fog_density,
                 fog_color,
                 weather_type,
+                particle_count_override,
             };
             if self.cached_fog_params.as_ref() != Some(&fog_params) {
                 viewport.set_fog_params(fog_params);
@@ -3832,16 +4174,27 @@ impl EditorApp {
                             "Team" => serde_json::json!({"id": 0}),
                             "Ammo" => serde_json::json!({"count": 30}),
                             "Sprite" => serde_json::json!({"texture": ""}),
-                            "Collider" => serde_json::json!({"shape": "box", "size": [1, 1, 1]}),
-                            "RigidBody" => serde_json::json!({"type": "dynamic", "mass": 1.0}),
+                            "Collider" => {
+                                serde_json::json!({"shape": "box", "size": [1, 1, 1], "is_trigger": false})
+                            }
+                            "RigidBody" => {
+                                serde_json::json!({"type": "dynamic", "mass": 1.0, "drag": 0.0, "angular_drag": 0.05, "use_gravity": true})
+                            }
                             "Script" => serde_json::json!({"path": ""}),
                             "MovementScript" => {
                                 movement_scripts::MovementScript::default().to_json()
                             }
-                            "Audio" => serde_json::json!({"clip": "", "volume": 1.0}),
-                            "Light" => serde_json::json!({"type": "point", "intensity": 1.0}),
+                            "Audio" => {
+                                serde_json::json!({"clip": "", "volume": 1.0, "spatial": true, "looping": false, "play_on_start": false})
+                            }
+                            "Light" => {
+                                serde_json::json!({"type": "point", "intensity": 1.0, "color_r": 1.0, "color_g": 1.0, "color_b": 1.0, "range": 10.0, "cast_shadows": true})
+                            }
                             "Camera" => {
                                 serde_json::json!({"fov": 60.0, "near": 0.1, "far": 1000.0})
+                            }
+                            "Particle" => {
+                                serde_json::json!({"emission_rate": 10.0, "lifetime": 2.0, "start_size": 0.1, "speed": 5.0, "shape": "cone", "looping": true})
                             }
                             _ => serde_json::json!({}),
                         };
@@ -3946,6 +4299,85 @@ impl EditorApp {
                             .insert("Ammo".to_string(), serde_json::json!({"count": new_ammo}));
                     }
                     self.is_dirty = true;
+                }
+                tab_viewer::PanelEvent::ComponentDataChanged {
+                    entity_id,
+                    component_type,
+                    data,
+                } => {
+                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
+                        entity.components.insert(component_type.clone(), data);
+                        self.is_dirty = true;
+                    }
+                    self.status = format!("Updated {} on entity {}", component_type, entity_id);
+                }
+                tab_viewer::PanelEvent::MaterialPropertyChanged {
+                    entity_id,
+                    property,
+                    value,
+                } => {
+                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
+                        match property.as_str() {
+                            "base_color" => {
+                                if let Some(arr) = value.as_array() {
+                                    entity.material.base_color = glam::Vec4::new(
+                                        arr.first().and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                                        arr.get(1).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                                        arr.get(2).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                                        arr.get(3).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                                    );
+                                }
+                            }
+                            "metallic" => {
+                                entity.material.metallic = value.as_f64().unwrap_or(0.0) as f32;
+                            }
+                            "roughness" => {
+                                entity.material.roughness = value.as_f64().unwrap_or(0.5) as f32;
+                            }
+                            "emissive" => {
+                                if let Some(arr) = value.as_array() {
+                                    entity.material.emissive = glam::Vec3::new(
+                                        arr.first().and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                                        arr.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                                        arr.get(2).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                                    );
+                                }
+                            }
+                            _ => {}
+                        }
+                        self.is_dirty = true;
+                    }
+                    self.status = format!("Material {} changed on entity {}", property, entity_id);
+                }
+                tab_viewer::PanelEvent::MaterialTextureChanged {
+                    entity_id,
+                    slot,
+                    path,
+                } => {
+                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
+                        use crate::entity_manager::MaterialSlot;
+                        let slot_key = match slot.as_str() {
+                            "Albedo" => Some(MaterialSlot::Albedo),
+                            "Normal" => Some(MaterialSlot::Normal),
+                            "Roughness" => Some(MaterialSlot::Roughness),
+                            "Metallic" => Some(MaterialSlot::Metallic),
+                            "AO" => Some(MaterialSlot::AO),
+                            "Emission" => Some(MaterialSlot::Emission),
+                            _ => None,
+                        };
+                        if let Some(key) = slot_key {
+                            if path.is_empty() {
+                                entity.material.texture_slots.remove(&key);
+                            } else {
+                                entity
+                                    .material
+                                    .texture_slots
+                                    .insert(key, std::path::PathBuf::from(&path));
+                            }
+                        }
+                        self.is_dirty = true;
+                    }
+                    self.status = format!("Texture {} changed on entity {}", slot, entity_id);
                 }
                 tab_viewer::PanelEvent::EntityRenamed {
                     entity_id,
@@ -4109,7 +4541,7 @@ impl EditorApp {
                     .inner_margin(egui::Margin::symmetric(6, 2)),
             )
             .show(ctx, |ui| {
-                egui::menu::bar(ui, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
                     ui.label(egui::RichText::new("AstraWeave").strong().size(14.0));
                     ui.separator();
                     MenuBar::show(ui, self);
@@ -4274,6 +4706,7 @@ impl EditorApp {
 
                         // Render viewport (takes 70% width, full available height)
                         let runtime_state = self.runtime.state();
+                        let is_playing = self.runtime.is_playing();
                         if runtime_state == RuntimeState::Editing && self.scene_state.is_none() {
                             self.scene_state =
                                 Some(EditorSceneState::new(Self::create_default_world()));
@@ -4296,9 +4729,15 @@ impl EditorApp {
                                 &mut self.entity_manager,
                                 &mut self.undo_stack,
                                 Some(&mut self.prefab_manager),
+                                is_playing,
                             ) {
                                 self.console_logs.push(format!("Viewport error: {}", e));
                                 warn!("Viewport error: {}", e);
+                            }
+
+                            // Forward captured game input to runtime
+                            if let Some(gi) = viewport.take_game_input() {
+                                self.runtime.inject_input(gi);
                             }
                         } else {
                             ui.label("No world available for rendering");
@@ -4869,6 +5308,69 @@ impl EditorApp {
         }
     }
 
+    /// Enter prefab editing mode: load the prefab source into the editor for in-place editing
+    fn enter_prefab_editing(&mut self, entity: Entity) {
+        let source_path = match self.prefab_manager.find_instance(entity) {
+            Some(inst) => inst.source.clone(),
+            None => {
+                self.toast_error("Entity is not a prefab instance".to_string());
+                return;
+            }
+        };
+
+        // Load the prefab data to verify it's valid
+        match PrefabData::load_from_file(&source_path) {
+            Ok(data) => {
+                self.editing_prefab_path = Some(source_path.clone());
+                self.log(format!(
+                    "Editing prefab '{}' from {:?}",
+                    data.name, source_path
+                ));
+                self.toast_success(format!("Editing prefab: {}", data.name));
+                self.status = format!("Prefab Edit Mode: {}", data.name);
+            }
+            Err(e) => {
+                self.log(format!("Failed to load prefab {:?}: {}", source_path, e));
+                self.toast_error(format!("Failed to load prefab: {}", e));
+            }
+        }
+    }
+
+    /// Exit prefab editing mode and optionally save changes back to the prefab file
+    fn exit_prefab_editing(&mut self, save: bool) {
+        if let Some(path) = self.editing_prefab_path.take() {
+            if save {
+                // Collect instances and apply overrides
+                let mut errors = Vec::new();
+                if let Some(scene_state) = self.scene_state.as_ref() {
+                    let world = scene_state.world();
+                    let instances: Vec<Entity> = self
+                        .prefab_manager
+                        .find_instances_by_source(&path)
+                        .iter()
+                        .map(|inst| inst.root_entity)
+                        .collect();
+
+                    for entity in instances {
+                        if let Err(e) = self.prefab_manager.apply_overrides_to_prefab(entity, world)
+                        {
+                            errors.push(format!("Failed to save prefab overrides: {}", e));
+                        }
+                    }
+                }
+                for err in errors {
+                    self.log(err);
+                }
+                self.toast_success("Prefab saved".to_string());
+                self.log("Exited prefab edit mode (saved)".to_string());
+            } else {
+                self.toast_success("Exited prefab edit mode (discarded)".to_string());
+                self.log("Exited prefab edit mode (discarded)".to_string());
+            }
+            self.status = "Ready".to_string();
+        }
+    }
+
     /// Sync hierarchy panel's prefab instance tracking with prefab manager
     fn sync_hierarchy_prefab_instances(&mut self) {
         let prefab_entities: Vec<_> = self.prefab_manager.get_all_prefab_entities().collect();
@@ -4939,6 +5441,21 @@ impl EditorApp {
                 HierarchyAction::RevertToOriginalPrefab(entity) => {
                     self.revert_to_original_prefab(entity);
                 }
+                HierarchyAction::SetParent(child, parent) => {
+                    if let Some(child_entity) = self.entity_manager.get_mut(child as u64) {
+                        child_entity.parent = Some(parent as u64);
+                    }
+                    self.log(format!("Set parent of {} to {}", child, parent));
+                }
+                HierarchyAction::Unparent(entity) => {
+                    if let Some(e) = self.entity_manager.get_mut(entity as u64) {
+                        e.parent = None;
+                    }
+                    self.log(format!("Unparented entity {}", entity));
+                }
+                HierarchyAction::EditPrefab(entity) => {
+                    self.enter_prefab_editing(entity);
+                }
             }
         }
     }
@@ -4966,6 +5483,9 @@ impl EditorApp {
 
     /// Handle a dragged asset — import GLTF/GLB models directly, spawn prefabs for .prefab files
     fn handle_dragged_asset(&mut self, path: std::path::PathBuf) {
+        // Compute spawn position from cursor ray → ground plane intersection
+        let spawn_pos = self.last_cursor_ground_pos.unwrap_or((0, 0));
+
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
@@ -4974,9 +5494,16 @@ impl EditorApp {
         match ext.as_str() {
             "glb" | "gltf" | "obj" | "fbx" => {
                 self.handle_asset_action(AssetAction::ImportModel { path });
+                // Update the spawned entity position to the cursor ground position
+                if let Some(entity_id) = self.selected_entity {
+                    if let Some(em_entity) = self.entity_manager.get_mut(entity_id) {
+                        em_entity.position =
+                            glam::Vec3::new(spawn_pos.0 as f32, 0.0, spawn_pos.1 as f32);
+                    }
+                }
             }
             _ => {
-                self.spawn_prefab_from_drag(path, (0, 0));
+                self.spawn_prefab_from_drag(path, spawn_pos);
             }
         }
     }
@@ -5896,6 +6423,18 @@ impl MenuActionHandler for EditorApp {
         }
     }
 
+    fn on_new_world_wizard(&mut self) {
+        self.world_wizard.open();
+    }
+
+    fn on_show_tutorial(&mut self) {
+        self.tutorial.start();
+    }
+
+    fn on_show_about(&mut self) {
+        self.show_about_dialog = true;
+    }
+
     fn on_open(&mut self) {
         // simple hardcoded example; integrate rfd/native dialog if desired
         let p = self.content_root.join("levels/forest_breach.level.toml");
@@ -6159,6 +6698,32 @@ impl MenuActionHandler for EditorApp {
                 "disabled"
             }
         );
+    }
+
+    fn viewport_layout(&self) -> crate::viewport::ViewportLayout {
+        self.viewport_layout
+    }
+
+    fn set_viewport_layout(&mut self, layout: crate::viewport::ViewportLayout) {
+        let needed = layout.viewport_count().saturating_sub(1); // extra viewports beyond primary
+                                                                // Create any missing extra viewports
+        while self.extra_viewports.len() < needed {
+            if let Some(primary) = &self.viewport {
+                match ViewportWidget::new_additional(primary) {
+                    Ok(vp) => self.extra_viewports.push(vp),
+                    Err(e) => {
+                        self.log(&format!("Failed to create extra viewport: {}", e));
+                        return;
+                    }
+                }
+            } else {
+                self.log("Cannot create extra viewport: primary viewport not initialised");
+                return;
+            }
+        }
+
+        self.viewport_layout = layout;
+        self.status = format!("Viewport layout: {}", layout.label());
     }
 
     // Window
@@ -6483,6 +7048,16 @@ impl eframe::App for EditorApp {
             }
         }
 
+        // Update cursor ground position for position-aware asset dropping
+        if let Some(viewport) = &self.viewport {
+            let hover_pos = ctx.input(|i| i.pointer.hover_pos());
+            if let Some(pos) = hover_pos {
+                if let Some((gx, gz)) = viewport.ground_position_at_screen_pos(pos) {
+                    self.last_cursor_ground_pos = Some((gx.round() as i32, gz.round() as i32));
+                }
+            }
+        }
+
         // Process asset browser actions (drag-drop, double-click, context actions)
         self.process_asset_browser_actions();
 
@@ -6572,19 +7147,24 @@ impl eframe::App for EditorApp {
         // Enhanced scene statistics: pull real data from terrain + scatter renderers
         let (real_triangles, real_vertices, real_draw_calls, scatter_instances) =
             if let Some(viewport) = &self.viewport {
-                let renderer = viewport.renderer().lock().unwrap();
-                let terrain_tris = renderer.terrain_triangles();
-                let terrain_indices = renderer.terrain_indices();
-                let scatter_tris = renderer.scatter_triangles();
-                let scatter_verts = renderer.scatter_vertices();
-                let scatter_dc = renderer.scatter_draw_calls() as usize;
-                let scatter_inst = renderer.scatter_instance_count() as usize;
-                (
-                    terrain_tris + scatter_tris + scene_entity_count * 12,
-                    terrain_indices + scatter_verts + scene_entity_count * 8,
-                    scatter_dc + scene_entity_count + 2, // +2 for terrain+grid
-                    scatter_inst,
-                )
+                if let Ok(renderer) = viewport.renderer().lock() {
+                    let terrain_tris = renderer.terrain_triangles();
+                    let terrain_indices = renderer.terrain_indices();
+                    let scatter_tris = renderer.scatter_triangles();
+                    let scatter_verts = renderer.scatter_vertices();
+                    let scatter_dc = renderer.scatter_draw_calls() as usize;
+                    let scatter_inst = renderer.scatter_instance_count() as usize;
+                    (
+                        terrain_tris + scatter_tris + scene_entity_count * 12,
+                        terrain_indices + scatter_verts + scene_entity_count * 8,
+                        scatter_dc + scene_entity_count + 2, // +2 for terrain+grid
+                        scatter_inst,
+                    )
+                } else {
+                    let est_tris = scene_entity_count * 500;
+                    let est_verts = scene_entity_count * 300;
+                    (est_tris, est_verts, scene_entity_count, 0)
+                }
             } else {
                 let est_tris = scene_entity_count * 500;
                 let est_verts = scene_entity_count * 300;
@@ -6942,6 +7522,16 @@ impl eframe::App for EditorApp {
                 }
             }
 
+            // Ctrl+G: Group selected entities
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::G) && !i.modifiers.shift {
+                self.group_selection();
+            }
+
+            // Ctrl+Shift+G: Ungroup selected entity
+            if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::G) {
+                self.ungroup_selection();
+            }
+
             // Escape: Deselect all (when not in gizmo mode)
             if i.key_pressed(egui::Key::Escape) && self.editor_mode.can_edit() {
                 self.hierarchy_panel.set_selected(None);
@@ -7166,6 +7756,48 @@ impl eframe::App for EditorApp {
         }
         self.animation_bridge.tick(frame_time);
 
+        // --- Skinning: apply CPU skinning for entities with active skeleton animations ---
+        {
+            let entities_with_meshes: Vec<(u64, String)> = self
+                .entity_manager
+                .entities()
+                .iter()
+                .filter_map(|(&id, entity)| entity.mesh.as_ref().map(|path| (id, path.clone())))
+                .collect();
+
+            // Sync skeleton/animation data from loaded meshes → animation bridge
+            if let Some(viewport) = &self.viewport {
+                if let Ok(renderer) = viewport.renderer().lock() {
+                    for (entity_id, mesh_path) in &entities_with_meshes {
+                        if !self.animation_bridge.has_skeleton(*entity_id) {
+                            if let Some(skel) = renderer.get_mesh_skeleton(mesh_path) {
+                                self.animation_bridge
+                                    .set_entity_skeleton(*entity_id, skel.clone());
+                                let clips = renderer.get_mesh_animations(mesh_path);
+                                if !clips.is_empty() {
+                                    self.animation_bridge
+                                        .set_entity_clips(*entity_id, clips.to_vec());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Apply CPU skinning for entities with active animations
+            for (entity_id, mesh_path) in &entities_with_meshes {
+                if let Some(joint_matrices) =
+                    self.animation_bridge.compute_joint_matrices(*entity_id)
+                {
+                    if let Some(viewport) = &self.viewport {
+                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                            renderer.apply_cpu_skinning(mesh_path, &joint_matrices);
+                        }
+                    }
+                }
+            }
+        }
+
         // --- Movement scripts: tick entity movement in play mode ---
         if self.runtime.is_playing() {
             let mut scripted: Vec<(
@@ -7234,9 +7866,17 @@ fn main() -> Result<()> {
                     } else {
                         wgpu::Limits::default()
                     };
+                    // Enable wireframe rendering if the GPU supports it
+                    let mut features = wgpu::Features::default();
+                    if adapter
+                        .features()
+                        .contains(wgpu::Features::POLYGON_MODE_LINE)
+                    {
+                        features |= wgpu::Features::POLYGON_MODE_LINE;
+                    }
                     wgpu::DeviceDescriptor {
                         label: Some("egui wgpu device"),
-                        required_features: wgpu::Features::default(),
+                        required_features: features,
                         required_limits: wgpu::Limits {
                             max_texture_dimension_2d: 8192,
                             max_bind_groups: 8,

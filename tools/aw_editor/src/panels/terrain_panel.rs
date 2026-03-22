@@ -684,6 +684,22 @@ impl TerrainPanel {
         self.brush_enabled && self.terrain_state.has_terrain()
     }
 
+    /// Configure seed, biome, and chunk radius then trigger background generation.
+    /// Used by the World Wizard to drive terrain creation from a single action.
+    pub fn configure_and_generate(&mut self, seed: u64, biome: &str, chunk_radius: i32) {
+        self.seed = seed;
+        self.seed_string = seed.to_string();
+        self.primary_biome = biome.to_string();
+        self.chunk_radius = chunk_radius;
+        self.terrain_state.configure(seed, biome);
+        self.regenerate_terrain();
+    }
+
+    /// Returns true if terrain has been generated (chunks > 0).
+    pub fn has_generated(&self) -> bool {
+        self.generation_stats.chunks_generated > 0
+    }
+
     /// Apply brush at the given world position using current brush settings.
     /// Called from viewport mouse interaction.
     pub fn apply_brush_at(&mut self, world_x: f32, world_z: f32) {
