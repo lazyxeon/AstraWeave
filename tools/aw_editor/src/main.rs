@@ -314,6 +314,8 @@ struct EditorApp {
     selected_entity: Option<u64>,
     // Phase 2.1: Undo/Redo system
     undo_stack: command::UndoStack,
+    /// Side-channel for terrain brush undo/redo actions
+    terrain_undo_queue: command::TerrainUndoQueue,
     // Phase 2.2: Scene Save/Load
     current_scene_path: Option<PathBuf>,
     // Phase 3.4: Copy/Paste/Duplicate
@@ -531,6 +533,7 @@ impl Default for EditorApp {
             selected_entity: None,
             // Phase 2.1: Undo/Redo system
             undo_stack: command::UndoStack::new(100), // Store last 100 commands
+            terrain_undo_queue: command::new_terrain_undo_queue(),
             // Phase 2.2: Scene Save/Load
             current_scene_path: None,
             // Phase 3.4: Copy/Paste/Duplicate
@@ -3160,8 +3163,8 @@ impl EditorApp {
                     } = &filler_action
                     {
                         let biome_key = biome.terrain_biome_key();
-                        // Convert area_radius to chunk_radius (each chunk ~32 units)
-                        let chunk_radius = ((*area_radius / 32.0).ceil() as i32).clamp(1, 12);
+                        // Convert area_radius to chunk_radius (each chunk is 256 world units)
+                        let chunk_radius = ((*area_radius / 256.0).ceil() as i32).clamp(1, 6);
                         self.dock_tab_viewer.trigger_terrain_generation(
                             *seed,
                             biome_key,
@@ -3178,13 +3181,25 @@ impl EditorApp {
                         let starters = gameplay.starter_entities();
                         if let Some(scene_state) = self.scene_state.as_mut() {
                             for starter in starters {
+                                // Offset each starter entity so they don't overlap
+                                let offset_x = starter.position[0] as i32;
+                                let offset_z = starter.position[2] as i32;
+                                let spawn_height = self
+                                    .dock_tab_viewer
+                                    .sample_terrain_height_at(offset_x as f32, offset_z as f32)
+                                    .unwrap_or(0.0);
+
                                 let entity = scene_state.world_mut().spawn(
-                                    &starter.name,
-                                    IVec2 { x: 0, y: 0 },
+                                    starter.name,
+                                    IVec2 { x: offset_x, y: offset_z },
                                     Team { id: 0 },
                                     0,
                                     0,
                                 );
+                                // Place entity on terrain
+                                if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
+                                    pose.height = spawn_height;
+                                }
                                 scene_state.sync_entity(entity);
                                 let em_id = entity as u64;
                                 let mut em_entity = entity_manager::EditorEntity::new(
@@ -3193,7 +3208,11 @@ impl EditorApp {
                                 );
                                 em_entity.components.insert(
                                     "Transform".to_string(),
-                                    serde_json::json!({"x": 0, "y": 0, "z": 0}),
+                                    serde_json::json!({
+                                        "x": offset_x,
+                                        "y": spawn_height,
+                                        "z": offset_z
+                                    }),
                                 );
                                 // Add genre-specific component stubs
                                 for schema in gameplay.component_schemas() {
@@ -3206,6 +3225,27 @@ impl EditorApp {
                                         schema.name.to_string(),
                                         serde_json::Value::Object(fields),
                                     );
+                                }
+                                // Map archetype to a real asset mesh
+                                let mesh_path = match starter.archetype {
+                                    // Characters — KayKit collection
+                                    "PlayerCharacter" | "Player" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"),
+                                    "NPC" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Mage.glb"),
+                                    "Enemy" => Some("assets/The Complete KayKit Collection v4/KayKit Skeletons 1.1/characters/gltf/Skeleton_Warrior.glb"),
+                                    "Commander" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Knight.glb"),
+                                    // Buildings & structures — 3D asset packs
+                                    "Building" => Some("assets/3D assets/Castle Kit/Models/GLB format/tower-square.glb"),
+                                    // Props / interactables — 3D asset packs
+                                    "Interactable" => Some("assets/3D assets/Survival Kit/Models/GLB format/box-large.glb"),
+                                    "Placeable" => Some("assets/3D assets/Survival Kit/Models/GLB format/campfire-pit.glb"),
+                                    "Resource" | "Harvestable" => Some("assets/3D assets/Survival Kit/Models/GLB format/rock-a.glb"),
+                                    // Military / units
+                                    "Unit" | "ArmyUnit" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Barbarian.glb"),
+                                    "Support" => Some("assets/3D assets/Fantasy Town Kit/Models/GLB format/cart.glb"),
+                                    _ => None,
+                                };
+                                if let Some(path) = mesh_path {
+                                    em_entity.set_mesh(path.to_string());
                                 }
                                 self.entity_manager.add(em_entity);
                             }
@@ -3714,6 +3754,8 @@ impl EditorApp {
 
                 // Check terrain brush state before borrowing dock_tab_viewer mutably
                 let brush_active = self.dock_tab_viewer.is_terrain_brush_active();
+                let brush_radius = self.dock_tab_viewer.terrain_brush_radius();
+                let brush_is_paint = self.dock_tab_viewer.terrain_brush_is_paint();
 
                 // Unified context rendering to avoid type-switching issues
                 let viewport_layout = self.viewport_layout;
@@ -3723,6 +3765,7 @@ impl EditorApp {
                 if let (Some(world), Some(viewport)) = (world_opt, self.viewport.as_mut()) {
                     // Sync terrain brush state: tell viewport when brush is active
                     viewport.set_terrain_brush_active(brush_active);
+                    viewport.set_terrain_brush_params(brush_radius, brush_is_paint);
 
                     context = context
                         .with_viewport(viewport)
@@ -3741,6 +3784,58 @@ impl EditorApp {
             let hits = viewport.take_terrain_brush_hits();
             for hit in hits {
                 self.dock_tab_viewer.apply_terrain_brush_at(hit[0], hit[1]);
+            }
+            // Detect end of brush stroke (mouse released) for undo + flatten target reset
+            if viewport.take_terrain_brush_stroke_ended() {
+                let brush_name = self.dock_tab_viewer.terrain_brush_mode_name().to_string();
+                if let Some(deltas) = self.dock_tab_viewer.end_terrain_brush_stroke() {
+                    let cmd = command::TerrainBrushCommand::new(
+                        deltas,
+                        self.terrain_undo_queue.clone(),
+                        &brush_name,
+                    );
+                    self.undo_stack.push_executed(cmd);
+                }
+            }
+        }
+
+        // Drain terrain undo queue (side-channel from undo/redo commands)
+        {
+            let actions: Vec<command::TerrainUndoAction> = {
+                if let Ok(mut q) = self.terrain_undo_queue.lock() {
+                    std::mem::take(&mut *q)
+                } else {
+                    Vec::new()
+                }
+            };
+            for action in actions {
+                match action {
+                    command::TerrainUndoAction::ApplyHeights(snapshot) => {
+                        self.dock_tab_viewer
+                            .apply_terrain_height_snapshot(&snapshot);
+                        // Upload dirty chunks to GPU
+                        let dirty = self.dock_tab_viewer.take_terrain_dirty_chunks();
+                        if let Some(viewport) = &self.viewport {
+                            for (chunk_index, verts) in &dirty {
+                                let gpu_verts: Vec<
+                                    crate::viewport::terrain_renderer::TerrainVertex,
+                                > = verts
+                                    .iter()
+                                    .map(|v| crate::viewport::terrain_renderer::TerrainVertex {
+                                        position: v.position,
+                                        normal: v.normal,
+                                        uv: v.uv,
+                                        biome_weights_0: v.biome_weights_0,
+                                        biome_weights_1: v.biome_weights_1,
+                                        material_ids: v.material_ids,
+                                        material_weights: v.material_weights,
+                                    })
+                                    .collect();
+                                viewport.update_terrain_chunk_vertices(*chunk_index, &gpu_verts);
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -3801,11 +3896,17 @@ impl EditorApp {
                 tab_viewer::PanelEvent::EntitySelected(entity_id) => {
                     self.selected_entity = Some(entity_id);
                     self.selection_set.primary = Some(entity_id);
+                    if let Some(viewport) = &mut self.viewport {
+                        viewport.set_selected_entity(Some(entity_id));
+                    }
                     self.status = format!("Selected entity {}", entity_id);
                 }
                 tab_viewer::PanelEvent::EntityDeselected => {
                     self.selected_entity = None;
                     self.selection_set.primary = None;
+                    if let Some(viewport) = &mut self.viewport {
+                        viewport.set_selected_entity(None);
+                    }
                     self.status = "Deselected entity".to_string();
                 }
                 tab_viewer::PanelEvent::TransformPositionChanged { entity_id, x, y, z } => {
@@ -3890,6 +3991,9 @@ impl EditorApp {
                         self.entity_manager.add(editor_entity);
                         self.selected_entity = Some(em_id);
                         self.selection_set.primary = Some(em_id);
+                        if let Some(viewport) = &mut self.viewport {
+                            viewport.set_selected_entity(Some(em_id));
+                        }
                         self.is_dirty = true;
                         self.hierarchy_panel
                             .sync_with_world(scene_state.world_mut());
@@ -3915,6 +4019,12 @@ impl EditorApp {
                             "Camera" => (2, 1, 0),
                             _ => (0, 1, 0),
                         };
+                        // Query terrain height at spawn position so entity sits on top
+                        let spawn_height = self
+                            .dock_tab_viewer
+                            .sample_terrain_height_at(0.0, 0.0)
+                            .unwrap_or(0.0);
+
                         let entity = scene_state.world_mut().spawn(
                             &name,
                             astraweave_core::IVec2 { x: 0, y: 0 },
@@ -3922,6 +4032,10 @@ impl EditorApp {
                             hp,
                             ammo,
                         );
+                        // Set entity height to terrain surface
+                        if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
+                            pose.height = spawn_height;
+                        }
                         scene_state.sync_entity(entity);
 
                         // Add to EntityManager using World entity ID for consistent lookups
@@ -3932,7 +4046,7 @@ impl EditorApp {
                             let em_entity = &mut em_entity_new;
                             em_entity.components.insert(
                                 "Transform".to_string(),
-                                serde_json::json!({"x": 0, "y": 0, "z": 0}),
+                                serde_json::json!({"x": 0, "y": spawn_height, "z": 0}),
                             );
                             match archetype.as_str() {
                                 "Player" | "Companion" | "Enemy" | "Boss" => {
@@ -3987,6 +4101,9 @@ impl EditorApp {
 
                         self.selected_entity = Some(em_id);
                         self.selection_set.primary = Some(em_id);
+                        if let Some(viewport) = &mut self.viewport {
+                            viewport.set_selected_entity(Some(em_id));
+                        }
                         self.is_dirty = true;
                         self.hierarchy_panel
                             .sync_with_world(scene_state.world_mut());
@@ -4002,6 +4119,13 @@ impl EditorApp {
                         let entity_name = format!("{}_{}", name, entity_count);
                         // Offset each spawned model so they don't overlap
                         let offset = entity_count as i32 * 3;
+                        // Query terrain height at spawn position
+                        let spawn_x = offset as f32;
+                        let spawn_height = self
+                            .dock_tab_viewer
+                            .sample_terrain_height_at(spawn_x, 0.0)
+                            .unwrap_or(0.0);
+
                         let entity = scene_state.world_mut().spawn(
                             &entity_name,
                             astraweave_core::IVec2 { x: offset, y: 0 },
@@ -4009,6 +4133,10 @@ impl EditorApp {
                             0,
                             0,
                         );
+                        // Set entity height to terrain surface
+                        if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
+                            pose.height = spawn_height;
+                        }
                         scene_state.sync_entity(entity);
 
                         let em_id = entity as u64;
@@ -4016,7 +4144,7 @@ impl EditorApp {
                             entity_manager::EditorEntity::new(em_id, entity_name.clone());
                         em_entity.components.insert(
                             "Transform".to_string(),
-                            serde_json::json!({"x": 0, "y": 0, "z": 0}),
+                            serde_json::json!({"x": spawn_x, "y": spawn_height, "z": 0}),
                         );
                         em_entity
                             .components
@@ -4026,6 +4154,9 @@ impl EditorApp {
 
                         self.selected_entity = Some(em_id);
                         self.selection_set.primary = Some(em_id);
+                        if let Some(viewport) = &mut self.viewport {
+                            viewport.set_selected_entity(Some(em_id));
+                        }
                         self.is_dirty = true;
                         self.hierarchy_panel
                             .sync_with_world(scene_state.world_mut());
@@ -4052,6 +4183,9 @@ impl EditorApp {
                     if self.selected_entity == Some(entity_id) {
                         self.selected_entity = None;
                         self.selection_set.primary = None;
+                        if let Some(viewport) = &mut self.viewport {
+                            viewport.set_selected_entity(None);
+                        }
                     }
                     self.is_dirty = true;
                     self.status = format!("Deleted entity {}", entity_id);
@@ -4093,6 +4227,11 @@ impl EditorApp {
                             self.entity_manager.add(new_em);
                             self.selected_entity = Some(em_id);
                             self.selection_set.primary = Some(em_id);
+                            // Sync viewport selection so the per-frame
+                            // viewport→app sync doesn't overwrite back to the old entity
+                            if let Some(viewport) = &mut self.viewport {
+                                viewport.set_selected_entity(Some(em_id));
+                            }
                         }
                         self.is_dirty = true;
                         self.status = format!("Duplicated entity {} as {}", entity_id, new_name);
@@ -4482,29 +4621,10 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::TerrainReady => {
                     let src_chunks = self.dock_tab_viewer.terrain_gpu_chunks();
-                    let chunks: Vec<(
-                        Vec<crate::viewport::terrain_renderer::TerrainVertex>,
-                        Vec<u32>,
-                    )> = src_chunks
-                        .into_iter()
-                        .map(|(verts, indices)| {
-                            let gpu_verts = verts
-                                .iter()
-                                .map(|v| crate::viewport::terrain_renderer::TerrainVertex {
-                                    position: v.position,
-                                    normal: v.normal,
-                                    uv: v.uv,
-                                    biome_weights_0: v.biome_weights_0,
-                                    biome_weights_1: v.biome_weights_1,
-                                    splat_weights_0: v.splat_weights_0,
-                                    splat_weights_1: v.splat_weights_1,
-                                })
-                                .collect();
-                            (gpu_verts, indices)
-                        })
-                        .collect();
+                    // Both terrain_integration::TerrainVertex and terrain_renderer::TerrainVertex
+                    // are #[repr(C)] Pod with identical layout — pass bytes directly to GPU.
                     if let Some(viewport) = &self.viewport {
-                        viewport.upload_terrain_chunks(&chunks);
+                        viewport.upload_terrain_chunks_raw(&src_chunks);
                     }
 
                     // Use pre-computed scatter placements from background thread
@@ -4520,13 +4640,35 @@ impl EditorApp {
                         }
                     }
 
-                    self.status = format!("Terrain generated: {} chunks uploaded", chunks.len());
+                    self.status = format!("Terrain generated: {} chunks uploaded", src_chunks.len());
 
                     // Auto-adjust camera so the terrain is visible (prevents camera
                     // being submerged inside tall mountain terrain).
                     let (min_h, max_h, avg_h) = self.dock_tab_viewer.terrain_height_stats();
                     if let Some(viewport) = &mut self.viewport {
                         viewport.camera_mut().frame_terrain(min_h, max_h, avg_h);
+                    }
+                }
+                tab_viewer::PanelEvent::TerrainBrushUpdate => {
+                    // Incremental GPU update — only re-upload dirty chunk vertex buffers
+                    let dirty = self.dock_tab_viewer.take_terrain_dirty_chunks();
+                    if let Some(viewport) = &self.viewport {
+                        for (chunk_index, verts) in &dirty {
+                            let gpu_verts: Vec<crate::viewport::terrain_renderer::TerrainVertex> =
+                                verts
+                                    .iter()
+                                    .map(|v| crate::viewport::terrain_renderer::TerrainVertex {
+                                        position: v.position,
+                                        normal: v.normal,
+                                        uv: v.uv,
+                                        biome_weights_0: v.biome_weights_0,
+                                        biome_weights_1: v.biome_weights_1,
+                                        material_ids: v.material_ids,
+                                        material_weights: v.material_weights,
+                                    })
+                                    .collect();
+                            viewport.update_terrain_chunk_vertices(*chunk_index, &gpu_verts);
+                        }
                     }
                 }
             }
@@ -7839,6 +7981,14 @@ impl eframe::App for EditorApp {
                 ..Default::default()
             },
         );
+
+        // Safeguard: never let the OS cursor become invisible in the editor.
+        // egui-winit translates CursorIcon::None → window.set_cursor_visible(false).
+        ctx.output_mut(|o| {
+            if o.cursor_icon == egui::CursorIcon::None {
+                o.cursor_icon = egui::CursorIcon::Default;
+            }
+        });
     }
 }
 

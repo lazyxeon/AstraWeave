@@ -38,24 +38,39 @@ struct VertexOutput {
 @group(0) @binding(0)
 var<uniform> u: WeatherUniforms;
 
+// Positive-modulo helper: WGSL `%` follows dividend sign, so we need (x%m+m)%m
+fn pos_mod(x: f32, m: f32) -> f32 {
+    return ((x % m) + m) % m;
+}
+
 @vertex
 fn vs_main(vertex: VertexInput) -> VertexOutput {
     let kind = u32(u.weather_kind);
-    let vol = u.volume_size;
-    let cycle_h = vol * 2.0;
-    let fall_offset = u.time * vertex.inst_speed;
+    let vol  = u.volume_size;          // half-extent of volume
+    let vol2 = vol * 2.0;             // full extent for wrapping
 
-    // Base world position: camera-relative volume
-    var world_pos = vertex.inst_pos + u.camera_pos;
+    // Animated falling Y: instance base Y minus accumulated fall distance
+    let fall_y = vertex.inst_pos.y - u.time * vertex.inst_speed;
 
-    // Vertical cycling (wrap particles through volume)
-    world_pos.y = world_pos.y - fract(fall_offset / cycle_h) * cycle_h;
+    // ── World-space volumetric wrapping ──
+    // Particles tile infinitely around the camera.  As the camera moves,
+    // particles seamlessly wrap from the trailing to the leading edge of
+    // the volume, so the player genuinely *travels through* precipitation.
+    //
+    // For each axis:  cam_rel = posmod(offset - camera + half, full) - half
+    //   where "offset" is the instance position (or animated position for Y).
+    let rx = pos_mod(vertex.inst_pos.x - u.camera_pos.x + vol, vol2) - vol;
+    let ry = pos_mod(fall_y           - u.camera_pos.y + vol, vol2) - vol;
+    let rz = pos_mod(vertex.inst_pos.z - u.camera_pos.z + vol, vol2) - vol;
+
+    // cam_rel is now the camera-relative offset; avoids f32 jitter.
+    var cam_rel = vec3<f32>(rx, ry, rz);
 
     // Wind drift (stronger at top of volume)
-    let height_frac = clamp((world_pos.y - u.camera_pos.y + vol) / cycle_h, 0.0, 1.0);
-    let wind_strength = select(3.0, 1.5, kind == 2u || kind == 5u); // Snow/blizzard: less wind displacement
-    world_pos.x += u.wind_x * (1.0 - height_frac) * wind_strength;
-    world_pos.z += u.wind_z * (1.0 - height_frac) * wind_strength;
+    let height_frac = clamp((cam_rel.y + vol) / vol2, 0.0, 1.0);
+    let wind_strength = select(3.0, 1.5, kind == 2u || kind == 5u);
+    cam_rel.x += u.wind_x * (1.0 - height_frac) * wind_strength;
+    cam_rel.z += u.wind_z * (1.0 - height_frac) * wind_strength;
 
     var output: VertexOutput;
     output.uv = vertex.local_pos;
@@ -65,43 +80,39 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
         // === RAIN / SANDSTORM: Line particles ===
         let streak_dir = normalize(vec3<f32>(u.wind_x * 0.15, -1.0, u.wind_z * 0.15));
         let slen = u.streak_length + vertex.inst_speed * 0.04;
-        world_pos += streak_dir * vertex.local_pos.y * slen;
+        cam_rel += streak_dir * vertex.local_pos.y * slen;
 
-        let dist = distance(u.camera_pos, world_pos);
-        let dist_fade = 1.0 - smoothstep(u.volume_size * 0.3, u.volume_size * 0.9, dist);
+        let dist = length(cam_rel);
+        let dist_fade = 1.0 - smoothstep(vol * 0.3, vol * 0.9, dist);
         // Fade along the streak: bright at head (y=0), dimmer at tail (y=1)
         let streak_fade = 1.0 - vertex.local_pos.y * 0.5;
         output.alpha = streak_fade * dist_fade * u.intensity * u.transition_alpha;
 
     } else if kind == 2u || kind == 3u || kind == 5u {
         // === SNOW / HAIL / BLIZZARD: Billboard quad particles ===
-        // Tumble: snow has gentle wobble, hail has none, blizzard has strong
         let wobble_amp = select(0.0, select(0.8, 2.0, kind == 5u), kind == 2u || kind == 5u);
         let wobble_freq = select(0.0, select(1.5, 3.0, kind == 5u), kind == 2u || kind == 5u);
         let phase = vertex.inst_pos.x * 3.7 + vertex.inst_pos.z * 2.3;
-        world_pos.x += sin(u.time * wobble_freq + phase) * wobble_amp;
-        world_pos.z += cos(u.time * wobble_freq * 0.7 + phase * 1.3) * wobble_amp * 0.6;
+        cam_rel.x += sin(u.time * wobble_freq + phase) * wobble_amp;
+        cam_rel.z += cos(u.time * wobble_freq * 0.7 + phase * 1.3) * wobble_amp * 0.6;
 
-        // Billboard: expand quad in camera-facing plane
-        let cam_to_p = normalize(world_pos - u.camera_pos);
+        // Billboard: expand quad perpendicular to camera direction
+        let cam_to_p = normalize(cam_rel);
         let right = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), cam_to_p));
-        let up = normalize(cross(cam_to_p, right));
+        let up    = normalize(cross(cam_to_p, right));
         let scale = u.particle_scale;
-        world_pos += right * (vertex.local_pos.x - 0.5) * scale;
-        world_pos += up * (vertex.local_pos.y - 0.5) * scale;
+        cam_rel += right * (vertex.local_pos.x - 0.5) * scale;
+        cam_rel += up    * (vertex.local_pos.y - 0.5) * scale;
 
-        let dist = distance(u.camera_pos, world_pos);
-        let dist_fade = 1.0 - smoothstep(u.volume_size * 0.4, u.volume_size * 0.85, dist);
+        let dist = length(cam_rel);
+        let dist_fade = 1.0 - smoothstep(vol * 0.4, vol * 0.85, dist);
         output.alpha = dist_fade * u.intensity * 0.5 * u.transition_alpha;
 
     } else {
-        // Fallback: no particles
         output.alpha = 0.0;
     }
 
-    // Camera-relative transform: subtract camera_pos to avoid f32 jitter far from origin
-    let rel_pos = world_pos - u.camera_pos;
-    output.clip_position = u.view_proj * vec4<f32>(rel_pos, 1.0);
+    output.clip_position = u.view_proj * vec4<f32>(cam_rel, 1.0);
     return output;
 }
 

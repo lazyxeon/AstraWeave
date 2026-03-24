@@ -97,10 +97,10 @@ impl Default for OrbitCamera {
             pitch: std::f32::consts::PI / 6.0, // 30° pitch (shallower, see more horizon/sky)
             fov: 60.0,
             aspect: 16.0 / 9.0,
-            near: 0.01, // Very close near plane (10cm) to prevent clipping
-            far: 5000.0,
+            near: 0.1,
+            far: 50000.0,
             min_distance: 0.02, // Allow camera to get very close (2cm from focal point)
-            max_distance: 2000.0, // Allow zooming out to see full terrain
+            max_distance: 20000.0, // Allow zooming out to see full terrain from high altitude
             min_pitch: -std::f32::consts::PI / 2.0 + 0.01, // Prevent gimbal lock
             max_pitch: std::f32::consts::PI / 2.0 - 0.01, // Prevent gimbal lock
             zoom_target: 25.0,
@@ -469,6 +469,35 @@ impl OrbitCamera {
 
     pub fn extract_frustum(&self) -> Frustum {
         Frustum::from_view_projection(self.view_projection_matrix())
+    }
+
+    /// Unproject a screen pixel + GPU depth value to world space.
+    ///
+    /// The depth buffer was produced with `view_projection_matrix_relative()`,
+    /// so we invert that matrix and then add back `camera_pos` to get the
+    /// absolute world coordinate.
+    ///
+    /// * `px`, `py` — pixel coordinates in viewport (top-left origin)
+    /// * `vp_width`, `vp_height` — viewport dimensions in pixels
+    /// * `depth` — depth value from the GPU depth buffer, range [0, 1]
+    pub fn unproject_depth_to_world(
+        &self,
+        px: f32,
+        py: f32,
+        vp_width: f32,
+        vp_height: f32,
+        depth: f32,
+    ) -> Vec3 {
+        // Pixel center → NDC
+        let ndc_x = ((px + 0.5) / vp_width) * 2.0 - 1.0;
+        let ndc_y = 1.0 - ((py + 0.5) / vp_height) * 2.0;
+
+        // Invert the camera-relative view-projection
+        let inv_vp_rel = self.view_projection_matrix_relative().inverse();
+        let world_rel = inv_vp_rel.project_point3(Vec3::new(ndc_x, ndc_y, depth));
+
+        // Add camera position to go from camera-relative → absolute world
+        world_rel + self.position()
     }
 
     /// Validate and sanitize camera state after deserialization.

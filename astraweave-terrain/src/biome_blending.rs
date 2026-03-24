@@ -124,10 +124,10 @@ pub struct BiomeBlendConfig {
 impl Default for BiomeBlendConfig {
     fn default() -> Self {
         Self {
-            blend_radius: 64.0,
+            blend_radius: 32.0,
             falloff_power: 2.0,
             edge_noise_scale: 0.02,
-            edge_noise_amplitude: 16.0,
+            edge_noise_amplitude: 8.0,
             min_weight_threshold: 0.01,
             height_blend_enabled: true,
             height_blend_factor: 0.3,
@@ -207,6 +207,7 @@ impl BiomeBlender {
     /// Calculate blend weights for an entire heightmap chunk
     ///
     /// This is the main entry point for chunk-based terrain generation.
+    /// Includes a fast path when the entire chunk has a uniform biome.
     pub fn blend_chunk(
         &self,
         heightmap: &Heightmap,
@@ -215,8 +216,22 @@ impl BiomeBlender {
         world_offset: Vec2,
     ) -> Vec<PackedBiomeBlend> {
         let resolution = heightmap.resolution() as usize;
+        let total = resolution * resolution;
+
+        // Fast path: if the entire chunk has a single biome, skip blending entirely
+        if let Some(&first_biome) = biome_map.first() {
+            if biome_map.iter().all(|&b| b == first_biome) {
+                let uniform = PackedBiomeBlend {
+                    biome_ids: [first_biome as u8, 0, 0, 0],
+                    weights: [1.0, 0.0, 0.0, 0.0],
+                };
+                return vec![uniform; total];
+            }
+        }
+
         let cell_size = chunk_size / (resolution - 1) as f32;
-        let mut blend_weights = Vec::with_capacity(resolution * resolution);
+        let sample_radius = (self.config.blend_radius / cell_size).ceil() as i32;
+        let mut blend_weights = Vec::with_capacity(total);
 
         for z in 0..resolution {
             for x in 0..resolution {
@@ -224,18 +239,52 @@ impl BiomeBlender {
                 let world_pos = world_offset + local_pos;
                 let height = heightmap.get_height(x as u32, z as u32);
 
-                // Gather neighbor biomes in a radius
-                let neighbors = self.gather_neighbor_biomes(
-                    x,
-                    z,
-                    resolution,
-                    cell_size,
-                    world_offset,
-                    biome_map,
-                );
+                // Gather neighbor biomes in a radius (inlined for perf)
+                let mut biome_weights: std::collections::HashMap<BiomeType, f32> =
+                    std::collections::HashMap::new();
 
-                let blend = self.calculate_blend_weights(world_pos, height, &neighbors);
-                blend_weights.push(blend);
+                for dz in -sample_radius..=sample_radius {
+                    for dx in -sample_radius..=sample_radius {
+                        let nx = x as i32 + dx;
+                        let nz = z as i32 + dz;
+
+                        if nx >= 0
+                            && nx < resolution as i32
+                            && nz >= 0
+                            && nz < resolution as i32
+                        {
+                            let idx = nz as usize * resolution + nx as usize;
+                            if let Some(&biome) = biome_map.get(idx) {
+                                let neighbor_pos = world_offset
+                                    + Vec2::new(nx as f32 * cell_size, nz as f32 * cell_size);
+                                let distance = (world_pos - neighbor_pos).length();
+                                let noise_offset = self.sample_edge_noise(world_pos);
+                                let effective_distance = (distance + noise_offset).max(0.0);
+
+                                if effective_distance < self.config.blend_radius {
+                                    let normalized_dist =
+                                        effective_distance / self.config.blend_radius;
+                                    let base_weight =
+                                        (1.0 - normalized_dist).powf(self.config.falloff_power);
+                                    let weight = if self.config.height_blend_enabled {
+                                        self.apply_height_modification(base_weight, height, biome)
+                                    } else {
+                                        base_weight
+                                    };
+                                    if weight > self.config.min_weight_threshold {
+                                        *biome_weights.entry(biome).or_insert(0.0) += weight;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let weights: Vec<BiomeWeight> = biome_weights
+                    .into_iter()
+                    .map(|(biome, weight)| BiomeWeight { biome, weight })
+                    .collect();
+                blend_weights.push(PackedBiomeBlend::from_weights(&weights));
             }
         }
 
@@ -243,6 +292,7 @@ impl BiomeBlender {
     }
 
     /// Gather biome samples from neighboring cells
+    #[allow(dead_code)]
     fn gather_neighbor_biomes(
         &self,
         center_x: usize,
@@ -407,11 +457,13 @@ mod tests {
 
         let blender = BiomeBlender::new(config, 12345);
 
-        // Test that mountain biome is preferred at high elevations
+        // Test that mountain biome is preferred at high elevations.
+        // Keep neighbors close to center so they are well within blend_radius
+        // even after edge noise displacement.
         let high_pos = Vec2::ZERO;
         let high_neighbors = vec![
-            (Vec2::new(10.0, 0.0), BiomeType::Grassland),
-            (Vec2::new(10.0, 10.0), BiomeType::Mountain),
+            (Vec2::new(2.0, 0.0), BiomeType::Grassland),
+            (Vec2::new(2.0, 2.0), BiomeType::Mountain),
         ];
 
         let high_blend = blender.calculate_blend_weights(high_pos, 150.0, &high_neighbors);

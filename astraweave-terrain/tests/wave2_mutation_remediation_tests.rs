@@ -920,10 +920,10 @@ fn splat_generator_steep_is_rock() {
 #[test]
 fn biome_blend_config_defaults() {
     let cfg = BiomeBlendConfig::default();
-    assert!((cfg.blend_radius - 64.0).abs() < 1e-4);
+    assert!((cfg.blend_radius - 32.0).abs() < 1e-4);
     assert!((cfg.falloff_power - 2.0).abs() < 1e-4);
     assert!((cfg.edge_noise_scale - 0.02).abs() < 1e-4);
-    assert!((cfg.edge_noise_amplitude - 16.0).abs() < 1e-4);
+    assert!((cfg.edge_noise_amplitude - 8.0).abs() < 1e-4);
     assert!((cfg.min_weight_threshold - 0.01).abs() < 1e-4);
     assert!(cfg.height_blend_enabled);
     assert!((cfg.height_blend_factor - 0.3).abs() < 1e-4);

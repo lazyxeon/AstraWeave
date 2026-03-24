@@ -31,8 +31,8 @@ struct VertexInput {
     @location(2) uv: vec2<f32>,
     @location(3) biome_weights_0: vec4<f32>,
     @location(4) biome_weights_1: vec4<f32>,
-    @location(5) splat_weights_0: vec4<f32>,
-    @location(6) splat_weights_1: vec4<f32>,
+    @location(5) material_ids: vec4<f32>,
+    @location(6) material_weights: vec4<f32>,
 }
 
 struct VertexOutput {
@@ -42,8 +42,8 @@ struct VertexOutput {
     @location(2) uv: vec2<f32>,
     @location(3) biome_weights_0: vec4<f32>,
     @location(4) biome_weights_1: vec4<f32>,
-    @location(5) splat_weights_0: vec4<f32>,
-    @location(6) splat_weights_1: vec4<f32>,
+    @location(5) material_ids: vec4<f32>,
+    @location(6) material_weights: vec4<f32>,
 }
 
 @group(0) @binding(0)
@@ -111,15 +111,11 @@ fn triplanar_sample_albedo(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: i32)
     let uv_xz = pos.xz * scale;
     let uv_xy = pos.xy * scale;
     let uv_yz = pos.yz * scale;
-    // Rotate each projection's UV to break tiling repetition
-    let r_xz = rotate_uv(uv_xz, floor(uv_xz));
-    let r_xy = rotate_uv(uv_xy, floor(uv_xy));
-    let r_yz = rotate_uv(uv_yz, floor(uv_yz));
-    // Mip bias: sharper textures at distance for color vibrancy
-    let bias = -1.0;
-    let t_xz = textureSampleBias(biome_textures, biome_sampler, r_xz, layer, bias).rgb;
-    let t_xy = textureSampleBias(biome_textures, biome_sampler, r_xy, layer, bias).rgb;
-    let t_yz = textureSampleBias(biome_textures, biome_sampler, r_yz, layer, bias).rgb;
+    // Mip bias: mild sharpening (reduced for 1024px textures)
+    let bias = -0.5;
+    let t_xz = textureSampleBias(biome_textures, biome_sampler, uv_xz, layer, bias).rgb;
+    let t_xy = textureSampleBias(biome_textures, biome_sampler, uv_xy, layer, bias).rgb;
+    let t_yz = textureSampleBias(biome_textures, biome_sampler, uv_yz, layer, bias).rgb;
     return t_xz * w.y + t_xy * w.z + t_yz * w.x;
 }
 
@@ -128,13 +124,10 @@ fn triplanar_sample_normal_raw(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: 
     let uv_xz = pos.xz * scale;
     let uv_xy = pos.xy * scale;
     let uv_yz = pos.yz * scale;
-    let r_xz = rotate_uv(uv_xz, floor(uv_xz));
-    let r_xy = rotate_uv(uv_xy, floor(uv_xy));
-    let r_yz = rotate_uv(uv_yz, floor(uv_yz));
-    let bias = -1.0;
-    let t_xz = textureSampleBias(biome_normals, biome_sampler, r_xz, layer, bias).rgb;
-    let t_xy = textureSampleBias(biome_normals, biome_sampler, r_xy, layer, bias).rgb;
-    let t_yz = textureSampleBias(biome_normals, biome_sampler, r_yz, layer, bias).rgb;
+    let bias = -0.5;
+    let t_xz = textureSampleBias(biome_normals, biome_sampler, uv_xz, layer, bias).rgb;
+    let t_xy = textureSampleBias(biome_normals, biome_sampler, uv_xy, layer, bias).rgb;
+    let t_yz = textureSampleBias(biome_normals, biome_sampler, uv_yz, layer, bias).rgb;
     return t_xz * w.y + t_xy * w.z + t_yz * w.x;
 }
 
@@ -143,14 +136,10 @@ fn triplanar_sample_mra(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: i32) ->
     let uv_xz = pos.xz * scale;
     let uv_xy = pos.xy * scale;
     let uv_yz = pos.yz * scale;
-    // Rotate each projection's UV to break tiling repetition (matches albedo/normal)
-    let r_xz = rotate_uv(uv_xz, floor(uv_xz));
-    let r_xy = rotate_uv(uv_xy, floor(uv_xy));
-    let r_yz = rotate_uv(uv_yz, floor(uv_yz));
-    let bias = -1.0;
-    let t_xz = textureSampleBias(biome_mra, biome_sampler, r_xz, layer, bias).rgb;
-    let t_xy = textureSampleBias(biome_mra, biome_sampler, r_xy, layer, bias).rgb;
-    let t_yz = textureSampleBias(biome_mra, biome_sampler, r_yz, layer, bias).rgb;
+    let bias = -0.5;
+    let t_xz = textureSampleBias(biome_mra, biome_sampler, uv_xz, layer, bias).rgb;
+    let t_xy = textureSampleBias(biome_mra, biome_sampler, uv_xy, layer, bias).rgb;
+    let t_yz = textureSampleBias(biome_mra, biome_sampler, uv_yz, layer, bias).rgb;
     return t_xz * w.y + t_xy * w.z + t_yz * w.x;
 }
 
@@ -195,49 +184,65 @@ fn dominant_biome_layer(weights_0: vec4<f32>, weights_1: vec4<f32>) -> i32 {
     if weights_1.z > best_weight { best_weight = weights_1.z; best_index = 6; }
     if weights_1.w > best_weight { best_weight = weights_1.w; best_index = 7; }
 
-    return best_index;
+    return remap_biome_layer(best_index);
 }
 
-fn dominant_splat_layer(weights_0: vec4<f32>, weights_1: vec4<f32>) -> i32 {
-    var best_index = 0i;
-    var best_weight = weights_0.x;
-
-    if weights_0.y > best_weight { best_weight = weights_0.y; best_index = 1; }
-    if weights_0.z > best_weight { best_weight = weights_0.z; best_index = 2; }
-    if weights_0.w > best_weight { best_weight = weights_0.w; best_index = 3; }
-    if weights_1.x > best_weight { best_weight = weights_1.x; best_index = 4; }
-    if weights_1.y > best_weight { best_weight = weights_1.y; best_index = 5; }
-    if weights_1.z > best_weight { best_weight = weights_1.z; best_index = 6; }
-    if weights_1.w > best_weight { best_weight = weights_1.w; best_index = 7; }
-
-    return best_index;
+// Remap biome layer indices: Beach (6) shares sand texture at layer 1
+fn remap_biome_layer(idx: i32) -> i32 {
+    if idx == 6 { return 1; }
+    return idx;
 }
 
-fn splat_layer_to_material(splat_layer: i32, biome_weights_0: vec4<f32>, biome_weights_1: vec4<f32>) -> i32 {
-    // Splat weights are already indexed by material_id from the CPU-side SplatRule system.
-    // No remapping needed — the splat layer IS the material index.
-    return splat_layer;
+fn dominant_material_layer(material_ids: vec4<f32>, material_weights: vec4<f32>) -> i32 {
+    var best_index = 0;
+    var best_weight = material_weights.x;
+
+    if material_weights.y > best_weight { best_weight = material_weights.y; best_index = 1; }
+    if material_weights.z > best_weight { best_weight = material_weights.z; best_index = 2; }
+    if material_weights.w > best_weight { best_weight = material_weights.w; best_index = 3; }
+
+    switch best_index {
+        case 0: { return i32(material_ids.x); }
+        case 1: { return i32(material_ids.y); }
+        case 2: { return i32(material_ids.z); }
+        case 3: { return i32(material_ids.w); }
+        default: { return i32(material_ids.x); }
+    }
 }
 
 fn luminance(c: vec3<f32>) -> f32 {
     return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
 }
 
+fn material_weights_max(w: vec4<f32>) -> f32 {
+    return max(max(w.x, w.y), max(w.z, w.w));
+}
+
 fn material_params(layer: i32) -> vec4<f32> {
     // (macro_scale, detail_scale, normal_strength, detail_mix)
-    // Normal strength reduced from 1.2-2.2 to 0.4-0.8 to prevent excessive
-    // self-shadowing that made terrain appear near-black.
     switch layer {
-        case 0: { return vec4<f32>(0.13, 0.42, 0.4, 0.42); } // grass — wider macro scale, softer normals
+        case 0: { return vec4<f32>(0.13, 0.42, 0.4, 0.42); }  // grass
         case 1: { return vec4<f32>(0.085, 0.28, 0.4, 0.22); } // sand
         case 2: { return vec4<f32>(0.110, 0.40, 0.7, 0.46); } // forest floor
         case 3: { return vec4<f32>(0.072, 0.22, 0.8, 0.24); } // mountain rock
         case 4: { return vec4<f32>(0.068, 0.21, 0.4, 0.18); } // snow
         case 5: { return vec4<f32>(0.102, 0.32, 0.6, 0.34); } // mud
-        case 6: { return vec4<f32>(0.090, 0.30, 0.4, 0.24); } // beach sand
-        case 7: { return vec4<f32>(0.080, 0.26, 0.6, 0.28); } // river stone
+        case 6: { return vec4<f32>(0.085, 0.28, 0.6, 0.30); } // wood planks
+        case 7: { return vec4<f32>(0.080, 0.26, 0.6, 0.28); } // stone
         case 8: { return vec4<f32>(0.074, 0.20, 0.8, 0.24); } // rock slate
         case 9: { return vec4<f32>(0.102, 0.34, 0.55, 0.36); } // dirt
+        case 10: { return vec4<f32>(0.080, 0.26, 0.7, 0.28); } // cobblestone
+        case 11: { return vec4<f32>(0.120, 0.40, 0.3, 0.35); } // cloth
+        case 12: { return vec4<f32>(0.100, 0.35, 0.5, 0.30); } // default
+        case 13: { return vec4<f32>(0.090, 0.30, 0.6, 0.32); } // gravel
+        case 14: { return vec4<f32>(0.070, 0.22, 0.3, 0.20); } // ice
+        case 15: { return vec4<f32>(0.075, 0.24, 0.8, 0.26); } // metal rusted
+        case 16: { return vec4<f32>(0.110, 0.38, 0.5, 0.40); } // moss
+        case 17: { return vec4<f32>(0.095, 0.32, 0.4, 0.28); } // plaster
+        case 18: { return vec4<f32>(0.078, 0.24, 0.7, 0.28); } // rock lichen
+        case 19: { return vec4<f32>(0.085, 0.28, 0.6, 0.30); } // roof tile
+        case 20: { return vec4<f32>(0.090, 0.30, 0.7, 0.34); } // tree bark
+        case 21: { return vec4<f32>(0.120, 0.42, 0.4, 0.38); } // tree leaves
         default: { return vec4<f32>(0.100, 0.35, 0.6, 0.30); }
     }
 }
@@ -339,7 +344,6 @@ fn biome_weight(w0: vec4<f32>, w1: vec4<f32>, idx: i32) -> f32 {
 
 fn blend_biome_materials(pos: vec3<f32>, n: vec3<f32>, weights_0: vec4<f32>, weights_1: vec4<f32>) -> Material {
     // Performance: only sample the top 2 biome layers instead of all 8.
-    // Reduces texture fetches from up to 120 to ~30, giving 3-4x speedup.
     var best_idx = 0i;
     var best_w = weights_0.x;
     var second_idx = -1i;
@@ -353,6 +357,12 @@ fn blend_biome_materials(pos: vec3<f32>, n: vec3<f32>, weights_0: vec4<f32>, wei
     if weights_1.y > best_w { second_w = best_w; second_idx = best_idx; best_w = weights_1.y; best_idx = 5; } else if weights_1.y > second_w { second_w = weights_1.y; second_idx = 5; }
     if weights_1.z > best_w { second_w = best_w; second_idx = best_idx; best_w = weights_1.z; best_idx = 6; } else if weights_1.z > second_w { second_w = weights_1.z; second_idx = 6; }
     if weights_1.w > best_w { second_w = best_w; second_idx = best_idx; best_w = weights_1.w; best_idx = 7; } else if weights_1.w > second_w { second_w = weights_1.w; second_idx = 7; }
+
+    // Remap biome indices to texture layers (Beach→Sand)
+    best_idx = remap_biome_layer(best_idx);
+    if second_idx >= 0 {
+        second_idx = remap_biome_layer(second_idx);
+    }
 
     if best_w < 0.0001 {
         return sample_biome_material(pos, n, 0);
@@ -378,102 +388,71 @@ fn blend_biome_materials(pos: vec3<f32>, n: vec3<f32>, weights_0: vec4<f32>, wei
     return result;
 }
 
-fn blend_local_splat_materials(
+// ─── Material-ID Slot Blending (replaces old channel-based splat) ──────────
+// Blends up to 4 arbitrary material layers per vertex using explicit
+// material_ids (layer index 0-21) and material_weights (sum to 1.0).
+
+fn blend_material_slots(
     pos: vec3<f32>,
     n: vec3<f32>,
-    biome_weights_0: vec4<f32>,
-    biome_weights_1: vec4<f32>,
-    splat_weights_0: vec4<f32>,
-    splat_weights_1: vec4<f32>,
+    material_ids: vec4<f32>,
+    material_weights: vec4<f32>,
 ) -> Material {
-    let vegetated_affinity = biome_weights_0.x + biome_weights_0.z + biome_weights_1.y;
-    let sandy_affinity = biome_weights_0.y + biome_weights_1.z;
-    let alpine_affinity = biome_weights_0.w + biome_weights_1.x;
-    let wet_affinity = biome_weights_1.y + biome_weights_1.w;
-    let breakup_a = noise2d(pos.xz * 0.024 + vec2<f32>(4.1, 9.7));
-    let breakup_b = noise2d(pos.xz * 0.051 + vec2<f32>(17.0, 3.4));
-    let breakup_c = noise2d(pos.xz * 0.013 + vec2<f32>(27.3, 15.8));
-
-    var grass_w = splat_weights_0.x * clamp(0.85 * vegetated_affinity + 0.10 * (1.0 - sandy_affinity), 0.0, 1.0) * mix(0.88, 1.12, breakup_a);
-    var rock_w = splat_weights_0.y * clamp(0.45 + 0.55 * alpine_affinity + 0.25 * sandy_affinity + 0.15 * wet_affinity, 0.0, 1.0) * mix(0.82, 1.22, breakup_b);
-    var sand_w = splat_weights_0.z * clamp(0.15 + 0.85 * sandy_affinity + 0.25 * wet_affinity, 0.0, 1.0) * mix(0.84, 1.16, breakup_c);
-    var snow_w = splat_weights_0.w * clamp(alpine_affinity, 0.0, 1.0) * mix(0.90, 1.12, breakup_a);
-    var dirt_w = splat_weights_1.x * clamp(0.75 * vegetated_affinity + 0.35 * alpine_affinity + 0.10 * sandy_affinity, 0.0, 1.0) * mix(0.86, 1.18, breakup_b);
-    var mud_w = splat_weights_1.y * clamp(0.90 * wet_affinity + 0.20 * vegetated_affinity, 0.0, 1.0) * mix(0.84, 1.20, breakup_c);
-
-    let total_weight = grass_w + rock_w + sand_w + snow_w + dirt_w + mud_w;
-    if total_weight < 0.0001 {
-        return sample_biome_material(pos, n, 0);
-    }
-
-    let inv_total = 1.0 / total_weight;
-    grass_w *= inv_total;
-    rock_w *= inv_total;
-    sand_w *= inv_total;
-    snow_w *= inv_total;
-    dirt_w *= inv_total;
-    mud_w *= inv_total;
-
     var albedo = vec3<f32>(0.0);
     var roughness = 0.0;
     var metallic = 0.0;
     var ao = 0.0;
     var normal_sum = vec3<f32>(0.0);
     var height_sum = 0.0;
+    var total_weight = 0.0;
 
-    if grass_w > 0.001 {
-        let mat = sample_biome_material(pos, n, 0);
-        albedo += mat.albedo * grass_w;
-        roughness += mat.roughness * grass_w;
-        metallic += mat.metallic * grass_w;
-        ao += mat.ao * grass_w;
-        normal_sum += mat.normal * grass_w;
-        height_sum += mat.height_proxy * grass_w;
+    if material_weights.x > 0.001 {
+        let mat = sample_biome_material(pos, n, i32(material_ids.x));
+        let w = material_weights.x;
+        albedo += mat.albedo * w;
+        roughness += mat.roughness * w;
+        metallic += mat.metallic * w;
+        ao += mat.ao * w;
+        normal_sum += mat.normal * w;
+        height_sum += mat.height_proxy * w;
+        total_weight += w;
     }
-    if rock_w > 0.001 {
-        let mat = sample_biome_material(pos, n, 8);
-        albedo += mat.albedo * rock_w;
-        roughness += mat.roughness * rock_w;
-        metallic += mat.metallic * rock_w;
-        ao += mat.ao * rock_w;
-        normal_sum += mat.normal * rock_w;
-        height_sum += mat.height_proxy * rock_w;
+    if material_weights.y > 0.001 {
+        let mat = sample_biome_material(pos, n, i32(material_ids.y));
+        let w = material_weights.y;
+        albedo += mat.albedo * w;
+        roughness += mat.roughness * w;
+        metallic += mat.metallic * w;
+        ao += mat.ao * w;
+        normal_sum += mat.normal * w;
+        height_sum += mat.height_proxy * w;
+        total_weight += w;
     }
-    if sand_w > 0.001 {
-        let mat = sample_biome_material(pos, n, 1);
-        albedo += mat.albedo * sand_w;
-        roughness += mat.roughness * sand_w;
-        metallic += mat.metallic * sand_w;
-        ao += mat.ao * sand_w;
-        normal_sum += mat.normal * sand_w;
-        height_sum += mat.height_proxy * sand_w;
+    if material_weights.z > 0.001 {
+        let mat = sample_biome_material(pos, n, i32(material_ids.z));
+        let w = material_weights.z;
+        albedo += mat.albedo * w;
+        roughness += mat.roughness * w;
+        metallic += mat.metallic * w;
+        ao += mat.ao * w;
+        normal_sum += mat.normal * w;
+        height_sum += mat.height_proxy * w;
+        total_weight += w;
     }
-    if snow_w > 0.001 {
-        let mat = sample_biome_material(pos, n, 4);
-        albedo += mat.albedo * snow_w;
-        roughness += mat.roughness * snow_w;
-        metallic += mat.metallic * snow_w;
-        ao += mat.ao * snow_w;
-        normal_sum += mat.normal * snow_w;
-        height_sum += mat.height_proxy * snow_w;
+    if material_weights.w > 0.001 {
+        let mat = sample_biome_material(pos, n, i32(material_ids.w));
+        let w = material_weights.w;
+        albedo += mat.albedo * w;
+        roughness += mat.roughness * w;
+        metallic += mat.metallic * w;
+        ao += mat.ao * w;
+        normal_sum += mat.normal * w;
+        height_sum += mat.height_proxy * w;
+        total_weight += w;
     }
-    if dirt_w > 0.001 {
-        let mat = sample_biome_material(pos, n, 9);
-        albedo += mat.albedo * dirt_w;
-        roughness += mat.roughness * dirt_w;
-        metallic += mat.metallic * dirt_w;
-        ao += mat.ao * dirt_w;
-        normal_sum += mat.normal * dirt_w;
-        height_sum += mat.height_proxy * dirt_w;
-    }
-    if mud_w > 0.001 {
-        let mat = sample_biome_material(pos, n, 5);
-        albedo += mat.albedo * mud_w;
-        roughness += mat.roughness * mud_w;
-        metallic += mat.metallic * mud_w;
-        ao += mat.ao * mud_w;
-        normal_sum += mat.normal * mud_w;
-        height_sum += mat.height_proxy * mud_w;
+
+    if total_weight < 0.0001 {
+        return sample_biome_material(pos, n, 0);
     }
 
     var result: Material;
@@ -587,8 +566,8 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
     output.uv = vertex.uv;
     output.biome_weights_0 = vertex.biome_weights_0;
     output.biome_weights_1 = vertex.biome_weights_1;
-    output.splat_weights_0 = vertex.splat_weights_0;
-    output.splat_weights_1 = vertex.splat_weights_1;
+    output.material_ids = vertex.material_ids;
+    output.material_weights = vertex.material_weights;
     return output;
 }
 
@@ -603,8 +582,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let lod_noise = noise2d(pos.xz * 0.04 + vec2<f32>(5.3, 11.7));
     let perturbed_dist = cam_dist + (lod_noise - 0.5) * 30.0;
     // Smooth LOD blend factors — wide transition zones prevent visible rings
-    let near_blend = 1.0 - smoothstep(40.0, 120.0, perturbed_dist);  // 1 close, 0 far
-    let mid_blend  = 1.0 - smoothstep(100.0, 250.0, perturbed_dist); // 1 close, 0 far
+    let near_blend = 1.0 - smoothstep(400.0, 1200.0, perturbed_dist);  // 1 close, 0 far
+    let mid_blend  = 1.0 - smoothstep(1000.0, 2500.0, perturbed_dist); // 1 close, 0 far
 
     // Unlit: quick sample at macro scale only
     if uniforms.shading_mode == 1u {
@@ -627,32 +606,29 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         biome_mat = biome_far;
     }
 
-    let dominant_splat_idx = splat_layer_to_material(
-        dominant_splat_layer(in.splat_weights_0, in.splat_weights_1),
-        in.biome_weights_0,
-        in.biome_weights_1,
-    );
+    let dominant_mat_idx = dominant_material_layer(in.material_ids, in.material_weights);
+    let max_mat_w = material_weights_max(in.material_weights);
     var splat_mat: Material;
-    if mid_blend > 0.01 {
-        let splat_mid = sample_biome_material(pos, n, dominant_splat_idx);
-        if near_blend > 0.01 {
-            let splat_near = blend_local_splat_materials(
-                pos,
-                n,
-                in.biome_weights_0,
-                in.biome_weights_1,
-                in.splat_weights_0,
-                in.splat_weights_1,
-            );
+    // Always compute splat_mat so painted materials are visible at every distance
+    if near_blend > 0.01 {
+        let splat_near = blend_material_slots(
+            pos,
+            n,
+            in.material_ids,
+            in.material_weights,
+        );
+        if mid_blend > 0.01 {
+            let splat_mid = sample_biome_material(pos, n, dominant_mat_idx);
             splat_mat = mix_material(splat_mid, splat_near, near_blend);
         } else {
-            splat_mat = splat_mid;
+            splat_mat = splat_near;
         }
     } else {
-        splat_mat = biome_mat;
+        splat_mat = sample_biome_material(pos, n, dominant_mat_idx);
     }
+    // Compute local breakup from material weight diversity
     let local_breakup = clamp(
-        in.splat_weights_0.y + in.splat_weights_0.z + in.splat_weights_0.w + in.splat_weights_1.x + in.splat_weights_1.y,
+        1.0 - max_mat_w,
         0.0,
         1.0,
     );
@@ -660,9 +636,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let height_factor = smoothstep(-8.0, 120.0, pos.y);
     let height_transition = smoothstep(-0.18, 0.22, splat_mat.height_proxy - biome_mat.height_proxy);
     let base_local_mix = clamp(0.34 + 0.28 * local_breakup + 0.18 * transition_noise + 0.10 * height_factor, 0.26, 0.86);
-    // Smooth tier_mix — gradual falloff, no abrupt drops
+    // tier_mix: ensure material detail persists at distance
     let tier_mix = clamp(near_blend + (1.0 - near_blend) * mid_blend * 0.5, 0.0, 1.0);
-    let local_mix = clamp((base_local_mix * 0.82 + height_transition * 0.18) * tier_mix, 0.0, 0.88);
+    var local_mix = clamp((base_local_mix * 0.82 + height_transition * 0.18) * max(tier_mix, 0.3), 0.0, 1.0);
+    // Paint boost: when multiple material slots are active (painted), increase blend
+    // Detect painting by weight diversity: unpainted has max_w≈1.0, painted has max_w<0.95
+    let paint_diversity = 1.0 - max_mat_w; // 0 = single material, >0 = blended/painted
+    let paint_boost = smoothstep(0.02, 0.25, paint_diversity);
+    local_mix = mix(local_mix, max(local_mix, 0.85), paint_boost);
 
     var mat: Material;
     mat.albedo = mix(biome_mat.albedo, splat_mat.albedo, local_mix);
@@ -673,7 +654,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     mat.height_proxy = mix(biome_mat.height_proxy, splat_mat.height_proxy, local_mix);
 
     // Slope-based rock blending (smoothly faded at distance, noise-perturbed)
-    let slope_blend_factor = 1.0 - smoothstep(120.0, 280.0, perturbed_dist);
+    let slope_blend_factor = 1.0 - smoothstep(1200.0, 2800.0, perturbed_dist);
     if slope_blend_factor > 0.01 {
         let slope_mat = apply_slope_blend(mat, pos, n);
         mat.albedo = mix(mat.albedo, slope_mat.albedo, slope_blend_factor);

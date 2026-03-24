@@ -417,10 +417,10 @@ impl BiomeConfig {
             name: "Arid Desert".to_string(),
             description: "Sandy dunes with sparse vegetation and extreme temperatures".to_string(),
             conditions: BiomeConditions {
-                height_range: (0.0, 30.0),
+                height_range: (0.0, 120.0),
                 temperature_range: (0.7, 1.0),
                 moisture_range: (0.0, 0.3),
-                max_slope: 20.0,
+                max_slope: 35.0,
             },
             sky: BiomeSky {
                 horizon_color: Vec3::new(0.9, 0.7, 0.5),

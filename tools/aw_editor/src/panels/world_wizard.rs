@@ -310,14 +310,12 @@ impl WorldWizard {
                 egui::ScrollArea::vertical()
                     .max_height(480.0)
                     .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        match self.step {
-                            WizardStep::Template => self.page_template(ui),
-                            WizardStep::Terrain => self.page_terrain(ui),
-                            WizardStep::Environment => self.page_environment(ui),
-                            WizardStep::Populate => self.page_populate(ui),
-                            WizardStep::Review => self.page_review(ui),
-                        }
+                    .show(ui, |ui| match self.step {
+                        WizardStep::Template => self.page_template(ui),
+                        WizardStep::Terrain => self.page_terrain(ui),
+                        WizardStep::Environment => self.page_environment(ui),
+                        WizardStep::Populate => self.page_populate(ui),
+                        WizardStep::Review => self.page_review(ui),
                     });
 
                 ui.add_space(10.0);

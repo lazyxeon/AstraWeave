@@ -186,10 +186,10 @@ fn dominant_biome_highest_weight_wins() {
 #[test]
 fn blend_config_defaults_exact() {
     let c = BiomeBlendConfig::default();
-    assert_eq!(c.blend_radius, 64.0);
+    assert_eq!(c.blend_radius, 32.0);
     assert_eq!(c.falloff_power, 2.0);
     assert_eq!(c.edge_noise_scale, 0.02);
-    assert_eq!(c.edge_noise_amplitude, 16.0);
+    assert_eq!(c.edge_noise_amplitude, 8.0);
     assert_eq!(c.min_weight_threshold, 0.01);
     assert!(c.height_blend_enabled);
     assert_eq!(c.height_blend_factor, 0.3);
@@ -590,19 +590,19 @@ fn edge_noise_deterministic_same_seed() {
 #[test]
 fn edge_noise_different_seeds_differ() {
     let config = BiomeBlendConfig {
-        edge_noise_amplitude: 20.0, // Strong noise
+        edge_noise_amplitude: 5.0, // Moderate noise within blend_radius=32
         ..Default::default()
     };
     let blender1 = BiomeBlender::new(config.clone(), 111);
     let blender2 = BiomeBlender::new(config, 999);
 
     let neighbors = vec![
-        (Vec2::new(30.0, 0.0), BiomeType::Forest),
-        (Vec2::new(-30.0, 0.0), BiomeType::Desert),
+        (Vec2::new(57.0, 73.0), BiomeType::Forest),   // dist=2 from query
+        (Vec2::new(42.0, 73.0), BiomeType::Desert),    // dist=13 from query (near edge)
     ];
 
-    let r1 = blender1.calculate_blend_weights(Vec2::new(5.0, 3.0), 10.0, &neighbors);
-    let r2 = blender2.calculate_blend_weights(Vec2::new(5.0, 3.0), 10.0, &neighbors);
+    let r1 = blender1.calculate_blend_weights(Vec2::new(55.0, 73.0), 10.0, &neighbors);
+    let r2 = blender2.calculate_blend_weights(Vec2::new(55.0, 73.0), 10.0, &neighbors);
 
     // At least one weight should differ
     let any_differ = (0..4).any(|i| (r1.weights[i] - r2.weights[i]).abs() > 0.001);

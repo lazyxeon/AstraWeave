@@ -1336,6 +1336,87 @@ impl EditorCommand for PrefabRevertOverridesCommand {
 }
 
 // ============================================================================
+// Terrain Brush Undo/Redo
+// ============================================================================
+
+/// Action pushed by TerrainBrushCommand for the main loop to apply.
+#[derive(Debug, Clone)]
+pub enum TerrainUndoAction {
+    /// Apply these heightmap values (ChunkId → heights vec)
+    ApplyHeights(Vec<(astraweave_terrain::ChunkId, Vec<f32>)>),
+}
+
+/// Shared side-channel for terrain undo commands to push actions to the main loop.
+pub type TerrainUndoQueue = std::sync::Arc<std::sync::Mutex<Vec<TerrainUndoAction>>>;
+
+/// Create a new terrain undo action queue.
+pub fn new_terrain_undo_queue() -> TerrainUndoQueue {
+    std::sync::Arc::new(std::sync::Mutex::new(Vec::new()))
+}
+
+/// Undo/redo command for a terrain brush stroke.
+///
+/// Stores pre-stroke and post-stroke heightmap data for each affected chunk.
+/// On undo: pushes pre-heights to the side-channel queue.
+/// On redo: pushes post-heights to the side-channel queue.
+/// The main loop drains this queue and applies heights to `TerrainState`.
+#[derive(Debug)]
+pub struct TerrainBrushCommand {
+    /// (ChunkId, pre_heights, post_heights) for each modified chunk
+    chunk_deltas: Vec<(astraweave_terrain::ChunkId, Vec<f32>, Vec<f32>)>,
+    /// Side-channel to push actions for the main loop
+    undo_queue: TerrainUndoQueue,
+    /// Human-readable description
+    description: String,
+}
+
+impl TerrainBrushCommand {
+    pub fn new(
+        chunk_deltas: Vec<(astraweave_terrain::ChunkId, Vec<f32>, Vec<f32>)>,
+        undo_queue: TerrainUndoQueue,
+        brush_name: &str,
+    ) -> Box<dyn EditorCommand> {
+        Box::new(Self {
+            chunk_deltas,
+            undo_queue,
+            description: format!("Terrain {brush_name}"),
+        })
+    }
+}
+
+impl EditorCommand for TerrainBrushCommand {
+    fn execute(&mut self, _world: &mut World) -> Result<()> {
+        // Redo: apply post-stroke heights
+        let heights: Vec<_> = self
+            .chunk_deltas
+            .iter()
+            .map(|(id, _pre, post)| (*id, post.clone()))
+            .collect();
+        if let Ok(mut queue) = self.undo_queue.lock() {
+            queue.push(TerrainUndoAction::ApplyHeights(heights));
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, _world: &mut World) -> Result<()> {
+        // Undo: apply pre-stroke heights
+        let heights: Vec<_> = self
+            .chunk_deltas
+            .iter()
+            .map(|(id, pre, _post)| (*id, pre.clone()))
+            .collect();
+        if let Ok(mut queue) = self.undo_queue.lock() {
+            queue.push(TerrainUndoAction::ApplyHeights(heights));
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        self.description.clone()
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

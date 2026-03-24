@@ -32,6 +32,6 @@
     "grid_enabled": true,
     "angle_enabled": true
   },
-  "layout_json": "{\n  \"panels\": [\n    \"Console\",\n    \"Profiler\",\n    \"SceneStats\",\n    \"Performance\",\n    \"Hierarchy\",\n    \"Viewport\"\n  ]\n}",
+  "layout_json": "{\n  \"panels\": [\n    \"Console\",\n    \"Profiler\",\n    \"SceneStats\",\n    \"Performance\",\n    \"ProjectSettings\",\n    \"Hierarchy\",\n    \"Viewport\"\n  ]\n}",
   "tutorial_completed": true
 }

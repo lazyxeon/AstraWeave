@@ -17,8 +17,10 @@ pub struct TerrainVertex {
     pub uv: [f32; 2],
     pub biome_weights_0: [f32; 4],
     pub biome_weights_1: [f32; 4],
-    pub splat_weights_0: [f32; 4],
-    pub splat_weights_1: [f32; 4],
+    /// Material texture layer indices (0-21) packed as f32 for vertex attr compat
+    pub material_ids: [f32; 4],
+    /// Blend weights for each material slot (sum to 1.0)
+    pub material_weights: [f32; 4],
 }
 
 #[repr(C)]
@@ -91,13 +93,65 @@ impl Default for TerrainLightingParams {
 
 // ─── PBR Texture Loading ─────────────────────────────────────────────────────
 
-const BIOME_TEX_SIZE: u32 = 2048;
+const BIOME_TEX_SIZE: u32 = 1024;
 const BIOME_COUNT: u32 = 8;
-const MATERIAL_LAYER_COUNT: u32 = 10;
+const MATERIAL_LAYER_COUNT: u32 = 22;
+
+/// Canonical material names matching texture array layer ordering.
+/// Layers 0-7 match biome indices for backward compatibility.
+pub const MATERIAL_NAMES: [&str; 22] = [
+    "grass",         //  0: Grassland biome
+    "sand",          //  1: Desert biome (also Beach via remap)
+    "forest_floor",  //  2: Forest biome
+    "mountain_rock", //  3: Mountain biome
+    "snow",          //  4: Tundra biome
+    "mud",           //  5: Swamp biome
+    "wood_planks",   //  6: (was sand dupe; Beach biome remapped to 1)
+    "stone",         //  7: River biome
+    "rock_slate",    //  8: steep rock
+    "dirt",          //  9: dirt breakup
+    "cobblestone",   // 10
+    "cloth",         // 11
+    "default",       // 12
+    "gravel",        // 13
+    "ice",           // 14
+    "metal_rusted",  // 15
+    "moss",          // 16
+    "plaster",       // 17
+    "rock_lichen",   // 18
+    "roof_tile",     // 19
+    "tree_bark",     // 20
+    "tree_leaves",   // 21
+];
+
+pub const MATERIAL_DISPLAY_NAMES: [&str; 22] = [
+    "Grass",
+    "Sand",
+    "Forest Floor",
+    "Mountain Rock",
+    "Snow",
+    "Mud",
+    "Wood Planks",
+    "Stone",
+    "Rock Slate",
+    "Dirt",
+    "Cobblestone",
+    "Cloth",
+    "Default",
+    "Gravel",
+    "Ice",
+    "Metal Rusted",
+    "Moss",
+    "Plaster",
+    "Rock Lichen",
+    "Roof Tile",
+    "Tree Bark",
+    "Tree Leaves",
+];
 
 /// Resolve the asset base directory by walking up from the executable until
 /// we find a directory containing `assets/materials/grass.png`.
-fn find_assets_dir() -> PathBuf {
+pub fn find_assets_dir() -> PathBuf {
     // Try working directory first
     let cwd = std::env::current_dir().unwrap_or_default();
     if cwd.join("assets/materials/grass.png").exists() {
@@ -141,65 +195,201 @@ fn load_texture_layer(path: &Path, target_size: u32) -> Vec<u8> {
             &img.to_rgba8(),
             target_size,
             target_size,
-            image::imageops::FilterType::Lanczos3,
+            image::imageops::FilterType::CatmullRom,
         )
     };
 
     resized.into_raw()
 }
 
-/// Load an array of textures (one per biome layer), concatenated into a single
+/// Load a texture and swap ORM channels (R=AO,G=Rough,B=Metal) to MRA (R=Metal,G=Rough,B=AO).
+fn load_texture_layer_orm_to_mra(path: &Path, target_size: u32) -> Vec<u8> {
+    let mut data = load_texture_layer(path, target_size);
+    // Swap R↔B in every pixel: ORM(AO,Rough,Metal,A) → MRA(Metal,Rough,AO,A)
+    for pixel in data.chunks_exact_mut(4) {
+        pixel.swap(0, 2);
+    }
+    data
+}
+
+/// Build MRA from a separate roughness-only texture (R→G, metallic=0, AO=255).
+/// Used for Polyhaven textures that ship individual maps instead of packed ORM.
+fn load_texture_layer_rough_to_mra(path: &Path, target_size: u32) -> Vec<u8> {
+    let mut data = load_texture_layer(path, target_size);
+    for pixel in data.chunks_exact_mut(4) {
+        let roughness = pixel[0]; // grayscale roughness → R channel
+        pixel[0] = 0;            // metallic = 0 (organic material)
+        pixel[1] = roughness;    // roughness
+        pixel[2] = 255;          // AO = 1.0 (no separate AO available)
+        pixel[3] = 255;
+    }
+    data
+}
+
+/// PBR override paths relative to assets dir.  Maps material layer index to
+/// (PBR subdirectory, BaseColor suffix, Normal suffix, ORM suffix).
+/// Only layers that have real PBR_2K textures are listed.
+const PBR_OVERRIDE_DIR: &str = "textures/pbr/PBR_2K";
+const PBR_OVERRIDES: &[(usize, &str, &str, &str, &str)] = &[
+    //  idx, subdir,              albedo_file,                     normal_file,                     orm_file
+    (5,  "Dirt_Mud",           "Dirt_Mud_BaseColor.png",         "Dirt_Mud_Normal.png",           "Dirt_Mud_ORM.png"),
+    (16, "Moss_Ground",        "Moss_Ground_BaseColor.png",      "Moss_Ground_Normal.png",        "Moss_Ground_ORM.png"),
+    (1,  "Sand_Desert",        "Sand_Desert_BaseColor.png",      "Sand_Desert_Normal.png",        "Sand_Desert_ORM.png"),
+    (3,  "Stone_Terrain_Rock", "Stone_Terrain_Rock_BaseColor.png","Stone_Terrain_Rock_Normal.png", "Stone_Terrain_Rock_ORM.png"),
+    (8,  "Stone_Terrain_Rock", "Stone_Terrain_Rock_BaseColor.png","Stone_Terrain_Rock_Normal.png", "Stone_Terrain_Rock_ORM.png"),
+];
+
+/// Separate-channel PBR overrides from pine_forest textures (diff, nor_gl, rough).
+/// These use individual roughness maps instead of packed ORM.
+const PINE_FOREST_DIR: &str = "textures/pine_forest";
+const PBR_OVERRIDES_SEPARATE: &[(usize, &str, &str, &str)] = &[
+    //  idx, albedo,                    normal,                     roughness
+    (0,  "grass_medium_01_diff.png", "grass_medium_01_nor_gl.png", "grass_medium_01_rough.png"),
+    (2,  "forest_ground_04_diff.png","forest_ground_04_nor_gl.png","forest_ground_04_rough.png"),
+];
+
+/// Load an array of textures (one per material layer), concatenated into a single
 /// byte buffer suitable for uploading as a texture_2d_array.
-fn load_biome_texture_array(materials_dir: &Path, filenames: &[&str], target_size: u32) -> Vec<u8> {
+/// `channel` selects which PBR override column to use: 0=albedo, 1=normal, 2=mra(orm).
+fn load_biome_texture_array(
+    materials_dir: &Path,
+    filenames: &[&str],
+    target_size: u32,
+    assets_dir: &Path,
+    channel: u8,
+) -> Vec<u8> {
     let layer_bytes = (target_size * target_size * 4) as usize;
     let mut data = Vec::with_capacity(layer_bytes * filenames.len());
-    for filename in filenames {
-        let path = materials_dir.join(filename);
-        let layer = load_texture_layer(&path, target_size);
+    for (idx, filename) in filenames.iter().enumerate() {
+        // Check for packed ORM PBR override (PBR_2K directory)
+        let packed_path = PBR_OVERRIDES.iter().find(|(i, ..)| *i == idx).and_then(
+            |&(_, subdir, albedo, normal, orm)| {
+                let file = match channel {
+                    0 => albedo,
+                    1 => normal,
+                    _ => orm,
+                };
+                let p = assets_dir.join(PBR_OVERRIDE_DIR).join(subdir).join(file);
+                if p.exists() { Some(p) } else { None }
+            },
+        );
+
+        // Check for separate-channel PBR override (pine_forest directory)
+        let separate_path = if packed_path.is_none() {
+            PBR_OVERRIDES_SEPARATE.iter().find(|(i, ..)| *i == idx).and_then(
+                |&(_, albedo, normal, rough)| {
+                    let file = match channel {
+                        0 => albedo,
+                        1 => normal,
+                        _ => rough,
+                    };
+                    let p = assets_dir.join(PINE_FOREST_DIR).join(file);
+                    if p.exists() { Some(p) } else { None }
+                },
+            )
+        } else {
+            None
+        };
+
+        let layer = if let Some(pbr_path) = packed_path {
+            eprintln!("[terrain] PBR override layer {idx} ({filename}) → {:?}", pbr_path);
+            if channel == 2 {
+                load_texture_layer_orm_to_mra(&pbr_path, target_size)
+            } else {
+                load_texture_layer(&pbr_path, target_size)
+            }
+        } else if let Some(sep_path) = separate_path {
+            eprintln!("[terrain] PBR override layer {idx} ({filename}) → {:?}", sep_path);
+            if channel == 2 {
+                load_texture_layer_rough_to_mra(&sep_path, target_size)
+            } else {
+                load_texture_layer(&sep_path, target_size)
+            }
+        } else {
+            let path = materials_dir.join(filename);
+            load_texture_layer(&path, target_size)
+        };
         assert_eq!(layer.len(), layer_bytes);
         data.extend_from_slice(&layer);
     }
     data
 }
 
-// Biome index → texture filename mappings
-const BIOME_ALBEDO_FILES: [&str; 10] = [
-    "grass.png",         // 0: Grassland
-    "sand.png",          // 1: Desert
-    "forest_floor.png",  // 2: Forest
-    "mountain_rock.png", // 3: Mountain
-    "snow.png",          // 4: Tundra
-    "mud.png",           // 5: Swamp
-    "sand.png",          // 6: Beach (reuse sand)
-    "stone.png",         // 7: River
-    "rock_slate.png",    // 8: Shared steep rock
-    "dirt.png",          // 9: Shared dirt breakup
+// Material layer → texture filename mappings (22 layers)
+// Layers 0-7 preserve biome ordering for blend_biome_materials() compat.
+const BIOME_ALBEDO_FILES: [&str; 22] = [
+    "grass.png",         //  0: Grassland
+    "sand.png",          //  1: Desert / Beach
+    "forest_floor.png",  //  2: Forest
+    "mountain_rock.png", //  3: Mountain
+    "snow.png",          //  4: Tundra
+    "mud.png",           //  5: Swamp
+    "wood_planks.png",   //  6: Wood Planks (Beach remapped to 1)
+    "stone.png",         //  7: River
+    "rock_slate.png",    //  8: steep rock
+    "dirt.png",          //  9: dirt breakup
+    "cobblestone.png",   // 10
+    "cloth.png",         // 11
+    "default.png",       // 12
+    "gravel.png",        // 13
+    "ice.png",           // 14
+    "metal_rusted.png",  // 15
+    "moss.png",          // 16
+    "plaster.png",       // 17
+    "rock_lichen.png",   // 18
+    "roof_tile.png",     // 19
+    "tree_bark.png",     // 20
+    "tree_leaves.png",   // 21
 ];
 
-const BIOME_NORMAL_FILES: [&str; 10] = [
-    "grass_n.png",
-    "sand_n.png",
-    "forest_floor_n.png",
-    "mountain_rock_n.png",
-    "snow_n.png",
-    "mud_n.png",
-    "sand_n.png",
-    "stone_n.png",
-    "rock_slate_n.png",
-    "dirt_n.png",
+const BIOME_NORMAL_FILES: [&str; 22] = [
+    "grass_n.png",         //  0
+    "sand_n.png",          //  1
+    "forest_floor_n.png",  //  2
+    "mountain_rock_n.png", //  3
+    "snow_n.png",          //  4
+    "mud_n.png",           //  5
+    "wood_planks_n.png",   //  6
+    "stone_n.png",         //  7
+    "rock_slate_n.png",    //  8
+    "dirt_n.png",          //  9
+    "cobblestone_n.png",   // 10
+    "cloth_n.png",         // 11
+    "default_n.png",       // 12
+    "gravel_n.png",        // 13
+    "ice_n.png",           // 14
+    "metal_rusted_n.png",  // 15
+    "moss_n.png",          // 16
+    "plaster_n.png",       // 17
+    "rock_lichen_n.png",   // 18
+    "roof_tile_n.png",     // 19
+    "tree_bark_n.png",     // 20
+    "tree_leaves_n.png",   // 21
 ];
 
-const BIOME_MRA_FILES: [&str; 10] = [
-    "grass_mra.png",
-    "sand_mra.png",
-    "forest_floor_mra.png",
-    "mountain_rock_mra.png",
-    "snow_mra.png",
-    "mud_mra.png",
-    "sand_mra.png",
-    "stone_mra.png",
-    "rock_slate_mra.png",
-    "dirt_mra.png",
+const BIOME_MRA_FILES: [&str; 22] = [
+    "grass_mra.png",         //  0
+    "sand_mra.png",          //  1
+    "forest_floor_mra.png",  //  2
+    "mountain_rock_mra.png", //  3
+    "snow_mra.png",          //  4
+    "mud_mra.png",           //  5
+    "wood_planks_mra.png",   //  6
+    "stone_mra.png",         //  7
+    "rock_slate_mra.png",    //  8
+    "dirt_mra.png",          //  9
+    "cobblestone_mra.png",   // 10
+    "cloth_mra.png",         // 11
+    "default_mra.png",       // 12
+    "gravel_mra.png",        // 13
+    "ice_mra.png",           // 14
+    "metal_rusted_mra.png",  // 15
+    "moss_mra.png",          // 16
+    "plaster_mra.png",       // 17
+    "rock_lichen_mra.png",   // 18
+    "roof_tile_mra.png",     // 19
+    "tree_bark_mra.png",     // 20
+    "tree_leaves_mra.png",   // 21
 ];
 
 pub struct TerrainChunkGpu {
@@ -216,6 +406,7 @@ pub struct TerrainRenderer {
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
     device: wgpu::Device,
+    queue: wgpu::Queue,
     chunks: Vec<TerrainChunkGpu>,
     fog_params: TerrainFogParams,
     lighting_params: TerrainLightingParams,
@@ -358,7 +549,7 @@ impl TerrainRenderer {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None, // No culling — prevents holes on steep sculpted slopes
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
@@ -407,10 +598,11 @@ impl TerrainRenderer {
         eprintln!("[terrain] Loading PBR textures from {:?}", materials_dir);
 
         let albedo_data =
-            load_biome_texture_array(&materials_dir, &BIOME_ALBEDO_FILES, BIOME_TEX_SIZE);
+            load_biome_texture_array(&materials_dir, &BIOME_ALBEDO_FILES, BIOME_TEX_SIZE, &assets_dir, 0);
         let normal_data =
-            load_biome_texture_array(&materials_dir, &BIOME_NORMAL_FILES, BIOME_TEX_SIZE);
-        let mra_data = load_biome_texture_array(&materials_dir, &BIOME_MRA_FILES, BIOME_TEX_SIZE);
+            load_biome_texture_array(&materials_dir, &BIOME_NORMAL_FILES, BIOME_TEX_SIZE, &assets_dir, 1);
+        let mra_data =
+            load_biome_texture_array(&materials_dir, &BIOME_MRA_FILES, BIOME_TEX_SIZE, &assets_dir, 2);
         eprintln!(
             "[terrain] Loaded {} albedo + {} normal + {} MRA bytes",
             albedo_data.len(),
@@ -605,6 +797,7 @@ impl TerrainRenderer {
             bind_group,
             uniform_buffer,
             device: device.clone(),
+            queue: queue.clone(),
             chunks: Vec::new(),
             fog_params: TerrainFogParams::default(),
             lighting_params: TerrainLightingParams::default(),
@@ -644,7 +837,58 @@ impl TerrainRenderer {
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("Terrain Vertex Buffer"),
                     contents: bytemuck::cast_slice(vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                });
+
+            let index_buffer = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Terrain Index Buffer"),
+                    contents: bytemuck::cast_slice(indices),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+
+            self.chunks.push(TerrainChunkGpu {
+                vertex_buffer,
+                index_buffer,
+                index_count: indices.len() as u32,
+                center,
+                radius,
+            });
+        }
+    }
+
+    /// Upload chunks using the terrain_integration vertex type directly, avoiding
+    /// a redundant field-by-field copy. Both vertex types share the same #[repr(C)]
+    /// Pod layout, so we can cast bytes directly.
+    pub fn upload_chunks_raw(
+        &mut self,
+        chunks: &[(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)],
+    ) {
+        self.chunks.clear();
+
+        for (vertices, indices) in chunks {
+            if vertices.is_empty() || indices.is_empty() {
+                continue;
+            }
+
+            // Compute bounding sphere from vertex positions
+            let mut min = Vec3::splat(f32::MAX);
+            let mut max = Vec3::splat(f32::MIN);
+            for v in vertices {
+                let p = Vec3::from(v.position);
+                min = min.min(p);
+                max = max.max(p);
+            }
+            let center = (min + max) * 0.5;
+            let radius = (max - min).length() * 0.5;
+
+            let vertex_buffer = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Terrain Vertex Buffer"),
+                    contents: bytemuck::cast_slice(vertices),
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 });
 
             let index_buffer = self
@@ -667,6 +911,27 @@ impl TerrainRenderer {
 
     pub fn clear_chunks(&mut self) {
         self.chunks.clear();
+    }
+
+    /// Update a single chunk's vertex buffer in-place via write_buffer.
+    /// Much faster than recreating all buffers via upload_chunks().
+    pub fn update_chunk_vertices(&mut self, chunk_index: usize, vertices: &[TerrainVertex]) {
+        if chunk_index >= self.chunks.len() || vertices.is_empty() {
+            return;
+        }
+        let chunk = &mut self.chunks[chunk_index];
+        self.queue
+            .write_buffer(&chunk.vertex_buffer, 0, bytemuck::cast_slice(vertices));
+        // Recompute bounding sphere
+        let mut min = Vec3::splat(f32::MAX);
+        let mut max = Vec3::splat(f32::MIN);
+        for v in vertices {
+            let p = Vec3::from(v.position);
+            min = min.min(p);
+            max = max.max(p);
+        }
+        chunk.center = (min + max) * 0.5;
+        chunk.radius = (max - min).length() * 0.5;
     }
 
     pub fn chunk_count(&self) -> usize {

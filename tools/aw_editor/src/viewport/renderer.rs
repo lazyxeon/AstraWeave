@@ -90,11 +90,18 @@ pub struct ViewportRenderer {
     /// Current viewport size
     size: (u32, u32),
 
+    // --- Depth readback for brush hit detection ---
+    /// Staging buffer for reading back a single depth pixel
+    depth_staging_buffer: Option<wgpu::Buffer>,
+
     /// Currently selected entities (for highlighting) - supports multi-selection
     selected_entities: Vec<Entity>,
 
     /// Component gizmo debug lines (light radius, collider shapes, audio range)
     component_gizmo_lines: Vec<astraweave_physics::DebugLine>,
+
+    /// Brush cursor circle draped on terrain surface
+    brush_cursor_lines: Vec<astraweave_physics::DebugLine>,
 }
 
 impl ViewportRenderer {
@@ -139,8 +146,10 @@ impl ViewportRenderer {
             depth_texture: None,
             depth_view: None,
             size: (0, 0),
+            depth_staging_buffer: None,
             selected_entities: Vec::new(),
             component_gizmo_lines: Vec::new(),
+            brush_cursor_lines: Vec::new(),
         })
     }
 
@@ -254,7 +263,9 @@ impl ViewportRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
@@ -263,6 +274,17 @@ impl ViewportRenderer {
         self.depth_texture = Some(depth_texture);
         self.depth_view = Some(depth_view);
         self.size = (width, height);
+
+        // Allocate staging buffer for single-pixel depth readback (4 bytes = f32)
+        // wgpu requires COPY_DST on staging buffers used as copy destinations.
+        // Row alignment: bytes_per_row must be multiple of 256 for copy_texture_to_buffer,
+        // so we allocate 256 bytes even though we only read 4.
+        self.depth_staging_buffer = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Depth Readback Staging"),
+            size: 256,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        }));
 
         #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
@@ -319,8 +341,10 @@ impl ViewportRenderer {
             let _ = self.ensure_scatter_renderer();
         }
 
-        // Eagerly init physics renderer if component gizmo lines or physics lines exist
-        if (!self.component_gizmo_lines.is_empty() || physics_debug_lines.is_some())
+        // Eagerly init physics renderer if component gizmo lines, physics lines, or brush cursor exist
+        if (!self.component_gizmo_lines.is_empty()
+            || physics_debug_lines.is_some()
+            || !self.brush_cursor_lines.is_empty())
             && self.physics_renderer.is_none()
         {
             let _ = self.ensure_physics_renderer();
@@ -453,13 +477,14 @@ impl ViewportRenderer {
                 .context("Entity render failed")?;
         }
 
-        // Pass 4: Physics debug + component gizmos (collider wireframes, light radii, etc.)
+        // Pass 4: Physics debug + component gizmos + brush cursor
         {
             let mut combined_lines: Vec<astraweave_physics::DebugLine> =
                 self.component_gizmo_lines.clone();
             if let Some(debug_lines) = physics_debug_lines {
                 combined_lines.extend_from_slice(debug_lines);
             }
+            combined_lines.extend_from_slice(&self.brush_cursor_lines);
             if !combined_lines.is_empty() {
                 if let Some(physics) = self.physics_renderer.as_mut() {
                     physics
@@ -582,6 +607,10 @@ impl ViewportRenderer {
         self.component_gizmo_lines = lines;
     }
 
+    pub fn set_brush_cursor_lines(&mut self, lines: Vec<astraweave_physics::DebugLine>) {
+        self.brush_cursor_lines = lines;
+    }
+
     /// Set the entity-to-mesh mapping so models render with actual GLTF geometry
     pub fn set_entity_meshes(&mut self, meshes: std::collections::HashMap<Entity, String>) {
         self.entity_renderer.set_entity_meshes(meshes);
@@ -675,6 +704,85 @@ impl ViewportRenderer {
         if let Ok(terrain) = self.ensure_terrain_renderer() {
             terrain.upload_chunks(chunks);
         }
+    }
+
+    /// Upload terrain chunks using the terrain_integration vertex type directly
+    /// (zero-copy path — avoids redundant field-by-field vertex remapping).
+    pub fn upload_terrain_chunks_raw(
+        &mut self,
+        chunks: &[(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)],
+    ) {
+        if let Ok(terrain) = self.ensure_terrain_renderer() {
+            terrain.upload_chunks_raw(chunks);
+        }
+    }
+
+    /// Incrementally update vertex data for a single terrain chunk on the GPU.
+    pub fn update_terrain_chunk_vertices(
+        &mut self,
+        chunk_index: usize,
+        vertices: &[super::terrain_renderer::TerrainVertex],
+    ) {
+        if let Some(terrain) = self.terrain_renderer.as_mut() {
+            terrain.update_chunk_vertices(chunk_index, vertices);
+        }
+    }
+
+    // ── Depth Readback for Brush Hit Detection ──────────────────────────
+
+    /// Synchronously read the depth value at a single pixel from the depth buffer.
+    /// Returns `Some(depth)` where depth is in [0,1] (0=near, 1=far/sky).
+    /// Returns `None` if the pixel is out of bounds or the depth buffer isn't available.
+    pub fn read_depth_at_pixel(&self, px: u32, py: u32) -> Option<f32> {
+        let (w, h) = self.size;
+        if px >= w || py >= h {
+            return None;
+        }
+        let depth_tex = self.depth_texture.as_ref()?;
+        let staging = self.depth_staging_buffer.as_ref()?;
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Depth Readback Encoder"),
+            });
+
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: depth_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: px, y: py, z: 0 },
+                aspect: wgpu::TextureAspect::DepthOnly,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: staging,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(256),
+                    rows_per_image: None,
+                },
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        // Map, block until ready, read, unmap
+        let buffer_slice = staging.slice(..4);
+        buffer_slice.map_async(wgpu::MapMode::Read, |_| {});
+        let _ = self.device.poll(wgpu::MaintainBase::Wait);
+
+        let mapped = buffer_slice.get_mapped_range();
+        let depth_bytes: [u8; 4] = [mapped[0], mapped[1], mapped[2], mapped[3]];
+        let depth = f32::from_le_bytes(depth_bytes);
+        drop(mapped);
+        staging.unmap();
+
+        Some(depth)
     }
 
     pub fn clear_terrain(&mut self) {

@@ -37,6 +37,14 @@ pub struct TerrainState {
     terrain_dirty: bool,
     last_seed: u64,
     last_biome: String,
+    /// Stable ordering of chunk keys for consistent GPU index mapping
+    chunk_order: Vec<ChunkId>,
+    /// Indices of chunks modified by the last brush stroke (into chunk_order)
+    dirty_chunk_indices: Vec<usize>,
+    /// Whether we're in the middle of a brush stroke (for undo snapshot tracking)
+    is_stroking: bool,
+    /// Pre-stroke heightmap snapshots keyed by ChunkId (captured lazily on first modification)
+    stroke_pre_snapshots: HashMap<ChunkId, Vec<f32>>,
 }
 
 pub struct GeneratedChunk {
@@ -54,8 +62,10 @@ pub struct TerrainVertex {
     pub uv: [f32; 2],
     pub biome_weights_0: [f32; 4],
     pub biome_weights_1: [f32; 4],
-    pub splat_weights_0: [f32; 4],
-    pub splat_weights_1: [f32; 4],
+    /// Material texture layer indices (0-21) packed as f32 for vertex attr compat
+    pub material_ids: [f32; 4],
+    /// Blend weights for each material slot (sum to 1.0)
+    pub material_weights: [f32; 4],
 }
 
 impl TerrainVertex {
@@ -65,8 +75,8 @@ impl TerrainVertex {
         uv: [f32; 2],
         biome_weights_0: [f32; 4],
         biome_weights_1: [f32; 4],
-        splat_weights_0: [f32; 4],
-        splat_weights_1: [f32; 4],
+        material_ids: [f32; 4],
+        material_weights: [f32; 4],
     ) -> Self {
         Self {
             position,
@@ -74,8 +84,8 @@ impl TerrainVertex {
             uv,
             biome_weights_0,
             biome_weights_1,
-            splat_weights_0,
-            splat_weights_1,
+            material_ids,
+            material_weights,
         }
     }
 }
@@ -89,6 +99,10 @@ impl Default for TerrainState {
             terrain_dirty: true,
             last_seed: 0,
             last_biome: String::new(),
+            chunk_order: Vec::new(),
+            dirty_chunk_indices: Vec::new(),
+            is_stroking: false,
+            stroke_pre_snapshots: HashMap::new(),
         }
     }
 }
@@ -177,7 +191,7 @@ impl TerrainState {
                 BiomeType::River,
                 BiomeType::Swamp,
             ],
-            BiomeType::Desert => vec![BiomeType::Desert, BiomeType::Beach, BiomeType::Grassland],
+            BiomeType::Desert => vec![BiomeType::Desert, BiomeType::Beach],
             BiomeType::Forest => vec![
                 BiomeType::Forest,
                 BiomeType::Grassland,
@@ -277,6 +291,12 @@ impl TerrainState {
             }
         }
 
+        // Build stable chunk ordering for GPU index mapping
+        self.chunk_order = self.generated_chunks.keys().copied().collect();
+        self.chunk_order
+            .sort_by(|a, b| a.x.cmp(&b.x).then(a.z.cmp(&b.z)));
+        self.dirty_chunk_indices.clear();
+
         self.terrain_dirty = false;
         Ok(count)
     }
@@ -327,11 +347,11 @@ impl TerrainState {
                     .copied()
                     .map(Self::packed_biome_to_weight_sets)
                     .unwrap_or(([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]));
-                let (splat_weights_0, splat_weights_1) = splat_map
+                let (material_ids, material_weights) = splat_map
                     .get(biome_idx)
                     .copied()
-                    .map(Self::splat_weights_to_arrays)
-                    .unwrap_or(([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]));
+                    .map(Self::splat_weights_to_material_slots)
+                    .unwrap_or(([0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]));
 
                 vertices.push(TerrainVertex::new(
                     [world_x, height, world_z],
@@ -339,8 +359,8 @@ impl TerrainState {
                     [x as f32 / resolution as f32, z as f32 / resolution as f32],
                     biome_weights_0,
                     biome_weights_1,
-                    splat_weights_0,
-                    splat_weights_1,
+                    material_ids,
+                    material_weights,
                 ));
             }
         }
@@ -440,8 +460,42 @@ impl TerrainState {
         (weights_0, weights_1)
     }
 
-    fn splat_weights_to_arrays(weights: SplatWeights) -> ([f32; 4], [f32; 4]) {
-        (weights.weights_0.to_array(), weights.weights_1.to_array())
+    /// Convert 8-channel SplatWeights into top-4 material slots (ids + weights).
+    /// Channel indices map 1:1 to texture layer indices for channels 0-7.
+    fn splat_weights_to_material_slots(weights: SplatWeights) -> ([f32; 4], [f32; 4]) {
+        // Collect all non-zero (channel_as_layer_id, weight) pairs
+        let mut entries: [(f32, f32); 8] = [
+            (0.0, weights.weights_0.x),
+            (1.0, weights.weights_0.y),
+            (2.0, weights.weights_0.z),
+            (3.0, weights.weights_0.w),
+            (4.0, weights.weights_1.x),
+            (5.0, weights.weights_1.y),
+            (6.0, weights.weights_1.z),
+            (7.0, weights.weights_1.w),
+        ];
+
+        // Sort by weight descending (simple insertion sort for 8 elements)
+        entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top 4 and renormalize
+        let mut ids = [0.0f32; 4];
+        let mut ws = [0.0f32; 4];
+        let mut total = 0.0f32;
+        for i in 0..4 {
+            ids[i] = entries[i].0;
+            ws[i] = entries[i].1;
+            total += ws[i];
+        }
+        if total > 0.0001 {
+            for w in &mut ws {
+                *w /= total;
+            }
+        } else {
+            ws[0] = 1.0; // fallback to grass
+        }
+
+        (ids, ws)
     }
 
     fn create_local_splat_generator(seed: u64, primary_biome: BiomeType) -> SplatMapGenerator {
@@ -474,28 +528,29 @@ impl TerrainState {
                 });
             }
             BiomeType::Desert | BiomeType::Beach => {
+                // Sand dominates; rock on steep slopes; no grass in deserts
                 generator.add_rule(SplatRule::sand());
                 generator.add_rule(SplatRule::rock());
                 generator.add_rule(SplatRule {
-                    material_id: 3,
+                    material_id: 3, // mountain rock on steep slopes
                     min_height: -2.0,
                     max_height: 55.0,
-                    min_slope: 2.0,
-                    max_slope: 28.0,
+                    min_slope: 8.0,
+                    max_slope: 35.0,
                     priority: 13,
                     weight: 0.55,
                     height_falloff: 0.05,
                     slope_falloff: 0.05,
                 });
                 generator.add_rule(SplatRule {
-                    material_id: 0,
-                    min_height: 4.0,
-                    max_height: 48.0,
+                    material_id: 9, // dirt — exposed hardpan in depressions
+                    min_height: -4.0,
+                    max_height: 6.0,
                     min_slope: 0.0,
-                    max_slope: 12.0,
-                    priority: 10,
-                    weight: 0.20,
-                    height_falloff: 0.06,
+                    max_slope: 10.0,
+                    priority: 8,
+                    weight: 0.15,
+                    height_falloff: 0.10,
                     slope_falloff: 0.08,
                 });
             }
@@ -714,10 +769,112 @@ impl TerrainState {
     }
 
     pub fn get_gpu_chunks(&self) -> Vec<(Vec<TerrainVertex>, Vec<u32>)> {
-        self.generated_chunks
-            .values()
+        // Use stable ordering so GPU chunk indices stay consistent
+        self.chunk_order
+            .iter()
+            .filter_map(|id| self.generated_chunks.get(id))
             .map(|chunk| (chunk.vertices.clone(), chunk.indices.clone()))
             .collect()
+    }
+
+    /// Take dirty chunk data after a brush stroke.
+    /// Returns (gpu_index, vertices, indices) for each modified chunk.
+    /// Clears the dirty list.
+    pub fn take_dirty_chunks(&mut self) -> Vec<(usize, Vec<TerrainVertex>)> {
+        let dirty: Vec<(usize, Vec<TerrainVertex>)> = self
+            .dirty_chunk_indices
+            .iter()
+            .filter_map(|&idx| {
+                let chunk_id = self.chunk_order.get(idx)?;
+                let gen_chunk = self.generated_chunks.get(chunk_id)?;
+                Some((idx, gen_chunk.vertices.clone()))
+            })
+            .collect();
+        self.dirty_chunk_indices.clear();
+        dirty
+    }
+
+    /// Begin a new brush stroke — enables heightmap snapshotting for undo.
+    pub fn begin_stroke(&mut self) {
+        self.is_stroking = true;
+        self.stroke_pre_snapshots.clear();
+    }
+
+    /// Returns true if currently in a brush stroke.
+    pub fn is_stroking(&self) -> bool {
+        self.is_stroking
+    }
+
+    /// End a brush stroke — returns the undo data (ChunkId → (pre, post) heightmaps).
+    /// Returns None if no chunks were modified.
+    pub fn end_stroke(&mut self) -> Option<Vec<(ChunkId, Vec<f32>, Vec<f32>)>> {
+        self.is_stroking = false;
+        if self.stroke_pre_snapshots.is_empty() {
+            return None;
+        }
+
+        let mut deltas = Vec::new();
+        for (chunk_id, pre_heights) in self.stroke_pre_snapshots.drain() {
+            if let Some(gen_chunk) = self.generated_chunks.get(&chunk_id) {
+                let hm = gen_chunk.chunk.heightmap();
+                let res = hm.resolution();
+                let mut post_heights = Vec::with_capacity((res * res) as usize);
+                for gz in 0..res {
+                    for gx in 0..res {
+                        post_heights.push(hm.get_height(gx, gz));
+                    }
+                }
+                deltas.push((chunk_id, pre_heights, post_heights));
+            }
+        }
+
+        if deltas.is_empty() {
+            None
+        } else {
+            Some(deltas)
+        }
+    }
+
+    /// Apply a heightmap snapshot (used for undo/redo).
+    /// Updates heightmap, patches vertices, and marks chunks dirty.
+    pub fn apply_height_snapshot(&mut self, snapshot: &[(ChunkId, Vec<f32>)]) {
+        let chunk_size = self.config.chunk_size;
+        for (chunk_id, heights) in snapshot {
+            if let Some(gen_chunk) = self.generated_chunks.get_mut(chunk_id) {
+                let res = gen_chunk.chunk.heightmap().resolution();
+                let cell_size = chunk_size / (res - 1) as f32;
+                // Write heights
+                for (i, &h) in heights.iter().enumerate() {
+                    let gx = (i as u32) % res;
+                    let gz = (i as u32) / res;
+                    gen_chunk.chunk.heightmap_mut().set_height(gx, gz, h);
+                }
+                // Patch vertices
+                for gz in 0..res as usize {
+                    for gx in 0..res as usize {
+                        let idx = gz * res as usize + gx;
+                        if idx < gen_chunk.vertices.len() {
+                            let new_h =
+                                gen_chunk.chunk.heightmap().get_height(gx as u32, gz as u32);
+                            gen_chunk.vertices[idx].position[1] = new_h;
+                            let normal = Self::calculate_normal(
+                                gen_chunk.chunk.heightmap(),
+                                gx,
+                                gz,
+                                cell_size,
+                            );
+                            gen_chunk.vertices[idx].normal = [normal.x, normal.y, normal.z];
+                        }
+                    }
+                }
+                // Mark dirty
+                if let Some(gpu_idx) = self.chunk_order.iter().position(|id| id == chunk_id) {
+                    if !self.dirty_chunk_indices.contains(&gpu_idx) {
+                        self.dirty_chunk_indices.push(gpu_idx);
+                    }
+                }
+            }
+        }
     }
 
     /// Get total vertex count across all chunks
@@ -780,16 +937,44 @@ impl TerrainState {
     ///
     /// `brush_mode`: 0=Raise, 1=Smooth, 2=Flatten, 3=Lower, 4=Erode
     /// Returns true if any terrain was modified.
+    /// Sample the heightmap height at a world position (bilinear between nearest vertices).
+    /// Returns None if no chunk contains the position.
+    pub fn sample_height_at(&self, world_x: f32, world_z: f32) -> Option<f32> {
+        let chunk_size = self.config.chunk_size;
+        for (chunk_id, gen_chunk) in &self.generated_chunks {
+            let ox = chunk_id.x as f32 * chunk_size;
+            let oz = chunk_id.z as f32 * chunk_size;
+            if world_x >= ox
+                && world_x <= ox + chunk_size
+                && world_z >= oz
+                && world_z <= oz + chunk_size
+            {
+                let res = gen_chunk.chunk.heightmap().resolution();
+                let cell = chunk_size / (res - 1) as f32;
+                let gx = ((world_x - ox) / cell).round() as u32;
+                let gz = ((world_z - oz) / cell).round() as u32;
+                let gx = gx.min(res - 1);
+                let gz = gz.min(res - 1);
+                return Some(gen_chunk.chunk.heightmap().get_height(gx, gz));
+            }
+        }
+        None
+    }
+
     pub fn apply_brush(
         &mut self,
         world_x: f32,
         world_z: f32,
         radius: f32,
         strength: f32,
-        brush_mode: u32,
+        brush_mode: crate::panels::terrain_panel::BrushMode,
+        falloff_curve: crate::panels::terrain_panel::FalloffCurve,
+        flatten_target: Option<f32>,
+        noise_scale: f32,
     ) -> bool {
+        use crate::panels::terrain_panel::BrushMode;
+
         let chunk_size = self.config.chunk_size;
-        let _primary_biome = self.primary_biome_type();
         let mut modified = false;
 
         // Collect chunk IDs that might be affected
@@ -809,13 +994,25 @@ impl TerrainState {
             }
 
             if let Some(gen_chunk) = self.generated_chunks.get_mut(&chunk_id) {
+                // Snapshot heightmap before first modification in this stroke (for undo)
+                if self.is_stroking && !self.stroke_pre_snapshots.contains_key(&chunk_id) {
+                    let hm = gen_chunk.chunk.heightmap();
+                    let res = hm.resolution();
+                    let mut snapshot = Vec::with_capacity((res * res) as usize);
+                    for gz in 0..res {
+                        for gx in 0..res {
+                            snapshot.push(hm.get_height(gx, gz));
+                        }
+                    }
+                    self.stroke_pre_snapshots.insert(chunk_id, snapshot);
+                }
+
                 let resolution = gen_chunk.chunk.heightmap().resolution();
                 let cell_size = chunk_size / (resolution - 1) as f32;
                 let mut chunk_modified = false;
 
-                // Gather heights for smooth/flatten operations
-                let avg_height = if brush_mode == 1 || brush_mode == 2 {
-                    // Average height under brush
+                // Pre-compute average height for Smooth/Erode modes
+                let avg_height = if matches!(brush_mode, BrushMode::Smooth | BrushMode::Erode) {
                     let mut sum = 0.0f32;
                     let mut count = 0u32;
                     for gz in 0..resolution {
@@ -847,30 +1044,37 @@ impl TerrainState {
                             continue;
                         }
 
-                        // Smooth falloff
-                        let falloff = 1.0 - (dist / radius);
-                        let falloff = falloff * falloff; // quadratic
+                        let t = dist / radius; // 0 at center, 1 at edge
+                        let falloff = falloff_curve.eval(t);
                         let current_h = gen_chunk.chunk.heightmap().get_height(gx, gz);
 
                         let new_h = match brush_mode {
-                            0 => current_h + strength * falloff * 5.0, // Raise (Sculpt)
-                            1 => {
-                                // Smooth toward average
+                            BrushMode::Sculpt => current_h + strength * falloff * 5.0,
+                            BrushMode::Lower => current_h - strength * falloff * 5.0,
+                            BrushMode::Smooth => {
                                 let blend = strength * falloff * 0.3;
                                 current_h * (1.0 - blend) + avg_height * blend
                             }
-                            2 => {
-                                // Flatten toward average
+                            BrushMode::Flatten => {
+                                let target = flatten_target.unwrap_or(current_h);
                                 let blend = strength * falloff;
-                                current_h * (1.0 - blend) + avg_height * blend
+                                current_h * (1.0 - blend) + target * blend
                             }
-                            3 => current_h - strength * falloff * 5.0, // Lower (Paint as lower)
-                            4 => {
-                                // Erode (lower + smoothing)
+                            BrushMode::Erode => {
                                 let erode = current_h - strength * falloff * 3.0;
                                 erode * (1.0 - falloff * 0.1) + avg_height * falloff * 0.1
                             }
-                            _ => current_h,
+                            BrushMode::Noise => {
+                                // Simple deterministic noise displacement based on position
+                                let nx = px * noise_scale;
+                                let nz = pz * noise_scale;
+                                let noise_val = (nx.sin() * 2.0
+                                    + nz.cos() * 3.0
+                                    + (nx * 2.7 + nz * 1.3).sin() * 1.5)
+                                    / 6.5; // normalized roughly -1..1
+                                current_h + strength * falloff * noise_val * 5.0
+                            }
+                            BrushMode::Paint => current_h, // Handled separately
                         };
 
                         gen_chunk.chunk.heightmap_mut().set_height(gx, gz, new_h);
@@ -880,7 +1084,6 @@ impl TerrainState {
 
                 if chunk_modified {
                     // Fast path: patch vertex heights and normals in-place
-                    // (avoids expensive biome blending and splat map generation)
                     let cell_size_patch = chunk_size / (resolution - 1) as f32;
                     for gz in 0..resolution as usize {
                         for gx in 0..resolution as usize {
@@ -897,6 +1100,12 @@ impl TerrainState {
                                 );
                                 gen_chunk.vertices[idx].normal = [normal.x, normal.y, normal.z];
                             }
+                        }
+                    }
+                    // Mark this chunk dirty for incremental GPU upload
+                    if let Some(gpu_idx) = self.chunk_order.iter().position(|id| *id == chunk_id) {
+                        if !self.dirty_chunk_indices.contains(&gpu_idx) {
+                            self.dirty_chunk_indices.push(gpu_idx);
                         }
                     }
                     modified = true;
@@ -972,6 +1181,112 @@ impl TerrainState {
                     );
                     gen_chunk.vertices = vertices;
                     gen_chunk.indices = indices;
+                    // Mark this chunk dirty for incremental GPU upload
+                    if let Some(gpu_idx) = self.chunk_order.iter().position(|id| *id == chunk_id) {
+                        if !self.dirty_chunk_indices.contains(&gpu_idx) {
+                            self.dirty_chunk_indices.push(gpu_idx);
+                        }
+                    }
+                    modified = true;
+                }
+            }
+        }
+
+        modified
+    }
+
+    /// Paint a material directly onto vertex material_ids/material_weights slots.
+    ///
+    /// Unlike `apply_brush_paint` (which modifies the biome map and regenerates
+    /// the mesh), this method edits vertex data in-place — no mesh regeneration
+    /// needed.  The falloff curve and strength control how aggressively the
+    /// target material replaces existing materials at each vertex.
+    pub fn apply_brush_paint_material(
+        &mut self,
+        world_x: f32,
+        world_z: f32,
+        radius: f32,
+        strength: f32,
+        material_id: u32,
+        falloff_curve: crate::panels::terrain_panel::FalloffCurve,
+    ) -> bool {
+        let chunk_size = self.config.chunk_size;
+        let mat_id_f32 = material_id as f32;
+        let mut modified = false;
+
+        let chunk_ids: Vec<ChunkId> = self.generated_chunks.keys().cloned().collect();
+
+        for chunk_id in chunk_ids {
+            let chunk_origin_x = chunk_id.x as f32 * chunk_size;
+            let chunk_origin_z = chunk_id.z as f32 * chunk_size;
+
+            // Quick AABB rejection
+            let closest_x = world_x.clamp(chunk_origin_x, chunk_origin_x + chunk_size);
+            let closest_z = world_z.clamp(chunk_origin_z, chunk_origin_z + chunk_size);
+            let dx = world_x - closest_x;
+            let dz = world_z - closest_z;
+            if dx * dx + dz * dz > radius * radius {
+                continue;
+            }
+
+            if let Some(gen_chunk) = self.generated_chunks.get_mut(&chunk_id) {
+                let mut chunk_modified = false;
+
+                for vertex in gen_chunk.vertices.iter_mut() {
+                    let vx = vertex.position[0];
+                    let vz = vertex.position[2];
+                    let dist = ((vx - world_x).powi(2) + (vz - world_z).powi(2)).sqrt();
+                    if dist > radius {
+                        continue;
+                    }
+
+                    let t = dist / radius;
+                    let influence = strength * falloff_curve.eval(t);
+
+                    // Find if this material already occupies one of the 4 slots
+                    let mut slot = None;
+                    for i in 0..4 {
+                        if (vertex.material_ids[i] - mat_id_f32).abs() < 0.5 {
+                            slot = Some(i);
+                            break;
+                        }
+                    }
+
+                    // If not present, evict the slot with the lowest weight
+                    let slot = slot.unwrap_or_else(|| {
+                        let mut min_idx = 0;
+                        let mut min_w = vertex.material_weights[0];
+                        for i in 1..4 {
+                            if vertex.material_weights[i] < min_w {
+                                min_w = vertex.material_weights[i];
+                                min_idx = i;
+                            }
+                        }
+                        vertex.material_ids[min_idx] = mat_id_f32;
+                        vertex.material_weights[min_idx] = 0.0;
+                        min_idx
+                    });
+
+                    // Add influence to the target slot
+                    vertex.material_weights[slot] += influence;
+
+                    // Renormalize so weights sum to 1.0
+                    let sum: f32 = vertex.material_weights.iter().sum();
+                    if sum > 0.0 {
+                        for w in vertex.material_weights.iter_mut() {
+                            *w /= sum;
+                        }
+                    }
+
+                    chunk_modified = true;
+                }
+
+                if chunk_modified {
+                    if let Some(gpu_idx) = self.chunk_order.iter().position(|id| *id == chunk_id) {
+                        if !self.dirty_chunk_indices.contains(&gpu_idx) {
+                            self.dirty_chunk_indices.push(gpu_idx);
+                        }
+                    }
                     modified = true;
                 }
             }
@@ -1030,13 +1345,19 @@ impl TerrainState {
                 ..ScatterConfig::default()
             });
 
+            let primary_biome_config = self
+                .config
+                .biomes
+                .first()
+                .cloned()
+                .unwrap_or_else(BiomeConfig::grassland);
             let biome_config = self
                 .config
                 .biomes
                 .iter()
                 .find(|b| b.biome_type == center_biome)
                 .cloned()
-                .unwrap_or_else(BiomeConfig::grassland);
+                .unwrap_or(primary_biome_config);
 
             let seed = self
                 .config

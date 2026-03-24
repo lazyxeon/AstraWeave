@@ -598,6 +598,8 @@ pub enum PanelEvent {
     HdriCleared,
     /// Terrain was generated and is ready for viewport upload
     TerrainReady,
+    /// Terrain brush stroke applied — only dirty chunks need GPU update
+    TerrainBrushUpdate,
     /// Request to reset panel layout to default
     ResetLayout,
 }
@@ -742,6 +744,7 @@ impl std::fmt::Display for PanelEvent {
             }
             PanelEvent::HdriCleared => write!(f, "HDRI Cleared"),
             PanelEvent::TerrainReady => write!(f, "Terrain Ready"),
+            PanelEvent::TerrainBrushUpdate => write!(f, "Terrain Brush Update"),
             PanelEvent::ResetLayout => write!(f, "Reset Layout"),
         }
     }
@@ -794,7 +797,7 @@ impl PanelEvent {
             | PanelEvent::ViewportResetCamera
             | PanelEvent::ViewportCameraPreset(_) => "Viewport",
             PanelEvent::HdriLoaded { .. } | PanelEvent::HdriCleared => "Skybox",
-            PanelEvent::TerrainReady => "Terrain",
+            PanelEvent::TerrainReady | PanelEvent::TerrainBrushUpdate => "Terrain",
         }
     }
 
@@ -1958,6 +1961,23 @@ impl EditorTabViewer {
 
     /// Drain and return events that were emitted this frame
     pub fn take_events(&mut self) -> Vec<PanelEvent> {
+        // Always poll terrain generation so wizard-triggered terrain
+        // completes even when the Terrain tab is not visible.
+        self.terrain_panel.poll_generation();
+        if self.terrain_panel.has_pending_actions() {
+            for action in self.terrain_panel.take_actions() {
+                match action {
+                    crate::panels::terrain_panel::TerrainAction::Generate => {
+                        self.emit_event(PanelEvent::TerrainReady);
+                    }
+                    crate::panels::terrain_panel::TerrainAction::BrushUpdate => {
+                        self.emit_event(PanelEvent::TerrainBrushUpdate);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         // Merge pending inspector events
         self.events.append(&mut self.pending_events);
         std::mem::take(&mut self.events)
@@ -1970,9 +1990,24 @@ impl EditorTabViewer {
         self.terrain_panel.get_gpu_chunks()
     }
 
+    /// Take dirty terrain chunks for incremental GPU update after brush strokes.
+    pub fn take_terrain_dirty_chunks(
+        &mut self,
+    ) -> Vec<(usize, Vec<crate::terrain_integration::TerrainVertex>)> {
+        self.terrain_panel.take_dirty_chunks()
+    }
+
     /// Returns (min_height, max_height, avg_height) from the last terrain generation.
     pub fn terrain_height_stats(&self) -> (f32, f32, f32) {
         self.terrain_panel.height_stats()
+    }
+
+    /// Sample the terrain height at a world (x, z) position.
+    /// Returns the height if terrain exists at that location.
+    pub fn sample_terrain_height_at(&self, world_x: f32, world_z: f32) -> Option<f32> {
+        self.terrain_panel
+            .terrain_state()
+            .sample_height_at(world_x, world_z)
     }
 
     /// Returns the current primary biome name from the terrain panel.
@@ -2012,6 +2047,37 @@ impl EditorTabViewer {
     /// Apply terrain brush at world coordinates (forwarded from viewport)
     pub fn apply_terrain_brush_at(&mut self, world_x: f32, world_z: f32) {
         self.terrain_panel.apply_brush_at(world_x, world_z);
+    }
+
+    /// Signal end of terrain brush stroke (mouse released).
+    /// Returns undo data if any chunks were modified.
+    pub fn end_terrain_brush_stroke(
+        &mut self,
+    ) -> Option<Vec<(astraweave_terrain::ChunkId, Vec<f32>, Vec<f32>)>> {
+        self.terrain_panel.end_brush_stroke()
+    }
+
+    /// Returns the current brush mode name (for undo descriptions).
+    pub fn terrain_brush_mode_name(&self) -> &'static str {
+        self.terrain_panel.brush_mode_name()
+    }
+
+    /// Returns the current terrain brush radius.
+    pub fn terrain_brush_radius(&self) -> f32 {
+        self.terrain_panel.brush_radius()
+    }
+
+    /// Returns true if the current terrain brush is in Paint mode.
+    pub fn terrain_brush_is_paint(&self) -> bool {
+        self.terrain_panel.is_paint_mode()
+    }
+
+    /// Apply a heightmap snapshot from undo/redo to the terrain state.
+    pub fn apply_terrain_height_snapshot(
+        &mut self,
+        snapshot: &[(astraweave_terrain::ChunkId, Vec<f32>)],
+    ) {
+        self.terrain_panel.apply_height_snapshot(snapshot);
     }
 
     /// Returns (fog_enabled, fog_density, weather_preset, particle_count_override) for the current world settings.
@@ -4410,8 +4476,11 @@ impl TabViewer for EditorTabViewer {
                 let mut entity_to_duplicate = None;
                 let mut entity_to_rename = None;
 
-                // Display entity list from cached data
-                egui::ScrollArea::vertical().show(ui, |ui| {
+                // Display entity list from cached data (capped height so library gets space)
+                egui::ScrollArea::vertical()
+                    .max_height(300.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
                     if self.entity_list.is_empty() {
                         ui.add_space(20.0);
                         ui.vertical_centered(|ui| {
@@ -4592,7 +4661,7 @@ impl TabViewer for EditorTabViewer {
                 egui::CollapsingHeader::new(
                     egui::RichText::new(format!("Entity Library ({catalog_count})")).strong(),
                 )
-                .default_open(false)
+                .default_open(true)
                 .show(ui, |ui| {
                     let ctx = ui.ctx().clone();
                     self.entity_catalog.show(ui, &ctx);
@@ -8864,11 +8933,14 @@ impl TabViewer for EditorTabViewer {
                 // Check for completed terrain generation
                 if self.terrain_panel.has_pending_actions() {
                     for action in self.terrain_panel.take_actions() {
-                        if matches!(
-                            action,
-                            crate::panels::terrain_panel::TerrainAction::Generate
-                        ) {
-                            self.emit_event(PanelEvent::TerrainReady);
+                        match action {
+                            crate::panels::terrain_panel::TerrainAction::Generate => {
+                                self.emit_event(PanelEvent::TerrainReady);
+                            }
+                            crate::panels::terrain_panel::TerrainAction::BrushUpdate => {
+                                self.emit_event(PanelEvent::TerrainBrushUpdate);
+                            }
+                            _ => {} // Other actions (seed, biome, etc.) handled internally
                         }
                     }
                 }

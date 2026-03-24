@@ -159,8 +159,16 @@ pub struct ViewportWidget {
     /// Whether terrain brush mode is active (set externally)
     terrain_brush_active: bool,
 
+    /// Brush radius for cursor visualization
+    terrain_brush_radius: f32,
+    /// Whether the active brush is a paint brush (blue) vs sculpt (green)
+    terrain_brush_is_paint: bool,
+
     /// Queued terrain brush hits (world X, Z) from mouse clicks in viewport
     terrain_brush_hits: Vec<[f32; 2]>,
+
+    /// Whether a terrain brush stroke just ended (mouse released)
+    terrain_brush_stroke_ended: bool,
 
     /// Throttle: last time a brush hit was emitted (limits to ~15 Hz during drag)
     last_brush_time: std::time::Instant,
@@ -244,7 +252,10 @@ impl ViewportWidget {
             ],
             clipboard: None,
             terrain_brush_active: false,
+            terrain_brush_radius: 5.0,
+            terrain_brush_is_paint: false,
             terrain_brush_hits: Vec::new(),
+            terrain_brush_stroke_ended: false,
             last_brush_time: std::time::Instant::now(),
             drag_offset: None,
             drag_plane_y: 0.0,
@@ -294,7 +305,10 @@ impl ViewportWidget {
             ],
             clipboard: None,
             terrain_brush_active: false,
+            terrain_brush_radius: 5.0,
+            terrain_brush_is_paint: false,
             terrain_brush_hits: Vec::new(),
+            terrain_brush_stroke_ended: false,
             last_brush_time: std::time::Instant::now(),
             drag_offset: None,
             drag_plane_y: 0.0,
@@ -313,9 +327,21 @@ impl ViewportWidget {
         self.terrain_brush_active = active;
     }
 
+    /// Update brush cursor parameters for visualization
+    pub fn set_terrain_brush_params(&mut self, radius: f32, is_paint: bool) {
+        self.terrain_brush_radius = radius;
+        self.terrain_brush_is_paint = is_paint;
+    }
+
     /// Take all pending terrain brush hits (world X, Z coordinates)
     pub fn take_terrain_brush_hits(&mut self) -> Vec<[f32; 2]> {
         std::mem::take(&mut self.terrain_brush_hits)
+    }
+
+    /// Returns true if a terrain brush stroke just ended (mouse released).
+    /// Resets the flag after reading.
+    pub fn take_terrain_brush_stroke_ended(&mut self) -> bool {
+        std::mem::take(&mut self.terrain_brush_stroke_ended)
     }
 
     /// Take captured game input (returns None if not in play mode or no input this frame)
@@ -473,8 +499,9 @@ impl ViewportWidget {
             ui.ctx().request_repaint();
         }
 
-        // Restore default cursor when viewport loses focus (prevents cursor disappearing on alt-tab)
-        if response.hovered() && !self.gizmo_state.is_active() {
+        // Restore default cursor when viewport is hovered (prevents cursor
+        // disappearing on alt-tab or during gizmo transforms)
+        if response.hovered() {
             ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Default);
         }
 
@@ -1101,9 +1128,9 @@ impl ViewportWidget {
             self.camera.orbit(delta.x, delta.y);
         }
 
-        // Terrain brush: raycast mouse to ground plane on click/drag
-        // Throttle to max ~15 Hz during drag to prevent FPS collapse
-        // (each hit triggers full mesh regeneration on the main thread)
+        // Terrain brush: depth-based hit detection on click/drag
+        // Reads the depth buffer at the mouse pixel to find the exact terrain surface.
+        // Falls back to Y=0 plane intersection if no depth is available.
         if self.terrain_brush_active
             && !self.gizmo_state.is_active()
             && (response.dragged_by(egui::PointerButton::Primary)
@@ -1111,7 +1138,7 @@ impl ViewportWidget {
         {
             let is_click = response.clicked_by(egui::PointerButton::Primary);
             let elapsed = self.last_brush_time.elapsed();
-            let throttle_ok = is_click || elapsed.as_millis() >= 66; // ~15 Hz for drags
+            let throttle_ok = is_click || elapsed.as_millis() >= 16; // ~60 Hz
             if throttle_ok {
                 if let Some(mouse_pos_abs) = response.hover_pos() {
                     let viewport_size = response.rect.size();
@@ -1119,18 +1146,123 @@ impl ViewportWidget {
                         x: mouse_pos_abs.x - response.rect.min.x,
                         y: mouse_pos_abs.y - response.rect.min.y,
                     };
-                    let ray = self.camera.ray_from_screen(mouse_pos, viewport_size);
-                    let denom = ray.direction.dot(glam::Vec3::Y);
-                    if denom.abs() > 0.0001 {
-                        let t = (glam::Vec3::ZERO - ray.origin).dot(glam::Vec3::Y) / denom;
-                        if t >= 0.0 {
-                            let world_pos = ray.origin + ray.direction * t;
-                            self.terrain_brush_hits.push([world_pos.x, world_pos.z]);
-                            self.last_brush_time = std::time::Instant::now();
+                    let px = mouse_pos.x as u32;
+                    let py = mouse_pos.y as u32;
+
+                    // Try depth-based pick first
+                    let mut hit = None;
+                    if let Ok(renderer) = self.renderer.lock() {
+                        if let Some(depth) = renderer.read_depth_at_pixel(px, py) {
+                            if depth < 1.0 {
+                                // Depth hit on geometry — unproject to world space
+                                let world_pos = self.camera.unproject_depth_to_world(
+                                    px as f32,
+                                    py as f32,
+                                    viewport_size.x,
+                                    viewport_size.y,
+                                    depth,
+                                );
+                                hit = Some([world_pos.x, world_pos.z]);
+                            }
                         }
+                    }
+
+                    // Fallback: Y=0 plane intersection when depth is sky (1.0) or unavailable
+                    if hit.is_none() {
+                        let ray = self.camera.ray_from_screen(mouse_pos, viewport_size);
+                        let denom = ray.direction.dot(glam::Vec3::Y);
+                        if denom.abs() > 0.0001 {
+                            let t = (glam::Vec3::ZERO - ray.origin).dot(glam::Vec3::Y) / denom;
+                            if t >= 0.0 {
+                                let world_pos = ray.origin + ray.direction * t;
+                                hit = Some([world_pos.x, world_pos.z]);
+                            }
+                        }
+                    }
+
+                    if let Some(h) = hit {
+                        self.terrain_brush_hits.push(h);
+                        self.last_brush_time = std::time::Instant::now();
                     }
                 }
             }
+        }
+
+        // Detect end of terrain brush stroke (mouse released after drag)
+        if self.terrain_brush_active && response.drag_stopped_by(egui::PointerButton::Primary) {
+            self.terrain_brush_stroke_ended = true;
+        }
+
+        // Brush cursor visualization — circle draped on terrain at hover position
+        if self.terrain_brush_active && !self.gizmo_state.is_active() {
+            if let Some(mouse_pos_abs) = response.hover_pos() {
+                let viewport_size = response.rect.size();
+                let mouse_pos = egui::Pos2 {
+                    x: mouse_pos_abs.x - response.rect.min.x,
+                    y: mouse_pos_abs.y - response.rect.min.y,
+                };
+                let px = mouse_pos.x as u32;
+                let py = mouse_pos.y as u32;
+
+                // Get world hit for cursor center
+                let mut cursor_center = None;
+                if let Ok(renderer) = self.renderer.lock() {
+                    if let Some(depth) = renderer.read_depth_at_pixel(px, py) {
+                        if depth < 1.0 {
+                            let wp = self.camera.unproject_depth_to_world(
+                                px as f32,
+                                py as f32,
+                                viewport_size.x,
+                                viewport_size.y,
+                                depth,
+                            );
+                            cursor_center = Some(wp);
+                        }
+                    }
+                }
+                if cursor_center.is_none() {
+                    let ray = self.camera.ray_from_screen(mouse_pos, viewport_size);
+                    let denom = ray.direction.dot(glam::Vec3::Y);
+                    if denom.abs() > 0.0001 {
+                        let t = -ray.origin.y / denom;
+                        if t >= 0.0 {
+                            cursor_center = Some(ray.origin + ray.direction * t);
+                        }
+                    }
+                }
+
+                if let Some(center) = cursor_center {
+                    let segments = 48;
+                    let color = if self.terrain_brush_is_paint {
+                        [0.3, 0.5, 1.0] // blue for paint
+                    } else {
+                        [0.2, 1.0, 0.3] // green for sculpt
+                    };
+                    let mut lines = Vec::with_capacity(segments);
+                    for i in 0..segments {
+                        let a0 = (i as f32 / segments as f32) * std::f32::consts::TAU;
+                        let a1 = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
+                        let x0 = center.x + self.terrain_brush_radius * a0.cos();
+                        let z0 = center.z + self.terrain_brush_radius * a0.sin();
+                        let x1 = center.x + self.terrain_brush_radius * a1.cos();
+                        let z1 = center.z + self.terrain_brush_radius * a1.sin();
+                        // Use center Y for draping (slight offset above surface)
+                        let y = center.y + 0.15;
+                        lines.push(astraweave_physics::DebugLine::new(
+                            [x0, y, z0],
+                            [x1, y, z1],
+                            color,
+                        ));
+                    }
+                    self.set_brush_cursor_lines(lines);
+                } else {
+                    self.set_brush_cursor_lines(Vec::new());
+                }
+            } else {
+                self.set_brush_cursor_lines(Vec::new());
+            }
+        } else {
+            self.set_brush_cursor_lines(Vec::new());
         }
 
         // Pan camera (right mouse drag)
@@ -2525,6 +2657,34 @@ impl ViewportWidget {
     ) {
         if let Ok(mut renderer) = self.renderer.lock() {
             renderer.upload_terrain_chunks(chunks);
+        }
+    }
+
+    /// Upload terrain chunks using the terrain_integration vertex type directly
+    /// (zero-copy path — avoids redundant field-by-field vertex remapping).
+    pub fn upload_terrain_chunks_raw(
+        &self,
+        chunks: &[(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)],
+    ) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.upload_terrain_chunks_raw(chunks);
+        }
+    }
+
+    /// Incrementally update vertex data for a single terrain chunk on the GPU.
+    pub fn update_terrain_chunk_vertices(
+        &self,
+        chunk_index: usize,
+        vertices: &[super::terrain_renderer::TerrainVertex],
+    ) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.update_terrain_chunk_vertices(chunk_index, vertices);
+        }
+    }
+
+    pub fn set_brush_cursor_lines(&self, lines: Vec<astraweave_physics::DebugLine>) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.set_brush_cursor_lines(lines);
         }
     }
 

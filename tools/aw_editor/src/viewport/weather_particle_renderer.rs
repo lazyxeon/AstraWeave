@@ -436,8 +436,8 @@ impl WeatherParticleRenderer {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        // Instance buffer (max capacity)
-        let max_instances = 15000u32;
+        // Instance buffer (max capacity — matches UI slider upper bound)
+        let max_instances = 50000u32;
         let instances = Self::generate_instances(max_instances, 40.0, 15.0, 12.0);
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Weather Instance Buffer"),
@@ -498,26 +498,33 @@ impl WeatherParticleRenderer {
     }
 
     pub fn set_weather(&mut self, kind: WeatherKind, intensity: f32, queue: &wgpu::Queue) {
-        if kind == self.current_kind {
-            self.intensity = intensity;
-            self.active = kind != WeatherKind::None;
-            return;
-        }
-
-        // Start transition
-        self.target_kind = kind;
-        self.transition_alpha = 0.3;
-
         let preset = preset_for(kind);
         let base_count = self
             .particle_count_override
             .unwrap_or(preset.particle_count);
-        let count = base_count.min(self.max_instances);
-        self.instance_count = count;
+        let desired_count = base_count.min(self.max_instances);
+
+        let kind_changed = kind != self.current_kind;
+        let count_changed = desired_count != self.instance_count;
+
+        self.intensity = intensity;
+        self.active = kind != WeatherKind::None;
+
+        if !kind_changed && !count_changed {
+            return;
+        }
+
+        if kind_changed {
+            // Start crossfade transition for weather-type changes
+            self.target_kind = kind;
+            self.transition_alpha = 0.3;
+        }
+
+        self.instance_count = desired_count;
 
         // Regenerate instances with preset parameters
         let instances = Self::generate_instances(
-            count,
+            desired_count,
             preset.volume_size,
             preset.base_speed,
             preset.speed_variation,
@@ -525,9 +532,6 @@ impl WeatherParticleRenderer {
         if !instances.is_empty() {
             queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
         }
-
-        self.intensity = intensity;
-        self.active = kind != WeatherKind::None;
     }
 
     pub fn set_wind(&mut self, x: f32, z: f32) {

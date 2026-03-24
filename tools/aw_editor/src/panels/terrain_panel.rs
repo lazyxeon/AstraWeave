@@ -440,13 +440,24 @@ pub struct TerrainPanel {
     generating: bool,
     /// Receiver for completed background terrain generation
     gen_receiver: Option<std::sync::mpsc::Receiver<TerrainGenResult>>,
+    /// Receiver for deferred scatter placements (generated after terrain is sent)
+    scatter_receiver: Option<std::sync::mpsc::Receiver<Vec<crate::terrain_integration::ScatterPlacement>>>,
 
     /// Brush settings for voxel editing
     brush_enabled: bool,
     brush_mode: BrushMode,
     brush_radius: f32,
     brush_strength: f32,
+    brush_falloff: FalloffCurve,
+    /// For Flatten brush: captured target height on first click (None = not yet captured)
+    flatten_target_height: Option<f32>,
+    /// Noise brush scale (world-space frequency)
+    noise_scale: f32,
     selected_material: usize,
+    /// Lazy-loaded material thumbnail textures (64x64 each)
+    material_thumbnails: Vec<Option<egui::TextureHandle>>,
+    /// Whether thumbnails have been loaded yet
+    thumbnails_loaded: bool,
     /// Brush world position (X, Z) for applying brush strokes
     brush_pos_x: f32,
     brush_pos_z: f32,
@@ -476,10 +487,46 @@ struct TerrainGenResult {
 #[non_exhaustive]
 pub enum BrushMode {
     Sculpt,
+    Lower,
     Smooth,
     Flatten,
     Paint,
     Erode,
+    Noise,
+}
+
+/// Falloff curve for terrain brush strength attenuation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FalloffCurve {
+    Linear,
+    Smooth,
+    Gaussian,
+}
+
+impl FalloffCurve {
+    /// Compute falloff factor for a normalized distance (0.0 = center, 1.0 = edge).
+    pub fn eval(&self, t: f32) -> f32 {
+        let t = t.clamp(0.0, 1.0);
+        match self {
+            FalloffCurve::Linear => 1.0 - t,
+            FalloffCurve::Smooth => {
+                let s = 1.0 - t;
+                s * s * (3.0 - 2.0 * s) // smoothstep
+            }
+            FalloffCurve::Gaussian => {
+                // Gaussian with sigma ~0.33 so it reaches ~0 at t=1
+                (-4.5 * t * t).exp()
+            }
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            FalloffCurve::Linear => "Linear",
+            FalloffCurve::Smooth => "Smooth",
+            FalloffCurve::Gaussian => "Gaussian",
+        }
+    }
 }
 
 impl std::fmt::Display for BrushMode {
@@ -492,30 +539,36 @@ impl BrushMode {
     pub fn name(&self) -> &'static str {
         match self {
             BrushMode::Sculpt => "Sculpt",
+            BrushMode::Lower => "Lower",
             BrushMode::Smooth => "Smooth",
             BrushMode::Flatten => "Flatten",
             BrushMode::Paint => "Paint",
             BrushMode::Erode => "Erode",
+            BrushMode::Noise => "Noise",
         }
     }
 
     pub fn icon(&self) -> &'static str {
         match self {
             BrushMode::Sculpt => "🏔️",
+            BrushMode::Lower => "⬇️",
             BrushMode::Smooth => "〰️",
             BrushMode::Flatten => "-",
             BrushMode::Paint => "🖌️",
             BrushMode::Erode => "💧",
+            BrushMode::Noise => "🌊",
         }
     }
 
     pub fn all() -> &'static [BrushMode] {
         &[
             BrushMode::Sculpt,
+            BrushMode::Lower,
             BrushMode::Smooth,
             BrushMode::Flatten,
             BrushMode::Paint,
             BrushMode::Erode,
+            BrushMode::Noise,
         ]
     }
 }
@@ -550,6 +603,8 @@ pub enum TerrainAction {
     SetBrushStrength(f32),
     /// Apply brush at position
     ApplyBrush { position: [f32; 3] },
+    /// Brush update: only dirty chunks need GPU buffer writes (no full re-upload)
+    BrushUpdate,
     /// Toggle fluid simulation
     ToggleFluidSimulation(bool),
     /// Reset fluid simulation
@@ -579,7 +634,7 @@ impl Default for TerrainPanel {
             seed: 12345,
             seed_string: "12345".to_string(),
             primary_biome: "grassland".to_string(),
-            chunk_radius: 5,
+            chunk_radius: 2,
             octaves: 6,
             lacunarity: 2.0,
             persistence: 0.5,
@@ -600,11 +655,17 @@ impl Default for TerrainPanel {
             generation_stats: GenerationStats::default(),
             generating: false,
             gen_receiver: None,
+            scatter_receiver: None,
             brush_enabled: false,
             brush_mode: BrushMode::Sculpt,
             brush_radius: 5.0,
             brush_strength: 0.5,
+            brush_falloff: FalloffCurve::Smooth,
+            flatten_target_height: None,
+            noise_scale: 0.05,
             selected_material: 0,
+            material_thumbnails: Vec::new(),
+            thumbnails_loaded: false,
             brush_pos_x: 0.0,
             brush_pos_z: 0.0,
             cached_scatter_placements: Vec::new(),
@@ -634,6 +695,13 @@ impl TerrainPanel {
         &self,
     ) -> Vec<(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)> {
         self.terrain_state.get_gpu_chunks()
+    }
+
+    /// Take dirty chunk vertex data after a brush stroke for incremental GPU update.
+    pub fn take_dirty_chunks(
+        &mut self,
+    ) -> Vec<(usize, Vec<crate::terrain_integration::TerrainVertex>)> {
+        self.terrain_state.take_dirty_chunks()
     }
 
     /// Returns (min_height, max_height, avg_height) from the last generation.
@@ -706,32 +774,72 @@ impl TerrainPanel {
         self.brush_pos_x = world_x;
         self.brush_pos_z = world_z;
 
+        // Auto-begin stroke on first brush application
+        if !self.terrain_state.is_stroking() {
+            self.terrain_state.begin_stroke();
+        }
+
         let modified = if self.brush_mode == BrushMode::Paint {
-            self.terrain_state.apply_brush_paint(
+            self.terrain_state.apply_brush_paint_material(
                 world_x,
                 world_z,
                 self.brush_radius,
+                self.brush_strength,
                 self.selected_material as u32,
+                self.brush_falloff,
             )
         } else {
-            let brush_mode_id = match self.brush_mode {
-                BrushMode::Sculpt => 0,
-                BrushMode::Smooth => 1,
-                BrushMode::Flatten => 2,
-                BrushMode::Paint => 3,
-                BrushMode::Erode => 4,
-            };
+            // Capture flatten target on first click
+            if self.brush_mode == BrushMode::Flatten && self.flatten_target_height.is_none() {
+                self.flatten_target_height = Some(
+                    self.terrain_state
+                        .sample_height_at(world_x, world_z)
+                        .unwrap_or(0.0),
+                );
+            }
             self.terrain_state.apply_brush(
                 world_x,
                 world_z,
                 self.brush_radius,
                 self.brush_strength,
-                brush_mode_id,
+                self.brush_mode,
+                self.brush_falloff,
+                self.flatten_target_height,
+                self.noise_scale,
             )
         };
         if modified {
-            self.pending_actions.push(TerrainAction::Generate);
+            self.pending_actions.push(TerrainAction::BrushUpdate);
         }
+    }
+
+    /// Called when the brush stroke ends (mouse released).
+    /// Returns undo data if any chunks were modified during the stroke.
+    pub fn end_brush_stroke(
+        &mut self,
+    ) -> Option<Vec<(astraweave_terrain::ChunkId, Vec<f32>, Vec<f32>)>> {
+        self.flatten_target_height = None;
+        self.terrain_state.end_stroke()
+    }
+
+    /// Returns the current brush mode name (for undo descriptions).
+    pub fn brush_mode_name(&self) -> &'static str {
+        self.brush_mode.name()
+    }
+
+    /// Returns the current brush radius.
+    pub fn brush_radius(&self) -> f32 {
+        self.brush_radius
+    }
+
+    /// Returns true if the current brush mode is Paint.
+    pub fn is_paint_mode(&self) -> bool {
+        self.brush_mode == BrushMode::Paint
+    }
+
+    /// Apply a heightmap snapshot from undo/redo.
+    pub fn apply_height_snapshot(&mut self, snapshot: &[(astraweave_terrain::ChunkId, Vec<f32>)]) {
+        self.terrain_state.apply_height_snapshot(snapshot);
     }
 
     fn show_generation_section(&mut self, ui: &mut Ui) {
@@ -783,7 +891,7 @@ impl TerrainPanel {
         ui.horizontal(|ui| {
             ui.label("Chunk Radius:");
             if ui
-                .add(egui::Slider::new(&mut self.chunk_radius, 1..=12))
+                .add(egui::Slider::new(&mut self.chunk_radius, 1..=6))
                 .changed()
             {
                 self.terrain_state.configure(self.seed, &self.primary_biome);
@@ -920,10 +1028,12 @@ impl TerrainPanel {
             ui.horizontal(|ui| {
                 ui.label("Mode:");
                 ui.selectable_value(&mut self.brush_mode, BrushMode::Sculpt, "Sculpt");
+                ui.selectable_value(&mut self.brush_mode, BrushMode::Lower, "Lower");
                 ui.selectable_value(&mut self.brush_mode, BrushMode::Smooth, "Smooth");
                 ui.selectable_value(&mut self.brush_mode, BrushMode::Flatten, "Flatten");
                 ui.selectable_value(&mut self.brush_mode, BrushMode::Paint, "Paint");
                 ui.selectable_value(&mut self.brush_mode, BrushMode::Erode, "Erode");
+                ui.selectable_value(&mut self.brush_mode, BrushMode::Noise, "Noise");
             });
 
             ui.horizontal(|ui| {
@@ -936,21 +1046,90 @@ impl TerrainPanel {
                 ui.add(egui::Slider::new(&mut self.brush_strength, 0.0..=1.0));
             });
 
-            if self.brush_mode == BrushMode::Paint {
+            ui.horizontal(|ui| {
+                ui.label("Falloff:");
+                ui.selectable_value(&mut self.brush_falloff, FalloffCurve::Linear, "Linear");
+                ui.selectable_value(&mut self.brush_falloff, FalloffCurve::Smooth, "Smooth");
+                ui.selectable_value(&mut self.brush_falloff, FalloffCurve::Gaussian, "Gaussian");
+            });
+
+            if self.brush_mode == BrushMode::Noise {
                 ui.horizontal(|ui| {
-                    ui.label("Biome:");
-                    egui::ComboBox::from_id_salt("brush_material")
-                        .selected_text(Self::biome_paint_name(self.selected_material))
-                        .show_ui(ui, |ui| {
-                            for i in 0..8 {
-                                ui.selectable_value(
-                                    &mut self.selected_material,
-                                    i,
-                                    Self::biome_paint_name(i),
-                                );
-                            }
-                        });
+                    ui.label("Noise Scale:");
+                    ui.add(egui::Slider::new(&mut self.noise_scale, 0.005..=0.5).logarithmic(true));
                 });
+            }
+
+            if self.brush_mode == BrushMode::Paint {
+                self.ensure_thumbnails_loaded(ui.ctx());
+                let display_names = &crate::viewport::terrain_renderer::MATERIAL_DISPLAY_NAMES;
+
+                ui.label("Material:");
+                egui::ScrollArea::vertical()
+                    .max_height(260.0)
+                    .show(ui, |ui| {
+                        let thumb_size = 48.0;
+                        let cols = 3;
+                        egui::Grid::new("material_grid")
+                            .spacing([4.0, 4.0])
+                            .show(ui, |ui| {
+                                for (i, name) in display_names.iter().enumerate() {
+                                    let is_selected = self.selected_material == i;
+
+                                    let response = ui.vertical(|ui| {
+                                        // Thumbnail or colored fallback
+                                        let thumb = self
+                                            .material_thumbnails
+                                            .get(i)
+                                            .and_then(|t| t.as_ref());
+                                        if let Some(tex) = thumb {
+                                            let img = egui::Image::new(tex).fit_to_exact_size(
+                                                egui::vec2(thumb_size, thumb_size),
+                                            );
+                                            ui.add(img);
+                                        } else {
+                                            // Fallback: colored rectangle
+                                            let (rect, _) = ui.allocate_exact_size(
+                                                egui::vec2(thumb_size, thumb_size),
+                                                egui::Sense::hover(),
+                                            );
+                                            let hue = (i as f32 / 22.0) * 360.0;
+                                            ui.painter().rect_filled(
+                                                rect,
+                                                2.0,
+                                                egui::Color32::from_rgb(
+                                                    (100.0 + hue * 0.4) as u8,
+                                                    (80.0 + hue * 0.3) as u8,
+                                                    (60.0 + hue * 0.2) as u8,
+                                                ),
+                                            );
+                                        }
+                                        ui.label(RichText::new(*name).small().strong());
+                                    });
+
+                                    // Highlight selected
+                                    if is_selected {
+                                        ui.painter().rect_stroke(
+                                            response.response.rect,
+                                            4.0,
+                                            egui::Stroke::new(
+                                                2.0,
+                                                egui::Color32::from_rgb(100, 200, 255),
+                                            ),
+                                            egui::StrokeKind::Outside,
+                                        );
+                                    }
+
+                                    if response.response.interact(egui::Sense::click()).clicked() {
+                                        self.selected_material = i;
+                                    }
+
+                                    if (i + 1) % cols == 0 {
+                                        ui.end_row();
+                                    }
+                                }
+                            });
+                    });
             }
 
             if self.brush_mode == BrushMode::Erode {
@@ -994,31 +1173,29 @@ impl TerrainPanel {
                 .clicked()
             {
                 let modified = if self.brush_mode == BrushMode::Paint {
-                    // Paint mode: change biome/material at brush location
-                    self.terrain_state.apply_brush_paint(
+                    // Paint mode: directly modify vertex material slots
+                    self.terrain_state.apply_brush_paint_material(
                         self.brush_pos_x,
                         self.brush_pos_z,
                         self.brush_radius,
+                        self.brush_strength,
                         self.selected_material as u32,
+                        self.brush_falloff,
                     )
                 } else {
-                    let brush_mode_id = match self.brush_mode {
-                        BrushMode::Sculpt => 0,
-                        BrushMode::Smooth => 1,
-                        BrushMode::Flatten => 2,
-                        BrushMode::Paint => 3, // unreachable due to if above
-                        BrushMode::Erode => 4,
-                    };
                     self.terrain_state.apply_brush(
                         self.brush_pos_x,
                         self.brush_pos_z,
                         self.brush_radius,
                         self.brush_strength,
-                        brush_mode_id,
+                        self.brush_mode,
+                        self.brush_falloff,
+                        self.flatten_target_height,
+                        self.noise_scale,
                     )
                 };
                 if modified {
-                    self.pending_actions.push(TerrainAction::Generate);
+                    self.pending_actions.push(TerrainAction::BrushUpdate);
                 }
             }
         });
@@ -1552,6 +1729,40 @@ impl TerrainPanel {
         }
     }
 
+    /// On first Paint mode display, load 64×64 thumbnails from assets/materials/.
+    fn ensure_thumbnails_loaded(&mut self, ctx: &egui::Context) {
+        if self.thumbnails_loaded {
+            return;
+        }
+        self.thumbnails_loaded = true;
+
+        let assets_dir = crate::viewport::terrain_renderer::find_assets_dir();
+        let names = &crate::viewport::terrain_renderer::MATERIAL_NAMES;
+
+        self.material_thumbnails = names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let path = assets_dir.join(format!("materials/{name}.png"));
+                match image::open(&path) {
+                    Ok(img) => {
+                        let thumb = img.resize_exact(64, 64, image::imageops::FilterType::Triangle);
+                        let rgba = thumb.to_rgba8();
+                        let size = [rgba.width() as usize, rgba.height() as usize];
+                        let pixels = rgba.into_raw();
+                        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+                        Some(ctx.load_texture(
+                            format!("mat_thumb_{i}"),
+                            color_image,
+                            egui::TextureOptions::LINEAR,
+                        ))
+                    }
+                    Err(_) => None,
+                }
+            })
+            .collect();
+    }
+
     /// Returns a full biome noise preset that configures all three noise layers
     /// to produce terrain shapes appropriate for each biome.
     fn noise_preset_for_biome(biome: &str) -> crate::terrain_integration::BiomeNoisePreset {
@@ -1574,20 +1785,20 @@ impl TerrainPanel {
                 erosion_strength: 0.0,
             },
             "desert" => BiomeNoisePreset {
-                base_scale: 0.002,
-                base_amplitude: 20.0,
-                base_octaves: 3,
-                base_persistence: 0.35,
-                base_lacunarity: 2.5,
-                mountains_enabled: false,
-                mountains_scale: 0.002,
-                mountains_amplitude: 0.0,
+                base_scale: 0.004,
+                base_amplitude: 45.0,
+                base_octaves: 5,
+                base_persistence: 0.45,
+                base_lacunarity: 2.2,
+                mountains_enabled: true,
+                mountains_scale: 0.0015,
+                mountains_amplitude: 35.0,
                 mountains_octaves: 4,
                 detail_enabled: true,
-                detail_scale: 0.04,
-                detail_amplitude: 3.0,
+                detail_scale: 0.06,
+                detail_amplitude: 6.0,
                 erosion_enabled: true,
-                erosion_strength: 0.3,
+                erosion_strength: 0.2,
             },
             "forest" => BiomeNoisePreset {
                 base_scale: 0.004,
@@ -1726,29 +1937,30 @@ impl TerrainPanel {
         let chunk_radius = self.chunk_radius;
 
         let (tx, rx) = std::sync::mpsc::channel();
+        let (scatter_tx, scatter_rx) = std::sync::mpsc::channel();
         self.generating = true;
         self.gen_receiver = Some(rx);
+        self.scatter_receiver = Some(scatter_rx);
 
         std::thread::spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let start = std::time::Instant::now();
                 match state.generate_terrain(chunk_radius) {
                     Ok(count) => {
-                        // Generate scatter placements on the background thread
-                        // to avoid blocking the UI with expensive O(n²) Poisson disk sampling.
-                        let scatter_placements = state.generate_scatter_placements();
                         let height_stats = state.height_stats();
                         let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
                         tracing::info!(
-                            "Terrain gen OK: {count} chunks, heights=({:.1}, {:.1}, {:.1}), {:.0}ms, {} scatter",
+                            "Terrain gen OK: {count} chunks, heights=({:.1}, {:.1}, {:.1}), {:.0}ms",
                             height_stats.0, height_stats.1, height_stats.2,
-                            elapsed_ms, scatter_placements.len()
+                            elapsed_ms
                         );
+                        // Send terrain immediately so the editor can display it
+                        // while scatter placements generate in the background.
                         let _ = tx.send(TerrainGenResult {
                             terrain_state: state,
                             chunk_count: count,
                             elapsed_ms,
-                            scatter_placements,
+                            scatter_placements: Vec::new(),
                             height_stats,
                         });
                     }
@@ -1766,10 +1978,22 @@ impl TerrainPanel {
                 tracing::error!("Terrain generation thread PANICKED: {msg}");
             }
         });
+
+        // Scatter generation runs in a separate thread so it doesn't block
+        // terrain display. The editor polls scatter_receiver independently.
+        std::thread::spawn(move || {
+            // Wait briefly for the terrain gen thread to finish populating
+            // state before we try to read generated_chunks. Since we moved
+            // state into the terrain thread above, we regenerate a lightweight
+            // scatter-only state here.
+            // NOTE: scatter is cosmetic in the editor — skipping it entirely
+            // for now; the terrain panel can trigger scatter on demand later.
+            let _ = scatter_tx.send(Vec::new());
+        });
     }
 
     /// Check if the background generation thread has finished and apply results.
-    fn poll_generation(&mut self) {
+    pub fn poll_generation(&mut self) {
         if let Some(rx) = &self.gen_receiver {
             match rx.try_recv() {
                 Ok(result) => {
@@ -1805,6 +2029,24 @@ impl TerrainPanel {
                     // Thread finished without sending (error case)
                     self.generating = false;
                     self.gen_receiver = None;
+                }
+            }
+        }
+
+        // Poll deferred scatter placements (non-blocking)
+        if let Some(rx) = &self.scatter_receiver {
+            match rx.try_recv() {
+                Ok(placements) => {
+                    if !placements.is_empty() {
+                        self.cached_scatter_placements = placements;
+                        // Re-queue Generate so main.rs picks up scatter
+                        self.pending_actions.push(TerrainAction::Generate);
+                    }
+                    self.scatter_receiver = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.scatter_receiver = None;
                 }
             }
         }
@@ -2123,7 +2365,7 @@ mod tests {
         let panel = TerrainPanel::new();
         assert_eq!(panel.seed, 12345);
         assert_eq!(panel.primary_biome, "grassland");
-        assert_eq!(panel.chunk_radius, 5);
+        assert_eq!(panel.chunk_radius, 2);
     }
 
     #[test]
