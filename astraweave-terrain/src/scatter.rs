@@ -50,6 +50,13 @@ impl Default for ScatterConfig {
     }
 }
 
+impl ScatterConfig {
+    /// Create a ScatterConfig from a [`BiomePack`](crate::biome_pack::BiomePack).
+    pub fn from_biome_pack(pack: &crate::biome_pack::BiomePack) -> Self {
+        pack.to_scatter_config()
+    }
+}
+
 /// Vegetation scatter system that places objects based on biome rules
 pub struct VegetationScatter {
     config: ScatterConfig,

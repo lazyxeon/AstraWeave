@@ -493,6 +493,7 @@ pub enum BrushMode {
     Paint,
     Erode,
     Noise,
+    ZoneBlend,
 }
 
 /// Falloff curve for terrain brush strength attenuation.
@@ -545,6 +546,7 @@ impl BrushMode {
             BrushMode::Paint => "Paint",
             BrushMode::Erode => "Erode",
             BrushMode::Noise => "Noise",
+            BrushMode::ZoneBlend => "Zone Blend",
         }
     }
 
@@ -557,6 +559,7 @@ impl BrushMode {
             BrushMode::Paint => "🖌️",
             BrushMode::Erode => "💧",
             BrushMode::Noise => "🌊",
+            BrushMode::ZoneBlend => "🔀",
         }
     }
 
@@ -569,6 +572,7 @@ impl BrushMode {
             BrushMode::Paint,
             BrushMode::Erode,
             BrushMode::Noise,
+            BrushMode::ZoneBlend,
         ]
     }
 }
@@ -634,7 +638,7 @@ impl Default for TerrainPanel {
             seed: 12345,
             seed_string: "12345".to_string(),
             primary_biome: "grassland".to_string(),
-            chunk_radius: 2,
+            chunk_radius: 5,
             octaves: 6,
             lacunarity: 2.0,
             persistence: 0.5,
@@ -1034,6 +1038,7 @@ impl TerrainPanel {
                 ui.selectable_value(&mut self.brush_mode, BrushMode::Paint, "Paint");
                 ui.selectable_value(&mut self.brush_mode, BrushMode::Erode, "Erode");
                 ui.selectable_value(&mut self.brush_mode, BrushMode::Noise, "Noise");
+                ui.selectable_value(&mut self.brush_mode, BrushMode::ZoneBlend, "Zone Blend");
             });
 
             ui.horizontal(|ui| {
@@ -1943,24 +1948,35 @@ impl TerrainPanel {
         self.scatter_receiver = Some(scatter_rx);
 
         std::thread::spawn(move || {
+            // Move scatter_tx into this thread so it drops when we exit
+            // (receiver sees Disconnected and cleans up).
+            let _scatter_tx = scatter_tx;
+
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let start = std::time::Instant::now();
                 match state.generate_terrain(chunk_radius) {
                     Ok(count) => {
                         let height_stats = state.height_stats();
+                        let terrain_ms = start.elapsed().as_secs_f32() * 1000.0;
+
+                        // Generate scatter placements while we still own state
+                        let scatter_start = std::time::Instant::now();
+                        let scatter_placements = state.generate_scatter_placements();
+                        let scatter_ms = scatter_start.elapsed().as_secs_f32() * 1000.0;
+                        let scatter_count = scatter_placements.len();
+
                         let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
                         tracing::info!(
-                            "Terrain gen OK: {count} chunks, heights=({:.1}, {:.1}, {:.1}), {:.0}ms",
+                            "Terrain gen OK: {count} chunks, {scatter_count} scatter placements, heights=({:.1}, {:.1}, {:.1}), terrain={:.0}ms scatter={:.0}ms total={:.0}ms",
                             height_stats.0, height_stats.1, height_stats.2,
-                            elapsed_ms
+                            terrain_ms, scatter_ms, elapsed_ms,
                         );
-                        // Send terrain immediately so the editor can display it
-                        // while scatter placements generate in the background.
+
                         let _ = tx.send(TerrainGenResult {
                             terrain_state: state,
                             chunk_count: count,
                             elapsed_ms,
-                            scatter_placements: Vec::new(),
+                            scatter_placements,
                             height_stats,
                         });
                     }
@@ -1977,18 +1993,6 @@ impl TerrainPanel {
                     .unwrap_or("unknown panic");
                 tracing::error!("Terrain generation thread PANICKED: {msg}");
             }
-        });
-
-        // Scatter generation runs in a separate thread so it doesn't block
-        // terrain display. The editor polls scatter_receiver independently.
-        std::thread::spawn(move || {
-            // Wait briefly for the terrain gen thread to finish populating
-            // state before we try to read generated_chunks. Since we moved
-            // state into the terrain thread above, we regenerate a lightweight
-            // scatter-only state here.
-            // NOTE: scatter is cosmetic in the editor — skipping it entirely
-            // for now; the terrain panel can trigger scatter on demand later.
-            let _ = scatter_tx.send(Vec::new());
         });
     }
 

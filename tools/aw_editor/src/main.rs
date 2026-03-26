@@ -72,6 +72,7 @@ mod animation_bridge;
 mod asset_pack;
 mod audio_bridge;
 mod behavior_graph;
+mod blend_scanner; // Blend asset discovery for blueprint zones
 mod brdf_preview;
 mod clipboard; // Phase 3.4 - Copy/Paste/Duplicate
 mod command; // Phase 2.1 - Undo/Redo system
@@ -101,7 +102,7 @@ mod ui; // Phase 3 - UI components (StatusBar, etc.)
 mod viewport; // Phase 1.1 - 3D Viewport
 mod voxel_tools; // Phase 10: Voxel editing tools // Phase 2: Asset packaging and compression
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use astraweave_asset::AssetDatabase;
 use astraweave_core::{Entity, IVec2, Team, World};
 use astraweave_dialogue::DialogueGraph;
@@ -283,6 +284,24 @@ struct AssetValidation {
     info: Vec<String>,
 }
 
+/// Message from background blend decomposition thread.
+enum DecompThreadMsg {
+    /// Intermediate progress update (progress 0..1, message)
+    Progress(f32, String),
+    /// Final result: success with data
+    Done(DecompThreadResult),
+    /// Final result: error
+    Failed(String),
+}
+
+/// Successful decomposition result data.
+struct DecompThreadResult {
+    assets: Vec<panels::blend_import_panel::DecomposedAssetEntry>,
+    hdri_paths: Vec<PathBuf>,
+    ground_texture_groups: Vec<(String, Vec<PathBuf>)>,
+    status_message: String,
+}
+
 struct EditorApp {
     content_root: PathBuf,
     level: LevelDoc,
@@ -443,6 +462,8 @@ struct EditorApp {
     world_wizard: panels::WorldWizard,
     /// First-run tutorial walkthrough overlay
     tutorial: tutorial::Tutorial,
+    /// Background blend decomposition receiver
+    decomp_receiver: Option<std::sync::mpsc::Receiver<DecompThreadMsg>>,
 }
 
 impl Default for EditorApp {
@@ -655,6 +676,7 @@ impl Default for EditorApp {
                 }
                 t
             },
+            decomp_receiver: None,
         }
     }
 }
@@ -869,6 +891,7 @@ impl EditorApp {
             snapping: Some(self.snapping_config),
             layout_json: self.dock_layout.to_json().ok(),
             tutorial_completed: !self.tutorial.active,
+            blend_asset_directories: editor_preferences::default_blend_asset_directories(),
         };
         prefs.save();
     }
@@ -903,6 +926,7 @@ impl EditorApp {
             snapping: Some(self.snapping_config),
             layout_json: self.dock_layout.to_json().ok(),
             tutorial_completed: !self.tutorial.active,
+            blend_asset_directories: editor_preferences::default_blend_asset_directories(),
         };
         *self = Self::default();
         self.viewport = viewport;
@@ -5623,6 +5647,631 @@ impl EditorApp {
         }
     }
 
+    /// Process pending blend import panel actions (decomposition, pack gen, browse)
+    fn process_blend_import_actions(&mut self) {
+        use panels::blend_import_panel::BlendImportAction;
+
+        let actions = self.dock_tab_viewer.take_blend_import_actions();
+        if actions.is_empty() {
+            return;
+        }
+
+        for action in actions {
+            match action {
+                BlendImportAction::StartDecomposition { blend_path } => {
+                    let panel = self.dock_tab_viewer.blend_import_panel_mut();
+                    let output_dir = panel.output_dir().to_path_buf();
+
+                    // Resolve output_dir to absolute — the panel stores relative paths
+                    // like "assets/imported/Namaqualand" which Blender can't resolve.
+                    let output_dir = if output_dir.is_relative() {
+                        std::env::current_dir()
+                            .unwrap_or_else(|_| PathBuf::from("."))
+                            .join(&output_dir)
+                    } else {
+                        output_dir
+                    };
+
+                    // Check if already decomposed (fast path: manifest exists)
+                    let stem = blend_path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "imported".to_string());
+                    let manifest = output_dir.join(&stem).join("manifest.json");
+                    if manifest.exists() {
+                        // Already decomposed — load cached manifest
+                        panel.set_progress(0.5, "Loading cached decomposition...");
+                        match self.load_cached_decomposition(&manifest) {
+                            Ok(result) => {
+                                let p = self.dock_tab_viewer.blend_import_panel_mut();
+                                p.set_decomposition_result(
+                                    result.assets,
+                                    result.hdri_paths,
+                                    result.ground_texture_groups,
+                                );
+                                self.console_logs.push(format!(
+                                    "[Blend Import] Loaded cached decomposition: {}",
+                                    manifest.display()
+                                ));
+                                self.status = format!("Cached: {} decomposition loaded", stem);
+                            }
+                            Err(e) => {
+                                let p = self.dock_tab_viewer.blend_import_panel_mut();
+                                p.set_progress(0.0, &format!("Cache load failed: {e}"));
+                                self.console_logs.push(format!(
+                                    "[Blend Import] Cache load error: {e}"
+                                ));
+                            }
+                        }
+                    } else {
+                        // Spawn background decomposition thread
+                        panel.set_progress(0.05, "Discovering Blender installation...");
+                        self.console_logs.push(format!(
+                            "[Blend Import] Decomposition started: {} -> {}",
+                            blend_path.display(),
+                            output_dir.display()
+                        ));
+                        self.console_logs.push(
+                            "[Blend Import] Large files may take several minutes — use Cancel to abort.".into()
+                        );
+                        self.status = format!("Decomposing: {}", blend_path.display());
+
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        self.decomp_receiver = Some(rx);
+
+                        let blend_path_clone = blend_path.clone();
+                        let output_dir_clone = output_dir.clone();
+                        std::thread::spawn(move || {
+                            let rt = match tokio::runtime::Runtime::new() {
+                                Ok(rt) => rt,
+                                Err(e) => {
+                                    let _ = tx.send(DecompThreadMsg::Failed(
+                                        format!("Failed to create async runtime: {e}"),
+                                    ));
+                                    return;
+                                }
+                            };
+                            rt.block_on(async {
+                                use astraweave_asset::blend_import::{BlendImporter, DecomposedAsset};
+
+                                let _ = tx.send(DecompThreadMsg::Progress(
+                                    0.1,
+                                    "Discovering Blender installation...".into(),
+                                ));
+
+                                let mut importer = match BlendImporter::new().await {
+                                    Ok(imp) => imp,
+                                    Err(e) => {
+                                        let _ = tx.send(DecompThreadMsg::Failed(
+                                            format!("Blender not found: {e}"),
+                                        ));
+                                        return;
+                                    }
+                                };
+
+                                let _ = tx.send(DecompThreadMsg::Progress(
+                                    0.2,
+                                    "Blender found — running scene decomposition (this may take several minutes)...".into(),
+                                ));
+
+                                match importer.decompose(&blend_path_clone, &output_dir_clone).await {
+                                    Ok(result) => {
+                                        if result.assets.is_empty() {
+                                            // Read the raw JSON for diagnostics
+                                            let result_json_path = output_dir_clone.join("decomposition_result.json");
+                                            let raw_json_info = match std::fs::read_to_string(&result_json_path) {
+                                                Ok(json) => {
+                                                    // Parse to count raw asset entries
+                                                    if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&json) {
+                                                        let raw_count = raw.get("assets")
+                                                            .and_then(|a| a.as_array())
+                                                            .map(|a| a.len())
+                                                            .unwrap_or(0);
+                                                        format!(
+                                                            "Python reported total_objects={}, raw JSON has {} asset entries. \
+                                                             If raw > 0, Rust deserialization dropped them (check stderr). \
+                                                             JSON preview: {}",
+                                                            result.total_objects,
+                                                            raw_count,
+                                                            &json[..json.len().min(2000)]
+                                                        )
+                                                    } else {
+                                                        format!("decomposition_result.json exists but is not valid JSON: {}", &json[..json.len().min(500)])
+                                                    }
+                                                }
+                                                Err(e) => format!("Could not read {}: {e}", result_json_path.display()),
+                                            };
+                                            eprintln!("[Blend Import] 0-asset diagnostics: {raw_json_info}");
+                                            let _ = tx.send(DecompThreadMsg::Failed(
+                                                format!(
+                                                    "Blender processed the scene (total_objects={}) but 0 assets \
+                                                     survived to the editor. {}",
+                                                    result.total_objects,
+                                                    if result.total_objects > 0 {
+                                                        "Objects were found by Python but lost during Rust deserialization — check editor stderr for details."
+                                                    } else {
+                                                        "The scene genuinely contained 0 exportable mesh objects. \
+                                                         Objects may have been excluded by name filters (Camera/Light) \
+                                                         or have fewer than 3 vertices."
+                                                    }
+                                                ),
+                                            ));
+                                            return;
+                                        }
+                                        let assets = result.assets.iter().map(|a: &DecomposedAsset| {
+                                            panels::blend_import_panel::DecomposedAssetEntry {
+                                                name: a.name.clone(),
+                                                category: a.category.clone(),
+                                                mesh_path: PathBuf::from(&a.filename),
+                                                vertex_count: a.vertex_count as u32,
+                                                texture_count: a.textures.len(),
+                                                dimensions: a.dimensions
+                                                    .map(|d| [d[0] as f32, d[1] as f32, d[2] as f32])
+                                                    .unwrap_or([0.0; 3]),
+                                                include_in_pack: true,
+                                            }
+                                        }).collect();
+                                        let hdri_paths: Vec<PathBuf> = result.hdris.iter()
+                                            .map(|h| result.output_dir.join("hdri").join(&h.filename))
+                                            .collect();
+                                        let _ = tx.send(DecompThreadMsg::Done(DecompThreadResult {
+                                            assets,
+                                            hdri_paths,
+                                            ground_texture_groups: Vec::new(),
+                                            status_message: format!(
+                                                "Decomposed {} assets in {:.1}s (Blender {})",
+                                                result.assets.len(),
+                                                result.duration.as_secs_f32(),
+                                                result.blender_version,
+                                            ),
+                                        }));
+                                    }
+                                    Err(e) => {
+                                        // Send Display message for the UI error box
+                                        let display_msg = format!("{e}");
+                                        // Send Debug representation to console for full diagnostics
+                                        let debug_msg = format!("{e:?}");
+                                        let _ = tx.send(DecompThreadMsg::Failed(display_msg));
+                                        // Log Debug details — these include stderr, blender_output, etc.
+                                        eprintln!("[Blend Import] Decomposition error (debug): {debug_msg}");
+                                    }
+                                }
+                            });
+                        });
+                    }
+                }
+                BlendImportAction::GenerateBiomePack { output_dir } => {
+                    self.console_logs.push(format!(
+                        "[Blend Import] Generating biome pack in {}",
+                        output_dir.display()
+                    ));
+                    // Mark pack complete so the panel advances
+                    self.dock_tab_viewer.blend_import_panel_mut().set_pack_complete();
+                    self.status = format!("Biome pack generated: {}", output_dir.display());
+                }
+                BlendImportAction::BrowseOutputDir { path } => {
+                    // Resolve to absolute if relative
+                    let abs_path = if path.is_relative() {
+                        std::env::current_dir()
+                            .unwrap_or_else(|_| PathBuf::from("."))
+                            .join(&path)
+                    } else {
+                        path.clone()
+                    };
+                    // Create the directory if it doesn't exist yet
+                    if !abs_path.is_dir() {
+                        let _ = std::fs::create_dir_all(&abs_path);
+                    }
+                    if abs_path.is_dir() {
+                        self.asset_browser.navigate_to(abs_path);
+                    }
+                    self.console_logs.push(format!(
+                        "[Blend Import] Browse: {}",
+                        path.display()
+                    ));
+                    self.status = format!("Browsing: {}", path.display());
+                }
+                BlendImportAction::CancelDecomposition => {
+                    self.decomp_receiver = None;
+                    self.console_logs.push("[Blend Import] Decomposition cancelled".into());
+                    self.status = "Decomposition cancelled".into();
+                }
+                BlendImportAction::ClearSession => {
+                    self.decomp_receiver = None;
+                    self.console_logs.push("[Blend Import] Session cleared".into());
+                    self.status = "Blend import session cleared".into();
+                }
+            }
+        }
+    }
+
+    /// Poll background blend decomposition thread for results.
+    fn poll_blend_decomposition(&mut self) {
+        let msg = if let Some(rx) = &self.decomp_receiver {
+            match rx.try_recv() {
+                Ok(m) => m,
+                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    // Thread died without sending — treat as error
+                    self.decomp_receiver = None;
+                    let panel = self.dock_tab_viewer.blend_import_panel_mut();
+                    panel.reset_to_select("Select a .blend file to try again");
+                    panel.set_error("Decomposition thread terminated unexpectedly".into());
+                    self.console_logs.push(
+                        "[Blend Import] ERROR: Background thread disconnected without sending a result.".into(),
+                    );
+                    return;
+                }
+            }
+        } else {
+            return;
+        };
+
+        match msg {
+            DecompThreadMsg::Progress(pct, text) => {
+                // Intermediate progress — update panel but keep receiver alive
+                let panel = self.dock_tab_viewer.blend_import_panel_mut();
+                panel.set_progress(pct, &text);
+            }
+            DecompThreadMsg::Done(decomp) => {
+                self.decomp_receiver = None;
+                let msg = decomp.status_message.clone();
+                let panel = self.dock_tab_viewer.blend_import_panel_mut();
+                panel.set_decomposition_result(
+                    decomp.assets,
+                    decomp.hdri_paths,
+                    decomp.ground_texture_groups,
+                );
+                self.console_logs.push(format!("[Blend Import] {}", msg));
+                self.status = msg;
+            }
+            DecompThreadMsg::Failed(e) => {
+                self.decomp_receiver = None;
+                let panel = self.dock_tab_viewer.blend_import_panel_mut();
+                panel.reset_to_select("Select a .blend file to try again");
+                panel.set_error(e.clone());
+                self.console_logs.push(format!("[Blend Import] ERROR: {e}"));
+                self.status = "Decomposition failed".into();
+            }
+        }
+    }
+
+    /// Load a previously-cached decomposition manifest and convert to panel entries.
+    fn load_cached_decomposition(
+        &self,
+        manifest_path: &std::path::Path,
+    ) -> anyhow::Result<DecompThreadResult> {
+        use astraweave_asset::blend_import::DecompositionResult;
+
+        let data = std::fs::read_to_string(manifest_path)
+            .with_context(|| format!("reading manifest {}", manifest_path.display()))?;
+        let result: DecompositionResult = serde_json::from_str(&data)
+            .with_context(|| "parsing decomposition manifest")?;
+
+        let assets = result
+            .assets
+            .iter()
+            .map(|a| panels::blend_import_panel::DecomposedAssetEntry {
+                name: a.name.clone(),
+                category: a.category.clone(),
+                mesh_path: PathBuf::from(&a.filename),
+                vertex_count: a.vertex_count as u32,
+                texture_count: a.textures.len(),
+                dimensions: a
+                    .dimensions
+                    .map(|d| [d[0] as f32, d[1] as f32, d[2] as f32])
+                    .unwrap_or([0.0; 3]),
+                include_in_pack: true,
+            })
+            .collect();
+
+        let hdri_paths: Vec<PathBuf> = result
+            .hdris
+            .iter()
+            .map(|h| result.output_dir.join("hdri").join(&h.filename))
+            .collect();
+
+        Ok(DecompThreadResult {
+            assets,
+            hdri_paths,
+            ground_texture_groups: Vec::new(),
+            status_message: format!(
+                "Loaded cached decomposition: {} assets",
+                result.assets.len()
+            ),
+        })
+    }
+
+    /// Process pending blueprint panel actions (zone generation, save/load)
+    fn process_blueprint_actions(&mut self) {
+        use panels::blueprint_panel::BlueprintAction;
+
+        let actions = self.dock_tab_viewer.take_blueprint_actions();
+        if actions.is_empty() {
+            return;
+        }
+
+        for action in actions {
+            match action {
+                BlueprintAction::GenerateZone { zone_index } => {
+                    self.handle_generate_zone(zone_index);
+                }
+                BlueprintAction::GenerateAll => {
+                    let zone_count = self.dock_tab_viewer.blueprint_zones().len();
+                    for i in 0..zone_count {
+                        self.handle_generate_zone(i);
+                    }
+                    self.console_logs.push(format!(
+                        "[Blueprint] Generated all {} zones",
+                        zone_count
+                    ));
+                }
+                BlueprintAction::ClearGeneration => {
+                    // Clear zone registry — remove all previously generated zones
+                    let registry = self.dock_tab_viewer.zone_registry_mut();
+                    let ids: Vec<_> = registry.zones().iter().map(|z| z.id).collect();
+                    for id in ids {
+                        registry.remove_zone(id);
+                    }
+                    // Clear scatter from viewport
+                    if let Some(viewport) = &self.viewport {
+                        viewport.set_scatter_placements(Vec::new());
+                    }
+                    self.console_logs
+                        .push("[Blueprint] Cleared generated content".into());
+                    self.status = "Generation cleared".into();
+                }
+                BlueprintAction::SaveZones => {
+                    self.handle_save_zones();
+                }
+                BlueprintAction::LoadZones => {
+                    self.handle_load_zones();
+                }
+            }
+        }
+
+        // Sync zone overlay to viewport
+        self.sync_zone_overlay();
+    }
+
+    /// Handle generation for a single zone by index in the blueprint panel.
+    fn handle_generate_zone(&mut self, zone_index: usize) {
+        use astraweave_terrain::{
+            BlueprintZone, PlacementMode, ZoneSource,
+            zone_scatter::ZoneScatterGenerator,
+        };
+        use panels::blueprint_panel::ZoneSourceState;
+
+        let zones = self.dock_tab_viewer.blueprint_zones();
+        let zone_state = match zones.get(zone_index) {
+            Some(z) => z.clone(),
+            None => {
+                warn!("Blueprint: invalid zone index {}", zone_index);
+                return;
+            }
+        };
+
+        if zone_state.vertices.len() < 3 {
+            self.console_logs.push(format!(
+                "[Blueprint] Zone '{}' has fewer than 3 vertices — skipping",
+                zone_state.name
+            ));
+            return;
+        }
+
+        // Convert panel ZoneState → terrain BlueprintZone
+        let zone_id = self.dock_tab_viewer.zone_registry_mut().next_zone_id();
+        let mut bz = BlueprintZone::new(zone_id, zone_state.name.clone());
+        bz.vertices = zone_state
+            .vertices
+            .iter()
+            .map(|v| glam::Vec2::new(v.x, v.y))
+            .collect();
+        bz.priority = zone_state.priority;
+        bz.enabled = zone_state.enabled;
+        bz.blend_margin = zone_state.blend_margin;
+
+        bz.source = match &zone_state.source {
+            ZoneSourceState::BiomePreset(name) => {
+                let biome = match name.as_str() {
+                    "Grassland" => astraweave_terrain::BiomeType::Grassland,
+                    "Desert" => astraweave_terrain::BiomeType::Desert,
+                    "Forest" => astraweave_terrain::BiomeType::Forest,
+                    "Mountain" => astraweave_terrain::BiomeType::Mountain,
+                    "Tundra" => astraweave_terrain::BiomeType::Tundra,
+                    "Swamp" => astraweave_terrain::BiomeType::Swamp,
+                    "Beach" => astraweave_terrain::BiomeType::Beach,
+                    "River" => astraweave_terrain::BiomeType::River,
+                    _ => astraweave_terrain::BiomeType::Grassland,
+                };
+                ZoneSource::BiomePreset(biome)
+            }
+            ZoneSourceState::BlendScene { pack_path, replica } => ZoneSource::BlendScene {
+                pack_path: std::path::PathBuf::from(pack_path),
+                placement_mode: if *replica {
+                    PlacementMode::Replica
+                } else {
+                    PlacementMode::Inspired
+                },
+            },
+        };
+
+        // Register the zone
+        self.dock_tab_viewer.zone_registry_mut().add_zone(bz.clone());
+
+        // Run the scatter generator and pipe results to viewport
+        let terrain_chunks = self.dock_tab_viewer.collect_terrain_chunks();
+        let chunk_refs: Vec<&astraweave_terrain::TerrainChunk> = terrain_chunks.iter().copied().collect();
+
+        let generator = ZoneScatterGenerator::new(64.0, 65);
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(42);
+
+        match generator.generate_zone_scatter(&bz, &chunk_refs, seed) {
+            Ok(result) => {
+                let placement_count = result.placement_count();
+                if placement_count > 0 {
+                    // Convert VegetationInstances to ScatterPlacements for the viewport
+                    let scatter_placements: Vec<terrain_integration::ScatterPlacement> = result
+                        .placements
+                        .iter()
+                        .map(terrain_integration::ScatterPlacement::from_vegetation_instance)
+                        .collect();
+
+                    if let Some(viewport) = &self.viewport {
+                        viewport.set_scatter_placements(scatter_placements);
+                    }
+
+                    self.console_logs.push(format!(
+                        "[Blueprint] Zone '{}' generated: {} placements → viewport",
+                        zone_state.name, placement_count
+                    ));
+                    self.status = format!(
+                        "Zone '{}': {} objects placed",
+                        zone_state.name, placement_count
+                    );
+                } else {
+                    self.console_logs.push(format!(
+                        "[Blueprint] Zone '{}' generated: 0 placements (check zone area overlaps terrain)",
+                        zone_state.name
+                    ));
+                    self.status = format!("Zone '{}': no placements generated", zone_state.name);
+                }
+            }
+            Err(e) => {
+                error!("Zone scatter generation failed: {}", e);
+                self.console_logs.push(format!(
+                    "[Blueprint] Generation failed for '{}': {}",
+                    zone_state.name, e
+                ));
+                self.status = format!("Generation failed: {}", zone_state.name);
+            }
+        }
+    }
+
+    /// Save all blueprint panel zones to a .zones.json file.
+    fn handle_save_zones(&mut self) {
+        let path = std::path::PathBuf::from("assets/zones.json");
+        let registry = self.dock_tab_viewer.zone_registry();
+        match registry.save(&path) {
+            Ok(()) => {
+                self.console_logs.push(format!(
+                    "[Blueprint] Saved {} zones to {}",
+                    registry.len(),
+                    path.display()
+                ));
+                self.status = format!("Zones saved to {}", path.display());
+            }
+            Err(e) => {
+                error!("Failed to save zones: {}", e);
+                self.console_logs
+                    .push(format!("[Blueprint] Save failed: {}", e));
+                self.status = "Zone save failed".into();
+            }
+        }
+    }
+
+    /// Load zones from a .zones.json file and sync into the blueprint panel.
+    fn handle_load_zones(&mut self) {
+        use astraweave_terrain::ZoneRegistry;
+        use panels::blueprint_panel::{ZoneSourceState, ZoneState as PanelZoneState};
+
+        let path = std::path::PathBuf::from("assets/zones.json");
+        match ZoneRegistry::load(&path) {
+            Ok(loaded) => {
+                let count = loaded.len();
+
+                // Convert terrain zones → panel zone states
+                let panel_zones: Vec<PanelZoneState> = loaded
+                    .zones()
+                    .iter()
+                    .map(|bz| {
+                        let source = match &bz.source {
+                            astraweave_terrain::ZoneSource::BiomePreset(bt) => {
+                                ZoneSourceState::BiomePreset(format!("{:?}", bt))
+                            }
+                            astraweave_terrain::ZoneSource::BlendScene {
+                                pack_path,
+                                placement_mode,
+                            } => ZoneSourceState::BlendScene {
+                                pack_path: pack_path.display().to_string(),
+                                replica: matches!(
+                                    placement_mode,
+                                    astraweave_terrain::PlacementMode::Replica
+                                ),
+                            },
+                        };
+                        PanelZoneState {
+                            name: bz.name.clone(),
+                            vertices: bz
+                                .vertices
+                                .iter()
+                                .map(|v| glam::Vec2::new(v.x, v.y))
+                                .collect(),
+                            source,
+                            priority: bz.priority,
+                            enabled: bz.enabled,
+                            blend_margin: bz.blend_margin,
+                        }
+                    })
+                    .collect();
+
+                // Replace registry and panel state
+                *self.dock_tab_viewer.zone_registry_mut() = loaded;
+                self.dock_tab_viewer.set_blueprint_zones(panel_zones);
+
+                self.console_logs.push(format!(
+                    "[Blueprint] Loaded {} zones from {}",
+                    count,
+                    path.display()
+                ));
+                self.status = format!("Loaded {} zones", count);
+
+                // Sync overlay
+                self.sync_zone_overlay();
+            }
+            Err(e) => {
+                error!("Failed to load zones: {}", e);
+                self.console_logs
+                    .push(format!("[Blueprint] Load failed: {}", e));
+                self.status = "Zone load failed".into();
+            }
+        }
+    }
+
+    /// Push zone polygon data to the viewport for 3D overlay rendering.
+    fn sync_zone_overlay(&self) {
+        use crate::viewport::BlueprintOverlay;
+        use crate::viewport::ZoneOverlayData;
+        use panels::blueprint_panel::ZoneSourceState;
+
+        let zones = self.dock_tab_viewer.blueprint_zones();
+        let overlay_data: Vec<ZoneOverlayData> = zones
+            .iter()
+            .enumerate()
+            .map(|(_i, z)| {
+                let color = match &z.source {
+                    ZoneSourceState::BiomePreset(_) => [0.3, 0.8, 0.4],
+                    ZoneSourceState::BlendScene { .. } => [0.3, 0.5, 0.9],
+                };
+                ZoneOverlayData {
+                    vertices: z.vertices.iter().map(|v| glam::Vec2::new(v.x, v.y)).collect(),
+                    color,
+                    selected: false, // Could track from panel if needed
+                    editing: false,
+                    y_height: 0.5, // Slightly above ground
+                }
+            })
+            .collect();
+
+        let lines = BlueprintOverlay::generate_lines(&overlay_data);
+        if let Some(viewport) = &self.viewport {
+            viewport.set_zone_overlay_lines(lines);
+        }
+    }
+
     /// Handle a dragged asset — import GLTF/GLB models directly, spawn prefabs for .prefab files
     fn handle_dragged_asset(&mut self, path: std::path::PathBuf) {
         // Compute spawn position from cursor ray → ground plane intersection
@@ -5935,6 +6584,35 @@ impl EditorApp {
                     .push(format!("Inspecting: {}", path.display()));
                 self.status = format!(
                     "Inspecting: {}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                );
+            }
+
+            AssetAction::ImportBlendScene { path } => {
+                info!("Import blend scene requested: {}", path.display());
+                // Open the Blend Import panel and pre-fill the path
+                if !self.dock_layout.has_panel(&PanelType::BlendImport) {
+                    self.dock_layout.add_panel(PanelType::BlendImport);
+                }
+                self.dock_tab_viewer.blend_import_panel_mut().set_blend_path(path.clone());
+                self.console_logs
+                    .push(format!("Opened blend import: {}", path.display()));
+                self.status = format!(
+                    "Importing: {}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                );
+            }
+
+            AssetAction::UseAsZoneSource { path } => {
+                info!("Use as zone source: {}", path.display());
+                // Open the Blueprint panel so the user can assign it
+                if !self.dock_layout.has_panel(&PanelType::Blueprint) {
+                    self.dock_layout.add_panel(PanelType::Blueprint);
+                }
+                self.console_logs
+                    .push(format!("Zone source set: {} — draw a zone in Blueprint mode", path.display()));
+                self.status = format!(
+                    "Zone source: {} — draw a zone in Blueprint panel",
                     path.file_name().unwrap_or_default().to_string_lossy()
                 );
             }
@@ -6577,6 +7255,30 @@ impl MenuActionHandler for EditorApp {
         self.show_about_dialog = true;
     }
 
+    fn on_import_blend_scene(&mut self) {
+        // Ensure the Blend Import panel is open
+        if !self.dock_layout.has_panel(&PanelType::BlendImport) {
+            self.dock_layout.add_panel(PanelType::BlendImport);
+        }
+        // Trigger the native file browse dialog
+        self.dock_tab_viewer.blend_import_panel_mut().trigger_file_browse();
+        self.status = "Import .blend scene — select a file".into();
+    }
+
+    fn on_toggle_blueprint_mode(&mut self) {
+        if self.dock_layout.has_panel(&PanelType::Blueprint) {
+            self.dock_layout.remove_panel(&PanelType::Blueprint);
+            self.status = "Blueprint mode off".into();
+        } else {
+            self.dock_layout.add_panel(PanelType::Blueprint);
+            self.status = "Blueprint mode — click canvas to place zone vertices, then Generate".into();
+        }
+    }
+
+    fn is_blueprint_mode(&self) -> bool {
+        self.dock_layout.has_panel(&PanelType::Blueprint)
+    }
+
     fn on_open(&mut self) {
         // simple hardcoded example; integrate rfd/native dialog if desired
         let p = self.content_root.join("levels/forest_breach.level.toml");
@@ -7203,6 +7905,15 @@ impl eframe::App for EditorApp {
         // Process asset browser actions (drag-drop, double-click, context actions)
         self.process_asset_browser_actions();
 
+        // Process blend import panel actions (decomposition, pack gen, browse)
+        self.process_blend_import_actions();
+
+        // Poll background blend decomposition
+        self.poll_blend_decomposition();
+
+        // Process blueprint zone panel actions (generate, save, load)
+        self.process_blueprint_actions();
+
         let now = std::time::Instant::now();
         let frame_time = now.duration_since(self.last_frame_time).as_secs_f32();
         self.last_frame_time = now;
@@ -7662,6 +8373,16 @@ impl eframe::App for EditorApp {
                         self.status = format!("Selected {} entities", all_entities.len());
                     }
                 }
+            }
+
+            // Ctrl+I: Import .blend Scene
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::I) && !i.modifiers.shift {
+                self.on_import_blend_scene();
+            }
+
+            // Ctrl+B: Toggle Blueprint Mode
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::B) && !i.modifiers.shift {
+                self.on_toggle_blueprint_mode();
             }
 
             // Ctrl+G: Group selected entities

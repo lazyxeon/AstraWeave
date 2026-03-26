@@ -83,17 +83,17 @@ impl Default for TerrainLightingParams {
         Self {
             sun_dir: [0.5, 0.7, 0.35],
             sun_color: [1.0, 0.95, 0.85],
-            sun_intensity: 2.0,
-            ambient_color: [0.72, 0.70, 0.68],
-            ambient_intensity: 0.7,
-            exposure: 1.8,
+            sun_intensity: 3.0,
+            ambient_color: [0.40, 0.45, 0.58],
+            ambient_intensity: 0.15,
+            exposure: 1.5,
         }
     }
 }
 
 // ─── PBR Texture Loading ─────────────────────────────────────────────────────
 
-const BIOME_TEX_SIZE: u32 = 1024;
+const BIOME_TEX_SIZE: u32 = 2048;
 const BIOME_COUNT: u32 = 8;
 const MATERIAL_LAYER_COUNT: u32 = 22;
 
@@ -583,11 +583,11 @@ impl TerrainRenderer {
                 time: 0.0,
                 water_level: 0.0,
                 sun_dir: [0.5, 0.7, 0.35],
-                sun_intensity: 2.0,
+                sun_intensity: 3.0,
                 sun_color: [1.0, 0.95, 0.85],
-                ambient_intensity: 0.7,
-                ambient_color: [0.72, 0.70, 0.68],
-                exposure: 1.8,
+                ambient_intensity: 0.15,
+                ambient_color: [0.40, 0.45, 0.58],
+                exposure: 1.5,
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -761,6 +761,7 @@ impl TerrainRenderer {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Linear,
+            anisotropy_clamp: 16,
             ..Default::default()
         });
 

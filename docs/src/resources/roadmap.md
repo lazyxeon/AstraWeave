@@ -20,6 +20,18 @@ AstraWeave is currently in active development. The core systems are functional b
 | Networking | Alpha | Low |
 | Editor | Alpha | Low |
 
+## Recently Completed Milestones
+
+| Milestone | Date | Tests | Highlights |
+|-----------|------|-------|------------|
+| **Blueprint Zone Editor** | Mar 2026 | 125+ | Polygon zone editor, Replica/Inspired placement, heightmap injection, 3D overlay |
+| **Blend Import Pipeline** | Feb 2026 | 97 | .blend scene decomposition, BiomePack bridge, texture processing, editor panel |
+| **Veilweaver Vertical Slice** | Feb 2026 | 320 | 5-phase game slice, dialogue, cinematics, boss HUD, determinism validation |
+| **Miri Memory Safety** | Feb 2026 | 977 | 4 crates validated, zero undefined behavior |
+| **Fluids System (A+)** | Jan 2026 | 4,907 | SPH/FLIP simulation, comprehensive test suite |
+| **AI-Orchestrated Terrain** | Dec 2025 | 2,536 | TerrainSolver, NavMesh rebaking, terrain persistence |
+| **Rendering Pipeline** | Dec 2025 | 806+ | PBR/IBL, CSM shadows, headless support, post-processing |
+
 ## Near-Term (Q1-Q2 2026)
 
 ### v0.2.0 - Polish Release

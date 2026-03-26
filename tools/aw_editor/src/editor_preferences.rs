@@ -26,10 +26,20 @@ pub struct EditorPreferences {
     /// Whether the first-run tutorial has been completed or skipped.
     #[serde(default)]
     pub tutorial_completed: bool,
+    /// Directories to scan for .blend scene assets.
+    #[serde(default = "default_blend_asset_directories")]
+    pub blend_asset_directories: Vec<String>,
 }
 
 fn default_auto_save_count() -> usize {
     3
+}
+
+pub fn default_blend_asset_directories() -> Vec<String> {
+    vec![
+        "assets/blends".to_string(),
+        "assets/scenes".to_string(),
+    ]
 }
 
 impl Default for EditorPreferences {
@@ -47,6 +57,7 @@ impl Default for EditorPreferences {
             snapping: None,
             layout_json: None,
             tutorial_completed: false,
+            blend_asset_directories: default_blend_asset_directories(),
         }
     }
 }
@@ -115,6 +126,8 @@ mod tests {
             camera: None,
             snapping: None,
             layout_json: None,
+            tutorial_completed: false,
+            blend_asset_directories: vec!["test/blends".into()],
         };
 
         let json = serde_json::to_string(&prefs).expect("serialize");

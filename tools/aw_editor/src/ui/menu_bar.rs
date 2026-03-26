@@ -94,6 +94,11 @@ pub trait MenuActionHandler {
     // Help
     fn on_show_tutorial(&mut self);
     fn on_show_about(&mut self);
+
+    // Blend & Blueprint quick-access
+    fn on_import_blend_scene(&mut self);
+    fn on_toggle_blueprint_mode(&mut self);
+    fn is_blueprint_mode(&self) -> bool;
 }
 
 /// Main Menu Bar Component
@@ -130,6 +135,11 @@ impl MenuBar {
             }
             if ui.button("Load Scene").clicked() {
                 handler.on_load_scene();
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("\u{1f4e6} Import .blend Scene...     Ctrl+I").clicked() {
+                handler.on_import_blend_scene();
                 ui.close();
             }
             ui.separator();
@@ -485,6 +495,34 @@ impl MenuBar {
                 ui.close();
             }
         });
+
+        // ── Quick-access toolbar buttons (always visible in menu bar) ──
+        ui.separator();
+        // Import .blend button
+        if ui
+            .button(egui::RichText::new("\u{1f4e6} Import .blend").small())
+            .on_hover_text("Import a Blender .blend scene file (Ctrl+I)")
+            .clicked()
+        {
+            handler.on_import_blend_scene();
+        }
+        // Blueprint Mode toggle
+        let bp_active = handler.is_blueprint_mode();
+        let bp_label = if bp_active {
+            egui::RichText::new("\u{1f5fa} Blueprint ON")
+                .small()
+                .color(egui::Color32::from_rgb(100, 200, 255))
+        } else {
+            egui::RichText::new("\u{1f5fa} Blueprint")
+                .small()
+        };
+        if ui
+            .button(bp_label)
+            .on_hover_text("Toggle Blueprint Zone Editor (Ctrl+B)")
+            .clicked()
+        {
+            handler.on_toggle_blueprint_mode();
+        }
     }
 }
 

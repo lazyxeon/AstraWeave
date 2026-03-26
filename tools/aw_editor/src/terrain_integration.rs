@@ -475,16 +475,24 @@ impl TerrainState {
             (7.0, weights.weights_1.w),
         ];
 
-        // Sort by weight descending (simple insertion sort for 8 elements)
+        // Sort by weight descending to find top 4
         entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Take top 4 and renormalize
+        // Take top 4
+        let mut top4: [(f32, f32); 4] = [
+            entries[0], entries[1], entries[2], entries[3],
+        ];
+
+        // Sort top 4 by material_id ascending for consistent slot assignment
+        // across adjacent vertices (prevents interpolation artifacts)
+        top4.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
         let mut ids = [0.0f32; 4];
         let mut ws = [0.0f32; 4];
         let mut total = 0.0f32;
         for i in 0..4 {
-            ids[i] = entries[i].0;
-            ws[i] = entries[i].1;
+            ids[i] = top4[i].0;
+            ws[i] = top4[i].1;
             total += ws[i];
         }
         if total > 0.0001 {
@@ -492,7 +500,8 @@ impl TerrainState {
                 *w /= total;
             }
         } else {
-            ws[0] = 1.0; // fallback to grass
+            ids[0] = 0.0;
+            ws[0] = 1.0; // fallback to grass (layer 0)
         }
 
         (ids, ws)
@@ -1075,6 +1084,7 @@ impl TerrainState {
                                 current_h + strength * falloff * noise_val * 5.0
                             }
                             BrushMode::Paint => current_h, // Handled separately
+                            BrushMode::ZoneBlend => current_h, // Zone blend is handled at a higher level via blend masks
                         };
 
                         gen_chunk.chunk.heightmap_mut().set_height(gx, gz, new_h);

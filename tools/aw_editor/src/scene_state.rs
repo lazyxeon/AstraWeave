@@ -368,6 +368,7 @@ mod tests {
             mesh: None,
             material: EntityMaterial::new(),
             components: StdHashMap::new(),
+            parent: None,
         }
     }
 
@@ -388,6 +389,7 @@ mod tests {
             mesh: None,
             material: EntityMaterial::new(),
             components: StdHashMap::new(),
+            parent: None,
         }
     }
 

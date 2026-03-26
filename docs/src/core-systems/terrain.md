@@ -550,6 +550,127 @@ println!("Found location: {:?}", result.position);
 
 ---
 
+## Blueprint Zone System
+
+The Blueprint Zone system enables polygon-based spatial control over vegetation generation and heightmap injection, bridging `.blend` scene imports with the terrain scatter pipeline.
+
+### Overview
+
+```
+Editor Canvas → BlueprintZone → ZoneScatterGenerator → ZoneGenerationResult
+     ↓               ↓                ↓                      ↓
+Polygon drawing   ZoneRegistry    Replica/Inspired      placements + patches
+                  (save/load)      mode dispatch         ↓
+                                                    apply_heightmap_patches()
+                                                         ↓
+                                                    TerrainChunk updates
+```
+
+### Zone Data Model
+
+```rust
+use astraweave_terrain::blueprint_zone::*;
+
+// Define a zone with polygon vertices
+let zone = BlueprintZone {
+    id: ZoneId(1),
+    name: "Forest Clearing".into(),
+    vertices: vec![[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]],
+    source: ZoneSource::BlendScene {
+        pack_path: "assets/pine_forest.biomepack".into(),
+        placement_mode: PlacementMode::Replica,
+    },
+    priority: 0,
+    enabled: true,
+};
+
+// ZoneRegistry — CRUD, spatial queries, persistence
+let mut registry = ZoneRegistry::new();
+registry.add_zone(zone);
+let zones = registry.zones_containing_point(50.0, 50.0);
+registry.save(&Path::new("zones.json"))?;
+let loaded = ZoneRegistry::load(&Path::new("zones.json"))?;
+```
+
+### Placement Modes
+
+| Mode | Behavior |
+|------|----------|
+| **Replica** | 1:1 reproduction — fixed positions from `.blend` scene, scaled by `AdaptiveScaleParams` |
+| **Inspired** | Procedural scatter using `ScatterConfig` derived from `BiomePack`, respects zone polygon |
+| **BiomePreset** | Pure biome-driven scatter (Grassland, Forest, Desert, etc.) without `.blend` data |
+
+### Zone-Scoped Generation
+
+```rust
+use astraweave_terrain::zone_scatter::*;
+
+let gen = ZoneScatterGenerator::new(256.0, 128); // chunk_size, heightmap_resolution
+let result = gen.generate_zone_scatter(&zone, &biome_pack)?;
+
+// result.placements — Vec<VegetationInstance> (position, rotation, scale, model_path)
+// result.heightmap_patches — Vec<HeightmapPatch> (per-chunk height modifications)
+
+// Apply heightmap patches to terrain chunks
+let results = vec![result];
+apply_heightmap_patches(&mut chunk_map, &results);
+```
+
+### Adaptive Scaling
+
+When zone area differs from source scene footprint, density and scale adjust automatically:
+
+```rust
+let params = AdaptiveScaleParams::compute(reference_area, zone_area);
+// density_multiplier = sqrt(zone_area / reference_area)
+// scale_multiplier   = (zone_area / reference_area)^0.25
+// position_scale     = sqrt(zone_area / reference_area)
+```
+
+### Boundary Blending
+
+`apply_boundary_blending()` uses smoothstep falloff at zone edges:
+- **Vegetation**: density fades via `BlendMask::sample(x, z)` → 0.0–1.0
+- **Heightmap**: height delta scaled by mask value at each sample point
+- **Manual**: `BrushMode::ZoneBlend` for blend-weight painting in-editor
+
+### Heightmap Rasterization
+
+Terrain meshes from `.blend` decomposition are rasterized into heightmaps:
+
+```rust
+use astraweave_blend::heightmap_raster::*;
+
+let heightmap = rasterize_terrain_meshes(&terrain_meshes, resolution)?;
+let height = heightmap.sample_bilinear(u, v); // Normalized [0,1] coords
+let area = heightmap.footprint_area();         // World-space area in m²
+```
+
+### Editor Integration
+
+The `BlueprintPanel` provides a 2D canvas for polygon zone editing:
+- Tools: Select, DrawPolygon, MoveVertex, DeleteZone
+- Zone inspector with name, source selection, placement mode toggle
+- Undo/redo via command stack
+- Save/Load zones as `.zones.json`
+
+The `BlueprintOverlay` projects zone polygons as wireframe outlines into the 3D viewport, integrated with the physics renderer debug line pass.
+
+### Test Coverage
+
+| Test Suite | Tests |
+|------------|-------|
+| `blueprint_zone` unit tests | 24 |
+| `zone_scatter` unit + integration | 27 |
+| `heightmap_raster` unit + integration | 21 |
+| `biome_pack` extended | 9 |
+| `blueprint_panel` unit tests | 17 |
+| `blueprint_overlay` unit tests | 7 |
+| `blend_scanner` unit tests | 8 |
+| **Total** | **113+** |
+
+---
+
 ## See Also
 
 - [API Reference](../api/terrain.md) - Detailed API documentation

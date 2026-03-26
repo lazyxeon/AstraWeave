@@ -31,6 +31,9 @@ tempfile = "3"
 # Regex for version parsing
 regex = "1"
 
+# Image processing for texture conversion (EXR/HDR → PNG)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "hdr", "exr", "rayon"] }
+
 # Windows registry access (Windows only)
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

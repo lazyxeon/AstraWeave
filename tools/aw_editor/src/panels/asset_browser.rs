@@ -245,7 +245,9 @@ impl AssetCategory {
             AssetCategory::Textures => *asset_type == AssetType::Texture,
             AssetCategory::Materials => *asset_type == AssetType::Material,
             AssetCategory::Prefabs => *asset_type == AssetType::Prefab,
-            AssetCategory::Scenes => *asset_type == AssetType::Scene,
+            AssetCategory::Scenes => {
+                *asset_type == AssetType::Scene || *asset_type == AssetType::BlendScene
+            }
             AssetCategory::Audio => *asset_type == AssetType::Audio,
             AssetCategory::Configs => *asset_type == AssetType::Config,
         }
@@ -307,6 +309,10 @@ pub enum AssetAction {
     OpenExternal { path: PathBuf },
     /// Inspect asset details (for material inspector panel)
     InspectAsset { path: PathBuf },
+    /// Import a .blend scene (decompose and generate BiomePack)
+    ImportBlendScene { path: PathBuf },
+    /// Use a decomposed .blend scene as a zone source
+    UseAsZoneSource { path: PathBuf },
 }
 
 impl std::fmt::Display for AssetAction {
@@ -327,6 +333,8 @@ impl AssetAction {
             "SpawnPrefab",
             "OpenExternal",
             "InspectAsset",
+            "ImportBlendScene",
+            "UseAsZoneSource",
         ]
     }
 
@@ -341,6 +349,8 @@ impl AssetAction {
             AssetAction::SpawnPrefab { .. } => "Spawn Prefab",
             AssetAction::OpenExternal { .. } => "Open External",
             AssetAction::InspectAsset { .. } => "Inspect Asset",
+            AssetAction::ImportBlendScene { .. } => "Import Blend Scene",
+            AssetAction::UseAsZoneSource { .. } => "Use as Zone Source",
         }
     }
 
@@ -355,6 +365,8 @@ impl AssetAction {
             AssetAction::SpawnPrefab { .. } => "📦",
             AssetAction::OpenExternal { .. } => "🔗",
             AssetAction::InspectAsset { .. } => "🔍",
+            AssetAction::ImportBlendScene { .. } => "🧩",
+            AssetAction::UseAsZoneSource { .. } => "📍",
         }
     }
 
@@ -369,6 +381,8 @@ impl AssetAction {
             AssetAction::SpawnPrefab { path } => path,
             AssetAction::OpenExternal { path } => path,
             AssetAction::InspectAsset { path } => path,
+            AssetAction::ImportBlendScene { path } => path,
+            AssetAction::UseAsZoneSource { path } => path,
         }
     }
 
@@ -414,6 +428,7 @@ pub enum AssetType {
     Config,
     Prefab,
     Directory,
+    BlendScene,
     Unknown,
 }
 
@@ -435,6 +450,7 @@ impl AssetType {
             AssetType::Config,
             AssetType::Prefab,
             AssetType::Directory,
+            AssetType::BlendScene,
             AssetType::Unknown,
         ]
     }
@@ -450,6 +466,7 @@ impl AssetType {
             AssetType::Config => "Config",
             AssetType::Prefab => "Prefab",
             AssetType::Directory => "Directory",
+            AssetType::BlendScene => "Blend Scene",
             AssetType::Unknown => "Unknown",
         }
     }
@@ -464,6 +481,7 @@ impl AssetType {
                 | AssetType::Material
                 | AssetType::Audio
                 | AssetType::Prefab
+                | AssetType::BlendScene
         )
     }
 
@@ -486,6 +504,7 @@ impl AssetType {
             Some("ron") => AssetType::Scene,
             Some("toml") | Some("json") => AssetType::Config,
             Some("wav") | Some("ogg") | Some("mp3") => AssetType::Audio,
+            Some("blend") => AssetType::BlendScene,
             _ => AssetType::Unknown,
         }
     }
@@ -500,6 +519,7 @@ impl AssetType {
             AssetType::Config => "⚙",
             AssetType::Prefab => "📦",
             AssetType::Directory => "📁",
+            AssetType::BlendScene => "🧩",
             AssetType::Unknown => "📄",
         }
     }
@@ -514,6 +534,7 @@ impl AssetType {
             AssetType::Config => egui::Color32::from_rgb(200, 200, 200),
             AssetType::Prefab => egui::Color32::from_rgb(150, 200, 255),
             AssetType::Directory => egui::Color32::from_rgb(255, 200, 100),
+            AssetType::BlendScene => egui::Color32::from_rgb(255, 140, 60),
             AssetType::Unknown => egui::Color32::from_rgb(150, 150, 150),
         }
     }

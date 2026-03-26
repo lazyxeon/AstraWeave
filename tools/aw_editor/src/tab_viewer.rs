@@ -23,6 +23,7 @@ use crate::panels::{
     InputBindingsPanel, LightingPanel, LocalizationPanel, LodConfigPanel, MaterialEditorPanel,
     NavigationPanel, NetworkingPanel, ParticleSystemPanel, PcgPanel, PhysicsPanel,
     PostProcessPanel, ProjectSettingsPanel, SplineEditorPanel, TerrainPanel, UiEditorPanel,
+    BlendImportPanel,
 };
 use crate::prefab::PrefabManager;
 use crate::viewport::ViewportWidget;
@@ -1325,6 +1326,8 @@ pub struct EditorTabViewer {
     build_include_debug_symbols: bool,
     build_strip_unused: bool,
     build_compress_textures: bool,
+    /// Texture quality index (0=Low, 1=Medium, 2=High, 3=Ultra)
+    build_texture_quality: usize,
     /// Build output log
     build_output: Vec<String>,
     /// Build status (0=Idle, 1=Building, 2=Success, 3=Failed)
@@ -1452,6 +1455,14 @@ pub struct EditorTabViewer {
     input_bindings_panel: InputBindingsPanel,
     /// Frame debugger panel
     frame_debugger_panel: crate::panels::FrameDebuggerPanel,
+    /// Blend import panel
+    blend_import_panel: BlendImportPanel,
+    /// Blueprint zone editor panel
+    blueprint_panel: crate::panels::BlueprintPanel,
+    /// Blend asset scanner (discovers .blend files in configured directories)
+    blend_scanner: crate::blend_scanner::BlendAssetScanner,
+    /// Zone registry (manages all active blueprint zones)
+    zone_registry: astraweave_terrain::ZoneRegistry,
     /// Material editor panel
     material_editor_panel: MaterialEditorPanel,
     /// Available 3D models from asset packs (name, path)
@@ -1642,6 +1653,7 @@ impl EditorTabViewer {
             build_include_debug_symbols: true,
             build_strip_unused: false,
             build_compress_textures: true,
+            build_texture_quality: 2, // High
             build_output: Vec::new(),
             build_status: 0, // Idle
             build_progress: 0.0,
@@ -1714,6 +1726,10 @@ impl EditorTabViewer {
             post_process_panel: PostProcessPanel::new(),
             input_bindings_panel: InputBindingsPanel::new(),
             frame_debugger_panel: crate::panels::FrameDebuggerPanel::new(),
+            blend_import_panel: BlendImportPanel::new(),
+            blueprint_panel: crate::panels::BlueprintPanel::new(),
+            blend_scanner: crate::blend_scanner::BlendAssetScanner::new(Vec::new()),
+            zone_registry: astraweave_terrain::ZoneRegistry::new(),
             material_editor_panel: MaterialEditorPanel::new(),
             spawnable_models: Vec::new(),
             entity_catalog: EntityCatalogState::new(),
@@ -2037,6 +2053,16 @@ impl EditorTabViewer {
         self.terrain_panel.has_generated()
     }
 
+    /// Collect terrain chunks for zone scatter generation.
+    /// Returns borrowed TerrainChunks from the terrain state.
+    pub fn collect_terrain_chunks(&self) -> Vec<&astraweave_terrain::TerrainChunk> {
+        self.terrain_panel
+            .terrain_state()
+            .chunks()
+            .map(|(_id, gen)| &gen.chunk)
+            .collect()
+    }
+
     /// Configure terrain panel and trigger background generation.
     /// Used by the World Wizard pipeline.
     pub fn trigger_terrain_generation(&mut self, seed: u64, biome: &str, chunk_radius: i32) {
@@ -2291,6 +2317,50 @@ impl EditorTabViewer {
     /// Drain pending asset browser actions (import, apply texture, etc.)
     pub fn take_asset_browser_actions(&mut self) -> Vec<crate::panels::AssetAction> {
         self.asset_browser_panel.take_pending_actions()
+    }
+
+    /// Drain pending blend import panel actions
+    pub fn take_blend_import_actions(
+        &mut self,
+    ) -> Vec<crate::panels::blend_import_panel::BlendImportAction> {
+        self.blend_import_panel.take_actions()
+    }
+
+    /// Get a mutable reference to the blend import panel (for setting results from async ops)
+    pub fn blend_import_panel_mut(&mut self) -> &mut BlendImportPanel {
+        &mut self.blend_import_panel
+    }
+
+    /// Drain pending blueprint panel actions (zone generation, save/load)
+    pub fn take_blueprint_actions(
+        &mut self,
+    ) -> Vec<crate::panels::blueprint_panel::BlueprintAction> {
+        self.blueprint_panel.take_actions()
+    }
+
+    /// Get immutable access to the blueprint panel's zones
+    pub fn blueprint_zones(&self) -> &[crate::panels::blueprint_panel::ZoneState] {
+        self.blueprint_panel.zones()
+    }
+
+    /// Replace all zones in the blueprint panel (e.g., after loading from file)
+    pub fn set_blueprint_zones(&mut self, zones: Vec<crate::panels::blueprint_panel::ZoneState>) {
+        self.blueprint_panel.set_zones(zones);
+    }
+
+    /// Get mutable access to the zone registry
+    pub fn zone_registry_mut(&mut self) -> &mut astraweave_terrain::ZoneRegistry {
+        &mut self.zone_registry
+    }
+
+    /// Get immutable access to the zone registry
+    pub fn zone_registry(&self) -> &astraweave_terrain::ZoneRegistry {
+        &self.zone_registry
+    }
+
+    /// Get mutable access to the blend scanner
+    pub fn blend_scanner_mut(&mut self) -> &mut crate::blend_scanner::BlendAssetScanner {
+        &mut self.blend_scanner
     }
 
     /// Drain pending audio panel actions for the audio bridge.
@@ -4470,16 +4540,24 @@ impl TabViewer for EditorTabViewer {
                 });
                 ui.separator();
 
+                // ── Static split: hierarchy (top half) / entity library (bottom half) ──
+                // Reserve space for each section proportionally so the library
+                // never gets pushed off-screen by a growing hierarchy.
+                let available_h = ui.available_height();
+                let hierarchy_h = (available_h * 0.45).max(120.0);
+                let library_h = (available_h - hierarchy_h - 8.0).max(120.0);
+
+                // ═══════════════════ HIERARCHY SECTION ═══════════════════
                 // Collect clicked entity before iterating
                 let mut clicked_entity = None;
                 let mut entity_to_delete = None;
                 let mut entity_to_duplicate = None;
                 let mut entity_to_rename = None;
 
-                // Display entity list from cached data (capped height so library gets space)
                 egui::ScrollArea::vertical()
-                    .max_height(300.0)
-                    .auto_shrink([false, true])
+                    .id_salt("hierarchy_scroll")
+                    .max_height(hierarchy_h)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
                     if self.entity_list.is_empty() {
                         ui.add_space(20.0);
@@ -4654,18 +4732,22 @@ impl TabViewer for EditorTabViewer {
                     // Would start rename mode - emit event for now
                 }
 
-                // ── Entity Library (KayKit catalog with thumbnails) ──
+                // ═══════════════════ ENTITY LIBRARY SECTION ═══════════════════
                 ui.add_space(4.0);
                 ui.separator();
                 let catalog_count = self.entity_catalog.entry_count();
-                egui::CollapsingHeader::new(
-                    egui::RichText::new(format!("Entity Library ({catalog_count})")).strong(),
-                )
-                .default_open(true)
-                .show(ui, |ui| {
-                    let ctx = ui.ctx().clone();
-                    self.entity_catalog.show(ui, &ctx);
+                ui.horizontal(|ui| {
+                    ui.strong(format!("Entity Library ({catalog_count})"));
                 });
+
+                egui::ScrollArea::vertical()
+                    .id_salt("entity_library_scroll")
+                    .max_height(library_h)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let ctx = ui.ctx().clone();
+                        self.entity_catalog.show(ui, &ctx);
+                    });
 
                 // Drain catalog spawn events → PanelEvent::SpawnModel
                 let spawns = self.entity_catalog.take_spawns();
@@ -7661,11 +7743,12 @@ impl TabViewer for EditorTabViewer {
                         // Additional options
                         ui.horizontal(|ui| {
                             ui.label("Texture Quality:");
+                            let quality_names = ["Low", "Medium", "High", "Ultra"];
                             egui::ComboBox::from_id_salt("tex_quality")
-                                .selected_text(["Low", "Medium", "High", "Ultra"][0])
+                                .selected_text(quality_names[self.build_texture_quality.min(3)])
                                 .show_ui(ui, |ui| {
-                                    for quality in ["Low", "Medium", "High", "Ultra"] {
-                                        let _ = ui.selectable_label(false, quality);
+                                    for (i, quality) in quality_names.iter().enumerate() {
+                                        ui.selectable_value(&mut self.build_texture_quality, i, *quality);
                                     }
                                 });
                         });
@@ -9017,6 +9100,14 @@ impl TabViewer for EditorTabViewer {
             PanelType::FrameDebugger => {
                 self.frame_debugger_panel.show(ui);
             }
+            PanelType::BlendImport => {
+                use crate::panels::Panel;
+                self.blend_import_panel.show(ui);
+            }
+            PanelType::Blueprint => {
+                use crate::panels::Panel;
+                self.blueprint_panel.show(ui);
+            }
         }
     }
 
@@ -9136,6 +9227,11 @@ impl TabViewer for EditorTabViewer {
                     PanelType::AssetBrowser,
                     "Browse and manage project assets",
                     "Ctrl+A",
+                ),
+                (
+                    PanelType::BlendImport,
+                    "Import .blend scenes, extract assets, generate biome packs",
+                    "",
                 ),
                 (
                     PanelType::World,

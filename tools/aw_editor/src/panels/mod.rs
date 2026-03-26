@@ -23,6 +23,8 @@ pub mod animation;
 pub mod animation_panel;
 pub mod asset_browser;
 pub mod audio_panel;
+pub mod blend_import_panel;
+pub mod blueprint_panel;
 pub mod build_manager;
 pub mod charts_panel;
 pub mod cinematics_panel;
@@ -231,3 +233,16 @@ pub use ready_asset_store_panel::{
 };
 #[allow(unused_imports)]
 pub use world_wizard::{WizardStep, WorldTemplate, WorldWizard, WorldWizardAction};
+
+// Blend import panel re-exports
+pub use blend_import_panel::BlendImportPanel;
+#[allow(unused_imports)]
+pub use blend_import_panel::{
+    BiomeTypeSelection, BlendImportAction, DecomposedAssetEntry, ImportPhase, ScatterSettings as BlendScatterSettings,
+    TextureSettings as BlendTextureSettings,
+};
+
+// Blueprint zone editor re-exports
+pub use blueprint_panel::BlueprintPanel;
+#[allow(unused_imports)]
+pub use blueprint_panel::{BlueprintAction, BlueprintTool, ZoneSourceState, ZoneState};

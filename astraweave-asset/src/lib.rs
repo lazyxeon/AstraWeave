@@ -33,8 +33,10 @@ pub mod blend_import {
 
     pub use astraweave_blend::{
         BlendImporter, BlendImporterConfig, BlenderDiscovery, BlenderInstallation,
-        CancellationToken, ConversionOptions, ConversionProgress, ConversionResult, ImportHandle,
-        ProgressReceiver,
+        CancellationToken, ConversionOptions, ConversionProgress, ConversionResult,
+        DecomposedAsset, DecompositionResult, ImportHandle, ProgressReceiver,
+        SceneDecompositionOptions, TextureProcessingConfig, TextureProcessingResult,
+        TextureOutputFormat, process_decomposition_textures, normalize_channel_name,
     };
 
     /// State of the blend import system within the asset database.
@@ -180,6 +182,82 @@ pub mod blend_import {
             if let Some(ref mut importer) = self.importer {
                 importer.set_blender_path(path);
             }
+        }
+
+        /// Decomposes a .blend scene into individual per-object asset files.
+        ///
+        /// Each mesh object in the .blend file is exported as a separate GLB,
+        /// with a manifest.json describing all extracted assets. Textures and
+        /// HDRIs are extracted alongside the meshes.
+        ///
+        /// # Arguments
+        /// * `blend_path` - Path to the .blend file
+        /// * `output_dir` - Directory to write decomposed assets into
+        /// * `options` - Optional custom options (uses `scene_decomposition()` preset if None)
+        pub async fn decompose_blend(
+            &mut self,
+            blend_path: &Path,
+            output_dir: &Path,
+            options: Option<ConversionOptions>,
+        ) -> Result<DecompositionResult> {
+            let importer = self
+                .importer
+                .as_mut()
+                .context("Blend import system not initialized or Blender not available")?;
+
+            info!("Decomposing blend scene: {}", blend_path.display());
+
+            let opts = options.unwrap_or_else(ConversionOptions::scene_decomposition);
+
+            let result = importer
+                .decompose_with_options(blend_path, output_dir, opts)
+                .await?;
+
+            info!(
+                "Decomposition complete: {} assets, {} HDRIs ({}ms)",
+                result.assets.len(),
+                result.hdris.len(),
+                result.duration.as_millis(),
+            );
+
+            Ok(result)
+        }
+
+        /// Decomposes a .blend scene and processes all textures in one step.
+        ///
+        /// This combines decomposition with texture post-processing:
+        /// - Converts EXR/HDR textures to engine-friendly PNG
+        /// - Generates thumbnails for the asset browser
+        /// - Enforces maximum texture resolution
+        /// - Tonemaps HDRI environment maps to LDR previews
+        pub async fn decompose_and_process_blend(
+            &mut self,
+            blend_path: &Path,
+            output_dir: &Path,
+            options: Option<ConversionOptions>,
+            texture_config: Option<TextureProcessingConfig>,
+        ) -> Result<(DecompositionResult, TextureProcessingResult)> {
+            let importer = self
+                .importer
+                .as_mut()
+                .context("Blend import system not initialized or Blender not available")?;
+
+            info!("Decomposing and processing blend scene: {}", blend_path.display());
+
+            let opts = options.unwrap_or_else(ConversionOptions::scene_decomposition);
+
+            let (result, tex_result) = importer
+                .decompose_and_process(blend_path, output_dir, opts, texture_config)
+                .await?;
+
+            info!(
+                "Decompose+process complete: {} assets, {} HDR conversions, {} thumbnails",
+                result.assets.len(),
+                tex_result.hdr_conversions,
+                tex_result.thumbnails_generated,
+            );
+
+            Ok((result, tex_result))
         }
 
         /// Returns the cache directory path if caching is enabled.

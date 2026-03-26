@@ -219,6 +219,12 @@ pub enum PanelType {
 
     /// GPU frame debugger — per-pass timing and draw call breakdown
     FrameDebugger,
+
+    /// Blender .blend scene import, decomposition, and biome pack generation
+    BlendImport,
+
+    /// 2D top-down blueprint zone editor for terrain generation zones
+    Blueprint,
 }
 
 impl PanelType {
@@ -266,6 +272,8 @@ impl PanelType {
             Self::PostProcess => "Post Process",
             Self::InputBindings => "Input Bindings",
             Self::FrameDebugger => "Frame Debugger",
+            Self::BlendImport => "Blend Import",
+            Self::Blueprint => "Blueprint",
         }
     }
 
@@ -313,6 +321,8 @@ impl PanelType {
             Self::PostProcess => "[PP]",
             Self::InputBindings => "[In]",
             Self::FrameDebugger => "[FD]",
+            Self::BlendImport => "[BI]",
+            Self::Blueprint => "[BP]",
         }
     }
 
@@ -334,8 +344,8 @@ impl PanelType {
         match self {
             // Viewport handles its own scrolling
             Self::Viewport => false,
-            // Graph panels have their own pan/zoom
-            Self::Graph | Self::BehaviorGraph => false,
+            // Graph/canvas panels have their own pan/zoom
+            Self::Graph | Self::BehaviorGraph | Self::Blueprint => false,
             // All other panels should scroll
             _ => true,
         }
@@ -369,7 +379,8 @@ impl PanelType {
             | Self::Animation
             | Self::BehaviorGraph
             | Self::SplineEditor
-            | Self::Navigation => PanelCategory::Tools,
+            | Self::Navigation
+            | Self::Blueprint => PanelCategory::Tools,
 
             // System panels
             Self::BuildManager
@@ -392,7 +403,8 @@ impl PanelType {
             | Self::ParticleSystem
             | Self::Pcg
             | Self::Physics
-            | Self::PostProcess => PanelCategory::Content,
+            | Self::PostProcess
+            | Self::BlendImport => PanelCategory::Content,
         }
     }
 
@@ -437,6 +449,8 @@ impl PanelType {
             Self::PostProcess => "Post-processing effects configuration",
             Self::InputBindings => "Configure keyboard and controller bindings",
             Self::FrameDebugger => "GPU render pass timing and draw call breakdown",
+            Self::BlendImport => "Import Blender .blend scenes, decompose into assets, and generate biome packs",
+            Self::Blueprint => "2D top-down zone editor for defining terrain generation zones",
         }
     }
 
@@ -516,6 +530,8 @@ impl PanelType {
             Self::PostProcess,
             Self::InputBindings,
             Self::FrameDebugger,
+            Self::BlendImport,
+            Self::Blueprint,
         ]
     }
 

@@ -5,7 +5,7 @@
 //! Click any thumbnail to spawn the corresponding model into the scene.
 
 use egui::{Color32, ColorImage, ImageData, Sense, TextureHandle, Ui, Vec2};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
@@ -83,26 +83,104 @@ pub struct CatalogEntry {
 // Catalog builder — scans all asset directories eagerly at startup
 // ---------------------------------------------------------------------------
 
+/// Check if a file extension is a supported 3D model format.
+fn is_model_extension(ext: &str) -> bool {
+    matches!(ext, "glb" | "gltf" | "fbx" | "obj")
+}
+
 /// Build the full entity catalog by scanning all asset directories.
 pub fn build_catalog() -> Vec<CatalogEntry> {
     let mut entries = Vec::new();
+    let assets_root = PathBuf::from("assets");
 
     // 1. KayKit character collection
-    let kaykit_root = PathBuf::from("assets").join("The Complete KayKit Collection v4");
+    let kaykit_root = assets_root.join("The Complete KayKit Collection v4");
     if kaykit_root.is_dir() {
         scan_kaykit(&kaykit_root, &mut entries);
     }
 
-    // 2. All 3D asset packs (GLB + GLTF format directories)
-    let assets_3d = PathBuf::from("assets").join("3D assets");
+    // 2. All 3D asset packs (GLB + GLTF + FBX format directories)
+    let assets_3d = assets_root.join("3D assets");
     if assets_3d.is_dir() {
         scan_3d_assets(&assets_3d, &mut entries);
     }
 
-    // 3. Loose models directory
-    let models_dir = PathBuf::from("assets").join("models");
+    // 3. Loose models directory (GLB, GLTF, FBX, OBJ)
+    let models_dir = assets_root.join("models");
     if models_dir.is_dir() {
         scan_models_dir(&models_dir, &mut entries);
+    }
+
+    // 4. Castles & Forts asset pack
+    let castles = assets_root.join("castles_forts_asset_pack");
+    if castles.is_dir() {
+        scan_generic_pack(&castles, "Castles & Forts", EntityCategory::Building, &mut entries);
+    }
+
+    // 5. Road to Vostok survival props (FBX-heavy pack)
+    let vostok = assets_root.join("Road to Vostok Assets Vol.1");
+    if vostok.is_dir() {
+        scan_vostok_pack(&vostok, &mut entries);
+    }
+
+    // 6. Loose terrain/material GLTF at assets root (PolyHaven terrain scans)
+    if let Ok(read) = std::fs::read_dir(&assets_root) {
+        for entry in read.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if is_model_extension(ext) {
+                        let stem = path
+                            .file_stem()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
+                        let display = stem.replace('_', " ");
+                        entries.push(CatalogEntry {
+                            display_name: display,
+                            path: path.display().to_string(),
+                            category: EntityCategory::Nature,
+                            pack: "Terrain Scans".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 7. Auto-discover any remaining top-level directories with 3D models
+    //    that we haven't already covered above.
+    let known_dirs: std::collections::HashSet<&str> = [
+        "3D assets",
+        "The Complete KayKit Collection v4",
+        "models",
+        "castles_forts_asset_pack",
+        "Road to Vostok Assets Vol.1",
+        // Non-model dirs to skip:
+        "2D assets", "UI assets", "audio", "materials", "textures", "Texture",
+        "shaders", "cells", "cinematics", "hdri", "Icons", "imported", "navmesh",
+        "navmeshes", "npc", "tests", "exemplars", "Archive", "Symphonie", "Other",
+        "Goodies", "Mesh", "assets_src",
+    ].iter().copied().collect();
+
+    if let Ok(read) = std::fs::read_dir(&assets_root) {
+        for entry in read.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let dir_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if known_dirs.contains(dir_name.as_str()) {
+                continue;
+            }
+            // Check if this directory has any model files
+            let has_models = walkdir_has_models(&path);
+            if has_models {
+                let pack_name = dir_name.clone();
+                let category = classify_pack(&pack_name);
+                scan_generic_pack(&path, &pack_name, category, &mut entries);
+            }
+        }
     }
 
     entries.sort_by(|a, b| {
@@ -317,8 +395,8 @@ fn collect_glb_recursive(
                 continue;
             }
             collect_glb_recursive(&path, pack_name, entries, classifier);
-        } else if let Some(ext) = path.extension() {
-            if ext == "glb" || ext == "gltf" {
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if is_model_extension(ext) {
                 let stem = path
                     .file_stem()
                     .unwrap_or_default()
@@ -362,8 +440,8 @@ fn scan_3d_assets(root: &Path, entries: &mut Vec<CatalogEntry>) {
 
         let category = classify_pack(&pack_name);
 
-        // Scan both GLB and GLTF format directories
-        for subdir in &["GLB format", "GLTF format"] {
+        // Scan GLB, GLTF, and FBX format directories under Models/
+        for subdir in &["GLB format", "GLTF format", "FBX format", "OBJ format"] {
             let model_dir = pack_path.join("Models").join(subdir);
             if !model_dir.is_dir() {
                 continue;
@@ -374,8 +452,8 @@ fn scan_3d_assets(root: &Path, entries: &mut Vec<CatalogEntry>) {
 
             for file in files.flatten() {
                 let file_path = file.path();
-                if let Some(ext) = file_path.extension() {
-                    if ext == "glb" || ext == "gltf" {
+                if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
+                    if is_model_extension(ext) {
                         let stem = file_path
                             .file_stem()
                             .unwrap_or_default()
@@ -384,6 +462,38 @@ fn scan_3d_assets(root: &Path, entries: &mut Vec<CatalogEntry>) {
 
                         let display = stem.replace('_', " ");
 
+                        entries.push(CatalogEntry {
+                            display_name: display,
+                            path: file_path.display().to_string(),
+                            category,
+                            pack: pack_name.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Also scan pack root and Models/ directly for loose model files
+        for scan_dir in [&pack_path, &pack_path.join("Models")] {
+            if !scan_dir.is_dir() {
+                continue;
+            }
+            let Ok(files) = std::fs::read_dir(scan_dir) else {
+                continue;
+            };
+            for file in files.flatten() {
+                let file_path = file.path();
+                if file_path.is_dir() {
+                    continue;
+                }
+                if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
+                    if is_model_extension(ext) {
+                        let stem = file_path
+                            .file_stem()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
+                        let display = stem.replace('_', " ");
                         entries.push(CatalogEntry {
                             display_name: display,
                             path: file_path.display().to_string(),
@@ -415,8 +525,8 @@ fn scan_models_recursive(dir: &Path, pack_name: &str, entries: &mut Vec<CatalogE
                 .to_string_lossy()
                 .to_string();
             scan_models_recursive(&path, &subdir, entries);
-        } else if let Some(ext) = path.extension() {
-            if ext == "glb" || ext == "gltf" {
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if is_model_extension(ext) {
                 let stem = path
                     .file_stem()
                     .unwrap_or_default()
@@ -440,6 +550,129 @@ fn scan_models_recursive(dir: &Path, pack_name: &str, entries: &mut Vec<CatalogE
             }
         }
     }
+}
+
+/// Scan a Vostok-style asset pack (each subfolder = one FBX model with textures).
+fn scan_vostok_pack(root: &Path, entries: &mut Vec<CatalogEntry>) {
+    let Ok(dirs) = std::fs::read_dir(root) else {
+        return;
+    };
+
+    for dir_entry in dirs.flatten() {
+        let dir_path = dir_entry.path();
+        if !dir_path.is_dir() {
+            continue;
+        }
+        let folder_name = dir_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        // Each subfolder contains FBX files
+        let Ok(files) = std::fs::read_dir(&dir_path) else {
+            continue;
+        };
+        for file in files.flatten() {
+            let file_path = file.path();
+            if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
+                if is_model_extension(ext) {
+                    let stem = file_path
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    // Strip "MS_" prefix common in this pack
+                    let display = stem
+                        .strip_prefix("MS_")
+                        .unwrap_or(&stem)
+                        .replace('_', " ");
+                    let category = classify_vostok_entry(&folder_name);
+                    entries.push(CatalogEntry {
+                        display_name: display,
+                        path: file_path.display().to_string(),
+                        category,
+                        pack: "Road to Vostok".to_string(),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Classify a Vostok asset by its folder name.
+fn classify_vostok_entry(folder_name: &str) -> EntityCategory {
+    let f = folder_name.to_lowercase();
+    if f.contains("fence") || f.contains("barrier") || f.contains("pole") || f.contains("sign") {
+        return EntityCategory::Infrastructure;
+    }
+    if f.contains("cabinet") || f.contains("fridge") || f.contains("sofa")
+        || f.contains("table") || f.contains("chair") || f.contains("mattress")
+        || f.contains("radiator") || f.contains("television") || f.contains("radio")
+    {
+        return EntityCategory::Furniture;
+    }
+    if f.contains("campfire") || f.contains("firewood") || f.contains("firepot")
+        || f.contains("fireplace") || f.contains("candle")
+    {
+        return EntityCategory::Nature;
+    }
+    if f.contains("bus_stop") || f.contains("transformer") || f.contains("control_box") {
+        return EntityCategory::Building;
+    }
+    EntityCategory::Prop
+}
+
+/// Scan a generic pack recursively for all model files.
+fn scan_generic_pack(root: &Path, pack_name: &str, category: EntityCategory, entries: &mut Vec<CatalogEntry>) {
+    scan_generic_recursive(root, pack_name, category, entries);
+}
+
+fn scan_generic_recursive(dir: &Path, pack_name: &str, category: EntityCategory, entries: &mut Vec<CatalogEntry>) {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in read.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan_generic_recursive(&path, pack_name, category, entries);
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if is_model_extension(ext) {
+                let stem = path
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let display = stem.replace('_', " ");
+                entries.push(CatalogEntry {
+                    display_name: display,
+                    path: path.display().to_string(),
+                    category,
+                    pack: pack_name.to_string(),
+                });
+            }
+        }
+    }
+}
+
+/// Quick check if a directory tree contains any model files (stops at first match).
+fn walkdir_has_models(dir: &Path) -> bool {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in read.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if walkdir_has_models(&path) {
+                return true;
+            }
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if is_model_extension(ext) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -671,6 +904,10 @@ pub struct EntityCatalogState {
     pending_spawns: Vec<(String, String)>,
     /// Thumbnail display size.
     thumb_size: f32,
+    /// Which categories are expanded in the collapsible view.
+    expanded_categories: HashSet<EntityCategory>,
+    /// Which pack sub-sections are expanded (category, pack) → open.
+    expanded_packs: HashSet<(EntityCategory, String)>,
 }
 
 impl EntityCatalogState {
@@ -683,6 +920,10 @@ impl EntityCatalogState {
         packs.sort();
         packs.dedup();
 
+        // Start with all categories expanded
+        let expanded_categories: HashSet<EntityCategory> =
+            EntityCategory::all().iter().copied().collect();
+
         Self {
             entries,
             packs,
@@ -692,6 +933,8 @@ impl EntityCatalogState {
             thumbnails: HashMap::new(),
             pending_spawns: Vec::new(),
             thumb_size: 72.0,
+            expanded_categories,
+            expanded_packs: HashSet::new(),
         }
     }
 
@@ -705,35 +948,18 @@ impl EntityCatalogState {
         self.entries.len()
     }
 
-    /// Show the entity catalog UI.
+    /// Show the entity catalog UI with collapsible category sections.
     pub fn show(&mut self, ui: &mut Ui, ctx: &egui::Context) {
         let entries = &self.entries;
 
-        // ── Category filter tabs ──
-        ui.horizontal_wrapped(|ui| {
-            let all_sel = self.selected_category.is_none();
-            if ui
-                .selectable_label(all_sel, format!("All ({})", entries.len()))
-                .clicked()
-            {
-                self.selected_category = None;
-            }
-            for &cat in EntityCategory::all() {
-                let count = entries.iter().filter(|e| e.category == cat).count();
-                if count == 0 {
-                    continue;
-                }
-                let is_sel = self.selected_category == Some(cat);
-                if ui
-                    .selectable_label(is_sel, format!("{} ({})", cat.label(), count))
-                    .clicked()
-                {
-                    self.selected_category = Some(cat);
-                }
+        // ── Search bar ──
+        ui.horizontal(|ui| {
+            ui.label("Search:");
+            ui.text_edit_singleline(&mut self.search);
+            if ui.small_button("✕").clicked() {
+                self.search.clear();
             }
         });
-
-        ui.add_space(2.0);
 
         // ── Pack filter dropdown ──
         ui.horizontal(|ui| {
@@ -744,7 +970,7 @@ impl EntityCatalogState {
                 .unwrap_or("All Packs");
             egui::ComboBox::from_id_salt("entity_pack_filter")
                 .selected_text(selected_text)
-                .width(180.0)
+                .width(160.0)
                 .show_ui(ui, |ui| {
                     ui.set_min_width(200.0);
                     if ui
@@ -762,27 +988,26 @@ impl EntityCatalogState {
                 });
         });
 
-        // ── Search bar ──
+        // ── Quick expand/collapse ──
         ui.horizontal(|ui| {
-            ui.label("Search:");
-            ui.text_edit_singleline(&mut self.search);
-            if ui.small_button("✕").clicked() {
-                self.search.clear();
+            if ui.small_button("Expand All").clicked() {
+                for &cat in EntityCategory::all() {
+                    self.expanded_categories.insert(cat);
+                }
+            }
+            if ui.small_button("Collapse All").clicked() {
+                self.expanded_categories.clear();
+                self.expanded_packs.clear();
             }
         });
 
-        ui.add_space(4.0);
+        ui.add_space(2.0);
 
         // ── Filter entries ──
         let search_lower = self.search.to_lowercase();
         let filtered: Vec<&CatalogEntry> = entries
             .iter()
             .filter(|e| {
-                if let Some(cat) = self.selected_category {
-                    if e.category != cat {
-                        return false;
-                    }
-                }
                 if let Some(ref pack) = self.selected_pack {
                     if &e.pack != pack {
                         return false;
@@ -803,27 +1028,96 @@ impl EntityCatalogState {
             return;
         }
 
-        ui.weak(format!("Showing {} entities", filtered.len()));
+        ui.weak(format!("Showing {} of {} entities", filtered.len(), entries.len()));
         ui.add_space(2.0);
 
-        // ── Virtual-scrolled thumbnail grid ──
-        let available_width = ui.available_width();
-        let cell_width = self.thumb_size + 8.0;
-        let columns = ((available_width / cell_width).floor() as usize).max(1);
-        let total_rows = (filtered.len() + columns - 1) / columns;
-        let row_height = self.thumb_size + 20.0;
+        // ── Group filtered entries by category → pack ──
+        let mut by_category: BTreeMap<EntityCategory, BTreeMap<String, Vec<&CatalogEntry>>> =
+            BTreeMap::new();
+        for entry in &filtered {
+            by_category
+                .entry(entry.category)
+                .or_default()
+                .entry(entry.pack.clone())
+                .or_default()
+                .push(entry);
+        }
+
         let thumb_size = self.thumb_size;
         let mut new_spawns: Vec<(String, String)> = Vec::new();
 
-        egui::ScrollArea::vertical()
-            .auto_shrink([false; 2])
-            .show_rows(ui, row_height, total_rows, |ui, row_range| {
-                for row_idx in row_range {
+        // ── Render collapsible category sections ──
+        for (category, packs_map) in &by_category {
+            let cat_count: usize = packs_map.values().map(|v| v.len()).sum();
+            let is_expanded = self.expanded_categories.contains(category);
+
+            // Category header with colored indicator
+            let header_text = format!("{} ({}) ", category.label(), cat_count);
+            let header_response = ui.horizontal(|ui| {
+                let arrow = if is_expanded { "v" } else { ">" };
+                let btn = ui.button(
+                    egui::RichText::new(format!("{} {}", arrow, header_text))
+                        .strong()
+                        .color(category.color()),
+                );
+                btn.clicked()
+            });
+
+            if header_response.inner {
+                if is_expanded {
+                    self.expanded_categories.remove(category);
+                } else {
+                    self.expanded_categories.insert(*category);
+                }
+            }
+
+            if !self.expanded_categories.contains(category) {
+                continue;
+            }
+
+            // If there's only one pack in this category, skip the sub-dropdown
+            let single_pack = packs_map.len() == 1;
+
+            for (pack_name, pack_entries) in packs_map {
+                let pack_key = (*category, pack_name.clone());
+
+                if !single_pack {
+                    // Pack sub-section dropdown
+                    let pack_expanded = self.expanded_packs.contains(&pack_key);
+                    let pack_header = format!("  {} ({})", pack_name, pack_entries.len());
+                    let pack_arrow = if pack_expanded { "v" } else { ">" };
+                    if ui
+                        .button(
+                            egui::RichText::new(format!("  {} {}", pack_arrow, pack_header))
+                                .small()
+                                .color(Color32::from_gray(180)),
+                        )
+                        .clicked()
+                    {
+                        if pack_expanded {
+                            self.expanded_packs.remove(&pack_key);
+                        } else {
+                            self.expanded_packs.insert(pack_key.clone());
+                        }
+                    }
+
+                    if !self.expanded_packs.contains(&pack_key) {
+                        continue;
+                    }
+                }
+
+                // Render thumbnail grid for this group
+                let available_width = ui.available_width();
+                let cell_width = thumb_size + 8.0;
+                let columns = ((available_width / cell_width).floor() as usize).max(1);
+                let rows = (pack_entries.len() + columns - 1) / columns;
+
+                for row_idx in 0..rows {
                     ui.horizontal(|ui| {
                         let start = row_idx * columns;
-                        let end = (start + columns).min(filtered.len());
+                        let end = (start + columns).min(pack_entries.len());
                         for i in start..end {
-                            let entry = filtered[i];
+                            let entry = pack_entries[i];
 
                             // Lazy thumbnail generation
                             if !self.thumbnails.contains_key(&entry.path) {
@@ -867,7 +1161,10 @@ impl EntityCatalogState {
                         }
                     });
                 }
-            });
+            }
+
+            ui.add_space(2.0);
+        }
 
         self.pending_spawns.extend(new_spawns);
     }

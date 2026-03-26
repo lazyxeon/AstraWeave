@@ -33,6 +33,7 @@
 - [Networking](./core-systems/networking.md)
 - [Fluids Simulation](./core-systems/fluids.md)
 - [Terrain System](./core-systems/terrain.md)
+- [Blueprint Zone Editor](./core-systems/blueprint-zones.md)
 - [Cinematics](./core-systems/cinematics.md)
 
 # Game Development

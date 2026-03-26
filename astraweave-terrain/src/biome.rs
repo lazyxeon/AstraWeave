@@ -1162,6 +1162,21 @@ impl BiomeConfig {
     pub fn is_slope_suitable(&self, slope_degrees: f32) -> bool {
         slope_degrees <= self.conditions.max_slope
     }
+
+    /// Create a BiomeConfig from a [`BiomePack`](crate::biome_pack::BiomePack).
+    ///
+    /// The `biome_type` parameter selects the closest natural biome classification.
+    /// For Namaqualand-style semi-arid packs, use `BiomeType::Desert`.
+    /// For temperate forest packs, use `BiomeType::Forest`, etc.
+    ///
+    /// All vegetation types, scatter parameters, ground textures, conditions,
+    /// and sky settings are populated from the pack.
+    pub fn from_biome_pack(
+        pack: &crate::biome_pack::BiomePack,
+        biome_type: BiomeType,
+    ) -> Self {
+        pack.to_biome_config(biome_type)
+    }
 }
 
 /// Runtime biome data for a specific location

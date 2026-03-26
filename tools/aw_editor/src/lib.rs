@@ -7,6 +7,7 @@ pub mod animation_bridge;
 pub mod asset_pack;
 pub mod audio_bridge;
 pub mod behavior_graph;
+pub mod blend_scanner;
 pub mod clipboard;
 pub mod command;
 pub mod component_ui;

@@ -77,12 +77,15 @@
 
 pub mod cache;
 pub mod conversion;
+pub mod decomposer;
 pub mod discovery;
 pub mod error;
 pub mod export_script;
+pub mod heightmap_raster;
 pub mod importer;
 pub mod options;
 pub mod progress;
+pub mod texture_processor;
 pub mod version;
 
 /// Test utilities, mock implementations, and property generators.
@@ -103,7 +106,17 @@ pub use version::{
 // Re-exports - conversion pipeline
 pub use cache::{CacheLookup, CacheMissReason, CacheStats, ConversionCache};
 pub use conversion::{ConversionJob, ConversionJobBuilder, ConversionResult};
-pub use options::{ConversionOptions, ConversionOptionsBuilder, OutputFormat};
+pub use decomposer::{DecomposedAsset, DecompositionResult, SceneDecomposer};
+pub use heightmap_raster::{
+    ExtractedTerrainMesh, FixedPlacement, RasterizedHeightmap, TerrainBounds,
+};
+pub use options::{
+    ConversionOptions, ConversionOptionsBuilder, OutputFormat, SceneDecompositionOptions,
+};
+pub use texture_processor::{
+    process_decomposition_textures, normalize_channel_name,
+    TextureProcessingConfig, TextureProcessingResult, TextureOutputFormat,
+};
 pub use progress::{
     CancellationToken, ConversionProgress, ConversionStage, ProgressReceiver, ProgressTracker,
 };

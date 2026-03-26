@@ -2688,6 +2688,20 @@ impl ViewportWidget {
         }
     }
 
+    /// Set zone overlay lines (blueprint zone wireframes) for 3D rendering.
+    pub fn set_zone_overlay_lines(&self, lines: Vec<astraweave_physics::DebugLine>) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.set_zone_overlay_lines(lines);
+        }
+    }
+
+    /// Set scatter placements for instanced vegetation/prop rendering.
+    pub fn set_scatter_placements(&self, placements: Vec<crate::terrain_integration::ScatterPlacement>) {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.set_scatter_placements(placements);
+        }
+    }
+
     pub fn clear_terrain(&self) {
         if let Ok(mut renderer) = self.renderer.lock() {
             renderer.clear_terrain();

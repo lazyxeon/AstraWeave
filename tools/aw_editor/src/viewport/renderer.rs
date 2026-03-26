@@ -102,6 +102,9 @@ pub struct ViewportRenderer {
 
     /// Brush cursor circle draped on terrain surface
     brush_cursor_lines: Vec<astraweave_physics::DebugLine>,
+
+    /// Zone overlay lines (blueprint zone wireframes)
+    zone_overlay_lines: Vec<astraweave_physics::DebugLine>,
 }
 
 impl ViewportRenderer {
@@ -150,6 +153,7 @@ impl ViewportRenderer {
             selected_entities: Vec::new(),
             component_gizmo_lines: Vec::new(),
             brush_cursor_lines: Vec::new(),
+            zone_overlay_lines: Vec::new(),
         })
     }
 
@@ -341,10 +345,11 @@ impl ViewportRenderer {
             let _ = self.ensure_scatter_renderer();
         }
 
-        // Eagerly init physics renderer if component gizmo lines, physics lines, or brush cursor exist
+        // Eagerly init physics renderer if component gizmo lines, physics lines, brush cursor, or zone overlay exist
         if (!self.component_gizmo_lines.is_empty()
             || physics_debug_lines.is_some()
-            || !self.brush_cursor_lines.is_empty())
+            || !self.brush_cursor_lines.is_empty()
+            || !self.zone_overlay_lines.is_empty())
             && self.physics_renderer.is_none()
         {
             let _ = self.ensure_physics_renderer();
@@ -485,6 +490,7 @@ impl ViewportRenderer {
                 combined_lines.extend_from_slice(debug_lines);
             }
             combined_lines.extend_from_slice(&self.brush_cursor_lines);
+            combined_lines.extend_from_slice(&self.zone_overlay_lines);
             if !combined_lines.is_empty() {
                 if let Some(physics) = self.physics_renderer.as_mut() {
                     physics
@@ -609,6 +615,11 @@ impl ViewportRenderer {
 
     pub fn set_brush_cursor_lines(&mut self, lines: Vec<astraweave_physics::DebugLine>) {
         self.brush_cursor_lines = lines;
+    }
+
+    /// Set zone overlay lines (blueprint zone wireframes)
+    pub fn set_zone_overlay_lines(&mut self, lines: Vec<astraweave_physics::DebugLine>) {
+        self.zone_overlay_lines = lines;
     }
 
     /// Set the entity-to-mesh mapping so models render with actual GLTF geometry

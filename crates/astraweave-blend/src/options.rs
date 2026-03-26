@@ -28,6 +28,125 @@ pub struct ConversionOptions {
     pub process: ProcessOptions,
     /// Cache behavior options.
     pub cache: CacheOptions,
+    /// Scene decomposition options (for splitting a .blend into individual assets).
+    pub decomposition: SceneDecompositionOptions,
+}
+
+// ============================================================================
+// Scene Decomposition Options
+// ============================================================================
+
+/// How to group objects when decomposing a .blend scene into individual assets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum DecompositionGrouping {
+    /// Export each mesh object as a separate asset.
+    #[default]
+    ByObject,
+    /// Group objects by their Blender collection.
+    ByCollection,
+    /// Group objects that share the same material.
+    ByMaterial,
+}
+
+/// What category an extracted object belongs to, used for downstream biome/scatter integration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum AssetCategory {
+    /// Category determined automatically from Blender object name heuristics.
+    #[default]
+    Auto,
+    /// Vegetation: trees, bushes, flowers, grass.
+    Vegetation,
+    /// Rock/geological: boulders, cliffs, stones.
+    Rock,
+    /// Terrain: ground planes, terrain meshes.
+    Terrain,
+    /// Prop: man-made objects, structures.
+    Prop,
+    /// Billboard: flat card geometry (e.g. distant foliage).
+    Billboard,
+}
+
+/// How to compute per-asset bounding volumes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum BoundingBoxMode {
+    /// Compute AABB from mesh vertices.
+    #[default]
+    Aabb,
+    /// Use Blender's object bounding_box property.
+    BlenderBounds,
+    /// Do not compute bounding volumes.
+    None,
+}
+
+/// Configuration for decomposing a .blend scene into individual asset files.
+///
+/// When enabled, the importer splits a multi-object .blend file into
+/// one glTF/GLB per logical group, generates a manifest describing all
+/// extracted assets, and optionally extracts textures and HDRIs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SceneDecompositionOptions {
+    /// Enable scene decomposition (default: false — normal single-file export).
+    pub enabled: bool,
+    /// How to group objects during decomposition.
+    pub group_by: DecompositionGrouping,
+    /// Output directory for decomposed assets (None = `{output_dir}/{blend_stem}/`).
+    pub output_dir: Option<PathBuf>,
+    /// Generate a `manifest.json` listing all extracted assets with metadata.
+    pub generate_manifest: bool,
+    /// Extract textures as separate files alongside the GLBs.
+    pub extract_textures: bool,
+    /// Extract HDRI/environment maps found in the scene's World nodes.
+    pub extract_hdris: bool,
+    /// Include Blender empties (e.g. placement markers) in the manifest.
+    pub include_empties: bool,
+    /// How to compute bounding volumes for each asset.
+    pub bounding_box_mode: BoundingBoxMode,
+    /// Minimum vertex count to include an object (filters degenerate geometry).
+    pub min_vertex_count: u32,
+    /// Asset category assignment mode.
+    pub asset_category: AssetCategory,
+    /// Object name patterns to exclude (matched case-insensitively against Blender object names).
+    pub exclude_patterns: Vec<String>,
+}
+
+impl Default for SceneDecompositionOptions {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            group_by: DecompositionGrouping::ByObject,
+            output_dir: None,
+            generate_manifest: true,
+            extract_textures: true,
+            extract_hdris: true,
+            include_empties: false,
+            bounding_box_mode: BoundingBoxMode::Aabb,
+            min_vertex_count: 3,
+            asset_category: AssetCategory::Auto,
+            exclude_patterns: Vec::new(),
+        }
+    }
+}
+
+impl SceneDecompositionOptions {
+    /// Preset for extracting a nature/environment pack (vegetation + rocks + terrain).
+    pub fn nature_pack() -> Self {
+        Self {
+            enabled: true,
+            group_by: DecompositionGrouping::ByObject,
+            generate_manifest: true,
+            extract_textures: true,
+            extract_hdris: true,
+            include_empties: true,
+            bounding_box_mode: BoundingBoxMode::Aabb,
+            min_vertex_count: 3,
+            asset_category: AssetCategory::Auto,
+            exclude_patterns: vec!["Camera".to_string(), "Light".to_string()],
+            ..Default::default()
+        }
+    }
 }
 
 impl ConversionOptions {
@@ -100,6 +219,37 @@ impl ConversionOptions {
                 export_animations: true,
                 export_shape_keys: true,
                 optimize_animation_size: false, // Preserve all keyframes
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// Creates options for scene decomposition (split .blend into individual assets).
+    pub fn scene_decomposition() -> Self {
+        Self {
+            format: OutputFormat::GlbBinary,
+            gltf: GltfExportOptions {
+                draco_compression: true,
+                selected_only: true, // Critical: export one object at a time
+                export_extras: true,
+                ..Default::default()
+            },
+            textures: TextureOptions {
+                format: TextureFormat::Png,
+                max_resolution: Some(4096),
+                ..Default::default()
+            },
+            mesh: MeshOptions {
+                apply_modifiers: true,
+                triangulate: true,
+                ..Default::default()
+            },
+            decomposition: SceneDecompositionOptions::nature_pack(),
+            process: ProcessOptions {
+                // Scene decomposition exports hundreds of objects individually;
+                // large nature packs (e.g. 279 meshes with Draco) need 10-20 min.
+                timeout: Duration::from_secs(1800), // 30 minutes
                 ..Default::default()
             },
             ..Default::default()
@@ -515,6 +665,12 @@ impl ConversionOptionsBuilder {
         self
     }
 
+    /// Enables scene decomposition with custom options.
+    pub fn decomposition(mut self, decomposition: SceneDecompositionOptions) -> Self {
+        self.options.decomposition = decomposition;
+        self
+    }
+
     /// Builds the ConversionOptions.
     pub fn build(self) -> ConversionOptions {
         self.options
@@ -568,5 +724,34 @@ mod tests {
         assert_eq!(OutputFormat::GlbBinary.extension(), "glb");
         assert_eq!(OutputFormat::GltfEmbedded.extension(), "gltf");
         assert_eq!(OutputFormat::GltfSeparate.extension(), "gltf");
+    }
+
+    #[test]
+    fn test_scene_decomposition_preset() {
+        let options = ConversionOptions::scene_decomposition();
+        assert!(options.decomposition.enabled);
+        assert!(options.gltf.selected_only);
+        assert!(options.decomposition.generate_manifest);
+        assert!(options.decomposition.extract_textures);
+        assert!(options.decomposition.extract_hdris);
+        assert_eq!(
+            options.decomposition.group_by,
+            DecompositionGrouping::ByObject
+        );
+    }
+
+    #[test]
+    fn test_decomposition_defaults_disabled() {
+        let options = ConversionOptions::default();
+        assert!(!options.decomposition.enabled);
+    }
+
+    #[test]
+    fn test_nature_pack_preset() {
+        let nature = SceneDecompositionOptions::nature_pack();
+        assert!(nature.enabled);
+        assert_eq!(nature.asset_category, AssetCategory::Auto);
+        assert!(nature.exclude_patterns.contains(&"Camera".to_string()));
+        assert!(nature.exclude_patterns.contains(&"Light".to_string()));
     }
 }

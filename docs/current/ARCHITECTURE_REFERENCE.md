@@ -14,8 +14,10 @@
 5. [API Deep Dives](#api-deep-dives)
 6. [Testing Patterns](#testing-patterns)
 7. [Workspace Structure (Detailed)](#workspace-structure-detailed)
-8. [Performance Baselines](#performance-baselines)
-9. [Formal Verification (Miri & Kani)](#formal-verification-miri--kani)
+8. [Blend Import Pipeline](#blend-import-pipeline)
+9. [Blueprint Zone System](#blueprint-zone-system)
+10. [Performance Baselines](#performance-baselines)
+11. [Formal Verification (Miri & Kani)](#formal-verification-miri--kani)
 
 ---
 
@@ -288,7 +290,7 @@ let status = graph.tick(&context);
 | `astraweave-nav` | Navmesh, A*, portal graphs |
 | `astraweave-audio` | Spatial audio, rodio backend |
 | `astraweave-scene` | World partition, async cell streaming |
-| `astraweave-terrain` | Voxel/polygon hybrid, marching cubes |
+| `astraweave-terrain` | Voxel/polygon hybrid, marching cubes, BiomePack import bridge |
 | `astraweave-cinematics` | Timeline, sequencer, camera/audio/FX tracks |
 | `astraweave-math` | SIMD vector/matrix ops (glam-based), movement optimization |
 
@@ -301,12 +303,230 @@ let status = graph.tick(&context);
 | `astraweave-pcg` | Procedural content generation |
 | `tools/aw_editor` | Level/encounter editor (GUI) |
 | `tools/aw_asset_cli` | Asset pipeline tooling |
+| `crates/astraweave-blend` | Blender .blend import: scene decomposition, texture processing |
 
 ### Examples Status
 
 - ✅ Working: `hello_companion`, `unified_showcase`, `core_loop_bt_demo`, `core_loop_goap_demo`, `weaving_pcg_demo`, `profiling_demo`
 - ⚠️ API Drift: `ui_controls_demo`, `debug_overlay` (egui/winit version mismatches)
 - ❌ Broken: `astraweave-author`, `rhai_authoring` (rhai sync trait issues)
+
+---
+
+## Blend Import Pipeline
+
+Full pipeline for importing Blender `.blend` scene files as biome vegetation/scatter profiles.
+
+### Pipeline Flow
+
+```
+.blend file → Scene Decomposition → manifest.json → BiomePack → BiomeConfig + ScatterConfig
+    ↓                ↓                    ↓              ↓              ↓
+astraweave-blend   Python subprocess   JSON schema   Bridge format   Terrain system
+```
+
+### Crate Responsibilities
+
+| Crate | Role |
+|-------|------|
+| `astraweave-blend` | Scene decomposition (Python subprocess), texture processing (HDR→PNG, thumbnails) |
+| `astraweave-asset` | `BlendImportSystem` + optional `blend` feature flag |
+| `astraweave-terrain` | `BiomePack` bridge format, `BiomeConfig`/`ScatterConfig` conversion |
+| `aw_editor` | `BlendImportPanel` UI — file selection, asset review, biome pack generation |
+
+### BiomePack API
+
+```rust
+use astraweave_terrain::{BiomePack, biome::BiomeType, scatter::ScatterConfig};
+
+// Parse manifest.json from decomposition output
+let pack = BiomePack::from_manifest(&manifest_path)?;
+
+// Convert to terrain system configs
+let biome_config = pack.to_biome_config(BiomeType::Desert);
+let scatter_config = pack.to_scatter_config();
+
+// Save/load for editor workflows
+pack.save(&path)?;
+let loaded = BiomePack::load(&path)?;
+```
+
+### Asset Classification & Scatter Weights
+
+Assets are classified by category (`vegetation`, `rock`, `terrain`, `prop`, `billboard`) and sized by dimensions:
+
+| Category | Size | Weight | Scatter Behavior |
+|----------|------|--------|------------------|
+| vegetation/Large | >5m | 0.05 | Sparse (trees) |
+| vegetation/Medium | 1-5m | 0.30 | Moderate (bushes) |
+| vegetation/Small | <1m | 2.00 | Dense (flowers/grass) |
+| rock/Large | >5m | 0.02 | Very rare (cliffs) |
+| rock/Medium | 1-5m | 0.15 | Moderate (boulders) |
+| rock/Small | <1m | 0.50 | Common (stones) |
+| terrain | any | 0.00 | Never scattered |
+
+### Editor Integration
+
+`BlendImportPanel` (panel type: `BlendImport`, category: Content) provides:
+- File browser with `.blend` file selection
+- Decomposition progress tracking (5 phases)
+- Asset list with category filtering and toggle selection
+- Texture processing settings (HDR conversion, thumbnails, resolution limits)
+- Scatter/biome settings (Poisson disk, density, slope, biome type selection)
+- BiomePack generation with name/description
+
+### Test Coverage
+
+| Test Suite | Count | Status |
+|------------|-------|--------|
+| `astraweave-blend` unit tests | 63 | ✅ |
+| `astraweave-terrain::biome_pack` unit tests | 9 | ✅ |
+| `astraweave-terrain::blend_pipeline_e2e` integration tests | 12 | ✅ |
+| `aw_editor::blend_import_panel` unit tests | 13 | ✅ |
+
+---
+
+## Blueprint Zone System
+
+Polygon-based zone editor with zone-scoped vegetation generation, heightmap injection, and 3D viewport overlay. Extends the Blend Import Pipeline with spatial placement control.
+
+### Pipeline Flow
+
+```
+Editor Canvas → BlueprintZone → ZoneScatterGenerator → ZoneGenerationResult
+     ↓               ↓                ↓                      ↓
+Polygon drawing   ZoneRegistry    Replica/Inspired      placements + patches
+                  (save/load)      mode dispatch         ↓
+                                                    apply_heightmap_patches()
+                                                         ↓
+                                                    TerrainChunk updates
+```
+
+### Crate Responsibilities
+
+| Crate | Role |
+|-------|------|
+| `astraweave-terrain` | `BlueprintZone`, `ZoneRegistry`, `ZoneScatterGenerator`, heightmap patching, `AdaptiveScaleParams` |
+| `astraweave-blend` | `heightmap_raster` — rasterizes terrain meshes → heightmaps + fixed placements |
+| `aw_editor` | `BlueprintPanel` (2D canvas editor), `BlueprintOverlay` (3D viewport), `BlendAssetScanner`, system wiring |
+
+### Zone Data Model
+
+```rust
+use astraweave_terrain::blueprint_zone::*;
+
+let zone = BlueprintZone {
+    id: ZoneId(1),
+    name: "Forest Clearing".into(),
+    vertices: vec![[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]],
+    source: ZoneSource::BlendScene {
+        pack_path: "assets/pine_forest.biomepack".into(),
+        placement_mode: PlacementMode::Replica,
+    },
+    priority: 0,
+    enabled: true,
+};
+
+// ZoneRegistry — CRUD, spatial queries, persistence
+let mut registry = ZoneRegistry::new();
+registry.add_zone(zone);
+let zones = registry.zones_containing_point(50.0, 50.0);
+registry.save(&Path::new("zones.json"))?;
+```
+
+### Placement Modes
+
+| Mode | Behavior |
+|------|----------|
+| `Replica` | 1:1 reproduction — fixed positions from `.blend` scene, scaled by `AdaptiveScaleParams` |
+| `Inspired` | Procedural scatter using `ScatterConfig` derived from `BiomePack`, respects zone polygon |
+| `BiomePreset` | Pure biome-driven scatter (Grassland, Forest, Desert, etc.) without `.blend` data |
+
+### ZoneScatterGenerator API
+
+```rust
+use astraweave_terrain::zone_scatter::*;
+
+let gen = ZoneScatterGenerator::new(256.0, 128); // chunk_size, heightmap_resolution
+let result: ZoneGenerationResult = gen.generate_zone_scatter(&zone, &biome_pack)?;
+
+// Result contains:
+// - result.placements: Vec<VegetationInstance>  (position, rotation, scale, model_path)
+// - result.heightmap_patches: Vec<HeightmapPatch> (per-chunk height modifications)
+
+// Apply patches to terrain chunks
+let results = vec![result];
+apply_heightmap_patches(&mut chunk_map, &results);
+```
+
+### Adaptive Scaling
+
+When zone area differs from source scene footprint, `AdaptiveScaleParams` adjusts density and scale:
+
+```rust
+let params = AdaptiveScaleParams::compute(reference_area, zone_area);
+// params.density_multiplier = sqrt(zone_area / reference_area)
+// params.scale_multiplier  = (zone_area / reference_area)^0.25
+// params.position_scale    = sqrt(zone_area / reference_area)
+```
+
+### Boundary Blending
+
+`apply_boundary_blending()` uses smoothstep falloff at zone edges to prevent hard cutoffs:
+- Vegetation near edges: density fades via `BlendMask::sample(x, z)` → 0.0–1.0
+- Heightmap patches: height delta scaled by mask value at each sample point
+- Editor: `BrushMode::ZoneBlend` for manual blend-weight painting
+
+### Heightmap Rasterization (Blend Crate)
+
+```rust
+use astraweave_blend::heightmap_raster::*;
+
+// Rasterize terrain meshes from .blend decomposition output
+let heightmap = rasterize_terrain_meshes(&terrain_meshes, resolution)?;
+let height = heightmap.sample_bilinear(u, v); // Normalized [0,1] coords
+let area = heightmap.footprint_area();         // World-space area in m²
+```
+
+Ray-triangle intersection with seam averaging and hole filling for multi-tile terrains.
+
+### Editor Integration
+
+`BlueprintPanel` (panel type: `Blueprint`, category: Content) provides:
+- 2D canvas with pan/zoom for polygon drawing
+- Tools: Select, DrawPolygon, MoveVertex, DeleteZone
+- Zone inspector with name, source (biome preset or blend scene), placement mode
+- Undo/redo via `BlueprintCommand` stack
+- Save/Load zones as `.zones.json`
+
+`BlueprintOverlay` projects zone polygons into the 3D viewport as `DebugLine` wireframes,
+integrated alongside component gizmos and brush cursors in the physics renderer pass.
+
+### System Wiring (main.rs)
+
+```
+Update loop → process_blueprint_actions()
+  ├── GenerateZone  → handle_generate_zone()  → ZoneScatterGenerator
+  ├── GenerateAll   → handle_generate_zone() for each zone
+  ├── ClearGeneration → clear generation results
+  ├── SaveZones     → handle_save_zones()    → ZoneRegistry::save()
+  └── LoadZones     → handle_load_zones()    → ZoneRegistry::load() + panel sync
+       └── sync_zone_overlay() → BlueprintOverlay::generate_lines() → renderer
+```
+
+### Test Coverage
+
+| Test Suite | Count | Status |
+|------------|-------|--------|
+| `astraweave-terrain::blueprint_zone` unit tests | 24 | ✅ |
+| `astraweave-terrain::zone_scatter` unit tests | 16 | ✅ |
+| `astraweave-terrain::zone_scatter_e2e` integration tests | 11 | ✅ |
+| `astraweave-blend::heightmap_raster` unit tests | 11 | ✅ |
+| `astraweave-blend::heightmap_raster_e2e` integration tests | 10 | ✅ |
+| `astraweave-terrain::biome_pack` unit tests (extended) | 9 | ✅ |
+| `aw_editor::blueprint_panel` unit tests | 17 | ✅ |
+| `aw_editor::blueprint_overlay` unit tests | 7 | ✅ |
+| `aw_editor::blend_scanner` unit tests | 8 | ✅ |
 
 ---
 

@@ -220,6 +220,17 @@ impl<'a> DockPanelContext<'a> {
                 ui.label("Frame debugger is available in the docking layout.");
                 ui.label("Switch to docking mode (Window > Use Docking Layout).");
             }
+            PanelType::BlendImport => {
+                ui.heading("Blend Import");
+                ui.separator();
+                ui.label("Import Blender .blend scenes, decompose into assets, and generate biome packs.");
+            }
+            PanelType::Blueprint => {
+                ui.heading("Blueprint Zone Editor");
+                ui.separator();
+                ui.label("2D top-down zone editor for defining terrain generation zones.");
+                ui.label("Switch to docking mode for the full interactive canvas.");
+            }
         }
     }
 

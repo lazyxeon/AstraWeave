@@ -223,7 +223,8 @@ WorldSnapshot  AI Model   PlanIntent  Tool Validation
 | Physics | `astraweave-physics/src/{character_controller,spatial_hash}.rs` |
 | Combat | `astraweave-gameplay/src/combat_physics.rs` |
 | SIMD Math | `astraweave-math/src/{simd_vec,simd_mat,simd_quat,simd_movement}.rs` |
-| Terrain | `astraweave-terrain/src/voxel_mesh.rs` |
+| Terrain | `astraweave-terrain/src/{voxel_mesh,biome_pack,biome,scatter}.rs` |
+| Blend Import | `crates/astraweave-blend/src/{decomposer,texture_processor,importer}.rs` |
 | Build Config | `.cargo/config.toml`, root `Cargo.toml` |
 
 ---

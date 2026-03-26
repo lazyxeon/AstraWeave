@@ -1,7 +1,7 @@
 # AstraWeave: Master Strategic Roadmap
 
-**Version**: 1.47  
-**Last Updated**: February 26, 2026  
+**Version**: 1.49  
+**Last Updated**: March 25, 2026  
 **Status**: Authoritative Source  
 **Validation**: ✅ PASS — [Full Report](../current/ENGINE_VALIDATION_2026_01_13.md)
 
@@ -25,7 +25,7 @@
 
 AstraWeave is the **world's first AI-native game engine** where AI agents are first-class citizens, not bolted-on features. The entire codebase is developed iteratively by AI Agents (GitHub Copilot/Antigravity) with zero human-written code.
 
-### Current State (February 26, 2026)
+### Current State (March 25, 2026)
 
 | Metric | Value |
 |--------|-------|
@@ -46,6 +46,7 @@ AstraWeave is the **world's first AI-native game engine** where AI agents are fi
 | **Mutation Testing** | Wave 1: 767 manual + Wave 2: 1,261+ automated |
 
 **Recent Achievements**:
+- (Mar 25, 2026): Blueprint Zone Editor & Blend Scene Integration — 9 phases, polygon zone editor, Replica/Inspired placement, heightmap injection, 125+ tests — [Details](../current/ARCHITECTURE_REFERENCE.md#blueprint-zone-system)
 - (Feb 25, 2026): Master Coverage Report v5.0 — full re-measurement of 28 crates via `cargo llvm-cov` — [Details](../current/MASTER_COVERAGE_REPORT.md)
 - (Feb 2026): Wave 2 automated mutation testing — astraweave-prompts 100% kill rate (792 mutants)
 - (Feb 3, 2026): Miri memory safety validation complete — 4 crates, 977 tests, zero undefined behavior — [Details](../current/MIRI_VALIDATION_REPORT.md)
@@ -86,6 +87,7 @@ AstraWeave is the **world's first AI-native game engine** where AI agents are fi
 
 | Feature | Location | Tests |
 |---------|----------|-------|
+| **✅ Blueprint Zone Editor** | `astraweave-terrain`, `astraweave-blend`, `aw_editor` | **125+** |
 | **✅ Master Coverage Audit v5.0** | 28 crates measured via `cargo llvm-cov` | **~18,200** |
 | **✅ Wave 2 Automated Mutation Testing** | prompts (792), render (339), editor (130) | **1,261+** |
 | **✅ Miri Memory Safety Validation** | ecs, math, core, sdk | **977** |
@@ -310,6 +312,22 @@ Key achievements:
 - Terrain-driven quest generation (20 feature types)
 - API expansion (`apply_damage`, `set_position`)
 
+### Blueprint Zone Editor & Blend Scene Integration ✅
+
+**Completed**: March 25, 2026
+
+Key achievements:
+- Polygon-based Blueprint Zone data model with `ZoneRegistry` (CRUD, spatial queries, JSON persistence)
+- `ZoneScatterGenerator` with Replica (1:1 fixed placement) and Inspired (procedural) modes
+- `heightmap_raster` module for rasterizing `.blend` terrain meshes → heightmaps + fixed placements
+- Boundary blending with smoothstep falloff + `BrushMode::ZoneBlend` manual paint brush
+- `BlueprintPanel` — full 2D canvas editor with polygon tools, zone inspector, undo/redo
+- `BlueprintOverlay` — 3D viewport wireframe projection via `DebugLine` renderer pass
+- `BlendAssetScanner` for asset browser `.blend` discovery
+- Adaptive scaling (density/scale/position) when zone area differs from source scene footprint
+- System wiring: action dispatch, overlay sync, save/load with panel state roundtrip
+- 125+ tests across 9 test suites (24 zone model + 16 scatter + 11 scatter e2e + 11 raster + 10 raster e2e + 9 biome pack + 17 panel + 7 overlay + 8 scanner)
+
 ---
 
 ## Revision History
@@ -320,8 +338,8 @@ Key achievements:
 
 | Metric | Value |
 |--------|-------|
-| **Total Versions** | 20 |
-| **Timeline** | Nov 22, 2025 → Feb 2026 (~3 months) |
+| **Total Versions** | 22 |
+| **Timeline** | Nov 22, 2025 → Mar 2026 (~4 months) |
 | **Primary Authors** | AI Team |
 | **Average Frequency** | ~3 days/version |
 
@@ -351,6 +369,8 @@ Key achievements:
 
 | Ver | Date | Type | Impact | Summary (≤80 chars) |
 |-----|------|------|--------|---------------------|
+| **1.49** | Mar 25 | 🔷 | 🟡 | Blueprint Zone Editor: 9 phases, polygon zones, Replica/Inspired, 125+ tests |
+| **1.48** | Feb 27 | 🔷 | 🟡 | Blend Import Pipeline: 7 phases, BiomePack, editor panel, 97 tests |
 | **1.47** | Feb 26 | 🔍 | 🟡 | Roadmap audit: corrected metrics, 128 pkgs, ~27K tests, v5.0 coverage |
 | **1.46** | Feb 10 | 🔷 | 🔴 | Veilweaver vertical slice: 5 phases, 20 modules, 320 tests, zero unsafe |
 | **1.45** | Feb 3 | 🔷 | 🟡 | Miri validation: 977 tests, 4 crates, zero UB |
@@ -380,18 +400,18 @@ Key achievements:
 **By Type:**
 | Type | Count | % |
 |------|-------|---|
-| 🔷 MAJOR | 8 | 40.0% |
-| 🔹 MINOR | 6 | 30.0% |
-| 📋 PLAN | 2 | 10.0% |
-| 🔍 AUDIT | 3 | 15.0% |
-| ⚠️ FIX | 1 | 5.0% |
+| 🔷 MAJOR | 9 | 40.9% |
+| 🔹 MINOR | 6 | 27.3% |
+| 📋 PLAN | 2 | 9.1% |
+| 🔍 AUDIT | 3 | 13.6% |
+| ⚠️ FIX | 1 | 4.5% |
 
 **By Impact:**
 | Impact | Count | % |
 |--------|-------|---|
-| 🔴 CRITICAL | 2 | 10.0% |
-| 🟡 SIGNIFICANT | 10 | 50.0% |
-| 🟢 INCREMENTAL | 8 | 40.0% |
+| 🔴 CRITICAL | 2 | 9.1% |
+| 🟡 SIGNIFICANT | 11 | 50.0% |
+| 🟢 INCREMENTAL | 8 | 36.4% |
 
 ---
 
@@ -421,6 +441,10 @@ Feb 3 ─── v1.45: Miri Validation (977 tests, 0 UB)
 Feb 10 ── v1.46: Veilweaver Vertical Slice (320 tests, 20 modules)
     │
 Feb 26 ── v1.47: Roadmap Audit (128 pkgs, ~27K tests, coverage v5.0)
+    │
+Feb 27 ── v1.48: Blend Import Pipeline (7 phases, 97 tests)
+    │
+Mar 25 ── v1.49: Blueprint Zone Editor (9 phases, 125+ tests)
 ```
 
 ---
@@ -537,9 +561,9 @@ Feb 26 ── v1.47: Roadmap Audit (128 pkgs, ~27K tests, coverage v5.0)
 
 ---
 
-**Next Review Date**: 2026-03-26 (monthly cadence)  
+**Next Review Date**: 2026-04-25 (monthly cadence)  
 **Revision History Format Version**: 2.0.0 (IEEE/ACM-compliant)  
-**Last Restructured**: 2026-02-26
+**Last Restructured**: 2026-03-25
 
 ---
 

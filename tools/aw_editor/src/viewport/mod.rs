@@ -34,6 +34,7 @@
 //! ```
 
 pub mod camera;
+pub mod blueprint_overlay;
 #[cfg(feature = "astraweave-render")]
 mod engine_adapter;
 pub(crate) mod entity_renderer;
@@ -60,3 +61,5 @@ pub use widget::ViewportWidget;
 
 #[allow(unused_imports)]
 pub use camera::OrbitCamera;
+#[allow(unused_imports)]
+pub use blueprint_overlay::{BlueprintOverlay, ZoneOverlayData};

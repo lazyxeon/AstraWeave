@@ -65,6 +65,31 @@
 
 ## Recently Completed
 
+### Blueprint Zone Editor & Blend Scene Integration ✅ (Feb 2026)
+- **Scope**: Full polygon zone editor with .blend scene → terrain generation pipeline (9 phases)
+- **Phase 1**: Core data model — `BlueprintZone`, `ZoneRegistry`, `BlendMask`, polygon math (24 tests)
+- **Phase 2**: Decomposer extension — `heightmap_raster.rs` + `biome_pack.rs` rasterization (11 + 9 tests)
+- **Phase 3**: Zone-scoped generation — `ZoneScatterGenerator` with Replica/Inspired modes (12 tests)
+- **Phase 4**: Boundary blending — smoothstep auto-blend + `BrushMode::ZoneBlend` (16 tests)
+- **Phase 5**: Asset browser — `BlendAssetScanner`, `AssetType::BlendScene`, editor preferences (8 tests)
+- **Phase 6**: Blueprint panel — 2D canvas editor with polygon tools, undo/redo, zone inspector (17 tests)
+- **Phase 7**: Viewport overlay — 3D wireframe zone visualization via debug lines (7 tests)
+- **Phase 8**: System wiring — action processing, state sync, save/load, viewport overlay sync
+- **Phase 9**: Integration tests + clippy (11 zone_scatter_e2e + 10 heightmap_raster_e2e tests)
+- **Total new tests**: 125+
+- **Crates**: `astraweave-terrain`, `astraweave-blend`, `aw_editor`
+
+### Blend Import Pipeline ✅ (Feb 2026)
+- **Scope**: Full `.blend` → BiomePack → Scatter pipeline (7 phases)
+- **Phase 1**: Scene decomposition (`astraweave-blend` — decomposer, export script, options) — 63 tests
+- **Phase 2**: BiomePack bridge format (`astraweave-terrain::biome_pack`) — 9 unit tests
+- **Phase 3**: Texture processing pipeline (HDR→PNG, thumbnails, channel normalization) — 9 tests
+- **Phase 4**: BiomeType extension + scatter integration (`BiomeConfig::from_biome_pack`, `ScatterConfig::from_biome_pack`)
+- **Phase 5**: Editor UI — `BlendImportPanel` with full import workflow (13 tests, clippy clean)
+- **Phase 6**: E2E integration tests — 12 tests covering manifest→BiomePack→BiomeConfig+ScatterConfig pipeline
+- **Phase 7**: Architecture documentation updated
+- **Reference**: `docs/current/ARCHITECTURE_REFERENCE.md` → Blend Import Pipeline section
+
 ### Miri Memory Safety Validation ✅ (Feb 3, 2026)
 - **Scope**: All 4 crates with unsafe code validated
 - **Results**: 977 tests, **ZERO undefined behavior** detected

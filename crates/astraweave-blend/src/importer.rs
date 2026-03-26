@@ -5,6 +5,10 @@
 
 use crate::cache::ConversionCache;
 use crate::conversion::{ConversionJob, ConversionResult};
+use crate::decomposer::{DecompositionResult, SceneDecomposer};
+use crate::texture_processor::{
+    process_decomposition_textures, TextureProcessingConfig, TextureProcessingResult,
+};
 use crate::discovery::{BlenderDiscovery, BlenderDiscoveryConfig, BlenderInstallation};
 use crate::error::{BlendError, BlendResult};
 use crate::options::ConversionOptions;
@@ -260,6 +264,83 @@ impl BlendImporter {
         }
 
         Ok(result)
+    }
+
+    /// Decomposes a .blend scene into individual per-object asset files.
+    ///
+    /// Uses `ConversionOptions::scene_decomposition()` defaults.
+    /// Assets are written to `{output_dir}/{blend_stem}/`.
+    pub async fn decompose(
+        &mut self,
+        source_path: impl AsRef<Path>,
+        output_dir: impl AsRef<Path>,
+    ) -> BlendResult<DecompositionResult> {
+        self.decompose_with_options(source_path, output_dir, ConversionOptions::scene_decomposition())
+            .await
+    }
+
+    /// Decomposes a .blend scene with custom options.
+    pub async fn decompose_with_options(
+        &mut self,
+        source_path: impl AsRef<Path>,
+        output_dir: impl AsRef<Path>,
+        options: ConversionOptions,
+    ) -> BlendResult<DecompositionResult> {
+        let source_path = source_path.as_ref();
+        let output_dir = output_dir.as_ref();
+
+        if !source_path.exists() {
+            return Err(BlendError::BlendFileNotFound {
+                path: source_path.to_path_buf(),
+            });
+        }
+
+        if source_path.extension().and_then(|e| e.to_str()) != Some("blend") {
+            return Err(BlendError::InvalidBlendFile {
+                path: source_path.to_path_buf(),
+                message: "File does not have .blend extension".to_string(),
+            });
+        }
+
+        let installation = self.blender_installation().await?.clone();
+
+        info!(
+            "Decomposing {} -> {} (Blender {})",
+            source_path.display(),
+            output_dir.display(),
+            installation.version
+        );
+
+        let decomposer = SceneDecomposer::new(source_path, output_dir, options, installation);
+        decomposer.execute().await
+    }
+
+    /// Decomposes a .blend scene and processes textures in one step.
+    ///
+    /// This is the recommended high-level API: it runs decomposition,
+    /// then converts HDR/EXR textures to PNG, generates thumbnails,
+    /// and enforces resolution limits.
+    pub async fn decompose_and_process(
+        &mut self,
+        source_path: impl AsRef<Path>,
+        output_dir: impl AsRef<Path>,
+        options: ConversionOptions,
+        texture_config: Option<TextureProcessingConfig>,
+    ) -> BlendResult<(DecompositionResult, TextureProcessingResult)> {
+        let result = self
+            .decompose_with_options(source_path, output_dir, options)
+            .await?;
+
+        let tex_config = texture_config.unwrap_or_default();
+        let tex_result = process_decomposition_textures(&result, &tex_config)
+            .map_err(|e| BlendError::ConversionFailed {
+                message: format!("Texture processing failed: {e}"),
+                exit_code: None,
+                stderr: String::new(),
+                blender_output: None,
+            })?;
+
+        Ok((result, tex_result))
     }
 
     /// Starts an import job that can be monitored and cancelled.

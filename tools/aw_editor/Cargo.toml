@@ -54,7 +54,7 @@ astraweave-ecs = { path = "../../astraweave-ecs" }
 astraweave-profiling = { path = "../../astraweave-profiling" }
 astraweave-render = { path = "../../astraweave-render", optional = true, features = ["gltf-assets", "textures"] }
 astraweave-author = { path = "../../astraweave-author" }
-astraweave-asset = { path = "../../astraweave-asset" }
+astraweave-asset = { path = "../../astraweave-asset", features = ["blend"] }
 astraweave-audio = { path = "../../astraweave-audio" }
 astraweave-behavior = { path = "../../astraweave-behavior" }
 astraweave-dialogue = { path = "../../astraweave-dialogue" }
@@ -71,6 +71,7 @@ zstd = "0.13"
 lz4_flex = "0.11"
 crc32fast = "1.4"
 astraweave-asset-pipeline = { path = "../../astraweave-asset-pipeline" }
+tokio = { workspace = true }
 mp4 = "0.14"
 openh264 = "0.6"
 egui_kittest = { version = "0.32", optional = true }

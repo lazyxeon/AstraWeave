@@ -42,7 +42,7 @@ struct VertexOutput {
     @location(2) uv: vec2<f32>,
     @location(3) biome_weights_0: vec4<f32>,
     @location(4) biome_weights_1: vec4<f32>,
-    @location(5) material_ids: vec4<f32>,
+    @location(5) @interpolate(flat) material_ids: vec4<f32>,
     @location(6) material_weights: vec4<f32>,
 }
 
@@ -111,7 +111,6 @@ fn triplanar_sample_albedo(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: i32)
     let uv_xz = pos.xz * scale;
     let uv_xy = pos.xy * scale;
     let uv_yz = pos.yz * scale;
-    // Mip bias: mild sharpening (reduced for 1024px textures)
     let bias = -0.5;
     let t_xz = textureSampleBias(biome_textures, biome_sampler, uv_xz, layer, bias).rgb;
     let t_xy = textureSampleBias(biome_textures, biome_sampler, uv_xy, layer, bias).rgb;
@@ -201,12 +200,13 @@ fn dominant_material_layer(material_ids: vec4<f32>, material_weights: vec4<f32>)
     if material_weights.z > best_weight { best_weight = material_weights.z; best_index = 2; }
     if material_weights.w > best_weight { best_weight = material_weights.w; best_index = 3; }
 
+    // material_ids are flat-interpolated, but round as safety net
     switch best_index {
-        case 0: { return i32(material_ids.x); }
-        case 1: { return i32(material_ids.y); }
-        case 2: { return i32(material_ids.z); }
-        case 3: { return i32(material_ids.w); }
-        default: { return i32(material_ids.x); }
+        case 0: { return i32(material_ids.x + 0.5); }
+        case 1: { return i32(material_ids.y + 0.5); }
+        case 2: { return i32(material_ids.z + 0.5); }
+        case 3: { return i32(material_ids.w + 0.5); }
+        default: { return i32(material_ids.x + 0.5); }
     }
 }
 
@@ -221,29 +221,29 @@ fn material_weights_max(w: vec4<f32>) -> f32 {
 fn material_params(layer: i32) -> vec4<f32> {
     // (macro_scale, detail_scale, normal_strength, detail_mix)
     switch layer {
-        case 0: { return vec4<f32>(0.13, 0.42, 0.4, 0.42); }  // grass
-        case 1: { return vec4<f32>(0.085, 0.28, 0.4, 0.22); } // sand
-        case 2: { return vec4<f32>(0.110, 0.40, 0.7, 0.46); } // forest floor
-        case 3: { return vec4<f32>(0.072, 0.22, 0.8, 0.24); } // mountain rock
-        case 4: { return vec4<f32>(0.068, 0.21, 0.4, 0.18); } // snow
-        case 5: { return vec4<f32>(0.102, 0.32, 0.6, 0.34); } // mud
-        case 6: { return vec4<f32>(0.085, 0.28, 0.6, 0.30); } // wood planks
-        case 7: { return vec4<f32>(0.080, 0.26, 0.6, 0.28); } // stone
-        case 8: { return vec4<f32>(0.074, 0.20, 0.8, 0.24); } // rock slate
-        case 9: { return vec4<f32>(0.102, 0.34, 0.55, 0.36); } // dirt
-        case 10: { return vec4<f32>(0.080, 0.26, 0.7, 0.28); } // cobblestone
-        case 11: { return vec4<f32>(0.120, 0.40, 0.3, 0.35); } // cloth
-        case 12: { return vec4<f32>(0.100, 0.35, 0.5, 0.30); } // default
-        case 13: { return vec4<f32>(0.090, 0.30, 0.6, 0.32); } // gravel
-        case 14: { return vec4<f32>(0.070, 0.22, 0.3, 0.20); } // ice
-        case 15: { return vec4<f32>(0.075, 0.24, 0.8, 0.26); } // metal rusted
-        case 16: { return vec4<f32>(0.110, 0.38, 0.5, 0.40); } // moss
-        case 17: { return vec4<f32>(0.095, 0.32, 0.4, 0.28); } // plaster
-        case 18: { return vec4<f32>(0.078, 0.24, 0.7, 0.28); } // rock lichen
-        case 19: { return vec4<f32>(0.085, 0.28, 0.6, 0.30); } // roof tile
-        case 20: { return vec4<f32>(0.090, 0.30, 0.7, 0.34); } // tree bark
-        case 21: { return vec4<f32>(0.120, 0.42, 0.4, 0.38); } // tree leaves
-        default: { return vec4<f32>(0.100, 0.35, 0.6, 0.30); }
+        case 0: { return vec4<f32>(0.20, 0.65, 1.5, 0.55); }  // grass
+        case 1: { return vec4<f32>(0.14, 0.45, 1.2, 0.35); } // sand
+        case 2: { return vec4<f32>(0.18, 0.60, 1.6, 0.55); } // forest floor
+        case 3: { return vec4<f32>(0.12, 0.38, 1.8, 0.40); } // mountain rock
+        case 4: { return vec4<f32>(0.11, 0.35, 1.0, 0.30); } // snow
+        case 5: { return vec4<f32>(0.16, 0.50, 1.4, 0.45); } // mud
+        case 6: { return vec4<f32>(0.14, 0.45, 1.4, 0.40); } // wood planks
+        case 7: { return vec4<f32>(0.13, 0.42, 1.6, 0.40); } // stone
+        case 8: { return vec4<f32>(0.12, 0.35, 1.8, 0.38); } // rock slate
+        case 9: { return vec4<f32>(0.16, 0.52, 1.3, 0.48); } // dirt
+        case 10: { return vec4<f32>(0.13, 0.42, 1.6, 0.40); } // cobblestone
+        case 11: { return vec4<f32>(0.18, 0.60, 0.8, 0.45); } // cloth
+        case 12: { return vec4<f32>(0.16, 0.52, 1.2, 0.42); } // default
+        case 13: { return vec4<f32>(0.15, 0.48, 1.4, 0.45); } // gravel
+        case 14: { return vec4<f32>(0.11, 0.35, 0.8, 0.30); } // ice
+        case 15: { return vec4<f32>(0.12, 0.38, 1.8, 0.40); } // metal rusted
+        case 16: { return vec4<f32>(0.18, 0.58, 1.2, 0.52); } // moss
+        case 17: { return vec4<f32>(0.15, 0.48, 1.0, 0.40); } // plaster
+        case 18: { return vec4<f32>(0.13, 0.40, 1.6, 0.42); } // rock lichen
+        case 19: { return vec4<f32>(0.14, 0.45, 1.4, 0.42); } // roof tile
+        case 20: { return vec4<f32>(0.15, 0.48, 1.6, 0.45); } // tree bark
+        case 21: { return vec4<f32>(0.18, 0.65, 1.0, 0.50); } // tree leaves
+        default: { return vec4<f32>(0.16, 0.52, 1.4, 0.42); }
     }
 }
 
@@ -276,7 +276,7 @@ fn sample_biome_material(pos: vec3<f32>, n: vec3<f32>, layer: i32) -> Material {
 
     // Distance-based LOD: fade detail at far range to save ALU
     let cam_dist = distance(uniforms.camera_pos, pos);
-    let detail_fade = 1.0 - smoothstep(100.0, 250.0, cam_dist);
+    let detail_fade = 1.0 - smoothstep(300.0, 800.0, cam_dist);
 
     // Macro samples (always present)
     let macro_albedo = triplanar_sample_albedo(warped_pos, n, macro_scale, layer);
@@ -304,8 +304,6 @@ fn sample_biome_material(pos: vec3<f32>, n: vec3<f32>, layer: i32) -> Material {
     let tint = mix(vec3<f32>(0.92, 0.95, 0.98), vec3<f32>(1.08, 1.03, 0.96), variation.x);
     let hue_bias = mix(vec3<f32>(0.98, 0.99, 1.02), vec3<f32>(1.03, 1.00, 0.96), variation.y);
     albedo *= tint * hue_bias;
-    // Lift dark PBR albedo — realistic textures are too dark without IBL/sky irradiance
-    albedo = pow(albedo, vec3<f32>(0.75));
     roughness = clamp(roughness + (variation.z - 0.5) * 0.14, 0.04, 1.0);
     metallic = clamp(metallic + (variation.y - 0.5) * 0.03, 0.0, 1.0);
     ao = clamp(ao * mix(0.92, 1.08, variation.x), 0.0, 1.0);
@@ -406,8 +404,14 @@ fn blend_material_slots(
     var height_sum = 0.0;
     var total_weight = 0.0;
 
+    // material_ids are @interpolate(flat) — use integer layer indices directly
+    let id0 = i32(material_ids.x + 0.5);
+    let id1 = i32(material_ids.y + 0.5);
+    let id2 = i32(material_ids.z + 0.5);
+    let id3 = i32(material_ids.w + 0.5);
+
     if material_weights.x > 0.001 {
-        let mat = sample_biome_material(pos, n, i32(material_ids.x));
+        let mat = sample_biome_material(pos, n, id0);
         let w = material_weights.x;
         albedo += mat.albedo * w;
         roughness += mat.roughness * w;
@@ -418,7 +422,7 @@ fn blend_material_slots(
         total_weight += w;
     }
     if material_weights.y > 0.001 {
-        let mat = sample_biome_material(pos, n, i32(material_ids.y));
+        let mat = sample_biome_material(pos, n, id1);
         let w = material_weights.y;
         albedo += mat.albedo * w;
         roughness += mat.roughness * w;
@@ -429,7 +433,7 @@ fn blend_material_slots(
         total_weight += w;
     }
     if material_weights.z > 0.001 {
-        let mat = sample_biome_material(pos, n, i32(material_ids.z));
+        let mat = sample_biome_material(pos, n, id2);
         let w = material_weights.z;
         albedo += mat.albedo * w;
         roughness += mat.roughness * w;
@@ -440,7 +444,7 @@ fn blend_material_slots(
         total_weight += w;
     }
     if material_weights.w > 0.001 {
-        let mat = sample_biome_material(pos, n, i32(material_ids.w));
+        let mat = sample_biome_material(pos, n, id3);
         let w = material_weights.w;
         albedo += mat.albedo * w;
         roughness += mat.roughness * w;
@@ -541,13 +545,12 @@ fn pbr_lighting(mat: Material, pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     let kS = F;
     let kD = (vec3<f32>(1.0) - kS) * (1.0 - mat.metallic);
     let direct = (kD * mat.albedo / PI + spec) * light_color * n_dot_l;
-    // Hemisphere ambient from uniform colors — AO preserves contrast without over-darkening
-    let softened_ao = mix(1.0, mat.ao, 0.50);
+    // Hemisphere ambient from uniform colors — AO provides depth in crevices
     let ground_c = uniforms.ambient_color * 0.40;
     let amb_blend = n.y * 0.5 + 0.5;
-    let ambient = mix(ground_c, uniforms.ambient_color, amb_blend) * mat.albedo * softened_ao * uniforms.ambient_intensity;
-    // Indirect fill — lifts shadow areas to prevent overly dark terrain
-    let indirect = mat.albedo * 0.08;
+    let ambient = mix(ground_c, uniforms.ambient_color, amb_blend) * mat.albedo * mat.ao * uniforms.ambient_intensity;
+    // Minimal indirect fill — avoids washing out shadow contrast
+    let indirect = mat.albedo * 0.04;
     // Subtle warm rim
     let rim = pow(1.0 - n_dot_v, 4.0) * 0.03;
     return direct + ambient + indirect + vec3<f32>(rim * 1.0, rim * 0.9, rim * 0.7);
