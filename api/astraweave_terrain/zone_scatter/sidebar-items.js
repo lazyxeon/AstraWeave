@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["apply_heightmap_patches","generate_multi_zone_scatter"],"struct":["FixedPlacement","HeightmapPatch","SourceHeightmap","ZoneGenerationResult","ZoneScatterGenerator"]};

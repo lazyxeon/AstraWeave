@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["BiomePack","BiomePackAsset","BiomePackGroundTexture","BiomePackHdri","BiomePackScatter","BiomePackTexture"]};

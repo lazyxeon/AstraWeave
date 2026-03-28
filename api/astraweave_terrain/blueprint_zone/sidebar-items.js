@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["PlacementMode","ZoneSource"],"fn":["point_distance_to_polygon_edge","point_in_polygon","polygon_area","polygon_bounding_rect","polygon_centroid","polygon_overlaps_rect"],"struct":["AdaptiveScaleParams","BlendMask","BlueprintZone","ZoneId","ZoneRegistry"]};

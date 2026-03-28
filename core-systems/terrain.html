@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7350e82e.js";
+            window.path_to_searchindex_js = "../searchindex-69e4959f.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3c461bbc.js"></script>
+        <script src="../toc-3cd98da5.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -724,6 +724,124 @@ let result: ResolvedLocation = solver.find_valid_location(
 println!("Found location: {:?}", result.position);
 <span class="boring">}</span></code></pre>
 <hr>
+<h2 id="blueprint-zone-system"><a class="header" href="#blueprint-zone-system">Blueprint Zone System</a></h2>
+<p>The Blueprint Zone system enables polygon-based spatial control over vegetation generation and heightmap injection, bridging <code>.blend</code> scene imports with the terrain scatter pipeline.</p>
+<h3 id="overview-1"><a class="header" href="#overview-1">Overview</a></h3>
+<pre><code>Editor Canvas → BlueprintZone → ZoneScatterGenerator → ZoneGenerationResult
+     ↓               ↓                ↓                      ↓
+Polygon drawing   ZoneRegistry    Replica/Inspired      placements + patches
+                  (save/load)      mode dispatch         ↓
+                                                    apply_heightmap_patches()
+                                                         ↓
+                                                    TerrainChunk updates
+</code></pre>
+<h3 id="zone-data-model"><a class="header" href="#zone-data-model">Zone Data Model</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_terrain::blueprint_zone::*;
+
+// Define a zone with polygon vertices
+let zone = BlueprintZone {
+    id: ZoneId(1),
+    name: "Forest Clearing".into(),
+    vertices: vec![[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]],
+    source: ZoneSource::BlendScene {
+        pack_path: "assets/pine_forest.biomepack".into(),
+        placement_mode: PlacementMode::Replica,
+    },
+    priority: 0,
+    enabled: true,
+};
+
+// ZoneRegistry — CRUD, spatial queries, persistence
+let mut registry = ZoneRegistry::new();
+registry.add_zone(zone);
+let zones = registry.zones_containing_point(50.0, 50.0);
+registry.save(&amp;Path::new("zones.json"))?;
+let loaded = ZoneRegistry::load(&amp;Path::new("zones.json"))?;
+<span class="boring">}</span></code></pre>
+<h3 id="placement-modes"><a class="header" href="#placement-modes">Placement Modes</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Replica</strong></td><td>1:1 reproduction — fixed positions from <code>.blend</code> scene, scaled by <code>AdaptiveScaleParams</code></td></tr>
+<tr><td><strong>Inspired</strong></td><td>Procedural scatter using <code>ScatterConfig</code> derived from <code>BiomePack</code>, respects zone polygon</td></tr>
+<tr><td><strong>BiomePreset</strong></td><td>Pure biome-driven scatter (Grassland, Forest, Desert, etc.) without <code>.blend</code> data</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="zone-scoped-generation"><a class="header" href="#zone-scoped-generation">Zone-Scoped Generation</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_terrain::zone_scatter::*;
+
+let gen = ZoneScatterGenerator::new(256.0, 128); // chunk_size, heightmap_resolution
+let result = gen.generate_zone_scatter(&amp;zone, &amp;biome_pack)?;
+
+// result.placements — Vec&lt;VegetationInstance&gt; (position, rotation, scale, model_path)
+// result.heightmap_patches — Vec&lt;HeightmapPatch&gt; (per-chunk height modifications)
+
+// Apply heightmap patches to terrain chunks
+let results = vec![result];
+apply_heightmap_patches(&amp;mut chunk_map, &amp;results);
+<span class="boring">}</span></code></pre>
+<h3 id="adaptive-scaling"><a class="header" href="#adaptive-scaling">Adaptive Scaling</a></h3>
+<p>When zone area differs from source scene footprint, density and scale adjust automatically:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let params = AdaptiveScaleParams::compute(reference_area, zone_area);
+// density_multiplier = sqrt(zone_area / reference_area)
+// scale_multiplier   = (zone_area / reference_area)^0.25
+// position_scale     = sqrt(zone_area / reference_area)
+<span class="boring">}</span></code></pre>
+<h3 id="boundary-blending"><a class="header" href="#boundary-blending">Boundary Blending</a></h3>
+<p><code>apply_boundary_blending()</code> uses smoothstep falloff at zone edges:</p>
+<ul>
+<li><strong>Vegetation</strong>: density fades via <code>BlendMask::sample(x, z)</code> → 0.0–1.0</li>
+<li><strong>Heightmap</strong>: height delta scaled by mask value at each sample point</li>
+<li><strong>Manual</strong>: <code>BrushMode::ZoneBlend</code> for blend-weight painting in-editor</li>
+</ul>
+<h3 id="heightmap-rasterization"><a class="header" href="#heightmap-rasterization">Heightmap Rasterization</a></h3>
+<p>Terrain meshes from <code>.blend</code> decomposition are rasterized into heightmaps:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_blend::heightmap_raster::*;
+
+let heightmap = rasterize_terrain_meshes(&amp;terrain_meshes, resolution)?;
+let height = heightmap.sample_bilinear(u, v); // Normalized [0,1] coords
+let area = heightmap.footprint_area();         // World-space area in m²
+<span class="boring">}</span></code></pre>
+<h3 id="editor-integration"><a class="header" href="#editor-integration">Editor Integration</a></h3>
+<p>The <code>BlueprintPanel</code> provides a 2D canvas for polygon zone editing:</p>
+<ul>
+<li>Tools: Select, DrawPolygon, MoveVertex, DeleteZone</li>
+<li>Zone inspector with name, source selection, placement mode toggle</li>
+<li>Undo/redo via command stack</li>
+<li>Save/Load zones as <code>.zones.json</code></li>
+</ul>
+<p>The <code>BlueprintOverlay</code> projects zone polygons as wireframe outlines into the 3D viewport, integrated with the physics renderer debug line pass.</p>
+<h3 id="test-coverage"><a class="header" href="#test-coverage">Test Coverage</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Test Suite</th><th>Tests</th></tr>
+</thead>
+<tbody>
+<tr><td><code>blueprint_zone</code> unit tests</td><td>24</td></tr>
+<tr><td><code>zone_scatter</code> unit + integration</td><td>27</td></tr>
+<tr><td><code>heightmap_raster</code> unit + integration</td><td>21</td></tr>
+<tr><td><code>biome_pack</code> extended</td><td>9</td></tr>
+<tr><td><code>blueprint_panel</code> unit tests</td><td>17</td></tr>
+<tr><td><code>blueprint_overlay</code> unit tests</td><td>7</td></tr>
+<tr><td><code>blend_scanner</code> unit tests</td><td>8</td></tr>
+<tr><td><strong>Total</strong></td><td><strong>113+</strong></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="../api/terrain.html">API Reference</a> - Detailed API documentation</li>
@@ -740,7 +858,7 @@ println!("Found location: {:?}", result.position);
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../core-systems/cinematics.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../core-systems/blueprint-zones.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -754,7 +872,7 @@ println!("Found location: {:?}", result.position);
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../core-systems/cinematics.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../core-systems/blueprint-zones.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

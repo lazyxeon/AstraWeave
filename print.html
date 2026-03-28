@@ -74,10 +74,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7350e82e.js";
+            window.path_to_searchindex_js = "searchindex-69e4959f.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-3c461bbc.js"></script>
+        <script src="toc-3cd98da5.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -8895,12 +8895,427 @@ let result: ResolvedLocation = solver.find_valid_location(
 println!("Found location: {:?}", result.position);
 <span class="boring">}</span></code></pre>
 <hr>
+<h2 id="blueprint-zone-system"><a class="header" href="#blueprint-zone-system">Blueprint Zone System</a></h2>
+<p>The Blueprint Zone system enables polygon-based spatial control over vegetation generation and heightmap injection, bridging <code>.blend</code> scene imports with the terrain scatter pipeline.</p>
+<h3 id="overview-1-1"><a class="header" href="#overview-1-1">Overview</a></h3>
+<pre><code>Editor Canvas → BlueprintZone → ZoneScatterGenerator → ZoneGenerationResult
+     ↓               ↓                ↓                      ↓
+Polygon drawing   ZoneRegistry    Replica/Inspired      placements + patches
+                  (save/load)      mode dispatch         ↓
+                                                    apply_heightmap_patches()
+                                                         ↓
+                                                    TerrainChunk updates
+</code></pre>
+<h3 id="zone-data-model"><a class="header" href="#zone-data-model">Zone Data Model</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_terrain::blueprint_zone::*;
+
+// Define a zone with polygon vertices
+let zone = BlueprintZone {
+    id: ZoneId(1),
+    name: "Forest Clearing".into(),
+    vertices: vec![[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]],
+    source: ZoneSource::BlendScene {
+        pack_path: "assets/pine_forest.biomepack".into(),
+        placement_mode: PlacementMode::Replica,
+    },
+    priority: 0,
+    enabled: true,
+};
+
+// ZoneRegistry — CRUD, spatial queries, persistence
+let mut registry = ZoneRegistry::new();
+registry.add_zone(zone);
+let zones = registry.zones_containing_point(50.0, 50.0);
+registry.save(&amp;Path::new("zones.json"))?;
+let loaded = ZoneRegistry::load(&amp;Path::new("zones.json"))?;
+<span class="boring">}</span></code></pre>
+<h3 id="placement-modes"><a class="header" href="#placement-modes">Placement Modes</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Replica</strong></td><td>1:1 reproduction — fixed positions from <code>.blend</code> scene, scaled by <code>AdaptiveScaleParams</code></td></tr>
+<tr><td><strong>Inspired</strong></td><td>Procedural scatter using <code>ScatterConfig</code> derived from <code>BiomePack</code>, respects zone polygon</td></tr>
+<tr><td><strong>BiomePreset</strong></td><td>Pure biome-driven scatter (Grassland, Forest, Desert, etc.) without <code>.blend</code> data</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="zone-scoped-generation"><a class="header" href="#zone-scoped-generation">Zone-Scoped Generation</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_terrain::zone_scatter::*;
+
+let gen = ZoneScatterGenerator::new(256.0, 128); // chunk_size, heightmap_resolution
+let result = gen.generate_zone_scatter(&amp;zone, &amp;biome_pack)?;
+
+// result.placements — Vec&lt;VegetationInstance&gt; (position, rotation, scale, model_path)
+// result.heightmap_patches — Vec&lt;HeightmapPatch&gt; (per-chunk height modifications)
+
+// Apply heightmap patches to terrain chunks
+let results = vec![result];
+apply_heightmap_patches(&amp;mut chunk_map, &amp;results);
+<span class="boring">}</span></code></pre>
+<h3 id="adaptive-scaling"><a class="header" href="#adaptive-scaling">Adaptive Scaling</a></h3>
+<p>When zone area differs from source scene footprint, density and scale adjust automatically:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let params = AdaptiveScaleParams::compute(reference_area, zone_area);
+// density_multiplier = sqrt(zone_area / reference_area)
+// scale_multiplier   = (zone_area / reference_area)^0.25
+// position_scale     = sqrt(zone_area / reference_area)
+<span class="boring">}</span></code></pre>
+<h3 id="boundary-blending"><a class="header" href="#boundary-blending">Boundary Blending</a></h3>
+<p><code>apply_boundary_blending()</code> uses smoothstep falloff at zone edges:</p>
+<ul>
+<li><strong>Vegetation</strong>: density fades via <code>BlendMask::sample(x, z)</code> → 0.0–1.0</li>
+<li><strong>Heightmap</strong>: height delta scaled by mask value at each sample point</li>
+<li><strong>Manual</strong>: <code>BrushMode::ZoneBlend</code> for blend-weight painting in-editor</li>
+</ul>
+<h3 id="heightmap-rasterization"><a class="header" href="#heightmap-rasterization">Heightmap Rasterization</a></h3>
+<p>Terrain meshes from <code>.blend</code> decomposition are rasterized into heightmaps:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_blend::heightmap_raster::*;
+
+let heightmap = rasterize_terrain_meshes(&amp;terrain_meshes, resolution)?;
+let height = heightmap.sample_bilinear(u, v); // Normalized [0,1] coords
+let area = heightmap.footprint_area();         // World-space area in m²
+<span class="boring">}</span></code></pre>
+<h3 id="editor-integration-1"><a class="header" href="#editor-integration-1">Editor Integration</a></h3>
+<p>The <code>BlueprintPanel</code> provides a 2D canvas for polygon zone editing:</p>
+<ul>
+<li>Tools: Select, DrawPolygon, MoveVertex, DeleteZone</li>
+<li>Zone inspector with name, source selection, placement mode toggle</li>
+<li>Undo/redo via command stack</li>
+<li>Save/Load zones as <code>.zones.json</code></li>
+</ul>
+<p>The <code>BlueprintOverlay</code> projects zone polygons as wireframe outlines into the 3D viewport, integrated with the physics renderer debug line pass.</p>
+<h3 id="test-coverage"><a class="header" href="#test-coverage">Test Coverage</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Test Suite</th><th>Tests</th></tr>
+</thead>
+<tbody>
+<tr><td><code>blueprint_zone</code> unit tests</td><td>24</td></tr>
+<tr><td><code>zone_scatter</code> unit + integration</td><td>27</td></tr>
+<tr><td><code>heightmap_raster</code> unit + integration</td><td>21</td></tr>
+<tr><td><code>biome_pack</code> extended</td><td>9</td></tr>
+<tr><td><code>blueprint_panel</code> unit tests</td><td>17</td></tr>
+<tr><td><code>blueprint_overlay</code> unit tests</td><td>7</td></tr>
+<tr><td><code>blend_scanner</code> unit tests</td><td>8</td></tr>
+<tr><td><strong>Total</strong></td><td><strong>113+</strong></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
 <h2 id="see-also-5"><a class="header" href="#see-also-5">See Also</a></h2>
 <ul>
 <li><a href="api/terrain.html">API Reference</a> - Detailed API documentation</li>
 <li><a href="#fluids-system">Fluids System</a> - Water integration</li>
 <li><a href="#physics-system">Physics System</a> - Collision terrain</li>
 <li><a href="#navigation-system">Navigation</a> - Navmesh from terrain</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="blueprint-zone-editor"><a class="header" href="#blueprint-zone-editor">Blueprint Zone Editor</a></h1>
+<blockquote>
+<p><strong>Status</strong>: Production Ready<br><strong>Tests</strong>: 125+<br><strong>Crates</strong>: <code>astraweave-terrain</code>, <code>astraweave-blend</code>, <code>aw_editor</code></p>
+</blockquote>
+<p>The Blueprint Zone system provides polygon-based spatial control for vegetation generation and heightmap injection. It bridges <code>.blend</code> scene imports with AstraWeave’s terrain scatter pipeline, enabling both exact 1:1 reproduction (Replica mode) and procedural variation (Inspired mode) of imported environments.</p>
+<h2 id="overview-4"><a class="header" href="#overview-4">Overview</a></h2>
+<h3 id="pipeline"><a class="header" href="#pipeline">Pipeline</a></h3>
+<pre><code>.blend Scene → Decomposition → BiomePack → BlueprintZone → ZoneScatterGenerator
+                    ↓                           ↓                    ↓
+              heightmap_raster           ZoneRegistry          VegetationInstance
+              (terrain mesh →            (polygon CRUD,        + HeightmapPatch
+               heightmap + fixed          spatial queries,          ↓
+               placements)                JSON persistence)   apply_heightmap_patches()
+                                                                    ↓
+                                                              TerrainChunk updates
+</code></pre>
+<h3 id="key-features"><a class="header" href="#key-features">Key Features</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Feature</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Polygon Zones</strong></td><td>Arbitrary polygons define generation boundaries</td></tr>
+<tr><td><strong>Replica Mode</strong></td><td>1:1 fixed placement from <code>.blend</code> scene data</td></tr>
+<tr><td><strong>Inspired Mode</strong></td><td>Procedural scatter using extracted <code>ScatterConfig</code></td></tr>
+<tr><td><strong>Biome Presets</strong></td><td>Pure biome-driven scatter without <code>.blend</code> data</td></tr>
+<tr><td><strong>Heightmap Injection</strong></td><td>Rasterized terrain meshes applied as height patches</td></tr>
+<tr><td><strong>Boundary Blending</strong></td><td>Smoothstep falloff prevents hard cutoffs at zone edges</td></tr>
+<tr><td><strong>Adaptive Scaling</strong></td><td>Auto-adjusts density/scale when zone ≠ source area</td></tr>
+<tr><td><strong>Undo/Redo</strong></td><td>Full command stack in blueprint panel</td></tr>
+<tr><td><strong>3D Overlay</strong></td><td>Wireframe zone projection in viewport</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="quick-start-4"><a class="header" href="#quick-start-4">Quick Start</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_terrain::blueprint_zone::*;
+use astraweave_terrain::zone_scatter::*;
+use std::path::Path;
+
+// 1. Define a zone
+let zone = BlueprintZone {
+    id: ZoneId(1),
+    name: "Pine Forest".into(),
+    vertices: vec![
+        [0.0, 0.0], [200.0, 0.0],
+        [200.0, 150.0], [0.0, 150.0],
+    ],
+    source: ZoneSource::BlendScene {
+        pack_path: "assets/pine_forest.biomepack".into(),
+        placement_mode: PlacementMode::Replica,
+    },
+    priority: 0,
+    enabled: true,
+};
+
+// 2. Register it
+let mut registry = ZoneRegistry::new();
+registry.add_zone(zone.clone());
+
+// 3. Generate scatter
+let gen = ZoneScatterGenerator::new(256.0, 128);
+let result = gen.generate_zone_scatter(&amp;zone, &amp;biome_pack)?;
+
+println!("{} placements", result.placement_count());
+println!("{} height modifications", result.modified_height_count());
+
+// 4. Apply heightmap patches to terrain
+let mut chunks = HashMap::new();
+// ... populate with TerrainChunks ...
+apply_heightmap_patches(&amp;mut chunks, &amp;[result]);
+
+// 5. Persist zones
+registry.save(Path::new("assets/zones.json"))?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="zone-data-model-1"><a class="header" href="#zone-data-model-1">Zone Data Model</a></h2>
+<h3 id="blueprintzone"><a class="header" href="#blueprintzone">BlueprintZone</a></h3>
+<p>A <code>BlueprintZone</code> represents a polygon region with a vegetation/terrain source:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct BlueprintZone {
+    pub id: ZoneId,                    // Unique identifier
+    pub name: String,                  // Display name
+    pub vertices: Vec&lt;[f32; 2]&gt;,       // Polygon vertices (XZ plane)
+    pub source: ZoneSource,            // What to generate
+    pub priority: u32,                 // Overlap resolution (higher wins)
+    pub enabled: bool,                 // Toggle generation
+}
+<span class="boring">}</span></code></pre>
+<h3 id="zonesource"><a class="header" href="#zonesource">ZoneSource</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum ZoneSource {
+    BiomePreset(BiomeType),            // Built-in biome scatter
+    BlendScene {
+        pack_path: String,             // Path to .biomepack
+        placement_mode: PlacementMode, // Replica or Inspired
+    },
+}
+<span class="boring">}</span></code></pre>
+<h3 id="placementmode"><a class="header" href="#placementmode">PlacementMode</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Replica</code></td><td>Exact positions from <code>.blend</code> scene, scaled by <code>AdaptiveScaleParams</code></td></tr>
+<tr><td><code>Inspired</code></td><td>Procedural scatter using extracted density/distribution rules</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="zoneregistry"><a class="header" href="#zoneregistry">ZoneRegistry</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut registry = ZoneRegistry::new();
+
+// CRUD operations
+registry.add_zone(zone);
+registry.remove_zone(zone_id);
+let zone = registry.get_zone(zone_id);
+let zone_mut = registry.get_zone_mut(zone_id);
+
+// Spatial queries
+let zones = registry.zones_containing_point(x, z);
+let overlaps = registry.zones_overlapping_rect(min_x, min_z, max_x, max_z);
+
+// Persistence
+registry.save(Path::new("zones.json"))?;
+let loaded = ZoneRegistry::load(Path::new("zones.json"))?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="zone-scoped-generation-1"><a class="header" href="#zone-scoped-generation-1">Zone-Scoped Generation</a></h2>
+<h3 id="zonescattergenerator"><a class="header" href="#zonescattergenerator">ZoneScatterGenerator</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_terrain::zone_scatter::*;
+
+// Create generator with chunk size and heightmap resolution
+let gen = ZoneScatterGenerator::new(256.0, 128);
+
+// Generate for a single zone
+let result: ZoneGenerationResult = gen.generate_zone_scatter(&amp;zone, &amp;biome_pack)?;
+<span class="boring">}</span></code></pre>
+<h3 id="zonegenerationresult"><a class="header" href="#zonegenerationresult">ZoneGenerationResult</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct ZoneGenerationResult {
+    pub placements: Vec&lt;VegetationInstance&gt;,     // What to place
+    pub heightmap_patches: Vec&lt;HeightmapPatch&gt;,  // Height modifications
+}
+
+// VegetationInstance fields:
+// - position: Vec3
+// - rotation: f32
+// - scale: f32
+// - vegetation_type: String
+// - model_path: String
+// - terrain_normal: Vec3
+<span class="boring">}</span></code></pre>
+<h3 id="multi-zone-generation"><a class="header" href="#multi-zone-generation">Multi-Zone Generation</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Generate scatter for all zones with overlap priority resolution
+let results = generate_multi_zone_scatter(&amp;zones, &amp;gen, &amp;biome_packs)?;
+
+// Apply all heightmap patches at once
+apply_heightmap_patches(&amp;mut chunk_map, &amp;results);
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="adaptive-scaling-1"><a class="header" href="#adaptive-scaling-1">Adaptive Scaling</a></h2>
+<p>When a zone’s area differs from the source scene’s footprint, scaling parameters adjust automatically:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let params = AdaptiveScaleParams::compute(reference_area, zone_area);
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Formula</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>density_multiplier</code></td><td>$\sqrt{\frac{\text{zone}}{\text{ref}}}$</td><td>Adjusts placement density</td></tr>
+<tr><td><code>scale_multiplier</code></td><td>$\left(\frac{\text{zone}}{\text{ref}}\right)^{0.25}$</td><td>Adjusts object scale</td></tr>
+<tr><td><code>position_scale</code></td><td>$\sqrt{\frac{\text{zone}}{\text{ref}}}$</td><td>Adjusts position spread</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Example</strong>: A zone 4× larger than the source scene would have:</p>
+<ul>
+<li><code>density_multiplier</code> = 2.0 (double the objects)</li>
+<li><code>scale_multiplier</code> ≈ 1.41 (slightly larger objects)</li>
+<li><code>position_scale</code> = 2.0 (spread positions wider)</li>
+</ul>
+<hr>
+<h2 id="boundary-blending-1"><a class="header" href="#boundary-blending-1">Boundary Blending</a></h2>
+<h3 id="smoothstep-falloff"><a class="header" href="#smoothstep-falloff">Smoothstep Falloff</a></h3>
+<p>Zone edges use smoothstep interpolation to prevent hard vegetation/height cutoffs:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// BlendMask provides per-point blending weights
+let mask = BlendMask::new(resolution, world_bounds);
+let weight = mask.sample(x, z); // 0.0 at edge → 1.0 at center
+<span class="boring">}</span></code></pre>
+<h3 id="manual-painting"><a class="header" href="#manual-painting">Manual Painting</a></h3>
+<p>The editor provides <code>BrushMode::ZoneBlend</code> for manually painting blend weights at zone boundaries, giving artists fine control over transition regions.</p>
+<hr>
+<h2 id="heightmap-rasterization-1"><a class="header" href="#heightmap-rasterization-1">Heightmap Rasterization</a></h2>
+<p>Terrain meshes extracted from <code>.blend</code> files are rasterized into heightmaps:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_blend::heightmap_raster::*;
+
+let heightmap = rasterize_terrain_meshes(&amp;terrain_meshes, 128)?;
+
+// Query rasterized data
+let height = heightmap.sample_bilinear(0.5, 0.5); // Normalized UV coords
+let area = heightmap.footprint_area();              // m² world-space
+
+// Fixed placements (exact object positions from scene)
+let placements: Vec&lt;FixedPlacement&gt; = extract_fixed_placements(&amp;scene_objects);
+<span class="boring">}</span></code></pre>
+<p>The rasterizer uses ray-triangle intersection with:</p>
+<ul>
+<li><strong>Seam averaging</strong> for multi-tile terrain boundaries</li>
+<li><strong>Hole filling</strong> via neighbor interpolation for missing samples</li>
+</ul>
+<hr>
+<h2 id="editor-integration-2"><a class="header" href="#editor-integration-2">Editor Integration</a></h2>
+<h3 id="blueprint-panel"><a class="header" href="#blueprint-panel">Blueprint Panel</a></h3>
+<p>The <code>BlueprintPanel</code> (panel type: <code>Blueprint</code>) provides:</p>
+<ul>
+<li><strong>2D Canvas</strong>: Pan/zoom view for polygon zone drawing</li>
+<li><strong>Tools</strong>: Select, DrawPolygon, MoveVertex, DeleteZone</li>
+<li><strong>Zone Inspector</strong>: Name, source selection (biome preset or blend scene), placement mode toggle</li>
+<li><strong>Undo/Redo</strong>: Full <code>BlueprintCommand</code> stack with Ctrl+Z/Ctrl+Shift+Z</li>
+<li><strong>Persistence</strong>: Save/Load zones as <code>.zones.json</code> files</li>
+</ul>
+<h3 id="viewport-overlay"><a class="header" href="#viewport-overlay">Viewport Overlay</a></h3>
+<p><code>BlueprintOverlay</code> projects zone polygons as colored wireframe outlines in the 3D viewport. Zone boundaries are rendered alongside component gizmos and brush cursors in the physics renderer debug line pass.</p>
+<h3 id="asset-browser"><a class="header" href="#asset-browser">Asset Browser</a></h3>
+<p>The <code>BlendAssetScanner</code> adds <code>.blend</code> file discovery to the asset browser with:</p>
+<ul>
+<li>Automatic directory scanning for <code>.blend</code> files</li>
+<li>Decomposition status detection (checking for <code>manifest.json</code>)</li>
+<li>Quick actions: Import Blend Scene, Use as Zone Source</li>
+</ul>
+<h3 id="system-wiring"><a class="header" href="#system-wiring">System Wiring</a></h3>
+<p>The editor’s update loop dispatches <code>BlueprintAction</code> events:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Action</th><th>Handler</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>GenerateZone</code></td><td><code>handle_generate_zone()</code></td><td>Runs <code>ZoneScatterGenerator</code> for one zone</td></tr>
+<tr><td><code>GenerateAll</code></td><td>Iterates all zones</td><td>Generates scatter for every enabled zone</td></tr>
+<tr><td><code>ClearGeneration</code></td><td>Clears results</td><td>Removes generated placements</td></tr>
+<tr><td><code>SaveZones</code></td><td><code>handle_save_zones()</code></td><td>Saves <code>ZoneRegistry</code> to JSON</td></tr>
+<tr><td><code>LoadZones</code></td><td><code>handle_load_zones()</code></td><td>Loads registry + syncs panel state</td></tr>
+</tbody>
+</table>
+</div>
+<p>After each action, <code>sync_zone_overlay()</code> pushes updated zone data to the viewport.</p>
+<hr>
+<h2 id="test-coverage-1"><a class="header" href="#test-coverage-1">Test Coverage</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Suite</th><th>Count</th><th>Scope</th></tr>
+</thead>
+<tbody>
+<tr><td><code>blueprint_zone</code> unit</td><td>24</td><td>Zone model, registry, polygon math, persistence</td></tr>
+<tr><td><code>zone_scatter</code> unit</td><td>16</td><td>Generation modes, blending, heightmap patches</td></tr>
+<tr><td><code>zone_scatter_e2e</code> integration</td><td>11</td><td>Full pipeline, multi-zone, chunk spanning</td></tr>
+<tr><td><code>heightmap_raster</code> unit</td><td>11</td><td>Rasterization, terrain bounds, seam stitching</td></tr>
+<tr><td><code>heightmap_raster_e2e</code> integration</td><td>10</td><td>Multi-tile, bilinear sampling, edge cases</td></tr>
+<tr><td><code>biome_pack</code> unit</td><td>9</td><td>BiomePack extension fields, detection</td></tr>
+<tr><td><code>blueprint_panel</code> unit</td><td>17</td><td>Canvas, tools, undo/redo, actions</td></tr>
+<tr><td><code>blueprint_overlay</code> unit</td><td>7</td><td>Wireframe generation, color mapping</td></tr>
+<tr><td><code>blend_scanner</code> unit</td><td>8</td><td>Directory scanning, status detection</td></tr>
+<tr><td><strong>Total</strong></td><td><strong>113+</strong></td><td></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="see-also-6"><a class="header" href="#see-also-6">See Also</a></h2>
+<ul>
+<li><a href="#terrain-system">Terrain System</a> - Core terrain generation and streaming</li>
+<li><a href="#rendering-system">Rendering</a> - Renderer debug line pass for overlays</li>
+<li><a href="#physics-system">Physics</a> - DebugLine integration</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cinematics-system"><a class="header" href="#cinematics-system">Cinematics System</a></h1>
@@ -8925,7 +9340,7 @@ println!("Found location: {:?}", result.position);
 </table>
 </div>
 <hr>
-<h2 id="quick-start-4"><a class="header" href="#quick-start-4">Quick Start</a></h2>
+<h2 id="quick-start-5"><a class="header" href="#quick-start-5">Quick Start</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use astraweave_cinematics::{Time, Timeline, Track, CameraKey, Sequencer};
@@ -9377,7 +9792,7 @@ impl BranchingCutscene {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="see-also-6"><a class="header" href="#see-also-6">See Also</a></h2>
+<h2 id="see-also-7"><a class="header" href="#see-also-7">See Also</a></h2>
 <ul>
 <li><a href="api/cinematics.html">API Reference: Cinematics</a></li>
 <li><a href="#audio-system">Audio System</a> - Audio integration</li>
@@ -10069,7 +10484,7 @@ pub fn create_tank_companion(world: &amp;mut World) -&gt; Entity {
 - Always define fallback behaviors for LLM timeouts
 - Test personality prompts for consistent behavior
 </code></pre>
-<h2 id="see-also-7"><a class="header" href="#see-also-7">See Also</a></h2>
+<h2 id="see-also-8"><a class="header" href="#see-also-8">See Also</a></h2>
 <ul>
 <li><a href="#ai-system">AI System</a> - Core AI architecture</li>
 <li><a href="#adaptive-bosses">Adaptive Bosses</a> - Enemy AI patterns</li>
@@ -10450,7 +10865,7 @@ impl BossMemory {
 - Don't punish the same mistake indefinitely
 - Allow multiple valid strategies
 </code></pre>
-<h2 id="see-also-8"><a class="header" href="#see-also-8">See Also</a></h2>
+<h2 id="see-also-9"><a class="header" href="#see-also-9">See Also</a></h2>
 <ul>
 <li><a href="#ai-system">AI System</a> - Core AI architecture</li>
 <li><a href="#ai-companions">AI Companions</a> - Friendly AI patterns</li>
@@ -13391,7 +13806,7 @@ impl ContentValidator {
 <p><strong>Crates</strong>: <code>astraweave-persistence-ecs</code>, <code>astraweave-core</code><br><strong>Status</strong>: Production Ready</p>
 </blockquote>
 <p>AstraWeave provides deterministic save/load with full ECS state serialization, player profiles, and versioned migrations.</p>
-<h2 id="quick-start-5"><a class="header" href="#quick-start-5">Quick Start</a></h2>
+<h2 id="quick-start-6"><a class="header" href="#quick-start-6">Quick Start</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use astraweave_persistence_ecs::{SaveSystem, LoadSystem, SaveConfig};
@@ -13686,7 +14101,7 @@ let handle = save_system.save_async(&amp;world, "quicksave");
 handle.await?;
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="see-also-9"><a class="header" href="#see-also-9">See Also</a></h2>
+<h2 id="see-also-10"><a class="header" href="#see-also-10">See Also</a></h2>
 <ul>
 <li><a href="#ecs-architecture">ECS Architecture</a></li>
 <li><a href="#deterministic-simulation">Deterministic Simulation</a></li>
@@ -13698,7 +14113,7 @@ handle.await?;
 <p><strong>Crates</strong>: <code>astraweave-scripting</code>, <code>astraweave-author</code><br><strong>Status</strong>: Production Ready (Sandboxed)</p>
 </blockquote>
 <p>AstraWeave provides secure Rhai scripting for modding, behavior authoring, and runtime customization with full sandboxing.</p>
-<h2 id="quick-start-6"><a class="header" href="#quick-start-6">Quick Start</a></h2>
+<h2 id="quick-start-7"><a class="header" href="#quick-start-7">Quick Start</a></h2>
 <pre><code class="language-rhai">// scripts/my_behavior.rhai
 
 // Called when entity spawns
@@ -14024,7 +14439,7 @@ fn on_update(entity, dt) {
 }
 </code></pre>
 <hr>
-<h2 id="see-also-10"><a class="header" href="#see-also-10">See Also</a></h2>
+<h2 id="see-also-11"><a class="header" href="#see-also-11">See Also</a></h2>
 <ul>
 <li><a href="#behavior-trees-1">Behavior Trees</a></li>
 <li><a href="#ai-system">AI System</a></li>
@@ -15506,7 +15921,7 @@ audio.set_voice_volume(1.0);    // Dialogue/narration
 <p>Interactive demonstration of AstraWeave’s PCISPH-based fluid simulation system with real-time rendering, multiple scenarios, and egui-powered controls.</p>
 <pre><code class="language-admonish info title=&quot;Run This Example&quot;">cargo run -p fluids_demo --release
 </code></pre>
-<h2 id="overview-4"><a class="header" href="#overview-4">Overview</a></h2>
+<h2 id="overview-5"><a class="header" href="#overview-5">Overview</a></h2>
 <p>The fluids demo showcases:</p>
 <ul>
 <li><strong>Real-time particle-based fluid simulation</strong> using PCISPH solver</li>
@@ -15515,7 +15930,7 @@ audio.set_voice_volume(1.0);    // Dialogue/narration
 <li><strong>Advanced rendering</strong> with caustics, foam, and refraction effects</li>
 <li><strong>LOD optimization</strong> for performance scaling</li>
 </ul>
-<h2 id="quick-start-7"><a class="header" href="#quick-start-7">Quick Start</a></h2>
+<h2 id="quick-start-8"><a class="header" href="#quick-start-8">Quick Start</a></h2>
 <pre><code class="language-bash"># Run the demo
 cargo run -p fluids_demo --release
 
@@ -15766,7 +16181,7 @@ egui-winit = { workspace = true }
 <p>A comprehensive rendering demonstration combining shadows, terrain, GLTF models, and skybox rendering in a self-contained wgpu application.</p>
 <pre><code class="language-admonish info title=&quot;Run This Example&quot;">cargo run -p unified_showcase --release
 </code></pre>
-<h2 id="overview-5"><a class="header" href="#overview-5">Overview</a></h2>
+<h2 id="overview-6"><a class="header" href="#overview-6">Overview</a></h2>
 <p>The unified showcase demonstrates:</p>
 <ul>
 <li><strong>Shadow mapping</strong> with 2048×2048 depth textures</li>
@@ -15777,7 +16192,7 @@ egui-winit = { workspace = true }
 <li><strong>First-person camera</strong> controls</li>
 </ul>
 <p>This is a standalone renderer example that doesn’t depend on engine render crates—ideal for learning wgpu patterns.</p>
-<h2 id="quick-start-8"><a class="header" href="#quick-start-8">Quick Start</a></h2>
+<h2 id="quick-start-9"><a class="header" href="#quick-start-9">Quick Start</a></h2>
 <pre><code class="language-bash"># Run the showcase
 cargo run -p unified_showcase --release
 
@@ -16889,7 +17304,7 @@ cargo bench -p astraweave-ecs -- entity_spawn/empty/10000
 <li>Variance &gt; 20% indicates environment difference</li>
 </ol>
 <hr>
-<h2 id="see-also-11"><a class="header" href="#see-also-11">See Also</a></h2>
+<h2 id="see-also-12"><a class="header" href="#see-also-12">See Also</a></h2>
 <ul>
 <li><a href="#benchmark-dashboard">Benchmarks</a> - Performance data</li>
 <li><a href="#optimization-guide">Optimization Guide</a> - Improvement techniques</li>
@@ -17113,7 +17528,7 @@ fn update(&amp;mut self) {
 <pre><code class="language-bash">cargo bench -p astraweave-ecs  # Automatically uses release
 </code></pre>
 <hr>
-<h2 id="see-also-12"><a class="header" href="#see-also-12">See Also</a></h2>
+<h2 id="see-also-13"><a class="header" href="#see-also-13">See Also</a></h2>
 <ul>
 <li><a href="#benchmark-dashboard">Benchmarks</a> - Current performance data</li>
 <li><a href="#benchmark-methodology">Methodology</a> - How we measure</li>
@@ -17372,7 +17787,7 @@ if frame_time &gt; Duration::from_millis(25) {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="see-also-13"><a class="header" href="#see-also-13">See Also</a></h2>
+<h2 id="see-also-14"><a class="header" href="#see-also-14">See Also</a></h2>
 <ul>
 <li><a href="#benchmark-dashboard">Benchmarks</a> - Actual measured performance</li>
 <li><a href="#benchmark-methodology">Methodology</a> - How we measure</li>
@@ -17384,7 +17799,7 @@ if frame_time &gt; Duration::from_millis(25) {
 <p><strong>Reference Implementation for AstraWeave AI-Native Game Engine</strong></p>
 </blockquote>
 <p>Veilweaver is a complete AI-native Action RPG that serves as AstraWeave’s flagship reference implementation. It demonstrates the full capabilities of the engine in a production game context.</p>
-<h2 id="overview-6"><a class="header" href="#overview-6">Overview</a></h2>
+<h2 id="overview-7"><a class="header" href="#overview-7">Overview</a></h2>
 <p>Veilweaver showcases:</p>
 <ul>
 <li><strong>AI Companions</strong> with persistent memory and adaptive behavior</li>
@@ -17441,7 +17856,7 @@ cargo run --release
 <li>Asset creation workflow</li>
 <li>Modding support guide</li>
 </ul>
-<h2 id="see-also-14"><a class="header" href="#see-also-14">See Also</a></h2>
+<h2 id="see-also-15"><a class="header" href="#see-also-15">See Also</a></h2>
 <ul>
 <li><a href="#ai-native-design">AI-Native Design</a></li>
 <li><a href="#ai-companions">AI Companions Guide</a></li>
@@ -18185,7 +18600,7 @@ watch -n 1 nvidia-smi
 <li><a href="#testing-best-practices">Testing Best Practices</a></li>
 </ul>
 <h2 id="running-tests"><a class="header" href="#running-tests">Running Tests</a></h2>
-<h3 id="quick-start-9"><a class="header" href="#quick-start-9">Quick Start</a></h3>
+<h3 id="quick-start-10"><a class="header" href="#quick-start-10">Quick Start</a></h3>
 <pre><code class="language-bash"># Run all tests
 cargo test
 
@@ -20818,7 +21233,7 @@ cargo doc --package astraweave-core --document-private-items --no-deps --open
 </table>
 </div>
 <p>See <a href="#coverage">Master Coverage Report</a> for detailed breakdown.</p>
-<h2 id="see-also-15"><a class="header" href="#see-also-15">See Also</a></h2>
+<h2 id="see-also-16"><a class="header" href="#see-also-16">See Also</a></h2>
 <ul>
 <li><a href="#crate-reference">Crate Overview</a> - High-level crate descriptions</li>
 <li><a href="#architecture-overview">Architecture</a> - System design</li>
@@ -21133,7 +21548,7 @@ Archetype B: [Position, Velocity, Health]
 astraweave-ecs = { version = "0.4", features = ["serde"] }
 </code></pre>
 <hr>
-<h2 id="see-also-16"><a class="header" href="#see-also-16">See Also</a></h2>
+<h2 id="see-also-17"><a class="header" href="#see-also-17">See Also</a></h2>
 <ul>
 <li><a href="core-systems/ecs.html">ECS Architecture</a></li>
 <li><a href="core-systems/ecs.html#system-ordering">System Ordering</a></li>
@@ -21372,7 +21787,7 @@ astraweave-ai = { version = "0.4", features = ["llm_orchestrator"] }
 </table>
 </div>
 <hr>
-<h2 id="see-also-17"><a class="header" href="#see-also-17">See Also</a></h2>
+<h2 id="see-also-18"><a class="header" href="#see-also-18">See Also</a></h2>
 <ul>
 <li><a href="core-systems/ai-core.html">AI Core System</a></li>
 <li><a href="#ai-arbiter-system">Arbiter System</a></li>
@@ -21702,7 +22117,7 @@ assert_eq!(physics_a.checksum(), physics_b.checksum());
 </table>
 </div>
 <hr>
-<h2 id="see-also-18"><a class="header" href="#see-also-18">See Also</a></h2>
+<h2 id="see-also-19"><a class="header" href="#see-also-19">See Also</a></h2>
 <ul>
 <li><a href="#physics-system">Physics System Guide</a></li>
 <li><a href="core-systems/character-controller.html">Character Controller</a></li>
@@ -22038,7 +22453,7 @@ let quality = lod.get_quality(water_position);
 </table>
 </div>
 <hr>
-<h2 id="see-also-19"><a class="header" href="#see-also-19">See Also</a></h2>
+<h2 id="see-also-20"><a class="header" href="#see-also-20">See Also</a></h2>
 <ul>
 <li><a href="#fluids-system">Fluids System Guide</a></li>
 <li><a href="#water-integration">Terrain Integration</a></li>
@@ -22379,7 +22794,7 @@ graph.execute(&amp;mut renderer);
 </table>
 </div>
 <hr>
-<h2 id="see-also-20"><a class="header" href="#see-also-20">See Also</a></h2>
+<h2 id="see-also-21"><a class="header" href="#see-also-21">See Also</a></h2>
 <ul>
 <li><a href="#rendering-system">Rendering Guide</a></li>
 <li><a href="api/materials.html">Materials System</a></li>
@@ -22559,7 +22974,7 @@ let agent = crowd.get_agent(agent_id);
 </table>
 </div>
 <hr>
-<h2 id="see-also-21"><a class="header" href="#see-also-21">See Also</a></h2>
+<h2 id="see-also-22"><a class="header" href="#see-also-22">See Also</a></h2>
 <ul>
 <li><a href="#navigation-system">Navigation Guide</a></li>
 <li><a href="core-systems/ai-core.html">AI Integration</a></li>
@@ -22695,7 +23110,7 @@ source.set_volume(base_volume * factor);
 </table>
 </div>
 <hr>
-<h2 id="see-also-22"><a class="header" href="#see-also-22">See Also</a></h2>
+<h2 id="see-also-23"><a class="header" href="#see-also-23">See Also</a></h2>
 <ul>
 <li><a href="#audio-system">Audio Guide</a></li>
 <li><a href="api/cinematics.html#audio-tracks">Cinematics Integration</a></li>
@@ -23677,7 +24092,7 @@ let debug_config = DebugConfig {
     profiler_enabled: true,
 };
 <span class="boring">}</span></code></pre>
-<h2 id="see-also-23"><a class="header" href="#see-also-23">See Also</a></h2>
+<h2 id="see-also-24"><a class="header" href="#see-also-24">See Also</a></h2>
 <ul>
 <li><a href="#building-from-source">Building from Source</a></li>
 <li><a href="#performance-optimization-5">Performance Optimization</a></li>
@@ -23686,7 +24101,7 @@ let debug_config = DebugConfig {
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cli-tools"><a class="header" href="#cli-tools">CLI Tools</a></h1>
 <p>AstraWeave provides command-line tools for development, asset processing, debugging, and deployment.</p>
-<h2 id="overview-7"><a class="header" href="#overview-7">Overview</a></h2>
+<h2 id="overview-8"><a class="header" href="#overview-8">Overview</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -24619,7 +25034,7 @@ fn test_wasm_specific() {
 <dt id="world-1"><a class="header" href="#world-1"><strong>World</strong></a></dt>
 <dd>The container for all entities, components, and resources in the engine.</dd>
 </dl>
-<h2 id="see-also-24"><a class="header" href="#see-also-24">See Also</a></h2>
+<h2 id="see-also-25"><a class="header" href="#see-also-25">See Also</a></h2>
 <ul>
 <li><a href="#architecture-overview">Architecture Overview</a></li>
 <li><a href="#ai-native-design">AI-Native Design</a></li>
@@ -24910,7 +25325,7 @@ ai_config.max_concurrent_llm_requests = 2;
 <pre><code class="language-bash">cargo install cargo-flamegraph
 cargo flamegraph --release -p your_game
 </code></pre>
-<h2 id="see-also-25"><a class="header" href="#see-also-25">See Also</a></h2>
+<h2 id="see-also-26"><a class="header" href="#see-also-26">See Also</a></h2>
 <ul>
 <li><a href="#performance-optimization-5">Performance Guide</a> - Complete optimization guide</li>
 <li><a href="#best-practices-8">Best Practices</a> - Architecture patterns</li>
@@ -26929,6 +27344,23 @@ git push origin feature/my-feature
 <tr><td>Audio</td><td>Stable</td><td>High</td></tr>
 <tr><td>Networking</td><td>Alpha</td><td>Low</td></tr>
 <tr><td>Editor</td><td>Alpha</td><td>Low</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="recently-completed-milestones"><a class="header" href="#recently-completed-milestones">Recently Completed Milestones</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Milestone</th><th>Date</th><th>Tests</th><th>Highlights</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Blueprint Zone Editor</strong></td><td>Mar 2026</td><td>125+</td><td>Polygon zone editor, Replica/Inspired placement, heightmap injection, 3D overlay</td></tr>
+<tr><td><strong>Blend Import Pipeline</strong></td><td>Feb 2026</td><td>97</td><td>.blend scene decomposition, BiomePack bridge, texture processing, editor panel</td></tr>
+<tr><td><strong>Veilweaver Vertical Slice</strong></td><td>Feb 2026</td><td>320</td><td>5-phase game slice, dialogue, cinematics, boss HUD, determinism validation</td></tr>
+<tr><td><strong>Miri Memory Safety</strong></td><td>Feb 2026</td><td>977</td><td>4 crates validated, zero undefined behavior</td></tr>
+<tr><td><strong>Fluids System (A+)</strong></td><td>Jan 2026</td><td>4,907</td><td>SPH/FLIP simulation, comprehensive test suite</td></tr>
+<tr><td><strong>AI-Orchestrated Terrain</strong></td><td>Dec 2025</td><td>2,536</td><td>TerrainSolver, NavMesh rebaking, terrain persistence</td></tr>
+<tr><td><strong>Rendering Pipeline</strong></td><td>Dec 2025</td><td>806+</td><td>PBR/IBL, CSM shadows, headless support, post-processing</td></tr>
 </tbody>
 </table>
 </div>
