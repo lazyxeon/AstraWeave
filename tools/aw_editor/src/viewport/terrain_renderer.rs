@@ -83,10 +83,10 @@ impl Default for TerrainLightingParams {
         Self {
             sun_dir: [0.5, 0.7, 0.35],
             sun_color: [1.0, 0.95, 0.85],
-            sun_intensity: 3.0,
-            ambient_color: [0.40, 0.45, 0.58],
-            ambient_intensity: 0.15,
-            exposure: 1.5,
+            sun_intensity: 1.6,
+            ambient_color: [0.50, 0.45, 0.42],
+            ambient_intensity: 0.20,
+            exposure: 0.85,
         }
     }
 }
@@ -218,9 +218,9 @@ fn load_texture_layer_rough_to_mra(path: &Path, target_size: u32) -> Vec<u8> {
     let mut data = load_texture_layer(path, target_size);
     for pixel in data.chunks_exact_mut(4) {
         let roughness = pixel[0]; // grayscale roughness → R channel
-        pixel[0] = 0;            // metallic = 0 (organic material)
-        pixel[1] = roughness;    // roughness
-        pixel[2] = 255;          // AO = 1.0 (no separate AO available)
+        pixel[0] = 0; // metallic = 0 (organic material)
+        pixel[1] = roughness; // roughness
+        pixel[2] = 255; // AO = 1.0 (no separate AO available)
         pixel[3] = 255;
     }
     data
@@ -228,15 +228,45 @@ fn load_texture_layer_rough_to_mra(path: &Path, target_size: u32) -> Vec<u8> {
 
 /// PBR override paths relative to assets dir.  Maps material layer index to
 /// (PBR subdirectory, BaseColor suffix, Normal suffix, ORM suffix).
-/// Only layers that have real PBR_2K textures are listed.
-const PBR_OVERRIDE_DIR: &str = "textures/pbr/PBR_2K";
+/// Only layers that have real PBR textures are listed.
+const PBR_OVERRIDE_DIR: &str = "textures/pbr/PBR_4K";
 const PBR_OVERRIDES: &[(usize, &str, &str, &str, &str)] = &[
     //  idx, subdir,              albedo_file,                     normal_file,                     orm_file
-    (5,  "Dirt_Mud",           "Dirt_Mud_BaseColor.png",         "Dirt_Mud_Normal.png",           "Dirt_Mud_ORM.png"),
-    (16, "Moss_Ground",        "Moss_Ground_BaseColor.png",      "Moss_Ground_Normal.png",        "Moss_Ground_ORM.png"),
-    (1,  "Sand_Desert",        "Sand_Desert_BaseColor.png",      "Sand_Desert_Normal.png",        "Sand_Desert_ORM.png"),
-    (3,  "Stone_Terrain_Rock", "Stone_Terrain_Rock_BaseColor.png","Stone_Terrain_Rock_Normal.png", "Stone_Terrain_Rock_ORM.png"),
-    (8,  "Stone_Terrain_Rock", "Stone_Terrain_Rock_BaseColor.png","Stone_Terrain_Rock_Normal.png", "Stone_Terrain_Rock_ORM.png"),
+    (
+        5,
+        "Dirt_Mud",
+        "Dirt_Mud_BaseColor.png",
+        "Dirt_Mud_Normal.png",
+        "Dirt_Mud_ORM.png",
+    ),
+    (
+        16,
+        "Moss_Ground",
+        "Moss_Ground_BaseColor.png",
+        "Moss_Ground_Normal.png",
+        "Moss_Ground_ORM.png",
+    ),
+    (
+        1,
+        "Sand_Desert",
+        "Sand_Desert_BaseColor.png",
+        "Sand_Desert_Normal.png",
+        "Sand_Desert_ORM.png",
+    ),
+    (
+        3,
+        "Stone_Terrain_Rock",
+        "Stone_Terrain_Rock_BaseColor.png",
+        "Stone_Terrain_Rock_Normal.png",
+        "Stone_Terrain_Rock_ORM.png",
+    ),
+    (
+        8,
+        "Stone_Terrain_Rock",
+        "Stone_Terrain_Rock_BaseColor.png",
+        "Stone_Terrain_Rock_Normal.png",
+        "Stone_Terrain_Rock_ORM.png",
+    ),
 ];
 
 /// Separate-channel PBR overrides from pine_forest textures (diff, nor_gl, rough).
@@ -244,8 +274,65 @@ const PBR_OVERRIDES: &[(usize, &str, &str, &str, &str)] = &[
 const PINE_FOREST_DIR: &str = "textures/pine_forest";
 const PBR_OVERRIDES_SEPARATE: &[(usize, &str, &str, &str)] = &[
     //  idx, albedo,                    normal,                     roughness
-    (0,  "grass_medium_01_diff.png", "grass_medium_01_nor_gl.png", "grass_medium_01_rough.png"),
-    (2,  "forest_ground_04_diff.png","forest_ground_04_nor_gl.png","forest_ground_04_rough.png"),
+    (
+        0,
+        "grass_medium_01_diff.png",
+        "grass_medium_01_nor_gl.png",
+        "grass_medium_01_rough.png",
+    ),
+    (
+        2,
+        "forest_ground_04_diff.png",
+        "forest_ground_04_nor_gl.png",
+        "forest_ground_04_rough.png",
+    ),
+];
+
+/// Polyhaven 4K terrain texture overrides from `textures/` directory.
+/// Format: (layer_idx, albedo, normal, arm_packed)
+/// ARM (AO, Roughness, Metallic) uses same channel layout as ORM → use orm_to_mra swap.
+/// These take highest priority for terrain layers they cover.
+const POLYHAVEN_4K_DIR: &str = "textures";
+const PBR_OVERRIDES_POLYHAVEN_4K: &[(usize, &str, &str, &str)] = &[
+    //  idx, albedo,                             normal,                              arm
+    // Layer 1 (sand): intentionally omitted — PBR_4K Sand_Desert (warm golden) is
+    // a better match for desert biomes than the cool-gray aerial_beach Polyhaven texture.
+    (
+        2,
+        "forest_leaves_02_diffuse_4k.jpg",
+        "forest_leaves_02_nor_gl_4k.jpg",
+        "forest_leaves_02_arm_4k.jpg",
+    ),
+    (
+        3,
+        "aerial_rocks_01_diff_4k.jpg",
+        "aerial_rocks_01_nor_gl_4k.jpg",
+        "aerial_rocks_01_arm_4k.jpg",
+    ),
+    (
+        4,
+        "snow_02_diff_4k.jpg",
+        "snow_02_nor_gl_4k.jpg",
+        "snow_02_arm_4k.jpg",
+    ),
+    (
+        7,
+        "ganges_river_pebbles_diff_4k.jpg",
+        "ganges_river_pebbles_nor_gl_4k.jpg",
+        "ganges_river_pebbles_arm_4k.jpg",
+    ),
+    (
+        8,
+        "coast_land_rocks_01_diff_4k.jpg",
+        "coast_land_rocks_01_nor_gl_4k.jpg",
+        "coast_land_rocks_01_arm_4k.jpg",
+    ),
+    (
+        13,
+        "sandy_gravel_02_diff_4k.jpg",
+        "sandy_gravel_02_nor_gl_4k.jpg",
+        "sandy_gravel_02_arm_4k.jpg",
+    ),
 ];
 
 /// Load an array of textures (one per material layer), concatenated into a single
@@ -261,45 +348,93 @@ fn load_biome_texture_array(
     let layer_bytes = (target_size * target_size * 4) as usize;
     let mut data = Vec::with_capacity(layer_bytes * filenames.len());
     for (idx, filename) in filenames.iter().enumerate() {
-        // Check for packed ORM PBR override (PBR_2K directory)
-        let packed_path = PBR_OVERRIDES.iter().find(|(i, ..)| *i == idx).and_then(
-            |&(_, subdir, albedo, normal, orm)| {
+        // Tier 1 — Polyhaven 4K packed ARM overrides (highest quality)
+        let polyhaven_path = PBR_OVERRIDES_POLYHAVEN_4K
+            .iter()
+            .find(|(i, ..)| *i == idx)
+            .and_then(|&(_, albedo, normal, arm)| {
                 let file = match channel {
                     0 => albedo,
                     1 => normal,
-                    _ => orm,
+                    _ => arm,
                 };
-                let p = assets_dir.join(PBR_OVERRIDE_DIR).join(subdir).join(file);
-                if p.exists() { Some(p) } else { None }
-            },
-        );
+                let p = assets_dir.join(POLYHAVEN_4K_DIR).join(file);
+                if p.exists() {
+                    Some(p)
+                } else {
+                    None
+                }
+            });
 
-        // Check for separate-channel PBR override (pine_forest directory)
-        let separate_path = if packed_path.is_none() {
-            PBR_OVERRIDES_SEPARATE.iter().find(|(i, ..)| *i == idx).and_then(
-                |&(_, albedo, normal, rough)| {
+        // Tier 2 — packed ORM PBR override (PBR_4K directory)
+        let packed_path = if polyhaven_path.is_none() {
+            PBR_OVERRIDES.iter().find(|(i, ..)| *i == idx).and_then(
+                |&(_, subdir, albedo, normal, orm)| {
                     let file = match channel {
                         0 => albedo,
                         1 => normal,
-                        _ => rough,
+                        _ => orm,
                     };
-                    let p = assets_dir.join(PINE_FOREST_DIR).join(file);
-                    if p.exists() { Some(p) } else { None }
+                    let p = assets_dir.join(PBR_OVERRIDE_DIR).join(subdir).join(file);
+                    if p.exists() {
+                        Some(p)
+                    } else {
+                        None
+                    }
                 },
             )
         } else {
             None
         };
 
-        let layer = if let Some(pbr_path) = packed_path {
-            eprintln!("[terrain] PBR override layer {idx} ({filename}) → {:?}", pbr_path);
+        // Tier 3 — separate-channel PBR override (pine_forest directory)
+        let separate_path = if polyhaven_path.is_none() && packed_path.is_none() {
+            PBR_OVERRIDES_SEPARATE
+                .iter()
+                .find(|(i, ..)| *i == idx)
+                .and_then(|&(_, albedo, normal, rough)| {
+                    let file = match channel {
+                        0 => albedo,
+                        1 => normal,
+                        _ => rough,
+                    };
+                    let p = assets_dir.join(PINE_FOREST_DIR).join(file);
+                    if p.exists() {
+                        Some(p)
+                    } else {
+                        None
+                    }
+                })
+        } else {
+            None
+        };
+
+        let layer = if let Some(ph_path) = polyhaven_path {
+            eprintln!(
+                "[terrain] Polyhaven 4K override layer {idx} ({filename}) → {:?}",
+                ph_path
+            );
+            if channel == 2 {
+                // ARM has same channel layout as ORM: (AO, Rough, Metal) → swap R↔B → MRA
+                load_texture_layer_orm_to_mra(&ph_path, target_size)
+            } else {
+                load_texture_layer(&ph_path, target_size)
+            }
+        } else if let Some(pbr_path) = packed_path {
+            eprintln!(
+                "[terrain] PBR override layer {idx} ({filename}) → {:?}",
+                pbr_path
+            );
             if channel == 2 {
                 load_texture_layer_orm_to_mra(&pbr_path, target_size)
             } else {
                 load_texture_layer(&pbr_path, target_size)
             }
         } else if let Some(sep_path) = separate_path {
-            eprintln!("[terrain] PBR override layer {idx} ({filename}) → {:?}", sep_path);
+            eprintln!(
+                "[terrain] PBR override layer {idx} ({filename}) → {:?}",
+                sep_path
+            );
             if channel == 2 {
                 load_texture_layer_rough_to_mra(&sep_path, target_size)
             } else {
@@ -597,12 +732,27 @@ impl TerrainRenderer {
         let materials_dir = assets_dir.join("materials");
         eprintln!("[terrain] Loading PBR textures from {:?}", materials_dir);
 
-        let albedo_data =
-            load_biome_texture_array(&materials_dir, &BIOME_ALBEDO_FILES, BIOME_TEX_SIZE, &assets_dir, 0);
-        let normal_data =
-            load_biome_texture_array(&materials_dir, &BIOME_NORMAL_FILES, BIOME_TEX_SIZE, &assets_dir, 1);
-        let mra_data =
-            load_biome_texture_array(&materials_dir, &BIOME_MRA_FILES, BIOME_TEX_SIZE, &assets_dir, 2);
+        let albedo_data = load_biome_texture_array(
+            &materials_dir,
+            &BIOME_ALBEDO_FILES,
+            BIOME_TEX_SIZE,
+            &assets_dir,
+            0,
+        );
+        let normal_data = load_biome_texture_array(
+            &materials_dir,
+            &BIOME_NORMAL_FILES,
+            BIOME_TEX_SIZE,
+            &assets_dir,
+            1,
+        );
+        let mra_data = load_biome_texture_array(
+            &materials_dir,
+            &BIOME_MRA_FILES,
+            BIOME_TEX_SIZE,
+            &assets_dir,
+            2,
+        );
         eprintln!(
             "[terrain] Loaded {} albedo + {} normal + {} MRA bytes",
             albedo_data.len(),

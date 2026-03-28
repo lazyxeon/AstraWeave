@@ -25,7 +25,10 @@ pub enum BlendImportAction {
     /// Cancel an in-progress decomposition
     CancelDecomposition,
     /// Generate a BiomePack from already-decomposed assets
-    GenerateBiomePack { output_dir: PathBuf },
+    GenerateBiomePack {
+        output_dir: PathBuf,
+        pack_name: String,
+    },
     /// Open the decomposed output directory in the asset browser
     BrowseOutputDir { path: PathBuf },
     /// Clear the current import session
@@ -327,10 +330,7 @@ impl BlendImportPanel {
 
         // Auto-generate pack name from blend filename
         if self.pack_name.is_empty() {
-            self.pack_name = self
-                .blend_filename
-                .trim_end_matches(".blend")
-                .to_string();
+            self.pack_name = self.blend_filename.trim_end_matches(".blend").to_string();
         }
     }
 
@@ -344,10 +344,7 @@ impl BlendImportPanel {
     pub fn set_pack_complete(&mut self) {
         self.phase = ImportPhase::Complete;
         self.progress = 1.0;
-        self.status_message = format!(
-            "Biome pack '{}' generated successfully",
-            self.pack_name
-        );
+        self.status_message = format!("Biome pack '{}' generated successfully", self.pack_name);
     }
 
     /// Select all assets for pack inclusion
@@ -409,215 +406,210 @@ impl BlendImportPanel {
     }
 
     fn show_file_section(&mut self, ui: &mut Ui) {
-        egui::CollapsingHeader::new(
-            RichText::new("📁  File Selection").strong().size(14.0),
-        )
-        .default_open(self.section_file)
-        .show(ui, |ui| {
-            ui.add_space(4.0);
+        egui::CollapsingHeader::new(RichText::new("📁  File Selection").strong().size(14.0))
+            .default_open(self.section_file)
+            .show(ui, |ui| {
+                ui.add_space(4.0);
 
-            if let Some(path) = &self.blend_path {
-                ui.horizontal(|ui| {
-                    ui.label("File:");
-                    ui.monospace(self.blend_filename.as_str());
-                });
-
-                if self.blend_file_size > 0 {
-                    let size_mb = self.blend_file_size as f64 / (1024.0 * 1024.0);
+                if let Some(path) = &self.blend_path {
                     ui.horizontal(|ui| {
-                        ui.label("Size:");
-                        ui.monospace(format!("{:.1} MB", size_mb));
+                        ui.label("File:");
+                        ui.monospace(self.blend_filename.as_str());
+                    });
+
+                    if self.blend_file_size > 0 {
+                        let size_mb = self.blend_file_size as f64 / (1024.0 * 1024.0);
+                        ui.horizontal(|ui| {
+                            ui.label("Size:");
+                            ui.monospace(format!("{:.1} MB", size_mb));
+                        });
+                    }
+
+                    ui.horizontal(|ui| {
+                        ui.label("Path:");
+                        let path_str = path.display().to_string();
+                        // Truncate long paths for display
+                        let display_path = if path_str.len() > 60 {
+                            format!("...{}", &path_str[path_str.len() - 57..])
+                        } else {
+                            path_str
+                        };
+                        ui.monospace(display_path);
+                    });
+
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Change File").clicked() {
+                            self.open_file_dialog();
+                        }
+                        if ui.button("Clear").clicked() {
+                            self.actions.push(BlendImportAction::ClearSession);
+                            self.reset();
+                        }
+                    });
+                } else {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(16.0);
+                        ui.label(
+                            RichText::new("No .blend file selected")
+                                .color(Color32::GRAY)
+                                .size(13.0),
+                        );
+                        ui.add_space(8.0);
+                        if ui
+                            .button(RichText::new("  Browse for .blend file  ").size(14.0))
+                            .clicked()
+                        {
+                            self.open_file_dialog();
+                        }
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new("or drag-and-drop a .blend file onto the editor")
+                                .color(Color32::from_rgb(140, 140, 140))
+                                .italics(),
+                        );
+                        ui.add_space(16.0);
                     });
                 }
 
-                ui.horizontal(|ui| {
-                    ui.label("Path:");
-                    let path_str = path.display().to_string();
-                    // Truncate long paths for display
-                    let display_path = if path_str.len() > 60 {
-                        format!("...{}", &path_str[path_str.len() - 57..])
-                    } else {
-                        path_str
-                    };
-                    ui.monospace(display_path);
-                });
-
+                // Output directory
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Change File").clicked() {
-                        self.open_file_dialog();
-                    }
-                    if ui.button("Clear").clicked() {
-                        self.actions.push(BlendImportAction::ClearSession);
-                        self.reset();
+                    ui.label("Output Dir:");
+                    let mut dir_str = self.output_dir.display().to_string();
+                    if ui.text_edit_singleline(&mut dir_str).changed() {
+                        self.output_dir = PathBuf::from(dir_str);
                     }
                 });
-            } else {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(16.0);
-                    ui.label(
-                        RichText::new("No .blend file selected")
-                            .color(Color32::GRAY)
-                            .size(13.0),
-                    );
-                    ui.add_space(8.0);
-                    if ui
-                        .button(RichText::new("  Browse for .blend file  ").size(14.0))
-                        .clicked()
-                    {
-                        self.open_file_dialog();
-                    }
-                    ui.add_space(8.0);
-                    ui.label(
-                        RichText::new("or drag-and-drop a .blend file onto the editor")
-                            .color(Color32::from_rgb(140, 140, 140))
-                            .italics(),
-                    );
-                    ui.add_space(16.0);
-                });
-            }
-
-            // Output directory
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.label("Output Dir:");
-                let mut dir_str = self.output_dir.display().to_string();
-                if ui.text_edit_singleline(&mut dir_str).changed() {
-                    self.output_dir = PathBuf::from(dir_str);
-                }
             });
-        });
     }
 
     fn show_texture_settings(&mut self, ui: &mut Ui) {
-        egui::CollapsingHeader::new(
-            RichText::new("🖼️  Texture Processing").strong().size(14.0),
-        )
-        .default_open(self.section_textures)
-        .show(ui, |ui| {
-            ui.add_space(4.0);
+        egui::CollapsingHeader::new(RichText::new("🖼️  Texture Processing").strong().size(14.0))
+            .default_open(self.section_textures)
+            .show(ui, |ui| {
+                ui.add_space(4.0);
 
-            ui.checkbox(&mut self.texture_settings.convert_hdr, "Convert HDR to LDR");
-            ui.checkbox(
-                &mut self.texture_settings.generate_thumbnails,
-                "Generate thumbnails",
-            );
-
-            ui.horizontal(|ui| {
-                ui.label("Thumbnail size:");
-                ui.add(egui::DragValue::new(&mut self.texture_settings.thumbnail_size).range(32..=512).suffix("px"));
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("Max resolution:");
-                ui.add(
-                    egui::DragValue::new(&mut self.texture_settings.max_resolution)
-                        .range(256..=8192)
-                        .suffix("px"),
+                ui.checkbox(&mut self.texture_settings.convert_hdr, "Convert HDR to LDR");
+                ui.checkbox(
+                    &mut self.texture_settings.generate_thumbnails,
+                    "Generate thumbnails",
                 );
-            });
 
-            ui.horizontal(|ui| {
-                ui.label("Output format:");
-                ui.selectable_value(&mut self.texture_settings.output_png, true, "PNG");
-                ui.selectable_value(&mut self.texture_settings.output_png, false, "JPEG");
-            });
-
-            if !self.texture_settings.output_png {
                 ui.horizontal(|ui| {
-                    ui.label("JPEG quality:");
+                    ui.label("Thumbnail size:");
                     ui.add(
-                        egui::DragValue::new(&mut self.texture_settings.jpeg_quality)
-                            .range(1..=100)
-                            .suffix("%"),
+                        egui::DragValue::new(&mut self.texture_settings.thumbnail_size)
+                            .range(32..=512)
+                            .suffix("px"),
                     );
                 });
-            }
-        });
+
+                ui.horizontal(|ui| {
+                    ui.label("Max resolution:");
+                    ui.add(
+                        egui::DragValue::new(&mut self.texture_settings.max_resolution)
+                            .range(256..=8192)
+                            .suffix("px"),
+                    );
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Output format:");
+                    ui.selectable_value(&mut self.texture_settings.output_png, true, "PNG");
+                    ui.selectable_value(&mut self.texture_settings.output_png, false, "JPEG");
+                });
+
+                if !self.texture_settings.output_png {
+                    ui.horizontal(|ui| {
+                        ui.label("JPEG quality:");
+                        ui.add(
+                            egui::DragValue::new(&mut self.texture_settings.jpeg_quality)
+                                .range(1..=100)
+                                .suffix("%"),
+                        );
+                    });
+                }
+            });
     }
 
     fn show_scatter_settings(&mut self, ui: &mut Ui) {
-        egui::CollapsingHeader::new(
-            RichText::new("🌿  Scatter Settings").strong().size(14.0),
-        )
-        .default_open(self.section_scatter)
-        .show(ui, |ui| {
-            ui.add_space(4.0);
+        egui::CollapsingHeader::new(RichText::new("🌿  Scatter Settings").strong().size(14.0))
+            .default_open(self.section_scatter)
+            .show(ui, |ui| {
+                ui.add_space(4.0);
 
-            // Biome type selector
-            ui.horizontal(|ui| {
-                ui.label("Biome type:");
-                egui::ComboBox::from_id_salt("biome_type_combo")
-                    .selected_text(self.biome_type.to_string())
-                    .show_ui(ui, |ui| {
-                        for bt in BiomeTypeSelection::all() {
-                            ui.selectable_value(&mut self.biome_type, *bt, bt.to_string());
-                        }
-                    });
-            });
-
-            ui.add_space(4.0);
-
-            ui.horizontal(|ui| {
-                ui.label("Density:");
-                ui.add(
-                    egui::DragValue::new(&mut self.scatter_settings.density)
-                        .range(0.01..=10.0)
-                        .speed(0.05),
-                );
-            });
-
-            ui.checkbox(
-                &mut self.scatter_settings.use_poisson_disk,
-                "Poisson disk sampling",
-            );
-
-            if self.scatter_settings.use_poisson_disk {
+                // Biome type selector
                 ui.horizontal(|ui| {
-                    ui.label("Min distance:");
+                    ui.label("Biome type:");
+                    egui::ComboBox::from_id_salt("biome_type_combo")
+                        .selected_text(self.biome_type.to_string())
+                        .show_ui(ui, |ui| {
+                            for bt in BiomeTypeSelection::all() {
+                                ui.selectable_value(&mut self.biome_type, *bt, bt.to_string());
+                            }
+                        });
+                });
+
+                ui.add_space(4.0);
+
+                ui.horizontal(|ui| {
+                    ui.label("Density:");
                     ui.add(
-                        egui::DragValue::new(&mut self.scatter_settings.min_distance)
-                            .range(0.1..=50.0)
-                            .speed(0.1)
-                            .suffix("m"),
+                        egui::DragValue::new(&mut self.scatter_settings.density)
+                            .range(0.01..=10.0)
+                            .speed(0.05),
                     );
                 });
-            }
 
-            ui.horizontal(|ui| {
-                ui.label("Max slope:");
-                ui.add(
-                    egui::DragValue::new(&mut self.scatter_settings.max_slope)
-                        .range(0.0..=90.0)
-                        .speed(0.5)
-                        .suffix("°"),
+                ui.checkbox(
+                    &mut self.scatter_settings.use_poisson_disk,
+                    "Poisson disk sampling",
+                );
+
+                if self.scatter_settings.use_poisson_disk {
+                    ui.horizontal(|ui| {
+                        ui.label("Min distance:");
+                        ui.add(
+                            egui::DragValue::new(&mut self.scatter_settings.min_distance)
+                                .range(0.1..=50.0)
+                                .speed(0.1)
+                                .suffix("m"),
+                        );
+                    });
+                }
+
+                ui.horizontal(|ui| {
+                    ui.label("Max slope:");
+                    ui.add(
+                        egui::DragValue::new(&mut self.scatter_settings.max_slope)
+                            .range(0.0..=90.0)
+                            .speed(0.5)
+                            .suffix("°"),
+                    );
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Size variation:");
+                    ui.add(
+                        egui::DragValue::new(&mut self.scatter_settings.size_variation)
+                            .range(0.0..=1.0)
+                            .speed(0.01),
+                    );
+                });
+
+                ui.checkbox(
+                    &mut self.scatter_settings.random_rotation,
+                    "Random Y rotation",
                 );
             });
-
-            ui.horizontal(|ui| {
-                ui.label("Size variation:");
-                ui.add(
-                    egui::DragValue::new(&mut self.scatter_settings.size_variation)
-                        .range(0.0..=1.0)
-                        .speed(0.01),
-                );
-            });
-
-            ui.checkbox(
-                &mut self.scatter_settings.random_rotation,
-                "Random Y rotation",
-            );
-        });
     }
 
     fn show_asset_list(&mut self, ui: &mut Ui) {
         egui::CollapsingHeader::new(
-            RichText::new(format!(
-                "📦  Decomposed Assets ({})",
-                self.assets.len()
-            ))
-            .strong()
-            .size(14.0),
+            RichText::new(format!("📦  Decomposed Assets ({})", self.assets.len()))
+                .strong()
+                .size(14.0),
         )
         .default_open(self.section_assets)
         .show(ui, |ui| {
@@ -637,11 +629,7 @@ impl BlendImportPanel {
                     .selected_text(&self.category_filter)
                     .show_ui(ui, |ui| {
                         for cat in &categories {
-                            ui.selectable_value(
-                                &mut self.category_filter,
-                                cat.clone(),
-                                cat,
-                            );
+                            ui.selectable_value(&mut self.category_filter, cat.clone(), cat);
                         }
                     });
 
@@ -654,11 +642,7 @@ impl BlendImportPanel {
                     if ui.small_button("All").clicked() {
                         self.select_all_assets();
                     }
-                    ui.label(format!(
-                        "{}/{}",
-                        self.included_count(),
-                        self.assets.len()
-                    ));
+                    ui.label(format!("{}/{}", self.included_count(), self.assets.len()));
                 });
             });
 
@@ -696,9 +680,11 @@ impl BlendImportPanel {
                 .map(|(i, _)| i)
                 .collect();
 
-            egui::ScrollArea::vertical()
-                .max_height(300.0)
-                .show_rows(ui, row_height, visible_indices.len(), |ui, range| {
+            egui::ScrollArea::vertical().max_height(300.0).show_rows(
+                ui,
+                row_height,
+                visible_indices.len(),
+                |ui, range| {
                     for &idx in &visible_indices[range] {
                         let asset = &self.assets[idx];
                         let mut include = asset.include_in_pack;
@@ -713,11 +699,7 @@ impl BlendImportPanel {
                             } else {
                                 asset.name.clone()
                             };
-                            ui.label(
-                                RichText::new(name)
-                                    .monospace()
-                                    .size(11.0),
-                            );
+                            ui.label(RichText::new(name).monospace().size(11.0));
 
                             // Pad to align columns
                             let name_len = asset.name.len().min(24);
@@ -727,104 +709,96 @@ impl BlendImportPanel {
 
                             // Category badge
                             let cat_color = category_color(&asset.category);
-                            ui.colored_label(
-                                cat_color,
-                                RichText::new(&asset.category).size(11.0),
+                            ui.colored_label(cat_color, RichText::new(&asset.category).size(11.0));
+
+                            ui.add_space(12.0);
+                            ui.monospace(
+                                RichText::new(format_vertex_count(asset.vertex_count)).size(11.0),
                             );
 
                             ui.add_space(12.0);
                             ui.monospace(
-                                RichText::new(format_vertex_count(asset.vertex_count))
-                                    .size(11.0),
-                            );
-
-                            ui.add_space(12.0);
-                            ui.monospace(
-                                RichText::new(format!("{}", asset.texture_count))
-                                    .size(11.0),
+                                RichText::new(format!("{}", asset.texture_count)).size(11.0),
                             );
                         });
 
                         // Apply checkbox change
                         self.assets[idx].include_in_pack = include;
                     }
-                });
+                },
+            );
         });
     }
 
     fn show_pack_section(&mut self, ui: &mut Ui) {
-        egui::CollapsingHeader::new(
-            RichText::new("📋  Biome Pack").strong().size(14.0),
-        )
-        .default_open(self.section_pack)
-        .show(ui, |ui| {
-            ui.add_space(4.0);
+        egui::CollapsingHeader::new(RichText::new("📋  Biome Pack").strong().size(14.0))
+            .default_open(self.section_pack)
+            .show(ui, |ui| {
+                ui.add_space(4.0);
 
-            ui.horizontal(|ui| {
-                ui.label("Pack name:");
-                ui.text_edit_singleline(&mut self.pack_name);
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("Description:");
-                ui.text_edit_singleline(&mut self.pack_description);
-            });
-
-            ui.add_space(4.0);
-
-            // Summary
-            let included = self.included_count();
-            ui.label(format!(
-                "Assets: {}/{} selected",
-                included,
-                self.assets.len()
-            ));
-            ui.label(format!("HDRIs: {}", self.hdri_paths.len()));
-            ui.label(format!(
-                "Ground texture groups: {}",
-                self.ground_texture_groups.len()
-            ));
-            ui.label(format!("Target biome: {}", self.biome_type));
-
-            ui.add_space(8.0);
-
-            // HDRI list (collapsed)
-            if !self.hdri_paths.is_empty() {
-                egui::CollapsingHeader::new(format!(
-                    "HDRIs ({})",
-                    self.hdri_paths.len()
-                ))
-                .show(ui, |ui| {
-                    for p in &self.hdri_paths {
-                        if let Some(name) = p.file_name() {
-                            ui.monospace(
-                                RichText::new(name.to_string_lossy().as_ref())
-                                    .size(11.0),
-                            );
-                        }
-                    }
+                ui.horizontal(|ui| {
+                    ui.label("Pack name:");
+                    ui.text_edit_singleline(&mut self.pack_name);
                 });
-            }
 
-            // Ground textures (collapsed)
-            if !self.ground_texture_groups.is_empty() {
-                egui::CollapsingHeader::new(format!(
-                    "Ground Textures ({})",
+                ui.horizontal(|ui| {
+                    ui.label("Description:");
+                    ui.text_edit_singleline(&mut self.pack_description);
+                });
+
+                ui.add_space(4.0);
+
+                // Summary
+                let included = self.included_count();
+                ui.label(format!(
+                    "Assets: {}/{} selected",
+                    included,
+                    self.assets.len()
+                ));
+                ui.label(format!("HDRIs: {}", self.hdri_paths.len()));
+                ui.label(format!(
+                    "Ground texture groups: {}",
                     self.ground_texture_groups.len()
-                ))
-                .show(ui, |ui| {
-                    for (name, paths) in &self.ground_texture_groups {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(name).strong().size(11.0));
-                            ui.colored_label(
-                                Color32::GRAY,
-                                format!("{} channels", paths.len()),
-                            );
-                        });
-                    }
-                });
-            }
-        });
+                ));
+                ui.label(format!("Target biome: {}", self.biome_type));
+
+                ui.add_space(8.0);
+
+                // HDRI list (collapsed)
+                if !self.hdri_paths.is_empty() {
+                    egui::CollapsingHeader::new(format!("HDRIs ({})", self.hdri_paths.len())).show(
+                        ui,
+                        |ui| {
+                            for p in &self.hdri_paths {
+                                if let Some(name) = p.file_name() {
+                                    ui.monospace(
+                                        RichText::new(name.to_string_lossy().as_ref()).size(11.0),
+                                    );
+                                }
+                            }
+                        },
+                    );
+                }
+
+                // Ground textures (collapsed)
+                if !self.ground_texture_groups.is_empty() {
+                    egui::CollapsingHeader::new(format!(
+                        "Ground Textures ({})",
+                        self.ground_texture_groups.len()
+                    ))
+                    .show(ui, |ui| {
+                        for (name, paths) in &self.ground_texture_groups {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(name).strong().size(11.0));
+                                ui.colored_label(
+                                    Color32::GRAY,
+                                    format!("{} channels", paths.len()),
+                                );
+                            });
+                        }
+                    });
+                }
+            });
     }
 
     fn show_action_buttons(&mut self, ui: &mut Ui) {
@@ -836,9 +810,7 @@ impl BlendImportPanel {
                 let can_start = self.blend_path.is_some();
                 ui.horizontal(|ui| {
                     let btn = egui::Button::new(
-                        RichText::new("  Start Decomposition  ")
-                            .strong()
-                            .size(14.0),
+                        RichText::new("  Start Decomposition  ").strong().size(14.0),
                     );
                     if ui.add_enabled(can_start, btn).clicked() {
                         if let Some(path) = self.blend_path.clone() {
@@ -857,8 +829,7 @@ impl BlendImportPanel {
                     ui.spinner();
                     ui.label(&self.status_message);
                 });
-                let progress_bar =
-                    egui::ProgressBar::new(self.progress).show_percentage();
+                let progress_bar = egui::ProgressBar::new(self.progress).show_percentage();
                 ui.add(progress_bar);
                 ui.add_space(4.0);
                 if ui.button("Cancel").clicked() {
@@ -874,25 +845,22 @@ impl BlendImportPanel {
 
                 ui.horizontal(|ui| {
                     let btn = egui::Button::new(
-                        RichText::new("  Generate Biome Pack  ")
-                            .strong()
-                            .size(14.0),
+                        RichText::new("  Generate Biome Pack  ").strong().size(14.0),
                     );
                     if ui.add_enabled(has_included && has_name, btn).clicked() {
                         self.phase = ImportPhase::GeneratingPack;
                         self.progress = 0.0;
                         self.status_message = "Generating biome pack...".into();
-                        self.actions
-                            .push(BlendImportAction::GenerateBiomePack {
-                                output_dir: self.output_dir.clone(),
-                            });
+                        self.actions.push(BlendImportAction::GenerateBiomePack {
+                            output_dir: self.output_dir.clone(),
+                            pack_name: self.pack_name.clone(),
+                        });
                     }
 
                     if ui.button("Browse Output").clicked() {
-                        self.actions
-                            .push(BlendImportAction::BrowseOutputDir {
-                                path: self.output_dir.clone(),
-                            });
+                        self.actions.push(BlendImportAction::BrowseOutputDir {
+                            path: self.output_dir.clone(),
+                        });
                     }
                 });
 
@@ -914,8 +882,7 @@ impl BlendImportPanel {
                     ui.spinner();
                     ui.label(&self.status_message);
                 });
-                let progress_bar =
-                    egui::ProgressBar::new(self.progress).show_percentage();
+                let progress_bar = egui::ProgressBar::new(self.progress).show_percentage();
                 ui.add(progress_bar);
             }
             ImportPhase::Complete => {
@@ -926,10 +893,9 @@ impl BlendImportPanel {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     if ui.button("Browse Output").clicked() {
-                        self.actions
-                            .push(BlendImportAction::BrowseOutputDir {
-                                path: self.output_dir.clone(),
-                            });
+                        self.actions.push(BlendImportAction::BrowseOutputDir {
+                            path: self.output_dir.clone(),
+                        });
                     }
                     if ui.button("Import Another").clicked() {
                         self.reset();
@@ -963,9 +929,7 @@ impl BlendImportPanel {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        self.blend_file_size = std::fs::metadata(&path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        self.blend_file_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
 
         // Auto-set output dir based on blend filename
         let stem = path
@@ -1201,7 +1165,10 @@ mod tests {
         panel.set_blend_path(PathBuf::from("test/Namaqualand.blend"));
         assert!(panel.blend_path().is_some());
         assert_eq!(panel.pack_name(), "Namaqualand");
-        assert_eq!(panel.blend_path.as_ref().unwrap().to_str().unwrap(), "test/Namaqualand.blend");
+        assert_eq!(
+            panel.blend_path.as_ref().unwrap().to_str().unwrap(),
+            "test/Namaqualand.blend"
+        );
     }
 
     #[test]

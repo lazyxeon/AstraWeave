@@ -8,6 +8,7 @@
 
 use crate::biome::{BiomeConditions, BiomeConfig, BiomeSky, BiomeType, BiomeVegetation, VegetationType};
 use crate::scatter::ScatterConfig;
+use crate::zone_scatter::FixedPlacement;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -65,7 +66,8 @@ pub struct BiomePackAsset {
     pub name: String,
     /// Relative path to the GLB file (from `root_dir`).
     pub mesh_path: String,
-    /// Asset category: `vegetation`, `rock`, `terrain`, `prop`, `billboard`.
+    /// Asset category: `vegetation`, `rock`, `terrain`, `billboard`, `structure`,
+    /// `furniture`, `light`, or `prop` (fallback).
     pub category: String,
     /// Scatter weight — higher = more frequent placement.
     pub weight: f32,
@@ -182,6 +184,12 @@ struct RawManifestAsset {
     #[serde(default)]
     dimensions: Option<[f64; 3]>,
     #[serde(default)]
+    position: Option<[f64; 3]>,
+    #[serde(default)]
+    rotation: Option<[f64; 3]>,
+    #[serde(default)]
+    scale: Option<[f64; 3]>,
+    #[serde(default)]
     textures: Vec<RawManifestTexture>,
     #[serde(default)]
     #[allow(dead_code)]
@@ -242,11 +250,38 @@ impl BiomePack {
             .unwrap_or("Unknown")
             .to_string();
 
-        // Convert raw assets to BiomePackAssets with scatter defaults
-        let assets = raw
+        // Convert raw assets to BiomePackAssets with scatter defaults,
+        // and collect fixed placements from transform data.
+        let mut fixed_placements: Vec<FixedPlacement> = Vec::new();
+        let mut xs: Vec<f64> = Vec::new();
+        let mut zs: Vec<f64> = Vec::new();
+
+        let assets: Vec<BiomePackAsset> = raw
             .assets
             .into_iter()
             .map(|a| {
+                // Record fixed placement if position data exists
+                if let Some(pos) = &a.position {
+                    let has_nonzero_transform = pos.iter().any(|v| *v != 0.0)
+                        || a.rotation.as_ref().is_some_and(|r| r.iter().any(|v| *v != 0.0))
+                        || a.scale.as_ref().is_some_and(|s| *s != [1.0, 1.0, 1.0]);
+
+                    // Include all assets with transform data (even at origin —
+                    // origin placement is intentional in authored scenes)
+                    if has_nonzero_transform || a.category != "terrain" {
+                        fixed_placements.push(FixedPlacement {
+                            position: *pos,
+                            rotation: a.rotation.unwrap_or([0.0; 3]),
+                            scale: a.scale.unwrap_or([1.0; 3]),
+                            mesh_path: a.filename.clone(),
+                            category: a.category.clone(),
+                            name: a.name.clone(),
+                        });
+                        xs.push(pos[0]);
+                        zs.push(pos[2]);
+                    }
+                }
+
                 let (weight, scale_range, slope_tolerance) =
                     default_scatter_params_for_category(&a.category, a.dimensions.as_ref());
 
@@ -272,6 +307,30 @@ impl BiomePack {
                 }
             })
             .collect();
+
+        // Write fixed_placements.json if we found transform data
+        let fixed_placements_path = if !fixed_placements.is_empty() {
+            let fp_path = root_dir.join("fixed_placements.json");
+            let fp_json = serde_json::to_string_pretty(&fixed_placements)
+                .unwrap_or_else(|_| "[]".to_string());
+            std::fs::write(&fp_path, fp_json)?;
+            Some(PathBuf::from("fixed_placements.json"))
+        } else {
+            detect_placements_file(&root_dir)
+        };
+
+        // Compute scene footprint area from XZ bounding box of positions
+        let scene_footprint_area = if xs.len() >= 2 {
+            let x_min = xs.iter().cloned().fold(f64::INFINITY, f64::min);
+            let x_max = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let z_min = zs.iter().cloned().fold(f64::INFINITY, f64::min);
+            let z_max = zs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let width = (x_max - x_min).max(1.0);
+            let depth = (z_max - z_min).max(1.0);
+            Some((width * depth) as f32)
+        } else {
+            None
+        };
 
         let hdris = raw
             .hdris
@@ -303,8 +362,8 @@ impl BiomePack {
             conditions: BiomeConditions::default(),
             sky: BiomeSky::default(),
             terrain_heightmap_path: detect_heightmap_file(&root_dir),
-            fixed_placements_path: detect_placements_file(&root_dir),
-            scene_footprint_area: None,
+            fixed_placements_path,
+            scene_footprint_area,
         })
     }
 
@@ -327,21 +386,51 @@ impl BiomePack {
     /// is a South African semi-arid biome), but the vegetation types are fully
     /// populated from the pack's assets.
     pub fn to_biome_config(&self, biome_type: BiomeType) -> BiomeConfig {
-        let vegetation_types: Vec<VegetationType> = self
-            .assets
-            .iter()
-            .filter(|a| a.category == "vegetation" || a.category == "rock" || a.category == "prop")
-            .map(|a| {
-                let full_path = self.root_dir.join(&a.mesh_path);
-                VegetationType {
-                    name: a.name.clone(),
-                    weight: a.weight,
-                    model_path: full_path.to_string_lossy().to_string(),
-                    scale_range: a.scale_range,
-                    slope_tolerance: a.slope_tolerance,
-                }
-            })
-            .collect();
+        // Build per-category buckets so the top-25 selection is diverse
+        // (avoids 25 tiny flowers when rocks/billboards have lower weights).
+        let to_veg = |a: &BiomePackAsset| {
+            let full_path = self.root_dir.join(&a.mesh_path);
+            VegetationType {
+                name: a.name.clone(),
+                weight: a.weight,
+                model_path: full_path.to_string_lossy().to_string(),
+                scale_range: a.scale_range,
+                slope_tolerance: a.slope_tolerance,
+            }
+        };
+        let sort_desc = |v: &mut Vec<VegetationType>| {
+            v.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+        };
+
+        let mut rocks: Vec<VegetationType> = self.assets.iter()
+            .filter(|a| a.category == "rock").map(&to_veg).collect();
+        let mut veg: Vec<VegetationType> = self.assets.iter()
+            .filter(|a| a.category == "vegetation").map(&to_veg).collect();
+        let mut billboards: Vec<VegetationType> = self.assets.iter()
+            .filter(|a| a.category == "billboard").map(&to_veg).collect();
+
+        sort_desc(&mut rocks);
+        sort_desc(&mut veg);
+        sort_desc(&mut billboards);
+
+        // Stratified selection: reserve slots per category, then fill remainder.
+        const MAX_VEG_TYPES: usize = 25;
+        let rock_slots = rocks.len().min(8);          // Up to 8 rocks
+        let billboard_slots = billboards.len().min(4); // Up to 4 billboards
+        let veg_slots = MAX_VEG_TYPES.saturating_sub(rock_slots + billboard_slots);
+
+        let mut vegetation_types: Vec<VegetationType> = Vec::with_capacity(MAX_VEG_TYPES);
+        vegetation_types.extend(rocks.into_iter().take(rock_slots));
+        vegetation_types.extend(billboards.into_iter().take(billboard_slots));
+        vegetation_types.extend(veg.into_iter().take(veg_slots));
+
+        // Re-normalize weights so they sum correctly
+        let total: f32 = vegetation_types.iter().map(|v| v.weight).sum();
+        if total > 0.0 {
+            for v in &mut vegetation_types {
+                v.weight /= total;
+            }
+        }
 
         let ground_texture_paths: Vec<String> = self
             .ground_textures

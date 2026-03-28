@@ -102,11 +102,7 @@ impl BlueprintOverlay {
             let cx = zone.vertices.iter().map(|v| v.x).sum::<f32>() / n as f32;
             let cz = zone.vertices.iter().map(|v| v.y).sum::<f32>() / n as f32;
             let label_color = [1.0, 1.0, 1.0]; // white
-            lines.push(DebugLine::new(
-                [cx, y, cz],
-                [cx, y + 3.0, cz],
-                label_color,
-            ));
+            lines.push(DebugLine::new([cx, y, cz], [cx, y + 3.0, cz], label_color));
         }
     }
 

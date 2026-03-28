@@ -238,8 +238,8 @@ pub use world_wizard::{WizardStep, WorldTemplate, WorldWizard, WorldWizardAction
 pub use blend_import_panel::BlendImportPanel;
 #[allow(unused_imports)]
 pub use blend_import_panel::{
-    BiomeTypeSelection, BlendImportAction, DecomposedAssetEntry, ImportPhase, ScatterSettings as BlendScatterSettings,
-    TextureSettings as BlendTextureSettings,
+    BiomeTypeSelection, BlendImportAction, DecomposedAssetEntry, ImportPhase,
+    ScatterSettings as BlendScatterSettings, TextureSettings as BlendTextureSettings,
 };
 
 // Blueprint zone editor re-exports

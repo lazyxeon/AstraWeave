@@ -2,7 +2,7 @@
 
 use super::Panel;
 use crate::level_doc::LevelDoc;
-use crate::terrain_integration::{all_biome_options, biome_display_name, TerrainState};
+use crate::terrain_integration::{biome_display_name, cached_biome_options, TerrainState};
 use egui::{Color32, RichText, Ui};
 use std::collections::VecDeque;
 
@@ -765,15 +765,16 @@ impl WorldPanel {
             ui.group(|ui| {
                 ui.label("Biome");
 
+                let options = cached_biome_options();
                 egui::ComboBox::from_id_salt("biome_selector")
                     .selected_text(biome_display_name(&level.biome))
                     .show_ui(ui, |ui| {
-                        for (value, display) in all_biome_options() {
+                        for opt in &options {
                             if ui
-                                .selectable_label(level.biome == *value, *display)
+                                .selectable_label(level.biome == opt.value, &opt.display)
                                 .clicked()
                             {
-                                level.biome = value.to_string();
+                                level.biome = opt.value.clone();
                             }
                         }
                     });

@@ -28,7 +28,8 @@
 use anyhow::{Context as _, Result};
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
@@ -128,6 +129,12 @@ pub struct ScatterRenderer {
     indirect_buffer: wgpu::Buffer,
 
     mesh_cache: HashMap<String, CachedMesh>,
+
+    // Negative cache: mesh keys that failed to load, to avoid infinite retry loop
+    failed_meshes: HashSet<String>,
+
+    // Progressive mesh loading: load max N meshes per frame to avoid freezes
+    pending_mesh_loads: std::collections::VecDeque<(String, String)>,
 
     // Wind / environment
     wind_strength: f32,
@@ -344,6 +351,8 @@ impl ScatterRenderer {
             instance_buffer,
             indirect_buffer,
             mesh_cache: HashMap::new(),
+            failed_meshes: HashSet::new(),
+            pending_mesh_loads: std::collections::VecDeque::new(),
             wind_strength: 0.5,
             wind_frequency: 1.2,
             cull_distance: 700.0,
@@ -433,10 +442,34 @@ impl ScatterRenderer {
     }
 
     fn load_gltf_mesh(&mut self, key: &str, path: &str) -> Result<()> {
-        let (document, buffers, images) =
-            gltf::import(path).with_context(|| format!("Failed to import glTF: {path}"))?;
+        // Pre-check file size — skip absurdly large files (terrain-scale pieces)
+        let file_size = std::fs::metadata(path)
+            .with_context(|| format!("Cannot stat: {path}"))?
+            .len();
+        const MAX_SCATTER_MESH_BYTES: u64 = 150 * 1024 * 1024; // 150 MB
+        if file_size > MAX_SCATTER_MESH_BYTES {
+            anyhow::bail!(
+                "File too large for scatter ({:.1} MB, limit {:.0} MB)",
+                file_size as f64 / (1024.0 * 1024.0),
+                MAX_SCATTER_MESH_BYTES as f64 / (1024.0 * 1024.0),
+            );
+        }
 
-        let mesh = document.meshes().next().context("No meshes in glTF file")?;
+        // Parse glTF/GLB and load buffer data WITHOUT decoding images.
+        // The Namaqualand GLBs embed 4K textures whose image formats cause
+        // gltf::import() to fail.  import_buffers() skips image decoding
+        // entirely — we only need geometry for scatter vertex-color rendering.
+        let base = Path::new(path).parent();
+        let gltf = gltf::Gltf::open(path)
+            .with_context(|| format!("Failed to parse glTF: {path}"))?;
+        let buffers = gltf::import_buffers(&gltf.document, base, gltf.blob)
+            .with_context(|| format!("Failed to load glTF buffers: {path}"))?;
+
+        let mesh = gltf
+            .document
+            .meshes()
+            .next()
+            .context("No meshes in glTF file")?;
 
         // Merge ALL primitives into one vertex/index buffer so every material
         // (e.g. leaves + bark) is rendered in a single draw call with correct colors.
@@ -457,72 +490,22 @@ impl ScatterRenderer {
                 vec![[0.0, 1.0, 0.0]; positions.len()]
             };
 
+            // Vertex colors: prefer explicit attributes, otherwise use material base_color_factor.
+            // Texture baking is not available since we skip image decoding for performance.
             let vertex_colors: Vec<[f32; 4]> = if let Some(colors) = reader.read_colors(0) {
-                tracing::info!("Scatter mesh '{key}': using explicit vertex colors");
                 colors.into_rgba_f32().collect()
             } else {
                 let material = primitive.material();
                 let pbr = material.pbr_metallic_roughness();
                 let base_color_factor = pbr.base_color_factor();
-
-                // Try texture baking if available
-                let uvs: Option<Vec<[f32; 2]>> =
-                    reader.read_tex_coords(0).map(|tc| tc.into_f32().collect());
-
-                if let (Some(tex_info), Some(ref uv_coords)) = (pbr.base_color_texture(), &uvs) {
-                    let tex_index = tex_info.texture().source().index();
-                    if tex_index < images.len() {
-                        tracing::info!("Scatter mesh '{key}': UV texture baking (tex {tex_index}, factor=[{:.2},{:.2},{:.2},{:.2}])",
-                            base_color_factor[0], base_color_factor[1], base_color_factor[2], base_color_factor[3]);
-                        let img = &images[tex_index];
-                        let w = img.width as usize;
-                        let h = img.height as usize;
-                        uv_coords
-                            .iter()
-                            .map(|uv| {
-                                let u = (uv[0].fract() + 1.0).fract();
-                                let v = (uv[1].fract() + 1.0).fract();
-                                let px = ((u * w as f32) as usize).min(w.saturating_sub(1));
-                                let py = ((v * h as f32) as usize).min(h.saturating_sub(1));
-                                let bpp = match img.format {
-                                    gltf::image::Format::R8G8B8A8 => 4,
-                                    gltf::image::Format::R8G8B8 => 3,
-                                    _ => 0,
-                                };
-                                if bpp >= 3 {
-                                    let idx = (py * w + px) * bpp;
-                                    if idx + 2 < img.pixels.len() {
-                                        [
-                                            (img.pixels[idx] as f32 / 255.0) * base_color_factor[0],
-                                            (img.pixels[idx + 1] as f32 / 255.0)
-                                                * base_color_factor[1],
-                                            (img.pixels[idx + 2] as f32 / 255.0)
-                                                * base_color_factor[2],
-                                            if bpp == 4 && idx + 3 < img.pixels.len() {
-                                                (img.pixels[idx + 3] as f32 / 255.0)
-                                                    * base_color_factor[3]
-                                            } else {
-                                                base_color_factor[3]
-                                            },
-                                        ]
-                                    } else {
-                                        base_color_factor
-                                    }
-                                } else {
-                                    base_color_factor
-                                }
-                            })
-                            .collect()
-                    } else {
-                        tracing::info!("Scatter mesh '{key}': flat base_color_factor fallback [{:.2},{:.2},{:.2},{:.2}]",
-                            base_color_factor[0], base_color_factor[1], base_color_factor[2], base_color_factor[3]);
-                        vec![base_color_factor; positions.len()]
-                    }
-                } else {
-                    tracing::info!("Scatter mesh '{key}': flat base_color_factor fallback [{:.2},{:.2},{:.2},{:.2}]",
-                        base_color_factor[0], base_color_factor[1], base_color_factor[2], base_color_factor[3]);
-                    vec![base_color_factor; positions.len()]
-                }
+                tracing::info!(
+                    "Scatter mesh '{key}': flat base_color_factor [{:.2},{:.2},{:.2},{:.2}]",
+                    base_color_factor[0],
+                    base_color_factor[1],
+                    base_color_factor[2],
+                    base_color_factor[3],
+                );
+                vec![base_color_factor; positions.len()]
             };
 
             let indices: Vec<u32> = match reader.read_indices() {
@@ -638,21 +621,43 @@ impl ScatterRenderer {
             }),
         );
 
-        // Lazy-load meshes (may invalidate cache if new meshes loaded)
-        let paths_to_load: Vec<(String, String)> = placements
+        // Progressive mesh loading: enqueue new meshes, load max 3 per frame
+        // to avoid freezing the render loop when hundreds of meshes are needed.
+        // Meshes in failed_meshes are skipped — they won't load no matter how
+        // many times we retry, and retrying every frame tanks FPS.
+        let new_meshes: HashMap<String, String> = placements
             .iter()
-            .filter(|p| !self.mesh_cache.contains_key(&p.mesh_key))
+            .filter(|p| {
+                !self.mesh_cache.contains_key(&p.mesh_key)
+                    && !self.failed_meshes.contains(&p.mesh_key)
+                    && !self
+                        .pending_mesh_loads
+                        .iter()
+                        .any(|(k, _)| k == &p.mesh_key)
+            })
             .map(|p| (p.mesh_key.clone(), p.mesh_path.clone()))
-            .collect::<HashMap<_, _>>()
-            .into_iter()
             .collect();
 
-        for (key, path) in &paths_to_load {
-            if let Err(e) = self.load_gltf_mesh(key, path) {
-                tracing::warn!("Scatter: failed to load mesh '{key}': {e}");
-            }
+        for (key, path) in new_meshes {
+            self.pending_mesh_loads.push_back((key, path));
         }
-        if !paths_to_load.is_empty() {
+
+        const MAX_LOADS_PER_FRAME: usize = 3;
+        let mut loaded_this_frame = 0;
+        while loaded_this_frame < MAX_LOADS_PER_FRAME {
+            let Some((key, path)) = self.pending_mesh_loads.pop_front() else {
+                break;
+            };
+            if self.mesh_cache.contains_key(&key) || self.failed_meshes.contains(&key) {
+                continue;
+            }
+            if let Err(e) = self.load_gltf_mesh(&key, &path) {
+                tracing::warn!("Scatter: failed to load mesh '{key}': {e:#}");
+                self.failed_meshes.insert(key);
+            }
+            loaded_this_frame += 1;
+        }
+        if loaded_this_frame > 0 {
             self.cache_valid = false;
         }
 
@@ -759,9 +764,10 @@ impl ScatterRenderer {
         if elapsed_secs != self.last_log_second {
             self.last_log_second = elapsed_secs;
             tracing::info!(
-                "Scatter: {} placements, {} meshes cached, {} instances, {} draw groups",
+                "Scatter: {} placements, {} meshes cached, {} failed, {} instances, {} draw groups",
                 placements.len(),
                 self.mesh_cache.len(),
+                self.failed_meshes.len(),
                 total,
                 self.cached_draw_groups.len(),
             );

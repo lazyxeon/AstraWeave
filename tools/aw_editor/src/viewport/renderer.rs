@@ -939,6 +939,17 @@ impl ViewportRenderer {
 
     /// Set scatter placements for instanced rendering.
     pub fn set_scatter_placements(&mut self, placements: Vec<ScatterPlacement>) {
+        tracing::info!(
+            "Renderer: set_scatter_placements({} items)",
+            placements.len()
+        );
+        if let Some(sample) = placements.first() {
+            tracing::info!(
+                "Renderer scatter sample: key='{}' path='{}'",
+                sample.mesh_key,
+                sample.mesh_path
+            );
+        }
         self.scatter_placements = placements;
     }
 

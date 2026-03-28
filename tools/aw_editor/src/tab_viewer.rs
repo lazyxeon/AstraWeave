@@ -19,11 +19,10 @@ use crate::command::UndoStack;
 use crate::entity_manager::EntityManager;
 use crate::panels::entity_catalog::EntityCatalogState;
 use crate::panels::{
-    AssetBrowser, AudioPanel, CinematicsPanel, DialogueEditorPanel, FoliagePanel,
+    AssetBrowser, AudioPanel, BlendImportPanel, CinematicsPanel, DialogueEditorPanel, FoliagePanel,
     InputBindingsPanel, LightingPanel, LocalizationPanel, LodConfigPanel, MaterialEditorPanel,
     NavigationPanel, NetworkingPanel, ParticleSystemPanel, PcgPanel, PhysicsPanel,
     PostProcessPanel, ProjectSettingsPanel, SplineEditorPanel, TerrainPanel, UiEditorPanel,
-    BlendImportPanel,
 };
 use crate::prefab::PrefabManager;
 use crate::viewport::ViewportWidget;
@@ -4559,160 +4558,164 @@ impl TabViewer for EditorTabViewer {
                     .max_height(hierarchy_h)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                    if self.entity_list.is_empty() {
-                        ui.add_space(20.0);
-                        ui.vertical_centered(|ui| {
-                            ui.heading("Scene is Empty");
-                            ui.add_space(12.0);
-                            ui.label("Get started by adding entities to your scene:");
-                            ui.add_space(8.0);
+                        if self.entity_list.is_empty() {
+                            ui.add_space(20.0);
+                            ui.vertical_centered(|ui| {
+                                ui.heading("Scene is Empty");
+                                ui.add_space(12.0);
+                                ui.label("Get started by adding entities to your scene:");
+                                ui.add_space(8.0);
 
-                            let btn_width = 180.0;
-                            if ui
-                                .add_sized([btn_width, 28.0], egui::Button::new("+ Add Player"))
-                                .clicked()
-                            {
-                                self.emit_event(PanelEvent::SpawnArchetype {
-                                    archetype: "Player".into(),
+                                let btn_width = 180.0;
+                                if ui
+                                    .add_sized([btn_width, 28.0], egui::Button::new("+ Add Player"))
+                                    .clicked()
+                                {
+                                    self.emit_event(PanelEvent::SpawnArchetype {
+                                        archetype: "Player".into(),
+                                    });
+                                }
+                                ui.add_space(2.0);
+                                if ui
+                                    .add_sized([btn_width, 28.0], egui::Button::new("+ Add Light"))
+                                    .clicked()
+                                {
+                                    self.emit_event(PanelEvent::SpawnArchetype {
+                                        archetype: "Light".into(),
+                                    });
+                                }
+                                ui.add_space(2.0);
+                                if ui
+                                    .add_sized([btn_width, 28.0], egui::Button::new("+ Add Camera"))
+                                    .clicked()
+                                {
+                                    self.emit_event(PanelEvent::SpawnArchetype {
+                                        archetype: "Camera".into(),
+                                    });
+                                }
+                                ui.add_space(2.0);
+                                if ui
+                                    .add_sized(
+                                        [btn_width, 28.0],
+                                        egui::Button::new("+ Empty Entity"),
+                                    )
+                                    .clicked()
+                                {
+                                    self.emit_event(PanelEvent::CreateEntity);
+                                }
+
+                                ui.add_space(16.0);
+                                ui.separator();
+                                ui.add_space(8.0);
+                                ui.weak("Or use the + Add dropdown above for more options.");
+                                ui.add_space(4.0);
+                                ui.weak("Ctrl+S to save  |  Ctrl+O to open  |  F5 to play");
+                            });
+                        } else {
+                            let search_lower = self.hierarchy_search.to_lowercase();
+                            let filtered: Vec<_> = self
+                                .entity_list
+                                .iter()
+                                .filter(|e| {
+                                    search_lower.is_empty()
+                                        || e.name.to_lowercase().contains(&search_lower)
+                                })
+                                .collect();
+
+                            if filtered.is_empty() && !self.hierarchy_search.is_empty() {
+                                ui.centered_and_justified(|ui| {
+                                    ui.weak(format!(
+                                        "No entities matching \"{}\"",
+                                        self.hierarchy_search
+                                    ));
                                 });
                             }
-                            ui.add_space(2.0);
-                            if ui
-                                .add_sized([btn_width, 28.0], egui::Button::new("+ Add Light"))
-                                .clicked()
-                            {
-                                self.emit_event(PanelEvent::SpawnArchetype {
-                                    archetype: "Light".into(),
-                                });
-                            }
-                            ui.add_space(2.0);
-                            if ui
-                                .add_sized([btn_width, 28.0], egui::Button::new("+ Add Camera"))
-                                .clicked()
-                            {
-                                self.emit_event(PanelEvent::SpawnArchetype {
-                                    archetype: "Camera".into(),
-                                });
-                            }
-                            ui.add_space(2.0);
-                            if ui
-                                .add_sized([btn_width, 28.0], egui::Button::new("+ Empty Entity"))
-                                .clicked()
-                            {
-                                self.emit_event(PanelEvent::CreateEntity);
-                            }
 
-                            ui.add_space(16.0);
-                            ui.separator();
-                            ui.add_space(8.0);
-                            ui.weak("Or use the + Add dropdown above for more options.");
-                            ui.add_space(4.0);
-                            ui.weak("Ctrl+S to save  |  Ctrl+O to open  |  F5 to play");
-                        });
-                    } else {
-                        let search_lower = self.hierarchy_search.to_lowercase();
-                        let filtered: Vec<_> = self
-                            .entity_list
-                            .iter()
-                            .filter(|e| {
-                                search_lower.is_empty()
-                                    || e.name.to_lowercase().contains(&search_lower)
-                            })
-                            .collect();
-
-                        if filtered.is_empty() && !self.hierarchy_search.is_empty() {
-                            ui.centered_and_justified(|ui| {
+                            // Entity count summary
+                            if !search_lower.is_empty() {
                                 ui.weak(format!(
-                                    "No entities matching \"{}\"",
-                                    self.hierarchy_search
+                                    "Showing {} of {} entities",
+                                    filtered.len(),
+                                    self.entity_list.len()
                                 ));
-                            });
-                        }
+                                ui.add_space(4.0);
+                            }
 
-                        // Entity count summary
-                        if !search_lower.is_empty() {
-                            ui.weak(format!(
-                                "Showing {} of {} entities",
-                                filtered.len(),
-                                self.entity_list.len()
-                            ));
-                            ui.add_space(4.0);
-                        }
+                            for entity in filtered {
+                                let selected = self.selected_entity == Some(entity.id);
 
-                        for entity in filtered {
-                            let selected = self.selected_entity == Some(entity.id);
+                                // Determine entity icon based on name patterns (cache lowercase)
+                                let name_lower = entity.name.to_lowercase();
+                                let icon = if name_lower.contains("light") {
+                                    "[L]"
+                                } else if name_lower.contains("camera") {
+                                    "[C]"
+                                } else if name_lower.contains("player") {
+                                    "[P]"
+                                } else if name_lower.contains("enemy") {
+                                    "[E]"
+                                } else if name_lower.contains("group")
+                                    || name_lower.contains("folder")
+                                {
+                                    "[G]"
+                                } else {
+                                    "[.]"
+                                };
 
-                            // Determine entity icon based on name patterns (cache lowercase)
-                            let name_lower = entity.name.to_lowercase();
-                            let icon = if name_lower.contains("light") {
-                                "[L]"
-                            } else if name_lower.contains("camera") {
-                                "[C]"
-                            } else if name_lower.contains("player") {
-                                "[P]"
-                            } else if name_lower.contains("enemy") {
-                                "[E]"
-                            } else if name_lower.contains("group") || name_lower.contains("folder")
-                            {
-                                "[G]"
-                            } else {
-                                "[.]"
-                            };
+                                let label = format!("{} {} ({})", icon, entity.name, entity.id);
 
-                            let label = format!("{} {} ({})", icon, entity.name, entity.id);
+                                ui.horizontal(|ui| {
+                                    // Drag indicator (visual only)
+                                    ui.weak("⋮⋮");
 
-                            ui.horizontal(|ui| {
-                                // Drag indicator (visual only)
-                                ui.weak("⋮⋮");
+                                    // Entity button with selection highlight
+                                    let response = ui.selectable_label(selected, &label);
+                                    if response.clicked() {
+                                        clicked_entity = Some(entity.id);
+                                    }
 
-                                // Entity button with selection highlight
-                                let response = ui.selectable_label(selected, &label);
-                                if response.clicked() {
-                                    clicked_entity = Some(entity.id);
-                                }
-
-                                // Double-click to rename (just emit event)
-                                if response.double_clicked() {
-                                    entity_to_rename = Some(entity.id);
-                                }
-
-                                // Context menu
-                                response.context_menu(|ui| {
-                                    if ui.button("Rename").clicked() {
+                                    // Double-click to rename (just emit event)
+                                    if response.double_clicked() {
                                         entity_to_rename = Some(entity.id);
-                                        ui.close();
                                     }
-                                    if ui.button("Duplicate").clicked() {
-                                        entity_to_duplicate = Some(entity.id);
-                                        ui.close();
-                                    }
-                                    ui.separator();
-                                    if ui.button("Focus in Viewport").clicked() {
-                                        // Would focus viewport on this entity
-                                        ui.close();
-                                    }
-                                    ui.separator();
-                                    if ui.button("Delete").clicked() {
-                                        entity_to_delete = Some(entity.id);
-                                        ui.close();
-                                    }
-                                });
 
-                                // Alternative menu button
-                                ui.menu_button("⋮", |ui| {
-                                    if ui.button("Duplicate").clicked() {
-                                        entity_to_duplicate = Some(entity.id);
-                                        ui.close();
-                                    }
-                                    if ui.button("Delete").clicked() {
-                                        entity_to_delete = Some(entity.id);
-                                        ui.close();
-                                    }
+                                    // Context menu
+                                    response.context_menu(|ui| {
+                                        if ui.button("Rename").clicked() {
+                                            entity_to_rename = Some(entity.id);
+                                            ui.close();
+                                        }
+                                        if ui.button("Duplicate").clicked() {
+                                            entity_to_duplicate = Some(entity.id);
+                                            ui.close();
+                                        }
+                                        ui.separator();
+                                        if ui.button("Focus in Viewport").clicked() {
+                                            // Would focus viewport on this entity
+                                            ui.close();
+                                        }
+                                        ui.separator();
+                                        if ui.button("Delete").clicked() {
+                                            entity_to_delete = Some(entity.id);
+                                            ui.close();
+                                        }
+                                    });
+
+                                    // Alternative menu button
+                                    ui.menu_button("⋮", |ui| {
+                                        if ui.button("Duplicate").clicked() {
+                                            entity_to_duplicate = Some(entity.id);
+                                            ui.close();
+                                        }
+                                        if ui.button("Delete").clicked() {
+                                            entity_to_delete = Some(entity.id);
+                                            ui.close();
+                                        }
+                                    });
                                 });
-                            });
+                            }
                         }
-                    }
-                });
+                    });
 
                 // Handle entity events outside the borrow
                 if let Some(entity_id) = clicked_entity {
@@ -7748,7 +7751,11 @@ impl TabViewer for EditorTabViewer {
                                 .selected_text(quality_names[self.build_texture_quality.min(3)])
                                 .show_ui(ui, |ui| {
                                     for (i, quality) in quality_names.iter().enumerate() {
-                                        ui.selectable_value(&mut self.build_texture_quality, i, *quality);
+                                        ui.selectable_value(
+                                            &mut self.build_texture_quality,
+                                            i,
+                                            *quality,
+                                        );
                                     }
                                 });
                         });

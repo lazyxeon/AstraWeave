@@ -177,10 +177,7 @@ impl BlueprintUndoStack {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ZoneSourceState {
     BiomePreset(String),
-    BlendScene {
-        pack_path: String,
-        replica: bool,
-    },
+    BlendScene { pack_path: String, replica: bool },
 }
 
 impl Default for ZoneSourceState {
@@ -438,7 +435,11 @@ impl BlueprintPanel {
                 new_priority,
             } => {
                 if let Some(z) = self.zones.get_mut(*zone_index) {
-                    z.priority = if reverse { *old_priority } else { *new_priority };
+                    z.priority = if reverse {
+                        *old_priority
+                    } else {
+                        *new_priority
+                    };
                 }
             }
             BlueprintCommand::UpdateZoneSource {
@@ -476,8 +477,12 @@ impl BlueprintPanel {
         let axis_color = Color32::from_rgba_premultiplied(120, 120, 120, 80);
 
         // Visible world range
-        let tl = self.camera.screen_to_world(canvas_rect.left_top(), canvas_center);
-        let br = self.camera.screen_to_world(canvas_rect.right_bottom(), canvas_center);
+        let tl = self
+            .camera
+            .screen_to_world(canvas_rect.left_top(), canvas_center);
+        let br = self
+            .camera
+            .screen_to_world(canvas_rect.right_bottom(), canvas_center);
         let min_x = tl.x.min(br.x);
         let max_x = tl.x.max(br.x);
         let min_z = tl.y.min(br.y);
@@ -492,16 +497,24 @@ impl BlueprintPanel {
         // Vertical lines
         for ix in start_x..=end_x {
             let wx = ix as f32 * spacing;
-            let top = self.camera.world_to_screen(GVec2::new(wx, max_z), canvas_center);
-            let bot = self.camera.world_to_screen(GVec2::new(wx, min_z), canvas_center);
+            let top = self
+                .camera
+                .world_to_screen(GVec2::new(wx, max_z), canvas_center);
+            let bot = self
+                .camera
+                .world_to_screen(GVec2::new(wx, min_z), canvas_center);
             let color = if ix == 0 { axis_color } else { grid_color };
             painter.line_segment([top, bot], Stroke::new(1.0, color));
         }
         // Horizontal lines
         for iz in start_z..=end_z {
             let wz = iz as f32 * spacing;
-            let left = self.camera.world_to_screen(GVec2::new(min_x, wz), canvas_center);
-            let right = self.camera.world_to_screen(GVec2::new(max_x, wz), canvas_center);
+            let left = self
+                .camera
+                .world_to_screen(GVec2::new(min_x, wz), canvas_center);
+            let right = self
+                .camera
+                .world_to_screen(GVec2::new(max_x, wz), canvas_center);
             let color = if iz == 0 { axis_color } else { grid_color };
             painter.line_segment([left, right], Stroke::new(1.0, color));
         }
@@ -558,11 +571,13 @@ impl BlueprintPanel {
 
             // Centroid label
             if zone.vertices.len() >= 3 {
-                let cx: f32 = zone.vertices.iter().map(|v| v.x).sum::<f32>()
-                    / zone.vertices.len() as f32;
-                let cz: f32 = zone.vertices.iter().map(|v| v.y).sum::<f32>()
-                    / zone.vertices.len() as f32;
-                let sp = self.camera.world_to_screen(GVec2::new(cx, cz), canvas_center);
+                let cx: f32 =
+                    zone.vertices.iter().map(|v| v.x).sum::<f32>() / zone.vertices.len() as f32;
+                let cz: f32 =
+                    zone.vertices.iter().map(|v| v.y).sum::<f32>() / zone.vertices.len() as f32;
+                let sp = self
+                    .camera
+                    .world_to_screen(GVec2::new(cx, cz), canvas_center);
                 painter.text(
                     sp,
                     egui::Align2::CENTER_CENTER,
@@ -917,7 +932,13 @@ impl BlueprintPanel {
             ZoneSourceState::BiomePreset(biome) => {
                 let biome = biome.clone();
                 let biomes = [
-                    "Grassland", "Desert", "Forest", "Mountain", "Tundra", "Swamp", "Beach",
+                    "Grassland",
+                    "Desert",
+                    "Forest",
+                    "Mountain",
+                    "Tundra",
+                    "Swamp",
+                    "Beach",
                     "River",
                 ];
                 ui.horizontal(|ui| {
@@ -933,9 +954,8 @@ impl BlueprintPanel {
                                     let new = ZoneSourceState::BiomePreset(b.to_string());
                                     // We need to push cmd but we're inside a closure.
                                     // queue it.
-                                    self.pending_actions.push(BlueprintAction::GenerateZone {
-                                        zone_index: idx,
-                                    });
+                                    self.pending_actions
+                                        .push(BlueprintAction::GenerateZone { zone_index: idx });
                                     self.zones[idx].source = new.clone();
                                     self.undo_stack.push(BlueprintCommand::UpdateZoneSource {
                                         zone_index: idx,
@@ -981,13 +1001,7 @@ impl BlueprintPanel {
 
         // Vertex list
         ui.separator();
-        ui.label(
-            RichText::new(format!(
-                "Vertices ({})",
-                self.zones[idx].vertices.len()
-            ))
-            .strong(),
-        );
+        ui.label(RichText::new(format!("Vertices ({})", self.zones[idx].vertices.len())).strong());
         let verts = self.zones[idx].vertices.clone();
         for (vi, v) in verts.iter().enumerate() {
             ui.horizontal(|ui| {
@@ -1012,8 +1026,7 @@ impl BlueprintPanel {
                 self.pending_actions.push(BlueprintAction::GenerateAll);
             }
             if ui.button("Clear Generation").clicked() {
-                self.pending_actions
-                    .push(BlueprintAction::ClearGeneration);
+                self.pending_actions.push(BlueprintAction::ClearGeneration);
             }
             ui.separator();
             if ui.button("Save Zones").clicked() {
@@ -1211,10 +1224,7 @@ mod tests {
         panel.execute_cmd(BlueprintCommand::AddZone { zone: zone.clone() });
         assert_eq!(panel.zones.len(), 1);
 
-        panel.execute_cmd(BlueprintCommand::RemoveZone {
-            index: 0,
-            zone,
-        });
+        panel.execute_cmd(BlueprintCommand::RemoveZone { index: 0, zone });
         assert_eq!(panel.zones.len(), 0);
 
         panel.undo();

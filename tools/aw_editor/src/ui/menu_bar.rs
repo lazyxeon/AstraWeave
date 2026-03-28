@@ -138,7 +138,10 @@ impl MenuBar {
                 ui.close();
             }
             ui.separator();
-            if ui.button("\u{1f4e6} Import .blend Scene...     Ctrl+I").clicked() {
+            if ui
+                .button("\u{1f4e6} Import .blend Scene...     Ctrl+I")
+                .clicked()
+            {
                 handler.on_import_blend_scene();
                 ui.close();
             }
@@ -513,8 +516,7 @@ impl MenuBar {
                 .small()
                 .color(egui::Color32::from_rgb(100, 200, 255))
         } else {
-            egui::RichText::new("\u{1f5fa} Blueprint")
-                .small()
+            egui::RichText::new("\u{1f5fa} Blueprint").small()
         };
         if ui
             .button(bp_label)

@@ -3215,7 +3215,10 @@ impl EditorApp {
 
                                 let entity = scene_state.world_mut().spawn(
                                     starter.name,
-                                    IVec2 { x: offset_x, y: offset_z },
+                                    IVec2 {
+                                        x: offset_x,
+                                        y: offset_z,
+                                    },
                                     Team { id: 0 },
                                     0,
                                     0,
@@ -4664,7 +4667,8 @@ impl EditorApp {
                         }
                     }
 
-                    self.status = format!("Terrain generated: {} chunks uploaded", src_chunks.len());
+                    self.status =
+                        format!("Terrain generated: {} chunks uploaded", src_chunks.len());
 
                     // Auto-adjust camera so the terrain is visible (prevents camera
                     // being submerged inside tall mountain terrain).
@@ -5698,9 +5702,8 @@ impl EditorApp {
                             Err(e) => {
                                 let p = self.dock_tab_viewer.blend_import_panel_mut();
                                 p.set_progress(0.0, &format!("Cache load failed: {e}"));
-                                self.console_logs.push(format!(
-                                    "[Blend Import] Cache load error: {e}"
-                                ));
+                                self.console_logs
+                                    .push(format!("[Blend Import] Cache load error: {e}"));
                             }
                         }
                     } else {
@@ -5725,9 +5728,9 @@ impl EditorApp {
                             let rt = match tokio::runtime::Runtime::new() {
                                 Ok(rt) => rt,
                                 Err(e) => {
-                                    let _ = tx.send(DecompThreadMsg::Failed(
-                                        format!("Failed to create async runtime: {e}"),
-                                    ));
+                                    let _ = tx.send(DecompThreadMsg::Failed(format!(
+                                        "Failed to create async runtime: {e}"
+                                    )));
                                     return;
                                 }
                             };
@@ -5840,14 +5843,70 @@ impl EditorApp {
                         });
                     }
                 }
-                BlendImportAction::GenerateBiomePack { output_dir } => {
+                BlendImportAction::GenerateBiomePack {
+                    output_dir,
+                    pack_name,
+                } => {
                     self.console_logs.push(format!(
-                        "[Blend Import] Generating biome pack in {}",
+                        "[Blend Import] Generating biome pack '{}' in {}",
+                        pack_name,
                         output_dir.display()
                     ));
-                    // Mark pack complete so the panel advances
-                    self.dock_tab_viewer.blend_import_panel_mut().set_pack_complete();
-                    self.status = format!("Biome pack generated: {}", output_dir.display());
+
+                    // Resolve to absolute path
+                    let abs_output = if output_dir.is_relative() {
+                        std::env::current_dir()
+                            .unwrap_or_else(|_| PathBuf::from("."))
+                            .join(&output_dir)
+                    } else {
+                        output_dir.clone()
+                    };
+                    let manifest_path = abs_output.join("manifest.json");
+
+                    match astraweave_terrain::BiomePack::from_manifest(&manifest_path) {
+                        Ok(mut pack) => {
+                            pack.name = pack_name.clone();
+                            let safe_name: String = pack_name
+                                .chars()
+                                .map(|c| {
+                                    if c.is_alphanumeric() || c == '_' || c == '-' {
+                                        c
+                                    } else {
+                                        '_'
+                                    }
+                                })
+                                .collect();
+                            let pack_path = abs_output
+                                .join(format!("{}.biomepack.json", safe_name.to_lowercase()));
+                            match pack.save(&pack_path) {
+                                Ok(()) => {
+                                    self.console_logs.push(format!(
+                                        "[Blend Import] Biome pack saved: {}",
+                                        pack_path.display()
+                                    ));
+                                    self.dock_tab_viewer
+                                        .blend_import_panel_mut()
+                                        .set_pack_complete();
+                                    self.status = format!(
+                                        "Biome pack '{}' generated successfully",
+                                        pack_name
+                                    );
+                                    // Refresh the biome options cache so dropdowns pick up the new pack
+                                    terrain_integration::refresh_biome_options_cache();
+                                }
+                                Err(e) => {
+                                    let msg = format!("Failed to save biome pack: {e}");
+                                    self.console_logs.push(format!("[Blend Import] {}", msg));
+                                    self.dock_tab_viewer.blend_import_panel_mut().set_error(msg);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let msg = format!("Failed to create biome pack from manifest: {e}");
+                            self.console_logs.push(format!("[Blend Import] {}", msg));
+                            self.dock_tab_viewer.blend_import_panel_mut().set_error(msg);
+                        }
+                    }
                 }
                 BlendImportAction::BrowseOutputDir { path } => {
                     // Resolve to absolute if relative
@@ -5865,20 +5924,20 @@ impl EditorApp {
                     if abs_path.is_dir() {
                         self.asset_browser.navigate_to(abs_path);
                     }
-                    self.console_logs.push(format!(
-                        "[Blend Import] Browse: {}",
-                        path.display()
-                    ));
+                    self.console_logs
+                        .push(format!("[Blend Import] Browse: {}", path.display()));
                     self.status = format!("Browsing: {}", path.display());
                 }
                 BlendImportAction::CancelDecomposition => {
                     self.decomp_receiver = None;
-                    self.console_logs.push("[Blend Import] Decomposition cancelled".into());
+                    self.console_logs
+                        .push("[Blend Import] Decomposition cancelled".into());
                     self.status = "Decomposition cancelled".into();
                 }
                 BlendImportAction::ClearSession => {
                     self.decomp_receiver = None;
-                    self.console_logs.push("[Blend Import] Session cleared".into());
+                    self.console_logs
+                        .push("[Blend Import] Session cleared".into());
                     self.status = "Blend import session cleared".into();
                 }
             }
@@ -5945,8 +6004,8 @@ impl EditorApp {
 
         let data = std::fs::read_to_string(manifest_path)
             .with_context(|| format!("reading manifest {}", manifest_path.display()))?;
-        let result: DecompositionResult = serde_json::from_str(&data)
-            .with_context(|| "parsing decomposition manifest")?;
+        let result: DecompositionResult =
+            serde_json::from_str(&data).with_context(|| "parsing decomposition manifest")?;
 
         let assets = result
             .assets
@@ -6001,10 +6060,8 @@ impl EditorApp {
                     for i in 0..zone_count {
                         self.handle_generate_zone(i);
                     }
-                    self.console_logs.push(format!(
-                        "[Blueprint] Generated all {} zones",
-                        zone_count
-                    ));
+                    self.console_logs
+                        .push(format!("[Blueprint] Generated all {} zones", zone_count));
                 }
                 BlueprintAction::ClearGeneration => {
                     // Clear zone registry — remove all previously generated zones
@@ -6037,8 +6094,7 @@ impl EditorApp {
     /// Handle generation for a single zone by index in the blueprint panel.
     fn handle_generate_zone(&mut self, zone_index: usize) {
         use astraweave_terrain::{
-            BlueprintZone, PlacementMode, ZoneSource,
-            zone_scatter::ZoneScatterGenerator,
+            zone_scatter::ZoneScatterGenerator, BlueprintZone, PlacementMode, ZoneSource,
         };
         use panels::blueprint_panel::ZoneSourceState;
 
@@ -6097,11 +6153,14 @@ impl EditorApp {
         };
 
         // Register the zone
-        self.dock_tab_viewer.zone_registry_mut().add_zone(bz.clone());
+        self.dock_tab_viewer
+            .zone_registry_mut()
+            .add_zone(bz.clone());
 
         // Run the scatter generator and pipe results to viewport
         let terrain_chunks = self.dock_tab_viewer.collect_terrain_chunks();
-        let chunk_refs: Vec<&astraweave_terrain::TerrainChunk> = terrain_chunks.iter().copied().collect();
+        let chunk_refs: Vec<&astraweave_terrain::TerrainChunk> =
+            terrain_chunks.iter().copied().collect();
 
         let generator = ZoneScatterGenerator::new(64.0, 65);
         let seed = std::time::SystemTime::now()
@@ -6257,7 +6316,11 @@ impl EditorApp {
                     ZoneSourceState::BlendScene { .. } => [0.3, 0.5, 0.9],
                 };
                 ZoneOverlayData {
-                    vertices: z.vertices.iter().map(|v| glam::Vec2::new(v.x, v.y)).collect(),
+                    vertices: z
+                        .vertices
+                        .iter()
+                        .map(|v| glam::Vec2::new(v.x, v.y))
+                        .collect(),
                     color,
                     selected: false, // Could track from panel if needed
                     editing: false,
@@ -6594,7 +6657,9 @@ impl EditorApp {
                 if !self.dock_layout.has_panel(&PanelType::BlendImport) {
                     self.dock_layout.add_panel(PanelType::BlendImport);
                 }
-                self.dock_tab_viewer.blend_import_panel_mut().set_blend_path(path.clone());
+                self.dock_tab_viewer
+                    .blend_import_panel_mut()
+                    .set_blend_path(path.clone());
                 self.console_logs
                     .push(format!("Opened blend import: {}", path.display()));
                 self.status = format!(
@@ -6609,8 +6674,10 @@ impl EditorApp {
                 if !self.dock_layout.has_panel(&PanelType::Blueprint) {
                     self.dock_layout.add_panel(PanelType::Blueprint);
                 }
-                self.console_logs
-                    .push(format!("Zone source set: {} — draw a zone in Blueprint mode", path.display()));
+                self.console_logs.push(format!(
+                    "Zone source set: {} — draw a zone in Blueprint mode",
+                    path.display()
+                ));
                 self.status = format!(
                     "Zone source: {} — draw a zone in Blueprint panel",
                     path.file_name().unwrap_or_default().to_string_lossy()
@@ -7261,7 +7328,9 @@ impl MenuActionHandler for EditorApp {
             self.dock_layout.add_panel(PanelType::BlendImport);
         }
         // Trigger the native file browse dialog
-        self.dock_tab_viewer.blend_import_panel_mut().trigger_file_browse();
+        self.dock_tab_viewer
+            .blend_import_panel_mut()
+            .trigger_file_browse();
         self.status = "Import .blend scene — select a file".into();
     }
 
@@ -7271,7 +7340,8 @@ impl MenuActionHandler for EditorApp {
             self.status = "Blueprint mode off".into();
         } else {
             self.dock_layout.add_panel(PanelType::Blueprint);
-            self.status = "Blueprint mode — click canvas to place zone vertices, then Generate".into();
+            self.status =
+                "Blueprint mode — click canvas to place zone vertices, then Generate".into();
         }
     }
 

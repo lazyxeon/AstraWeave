@@ -33,8 +33,8 @@
 //! // Then call `viewport.ui(...)` from your App's update loop.
 //! ```
 
-pub mod camera;
 pub mod blueprint_overlay;
+pub mod camera;
 #[cfg(feature = "astraweave-render")]
 mod engine_adapter;
 pub(crate) mod entity_renderer;
@@ -60,6 +60,6 @@ pub use widget::ViewportLayout;
 pub use widget::ViewportWidget;
 
 #[allow(unused_imports)]
-pub use camera::OrbitCamera;
-#[allow(unused_imports)]
 pub use blueprint_overlay::{BlueprintOverlay, ZoneOverlayData};
+#[allow(unused_imports)]
+pub use camera::OrbitCamera;

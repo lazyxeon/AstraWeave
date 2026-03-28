@@ -114,7 +114,12 @@ pub fn build_catalog() -> Vec<CatalogEntry> {
     // 4. Castles & Forts asset pack
     let castles = assets_root.join("castles_forts_asset_pack");
     if castles.is_dir() {
-        scan_generic_pack(&castles, "Castles & Forts", EntityCategory::Building, &mut entries);
+        scan_generic_pack(
+            &castles,
+            "Castles & Forts",
+            EntityCategory::Building,
+            &mut entries,
+        );
     }
 
     // 5. Road to Vostok survival props (FBX-heavy pack)
@@ -157,11 +162,33 @@ pub fn build_catalog() -> Vec<CatalogEntry> {
         "castles_forts_asset_pack",
         "Road to Vostok Assets Vol.1",
         // Non-model dirs to skip:
-        "2D assets", "UI assets", "audio", "materials", "textures", "Texture",
-        "shaders", "cells", "cinematics", "hdri", "Icons", "imported", "navmesh",
-        "navmeshes", "npc", "tests", "exemplars", "Archive", "Symphonie", "Other",
-        "Goodies", "Mesh", "assets_src",
-    ].iter().copied().collect();
+        "2D assets",
+        "UI assets",
+        "audio",
+        "materials",
+        "textures",
+        "Texture",
+        "shaders",
+        "cells",
+        "cinematics",
+        "hdri",
+        "Icons",
+        "imported",
+        "navmesh",
+        "navmeshes",
+        "npc",
+        "tests",
+        "exemplars",
+        "Archive",
+        "Symphonie",
+        "Other",
+        "Goodies",
+        "Mesh",
+        "assets_src",
+    ]
+    .iter()
+    .copied()
+    .collect();
 
     if let Ok(read) = std::fs::read_dir(&assets_root) {
         for entry in read.flatten() {
@@ -169,7 +196,11 @@ pub fn build_catalog() -> Vec<CatalogEntry> {
             if !path.is_dir() {
                 continue;
             }
-            let dir_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let dir_name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if known_dirs.contains(dir_name.as_str()) {
                 continue;
             }
@@ -583,10 +614,7 @@ fn scan_vostok_pack(root: &Path, entries: &mut Vec<CatalogEntry>) {
                         .to_string_lossy()
                         .to_string();
                     // Strip "MS_" prefix common in this pack
-                    let display = stem
-                        .strip_prefix("MS_")
-                        .unwrap_or(&stem)
-                        .replace('_', " ");
+                    let display = stem.strip_prefix("MS_").unwrap_or(&stem).replace('_', " ");
                     let category = classify_vostok_entry(&folder_name);
                     entries.push(CatalogEntry {
                         display_name: display,
@@ -606,14 +634,23 @@ fn classify_vostok_entry(folder_name: &str) -> EntityCategory {
     if f.contains("fence") || f.contains("barrier") || f.contains("pole") || f.contains("sign") {
         return EntityCategory::Infrastructure;
     }
-    if f.contains("cabinet") || f.contains("fridge") || f.contains("sofa")
-        || f.contains("table") || f.contains("chair") || f.contains("mattress")
-        || f.contains("radiator") || f.contains("television") || f.contains("radio")
+    if f.contains("cabinet")
+        || f.contains("fridge")
+        || f.contains("sofa")
+        || f.contains("table")
+        || f.contains("chair")
+        || f.contains("mattress")
+        || f.contains("radiator")
+        || f.contains("television")
+        || f.contains("radio")
     {
         return EntityCategory::Furniture;
     }
-    if f.contains("campfire") || f.contains("firewood") || f.contains("firepot")
-        || f.contains("fireplace") || f.contains("candle")
+    if f.contains("campfire")
+        || f.contains("firewood")
+        || f.contains("firepot")
+        || f.contains("fireplace")
+        || f.contains("candle")
     {
         return EntityCategory::Nature;
     }
@@ -624,11 +661,21 @@ fn classify_vostok_entry(folder_name: &str) -> EntityCategory {
 }
 
 /// Scan a generic pack recursively for all model files.
-fn scan_generic_pack(root: &Path, pack_name: &str, category: EntityCategory, entries: &mut Vec<CatalogEntry>) {
+fn scan_generic_pack(
+    root: &Path,
+    pack_name: &str,
+    category: EntityCategory,
+    entries: &mut Vec<CatalogEntry>,
+) {
     scan_generic_recursive(root, pack_name, category, entries);
 }
 
-fn scan_generic_recursive(dir: &Path, pack_name: &str, category: EntityCategory, entries: &mut Vec<CatalogEntry>) {
+fn scan_generic_recursive(
+    dir: &Path,
+    pack_name: &str,
+    category: EntityCategory,
+    entries: &mut Vec<CatalogEntry>,
+) {
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
@@ -864,7 +911,9 @@ fn generate_thumbnail(ctx: &egui::Context, entry: &CatalogEntry) -> TextureHandl
         EntityCategory::Vehicle => draw_vehicle_icon(&mut pixels, size, r, g, b),
         EntityCategory::Nature => draw_tree_icon(&mut pixels, size, r, g, b),
         EntityCategory::Infrastructure => draw_building_icon(&mut pixels, size, r, g, b),
-        EntityCategory::Furniture | EntityCategory::Food | EntityCategory::Weapon
+        EntityCategory::Furniture
+        | EntityCategory::Food
+        | EntityCategory::Weapon
         | EntityCategory::Prop => draw_prop_icon(&mut pixels, size, r, g, b),
     }
 
@@ -964,10 +1013,7 @@ impl EntityCatalogState {
         // ── Pack filter dropdown ──
         ui.horizontal(|ui| {
             ui.label("Pack:");
-            let selected_text = self
-                .selected_pack
-                .as_deref()
-                .unwrap_or("All Packs");
+            let selected_text = self.selected_pack.as_deref().unwrap_or("All Packs");
             egui::ComboBox::from_id_salt("entity_pack_filter")
                 .selected_text(selected_text)
                 .width(160.0)
@@ -1028,7 +1074,11 @@ impl EntityCatalogState {
             return;
         }
 
-        ui.weak(format!("Showing {} of {} entities", filtered.len(), entries.len()));
+        ui.weak(format!(
+            "Showing {} of {} entities",
+            filtered.len(),
+            entries.len()
+        ));
         ui.add_space(2.0);
 
         // ── Group filtered entries by category → pack ──
@@ -1133,10 +1183,8 @@ impl EntityCatalogState {
                                 let resp = ui.add(img.sense(Sense::click()));
 
                                 if resp.clicked() {
-                                    new_spawns.push((
-                                        entry.display_name.clone(),
-                                        entry.path.clone(),
-                                    ));
+                                    new_spawns
+                                        .push((entry.display_name.clone(), entry.path.clone()));
                                 }
 
                                 if resp.hovered() {

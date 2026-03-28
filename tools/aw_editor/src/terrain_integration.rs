@@ -45,6 +45,8 @@ pub struct TerrainState {
     is_stroking: bool,
     /// Pre-stroke heightmap snapshots keyed by ChunkId (captured lazily on first modification)
     stroke_pre_snapshots: HashMap<ChunkId, Vec<f32>>,
+    /// Cached BiomePack for pack: selections (avoids re-loading on every configure call)
+    cached_pack: Option<(std::path::PathBuf, astraweave_terrain::BiomePack)>,
 }
 
 pub struct GeneratedChunk {
@@ -103,6 +105,7 @@ impl Default for TerrainState {
             dirty_chunk_indices: Vec::new(),
             is_stroking: false,
             stroke_pre_snapshots: HashMap::new(),
+            cached_pack: None,
         }
     }
 }
@@ -120,7 +123,7 @@ impl TerrainState {
         }
 
         self.config.seed = seed;
-        self.config.biomes = Self::biomes_for_primary(primary_biome);
+        self.config.biomes = self.biomes_for_primary(primary_biome);
     }
 
     /// Update the noise generation parameters (octaves, lacunarity, persistence, amplitude).
@@ -165,7 +168,43 @@ impl TerrainState {
         self.terrain_dirty = true;
     }
 
-    fn biomes_for_primary(primary: &str) -> Vec<BiomeConfig> {
+    fn biomes_for_primary(&mut self, primary: &str) -> Vec<BiomeConfig> {
+        // Check if this is a biome-pack reference ("pack:/path/to/file.biomepack.json")
+        if let Some(pack_path) = primary.strip_prefix("pack:") {
+            let path = std::path::PathBuf::from(pack_path);
+
+            // Use cached pack if same path, otherwise load and cache
+            let pack = if self.cached_pack.as_ref().is_some_and(|(p, _)| *p == path) {
+                &self.cached_pack.as_ref().unwrap().1
+            } else {
+                match astraweave_terrain::BiomePack::load(&path) {
+                    Ok(loaded) => {
+                        self.cached_pack = Some((path.clone(), loaded));
+                        &self.cached_pack.as_ref().unwrap().1
+                    }
+                    Err(_) => {
+                        return vec![Self::biome_config_for_type(BiomeType::Grassland)];
+                    }
+                }
+            };
+
+            // Use Desert as base type since most packs are nature/desert scenes;
+            // the pack's vegetation overrides the biome anyway.
+            let base = pack.name.to_lowercase();
+            let biome_type = if base.contains("forest") {
+                BiomeType::Forest
+            } else if base.contains("tundra") || base.contains("snow") {
+                BiomeType::Tundra
+            } else if base.contains("mountain") {
+                BiomeType::Mountain
+            } else if base.contains("swamp") {
+                BiomeType::Swamp
+            } else {
+                BiomeType::Desert
+            };
+            return vec![pack.to_biome_config(biome_type)];
+        }
+
         let primary_type = primary.parse::<BiomeType>().unwrap_or(BiomeType::Grassland);
 
         let mut biomes = vec![Self::biome_config_for_type(primary_type)];
@@ -479,9 +518,7 @@ impl TerrainState {
         entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Take top 4
-        let mut top4: [(f32, f32); 4] = [
-            entries[0], entries[1], entries[2], entries[3],
-        ];
+        let mut top4: [(f32, f32); 4] = [entries[0], entries[1], entries[2], entries[3]];
 
         // Sort top 4 by material_id ascending for consistent slot assignment
         // across adjacent vertices (prevents interpolation artifacts)
@@ -536,12 +573,62 @@ impl TerrainState {
                     slope_falloff: 0.07,
                 });
             }
-            BiomeType::Desert | BiomeType::Beach => {
-                // Sand dominates; rock on steep slopes; no grass in deserts
+            BiomeType::Desert => {
+                // Sand covers ALL heights on flat terrain. The built-in
+                // SplatRule::sand() only spans -5..8 (beach-level), which
+                // leaves heights >11 with zero weight → fallback to grass.
+                generator.add_rule(SplatRule {
+                    material_id: 1, // sand
+                    min_height: -10.0,
+                    max_height: 200.0,
+                    min_slope: 0.0,
+                    max_slope: 30.0,
+                    priority: 15,
+                    weight: 2.0,
+                    height_falloff: 0.005,
+                    slope_falloff: 0.05,
+                });
+                generator.add_rule(SplatRule::rock());
+                generator.add_rule(SplatRule {
+                    material_id: 3, // mountain rock on moderate slopes
+                    min_height: -2.0,
+                    max_height: 120.0,
+                    min_slope: 8.0,
+                    max_slope: 35.0,
+                    priority: 13,
+                    weight: 0.55,
+                    height_falloff: 0.02,
+                    slope_falloff: 0.05,
+                });
+                generator.add_rule(SplatRule {
+                    material_id: 5, // mud — exposed hardpan in depressions (was 9/dirt, but MAX_SPLAT_LAYERS=8 drops ids≥8)
+                    min_height: -8.0,
+                    max_height: 15.0,
+                    min_slope: 0.0,
+                    max_slope: 12.0,
+                    priority: 8,
+                    weight: 0.30,
+                    height_falloff: 0.06,
+                    slope_falloff: 0.08,
+                });
+                generator.add_rule(SplatRule {
+                    material_id: 7, // stone — mid-elevation breakup (was 13/gravel, but MAX_SPLAT_LAYERS=8 drops ids≥8)
+                    min_height: 10.0,
+                    max_height: 80.0,
+                    min_slope: 5.0,
+                    max_slope: 25.0,
+                    priority: 10,
+                    weight: 0.25,
+                    height_falloff: 0.03,
+                    slope_falloff: 0.06,
+                });
+            }
+            BiomeType::Beach => {
+                // Beach uses the built-in low-level sand rule
                 generator.add_rule(SplatRule::sand());
                 generator.add_rule(SplatRule::rock());
                 generator.add_rule(SplatRule {
-                    material_id: 3, // mountain rock on steep slopes
+                    material_id: 3, // rock on slopes
                     min_height: -2.0,
                     max_height: 55.0,
                     min_slope: 8.0,
@@ -552,7 +639,7 @@ impl TerrainState {
                     slope_falloff: 0.05,
                 });
                 generator.add_rule(SplatRule {
-                    material_id: 9, // dirt — exposed hardpan in depressions
+                    material_id: 9, // dirt
                     min_height: -4.0,
                     max_height: 6.0,
                     min_slope: 0.0,
@@ -1396,6 +1483,19 @@ impl TerrainState {
             self.generated_chunks.len()
         );
 
+        // Log a sample placement to help debug mesh path resolution
+        if let Some(sample) = placements.first() {
+            tracing::info!(
+                "Scatter sample: key='{}' path='{}' pos=({:.1},{:.1},{:.1}) scale={:.2}",
+                sample.mesh_key,
+                sample.mesh_path,
+                sample.position.x,
+                sample.position.y,
+                sample.position.z,
+                sample.scale,
+            );
+        }
+
         placements
     }
 }
@@ -1498,8 +1598,14 @@ impl ScatterPlacement {
             s if s.contains("cactus") => (8.0, 0.04, [0.45, 0.60, 0.30, 1.0]),
             // Bushes — models ~0.25 units, need to be ~2–3 units
             s if s.contains("bush") => (7.0, 0.04, [0.30, 0.58, 0.22, 1.0]),
-            // Rocks — models ~0.26 units, need to be ~2–4 units
-            s if s.contains("rock") || s.contains("stone") => (8.0, 0.03, [0.60, 0.58, 0.55, 1.0]),
+            // Rocks/boulders/cliffs — models ~0.26 units, need to be ~2–4 units
+            s if s.contains("rock")
+                || s.contains("stone")
+                || s.contains("boulder")
+                || s.contains("cliff") =>
+            {
+                (8.0, 0.03, [0.60, 0.58, 0.55, 1.0])
+            }
             // Mushrooms — small ground detail
             s if s.contains("mushroom") => (5.0, 0.01, [0.70, 0.55, 0.40, 1.0]),
             // Flowers — keep their original colors mostly
@@ -1542,17 +1648,102 @@ pub fn biome_display_name(biome_str: &str) -> &'static str {
     }
 }
 
-pub fn all_biome_options() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("grassland", "Grassland"),
-        ("desert", "Desert"),
-        ("forest", "Forest"),
-        ("mountain", "Mountain"),
-        ("tundra", "Tundra"),
-        ("swamp", "Swamp"),
-        ("beach", "Beach"),
-        ("river", "River"),
-    ]
+/// Built-in biome options (always available).
+const BUILTIN_BIOME_OPTIONS: &[(&str, &str)] = &[
+    ("grassland", "Grassland"),
+    ("desert", "Desert"),
+    ("forest", "Forest"),
+    ("mountain", "Mountain"),
+    ("tundra", "Tundra"),
+    ("swamp", "Swamp"),
+    ("beach", "Beach"),
+    ("river", "River"),
+];
+
+/// Discovered biome pack entry (value key, display name, path to .biomepack.json).
+#[derive(Debug, Clone)]
+pub struct BiomeOption {
+    /// Key used as the selected value (e.g. "grassland" or "pack:namaqualand")
+    pub value: String,
+    /// Display name in the dropdown
+    pub display: String,
+}
+
+/// Module-level cache for biome options to avoid filesystem I/O every frame.
+static BIOME_OPTIONS_CACHE: std::sync::Mutex<Option<Vec<BiomeOption>>> =
+    std::sync::Mutex::new(None);
+
+/// Return cached biome options. Populates the cache on first call.
+pub fn cached_biome_options() -> Vec<BiomeOption> {
+    let mut guard = BIOME_OPTIONS_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if let Some(ref cached) = *guard {
+        return cached.clone();
+    }
+    let options = all_biome_options();
+    *guard = Some(options.clone());
+    options
+}
+
+/// Invalidate the biome options cache so the next call re-scans the filesystem.
+pub fn refresh_biome_options_cache() {
+    let mut guard = BIOME_OPTIONS_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    *guard = None;
+}
+
+/// Return built-in biomes plus any `.biomepack.json` files found under `assets/imported/`.
+pub fn all_biome_options() -> Vec<BiomeOption> {
+    let mut options: Vec<BiomeOption> = BUILTIN_BIOME_OPTIONS
+        .iter()
+        .map(|(v, d)| BiomeOption {
+            value: v.to_string(),
+            display: d.to_string(),
+        })
+        .collect();
+
+    // Scan for generated biome packs
+    let import_dir = std::path::Path::new("assets/imported");
+    if let Ok(entries) = std::fs::read_dir(import_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            // Look for *.biomepack.json inside each subdirectory
+            if let Ok(files) = std::fs::read_dir(&path) {
+                for file in files.flatten() {
+                    let fp = file.path();
+                    if fp.extension().is_some_and(|e| e == "json") {
+                        if let Some(name) = fp.file_name().and_then(|n| n.to_str()) {
+                            if name.ends_with(".biomepack.json") {
+                                // Derive display name from pack contents or filename
+                                let display = read_pack_name(&fp).unwrap_or_else(|| {
+                                    name.trim_end_matches(".biomepack.json").to_string()
+                                });
+                                options.push(BiomeOption {
+                                    value: format!("pack:{}", fp.display()),
+                                    display: format!("{} (Pack)", display),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    options
+}
+
+/// Read just the "name" field from a biomepack.json without loading everything.
+fn read_pack_name(path: &std::path::Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let val: serde_json::Value = serde_json::from_str(&content).ok()?;
+    val.get("name")
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_string())
 }
 
 #[cfg(test)]
@@ -1695,8 +1886,9 @@ mod tests {
     #[test]
     fn test_all_biome_options() {
         let options = all_biome_options();
-        assert_eq!(options.len(), 8);
-        assert_eq!(options[0], ("grassland", "Grassland"));
+        assert!(options.len() >= 8);
+        assert_eq!(options[0].value, "grassland");
+        assert_eq!(options[0].display, "Grassland");
     }
 
     /// Reproduce the exact editor flow for mountain terrain generation.
@@ -1813,13 +2005,14 @@ mod tests {
     #[test]
     #[ignore] // ~18 min in debug mode — run explicitly with --ignored
     fn test_all_biomes_generate_terrain() {
-        for (biome_name, _display) in all_biome_options() {
+        for opt in all_biome_options() {
+            let biome_name = &opt.value;
             let mut state = TerrainState::new();
             state.configure(42, biome_name);
             state.set_noise_params(6, 2.0, 0.5, 50.0);
 
             // Use the same preset logic as the editor
-            let preset = match *biome_name {
+            let preset = match biome_name.as_str() {
                 "mountain" => BiomeNoisePreset {
                     base_scale: 0.003,
                     base_amplitude: 55.0,

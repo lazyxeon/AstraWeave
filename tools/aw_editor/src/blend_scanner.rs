@@ -32,10 +32,7 @@ impl BlendAssetScanner {
 
     /// Create from editor preference strings (relative paths resolved against project root).
     pub fn from_preferences(dirs: &[String], project_root: &Path) -> Self {
-        let scan_dirs = dirs
-            .iter()
-            .map(|d| project_root.join(d))
-            .collect();
+        let scan_dirs = dirs.iter().map(|d| project_root.join(d)).collect();
         Self::new(scan_dirs)
     }
 
@@ -177,7 +174,11 @@ mod tests {
         let mut scanner = BlendAssetScanner::new(vec![tmp.path().to_path_buf()]);
         scanner.scan();
 
-        let scene = scanner.discovered().iter().find(|d| d.name == "scene").unwrap();
+        let scene = scanner
+            .discovered()
+            .iter()
+            .find(|d| d.name == "scene")
+            .unwrap();
         assert!(scene.is_decomposed);
         assert!(scene.manifest_path.is_some());
     }
@@ -190,7 +191,11 @@ mod tests {
         let mut scanner = BlendAssetScanner::new(vec![tmp.path().to_path_buf()]);
         scanner.scan();
 
-        let raw = scanner.discovered().iter().find(|d| d.name == "raw").unwrap();
+        let raw = scanner
+            .discovered()
+            .iter()
+            .find(|d| d.name == "raw")
+            .unwrap();
         assert!(!raw.is_decomposed);
         assert!(raw.manifest_path.is_none());
     }

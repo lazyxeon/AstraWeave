@@ -2696,7 +2696,10 @@ impl ViewportWidget {
     }
 
     /// Set scatter placements for instanced vegetation/prop rendering.
-    pub fn set_scatter_placements(&self, placements: Vec<crate::terrain_integration::ScatterPlacement>) {
+    pub fn set_scatter_placements(
+        &self,
+        placements: Vec<crate::terrain_integration::ScatterPlacement>,
+    ) {
         if let Ok(mut renderer) = self.renderer.lock() {
             renderer.set_scatter_placements(placements);
         }

@@ -11,7 +11,7 @@
 //! - Voxel brush tools for sculpting
 
 use super::Panel;
-use crate::terrain_integration::{all_biome_options, TerrainState};
+use crate::terrain_integration::{cached_biome_options, TerrainState};
 use egui::{Color32, RichText, Ui};
 
 /// Erosion preset types for quick configuration
@@ -441,7 +441,8 @@ pub struct TerrainPanel {
     /// Receiver for completed background terrain generation
     gen_receiver: Option<std::sync::mpsc::Receiver<TerrainGenResult>>,
     /// Receiver for deferred scatter placements (generated after terrain is sent)
-    scatter_receiver: Option<std::sync::mpsc::Receiver<Vec<crate::terrain_integration::ScatterPlacement>>>,
+    scatter_receiver:
+        Option<std::sync::mpsc::Receiver<Vec<crate::terrain_integration::ScatterPlacement>>>,
 
     /// Brush settings for voxel editing
     brush_enabled: bool,
@@ -629,6 +630,7 @@ struct GenerationStats {
     memory_estimate_mb: f32,
     erosion_time_ms: f32,
     splatmap_time_ms: f32,
+    scatter_placements: usize,
 }
 
 impl Default for TerrainPanel {
@@ -728,7 +730,12 @@ impl TerrainPanel {
     pub fn take_cached_scatter_placements(
         &mut self,
     ) -> Vec<crate::terrain_integration::ScatterPlacement> {
-        std::mem::take(&mut self.cached_scatter_placements)
+        let placements = std::mem::take(&mut self.cached_scatter_placements);
+        tracing::info!(
+            "take_cached_scatter_placements: returning {} placements",
+            placements.len()
+        );
+        placements
     }
 
     /// Queue an action for later processing
@@ -869,12 +876,23 @@ impl TerrainPanel {
         // Primary biome selection
         ui.horizontal(|ui| {
             ui.label("Primary Biome:");
+            let options = cached_biome_options();
+            // Display the friendly name for the currently selected value
+            let selected_display = options
+                .iter()
+                .find(|o| o.value == self.primary_biome)
+                .map(|o| o.display.as_str())
+                .unwrap_or(&self.primary_biome);
             egui::ComboBox::from_id_salt("primary_biome")
-                .selected_text(&self.primary_biome)
+                .selected_text(selected_display)
                 .show_ui(ui, |ui| {
-                    for (value, display) in all_biome_options() {
+                    for opt in &options {
                         if ui
-                            .selectable_value(&mut self.primary_biome, value.to_string(), *display)
+                            .selectable_value(
+                                &mut self.primary_biome,
+                                opt.value.clone(),
+                                &opt.display,
+                            )
                             .clicked()
                         {
                             self.terrain_state.configure(self.seed, &self.primary_biome);
@@ -950,6 +968,12 @@ impl TerrainPanel {
                     self.generation_stats.memory_estimate_mb
                 ));
                 ui.label(format!("Time: {:.1} ms", self.last_generation_time_ms));
+                if self.generation_stats.scatter_placements > 0 {
+                    ui.label(format!(
+                        "Scatter: {} placements",
+                        self.generation_stats.scatter_placements
+                    ));
+                }
             });
         }
     }
@@ -1416,14 +1440,15 @@ impl TerrainPanel {
                 // Secondary biome
                 ui.horizontal(|ui| {
                     ui.label("Secondary Biome:");
+                    let options = cached_biome_options();
                     egui::ComboBox::from_id_salt("secondary_biome")
                         .selected_text(&self.biome_blend.secondary_biome)
                         .show_ui(ui, |ui| {
-                            for (value, display) in all_biome_options() {
+                            for opt in &options {
                                 ui.selectable_value(
                                     &mut self.biome_blend.secondary_biome,
-                                    value.to_string(),
-                                    *display,
+                                    opt.value.clone(),
+                                    &opt.display,
                                 );
                             }
                         });
@@ -1432,14 +1457,15 @@ impl TerrainPanel {
                 // Tertiary biome
                 ui.horizontal(|ui| {
                     ui.label("Tertiary Biome:");
+                    let options = cached_biome_options();
                     egui::ComboBox::from_id_salt("tertiary_biome")
                         .selected_text(&self.biome_blend.tertiary_biome)
                         .show_ui(ui, |ui| {
-                            for (value, display) in all_biome_options() {
+                            for opt in &options {
                                 ui.selectable_value(
                                     &mut self.biome_blend.tertiary_biome,
-                                    value.to_string(),
-                                    *display,
+                                    opt.value.clone(),
+                                    &opt.display,
                                 );
                             }
                         });
@@ -1772,6 +1798,33 @@ impl TerrainPanel {
     /// to produce terrain shapes appropriate for each biome.
     fn noise_preset_for_biome(biome: &str) -> crate::terrain_integration::BiomeNoisePreset {
         use crate::terrain_integration::BiomeNoisePreset;
+        // Handle biome-pack references: detect biome type from the pack name
+        // and delegate to the corresponding built-in preset.
+        if let Some(pack_path) = biome.strip_prefix("pack:") {
+            let name = std::path::Path::new(pack_path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase()
+                .replace(".biomepack", "");
+            let detected = if name.contains("forest") || name.contains("pine") {
+                "forest"
+            } else if name.contains("tundra") || name.contains("snow") || name.contains("arctic") {
+                "tundra"
+            } else if name.contains("mountain") || name.contains("alpine") {
+                "mountain"
+            } else if name.contains("swamp") || name.contains("marsh") || name.contains("bog") {
+                "swamp"
+            } else if name.contains("beach") || name.contains("coast") {
+                "beach"
+            } else if name.contains("river") {
+                "river"
+            } else {
+                // Default to desert for nature/savanna/arid packs (e.g. Namaqualand)
+                "desert"
+            };
+            return Self::noise_preset_for_biome(detected);
+        }
         match biome {
             "mountain" => BiomeNoisePreset {
                 base_scale: 0.003,
@@ -1933,6 +1986,13 @@ impl TerrainPanel {
         let preset = Self::noise_preset_for_biome(&self.primary_biome);
         state.apply_biome_noise_preset(&preset);
 
+        tracing::info!(
+            "regenerate_terrain: applied preset base_amp={}, base_scale={}, erosion={}",
+            preset.base_amplitude,
+            preset.base_scale,
+            preset.erosion_enabled,
+        );
+
         // Sync UI sliders to the active preset so they reflect the actual values
         self.base_amplitude = preset.base_amplitude;
         self.octaves = preset.base_octaves as u32;
@@ -2018,6 +2078,7 @@ impl TerrainPanel {
                             / (1024.0 * 1024.0),
                         erosion_time_ms: 0.0,
                         splatmap_time_ms: 0.0,
+                        scatter_placements: self.cached_scatter_placements.len(),
                     };
 
                     // Queue action so tab_viewer/main.rs can upload chunks to viewport

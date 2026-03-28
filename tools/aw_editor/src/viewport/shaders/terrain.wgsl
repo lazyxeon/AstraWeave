@@ -301,8 +301,9 @@ fn sample_biome_material(pos: vec3<f32>, n: vec3<f32>, layer: i32) -> Material {
     }
 
     // Cheap macro breakup for color and surface response without extra texture fetches.
-    let tint = mix(vec3<f32>(0.92, 0.95, 0.98), vec3<f32>(1.08, 1.03, 0.96), variation.x);
-    let hue_bias = mix(vec3<f32>(0.98, 0.99, 1.02), vec3<f32>(1.03, 1.00, 0.96), variation.y);
+    // Tint range is warm-biased: avoid cool blue shifts that wash out desert/sand tones.
+    let tint = mix(vec3<f32>(0.93, 0.94, 0.95), vec3<f32>(1.07, 1.04, 0.98), variation.x);
+    let hue_bias = mix(vec3<f32>(0.98, 0.99, 1.00), vec3<f32>(1.03, 1.00, 0.97), variation.y);
     albedo *= tint * hue_bias;
     roughness = clamp(roughness + (variation.z - 0.5) * 0.14, 0.04, 1.0);
     metallic = clamp(metallic + (variation.y - 0.5) * 0.03, 0.0, 1.0);
@@ -550,9 +551,9 @@ fn pbr_lighting(mat: Material, pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     let amb_blend = n.y * 0.5 + 0.5;
     let ambient = mix(ground_c, uniforms.ambient_color, amb_blend) * mat.albedo * mat.ao * uniforms.ambient_intensity;
     // Minimal indirect fill — avoids washing out shadow contrast
-    let indirect = mat.albedo * 0.04;
+    let indirect = mat.albedo * 0.025;
     // Subtle warm rim
-    let rim = pow(1.0 - n_dot_v, 4.0) * 0.03;
+    let rim = pow(1.0 - n_dot_v, 4.0) * 0.025;
     return direct + ambient + indirect + vec3<f32>(rim * 1.0, rim * 0.9, rim * 0.7);
 }
 

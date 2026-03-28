@@ -449,7 +449,9 @@ impl PanelType {
             Self::PostProcess => "Post-processing effects configuration",
             Self::InputBindings => "Configure keyboard and controller bindings",
             Self::FrameDebugger => "GPU render pass timing and draw call breakdown",
-            Self::BlendImport => "Import Blender .blend scenes, decompose into assets, and generate biome packs",
+            Self::BlendImport => {
+                "Import Blender .blend scenes, decompose into assets, and generate biome packs"
+            }
             Self::Blueprint => "2D top-down zone editor for defining terrain generation zones",
         }
     }

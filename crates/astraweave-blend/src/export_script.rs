@@ -77,6 +77,7 @@ import sys
 import json
 import hashlib
 import traceback
+import time
 from pathlib import Path
 
 "#
@@ -545,11 +546,23 @@ def classify_asset(obj):
     """Classify an object's asset category based on name heuristics."""
     name_lower = obj.name.lower()
 
-    rock_keywords = ['boulder', 'cliff', 'stone', 'rock', 'pebble']
+    rock_keywords = ['boulder', 'cliff', 'stone', 'rock', 'pebble', 'mineral', 'ore', 'crystal']
     veg_keywords = ['tree', 'bush', 'flower', 'plant', 'grass', 'leaf',
-                    'fern', 'succulent', 'shrub', 'branch', 'dead_branch']
+                    'fern', 'succulent', 'shrub', 'branch', 'dead_branch',
+                    'vine', 'moss', 'cactus', 'palm', 'reed', 'weed',
+                    'mushroom', 'fungus', 'log', 'stump', 'bark', 'hedge']
     terrain_keywords = ['terrain', 'ground', 'landscape', 'plane']
     billboard_keywords = ['billboard', 'card', 'sprite', 'imposter']
+    structure_keywords = ['house', 'building', 'wall', 'fence', 'bridge',
+                          'tower', 'gate', 'door', 'window', 'roof',
+                          'pillar', 'column', 'arch', 'ruin', 'cabin',
+                          'shed', 'hut', 'barn', 'fort']
+    furniture_keywords = ['chair', 'table', 'bench', 'bed', 'shelf',
+                          'desk', 'stool', 'crate', 'barrel', 'chest',
+                          'pot', 'vase', 'rug', 'carpet', 'curtain',
+                          'lantern', 'lamp', 'candle']
+    light_keywords = ['light', 'torch', 'fire', 'campfire', 'bonfire',
+                      'glow', 'ember', 'flame']
 
     for kw in rock_keywords:
         if kw in name_lower:
@@ -563,6 +576,26 @@ def classify_asset(obj):
     for kw in billboard_keywords:
         if kw in name_lower:
             return 'billboard'
+    for kw in structure_keywords:
+        if kw in name_lower:
+            return 'structure'
+    for kw in furniture_keywords:
+        if kw in name_lower:
+            return 'furniture'
+    for kw in light_keywords:
+        if kw in name_lower:
+            return 'light'
+
+    # Collection-name fallback: check if any parent collection hints at category
+    for col in obj.users_collection:
+        col_lower = col.name.lower()
+        if any(kw in col_lower for kw in veg_keywords):
+            return 'vegetation'
+        if any(kw in col_lower for kw in rock_keywords):
+            return 'rock'
+        if any(kw in col_lower for kw in structure_keywords):
+            return 'structure'
+
     return 'prop'
 
 "#
@@ -933,16 +966,61 @@ def main():
 
         print(f"Found {len(objects_to_export)} mesh objects to export")
 
+        # Deduplicate by mesh datablock — objects sharing the same mesh data
+        # (e.g. boulder instances) are exported once; subsequent instances
+        # reference the same file with their own transform.
+        exported_meshdata = {}  # mesh_datablock_name -> (mesh_filename, file_size, vert_count)
+
         # Export each object
         assets = []
         export_errors = []
+        skipped_instances = 0
+        export_start = time.time()
         for idx, obj in enumerate(objects_to_export):
             safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in obj.name)
             ext = "glb" if OUTPUT_FORMAT == "GLB" else "gltf"
             mesh_filename = f"{safe_name}.{ext}"
             mesh_path = meshes_dir / mesh_filename
 
-            print(f"[{idx+1}/{len(objects_to_export)}] Exporting: {obj.name} -> {mesh_filename}")
+            # Check if another object already exported this exact mesh datablock
+            mesh_data_name = obj.data.name if obj.data else None
+            if mesh_data_name and mesh_data_name in exported_meshdata:
+                # Reuse the already-exported file — just record this instance
+                ref_filename, ref_size, ref_verts = exported_meshdata[mesh_data_name]
+                skipped_instances += 1
+                elapsed = time.time() - export_start
+                print(f"[{idx+1}/{len(objects_to_export)}] Instance: {obj.name} -> reuses {ref_filename} ({elapsed:.0f}s elapsed)")
+
+                bounds = compute_bounds(obj)
+                dimensions = None
+                if bounds:
+                    dimensions = [
+                        bounds['max'][0] - bounds['min'][0],
+                        bounds['max'][1] - bounds['min'][1],
+                        bounds['max'][2] - bounds['min'][2],
+                    ]
+
+                asset_entry = {
+                    'name': obj.name,
+                    'filename': ref_filename,
+                    'category': classify_asset(obj),
+                    'vertex_count': ref_verts,
+                    'file_size': ref_size,
+                    'bounds': bounds,
+                    'dimensions': dimensions,
+                    'position': list(obj.location),
+                    'rotation': list(obj.rotation_euler),
+                    'scale': list(obj.scale),
+                    'textures': [],
+                    'materials': [ms.material.name for ms in obj.material_slots if ms.material],
+                    'collections': [c.name for c in obj.users_collection],
+                }
+                assets.append(asset_entry)
+                continue
+
+            obj_start = time.time()
+            elapsed = obj_start - export_start
+            print(f"[{idx+1}/{len(objects_to_export)}] Exporting: {obj.name} -> {mesh_filename} ({elapsed:.0f}s elapsed)")
 
             try:
                 export_single_object(obj, mesh_path)
@@ -956,6 +1034,15 @@ def main():
                 print(f"Warning: Export produced no file for {obj.name}")
                 export_errors.append({'name': obj.name, 'error': 'No output file produced'})
                 continue
+
+            obj_elapsed = time.time() - obj_start
+            file_size = mesh_path.stat().st_size
+            print(f"  -> {file_size/1024/1024:.1f} MB in {obj_elapsed:.1f}s")
+
+            # Register this mesh datablock as exported
+            vert_count = get_vertex_count(obj)
+            if mesh_data_name:
+                exported_meshdata[mesh_data_name] = (f"meshes/{mesh_filename}", file_size, vert_count)
 
             # Collect textures for this object
             object_textures = []
@@ -978,8 +1065,8 @@ def main():
                 'name': obj.name,
                 'filename': f"meshes/{mesh_filename}",
                 'category': classify_asset(obj),
-                'vertex_count': get_vertex_count(obj),
-                'file_size': mesh_path.stat().st_size,
+                'vertex_count': vert_count,
+                'file_size': file_size,
                 'bounds': bounds,
                 'dimensions': dimensions,
                 'position': list(obj.location),
@@ -990,6 +1077,9 @@ def main():
                 'collections': [c.name for c in obj.users_collection],
             }
             assets.append(asset_entry)
+
+        if skipped_instances > 0:
+            print(f"Deduplicated {skipped_instances} mesh instances (shared datablocks)")
 
         # Extract HDRIs
         hdris = []
@@ -1034,6 +1124,13 @@ def main():
         json.dump(result, f, indent=2)
 
     print(f"Result written to: {result_file}")
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    # Force-exit to skip Blender's slow scene cleanup.  All output files
+    # have been written and flushed; the normal Python/Blender teardown
+    # can take minutes on large scenes (freeing 7 GB+ of mesh data).
+    os._exit(0)
 
 if __name__ == '__main__':
     main()

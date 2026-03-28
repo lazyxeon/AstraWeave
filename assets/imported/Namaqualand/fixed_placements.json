@@ -1,0 +1,5582 @@
+[
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/arrow.glb",
+    "category": "prop",
+    "name": "arrow"
+  },
+  {
+    "position": [
+      59.823577880859375,
+      -8.64255428314209,
+      8.789166450500488
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/background_hill.glb",
+    "category": "terrain",
+    "name": "background_hill"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/bee.glb",
+    "category": "prop",
+    "name": "bee"
+  },
+  {
+    "position": [
+      -10.257441520690918,
+      -44.09281539916992,
+      -0.16497406363487244
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.glb",
+    "category": "billboard",
+    "name": "billboards"
+  },
+  {
+    "position": [
+      -10.903282165527344,
+      -44.09281539916992,
+      1.0144790410995483
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.001.glb",
+    "category": "billboard",
+    "name": "billboards.001"
+  },
+  {
+    "position": [
+      -10.162154197692873,
+      -44.09281539916992,
+      0.9827163219451904
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.002.glb",
+    "category": "billboard",
+    "name": "billboards.002"
+  },
+  {
+    "position": [
+      -8.40673828125,
+      -44.09281539916992,
+      0.8937808275222778
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.003.glb",
+    "category": "billboard",
+    "name": "billboards.003"
+  },
+  {
+    "position": [
+      -9.376558303833008,
+      -44.09281539916992,
+      1.0038914680480957
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.004.glb",
+    "category": "billboard",
+    "name": "billboards.004"
+  },
+  {
+    "position": [
+      -10.96892547607422,
+      -44.09281539916992,
+      -0.1628565788269043
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.005.glb",
+    "category": "billboard",
+    "name": "billboards.005"
+  },
+  {
+    "position": [
+      -9.512311935424805,
+      -44.09281539916992,
+      -0.1632610261440277
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.006.glb",
+    "category": "billboard",
+    "name": "billboards.006"
+  },
+  {
+    "position": [
+      -8.387680053710938,
+      -44.09281539916992,
+      -0.14168158173561096
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.007.glb",
+    "category": "billboard",
+    "name": "billboards.007"
+  },
+  {
+    "position": [
+      -8.445350646972656,
+      -44.01801300048828,
+      -0.48970264196395874
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.008.glb",
+    "category": "billboard",
+    "name": "billboards.008"
+  },
+  {
+    "position": [
+      -9.36646842956543,
+      -44.01801300048828,
+      -0.4875853657722473
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.009.glb",
+    "category": "billboard",
+    "name": "billboards.009"
+  },
+  {
+    "position": [
+      -10.018661499023438,
+      -44.01801300048828,
+      -0.4579400420188904
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.010.glb",
+    "category": "billboard",
+    "name": "billboards.010"
+  },
+  {
+    "position": [
+      -11.096473693847656,
+      -44.09281539916992,
+      -1.3128712177276611
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.011.glb",
+    "category": "billboard",
+    "name": "billboards.011"
+  },
+  {
+    "position": [
+      -10.562860488891602,
+      -44.01801300048828,
+      -0.3944154381752014
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/billboards.012.glb",
+    "category": "billboard",
+    "name": "billboards.012"
+  },
+  {
+    "position": [
+      -0.5700660943984985,
+      -15.724348068237305,
+      2.401615858078003
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/cliff.glb",
+    "category": "rock",
+    "name": "cliff"
+  },
+  {
+    "position": [
+      4.040609836578369,
+      -45.404151916503906,
+      0.04003477096557617
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/crystalline_iceplant_a_LOD0.001.glb",
+    "category": "rock",
+    "name": "crystalline_iceplant_a_LOD0.001"
+  },
+  {
+    "position": [
+      3.540609836578369,
+      -45.404151916503906,
+      0.04003477096557617
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/crystalline_iceplant_b_LOD0.001.glb",
+    "category": "rock",
+    "name": "crystalline_iceplant_b_LOD0.001"
+  },
+  {
+    "position": [
+      3.040609836578369,
+      -45.404151916503906,
+      0.04003477096557617
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/crystalline_iceplant_c_LOD0.001.glb",
+    "category": "rock",
+    "name": "crystalline_iceplant_c_LOD0.001"
+  },
+  {
+    "position": [
+      2.540609836578369,
+      -45.404151916503906,
+      0.04003477096557617
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/crystalline_iceplant_d_LOD0.001.glb",
+    "category": "rock",
+    "name": "crystalline_iceplant_d_LOD0.001"
+  },
+  {
+    "position": [
+      4.040609836578369,
+      -45.904151916503906,
+      0.04003477096557617
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/crystalline_iceplant_e_LOD0.001.glb",
+    "category": "rock",
+    "name": "crystalline_iceplant_e_LOD0.001"
+  },
+  {
+    "position": [
+      3.540609836578369,
+      -45.904151916503906,
+      0.04003477096557617
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/crystalline_iceplant_f_LOD0.001.glb",
+    "category": "rock",
+    "name": "crystalline_iceplant_f_LOD0.001"
+  },
+  {
+    "position": [
+      3.040609836578369,
+      -45.904151916503906,
+      0.04003477096557617
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/crystalline_iceplant_g_LOD0.001.glb",
+    "category": "rock",
+    "name": "crystalline_iceplant_g_LOD0.001"
+  },
+  {
+    "position": [
+      2.540609836578369,
+      -45.904151916503906,
+      0.04003477096557617
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/crystalline_iceplant_h_LOD0.001.glb",
+    "category": "rock",
+    "name": "crystalline_iceplant_h_LOD0.001"
+  },
+  {
+    "position": [
+      16.323734283447266,
+      -5.797196388244629,
+      5.97080135345459
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.44032371044158936
+    ],
+    "scale": [
+      3.379222869873047,
+      3.379222869873047,
+      1.4943703413009644
+    ],
+    "mesh_path": "meshes/Cube.glb",
+    "category": "prop",
+    "name": "Cube"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/dead_quiver_branch_01.glb",
+    "category": "vegetation",
+    "name": "dead_quiver_branch_01"
+  },
+  {
+    "position": [
+      7.209394931793213,
+      -1.3280048370361328,
+      5.089561939239502
+    ],
+    "rotation": [
+      0.4042932093143463,
+      0.3010489344596863,
+      0.05203298106789589
+    ],
+    "scale": [
+      1.076156497001648,
+      1.076156497001648,
+      1.076156497001648
+    ],
+    "mesh_path": "meshes/dead_quiver_branch_01.glb",
+    "category": "vegetation",
+    "name": "dead_quiver_branch_01.002"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/dead_quiver_branch_02.glb",
+    "category": "vegetation",
+    "name": "dead_quiver_branch_02"
+  },
+  {
+    "position": [
+      7.06532621383667,
+      -1.3857797384262085,
+      4.993712425231934
+    ],
+    "rotation": [
+      0.46413424611091614,
+      -0.771930992603302,
+      0.2930631637573242
+    ],
+    "scale": [
+      0.5991005897521973,
+      0.5991005897521973,
+      0.5991005897521973
+    ],
+    "mesh_path": "meshes/dead_quiver_branch_02.glb",
+    "category": "vegetation",
+    "name": "dead_quiver_branch_02.002"
+  },
+  {
+    "position": [
+      1.4048645496368408,
+      -43.49437713623047,
+      -0.0003769509494304657
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      1.570048689842224
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/didelta_spinosa_large_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_large_LOD1"
+  },
+  {
+    "position": [
+      -1.956263303756714,
+      -13.876832962036133,
+      4.768338203430176
+    ],
+    "rotation": [
+      0.019059957936406136,
+      -0.7702968716621399,
+      1.6171362400054932
+    ],
+    "scale": [
+      1.7939045429229736,
+      1.7939045429229736,
+      1.7939047813415527
+    ],
+    "mesh_path": "meshes/didelta_spinosa_large_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_large_LOD1.001"
+  },
+  {
+    "position": [
+      -1.4689372777938845,
+      -13.806775093078612,
+      4.74265718460083
+    ],
+    "rotation": [
+      0.9318504333496094,
+      -0.6714191436767578,
+      0.4613842368125915
+    ],
+    "scale": [
+      1.7939047813415527,
+      1.7939045429229736,
+      1.7939047813415527
+    ],
+    "mesh_path": "meshes/didelta_spinosa_large_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_large_LOD1.002"
+  },
+  {
+    "position": [
+      -1.986835241317749,
+      -8.542433738708496,
+      4.687915802001953
+    ],
+    "rotation": [
+      0.17127230763435364,
+      -0.4165312349796295,
+      1.720974087715149
+    ],
+    "scale": [
+      1.7939045429229736,
+      1.7939045429229736,
+      1.7939047813415527
+    ],
+    "mesh_path": "meshes/didelta_spinosa_large_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_large_LOD1.003"
+  },
+  {
+    "position": [
+      -3.0205912590026855,
+      -8.74223518371582,
+      4.596200466156006
+    ],
+    "rotation": [
+      -0.2342921495437622,
+      -0.646883487701416,
+      2.999908924102783
+    ],
+    "scale": [
+      1.7939045429229736,
+      1.7939045429229736,
+      1.7939047813415527
+    ],
+    "mesh_path": "meshes/didelta_spinosa_large_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_large_LOD1.004"
+  },
+  {
+    "position": [
+      7.1042046546936035,
+      -0.8319053649902344,
+      5.198690891265869
+    ],
+    "rotation": [
+      -0.431974858045578,
+      -0.5545384287834167,
+      2.029766082763672
+    ],
+    "scale": [
+      1.3458056449890137,
+      1.3458057641983032,
+      1.3458058834075928
+    ],
+    "mesh_path": "meshes/didelta_spinosa_large_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_large_LOD1.005"
+  },
+  {
+    "position": [
+      14.902606964111328,
+      1.8517906665802,
+      7.626857757568359
+    ],
+    "rotation": [
+      -0.7361147999763489,
+      -0.8283125758171082,
+      1.339251160621643
+    ],
+    "scale": [
+      1.7728651762008667,
+      1.7728652954101562,
+      1.7728655338287354
+    ],
+    "mesh_path": "meshes/didelta_spinosa_large_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_large_LOD1.006"
+  },
+  {
+    "position": [
+      1.7149040699005127,
+      -43.474159240722656,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      1.570048689842224
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/didelta_spinosa_med_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_med_LOD1"
+  },
+  {
+    "position": [
+      -2.1486692428588867,
+      -13.916702270507812,
+      4.767114639282227
+    ],
+    "rotation": [
+      -0.6018967628479004,
+      -0.6265682578086853,
+      1.8661600351333616
+    ],
+    "scale": [
+      1.8949518203735352,
+      1.8949520587921145,
+      1.8949520587921145
+    ],
+    "mesh_path": "meshes/didelta_spinosa_med_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_med_LOD1.001"
+  },
+  {
+    "position": [
+      -2.6739823818206787,
+      -14.010080337524414,
+      4.740406036376953
+    ],
+    "rotation": [
+      -0.45460593700408936,
+      -0.6800159215927124,
+      2.3011465072631836
+    ],
+    "scale": [
+      1.8949518203735352,
+      1.8949517011642456,
+      1.8949520587921145
+    ],
+    "mesh_path": "meshes/didelta_spinosa_med_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_med_LOD1.002"
+  },
+  {
+    "position": [
+      1.9916915893554688,
+      -43.4936637878418,
+      -0.010834095999598505
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      1.570048689842224
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/didelta_spinosa_small_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_small_LOD1"
+  },
+  {
+    "position": [
+      -2.1143014430999756,
+      -13.90087890625,
+      4.760916233062744
+    ],
+    "rotation": [
+      -0.930918514728546,
+      -1.195136308670044,
+      2.264375925064087
+    ],
+    "scale": [
+      2.0798795223236084,
+      2.0798795223236084,
+      2.0798795223236084
+    ],
+    "mesh_path": "meshes/didelta_spinosa_small_LOD1.glb",
+    "category": "prop",
+    "name": "didelta_spinosa_small_LOD1.001"
+  },
+  {
+    "position": [
+      -1.0335042476654053,
+      -50.91459655761719,
+      -0.0896679237484932
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/fine_leaf_01_a.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_a"
+  },
+  {
+    "position": [
+      -0.6186645030975342,
+      -13.921607971191406,
+      4.757709503173828
+    ],
+    "rotation": [
+      0.8483741283416748,
+      -0.09587497264146803,
+      -0.1480206549167633
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/fine_leaf_01_a.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_a.001"
+  },
+  {
+    "position": [
+      -0.23349735140800476,
+      -13.95835781097412,
+      4.563624382019043
+    ],
+    "rotation": [
+      -0.4701971411705017,
+      -0.7402694821357727,
+      1.9843298196792605
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/fine_leaf_01_a.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_a.002"
+  },
+  {
+    "position": [
+      -0.2009975016117096,
+      -13.936663627624512,
+      4.571085453033447
+    ],
+    "rotation": [
+      0.8325181007385254,
+      -0.21044597029685977,
+      -0.0443512387573719
+    ],
+    "scale": [
+      0.9047381281852722,
+      0.9047382473945618,
+      0.9047383069992064
+    ],
+    "mesh_path": "meshes/fine_leaf_01_a.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_a.003"
+  },
+  {
+    "position": [
+      -0.30595481395721436,
+      -14.050674438476562,
+      4.833630084991455
+    ],
+    "rotation": [
+      0.37162718176841736,
+      -0.2283298820257187,
+      0.05768353119492531
+    ],
+    "scale": [
+      0.9047381281852722,
+      0.9047382473945618,
+      0.9047383069992064
+    ],
+    "mesh_path": "meshes/fine_leaf_01_a.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_a.004"
+  },
+  {
+    "position": [
+      0.24066434800624847,
+      -50.926021575927734,
+      -0.08015543967485428
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/fine_leaf_01_b.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_b"
+  },
+  {
+    "position": [
+      -2.010902166366577,
+      -10.59912395477295,
+      4.875146389007568
+    ],
+    "rotation": [
+      0.14576609432697296,
+      -0.06648321449756622,
+      -0.012838345021009443
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/fine_leaf_01_b.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_b.001"
+  },
+  {
+    "position": [
+      1.584817886352539,
+      -50.94100570678711,
+      -0.07337458431720734
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/fine_leaf_01_c.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_c"
+  },
+  {
+    "position": [
+      -2.584573745727539,
+      -11.011940956115724,
+      4.821849346160889
+    ],
+    "rotation": [
+      0.3893533945083618,
+      -0.0941077321767807,
+      -0.018569061532616615
+    ],
+    "scale": [
+      0.8501054048538208,
+      0.850105345249176,
+      0.850105345249176
+    ],
+    "mesh_path": "meshes/fine_leaf_01_c.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_c.001"
+  },
+  {
+    "position": [
+      2.3231201171875,
+      -13.958536148071287,
+      4.60923433303833
+    ],
+    "rotation": [
+      0.993408977985382,
+      -0.10648107528686523,
+      0.13954581320285797
+    ],
+    "scale": [
+      1.054246425628662,
+      1.054246425628662,
+      1.0542465448379517
+    ],
+    "mesh_path": "meshes/fine_leaf_01_c.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_c.002"
+  },
+  {
+    "position": [
+      -2.623291015625,
+      -7.887814521789551,
+      4.570843696594238
+    ],
+    "rotation": [
+      0.6022133231163025,
+      -0.1938755214214325,
+      0.3204982280731201
+    ],
+    "scale": [
+      0.9156946539878844,
+      0.9156946539878844,
+      0.9156946539878844
+    ],
+    "mesh_path": "meshes/fine_leaf_01_c.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_c.003"
+  },
+  {
+    "position": [
+      -1.9970240592956543,
+      -7.674729824066162,
+      4.599583148956299
+    ],
+    "rotation": [
+      0.1327742636203766,
+      -0.6456993222236633,
+      1.8094022274017336
+    ],
+    "scale": [
+      0.827725887298584,
+      0.8277259469032288,
+      0.827725887298584
+    ],
+    "mesh_path": "meshes/fine_leaf_01_c.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_c.004"
+  },
+  {
+    "position": [
+      31.21039390563965,
+      -4.566885948181152,
+      6.963689804077148
+    ],
+    "rotation": [
+      0.4208269715309143,
+      -0.4783734977245331,
+      -0.5311365723609924
+    ],
+    "scale": [
+      1.7307063341140747,
+      1.7307062149047852,
+      1.7307063341140747
+    ],
+    "mesh_path": "meshes/fine_leaf_01_c.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_c.005"
+  },
+  {
+    "position": [
+      31.417177200317383,
+      -4.389122009277344,
+      7.061546325683594
+    ],
+    "rotation": [
+      -0.5160607695579529,
+      0.07962320744991302,
+      1.5431852340698242
+    ],
+    "scale": [
+      1.7307063341140747,
+      1.7307062149047852,
+      1.7307063341140747
+    ],
+    "mesh_path": "meshes/fine_leaf_01_c.glb",
+    "category": "vegetation",
+    "name": "fine_leaf_01_c.006"
+  },
+  {
+    "position": [
+      0.6408330202102661,
+      -45.377384185791016,
+      0.007175058126449585
+    ],
+    "rotation": [
+      -0.25081443786621094,
+      0.04360485076904297,
+      0.8089151978492737
+    ],
+    "scale": [
+      0.14843104779720306,
+      0.14843106269836426,
+      0.14843104779720306
+    ],
+    "mesh_path": "meshes/flower_gazania_a_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_a_LOD1.001"
+  },
+  {
+    "position": [
+      1.0408328771591189,
+      -45.377384185791016,
+      0.007175058126449585
+    ],
+    "rotation": [
+      -0.1921804845333099,
+      0.030550291761755943,
+      0.7896897792816162
+    ],
+    "scale": [
+      0.19999997317790985,
+      0.19999998807907104,
+      0.19999998807907104
+    ],
+    "mesh_path": "meshes/flower_gazania_b_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_b_LOD1.001"
+  },
+  {
+    "position": [
+      1.4408329725265503,
+      -45.377384185791016,
+      0.007175058126449585
+    ],
+    "rotation": [
+      -0.3020363450050354,
+      0.07386909425258636,
+      0.926435887813568
+    ],
+    "scale": [
+      0.13680104911327362,
+      0.13680104911327362,
+      0.13680103421211243
+    ],
+    "mesh_path": "meshes/flower_gazania_c_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_c_LOD1.001"
+  },
+  {
+    "position": [
+      2.2581398487091064,
+      -44.1004524230957,
+      0.007175058126449585
+    ],
+    "rotation": [
+      -0.3020362854003906,
+      0.07386906445026398,
+      1.4667631387710571
+    ],
+    "scale": [
+      0.13680104911327362,
+      0.13680104911327362,
+      0.13680104911327362
+    ],
+    "mesh_path": "meshes/flower_gazania_d_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_d_LOD1.001"
+  },
+  {
+    "position": [
+      2.176351547241211,
+      -44.75688171386719,
+      0.007175058126449585
+    ],
+    "rotation": [
+      -0.4723806381225586,
+      0.09122216701507568,
+      -0.26882293820381165
+    ],
+    "scale": [
+      0.18610917031764984,
+      0.18610920011997223,
+      0.18610915541648865
+    ],
+    "mesh_path": "meshes/flower_gazania_d_LOD3.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_d_LOD3.001"
+  },
+  {
+    "position": [
+      0.6066180467605591,
+      -44.1048583984375,
+      0.007175058126449585
+    ],
+    "rotation": [
+      -0.3020363450050354,
+      0.07386909425258636,
+      0.926435887813568
+    ],
+    "scale": [
+      0.13680104911327362,
+      0.13680104911327362,
+      0.13680103421211243
+    ],
+    "mesh_path": "meshes/flower_gazania_e_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_e_LOD1.001"
+  },
+  {
+    "position": [
+      0.575871467590332,
+      -44.76678466796875,
+      0.007175058126449585
+    ],
+    "rotation": [
+      -0.3020363450050354,
+      0.07386909425258636,
+      0.926435887813568
+    ],
+    "scale": [
+      0.13680104911327362,
+      0.13680104911327362,
+      0.13680103421211243
+    ],
+    "mesh_path": "meshes/flower_gazania_e_LOD3.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_e_LOD3.001"
+  },
+  {
+    "position": [
+      1.0066180229187012,
+      -44.1048583984375,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.3237970769405365,
+      0.1636093258857727,
+      -2.0245656967163086
+    ],
+    "scale": [
+      0.16369986534118652,
+      0.16369985044002533,
+      0.16369986534118652
+    ],
+    "mesh_path": "meshes/flower_gazania_f_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_f_LOD1.001"
+  },
+  {
+    "position": [
+      0.975871443748474,
+      -44.76678466796875,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.3237970769405365,
+      0.1636093258857727,
+      -2.0245656967163086
+    ],
+    "scale": [
+      0.16369986534118652,
+      0.16369985044002533,
+      0.16369986534118652
+    ],
+    "mesh_path": "meshes/flower_gazania_f_LOD3.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_f_LOD3.001"
+  },
+  {
+    "position": [
+      1.4066179990768433,
+      -44.1048583984375,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.5045568346977234,
+      0.26550471782684326,
+      -2.667442321777344
+    ],
+    "scale": [
+      0.1331845372915268,
+      0.133184552192688,
+      0.133184552192688
+    ],
+    "mesh_path": "meshes/flower_gazania_g_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_g_LOD1.001"
+  },
+  {
+    "position": [
+      -0.17723405361175537,
+      -44.1048583984375,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.5045568346977234,
+      0.26550471782684326,
+      -2.667442321777344
+    ],
+    "scale": [
+      0.1331845372915268,
+      0.133184552192688,
+      0.133184552192688
+    ],
+    "mesh_path": "meshes/flower_gazania_g_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_g_LOD1.002"
+  },
+  {
+    "position": [
+      1.3758714199066162,
+      -44.76678466796875,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.537818193435669,
+      0.2517620623111725,
+      2.2766354084014893
+    ],
+    "scale": [
+      0.1497790664434433,
+      0.1497790813446045,
+      0.1497790664434433
+    ],
+    "mesh_path": "meshes/flower_gazania_g_LOD3.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_g_LOD3.001"
+  },
+  {
+    "position": [
+      -0.2079806327819824,
+      -44.76678466796875,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.537818193435669,
+      0.2517620623111725,
+      2.2766354084014893
+    ],
+    "scale": [
+      0.1497790664434433,
+      0.1497790813446045,
+      0.1497790664434433
+    ],
+    "mesh_path": "meshes/flower_gazania_g_LOD3.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_g_LOD3.002"
+  },
+  {
+    "position": [
+      1.8066179752349856,
+      -44.1048583984375,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.537818193435669,
+      0.2517620027065277,
+      2.5515735149383545
+    ],
+    "scale": [
+      0.1559567749500275,
+      0.15595678985118866,
+      0.15595676004886627
+    ],
+    "mesh_path": "meshes/flower_gazania_h_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_h_LOD1.001"
+  },
+  {
+    "position": [
+      0.22276592254638672,
+      -44.1048583984375,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.537818193435669,
+      0.2517620027065277,
+      2.5515735149383545
+    ],
+    "scale": [
+      0.1559567749500275,
+      0.15595678985118866,
+      0.15595676004886627
+    ],
+    "mesh_path": "meshes/flower_gazania_h_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_h_LOD1.002"
+  },
+  {
+    "position": [
+      1.7758713960647583,
+      -44.76678466796875,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.537818193435669,
+      0.2517620027065277,
+      2.5515735149383545
+    ],
+    "scale": [
+      0.1559567749500275,
+      0.15595678985118866,
+      0.15595676004886627
+    ],
+    "mesh_path": "meshes/flower_gazania_h_LOD3.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_h_LOD3.001"
+  },
+  {
+    "position": [
+      0.19201934337615967,
+      -44.76678466796875,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.537818193435669,
+      0.2517620027065277,
+      2.5515735149383545
+    ],
+    "scale": [
+      0.1559567749500275,
+      0.15595678985118866,
+      0.15595676004886627
+    ],
+    "mesh_path": "meshes/flower_gazania_h_LOD3.001.glb",
+    "category": "vegetation",
+    "name": "flower_gazania_h_LOD3.002"
+  },
+  {
+    "position": [
+      -0.2770252227783203,
+      -49.05085372924805,
+      0.01868736743927002
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_large_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_large_LOD0.001"
+  },
+  {
+    "position": [
+      -1.024771213531494,
+      -9.43886947631836,
+      4.941006660461426
+    ],
+    "rotation": [
+      -0.007893705740571022,
+      -0.11205600202083588,
+      0.0376940444111824
+    ],
+    "scale": [
+      0.9298117756843568,
+      0.9298118948936462,
+      0.9298118352890016
+    ],
+    "mesh_path": "meshes/flower_heliophila_large_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_large_LOD0.002"
+  },
+  {
+    "position": [
+      -1.0767571926116943,
+      -9.981782913208008,
+      4.944956302642822
+    ],
+    "rotation": [
+      -0.007893706671893597,
+      -0.11205600202083588,
+      2.1481692790985107
+    ],
+    "scale": [
+      0.9298117756843568,
+      0.9298118948936462,
+      0.9298118352890016
+    ],
+    "mesh_path": "meshes/flower_heliophila_large_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_large_LOD0.003"
+  },
+  {
+    "position": [
+      -0.5127203464508057,
+      -5.930095195770264,
+      4.498077392578125
+    ],
+    "rotation": [
+      -0.007893705740571022,
+      -0.11205600202083588,
+      0.0376940444111824
+    ],
+    "scale": [
+      0.56470787525177,
+      0.5647079944610596,
+      0.56470787525177
+    ],
+    "mesh_path": "meshes/flower_heliophila_large_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_large_LOD0.004"
+  },
+  {
+    "position": [
+      -0.5350496768951416,
+      -6.505578994750977,
+      4.586679935455322
+    ],
+    "rotation": [
+      -0.007893706671893597,
+      -0.11205600202083588,
+      2.1481692790985107
+    ],
+    "scale": [
+      0.694381833076477,
+      0.6943820118904114,
+      0.694381833076477
+    ],
+    "mesh_path": "meshes/flower_heliophila_large_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_large_LOD0.005"
+  },
+  {
+    "position": [
+      0.7646446228027344,
+      -49.07695770263672,
+      0.03457158803939819
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.001"
+  },
+  {
+    "position": [
+      1.239562749862671,
+      -13.321931838989258,
+      5.720621585845947
+    ],
+    "rotation": [
+      0.040997181087732315,
+      -0.00466837827116251,
+      -0.009361470118165016
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.002"
+  },
+  {
+    "position": [
+      1.2327985763549805,
+      -13.127644538879396,
+      5.691032886505127
+    ],
+    "rotation": [
+      0.08577144145965576,
+      -0.026011550799012184,
+      1.814066767692566
+    ],
+    "scale": [
+      0.8585364818572998,
+      0.858536422252655,
+      0.8585365414619446
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.003"
+  },
+  {
+    "position": [
+      1.4616451263427734,
+      -12.98060703277588,
+      5.656705856323242
+    ],
+    "rotation": [
+      -0.1979655772447586,
+      0.34498393535614014,
+      1.6399788856506348
+    ],
+    "scale": [
+      0.8585364818572998,
+      0.858536422252655,
+      0.8585365414619446
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.004"
+  },
+  {
+    "position": [
+      2.242992639541626,
+      -13.725208282470703,
+      5.7789740562438965
+    ],
+    "rotation": [
+      0.3095642626285553,
+      0.4541666805744171,
+      -1.594592809677124
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.005"
+  },
+  {
+    "position": [
+      -1.777702808380127,
+      -13.823251724243164,
+      5.216297149658203
+    ],
+    "rotation": [
+      0.0884329304099083,
+      -0.17929226160049438,
+      1.7492238283157349
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.006"
+  },
+  {
+    "position": [
+      2.848383903503418,
+      -13.990362167358398,
+      5.896942138671875
+    ],
+    "rotation": [
+      0.3095642626285553,
+      0.4541666805744171,
+      -1.594592809677124
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.007"
+  },
+  {
+    "position": [
+      1.773785948753357,
+      -13.808502197265623,
+      5.540006160736084
+    ],
+    "rotation": [
+      0.46623125672340393,
+      0.1147983744740486,
+      -0.345136821269989
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.008"
+  },
+  {
+    "position": [
+      0.7396218776702881,
+      -7.1033430099487305,
+      4.9217658042907715
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.026877760887146,
+      1.026877760887146,
+      1.026877760887146
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.009"
+  },
+  {
+    "position": [
+      0.9110811352729796,
+      -7.314347267150879,
+      4.942466735839844
+    ],
+    "rotation": [
+      -0.2954152226448059,
+      -0.03613866493105888,
+      1.4718658924102783
+    ],
+    "scale": [
+      0.763862669467926,
+      0.7638626098632812,
+      0.7638625502586365
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.010"
+  },
+  {
+    "position": [
+      0.5552514791488647,
+      -3.686071157455444,
+      4.500551700592041
+    ],
+    "rotation": [
+      -0.17423315346240997,
+      -0.019425168633461,
+      1.689679503440857
+    ],
+    "scale": [
+      0.8585364818572998,
+      0.858536422252655,
+      0.8585365414619446
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.011"
+  },
+  {
+    "position": [
+      0.3005441427230835,
+      -3.6654787063598633,
+      4.500551700592041
+    ],
+    "rotation": [
+      -0.17423316836357117,
+      -0.019425168633461,
+      3.3899130821228027
+    ],
+    "scale": [
+      0.7838694453239441,
+      0.7838693857192993,
+      0.7838694453239441
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.012"
+  },
+  {
+    "position": [
+      1.39518404006958,
+      -3.30701208114624,
+      4.6345953941345215
+    ],
+    "rotation": [
+      -0.17423315346240997,
+      -0.019425168633461,
+      2.933351993560791
+    ],
+    "scale": [
+      0.7306872010231018,
+      0.7306872606277466,
+      0.7306872606277466
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.013"
+  },
+  {
+    "position": [
+      1.1243515014648438,
+      -3.259481430053711,
+      4.599631309509277
+    ],
+    "rotation": [
+      -0.17423318326473236,
+      -0.019425168633461,
+      4.6335859298706055
+    ],
+    "scale": [
+      0.6671393513679504,
+      0.6671391725540161,
+      0.6671392321586609
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.014"
+  },
+  {
+    "position": [
+      0.8874081373214722,
+      -6.786916255950928,
+      4.873157024383545
+    ],
+    "rotation": [
+      -0.17423315346240997,
+      -0.019425168633461,
+      3.720510482788086
+    ],
+    "scale": [
+      0.7306872010231018,
+      0.7306872606277466,
+      0.7306872606277466
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.015"
+  },
+  {
+    "position": [
+      0.6730160713195801,
+      -6.752025127410889,
+      4.82546329498291
+    ],
+    "rotation": [
+      -0.17423319816589355,
+      -0.019425168633461,
+      5.4207444190979
+    ],
+    "scale": [
+      0.6671393513679504,
+      0.6671391725540161,
+      0.6671392321586609
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.016"
+  },
+  {
+    "position": [
+      0.5930214524269104,
+      -6.23052978515625,
+      4.672972679138184
+    ],
+    "rotation": [
+      -0.20635712146759033,
+      0.00003121793270111084,
+      1.510351300239563
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.017"
+  },
+  {
+    "position": [
+      1.1995047330856323,
+      -5.806404113769531,
+      4.727761745452881
+    ],
+    "rotation": [
+      -0.4159678816795349,
+      0.00018424383597448468,
+      2.767512083053589
+    ],
+    "scale": [
+      0.9505536556243896,
+      0.9505535364151,
+      0.9505535364151
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.018"
+  },
+  {
+    "position": [
+      9.505586624145508,
+      -1.4739696979522705,
+      5.202061653137207
+    ],
+    "rotation": [
+      0.040997181087732315,
+      -0.00466837827116251,
+      -0.009361470118165016
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.019"
+  },
+  {
+    "position": [
+      9.55756664276123,
+      -1.6995084285736084,
+      5.221617221832275
+    ],
+    "rotation": [
+      0.01951643079519272,
+      -0.08747435361146927,
+      2.871312141418457
+    ],
+    "scale": [
+      0.8585364818572998,
+      0.858536422252655,
+      0.8585365414619446
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.020"
+  },
+  {
+    "position": [
+      9.382246017456056,
+      -1.7241371870040894,
+      5.183436870574951
+    ],
+    "rotation": [
+      0.41833341121673584,
+      0.20258168876171112,
+      4.496158599853516
+    ],
+    "scale": [
+      0.6541959643363953,
+      0.6541959047317505,
+      0.6541959047317505
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.021"
+  },
+  {
+    "position": [
+      10.71925163269043,
+      -2.400270938873291,
+      5.361332893371582
+    ],
+    "rotation": [
+      0.41833341121673584,
+      0.20258168876171112,
+      4.496158599853516
+    ],
+    "scale": [
+      0.6541959643363953,
+      0.6541959047317505,
+      0.6541959047317505
+    ],
+    "mesh_path": "meshes/flower_heliophila_medium_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_medium_LOD0.022"
+  },
+  {
+    "position": [
+      1.3229748010635376,
+      -49.05085372924805,
+      0.01868736743927002
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.001"
+  },
+  {
+    "position": [
+      1.2749619483947754,
+      -13.62834358215332,
+      5.569600582122803
+    ],
+    "rotation": [
+      0.37244856357574463,
+      -0.2596641182899475,
+      -0.10550133138895036
+    ],
+    "scale": [
+      1.3302819728851318,
+      1.3302819728851318,
+      1.3302819728851318
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.002"
+  },
+  {
+    "position": [
+      1.6716985702514648,
+      -13.14394760131836,
+      5.651689052581787
+    ],
+    "rotation": [
+      -0.7105567455291748,
+      -0.4005967676639557,
+      2.0485453605651855
+    ],
+    "scale": [
+      1.3302819728851318,
+      1.3302819728851318,
+      1.3302819728851318
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.003"
+  },
+  {
+    "position": [
+      3.523658990859986,
+      -14.454374313354492,
+      5.993436336517334
+    ],
+    "rotation": [
+      0.66290283203125,
+      -0.22696207463741305,
+      -0.011679833754897118
+    ],
+    "scale": [
+      1.3302819728851318,
+      1.3302819728851318,
+      1.3302819728851318
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.004"
+  },
+  {
+    "position": [
+      2.947521686553955,
+      -14.111654281616213,
+      5.904698848724365
+    ],
+    "rotation": [
+      0.4441637098789215,
+      -0.6935368776321411,
+      0.7297437191009521
+    ],
+    "scale": [
+      1.583569049835205,
+      1.5835692882537842,
+      1.5835692882537842
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.005"
+  },
+  {
+    "position": [
+      3.4167351722717285,
+      -14.449366569519045,
+      5.979305267333984
+    ],
+    "rotation": [
+      0.4441637098789215,
+      -0.6935368776321411,
+      0.7297437191009521
+    ],
+    "scale": [
+      1.583569049835205,
+      1.5835692882537842,
+      1.5835692882537842
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.006"
+  },
+  {
+    "position": [
+      1.8753079175949097,
+      -13.786983489990234,
+      5.615971088409424
+    ],
+    "rotation": [
+      0.37244856357574463,
+      -0.2596641182899475,
+      -0.10550133138895036
+    ],
+    "scale": [
+      1.3302819728851318,
+      1.3302819728851318,
+      1.3302819728851318
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.007"
+  },
+  {
+    "position": [
+      -1.736566185951233,
+      -13.891361236572266,
+      5.03195333480835
+    ],
+    "rotation": [
+      0.48318517208099365,
+      -0.8829484581947327,
+      1.6034830808639526
+    ],
+    "scale": [
+      1.3302819728851318,
+      1.3302819728851318,
+      1.3302819728851318
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.008"
+  },
+  {
+    "position": [
+      0.27780774235725403,
+      -13.928186416625977,
+      4.816819190979004
+    ],
+    "rotation": [
+      1.0491725206375122,
+      -0.3905302584171295,
+      -0.04052511975169182
+    ],
+    "scale": [
+      1.5266752243041992,
+      1.5266751050949097,
+      1.5266752243041992
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.009"
+  },
+  {
+    "position": [
+      0.323911190032959,
+      -13.949089050292969,
+      4.79703950881958
+    ],
+    "rotation": [
+      -0.01455159205943346,
+      -1.0325151681900024,
+      2.0240190029144287
+    ],
+    "scale": [
+      1.5266752243041992,
+      1.5266751050949097,
+      1.5266752243041992
+    ],
+    "mesh_path": "meshes/flower_heliophila_small_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_heliophila_small_LOD0.010"
+  },
+  {
+    "position": [
+      3.0750513076782227,
+      -44.14619445800781,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_a_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_a_LOD1.001"
+  },
+  {
+    "position": [
+      4.441995143890381,
+      -44.19536590576172,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_a_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_a_LOD1.002"
+  },
+  {
+    "position": [
+      2.962638139724731,
+      -44.71153259277344,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_a_LOD2.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_a_LOD2.001"
+  },
+  {
+    "position": [
+      3.977187395095825,
+      -44.74431228637695,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_a_LOD2.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_a_LOD2.002"
+  },
+  {
+    "position": [
+      3.6200754642486577,
+      -44.14619445800781,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_b_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_b_LOD1.001"
+  },
+  {
+    "position": [
+      4.987019062042236,
+      -44.19536590576172,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_b_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_b_LOD1.002"
+  },
+  {
+    "position": [
+      3.507662296295166,
+      -44.71153259277344,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_b_LOD2.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_b_LOD2.001"
+  },
+  {
+    "position": [
+      4.559089660644531,
+      -44.74431228637695,
+      0.007175058126449585
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_b_LOD2.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_b_LOD2.002"
+  },
+  {
+    "position": [
+      4.039007663726807,
+      -44.14582824707031,
+      0.007477423641830683
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_c_LOD1.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_c_LOD1.001"
+  },
+  {
+    "position": [
+      0.3272557258605957,
+      -43.50155258178711,
+      0.007477423641830683
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_c_LOD2.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_c_LOD2.001"
+  },
+  {
+    "position": [
+      0.7443488836288452,
+      -43.49178695678711,
+      0.005103756673634052
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_stinkkruid_d_LOD2.001.glb",
+    "category": "vegetation",
+    "name": "flower_stinkkruid_d_LOD2.001"
+  },
+  {
+    "position": [
+      -1.6593260765075684,
+      -43.97202682495117,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_a_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_a_LOD0.001"
+  },
+  {
+    "position": [
+      -2.238584518432617,
+      -43.97202682495117,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_a_LOD0.002.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_a_LOD0.002"
+  },
+  {
+    "position": [
+      -1.740054726600647,
+      -44.61101913452149,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_a_LOD2.001.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_a_LOD2.001"
+  },
+  {
+    "position": [
+      -2.242967128753662,
+      -44.61101913452149,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_a_LOD2.002.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_a_LOD2.002"
+  },
+  {
+    "position": [
+      -1.7599977254867554,
+      -45.315670013427734,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_a_LOD2.003.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_a_LOD2.003"
+  },
+  {
+    "position": [
+      -2.2629098892211914,
+      -45.315670013427734,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_a_LOD2.004.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_a_LOD2.004"
+  },
+  {
+    "position": [
+      -1.0958356857299805,
+      -43.97202682495117,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_b_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_b_LOD0.001"
+  },
+  {
+    "position": [
+      -1.176564335823059,
+      -44.61101913452149,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_b_LOD2.001.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_b_LOD2.001"
+  },
+  {
+    "position": [
+      -1.196507215499878,
+      -45.315670013427734,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_b_LOD2.002.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_b_LOD2.002"
+  },
+  {
+    "position": [
+      -0.6449459791183472,
+      -43.97202682495117,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_c_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_c_LOD0.001"
+  },
+  {
+    "position": [
+      -0.7256746292114258,
+      -44.61101913452149,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_c_LOD2.001.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_c_LOD2.001"
+  },
+  {
+    "position": [
+      -0.7456175684928894,
+      -45.315670013427734,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_c_LOD2.002.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_c_LOD2.002"
+  },
+  {
+    "position": [
+      -0.3605315089225769,
+      -43.5194206237793,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_d_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_d_LOD0.001"
+  },
+  {
+    "position": [
+      0.01829010434448719,
+      -43.5194206237793,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/flower_ursinia_e_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "flower_ursinia_e_LOD0.001"
+  },
+  {
+    "position": [
+      -0.21322156488895416,
+      14.524348258972168,
+      5.538200378417969
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/fog_cube.glb",
+    "category": "prop",
+    "name": "fog_cube"
+  },
+  {
+    "position": [
+      2.2385363578796387,
+      -39.54724884033203,
+      5.783834457397461
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      0.5173474550247192,
+      0.5173474550247192,
+      0.5173474550247192
+    ],
+    "mesh_path": "meshes/gradient.glb",
+    "category": "prop",
+    "name": "gradient"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/ground_plane_foreground.glb",
+    "category": "rock",
+    "name": "ground_plane_foreground"
+  },
+  {
+    "position": [
+      2.615367889404297,
+      0.24606439471244812,
+      6.001200199127197
+    ],
+    "rotation": [
+      0.13696886599063873,
+      -0.6274541020393372,
+      -0.8643537759780884
+    ],
+    "scale": [
+      0.24560198187828064,
+      0.24560195207595825,
+      0.24560196697711945
+    ],
+    "mesh_path": "meshes/monster.glb",
+    "category": "prop",
+    "name": "monster"
+  },
+  {
+    "position": [
+      2.48191499710083,
+      -0.6700363159179688,
+      4.486612796783447
+    ],
+    "rotation": [
+      -0.02526351623237133,
+      0.006867014337331057,
+      -0.00008674515993334353
+    ],
+    "scale": [
+      1.2845221757888794,
+      1.2845221757888794,
+      1.2845221757888794
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.001"
+  },
+  {
+    "position": [
+      8.681105613708496,
+      -43.07624816894531,
+      0.013250082731246948
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.2845221757888794,
+      1.2845221757888794,
+      1.2845221757888794
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.002"
+  },
+  {
+    "position": [
+      15.747990608215332,
+      2.6526472568511963,
+      7.69166374206543
+    ],
+    "rotation": [
+      -0.2853701412677765,
+      0.07937502861022949,
+      2.6879658699035645
+    ],
+    "scale": [
+      1.1508187055587769,
+      1.1508187055587769,
+      1.1508187055587769
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.003"
+  },
+  {
+    "position": [
+      18.465566635131836,
+      1.7477712631225586,
+      8.434144020080566
+    ],
+    "rotation": [
+      0.5791261792182922,
+      0.16723661124706268,
+      5.871950626373291
+    ],
+    "scale": [
+      1.272563099861145,
+      1.2725632190704346,
+      1.272563099861145
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.004"
+  },
+  {
+    "position": [
+      5.070667266845703,
+      11.21234130859375,
+      5.41491174697876
+    ],
+    "rotation": [
+      0.15464845299720764,
+      0.1244698315858841,
+      -0.5078999400138855
+    ],
+    "scale": [
+      1.083313226699829,
+      1.083313226699829,
+      1.083313226699829
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.005"
+  },
+  {
+    "position": [
+      4.7119460105896,
+      10.258326530456545,
+      5.155961036682129
+    ],
+    "rotation": [
+      -0.6659889817237854,
+      -0.298315167427063,
+      -3.9117255210876465
+    ],
+    "scale": [
+      0.6971321702003479,
+      0.6971322298049927,
+      0.6971322894096375
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.006"
+  },
+  {
+    "position": [
+      8.81344985961914,
+      7.610426425933838,
+      5.4310078620910645
+    ],
+    "rotation": [
+      0.24547092616558075,
+      -0.09852052479982376,
+      -5.632375240325928
+    ],
+    "scale": [
+      1.0251623392105105,
+      1.0251624584197998,
+      1.0251625776290894
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.007"
+  },
+  {
+    "position": [
+      3.140537738800049,
+      11.026752471923828,
+      5.484426021575928
+    ],
+    "rotation": [
+      0.29303184151649475,
+      -0.12047640979290009,
+      -6.216670989990234
+    ],
+    "scale": [
+      0.6971321702003479,
+      0.6971322298049927,
+      0.6971322894096375
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.008"
+  },
+  {
+    "position": [
+      18.06292724609375,
+      -1.2363277673721311,
+      5.77752685546875
+    ],
+    "rotation": [
+      0.04872487857937813,
+      0.11207856982946396,
+      8.724958419799805
+    ],
+    "scale": [
+      1.272563099861145,
+      1.2725632190704346,
+      1.272563099861145
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.009"
+  },
+  {
+    "position": [
+      13.094141960144045,
+      2.7774291038513184,
+      7.266900062561035
+    ],
+    "rotation": [
+      0.0004801847680937499,
+      0.36986470222473145,
+      9.297406196594238
+    ],
+    "scale": [
+      1.272563099861145,
+      1.2725632190704346,
+      1.272563099861145
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.010"
+  },
+  {
+    "position": [
+      -2.953993082046509,
+      -13.64852237701416,
+      5.288222312927246
+    ],
+    "rotation": [
+      -0.6362161040306091,
+      -0.14529211819171906,
+      3.183990478515625
+    ],
+    "scale": [
+      0.9129361510276794,
+      0.9129361510276794,
+      0.9129362106323242
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_02_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_02_LOD0.011"
+  },
+  {
+    "position": [
+      2.6919479370117188,
+      -12.517213821411133,
+      5.647627830505371
+    ],
+    "rotation": [
+      0.3751777708530426,
+      -0.1067364290356636,
+      -0.6139094829559326
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_03_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_03_LOD0.001"
+  },
+  {
+    "position": [
+      3.505718469619751,
+      -35.150447845458984,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_03_LOD0.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_03_LOD0.002"
+  },
+  {
+    "position": [
+      3.318887233734131,
+      -12.318839073181152,
+      5.7710280418396
+    ],
+    "rotation": [
+      0.0910518914461136,
+      -0.1281149536371231,
+      1.5455690622329712
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_03_LOD0.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_03_LOD0.003"
+  },
+  {
+    "position": [
+      -5.726484775543213,
+      -14.889266967773438,
+      1.5553141832351685
+    ],
+    "rotation": [
+      0.07033519446849823,
+      -0.19011881947517395,
+      2.289226531982422
+    ],
+    "scale": [
+      0.8625205755233765,
+      0.8625205755233765,
+      0.8625205755233765
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_03_LOD0.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_03_LOD0.004"
+  },
+  {
+    "position": [
+      3.699671506881714,
+      -13.550884246826172,
+      5.588651657104492
+    ],
+    "rotation": [
+      3.2073419094085693,
+      0.1565110981464386,
+      4.422754287719727
+    ],
+    "scale": [
+      1.24086594581604,
+      1.2422850131988523,
+      1.0616483688354492
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_03_LOD0.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_03_LOD0.005"
+  },
+  {
+    "position": [
+      4.2180399894714355,
+      -13.357258796691896,
+      6.158203601837158
+    ],
+    "rotation": [
+      3.81216025352478,
+      0.3813233971595764,
+      3.6504201889038086
+    ],
+    "scale": [
+      0.754604160785675,
+      0.7554670572280884,
+      0.6456171870231628
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_03_LOD0.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_03_LOD0.006"
+  },
+  {
+    "position": [
+      16.68747901916504,
+      -35.29629135131836,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_03_LOD3.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_03_LOD3.002"
+  },
+  {
+    "position": [
+      3.505718469619751,
+      -35.150447845458984,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_03_proxy.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_03_proxy"
+  },
+  {
+    "position": [
+      6.759507656097412,
+      -35.106414794921875,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_04_LOD0.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_04_LOD0.002"
+  },
+  {
+    "position": [
+      19.875877380371097,
+      -35.05268859863281,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_04_LOD3.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_04_LOD3.002"
+  },
+  {
+    "position": [
+      6.759507656097412,
+      -35.106414794921875,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_04_proxy.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_04_proxy"
+  },
+  {
+    "position": [
+      -1.766676902770996,
+      -35.2666015625,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_05_LOD0.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_05_LOD0.002"
+  },
+  {
+    "position": [
+      14.677440643310549,
+      -35.25343322753906,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_05_LOD2.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_05_LOD2.002"
+  },
+  {
+    "position": [
+      -1.766676902770996,
+      -35.2666015625,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_05_proxy.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_05_proxy"
+  },
+  {
+    "position": [
+      -2.484686851501465,
+      -12.854525566101074,
+      5.09979248046875
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      1.6011040210723877
+    ],
+    "scale": [
+      0.855025589466095,
+      0.855025589466095,
+      0.855025589466095
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_06_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_06_LOD0.001"
+  },
+  {
+    "position": [
+      0.7765204906463623,
+      -35.40819549560547,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_06_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_06_LOD0.002"
+  },
+  {
+    "position": [
+      -1.552332639694214,
+      -11.744542121887209,
+      4.9423699378967285
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      2.4694128036499023
+    ],
+    "scale": [
+      0.608907163143158,
+      0.608907163143158,
+      0.608907163143158
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_06_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_06_LOD0.003"
+  },
+  {
+    "position": [
+      6.217708587646484,
+      -14.721610069274902,
+      5.58758020401001
+    ],
+    "rotation": [
+      0.5944218039512634,
+      1.4028514623641968,
+      2.4282352924346924
+    ],
+    "scale": [
+      0.855025589466095,
+      0.855025589466095,
+      0.855025589466095
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_06_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_06_LOD0.004"
+  },
+  {
+    "position": [
+      -1.3556865453720093,
+      -13.372331619262695,
+      5.0699286460876465
+    ],
+    "rotation": [
+      -1.9738363027572632,
+      -1.4151359796524048,
+      3.08622670173645
+    ],
+    "scale": [
+      0.660837709903717,
+      0.660837709903717,
+      0.660837709903717
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_06_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_06_LOD0.005"
+  },
+  {
+    "position": [
+      -1.9380887746810913,
+      -6.363828182220459,
+      4.565515041351318
+    ],
+    "rotation": [
+      -0.22314344346523285,
+      0.14854300022125244,
+      -1.1160001754760742
+    ],
+    "scale": [
+      0.5428585410118103,
+      0.5428584814071655,
+      0.5428585410118103
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_06_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_06_LOD0.006"
+  },
+  {
+    "position": [
+      13.15475845336914,
+      -35.145381927490234,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_06_LOD3.002.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_06_LOD3.002"
+  },
+  {
+    "position": [
+      0.7765204906463623,
+      -35.40819549560547,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulder_06_proxy.glb",
+    "category": "rock",
+    "name": "namaqualand_boulder_06_proxy"
+  },
+  {
+    "position": [
+      5.423061847686768,
+      -41.88607025146485,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulders_01_a_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulders_01_a_LOD0.001"
+  },
+  {
+    "position": [
+      11.397390365600586,
+      -34.47439193725586,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulders_01_a_LOD3.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulders_01_a_LOD3.001"
+  },
+  {
+    "position": [
+      5.030816555023193,
+      -38.75983428955078,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulders_01_b_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulders_01_b_LOD0.001"
+  },
+  {
+    "position": [
+      9.920740127563477,
+      -34.59205627441406,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_boulders_01_b_LOD3.001.glb",
+    "category": "rock",
+    "name": "namaqualand_boulders_01_b_LOD3.001"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_cliff_01_LOD0.glb",
+    "category": "rock",
+    "name": "namaqualand_cliff_01_LOD0"
+  },
+  {
+    "position": [
+      20.606313705444336,
+      -0.7515624165534973,
+      6.018052577972412
+    ],
+    "rotation": [
+      -0.1357308030128479,
+      0.003748789429664612,
+      -0.4417656064033508
+    ],
+    "scale": [
+      0.6044926047325134,
+      0.6044926047325134,
+      0.6044926643371582
+    ],
+    "mesh_path": "meshes/namaqualand_cliff_01_LOD0.glb",
+    "category": "rock",
+    "name": "namaqualand_cliff_01_LOD0.002"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_cliff_02_LOD0.glb",
+    "category": "rock",
+    "name": "namaqualand_cliff_02_LOD0"
+  },
+  {
+    "position": [
+      15.41521167755127,
+      0.2913559675216675,
+      5.475885391235352
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      -0.2811632454395294
+    ],
+    "scale": [
+      0.40313997864723206,
+      0.40313997864723206,
+      0.4031400084495544
+    ],
+    "mesh_path": "meshes/namaqualand_cliff_02_LOD0.glb",
+    "category": "rock",
+    "name": "namaqualand_cliff_02_LOD0.002"
+  },
+  {
+    "position": [
+      3.775930643081665,
+      -43.30720520019531,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.950350046157837,
+      1.950350046157837,
+      1.950350046157837
+    ],
+    "mesh_path": "meshes/namaqualand_rocks_01_a_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_rocks_01_a_LOD0.001"
+  },
+  {
+    "position": [
+      0.23162859678268433,
+      -42.76181411743164,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_rocks_01_a_LOD3.002.glb",
+    "category": "rock",
+    "name": "namaqualand_rocks_01_a_LOD3.002"
+  },
+  {
+    "position": [
+      3.77785062789917,
+      -38.85707473754883,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_rocks_01_b_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_rocks_01_b_LOD0.001"
+  },
+  {
+    "position": [
+      9.924717903137209,
+      -36.06657028198242,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_rocks_01_b_LOD3.002.glb",
+    "category": "rock",
+    "name": "namaqualand_rocks_01_b_LOD3.002"
+  },
+  {
+    "position": [
+      4.443820953369141,
+      -43.28662109375,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.950350046157837,
+      1.950350046157837,
+      1.950350046157837
+    ],
+    "mesh_path": "meshes/namaqualand_rocks_01_c_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_rocks_01_c_LOD0.001"
+  },
+  {
+    "position": [
+      2.3036019802093506,
+      -42.759029388427734,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_rocks_01_c_LOD3.002.glb",
+    "category": "rock",
+    "name": "namaqualand_rocks_01_c_LOD3.002"
+  },
+  {
+    "position": [
+      4.411136150360107,
+      -38.73356628417969,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_rocks_01_d_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_rocks_01_d_LOD0.001"
+  },
+  {
+    "position": [
+      11.637100219726562,
+      -36.06291198730469,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_rocks_01_d_LOD3.002.glb",
+    "category": "rock",
+    "name": "namaqualand_rocks_01_d_LOD3.002"
+  },
+  {
+    "position": [
+      3.370983600616455,
+      -42.74302673339844,
+      0.043671365827322006
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      2.8045973777770996,
+      2.8045973777770996,
+      2.8045973777770996
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_a_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_a_LOD0.001"
+  },
+  {
+    "position": [
+      -0.5158571004867554,
+      -42.70888137817383,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_a_LOD3.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_a_LOD3.001"
+  },
+  {
+    "position": [
+      5.644130706787109,
+      -38.724090576171875,
+      0.10807313024997713
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_b_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_b_LOD0.001"
+  },
+  {
+    "position": [
+      10.065803527832031,
+      -37.27077102661133,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_b_LOD3.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_b_LOD3.001"
+  },
+  {
+    "position": [
+      3.222330093383789,
+      -38.836395263671875,
+      0.05295184254646301
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_c_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_c_LOD0.001"
+  },
+  {
+    "position": [
+      11.54962158203125,
+      -37.25447463989258,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_c_LOD3.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_c_LOD3.001"
+  },
+  {
+    "position": [
+      3.991824150085449,
+      -42.71880340576172,
+      0.04775416851043701
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      2.8045973777770996,
+      2.8045973777770996,
+      2.8045973777770996
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_d_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_d_LOD0.001"
+  },
+  {
+    "position": [
+      0.9253573417663574,
+      -42.86397933959961,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_d_LOD3.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_d_LOD3.001"
+  },
+  {
+    "position": [
+      4.6466965675354,
+      -42.723297119140625,
+      0.09391266107559204
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      2.8045973777770996,
+      2.8045973777770996,
+      2.8045973777770996
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_e_LOD0.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_e_LOD0.001"
+  },
+  {
+    "position": [
+      1.5126073360443115,
+      -42.85581970214844,
+      0.44484901428222656
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/namaqualand_stones_01_e_LOD3.001.glb",
+    "category": "rock",
+    "name": "namaqualand_stones_01_e_LOD3.001"
+  },
+  {
+    "position": [
+      1.7229743003845217,
+      -46.49015045166016,
+      0.009336963295936584
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_a_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "othonna_cerarioides_a_LOD0.001"
+  },
+  {
+    "position": [
+      3.943797826766968,
+      -6.335191249847412,
+      5.118469715118408
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      0.8207346796989441,
+      0.8207346796989441,
+      0.8207346796989441
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_a_LOD0.002"
+  },
+  {
+    "position": [
+      0.22297430038452148,
+      -46.49015045166016,
+      0.009336963295936584
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_b_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "othonna_cerarioides_b_LOD0.001"
+  },
+  {
+    "position": [
+      3.5543549060821533,
+      -5.79718542098999,
+      5.101043701171875
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_b_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_b_LOD0.002"
+  },
+  {
+    "position": [
+      2.4894182682037354,
+      -1.5372047424316406,
+      4.646286487579346
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      1.7823258638381958
+    ],
+    "scale": [
+      0.6274333596229553,
+      0.6274333596229553,
+      0.6274333000183105
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_b_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_b_LOD0.003"
+  },
+  {
+    "position": [
+      1.279394268989563,
+      21.94403076171875,
+      5.138401985168457
+    ],
+    "rotation": [
+      -0.13234557211399078,
+      -0.4518986642360687,
+      1.709943413734436
+    ],
+    "scale": [
+      0.6274333596229553,
+      0.6274333596229553,
+      0.6274333000183105
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_b_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_b_LOD0.004"
+  },
+  {
+    "position": [
+      0.4154127240180969,
+      -14.129764556884766,
+      4.451894760131836
+    ],
+    "rotation": [
+      0.06382304430007935,
+      -0.38408201932907104,
+      1.272533893585205
+    ],
+    "scale": [
+      0.4423885345458984,
+      0.4423885643482208,
+      0.4423885941505432
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_b_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_b_LOD0.005"
+  },
+  {
+    "position": [
+      -1.2770256996154783,
+      -46.49015045166016,
+      0.009336963295936584
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_c_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "othonna_cerarioides_c_LOD0.001"
+  },
+  {
+    "position": [
+      0.7354921698570251,
+      -14.033735275268556,
+      4.6071248054504395
+    ],
+    "rotation": [
+      0.524721086025238,
+      -0.09659082442522048,
+      0.18669365346431732
+    ],
+    "scale": [
+      0.6383647322654724,
+      0.6383647322654724,
+      0.6383647322654724
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_c_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_c_LOD0.002"
+  },
+  {
+    "position": [
+      1.7229743003845217,
+      -47.49015045166016,
+      0.009336963295936584
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_d_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "othonna_cerarioides_d_LOD0.001"
+  },
+  {
+    "position": [
+      0.5596222281455994,
+      -1.217024564743042,
+      4.615077972412109
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_d_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_d_LOD0.002"
+  },
+  {
+    "position": [
+      -2.661099910736084,
+      -13.914716720581056,
+      4.937578201293945
+    ],
+    "rotation": [
+      0.4541049599647522,
+      -0.08515897393226624,
+      -0.0784817487001419
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_d_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_d_LOD0.003"
+  },
+  {
+    "position": [
+      0.7229743003845215,
+      -47.49015045166016,
+      0.009336963295936584
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_e_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "othonna_cerarioides_e_LOD0.001"
+  },
+  {
+    "position": [
+      0.7801733016967773,
+      -1.366779327392578,
+      4.603483200073242
+    ],
+    "rotation": [
+      0.2407061755657196,
+      -0.27703365683555603,
+      0.0467863567173481
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_e_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_e_LOD0.002"
+  },
+  {
+    "position": [
+      -2.7480545043945312,
+      -13.679064750671388,
+      5.5705976486206055
+    ],
+    "rotation": [
+      -0.0624227374792099,
+      -0.1997978836297989,
+      1.8473763465881348
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_e_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_e_LOD0.003"
+  },
+  {
+    "position": [
+      -0.2770256996154785,
+      -47.49015045166016,
+      0.009336963295936584
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_f_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "othonna_cerarioides_f_LOD0.001"
+  },
+  {
+    "position": [
+      -0.6502846479415894,
+      -13.960708618164062,
+      4.946157932281494
+    ],
+    "rotation": [
+      0.45656853914260864,
+      0.011516782455146313,
+      -0.14973029494285583
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_f_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_f_LOD0.002"
+  },
+  {
+    "position": [
+      1.5600074529647827,
+      -14.013191223144531,
+      4.996604919433594
+    ],
+    "rotation": [
+      0.45656853914260864,
+      0.011516782455146313,
+      -0.14973029494285583
+    ],
+    "scale": [
+      1.376273512840271,
+      1.3762733936309814,
+      1.3762733936309814
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_f_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_f_LOD0.003"
+  },
+  {
+    "position": [
+      -1.2770256996154783,
+      -47.49015045166016,
+      0.009336963295936584
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_g_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "othonna_cerarioides_g_LOD0.001"
+  },
+  {
+    "position": [
+      -0.48003432154655457,
+      -13.82277774810791,
+      5.113302230834961
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      -0.948997676372528
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_g_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_g_LOD0.002"
+  },
+  {
+    "position": [
+      1.34758460521698,
+      -10.450406074523926,
+      5.344844818115234
+    ],
+    "rotation": [
+      0.09939061850309372,
+      0.01723206415772438,
+      -1.0169113874435425
+    ],
+    "scale": [
+      1.170090675354004,
+      1.170090675354004,
+      1.170090675354004
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_g_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_g_LOD0.003"
+  },
+  {
+    "position": [
+      1.89346444606781,
+      -14.055087089538574,
+      4.96272611618042
+    ],
+    "rotation": [
+      0.3164079189300537,
+      0.04976693540811539,
+      -0.9238741993904114
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_g_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_g_LOD0.004"
+  },
+  {
+    "position": [
+      2.4891796112060547,
+      -14.148788452148438,
+      5.024324417114258
+    ],
+    "rotation": [
+      0.11650940030813216,
+      -0.02859107404947281,
+      -0.29748332500457764
+    ],
+    "scale": [
+      1.3660485744476318,
+      1.3660485744476318,
+      1.3660485744476318
+    ],
+    "mesh_path": "meshes/othonna_cerarioides_g_LOD0.001.glb",
+    "category": "prop",
+    "name": "othonna_cerarioides_g_LOD0.005"
+  },
+  {
+    "position": [
+      -0.0878627598285675,
+      -0.025612596422433853,
+      -0.2005305141210556
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/particle_01.glb",
+    "category": "prop",
+    "name": "particle_01"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      -0.3037933111190796
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/particle_02.glb",
+    "category": "prop",
+    "name": "particle_02"
+  },
+  {
+    "position": [
+      -0.027771973982453343,
+      -0.011565296910703182,
+      -0.2693334221839905
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/particle_03.glb",
+    "category": "prop",
+    "name": "particle_03"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      -0.3037933111190796
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/particle_04.glb",
+    "category": "prop",
+    "name": "particle_04"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      -0.3037933111190796
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/particle_05.glb",
+    "category": "prop",
+    "name": "particle_05"
+  },
+  {
+    "position": [
+      0.01365962065756321,
+      -7.400918483734131,
+      4.847940444946289
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/path_sand.glb",
+    "category": "prop",
+    "name": "path_sand"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD0.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD0"
+  },
+  {
+    "position": [
+      9.406723976135254,
+      -3.0612597465515137,
+      4.5203399658203125
+    ],
+    "rotation": [
+      -0.09216282516717912,
+      0.22393111884593964,
+      -1.4259033203125
+    ],
+    "scale": [
+      0.692592203617096,
+      0.692592203617096,
+      0.692592203617096
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD0.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD0.001"
+  },
+  {
+    "position": [
+      9.878474235534668,
+      -2.881325006484986,
+      4.329873561859131
+    ],
+    "rotation": [
+      -0.4420735836029053,
+      -0.24988435208797455,
+      1.5351346731185913
+    ],
+    "scale": [
+      0.6925922632217407,
+      0.692592203617096,
+      0.692592203617096
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD0.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD0.002"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD3.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD3"
+  },
+  {
+    "position": [
+      4.162259101867676,
+      10.904170036315918,
+      5.407581329345703
+    ],
+    "rotation": [
+      0.006108132656663656,
+      0.1645658165216446,
+      -0.028755486011505127
+    ],
+    "scale": [
+      0.8235570788383484,
+      0.8235570788383484,
+      0.8235570788383484
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD3.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD3.009"
+  },
+  {
+    "position": [
+      4.360012531280518,
+      11.424199104309082,
+      4.756999969482422
+    ],
+    "rotation": [
+      -0.7436351776123047,
+      0.17732968926429749,
+      2.805194139480591
+    ],
+    "scale": [
+      0.8235570788383484,
+      0.8235570788383484,
+      0.8235570192337036
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD3.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD3.010"
+  },
+  {
+    "position": [
+      4.350570201873779,
+      11.234722137451172,
+      5.105295181274414
+    ],
+    "rotation": [
+      0.27652764320373535,
+      0.43391135334968567,
+      -0.8878447413444519
+    ],
+    "scale": [
+      0.8235570788383484,
+      0.8235570192337036,
+      0.8235570192337036
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD3.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD3.011"
+  },
+  {
+    "position": [
+      4.135883331298828,
+      11.27298069000244,
+      4.809713840484619
+    ],
+    "rotation": [
+      -0.43819624185562134,
+      -0.2693956196308136,
+      2.714221715927124
+    ],
+    "scale": [
+      0.7049537301063538,
+      0.704953670501709,
+      0.704953670501709
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD3.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD3.012"
+  },
+  {
+    "position": [
+      -6.5851054191589355,
+      3.829942464828491,
+      5.438252925872803
+    ],
+    "rotation": [
+      -0.01928243413567543,
+      0.01754370704293251,
+      2.439817190170288
+    ],
+    "scale": [
+      0.8235570788383484,
+      0.8235570192337036,
+      0.8235571384429932
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD3.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD3.013"
+  },
+  {
+    "position": [
+      13.647022247314451,
+      23.05284118652344,
+      8.161020278930664
+    ],
+    "rotation": [
+      -0.045087896287441254,
+      -0.08227871358394623,
+      0.5173766613006592
+    ],
+    "scale": [
+      0.9932168126106262,
+      0.9932166934013368,
+      0.9932168126106262
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD3.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD3.014"
+  },
+  {
+    "position": [
+      13.648125648498535,
+      23.089141845703125,
+      7.045204162597656
+    ],
+    "rotation": [
+      -0.28050950169563293,
+      -0.07328793406486511,
+      2.256606340408325
+    ],
+    "scale": [
+      0.9932166934013368,
+      0.9932166934013368,
+      0.9932166934013368
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD3.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD3.015"
+  },
+  {
+    "position": [
+      14.037656784057615,
+      23.024070739746097,
+      7.343054294586182
+    ],
+    "rotation": [
+      -0.42901936173439026,
+      0.12415537983179092,
+      1.829054594039917
+    ],
+    "scale": [
+      1.165350317955017,
+      1.165350317955017,
+      1.1653501987457275
+    ],
+    "mesh_path": "meshes/quiver_tree_01_LOD3.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_01_LOD3.016"
+  },
+  {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/quiver_tree_02_LOD0.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_02_LOD0"
+  },
+  {
+    "position": [
+      2.4037108421325684,
+      0.2880706787109375,
+      4.430421352386475
+    ],
+    "rotation": [
+      0.00630025751888752,
+      0.06544942408800125,
+      0.36773085594177246
+    ],
+    "scale": [
+      1.25799298286438,
+      1.2579928636550903,
+      1.2579928636550903
+    ],
+    "mesh_path": "meshes/quiver_tree_02_LOD0.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_02_LOD0.003"
+  },
+  {
+    "position": [
+      2.3963687419891357,
+      0.5189628601074219,
+      4.339873790740967
+    ],
+    "rotation": [
+      -0.4443117380142212,
+      0.09857764095067978,
+      1.7261122465133667
+    ],
+    "scale": [
+      1.0713320970535278,
+      1.0713320970535278,
+      1.0713320970535278
+    ],
+    "mesh_path": "meshes/quiver_tree_02_LOD0.glb",
+    "category": "vegetation",
+    "name": "quiver_tree_02_LOD0.004"
+  },
+  {
+    "position": [
+      -3.797602653503418,
+      -43.856170654296875,
+      -0.00918811559677124
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "searsia_lucida_a_LOD0.001"
+  },
+  {
+    "position": [
+      -2.617798328399658,
+      -7.618340969085693,
+      4.5082173347473145
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.002.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.002"
+  },
+  {
+    "position": [
+      3.2846615314483643,
+      -13.57891845703125,
+      6.047816276550293
+    ],
+    "rotation": [
+      0.4670153260231018,
+      -0.08210202306509018,
+      -0.02787587977945805
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.003"
+  },
+  {
+    "position": [
+      1.3602105379104614,
+      22.32490921020508,
+      5.2397541999816895
+    ],
+    "rotation": [
+      0.49321597814559937,
+      0.15841849148273468,
+      0.07509957998991013
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.004"
+  },
+  {
+    "position": [
+      6.0919108390808105,
+      -7.483712196350098,
+      5.610571384429932
+    ],
+    "rotation": [
+      0.1261342614889145,
+      -0.16839633882045746,
+      -0.0015022968873381617
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.005"
+  },
+  {
+    "position": [
+      8.946308135986328,
+      17.84577178955078,
+      5.889928340911865
+    ],
+    "rotation": [
+      -0.4311716854572296,
+      0.2928997874259949,
+      -2.2205424308776855
+    ],
+    "scale": [
+      0.7890693545341492,
+      0.7890693545341492,
+      0.7890693545341492
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.006"
+  },
+  {
+    "position": [
+      9.270246505737305,
+      17.616230010986328,
+      5.890320777893066
+    ],
+    "rotation": [
+      0.0005384599789977074,
+      0.672480046749115,
+      -0.9573100805282592
+    ],
+    "scale": [
+      0.5661454200744629,
+      0.5661454200744629,
+      0.5661454200744629
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.007"
+  },
+  {
+    "position": [
+      6.087414741516113,
+      -7.969761371612549,
+      5.328716278076172
+    ],
+    "rotation": [
+      -0.736681342124939,
+      -0.24362605810165405,
+      1.89076828956604
+    ],
+    "scale": [
+      0.864374577999115,
+      0.8643746376037598,
+      0.864374577999115
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.008"
+  },
+  {
+    "position": [
+      14.730635643005373,
+      23.67992401123047,
+      7.761284828186035
+    ],
+    "rotation": [
+      -0.10460813343524931,
+      -0.24860280752182007,
+      0.7451092600822449
+    ],
+    "scale": [
+      0.8530830144882202,
+      0.8530830144882202,
+      0.853083074092865
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.009"
+  },
+  {
+    "position": [
+      15.44802474975586,
+      22.83207893371582,
+      7.462810039520264
+    ],
+    "rotation": [
+      0.1261342614889145,
+      -0.16839632391929626,
+      1.7137033939361572
+    ],
+    "scale": [
+      0.7039116024971008,
+      0.7039116621017456,
+      0.7039116621017456
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.010"
+  },
+  {
+    "position": [
+      22.95315933227539,
+      22.412336349487305,
+      8.580227851867676
+    ],
+    "rotation": [
+      -0.3540706932544708,
+      -0.3512217700481415,
+      0.8905554413795471
+    ],
+    "scale": [
+      1.0907319784164429,
+      1.090731859207153,
+      1.0907319784164429
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.011"
+  },
+  {
+    "position": [
+      22.95315933227539,
+      22.412336349487305,
+      8.580227851867676
+    ],
+    "rotation": [
+      0.14503535628318787,
+      -0.16767123341560364,
+      1.7684413194656372
+    ],
+    "scale": [
+      0.7896144986152649,
+      0.7896145582199097,
+      0.7896145582199097
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.012"
+  },
+  {
+    "position": [
+      23.991714477539062,
+      20.93989944458008,
+      8.940412521362305
+    ],
+    "rotation": [
+      -0.2911061942577362,
+      -0.7589560151100159,
+      1.5705969333648682
+    ],
+    "scale": [
+      0.7059674263000488,
+      0.7059674263000488,
+      0.705967366695404
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.013"
+  },
+  {
+    "position": [
+      21.738481521606445,
+      23.78657913208008,
+      8.617401123046875
+    ],
+    "rotation": [
+      -0.5595132112503052,
+      0.6165904998779297,
+      2.3964314460754395
+    ],
+    "scale": [
+      0.6373549699783325,
+      0.6373550295829773,
+      0.6373547911643982
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.014"
+  },
+  {
+    "position": [
+      14.73013973236084,
+      23.67672538757324,
+      7.67708683013916
+    ],
+    "rotation": [
+      -0.25874990224838257,
+      -0.07547113299369812,
+      1.6350735425949097
+    ],
+    "scale": [
+      0.8530830144882202,
+      0.8530830144882202,
+      0.853083074092865
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.015"
+  },
+  {
+    "position": [
+      24.3027400970459,
+      -0.9562512040138244,
+      6.886017322540283
+    ],
+    "rotation": [
+      -0.017905833199620247,
+      -0.20928549766540527,
+      0.7321913242340088
+    ],
+    "scale": [
+      1.536039113998413,
+      1.536038875579834,
+      1.536038875579834
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.016"
+  },
+  {
+    "position": [
+      25.110658645629883,
+      -1.5648562908172607,
+      6.615972518920898
+    ],
+    "rotation": [
+      -0.7343489527702332,
+      0.25196829438209534,
+      2.420145273208618
+    ],
+    "scale": [
+      1.3277130126953125,
+      1.327713131904602,
+      1.3277130126953125
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.017"
+  },
+  {
+    "position": [
+      23.629737854003903,
+      -4.99092960357666,
+      5.965011119842529
+    ],
+    "rotation": [
+      -0.017905831336975098,
+      -0.20928548276424408,
+      -0.4675372540950775
+    ],
+    "scale": [
+      0.9175002574920654,
+      0.9174999594688416,
+      0.9174999594688416
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.018"
+  },
+  {
+    "position": [
+      23.629737854003903,
+      -4.99092960357666,
+      5.965011119842529
+    ],
+    "rotation": [
+      0.16154932975769043,
+      -0.05954375863075256,
+      -2.0729379653930664
+    ],
+    "scale": [
+      0.8141798973083496,
+      0.8141797780990601,
+      0.8141796588897705
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.019"
+  },
+  {
+    "position": [
+      19.025815963745117,
+      26.420795440673828,
+      7.120879650115967
+    ],
+    "rotation": [
+      0.02186380699276924,
+      -0.2763531804084778,
+      -0.6361860036849976
+    ],
+    "scale": [
+      1.2259680032730105,
+      1.2259676456451416,
+      1.2259678840637207
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.020"
+  },
+  {
+    "position": [
+      19.025815963745117,
+      26.420795440673828,
+      7.120879650115967
+    ],
+    "rotation": [
+      -0.22859303653240204,
+      -0.3481050729751587,
+      -2.368253707885742
+    ],
+    "scale": [
+      1.0625770092010498,
+      1.0625766515731812,
+      1.0625767707824707
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.021"
+  },
+  {
+    "position": [
+      -3.464576482772827,
+      -3.3894805908203125,
+      4.7580246925354
+    ],
+    "rotation": [
+      -0.04710115864872933,
+      -0.5208370089530945,
+      2.295929431915283
+    ],
+    "scale": [
+      0.5016428232192993,
+      0.5016428828239441,
+      0.5016428232192993
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.022"
+  },
+  {
+    "position": [
+      -3.5199179649353027,
+      -3.389867067337036,
+      4.7292399406433105
+    ],
+    "rotation": [
+      -0.04710115864872933,
+      -0.5208370089530945,
+      3.0241007804870605
+    ],
+    "scale": [
+      0.6223413348197937,
+      0.6223413944244385,
+      0.6223413348197937
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.023"
+  },
+  {
+    "position": [
+      -3.1423499584198,
+      -3.400354385375977,
+      4.757811069488525
+    ],
+    "rotation": [
+      -0.4656323492527008,
+      -0.2469003200531006,
+      4.04775857925415
+    ],
+    "scale": [
+      0.4546759724617005,
+      0.4546760618686676,
+      0.4546759724617005
+    ],
+    "mesh_path": "meshes/searsia_lucida_a_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_a_LOD0.024"
+  },
+  {
+    "position": [
+      -5.297602653503418,
+      -43.856170654296875,
+      -0.00918811559677124
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_b_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "searsia_lucida_b_LOD0.001"
+  },
+  {
+    "position": [
+      2.2546539306640625,
+      -14.016397476196287,
+      5.334371566772461
+    ],
+    "rotation": [
+      0.3795681297779083,
+      -0.03127449378371239,
+      0.05994756519794464
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_b_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_b_LOD0.002"
+  },
+  {
+    "position": [
+      0.7494206428527832,
+      23.266468048095703,
+      5.297631740570068
+    ],
+    "rotation": [
+      0.0593608058989048,
+      -0.23735162615776065,
+      1.3259271383285522
+    ],
+    "scale": [
+      0.8661839365959167,
+      0.866183876991272,
+      0.8661838173866272
+    ],
+    "mesh_path": "meshes/searsia_lucida_b_LOD0.001.glb",
+    "category": "prop",
+    "name": "searsia_lucida_b_LOD0.003"
+  },
+  {
+    "position": [
+      -6.79760217666626,
+      -43.856170654296875,
+      -0.00918811559677124
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_c_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "searsia_lucida_c_LOD0.001"
+  },
+  {
+    "position": [
+      0.9179645776748656,
+      22.35312271118164,
+      4.865623474121094
+    ],
+    "rotation": [
+      -0.21195656061172485,
+      -0.27174609899520874,
+      1.046769618988037
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_c_LOD0.002.glb",
+    "category": "prop",
+    "name": "searsia_lucida_c_LOD0.002"
+  },
+  {
+    "position": [
+      -3.797602653503418,
+      -45.30617141723633,
+      -0.00918811559677124
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_d_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "searsia_lucida_d_LOD0.001"
+  },
+  {
+    "position": [
+      -4.797602653503418,
+      -45.30617141723633,
+      -0.00918811559677124
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_e_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "searsia_lucida_e_LOD0.001"
+  },
+  {
+    "position": [
+      -5.797602653503418,
+      -45.30617141723633,
+      -0.00918811559677124
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_f_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "searsia_lucida_f_LOD0.001"
+  },
+  {
+    "position": [
+      -6.79760217666626,
+      -45.30617141723633,
+      -0.00918811559677124
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/searsia_lucida_g_LOD0.001.glb",
+    "category": "vegetation",
+    "name": "searsia_lucida_g_LOD0.001"
+  },
+  {
+    "position": [
+      -0.726540207862854,
+      -43.23478698730469,
+      -0.010469826869666576
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/tiny_purple_succulant.glb",
+    "category": "prop",
+    "name": "tiny_purple_succulant"
+  },
+  {
+    "position": [
+      -2.2499148845672607,
+      -43.29050827026367,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/tiny_purple_succulant.001.glb",
+    "category": "prop",
+    "name": "tiny_purple_succulant.001"
+  },
+  {
+    "position": [
+      -1.5096118450164795,
+      -43.29050827026367,
+      -0.02095305360853672
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mesh_path": "meshes/tiny_purple_succulant.002.glb",
+    "category": "prop",
+    "name": "tiny_purple_succulant.002"
+  },
+  {
+    "position": [
+      0.3990480303764343,
+      2.9762330055236816,
+      0.0
+    ],
+    "rotation": [
+      0.17536793649196625,
+      3.0072515128834844e-17,
+      3.2363846784637363e-18
+    ],
+    "scale": [
+      0.6612324118614197,
+      0.6612325310707092,
+      0.6612325310707092
+    ],
+    "mesh_path": "meshes/world_sphere.glb",
+    "category": "prop",
+    "name": "world sphere"
+  }
+]
