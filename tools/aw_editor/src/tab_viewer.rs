@@ -1682,15 +1682,15 @@ impl EditorTabViewer {
             asset_type_filter: 0, // All
             asset_view_mode: 0,   // List
             // World settings
-            world_ambient_color: [0.72, 0.70, 0.68],
+            world_ambient_color: [0.50, 0.45, 0.42],
             world_fog_enabled: false,
             world_fog_density: 0.01,
-            world_sun_intensity: 2.0,
+            world_sun_intensity: 1.6,
             world_sun_elevation: 45.0,
             world_sun_azimuth: 35.0,
             world_sun_color: [1.0, 0.95, 0.85],
-            world_ambient_intensity: 0.7,
-            world_exposure: 1.8,
+            world_ambient_intensity: 0.22,
+            world_exposure: 0.9,
             world_gravity: -9.81,
             // Transform settings
             transform_snap_value: 1.0,
@@ -6262,26 +6262,29 @@ impl TabViewer for EditorTabViewer {
                         ui.horizontal(|ui| {
                             ui.label("Presets:");
                             if ui.small_button("Bright Day").clicked() {
-                                self.world_sun_intensity = 2.0;
+                                self.world_sun_intensity = 1.6;
                                 self.world_sun_elevation = 60.0;
-                                self.world_ambient_intensity = 0.7;
-                                self.world_exposure = 1.8;
+                                self.world_ambient_intensity = 0.22;
+                                self.world_exposure = 0.9;
                                 self.world_sun_color = [1.0, 0.95, 0.85];
+                                self.world_ambient_color = [0.50, 0.45, 0.42];
                             }
                             if ui.small_button("Golden Hour").clicked() {
                                 self.world_sun_intensity = 1.2;
                                 self.world_sun_elevation = 15.0;
                                 self.world_sun_azimuth = 260.0;
-                                self.world_ambient_intensity = 0.5;
-                                self.world_exposure = 1.4;
+                                self.world_ambient_intensity = 0.30;
+                                self.world_exposure = 0.85;
                                 self.world_sun_color = [1.0, 0.65, 0.35];
+                                self.world_ambient_color = [0.55, 0.42, 0.35];
                             }
                             if ui.small_button("Overcast").clicked() {
                                 self.world_sun_intensity = 0.5;
                                 self.world_sun_elevation = 45.0;
-                                self.world_ambient_intensity = 1.0;
-                                self.world_exposure = 1.0;
+                                self.world_ambient_intensity = 0.45;
+                                self.world_exposure = 0.85;
                                 self.world_sun_color = [0.85, 0.85, 0.9];
+                                self.world_ambient_color = [0.55, 0.55, 0.58];
                             }
                         });
                     });

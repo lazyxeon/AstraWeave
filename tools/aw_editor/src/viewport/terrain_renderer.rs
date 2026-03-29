@@ -718,11 +718,11 @@ impl TerrainRenderer {
                 time: 0.0,
                 water_level: 0.0,
                 sun_dir: [0.5, 0.7, 0.35],
-                sun_intensity: 3.0,
+                sun_intensity: 1.6,
                 sun_color: [1.0, 0.95, 0.85],
-                ambient_intensity: 0.15,
-                ambient_color: [0.40, 0.45, 0.58],
-                exposure: 1.5,
+                ambient_intensity: 0.22,
+                ambient_color: [0.50, 0.45, 0.42],
+                exposure: 0.9,
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -760,7 +760,7 @@ impl TerrainRenderer {
             mra_data.len()
         );
 
-        // ── Diagnostic: sample center pixels of grass layer (index 0) ──────────
+        // ── Diagnostic: sample center pixels of grass (layer 0) and sand (layer 1) ──
         {
             let layer_bytes = (BIOME_TEX_SIZE * BIOME_TEX_SIZE * 4) as usize;
             let center = (BIOME_TEX_SIZE / 2 * BIOME_TEX_SIZE + BIOME_TEX_SIZE / 2) as usize * 4;
@@ -770,12 +770,24 @@ impl TerrainRenderer {
                     albedo_data[center + 1],
                     albedo_data[center + 2],
                 );
-                eprintln!("[terrain] DIAG grass albedo center pixel: R={r} G={g} B={b}");
+                eprintln!("[terrain] DIAG layer0 (grass) albedo center: R={r} G={g} B={b}");
+            }
+            if albedo_data.len() >= layer_bytes * 2 {
+                let off = layer_bytes + center;
+                let (r, g, b) = (albedo_data[off], albedo_data[off + 1], albedo_data[off + 2]);
+                eprintln!("[terrain] DIAG layer1 (sand)  albedo center: R={r} G={g} B={b}");
             }
             if mra_data.len() >= layer_bytes {
                 let (m, rough, ao) = (mra_data[center], mra_data[center + 1], mra_data[center + 2]);
                 eprintln!(
-                    "[terrain] DIAG grass MRA center pixel: metallic={m} roughness={rough} ao={ao}"
+                    "[terrain] DIAG layer0 (grass) MRA center: metallic={m} roughness={rough} ao={ao}"
+                );
+            }
+            if mra_data.len() >= layer_bytes * 2 {
+                let off = layer_bytes + center;
+                let (m, rough, ao) = (mra_data[off], mra_data[off + 1], mra_data[off + 2]);
+                eprintln!(
+                    "[terrain] DIAG layer1 (sand)  MRA center: metallic={m} roughness={rough} ao={ao}"
                 );
             }
         }
