@@ -6,7 +6,9 @@
 //! their categories, textures, and scatter parameters needed to generate
 //! a custom biome.
 
-use crate::biome::{BiomeConditions, BiomeConfig, BiomeSky, BiomeType, BiomeVegetation, VegetationType};
+use crate::biome::{
+    BiomeConditions, BiomeConfig, BiomeSky, BiomeType, BiomeVegetation, VegetationType,
+};
 use crate::scatter::ScatterConfig;
 use crate::zone_scatter::FixedPlacement;
 use serde::{Deserialize, Serialize};
@@ -263,7 +265,9 @@ impl BiomePack {
                 // Record fixed placement if position data exists
                 if let Some(pos) = &a.position {
                     let has_nonzero_transform = pos.iter().any(|v| *v != 0.0)
-                        || a.rotation.as_ref().is_some_and(|r| r.iter().any(|v| *v != 0.0))
+                        || a.rotation
+                            .as_ref()
+                            .is_some_and(|r| r.iter().any(|v| *v != 0.0))
                         || a.scale.as_ref().is_some_and(|s| *s != [1.0, 1.0, 1.0]);
 
                     // Include all assets with transform data (even at origin —
@@ -399,15 +403,31 @@ impl BiomePack {
             }
         };
         let sort_desc = |v: &mut Vec<VegetationType>| {
-            v.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+            v.sort_by(|a, b| {
+                b.weight
+                    .partial_cmp(&a.weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
         };
 
-        let mut rocks: Vec<VegetationType> = self.assets.iter()
-            .filter(|a| a.category == "rock").map(&to_veg).collect();
-        let mut veg: Vec<VegetationType> = self.assets.iter()
-            .filter(|a| a.category == "vegetation").map(&to_veg).collect();
-        let mut billboards: Vec<VegetationType> = self.assets.iter()
-            .filter(|a| a.category == "billboard").map(&to_veg).collect();
+        let mut rocks: Vec<VegetationType> = self
+            .assets
+            .iter()
+            .filter(|a| a.category == "rock")
+            .map(&to_veg)
+            .collect();
+        let mut veg: Vec<VegetationType> = self
+            .assets
+            .iter()
+            .filter(|a| a.category == "vegetation")
+            .map(&to_veg)
+            .collect();
+        let mut billboards: Vec<VegetationType> = self
+            .assets
+            .iter()
+            .filter(|a| a.category == "billboard")
+            .map(&to_veg)
+            .collect();
 
         sort_desc(&mut rocks);
         sort_desc(&mut veg);
@@ -415,7 +435,7 @@ impl BiomePack {
 
         // Stratified selection: reserve slots per category, then fill remainder.
         const MAX_VEG_TYPES: usize = 25;
-        let rock_slots = rocks.len().min(8);          // Up to 8 rocks
+        let rock_slots = rocks.len().min(8); // Up to 8 rocks
         let billboard_slots = billboards.len().min(4); // Up to 4 billboards
         let veg_slots = MAX_VEG_TYPES.saturating_sub(rock_slots + billboard_slots);
 
@@ -547,14 +567,14 @@ fn default_scatter_params_for_category(
 
     match category {
         "vegetation" => match size_class {
-            SizeClass::Large => (0.05, (0.9, 1.15), 25.0),  // Trees
-            SizeClass::Medium => (0.3, (0.7, 1.3), 35.0),   // Bushes
-            SizeClass::Small => (2.0, (0.6, 1.4), 45.0),    // Flowers/grass
+            SizeClass::Large => (0.05, (0.9, 1.15), 25.0), // Trees
+            SizeClass::Medium => (0.3, (0.7, 1.3), 35.0),  // Bushes
+            SizeClass::Small => (2.0, (0.6, 1.4), 45.0),   // Flowers/grass
         },
         "rock" => match size_class {
-            SizeClass::Large => (0.02, (0.8, 1.2), 20.0),   // Cliffs
-            SizeClass::Medium => (0.15, (0.7, 1.5), 30.0),  // Boulders
-            SizeClass::Small => (0.5, (0.8, 2.0), 40.0),    // Stones
+            SizeClass::Large => (0.02, (0.8, 1.2), 20.0),  // Cliffs
+            SizeClass::Medium => (0.15, (0.7, 1.5), 30.0), // Boulders
+            SizeClass::Small => (0.5, (0.8, 2.0), 40.0),   // Stones
         },
         "terrain" => (0.0, (1.0, 1.0), 90.0), // Terrain meshes aren't scattered
         "billboard" => (1.0, (0.8, 1.2), 45.0),
@@ -595,7 +615,10 @@ fn detect_ground_textures(root_dir: &Path) -> Vec<BiomePackGroundTexture> {
             }
 
             // Determine PBR channel from filename
-            let channel = if filename.contains("diff") || filename.contains("color") || filename.contains("albedo") {
+            let channel = if filename.contains("diff")
+                || filename.contains("color")
+                || filename.contains("albedo")
+            {
                 "diffuse"
             } else if filename.contains("nor") || filename.contains("normal") {
                 "normal"
@@ -616,15 +639,16 @@ fn detect_ground_textures(root_dir: &Path) -> Vec<BiomePackGroundTexture> {
 
             let rel_path = format!("textures/{}", entry.file_name().to_string_lossy());
 
-            let group = texture_groups.entry(group_key.clone()).or_insert_with(|| {
-                BiomePackGroundTexture {
-                    name: group_key,
-                    diffuse: None,
-                    normal: None,
-                    roughness: None,
-                    displacement: None,
-                }
-            });
+            let group =
+                texture_groups
+                    .entry(group_key.clone())
+                    .or_insert_with(|| BiomePackGroundTexture {
+                        name: group_key,
+                        diffuse: None,
+                        normal: None,
+                        roughness: None,
+                        displacement: None,
+                    });
 
             match channel {
                 "diffuse" => group.diffuse = Some(rel_path),
@@ -933,24 +957,60 @@ mod tests {
         assert_eq!(pack.assets_by_category("terrain").len(), 1);
 
         // QuiverTree is large vegetation (7m tall) → low weight
-        let tree = pack.assets.iter().find(|a| a.name == "QuiverTree_01").unwrap();
-        assert!(tree.weight < 0.1, "Large tree should have low scatter weight: {}", tree.weight);
+        let tree = pack
+            .assets
+            .iter()
+            .find(|a| a.name == "QuiverTree_01")
+            .unwrap();
+        assert!(
+            tree.weight < 0.1,
+            "Large tree should have low scatter weight: {}",
+            tree.weight
+        );
         assert!(tree.slope_tolerance <= 25.0);
 
         // Gazania is small vegetation (0.15m) → high weight
-        let flower = pack.assets.iter().find(|a| a.name == "Gazania_Cluster").unwrap();
-        assert!(flower.weight > 1.0, "Small flowers should have high scatter weight: {}", flower.weight);
+        let flower = pack
+            .assets
+            .iter()
+            .find(|a| a.name == "Gazania_Cluster")
+            .unwrap();
+        assert!(
+            flower.weight > 1.0,
+            "Small flowers should have high scatter weight: {}",
+            flower.weight
+        );
 
         // Boulder is large rock → very low weight
-        let boulder = pack.assets.iter().find(|a| a.name == "Boulder_Large").unwrap();
-        assert!(boulder.weight < 0.05, "Large boulder should be rare: {}", boulder.weight);
+        let boulder = pack
+            .assets
+            .iter()
+            .find(|a| a.name == "Boulder_Large")
+            .unwrap();
+        assert!(
+            boulder.weight < 0.05,
+            "Large boulder should be rare: {}",
+            boulder.weight
+        );
 
         // Small stone → medium weight
-        let stone = pack.assets.iter().find(|a| a.name == "Stone_Small").unwrap();
-        assert!(stone.weight > 0.3, "Small stones should be common: {}", stone.weight);
+        let stone = pack
+            .assets
+            .iter()
+            .find(|a| a.name == "Stone_Small")
+            .unwrap();
+        assert!(
+            stone.weight > 0.3,
+            "Small stones should be common: {}",
+            stone.weight
+        );
 
         // Terrain mesh → zero weight (never scattered)
-        let terrain = pack.assets.iter().find(|a| a.name == "Terrain_Base").unwrap();
+        let terrain = pack
+            .assets
+            .iter()
+            .find(|a| a.name == "Terrain_Base")
+            .unwrap();
         assert_eq!(terrain.weight, 0.0);
 
         // BiomeConfig conversion: terrain assets should be filtered out
@@ -973,19 +1033,17 @@ mod tests {
             description: "Test biome pack".to_string(),
             root_dir: PathBuf::from("assets/test"),
             blend_hash: "test_hash".to_string(),
-            assets: vec![
-                BiomePackAsset {
-                    name: "bush_01".to_string(),
-                    mesh_path: "meshes/bush_01.glb".to_string(),
-                    category: "vegetation".to_string(),
-                    weight: 1.0,
-                    scale_range: (0.8, 1.2),
-                    slope_tolerance: 35.0,
-                    dimensions: Some([1.5, 1.5, 1.0]),
-                    vertex_count: 500,
-                    textures: vec![],
-                },
-            ],
+            assets: vec![BiomePackAsset {
+                name: "bush_01".to_string(),
+                mesh_path: "meshes/bush_01.glb".to_string(),
+                category: "vegetation".to_string(),
+                weight: 1.0,
+                scale_range: (0.8, 1.2),
+                slope_tolerance: 35.0,
+                dimensions: Some([1.5, 1.5, 1.0]),
+                vertex_count: 500,
+                textures: vec![],
+            }],
             hdris: vec![],
             ground_textures: vec![],
             scatter: BiomePackScatter::default(),
@@ -1014,7 +1072,8 @@ mod tests {
         // Simulate the full Namaqualand pipeline
         let pack = BiomePack {
             name: "Namaqualand".to_string(),
-            description: "South African semi-arid biome with quiver trees and wildflowers".to_string(),
+            description: "South African semi-arid biome with quiver trees and wildflowers"
+                .to_string(),
             root_dir: PathBuf::from("assets/Namaqualand"),
             blend_hash: "deadbeef".to_string(),
             assets: vec![
@@ -1052,23 +1111,19 @@ mod tests {
                     textures: vec![],
                 },
             ],
-            hdris: vec![
-                BiomePackHdri {
-                    filename: "sunset.hdr".to_string(),
-                    original_name: "Namaqualand Sunset".to_string(),
-                    width: 4096,
-                    height: 2048,
-                },
-            ],
-            ground_textures: vec![
-                BiomePackGroundTexture {
-                    name: "sand".to_string(),
-                    diffuse: Some("textures/sand_diffuse.png".to_string()),
-                    normal: Some("textures/sand_normal.png".to_string()),
-                    roughness: None,
-                    displacement: None,
-                },
-            ],
+            hdris: vec![BiomePackHdri {
+                filename: "sunset.hdr".to_string(),
+                original_name: "Namaqualand Sunset".to_string(),
+                width: 4096,
+                height: 2048,
+            }],
+            ground_textures: vec![BiomePackGroundTexture {
+                name: "sand".to_string(),
+                diffuse: Some("textures/sand_diffuse.png".to_string()),
+                normal: Some("textures/sand_normal.png".to_string()),
+                roughness: None,
+                displacement: None,
+            }],
             scatter: BiomePackScatter {
                 density: 0.004,
                 use_poisson_disk: true,
@@ -1098,15 +1153,25 @@ mod tests {
         assert!(config.vegetation.random_rotation);
 
         // Verify vegetation types carry correct model paths
-        let tree_type = config.vegetation.vegetation_types.iter()
-            .find(|v| v.name == "QuiverTree").unwrap();
+        let tree_type = config
+            .vegetation
+            .vegetation_types
+            .iter()
+            .find(|v| v.name == "QuiverTree")
+            .unwrap();
         assert!(tree_type.model_path.contains("meshes/QuiverTree.glb"));
         assert_eq!(tree_type.slope_tolerance, 25.0);
 
-        let flower_type = config.vegetation.vegetation_types.iter()
-            .find(|v| v.name == "Gazania").unwrap();
-        assert!(flower_type.weight > tree_type.weight,
-            "Flowers should scatter more densely than trees");
+        let flower_type = config
+            .vegetation
+            .vegetation_types
+            .iter()
+            .find(|v| v.name == "Gazania")
+            .unwrap();
+        assert!(
+            flower_type.weight > tree_type.weight,
+            "Flowers should scatter more densely than trees"
+        );
 
         // Step 2: Convert to ScatterConfig
         let scatter_config = pack.to_scatter_config();

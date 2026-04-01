@@ -70,7 +70,7 @@ mod entity_allocator_kani;
 use std::any::TypeId;
 use std::collections::HashMap;
 
-use archetype::{ArchetypeSignature, ArchetypeStorage};
+use archetype::{ArchetypeId, ArchetypeSignature, ArchetypeStorage};
 pub use command_buffer::CommandBuffer;
 use component_meta::ComponentMetaRegistry;
 pub use entity_allocator::{Entity, EntityAllocator};
@@ -123,6 +123,8 @@ pub struct World {
     /// Component metadata registry for BlobVec storage
     /// Components registered here use the high-performance BlobVec path
     component_registry: ComponentMetaRegistry,
+    /// Cached empty archetype ID to avoid per-spawn signature creation + HashMap lookup
+    empty_archetype_id: Option<ArchetypeId>,
 }
 
 impl World {
@@ -169,13 +171,23 @@ impl World {
         );
 
         // An entity with no components lives in the empty archetype.
-        let empty_sig = ArchetypeSignature::new(vec![]);
-        let archetype_id = self.archetypes.get_or_create_archetype(empty_sig);
+        // Cache the empty archetype ID to avoid per-spawn signature + HashMap lookup.
+        let archetype_id = match self.empty_archetype_id {
+            Some(id) => id,
+            None => {
+                let empty_sig = ArchetypeSignature::new(vec![]);
+                let id = self.archetypes.get_or_create_archetype(empty_sig);
+                self.empty_archetype_id = Some(id);
+                id
+            }
+        };
         self.archetypes.set_entity_archetype(e, archetype_id);
         let archetype = self
             .archetypes
             .get_archetype_mut(archetype_id)
             .expect("BUG: archetype should exist after get_or_create_archetype");
+        // Empty archetype has no component columns — HashMap::new() is zero-cost
+        // (doesn't allocate until first insert).
         archetype.add_entity(e, HashMap::new());
         e
     }
@@ -221,12 +233,52 @@ impl World {
             return; // Silently ignore stale entities
         }
 
-        let mut components_to_add = HashMap::new();
-        components_to_add.insert(
-            TypeId::of::<T>(),
-            Box::new(c) as Box<dyn std::any::Any + Send + Sync>,
-        );
-        self.move_entity_to_new_archetype(e, components_to_add, false);
+        let type_id = TypeId::of::<T>();
+        let boxed = Box::new(c) as Box<dyn std::any::Any + Send + Sync>;
+
+        // Fast path: avoid allocating a temporary HashMap for the common single-component case.
+        // We extract current components, insert the new one directly, then move to the new archetype.
+        let old_archetype_id = match self.archetypes.get_entity_archetype(e) {
+            Some(id) => id,
+            None => return,
+        };
+
+        let mut current_components = {
+            let old_archetype = match self.archetypes.get_archetype_mut(old_archetype_id) {
+                Some(a) => a,
+                None => return,
+            };
+            old_archetype.remove_entity_components(e)
+        };
+
+        // Build new signature by extending the old one with the new type
+        let new_sig_types = {
+            let old_archetype = match self.archetypes.get_archetype(old_archetype_id) {
+                Some(a) => a,
+                None => return,
+            };
+            let mut sig_types: Vec<_> = old_archetype.signature.components.clone();
+            if !sig_types.contains(&type_id) {
+                sig_types.push(type_id);
+            }
+            sig_types
+        };
+
+        let new_signature = ArchetypeSignature::new(new_sig_types);
+        let new_archetype_id = self.archetypes.get_or_create_archetype(new_signature);
+
+        // Move entity mapping
+        if let Some(old_arch) = self.archetypes.get_archetype_mut(old_archetype_id) {
+            old_arch.remove_entity(e);
+        }
+        self.archetypes.set_entity_archetype(e, new_archetype_id);
+
+        // Insert new component directly into the extracted map (no extra HashMap alloc)
+        current_components.insert(type_id, boxed);
+
+        if let Some(new_arch) = self.archetypes.get_archetype_mut(new_archetype_id) {
+            new_arch.add_entity(e, current_components);
+        }
     }
 
     #[allow(clippy::expect_used)] // INVARIANT: archetype/entity existence validated by prior operations in each step

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use astraweave_core::{Entity, IVec2, World};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Current clipboard data schema version.
 /// Increment when making breaking changes to ClipboardEntityData.
@@ -75,7 +75,7 @@ pub struct ClipboardEntityData {
     pub hp: i32,
     pub team_id: u8,
     pub ammo: i32,
-    pub cooldowns: HashMap<String, f32>,
+    pub cooldowns: BTreeMap<String, f32>,
     pub behavior_graph: Option<astraweave_behavior::BehaviorGraph>,
 }
 
@@ -707,7 +707,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
 
@@ -729,7 +729,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
 
@@ -751,7 +751,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
 
@@ -773,7 +773,7 @@ mod tests {
             hp: -50, // Warning
             team_id: 0,
             ammo: -10, // Warning
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
 
@@ -840,7 +840,7 @@ mod tests {
                 hp: 100,
                 team_id: 0,
                 ammo: 30,
-                cooldowns: HashMap::new(),
+                cooldowns: BTreeMap::new(),
                 behavior_graph: None,
             }],
         };
@@ -868,7 +868,7 @@ mod tests {
                 hp: 100,
                 team_id: 0,
                 ammo: 30,
-                cooldowns: HashMap::new(),
+                cooldowns: BTreeMap::new(),
                 behavior_graph: None,
             }],
         };
@@ -1047,7 +1047,7 @@ mod tests {
                     hp: 100,
                     team_id: 0,
                     ammo: 30,
-                    cooldowns: HashMap::new(),
+                    cooldowns: BTreeMap::new(),
                     behavior_graph: None,
                 },
                 ClipboardEntityData {
@@ -1060,7 +1060,7 @@ mod tests {
                     hp: 100,
                     team_id: 1,
                     ammo: 30,
-                    cooldowns: HashMap::new(),
+                    cooldowns: BTreeMap::new(),
                     behavior_graph: None,
                 },
             ],
@@ -1089,7 +1089,7 @@ mod tests {
                     hp: 100,
                     team_id: 0,
                     ammo: 30,
-                    cooldowns: HashMap::new(),
+                    cooldowns: BTreeMap::new(),
                     behavior_graph: None,
                 },
                 ClipboardEntityData {
@@ -1102,7 +1102,7 @@ mod tests {
                     hp: 100,
                     team_id: 1,
                     ammo: 30,
-                    cooldowns: HashMap::new(),
+                    cooldowns: BTreeMap::new(),
                     behavior_graph: None,
                 },
                 ClipboardEntityData {
@@ -1115,7 +1115,7 @@ mod tests {
                     hp: 100,
                     team_id: 0,
                     ammo: 30,
-                    cooldowns: HashMap::new(),
+                    cooldowns: BTreeMap::new(),
                     behavior_graph: None,
                 },
             ],
@@ -1228,7 +1228,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
         assert!(!without_ai.has_ai());
@@ -1246,7 +1246,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
         assert!(!data.has_cooldowns());
@@ -1267,7 +1267,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
         assert!(!normal.is_scaled());
@@ -1282,7 +1282,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
         assert!(scaled.is_scaled());
@@ -1300,7 +1300,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
         assert!(!not_rotated.is_rotated());
@@ -1315,7 +1315,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
         assert!(rotated.is_rotated());
@@ -1333,7 +1333,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
         assert_eq!(data.position(), (5, 10));
@@ -1351,7 +1351,7 @@ mod tests {
             hp: 75,
             team_id: 1,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
         let summary = data.summary();
@@ -1371,7 +1371,7 @@ mod tests {
             hp: 100,
             team_id: 0,
             ammo: 30,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         };
         let display = format!("{}", data);

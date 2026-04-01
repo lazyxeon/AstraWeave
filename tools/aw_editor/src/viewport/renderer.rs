@@ -90,9 +90,15 @@ pub struct ViewportRenderer {
     /// Current viewport size
     size: (u32, u32),
 
-    // --- Depth readback for brush hit detection ---
+    // --- Depth readback for brush hit detection (deferred 1-frame) ---
     /// Staging buffer for reading back a single depth pixel
     depth_staging_buffer: Option<wgpu::Buffer>,
+    /// True when an async depth read is in-flight (waiting for GPU)
+    depth_read_pending: bool,
+    /// Set to true by map_async callback when GPU finishes the depth copy
+    depth_map_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Cached depth value from previous frame's readback
+    cached_depth_value: Option<f32>,
 
     /// Currently selected entities (for highlighting) - supports multi-selection
     selected_entities: Vec<Entity>,
@@ -150,6 +156,9 @@ impl ViewportRenderer {
             depth_view: None,
             size: (0, 0),
             depth_staging_buffer: None,
+            depth_read_pending: false,
+            depth_map_ready: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cached_depth_value: None,
             selected_entities: Vec::new(),
             component_gizmo_lines: Vec::new(),
             brush_cursor_lines: Vec::new(),
@@ -213,7 +222,7 @@ impl ViewportRenderer {
     fn ensure_scatter_renderer(&mut self) -> Result<&mut ScatterRenderer> {
         if self.scatter_renderer.is_none() {
             self.scatter_renderer = Some(
-                ScatterRenderer::new(self.device.clone())
+                ScatterRenderer::new(self.device.clone(), self.queue.clone())
                     .context("Failed to create scatter renderer (deferred)")?,
             );
         }
@@ -232,6 +241,41 @@ impl ViewportRenderer {
         self.physics_renderer
             .as_mut()
             .context("physics renderer not initialized after creation")
+    }
+
+    /// Eagerly initialize all deferred renderers to avoid frame hitches during gameplay.
+    /// Call once after the first frame has rendered (GPU device is warm).
+    pub fn eagerly_init_all(&mut self) {
+        if self.terrain_renderer.is_none() {
+            match TerrainRenderer::new(&self.device, &self.queue) {
+                Ok(r) => self.terrain_renderer = Some(r),
+                Err(e) => tracing::warn!("Eager init terrain renderer failed: {e:#}"),
+            }
+        }
+        if self.water_renderer.is_none() {
+            match WaterRenderer::new(&self.device) {
+                Ok(r) => self.water_renderer = Some(r),
+                Err(e) => tracing::warn!("Eager init water renderer failed: {e:#}"),
+            }
+        }
+        if self.weather_renderer.is_none() {
+            match WeatherParticleRenderer::new(&self.device) {
+                Ok(r) => self.weather_renderer = Some(r),
+                Err(e) => tracing::warn!("Eager init weather renderer failed: {e:#}"),
+            }
+        }
+        if self.scatter_renderer.is_none() {
+            match ScatterRenderer::new(self.device.clone(), self.queue.clone()) {
+                Ok(r) => self.scatter_renderer = Some(r),
+                Err(e) => tracing::warn!("Eager init scatter renderer failed: {e:#}"),
+            }
+        }
+        if self.physics_renderer.is_none() {
+            match PhysicsDebugRenderer::new((*self.device).clone(), (*self.queue).clone(), 5000) {
+                Ok(r) => self.physics_renderer = Some(r),
+                Err(e) => tracing::warn!("Eager init physics renderer failed: {e:#}"),
+            }
+        }
     }
 
     /// Resize viewport (recreates depth buffer)
@@ -278,6 +322,11 @@ impl ViewportRenderer {
         self.depth_texture = Some(depth_texture);
         self.depth_view = Some(depth_view);
         self.size = (width, height);
+
+        // Cancel any in-flight depth readback before replacing the staging buffer
+        self.depth_read_pending = false;
+        self.depth_map_ready
+            .store(false, std::sync::atomic::Ordering::Release);
 
         // Allocate staging buffer for single-pixel depth readback (4 bytes = f32)
         // wgpu requires COPY_DST on staging buffers used as copy destinations.
@@ -484,15 +533,19 @@ impl ViewportRenderer {
 
         // Pass 4: Physics debug + component gizmos + brush cursor
         {
-            let mut combined_lines: Vec<astraweave_physics::DebugLine> =
-                self.component_gizmo_lines.clone();
-            if let Some(debug_lines) = physics_debug_lines {
-                combined_lines.extend_from_slice(debug_lines);
-            }
-            combined_lines.extend_from_slice(&self.brush_cursor_lines);
-            combined_lines.extend_from_slice(&self.zone_overlay_lines);
-            if !combined_lines.is_empty() {
+            let phys_lines = physics_debug_lines.unwrap_or(&[]);
+            let total_lines = self.component_gizmo_lines.len()
+                + phys_lines.len()
+                + self.brush_cursor_lines.len()
+                + self.zone_overlay_lines.len();
+            if total_lines > 0 {
                 if let Some(physics) = self.physics_renderer.as_mut() {
+                    // Pre-allocate exact capacity to avoid reallocation churn
+                    let mut combined_lines = Vec::with_capacity(total_lines);
+                    combined_lines.extend_from_slice(&self.component_gizmo_lines);
+                    combined_lines.extend_from_slice(phys_lines);
+                    combined_lines.extend_from_slice(&self.brush_cursor_lines);
+                    combined_lines.extend_from_slice(&self.zone_overlay_lines);
                     physics
                         .render(
                             &mut encoder,
@@ -742,9 +795,15 @@ impl ViewportRenderer {
     // ── Depth Readback for Brush Hit Detection ──────────────────────────
 
     /// Synchronously read the depth value at a single pixel from the depth buffer.
+    /// Read depth at a pixel with 1-frame deferred readback.
+    ///
+    /// **Frame N**: Returns cached depth from frame N-1 and submits a new async read
+    /// for the requested pixel. This eliminates the `device.poll(Wait)` GPU stall
+    /// that previously blocked the CPU for 0.5-2ms every frame.
+    ///
     /// Returns `Some(depth)` where depth is in [0,1] (0=near, 1=far/sky).
-    /// Returns `None` if the pixel is out of bounds or the depth buffer isn't available.
-    pub fn read_depth_at_pixel(&self, px: u32, py: u32) -> Option<f32> {
+    /// Returns `None` on the first frame or if the depth buffer isn't available.
+    pub fn read_depth_at_pixel(&mut self, px: u32, py: u32) -> Option<f32> {
         let (w, h) = self.size;
         if px >= w || py >= h {
             return None;
@@ -752,48 +811,78 @@ impl ViewportRenderer {
         let depth_tex = self.depth_texture.as_ref()?;
         let staging = self.depth_staging_buffer.as_ref()?;
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Depth Readback Encoder"),
-            });
+        // Try to read the result from the PREVIOUS frame's async request (non-blocking)
+        let cached_depth = if self.depth_read_pending {
+            // Non-blocking poll — let wgpu process pending callbacks
+            let _ = self.device.poll(wgpu::MaintainBase::Poll);
 
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: depth_tex,
-                mip_level: 0,
-                origin: wgpu::Origin3d { x: px, y: py, z: 0 },
-                aspect: wgpu::TextureAspect::DepthOnly,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: staging,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(256),
-                    rows_per_image: None,
+            if self
+                .depth_map_ready
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                // GPU finished — read the mapped buffer
+                let mapped = staging.slice(..4).get_mapped_range();
+                let depth_bytes: [u8; 4] = [mapped[0], mapped[1], mapped[2], mapped[3]];
+                let depth = f32::from_le_bytes(depth_bytes);
+                drop(mapped);
+                staging.unmap();
+                self.depth_read_pending = false;
+                self.depth_map_ready
+                    .store(false, std::sync::atomic::Ordering::Release);
+                self.cached_depth_value = Some(depth);
+                Some(depth)
+            } else {
+                // GPU not ready yet — use whatever we cached previously
+                self.cached_depth_value
+            }
+        } else {
+            self.cached_depth_value
+        };
+
+        // Submit a new async copy for THIS frame's pixel (result available next frame)
+        if !self.depth_read_pending {
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Depth Readback Encoder"),
+                });
+
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture: depth_tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x: px, y: py, z: 0 },
+                    aspect: wgpu::TextureAspect::DepthOnly,
                 },
-            },
-            wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-        );
+                wgpu::TexelCopyBufferInfo {
+                    buffer: staging,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(256),
+                        rows_per_image: None,
+                    },
+                },
+                wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+            );
 
-        self.queue.submit(std::iter::once(encoder.finish()));
+            self.queue.submit(std::iter::once(encoder.finish()));
+            // Request async map — callback sets the atomic flag only on success
+            let flag = self.depth_map_ready.clone();
+            staging
+                .slice(..4)
+                .map_async(wgpu::MapMode::Read, move |result| {
+                    if result.is_ok() {
+                        flag.store(true, std::sync::atomic::Ordering::Release);
+                    }
+                });
+            self.depth_read_pending = true;
+        }
 
-        // Map, block until ready, read, unmap
-        let buffer_slice = staging.slice(..4);
-        buffer_slice.map_async(wgpu::MapMode::Read, |_| {});
-        let _ = self.device.poll(wgpu::MaintainBase::Wait);
-
-        let mapped = buffer_slice.get_mapped_range();
-        let depth_bytes: [u8; 4] = [mapped[0], mapped[1], mapped[2], mapped[3]];
-        let depth = f32::from_le_bytes(depth_bytes);
-        drop(mapped);
-        staging.unmap();
-
-        Some(depth)
+        cached_depth
     }
 
     pub fn clear_terrain(&mut self) {
@@ -905,6 +994,10 @@ impl ViewportRenderer {
             .set_sun(params.sun_dir, params.sun_color, params.sun_intensity);
         self.entity_renderer
             .set_ambient(params.ambient_color, params.ambient_intensity);
+        // Forward sun direction to water renderer for consistent specular reflections
+        if let Some(water) = self.water_renderer.as_mut() {
+            water.set_sun(params.sun_dir, params.sun_intensity);
+        }
     }
 
     /// Set scene point lights from entity Light components (forwarded to entity renderer)
@@ -951,6 +1044,39 @@ impl ViewportRenderer {
             );
         }
         self.scatter_placements = placements;
+    }
+
+    // ── Terrain texture management ────────────────────────────────────
+
+    /// Replace a single material layer's textures in the terrain renderer.
+    /// Used to inject BiomePack ground textures into the GPU texture arrays.
+    /// `layer_index` should be 12-17 (reserved custom pack slots).
+    pub fn replace_terrain_texture_layer(
+        &mut self,
+        layer_index: u32,
+        albedo_data: &[u8],
+        normal_data: &[u8],
+        mra_data: &[u8],
+    ) {
+        // Ensure terrain renderer exists before attempting texture replacement
+        if self.terrain_renderer.is_none() {
+            eprintln!(
+                "=== replace_terrain_texture_layer: terrain_renderer was NONE — creating it now"
+            );
+            let _ = self.ensure_terrain_renderer();
+        }
+        if let Some(tr) = &self.terrain_renderer {
+            eprintln!(
+                "=== replace_terrain_texture_layer: writing layer {} (albedo={}B)",
+                layer_index,
+                albedo_data.len()
+            );
+            tr.replace_texture_layer(layer_index, albedo_data, normal_data, mra_data);
+        } else {
+            eprintln!(
+                "=== replace_terrain_texture_layer: FAILED — terrain_renderer still NONE after ensure!"
+            );
+        }
     }
 
     /// Ensure a scatter mesh is loaded and cached.

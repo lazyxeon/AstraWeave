@@ -412,7 +412,7 @@ impl Default for ShadowModeReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::{ActionStep, CompanionState, IVec2, PlayerState};
+    use astraweave_core::{ActionStep, CompanionState, IVec2, PlayerState, Stance};
     use std::collections::BTreeMap;
 
     fn make_test_snapshot() -> WorldSnapshot {
@@ -421,7 +421,7 @@ mod tests {
             player: PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 0, y: 0 },
-                stance: "stand".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {

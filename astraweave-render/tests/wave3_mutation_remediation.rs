@@ -1,14 +1,10 @@
- //! Wave 3 mutation-resistant remediation tests for astraweave-render.
+//! Wave 3 mutation-resistant remediation tests for astraweave-render.
 //!
 //! Targets specific mutation survivors identified by cargo-mutants analysis.
 //! Pins exact values, boundary operators, and per-variant return semantics.
 
 use astraweave_render::{
-    Camera,
-    TimeOfDay, WeatherSystem, WeatherType,
-    EasingFunction,
-    MaterialGpu,
-    FrustumPlanes,
+    Camera, EasingFunction, FrustumPlanes, MaterialGpu, TimeOfDay, WeatherSystem, WeatherType,
 };
 use glam::{vec3, Mat4, Vec3};
 
@@ -28,11 +24,7 @@ mod time_of_day_exact {
     fn noon_sun_position_y_close_to_1() {
         let t = tod(12.0);
         let sun = t.get_sun_position();
-        assert!(
-            sun.y > 0.95,
-            "Noon sun Y should be > 0.95, got {}",
-            sun.y
-        );
+        assert!(sun.y > 0.95, "Noon sun Y should be > 0.95, got {}", sun.y);
     }
 
     #[test]
@@ -91,9 +83,21 @@ mod time_of_day_exact {
         assert!(color.x < 0.1, "Night light R < 0.1, got {}", color.x);
         assert!(color.z > color.x, "Night light should be bluish");
         // Exact formula: vec3(0.3, 0.4, 0.8) * 0.15
-        assert!((color.x - 0.3 * 0.15).abs() < 0.01, "Night R ~0.045, got {}", color.x);
-        assert!((color.y - 0.4 * 0.15).abs() < 0.01, "Night G ~0.06, got {}", color.y);
-        assert!((color.z - 0.8 * 0.15).abs() < 0.01, "Night B ~0.12, got {}", color.z);
+        assert!(
+            (color.x - 0.3 * 0.15).abs() < 0.01,
+            "Night R ~0.045, got {}",
+            color.x
+        );
+        assert!(
+            (color.y - 0.4 * 0.15).abs() < 0.01,
+            "Night G ~0.06, got {}",
+            color.y
+        );
+        assert!(
+            (color.z - 0.8 * 0.15).abs() < 0.01,
+            "Night B ~0.12, got {}",
+            color.z
+        );
     }
 
     #[test]
@@ -115,9 +119,21 @@ mod time_of_day_exact {
     fn ambient_color_night_exact() {
         let amb = tod(0.0).get_ambient_color();
         // Night: vec3(0.1, 0.15, 0.3) * 0.1
-        assert!((amb.x - 0.01).abs() < 0.005, "Night ambient R ~0.01, got {}", amb.x);
-        assert!((amb.y - 0.015).abs() < 0.005, "Night ambient G ~0.015, got {}", amb.y);
-        assert!((amb.z - 0.03).abs() < 0.005, "Night ambient B ~0.03, got {}", amb.z);
+        assert!(
+            (amb.x - 0.01).abs() < 0.005,
+            "Night ambient R ~0.01, got {}",
+            amb.x
+        );
+        assert!(
+            (amb.y - 0.015).abs() < 0.005,
+            "Night ambient G ~0.015, got {}",
+            amb.y
+        );
+        assert!(
+            (amb.z - 0.03).abs() < 0.005,
+            "Night ambient B ~0.03, got {}",
+            amb.z
+        );
     }
 
     #[test]
@@ -148,11 +164,19 @@ mod time_of_day_exact {
         let sun = t.get_sun_position();
         // At 9:00: sun_azimuth = (9-12) * PI/12 = -PI/4
         // sun is in the eastern sky: x should be negative, z positive
-        assert!(sun.x < -0.1, "9am sun X should be negative (east), got {}", sun.x);
+        assert!(
+            sun.x < -0.1,
+            "9am sun X should be negative (east), got {}",
+            sun.x
+        );
         assert!(sun.z > 0.1, "9am sun Z should be positive, got {}", sun.z);
         // x and z should be approximately equal magnitude (sin/cos of PI/4)
-        assert!((sun.x.abs() - sun.z.abs()).abs() < 0.05,
-            "At 9am, |x| ≈ |z| since azimuth=-π/4, got x={} z={}", sun.x, sun.z);
+        assert!(
+            (sun.x.abs() - sun.z.abs()).abs() < 0.05,
+            "At 9am, |x| ≈ |z| since azimuth=-π/4, got x={} z={}",
+            sun.x,
+            sun.z
+        );
     }
 
     // Kill mutation: (current_time - 12.0) * PI → (current_time - 12.0) + PI (line 61 col 54)
@@ -173,14 +197,26 @@ mod time_of_day_exact {
         // normalized = (0.2071, 0.7071, 0.2071) / len
 
         // Key: x MUST be positive at 3pm (sun in west)
-        assert!(sun.x > 0.15, "3pm sun x should be positive (western sky), got {}", sun.x);
+        assert!(
+            sun.x > 0.15,
+            "3pm sun x should be positive (western sky), got {}",
+            sun.x
+        );
         // z should also be positive
-        assert!(sun.z > 0.15, "3pm sun z should be positive at 3pm, got {}", sun.z);
+        assert!(
+            sun.z > 0.15,
+            "3pm sun z should be positive at 3pm, got {}",
+            sun.z
+        );
         // y should be high (afternoon sun still above horizon)
         assert!(sun.y > 0.8, "3pm sun y should be high, got {}", sun.y);
         // x and z should be approximately equal (azimuth = PI/4)
-        assert!((sun.x - sun.z).abs() < 0.02,
-            "At 3pm: x ≈ z since azimuth=π/4, got x={} z={}", sun.x, sun.z);
+        assert!(
+            (sun.x - sun.z).abs() < 0.02,
+            "At 3pm: x ≈ z since azimuth=π/4, got x={} z={}",
+            sun.x,
+            sun.z
+        );
     }
 
     // Kill mutation: (current_time - 12.0) → (current_time + 12.0) (line 61 col 46)
@@ -202,12 +238,24 @@ mod time_of_day_exact {
         let expected_x = -0.613;
         let expected_y = 0.708;
         let expected_z = 0.354;
-        assert!((sun.x - expected_x).abs() < 0.05,
-            "8am sun.x ≈ {}, got {}", expected_x, sun.x);
-        assert!((sun.y - expected_y).abs() < 0.05,
-            "8am sun.y ≈ {}, got {}", expected_y, sun.y);
-        assert!((sun.z - expected_z).abs() < 0.05,
-            "8am sun.z ≈ {}, got {}", expected_z, sun.z);
+        assert!(
+            (sun.x - expected_x).abs() < 0.05,
+            "8am sun.x ≈ {}, got {}",
+            expected_x,
+            sun.x
+        );
+        assert!(
+            (sun.y - expected_y).abs() < 0.05,
+            "8am sun.y ≈ {}, got {}",
+            expected_y,
+            sun.y
+        );
+        assert!(
+            (sun.z - expected_z).abs() < 0.05,
+            "8am sun.z ≈ {}, got {}",
+            expected_z,
+            sun.z
+        );
     }
 
     // Test at 16:00 (4pm) where mutations produce very different x values
@@ -217,7 +265,11 @@ mod time_of_day_exact {
         let sun = t.get_sun_position();
         // sun_azimuth = (16-12)*PI/12 = PI/3
         // sin(PI/3) ≈ 0.866 → x positive in afternoon
-        assert!(sun.x > 0.2, "4pm sun x must be positive (afternoon), got {}", sun.x);
+        assert!(
+            sun.x > 0.2,
+            "4pm sun x must be positive (afternoon), got {}",
+            sun.x
+        );
         // With mutation * → +: azimuth = (4 + PI)/12 ≈ 0.595, sin(0.595) ≈ 0.558
         // With mutation / → *: azimuth = 4*PI*12 ≈ 150.8 → sin wraps unpredictably
         // With mutation / → %: azimuth = 4*PI % 12 ≈ 0.566 → sin(0.566) ≈ 0.534
@@ -239,8 +291,11 @@ mod time_of_day_exact {
         // sun_height = sin(0.000785) ≈ 0.000785
         // |0.000785| < 0.01 → takes the if branch → y = 0.0
         // With == mutation: 0.000785 == 0.01 → false → else branch → y ≈ 0.000785
-        assert!(sun.y.abs() < 0.001,
-            "Near sunrise (6.003), sun.y should be ~0 (if branch), got {}", sun.y);
+        assert!(
+            sun.y.abs() < 0.001,
+            "Near sunrise (6.003), sun.y should be ~0 (if branch), got {}",
+            sun.y
+        );
     }
 }
 
@@ -260,20 +315,52 @@ mod weather_exact_values {
 
     #[test]
     fn light_attenuation_per_weather_type() {
-        assert_eq!(ws_with(WeatherType::Clear).get_light_attenuation(), 1.0, "Clear");
-        assert_eq!(ws_with(WeatherType::Cloudy).get_light_attenuation(), 0.7, "Cloudy");
-        assert_eq!(ws_with(WeatherType::Rain).get_light_attenuation(), 0.5, "Rain");
-        assert_eq!(ws_with(WeatherType::Storm).get_light_attenuation(), 0.3, "Storm");
-        assert_eq!(ws_with(WeatherType::Snow).get_light_attenuation(), 0.6, "Snow");
-        assert_eq!(ws_with(WeatherType::Fog).get_light_attenuation(), 0.4, "Fog");
-        assert_eq!(ws_with(WeatherType::Sandstorm).get_light_attenuation(), 0.2, "Sandstorm");
+        assert_eq!(
+            ws_with(WeatherType::Clear).get_light_attenuation(),
+            1.0,
+            "Clear"
+        );
+        assert_eq!(
+            ws_with(WeatherType::Cloudy).get_light_attenuation(),
+            0.7,
+            "Cloudy"
+        );
+        assert_eq!(
+            ws_with(WeatherType::Rain).get_light_attenuation(),
+            0.5,
+            "Rain"
+        );
+        assert_eq!(
+            ws_with(WeatherType::Storm).get_light_attenuation(),
+            0.3,
+            "Storm"
+        );
+        assert_eq!(
+            ws_with(WeatherType::Snow).get_light_attenuation(),
+            0.6,
+            "Snow"
+        );
+        assert_eq!(
+            ws_with(WeatherType::Fog).get_light_attenuation(),
+            0.4,
+            "Fog"
+        );
+        assert_eq!(
+            ws_with(WeatherType::Sandstorm).get_light_attenuation(),
+            0.2,
+            "Sandstorm"
+        );
     }
 
     #[test]
     fn terrain_color_modifier_clear_is_white() {
         let ws = ws_with(WeatherType::Clear);
         let mod_color = ws.get_terrain_color_modifier();
-        assert_eq!(mod_color, vec3(1.0, 1.0, 1.0), "Clear terrain color must be white");
+        assert_eq!(
+            mod_color,
+            vec3(1.0, 1.0, 1.0),
+            "Clear terrain color must be white"
+        );
     }
 
     #[test]
@@ -292,8 +379,11 @@ mod weather_exact_values {
         let mut ws = WeatherSystem::new();
         // Don't call update() — instant transition must apply immediately
         ws.set_weather(WeatherType::Rain, 0.0);
-        assert_eq!(ws.get_light_attenuation(), 0.5,
-            "set_weather with duration=0.0 must apply instantly (Rain attenuation=0.5)");
+        assert_eq!(
+            ws.get_light_attenuation(),
+            0.5,
+            "set_weather with duration=0.0 must apply instantly (Rain attenuation=0.5)"
+        );
     }
 
     // Kill mutation: <= 0.0 → > 0.0 (swaps instant vs gradual)
@@ -305,8 +395,11 @@ mod weather_exact_values {
         // Use a positive transition duration — should NOT apply instantly
         ws.set_weather(WeatherType::Storm, 5.0);
         // Without calling update(), the weather should still be Clear (default)
-        assert_eq!(ws.get_light_attenuation(), 1.0,
-            "set_weather with duration=5.0 should NOT apply instantly — still Clear (1.0)");
+        assert_eq!(
+            ws.get_light_attenuation(),
+            1.0,
+            "set_weather with duration=5.0 should NOT apply instantly — still Clear (1.0)"
+        );
     }
 
     // Additionally: verify negative duration behaves like instant (duration <= 0)
@@ -314,8 +407,11 @@ mod weather_exact_values {
     fn set_weather_negative_duration_is_instant() {
         let mut ws = WeatherSystem::new();
         ws.set_weather(WeatherType::Snow, -1.0);
-        assert_eq!(ws.get_light_attenuation(), 0.6,
-            "set_weather with duration=-1.0 must apply instantly (Snow attenuation=0.6)");
+        assert_eq!(
+            ws.get_light_attenuation(),
+            0.6,
+            "set_weather with duration=-1.0 must apply instantly (Snow attenuation=0.6)"
+        );
     }
 }
 
@@ -325,7 +421,7 @@ mod weather_exact_values {
 
 #[cfg(feature = "ssao")]
 mod ssao_exact {
-    use astraweave_render::ssao::{SsaoQuality, SsaoKernel};
+    use astraweave_render::ssao::{SsaoKernel, SsaoQuality};
 
     #[test]
     fn sample_count_exact_per_quality() {
@@ -366,9 +462,20 @@ mod ssao_exact {
     #[test]
     fn kernel_generate_scale_bias_correct() {
         let kernel = SsaoKernel::generate(64);
-        let first_len = (kernel.samples[0][0].powi(2) + kernel.samples[0][1].powi(2) + kernel.samples[0][2].powi(2)).sqrt();
-        let last_len = (kernel.samples[63][0].powi(2) + kernel.samples[63][1].powi(2) + kernel.samples[63][2].powi(2)).sqrt();
-        assert!(last_len > first_len, "Last sample ({}) should be farther than first ({})", last_len, first_len);
+        let first_len = (kernel.samples[0][0].powi(2)
+            + kernel.samples[0][1].powi(2)
+            + kernel.samples[0][2].powi(2))
+        .sqrt();
+        let last_len = (kernel.samples[63][0].powi(2)
+            + kernel.samples[63][1].powi(2)
+            + kernel.samples[63][2].powi(2))
+        .sqrt();
+        assert!(
+            last_len > first_len,
+            "Last sample ({}) should be farther than first ({})",
+            last_len,
+            first_len
+        );
     }
 }
 
@@ -395,8 +502,14 @@ mod material_exact {
         // tiling_triplanar = [1.0, 1.0, 16.0, 0.0]
         assert_eq!(mat.tiling_triplanar[0], 1.0, "Tiling U should be 1.0");
         assert_eq!(mat.tiling_triplanar[1], 1.0, "Tiling V should be 1.0");
-        assert_eq!(mat.tiling_triplanar[2], 16.0, "Detail tiling should be 16.0");
-        assert_eq!(mat.tiling_triplanar[3], 0.0, "Triplanar blend should be 0.0");
+        assert_eq!(
+            mat.tiling_triplanar[2], 16.0,
+            "Detail tiling should be 16.0"
+        );
+        assert_eq!(
+            mat.tiling_triplanar[3], 0.0,
+            "Triplanar blend should be 0.0"
+        );
     }
 
     #[test]
@@ -425,55 +538,88 @@ mod bloom_validate_boundary {
 
     #[test]
     fn threshold_boundary_10_is_valid() {
-        let config = BloomConfig { threshold: 10.0, ..BloomConfig::default() };
+        let config = BloomConfig {
+            threshold: 10.0,
+            ..BloomConfig::default()
+        };
         assert!(config.validate().is_ok(), "threshold=10.0 should be valid");
     }
 
     #[test]
     fn threshold_boundary_above_10_is_invalid() {
-        let config = BloomConfig { threshold: 10.01, ..BloomConfig::default() };
-        assert!(config.validate().is_err(), "threshold=10.01 should be invalid");
+        let config = BloomConfig {
+            threshold: 10.01,
+            ..BloomConfig::default()
+        };
+        assert!(
+            config.validate().is_err(),
+            "threshold=10.01 should be invalid"
+        );
     }
 
     #[test]
     fn threshold_zero_is_valid() {
-        let config = BloomConfig { threshold: 0.0, ..BloomConfig::default() };
+        let config = BloomConfig {
+            threshold: 0.0,
+            ..BloomConfig::default()
+        };
         assert!(config.validate().is_ok(), "threshold=0.0 should be valid");
     }
 
     #[test]
     fn intensity_boundary_1_is_valid() {
-        let config = BloomConfig { intensity: 1.0, ..BloomConfig::default() };
+        let config = BloomConfig {
+            intensity: 1.0,
+            ..BloomConfig::default()
+        };
         assert!(config.validate().is_ok(), "intensity=1.0 should be valid");
     }
 
     #[test]
     fn intensity_above_1_is_invalid() {
-        let config = BloomConfig { intensity: 1.01, ..BloomConfig::default() };
-        assert!(config.validate().is_err(), "intensity=1.01 should be invalid");
+        let config = BloomConfig {
+            intensity: 1.01,
+            ..BloomConfig::default()
+        };
+        assert!(
+            config.validate().is_err(),
+            "intensity=1.01 should be invalid"
+        );
     }
 
     #[test]
     fn mip_count_1_is_valid() {
-        let config = BloomConfig { mip_count: 1, ..BloomConfig::default() };
+        let config = BloomConfig {
+            mip_count: 1,
+            ..BloomConfig::default()
+        };
         assert!(config.validate().is_ok(), "mip_count=1 should be valid");
     }
 
     #[test]
     fn mip_count_8_is_valid() {
-        let config = BloomConfig { mip_count: 8, ..BloomConfig::default() };
+        let config = BloomConfig {
+            mip_count: 8,
+            ..BloomConfig::default()
+        };
         assert!(config.validate().is_ok(), "mip_count=8 should be valid");
     }
 
     #[test]
     fn mip_count_0_is_invalid() {
-        let config = BloomConfig { mip_count: 0, ..BloomConfig::default() };
+        let config = BloomConfig {
+            mip_count: 0,
+            ..BloomConfig::default()
+        };
         assert!(config.validate().is_err(), "mip_count=0 should be invalid");
     }
 
     #[test]
     fn mip_count_9_is_invalid() {
-        let config = BloomConfig { mip_count: 9, ..BloomConfig::default() };
+        let config = BloomConfig {
+            mip_count: 9,
+            ..BloomConfig::default()
+        };
         assert!(config.validate().is_err(), "mip_count=9 should be invalid");
     }
 }
@@ -489,14 +635,24 @@ mod easing_exact {
     fn linear_is_identity() {
         for &t in &[0.0, 0.25, 0.5, 0.75, 1.0] {
             let r = EasingFunction::Linear.apply(t);
-            assert!((r - t).abs() < 1e-6, "Linear({}) should be {}, got {}", t, t, r);
+            assert!(
+                (r - t).abs() < 1e-6,
+                "Linear({}) should be {}, got {}",
+                t,
+                t,
+                r
+            );
         }
     }
 
     #[test]
     fn smoothstep_at_half_is_half() {
         let r = EasingFunction::SmoothStep.apply(0.5);
-        assert!((r - 0.5).abs() < 1e-6, "SmoothStep(0.5) = {}, expected 0.5", r);
+        assert!(
+            (r - 0.5).abs() < 1e-6,
+            "SmoothStep(0.5) = {}, expected 0.5",
+            r
+        );
     }
 
     #[test]
@@ -541,7 +697,11 @@ mod easing_exact {
         // But that's OK — we test BOTH branches produce correct values; the
         // mutation is killed by the just_above_half test where the else branch
         // would produce wrong result if it's switched.
-        assert!((r - 0.5).abs() < 1e-6, "EaseInOut(0.5) should be 0.5, got {}", r);
+        assert!(
+            (r - 0.5).abs() < 1e-6,
+            "EaseInOut(0.5) should be 0.5, got {}",
+            r
+        );
     }
 
     #[test]
@@ -580,8 +740,12 @@ mod easing_exact {
         // Need t EXACTLY 0.5 to distinguish, but both give same result.
         // This mutation is equivalent. Accept it and focus on other mutants.
         let actual = EasingFunction::EaseInOut.apply(t);
-        assert!((actual - else_result).abs() < 1e-4,
-            "t=0.50001 should use else branch, got {} expected {}", actual, else_result);
+        assert!(
+            (actual - else_result).abs() < 1e-4,
+            "t=0.50001 should use else branch, got {} expected {}",
+            actual,
+            else_result
+        );
     }
 
     #[test]
@@ -596,7 +760,11 @@ mod easing_exact {
         ];
         for e in &easings {
             assert!((e.apply(0.0)).abs() < 1e-6, "{:?} at 0 should be 0", e);
-            assert!((e.apply(1.0) - 1.0).abs() < 1e-6, "{:?} at 1 should be 1", e);
+            assert!(
+                (e.apply(1.0) - 1.0).abs() < 1e-6,
+                "{:?} at 1 should be 1",
+                e
+            );
         }
     }
 }
@@ -613,7 +781,11 @@ mod camera_exact {
         // Camera::dir is a STATIC method: dir(yaw, pitch) -> Vec3
         let dir = Camera::dir(0.0, 0.0);
         // At pitch=0, yaw=0: cos(0)*cos(0)=1, sin(0)=0, sin(0)*cos(0)=0 → (1, 0, 0)
-        assert!((dir.x - 1.0).abs() < 0.01, "dir.x should be ~1, got {}", dir.x);
+        assert!(
+            (dir.x - 1.0).abs() < 0.01,
+            "dir.x should be ~1, got {}",
+            dir.x
+        );
         assert!((dir.y).abs() < 0.01, "dir.y should be ~0, got {}", dir.y);
         assert!((dir.z).abs() < 0.01, "dir.z should be ~0, got {}", dir.z);
     }
@@ -622,7 +794,11 @@ mod camera_exact {
     fn camera_dir_look_up_pitch_90() {
         let dir = Camera::dir(0.0, std::f32::consts::FRAC_PI_2);
         // Looking straight up: y ~ 1
-        assert!(dir.y > 0.99, "Looking up, dir.y should be ~1, got {}", dir.y);
+        assert!(
+            dir.y > 0.99,
+            "Looking up, dir.y should be ~1, got {}",
+            dir.y
+        );
     }
 
     #[test]
@@ -653,10 +829,17 @@ mod camera_exact {
         // cy=cos(π/4)=0.707, sy=sin(π/4)=0.707, cp=cos(π/4)=0.707, sp=sin(π/4)=0.707
         // Before normalize: (0.5, 0.707, 0.5), length = 1.0
         // x and z must be equal since cos(π/4) == sin(π/4)
-        assert!((dir.x - dir.z).abs() < 0.01,
-            "At yaw=π/4, pitch=π/4: dir.x should equal dir.z, got x={} z={}", dir.x, dir.z);
-        assert!(dir.z > 0.45 && dir.z < 0.55,
-            "dir.z should be ~0.5, got {}", dir.z);
+        assert!(
+            (dir.x - dir.z).abs() < 0.01,
+            "At yaw=π/4, pitch=π/4: dir.x should equal dir.z, got x={} z={}",
+            dir.x,
+            dir.z
+        );
+        assert!(
+            dir.z > 0.45 && dir.z < 0.55,
+            "dir.z should be ~0.5, got {}",
+            dir.z
+        );
     }
 
     // Stronger test: with mutation sy*cp → sy/cp, the z component becomes sy/cp = 1.0
@@ -675,12 +858,21 @@ mod camera_exact {
         // normalized = (0.433, 0.5, 0.75)
         // With mutation: raw_z = 0.866/0.866 = 1.0 → raw = (0.433, 0.5, 1.0) → len ≈ 1.20
         // normalized_z ≈ 0.833 (VERY different from 0.75)
-        assert!((dir.z - 0.75).abs() < 0.02,
-            "dir.z at yaw=π/3, pitch=π/6 should be ~0.75, got {} (mutation would give ~0.833)", dir.z);
-        assert!((dir.x - 0.433).abs() < 0.02,
-            "dir.x should be ~0.433, got {}", dir.x);
-        assert!((dir.y - 0.5).abs() < 0.02,
-            "dir.y should be ~0.5, got {}", dir.y);
+        assert!(
+            (dir.z - 0.75).abs() < 0.02,
+            "dir.z at yaw=π/3, pitch=π/6 should be ~0.75, got {} (mutation would give ~0.833)",
+            dir.z
+        );
+        assert!(
+            (dir.x - 0.433).abs() < 0.02,
+            "dir.x should be ~0.433, got {}",
+            dir.x
+        );
+        assert!(
+            (dir.y - 0.5).abs() < 0.02,
+            "dir.y should be ~0.5, got {}",
+            dir.y
+        );
     }
 }
 
@@ -697,11 +889,11 @@ mod culling_boundary {
         let vp = Mat4::IDENTITY;
         let frustum = FrustumPlanes::from_view_proj(&vp);
         // Small box at origin should be inside
-        let result = frustum.test_aabb(
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(0.1, 0.1, 0.1),
+        let result = frustum.test_aabb(Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.1, 0.1, 0.1));
+        assert!(
+            result,
+            "Small box at origin should be inside identity frustum"
         );
-        assert!(result, "Small box at origin should be inside identity frustum");
     }
 
     #[test]
@@ -709,11 +901,11 @@ mod culling_boundary {
         let vp = Mat4::IDENTITY;
         let frustum = FrustumPlanes::from_view_proj(&vp);
         // Box very far away should be outside
-        let result = frustum.test_aabb(
-            Vec3::new(1000.0, 1000.0, 1000.0),
-            Vec3::new(0.1, 0.1, 0.1),
+        let result = frustum.test_aabb(Vec3::new(1000.0, 1000.0, 1000.0), Vec3::new(0.1, 0.1, 0.1));
+        assert!(
+            !result,
+            "Box at (1000,1000,1000) should be outside identity frustum"
         );
-        assert!(!result, "Box at (1000,1000,1000) should be outside identity frustum");
     }
 
     #[test]

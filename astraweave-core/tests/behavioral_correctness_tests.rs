@@ -15,7 +15,8 @@
 //! Phase 8.8: Production-Ready Core Validation
 
 use astraweave_core::{
-    CompanionState, EnemyState, IVec2, PlayerState, Poi, Team, World, WorldSnapshot,
+    CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance, Team, World,
+    WorldSnapshot,
 };
 
 // ============================================================================
@@ -374,7 +375,11 @@ fn test_player_state_defaults() {
     assert_eq!(player.hp, 100, "Default player HP should be 100");
     assert_eq!(player.pos.x, 0, "Default x should be 0");
     assert_eq!(player.pos.y, 0, "Default y should be 0");
-    assert_eq!(player.stance, "stand", "Default stance should be 'stand'");
+    assert_eq!(
+        player.stance,
+        Stance::Stand,
+        "Default stance should be 'stand'"
+    );
 }
 
 /// Verify CompanionState default values
@@ -400,7 +405,11 @@ fn test_enemy_state_defaults() {
 
     assert_eq!(enemy.id, 0, "Default enemy id should be 0");
     assert_eq!(enemy.hp, 100, "Default enemy HP should be 100");
-    assert_eq!(enemy.cover, "none", "Default cover should be 'none'");
+    assert_eq!(
+        enemy.cover,
+        CoverType::None,
+        "Default cover should be 'none'"
+    );
     assert!(
         (enemy.last_seen - 0.0).abs() < 0.001,
         "Default last_seen should be 0"

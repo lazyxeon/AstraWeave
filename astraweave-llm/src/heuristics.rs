@@ -197,7 +197,7 @@ impl HeuristicRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::{CompanionState, Constraints, EnemyState, PlayerState, Poi, ToolSpec};
+    use astraweave_core::{CompanionState, Constraints, CoverType, EnemyState, PlayerState, Poi, Stance, ToolSpec};
     use std::collections::BTreeMap;
 
     fn create_basic_snapshot() -> WorldSnapshot {
@@ -206,7 +206,7 @@ mod tests {
             player: PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 5, y: 5 },
-                stance: "stand".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {
@@ -363,7 +363,7 @@ mod tests {
             id: 99,
             pos: IVec2 { x: 4, y: 4 }, // 2 tiles away (manhattan)
             hp: 100,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         });
 
@@ -382,7 +382,7 @@ mod tests {
             id: 99,
             pos: IVec2 { x: 20, y: 20 }, // 34 tiles away
             hp: 100,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         });
 
@@ -413,7 +413,7 @@ mod tests {
             id: 99,
             pos: IVec2 { x: 100, y: 100 },
             hp: 100,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         });
 
@@ -565,7 +565,7 @@ mod tests {
             id: 42,
             pos: IVec2 { x: 5, y: 5 },
             hp: 100,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         });
         let reg = create_full_registry();
@@ -604,7 +604,7 @@ mod tests {
             id: 42,
             pos: IVec2 { x: 5, y: 5 },
             hp: 100,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         });
         let reg = create_empty_registry();
@@ -626,7 +626,7 @@ mod tests {
             id: 99,
             pos: IVec2 { x: 5, y: 5 },
             hp: 100,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         });
         let reg = create_full_registry();
@@ -658,7 +658,7 @@ mod tests {
             id: 99,
             pos: IVec2 { x: 10, y: 5 },
             hp: 100,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         });
         let reg = create_full_registry();

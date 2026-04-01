@@ -18,7 +18,7 @@ use aw_editor_lib::clipboard::{
     ClipboardData, ClipboardEntityData, ClipboardValidation, CLIPBOARD_SCHEMA_VERSION,
 };
 use aw_editor_lib::runtime::{RuntimeIssue, RuntimeState, RuntimeStats};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 // ============================================================================
 // Helpers
@@ -35,7 +35,7 @@ fn make_entity_data(name: &str, hp: i32, ammo: i32, team: u8) -> ClipboardEntity
         hp,
         team_id: team,
         ammo,
-        cooldowns: HashMap::new(),
+        cooldowns: BTreeMap::new(),
         behavior_graph: None,
     }
 }

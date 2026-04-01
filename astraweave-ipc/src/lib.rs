@@ -52,7 +52,7 @@ pub async fn ws_client_roundtrip(addr: &str, snapshot: &WorldSnapshot) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::schema::{CompanionState, EnemyState, IVec2, PlayerState, Poi};
+    use astraweave_core::schema::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance};
     use std::collections::BTreeMap;
 
     fn create_test_snapshot() -> WorldSnapshot {
@@ -61,7 +61,7 @@ mod tests {
             player: PlayerState {
                 pos: IVec2::new(5, 5),
                 hp: 100,
-                stance: "standing".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {
@@ -74,7 +74,7 @@ mod tests {
                 id: 0,
                 pos: IVec2::new(10, 10),
                 hp: 50,
-                cover: "none".to_string(),
+                cover: CoverType::None,
                 last_seen: 0.0,
             }],
             pois: vec![Poi {
@@ -139,7 +139,7 @@ mod tests {
             player: PlayerState {
                 pos: IVec2::new(0, 0),
                 hp: 100,
-                stance: "standing".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {
@@ -169,9 +169,9 @@ mod tests {
                 pos: IVec2::new(i * 2, i * 2),
                 hp: 50,
                 cover: if i % 2 == 0 {
-                    "none".to_string()
+                    CoverType::None
                 } else {
-                    "wall".to_string()
+                    CoverType::Wall
                 },
                 last_seen: i as f32 * 0.5,
             })
@@ -180,8 +180,8 @@ mod tests {
         let json = serde_json::to_string(&snap).unwrap();
         let deserialized: WorldSnapshot = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.enemies.len(), 10);
-        assert_eq!(deserialized.enemies[0].cover, "none");
-        assert_eq!(deserialized.enemies[1].cover, "wall");
+        assert_eq!(deserialized.enemies[0].cover, CoverType::None);
+        assert_eq!(deserialized.enemies[1].cover, CoverType::Wall);
     }
 
     #[test]
@@ -206,7 +206,7 @@ mod tests {
             player: PlayerState {
                 pos: IVec2::new(0, 0),
                 hp: 100,
-                stance: "crouching".to_string(),
+                stance: Stance::Crouch,
                 orders: vec!["advance".to_string()],
             },
             me: CompanionState {
@@ -247,7 +247,7 @@ mod tests {
             player: PlayerState {
                 pos: IVec2::new(0, 0),
                 hp: 100,
-                stance: "standing".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {

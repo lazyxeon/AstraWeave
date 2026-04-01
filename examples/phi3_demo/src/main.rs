@@ -13,7 +13,7 @@
 //! cargo run -p phi3_demo --release
 //! ```
 
-use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState, Poi, WorldSnapshot};
+use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance, WorldSnapshot};
 use astraweave_llm::phi3_ollama::Phi3Ollama;
 use astraweave_llm::prompts::{quick, PromptBuilder};
 use astraweave_llm::LlmClient;
@@ -84,7 +84,7 @@ fn create_combat_scenario() -> WorldSnapshot {
         player: PlayerState {
             hp: 75,
             pos: IVec2 { x: 10, y: 10 },
-            stance: "crouch".to_string(),
+            stance: Stance::Crouch,
             orders: vec!["hold position".to_string()],
         },
         me: CompanionState {
@@ -98,14 +98,14 @@ fn create_combat_scenario() -> WorldSnapshot {
                 id: 99, // Entity is just u32
                 pos: IVec2 { x: 25, y: 15 },
                 hp: 100,
-                cover: "crate".to_string(),
+                cover: CoverType::Unknown,
                 last_seen: 2.0,
             },
             EnemyState {
                 id: 100,
                 pos: IVec2 { x: 28, y: 12 },
                 hp: 80,
-                cover: "wall".to_string(),
+                cover: CoverType::Wall,
                 last_seen: 5.0,
             },
         ],

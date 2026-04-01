@@ -8,6 +8,8 @@ pub mod advanced_erosion; // Production-ready erosion simulation
 pub mod background_loader; // Week 4 Action 14: Async chunk streaming
 pub mod biome;
 pub mod biome_blending; // Production-ready biome blending
+pub mod biome_pack;
+pub mod blueprint_zone;
 pub mod chunk;
 pub mod climate;
 pub mod erosion;
@@ -19,10 +21,7 @@ pub mod meshing;
 pub mod noise_gen;
 pub mod noise_simd; // SIMD-optimized noise generation (Week 3 Action 8)
 pub mod partition_integration;
-pub mod biome_pack;
-pub mod blueprint_zone;
 pub mod scatter;
-pub mod zone_scatter;
 pub mod solver; // Phase 10: AI-Orchestrated Dynamic Terrain
 pub mod streaming_diagnostics; // Week 4 Action 14: Diagnostics overlay
 pub mod structures;
@@ -30,6 +29,7 @@ pub mod terrain_modifier; // Phase 10: Batched voxel updates
 pub mod terrain_persistence; // Phase 10: Terrain save/load
 pub mod texture_splatting; // Production-ready terrain texture splatting
 pub mod voxel_data;
+pub mod zone_scatter;
 
 pub use advanced_erosion::{
     AdvancedErosionSimulator, ErosionPreset, ErosionStats, HydraulicErosionConfig,
@@ -38,6 +38,10 @@ pub use advanced_erosion::{
 pub use background_loader::{BackgroundChunkLoader, StreamingConfig, StreamingStats}; // Week 4
 pub use biome::{Biome, BiomeConfig, BiomeType, BiomeVegetation, VegetationType};
 pub use biome_blending::{BiomeBlendConfig, BiomeBlender, BiomeWeight, PackedBiomeBlend}; // Biome blending
+pub use biome_pack::{BiomePack, BiomePackAsset, BiomePackScatter};
+pub use blueprint_zone::{
+    AdaptiveScaleParams, BlendMask, BlueprintZone, PlacementMode, ZoneId, ZoneRegistry, ZoneSource,
+};
 pub use chunk::{ChunkId, ChunkManager, TerrainChunk};
 pub use climate::{ClimateConfig, ClimateMap};
 pub use heightmap::{Heightmap, HeightmapConfig};
@@ -54,15 +58,7 @@ pub use partition_integration::{
     PartitionCoord, VoxelPartitionConfig, VoxelPartitionEvent, VoxelPartitionManager,
     VoxelPartitionStats,
 };
-pub use biome_pack::{BiomePack, BiomePackAsset, BiomePackScatter};
-pub use blueprint_zone::{
-    AdaptiveScaleParams, BlendMask, BlueprintZone, PlacementMode, ZoneId, ZoneRegistry, ZoneSource,
-};
 pub use scatter::{ScatterConfig, ScatterResult, VegetationInstance, VegetationScatter};
-pub use zone_scatter::{
-    apply_heightmap_patches, generate_multi_zone_scatter, HeightmapPatch, SourceHeightmap,
-    ZoneGenerationResult, ZoneScatterGenerator,
-};
 pub use solver::{ResolvedLocation, SolverError, TerrainSolver, ValidationStatus};
 pub use streaming_diagnostics::{
     ChunkLoadState, DiagnosticReport, FrameStats, HitchDetector, MemoryStats, StreamingDiagnostics,
@@ -78,6 +74,10 @@ pub use texture_splatting::{
     TriplanarWeights, MAX_SPLAT_LAYERS,
 }; // Texture splatting
 pub use voxel_data::{ChunkCoord, Density, MaterialId, Voxel, VoxelChunk, VoxelGrid, CHUNK_SIZE};
+pub use zone_scatter::{
+    apply_heightmap_patches, generate_multi_zone_scatter, HeightmapPatch, SourceHeightmap,
+    ZoneGenerationResult, ZoneScatterGenerator,
+};
 
 use glam::Vec3;
 use serde::{Deserialize, Serialize};

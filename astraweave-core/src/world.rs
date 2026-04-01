@@ -1,6 +1,7 @@
 use crate::{Entity, IVec2};
 use astraweave_behavior::BehaviorGraph;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Health {
@@ -19,17 +20,19 @@ pub struct Ammo {
 
 #[derive(Clone, Debug)]
 pub struct Cooldowns {
-    pub map: HashMap<String, f32>,
+    /// BTreeMap for deterministic iteration order (important for replays)
+    /// and to match WorldSnapshot schema directly (avoids clone+convert).
+    pub map: BTreeMap<String, f32>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Pose {
     pub pos: IVec2,
-    pub height: f32,   // Vertical position (Y axis in 3D)
-    pub rotation: f32, // Rotation in radians around Y axis (primary, for compatibility)
+    pub height: f32,     // Vertical position (Y axis in 3D)
+    pub rotation: f32,   // Rotation in radians around Y axis (primary, for compatibility)
     pub rotation_x: f32, // Pitch (rotation around X axis)
     pub rotation_z: f32, // Roll (rotation around Z axis)
-    pub scale: f32,    // Uniform scale factor
+    pub scale: f32,      // Uniform scale factor
 }
 
 #[derive(Default)]
@@ -44,6 +47,9 @@ pub struct World {
     cds: HashMap<Entity, Cooldowns>,
     names: HashMap<Entity, String>,
     behavior_graphs: HashMap<Entity, BehaviorGraph>,
+    /// Cached obstacles as IVec2 for efficient sharing across snapshots.
+    /// Rebuilt lazily when `obstacles_as_ivec2()` is called after changes.
+    obstacles_cache: Option<Arc<Vec<IVec2>>>,
 }
 
 impl World {
@@ -104,7 +110,7 @@ impl World {
         self.cds.insert(
             id,
             Cooldowns {
-                map: HashMap::new(),
+                map: BTreeMap::new(),
             },
         );
         self.names.insert(id, name.to_string());
@@ -201,8 +207,41 @@ impl World {
     pub fn entities(&self) -> Vec<Entity> {
         self.poses.keys().copied().collect()
     }
+
+    /// Iterate over all entity ids without allocating a Vec.
+    /// Prefer this over `entities()` on hot paths.
+    pub fn iter_entities(&self) -> impl Iterator<Item = Entity> + '_ {
+        self.poses.keys().copied()
+    }
+
+    /// Number of entities in the world.
+    pub fn entity_count(&self) -> usize {
+        self.poses.len()
+    }
     pub fn obstacle(&self, p: IVec2) -> bool {
         self.obstacles.contains(&(p.x, p.y))
+    }
+
+    /// Get obstacles as a shared `Arc<Vec<IVec2>>`, suitable for embedding in
+    /// multiple WorldSnapshots without deep-copying. The cache is rebuilt only
+    /// when called after `invalidate_obstacles_cache()` or the first time.
+    pub fn obstacles_as_ivec2(&mut self) -> Arc<Vec<IVec2>> {
+        if let Some(ref cached) = self.obstacles_cache {
+            return Arc::clone(cached);
+        }
+        let vec: Vec<IVec2> = self
+            .obstacles
+            .iter()
+            .map(|&(x, y)| IVec2 { x, y })
+            .collect();
+        let arc = Arc::new(vec);
+        self.obstacles_cache = Some(Arc::clone(&arc));
+        arc
+    }
+
+    /// Invalidate the obstacles cache. Call after modifying `self.obstacles`.
+    pub fn invalidate_obstacles_cache(&mut self) {
+        self.obstacles_cache = None;
     }
 }
 

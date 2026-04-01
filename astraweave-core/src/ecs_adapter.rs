@@ -27,22 +27,25 @@ fn sys_sim(world: &mut ecs::World) {
 
 fn sys_move(world: &mut ecs::World) {
     // Move entities one step toward desired pos (cardinal-only 4-neighborhood) per tick
-    // Deterministic order by BTreeMap underlying storage
+    // Deterministic order guaranteed by sorting on entity ID
     // Note: no collision here—Phase 1 minimal behavior
     // Read positions and desired goals, mutate positions
     // We purposely run after sim (cooldowns)
-    use std::collections::BTreeMap;
-    let goals: BTreeMap<ecs::Entity, CDesiredPos> = {
-        let mut m = BTreeMap::new();
+
+    // Use a Vec instead of BTreeMap to avoid per-frame tree allocation.
+    // Sort by entity for determinism.
+    let mut goals: Vec<(ecs::Entity, CDesiredPos)> = {
         let q = ecs::Query::<CDesiredPos>::new(&*world);
-        for (e, g) in q {
-            m.insert(e, *g);
-        }
-        m
+        q.map(|(e, g)| (e, *g)).collect()
     };
+    goals.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
     let mut moved: Vec<(ecs::Entity, IVec2, IVec2)> = vec![];
     world.each_mut::<CPos>(|e, p| {
-        if let Some(goal) = goals.get(&e) {
+        let goal = goals
+            .binary_search_by_key(&e, |(ent, _)| *ent)
+            .ok()
+            .map(|i| &goals[i].1);
+        if let Some(goal) = goal {
             let dx = (goal.pos.x - p.pos.x).signum();
             let mut dy = (goal.pos.y - p.pos.y).signum();
             // Cardinal-only behavior: prefer moving along X this tick; if we move in X,
@@ -461,8 +464,18 @@ mod tests {
         let w = World::new();
         let mut app = build_app(w, 0.016);
         let e = app.world.spawn();
-        app.world.insert(e, CPos { pos: IVec2 { x: 5, y: 0 } });
-        app.world.insert(e, CDesiredPos { pos: IVec2 { x: 3, y: 0 } });
+        app.world.insert(
+            e,
+            CPos {
+                pos: IVec2 { x: 5, y: 0 },
+            },
+        );
+        app.world.insert(
+            e,
+            CDesiredPos {
+                pos: IVec2 { x: 3, y: 0 },
+            },
+        );
         app = app.run_fixed(1);
         let p = app.world.get::<CPos>(e).unwrap();
         assert_eq!(p.pos.x, 4, "Should move left (negative X direction)");
@@ -476,8 +489,18 @@ mod tests {
         let w = World::new();
         let mut app = build_app(w, 0.016);
         let e = app.world.spawn();
-        app.world.insert(e, CPos { pos: IVec2 { x: 0, y: 5 } });
-        app.world.insert(e, CDesiredPos { pos: IVec2 { x: 0, y: 3 } });
+        app.world.insert(
+            e,
+            CPos {
+                pos: IVec2 { x: 0, y: 5 },
+            },
+        );
+        app.world.insert(
+            e,
+            CDesiredPos {
+                pos: IVec2 { x: 0, y: 3 },
+            },
+        );
         app = app.run_fixed(1);
         let p = app.world.get::<CPos>(e).unwrap();
         assert_eq!(p.pos.x, 0);
@@ -491,8 +514,18 @@ mod tests {
         let w = World::new();
         let mut app = build_app(w, 0.016);
         let e = app.world.spawn();
-        app.world.insert(e, CPos { pos: IVec2 { x: 0, y: 0 } });
-        app.world.insert(e, CDesiredPos { pos: IVec2 { x: 3, y: 3 } });
+        app.world.insert(
+            e,
+            CPos {
+                pos: IVec2 { x: 0, y: 0 },
+            },
+        );
+        app.world.insert(
+            e,
+            CDesiredPos {
+                pos: IVec2 { x: 3, y: 3 },
+            },
+        );
         app = app.run_fixed(1);
         let p = app.world.get::<CPos>(e).unwrap();
         assert_eq!(p.pos.x, 1, "X should step toward goal");
@@ -507,8 +540,18 @@ mod tests {
         let w = World::new();
         let mut app = build_app(w, 0.016);
         let e = app.world.spawn();
-        app.world.insert(e, CPos { pos: IVec2 { x: 5, y: 0 } });
-        app.world.insert(e, CDesiredPos { pos: IVec2 { x: 5, y: 2 } });
+        app.world.insert(
+            e,
+            CPos {
+                pos: IVec2 { x: 5, y: 0 },
+            },
+        );
+        app.world.insert(
+            e,
+            CDesiredPos {
+                pos: IVec2 { x: 5, y: 2 },
+            },
+        );
         app = app.run_fixed(1);
         let p = app.world.get::<CPos>(e).unwrap();
         assert_eq!(p.pos.x, 5);
@@ -522,8 +565,18 @@ mod tests {
         let w = World::new();
         let mut app = build_app(w, 0.016);
         let e = app.world.spawn();
-        app.world.insert(e, CPos { pos: IVec2 { x: 3, y: 3 } });
-        app.world.insert(e, CDesiredPos { pos: IVec2 { x: 3, y: 3 } });
+        app.world.insert(
+            e,
+            CPos {
+                pos: IVec2 { x: 3, y: 3 },
+            },
+        );
+        app.world.insert(
+            e,
+            CDesiredPos {
+                pos: IVec2 { x: 3, y: 3 },
+            },
+        );
         app = app.run_fixed(1);
         let p = app.world.get::<CPos>(e).unwrap();
         assert_eq!(p.pos.x, 3, "X unchanged at destination");
@@ -544,8 +597,18 @@ mod tests {
         let w = World::new();
         let mut app = build_app(w, 0.016);
         let e = app.world.spawn();
-        app.world.insert(e, CPos { pos: IVec2 { x: 3, y: 0 } });
-        app.world.insert(e, CDesiredPos { pos: IVec2 { x: 1, y: 0 } });
+        app.world.insert(
+            e,
+            CPos {
+                pos: IVec2 { x: 3, y: 0 },
+            },
+        );
+        app.world.insert(
+            e,
+            CDesiredPos {
+                pos: IVec2 { x: 1, y: 0 },
+            },
+        );
         app = app.run_fixed(2);
         let p = app.world.get::<CPos>(e).unwrap();
         assert_eq!(p.pos.x, 1, "Should reach goal after 2 ticks");
@@ -579,7 +642,10 @@ mod tests {
         sys_sim(&mut ecs_world);
 
         let cds = ecs_world.get::<CCooldowns>(e).unwrap();
-        let val = *cds.map.get(&crate::cooldowns::CooldownKey::from("test_cd")).unwrap();
+        let val = *cds
+            .map
+            .get(&crate::cooldowns::CooldownKey::from("test_cd"))
+            .unwrap();
         assert!(
             (val - 0.9).abs() < 1e-5,
             "Cooldown should decrease: 1.0 - 0.1 = 0.9, got {}",
@@ -608,7 +674,10 @@ mod tests {
         sys_sim(&mut ecs_world);
 
         let cds = ecs_world.get::<CCooldowns>(e).unwrap();
-        let val = *cds.map.get(&crate::cooldowns::CooldownKey::from("cd")).unwrap();
+        let val = *cds
+            .map
+            .get(&crate::cooldowns::CooldownKey::from("cd"))
+            .unwrap();
         assert_eq!(val, 0.0, "Cooldown should clamp to 0.0 when dt > remaining");
     }
 
@@ -620,8 +689,7 @@ mod tests {
         // Creates an ECS entity with CLegacyId and CPos, then verifies
         // that после sync the legacy world reflects the ECS position.
         let mut legacy_w = World::new();
-        let legacy_id =
-            legacy_w.spawn("ally", IVec2 { x: 0, y: 0 }, crate::Team { id: 1 }, 100, 5);
+        let legacy_id = legacy_w.spawn("ally", IVec2 { x: 0, y: 0 }, crate::Team { id: 1 }, 100, 5);
 
         let mut ecs_world = ecs::World::new();
         ecs_world.insert_resource(Dt(0.016));
@@ -652,6 +720,9 @@ mod tests {
             "Legacy position should match ECS position after sync"
         );
         let hp = w.health(legacy_id).unwrap();
-        assert_eq!(hp.hp, 77, "Legacy health should match ECS health after sync");
+        assert_eq!(
+            hp.hp, 77,
+            "Legacy health should match ECS health after sync"
+        );
     }
 }

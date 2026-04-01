@@ -110,12 +110,9 @@ mod blob_vec_mutation_tests {
 
         let val: u64 = 0xDEAD_BEEF;
         unsafe {
-            blob.push_raw(
-                &val as *const u64 as *const u8,
-                |src, dst| {
-                    (dst as *mut u64).write(*(src as *const u64));
-                },
-            );
+            blob.push_raw(&val as *const u64 as *const u8, |src, dst| {
+                (dst as *mut u64).write(*(src as *const u64));
+            });
         }
 
         assert_eq!(blob.len(), 1);
@@ -231,7 +228,10 @@ mod blob_vec_mutation_tests {
         }
 
         // The original at index 0 should have been dropped
-        assert!(drop1.load(Ordering::SeqCst), "original element must be dropped after swap_remove_raw_to");
+        assert!(
+            drop1.load(Ordering::SeqCst),
+            "original element must be dropped after swap_remove_raw_to"
+        );
         assert_eq!(blob.len(), 1);
 
         // dst should contain the cloned value
@@ -289,7 +289,10 @@ mod blob_vec_mutation_tests {
         blob.clear();
         // Each element in the blob was dropped: that's 2 drops
         // Plus the 2 original stack values will be dropped at end of scope
-        assert!(counter.load(Ordering::SeqCst) >= 2, "clear must call drop_fn on each element");
+        assert!(
+            counter.load(Ordering::SeqCst) >= 2,
+            "clear must call drop_fn on each element"
+        );
     }
 
     #[test]
@@ -332,9 +335,18 @@ mod blob_vec_mutation_tests {
         // swap_remove_raw index 1: should drop element 1, move element 2 to index 1
         blob.swap_remove_raw(1);
 
-        assert!(drop1.load(Ordering::SeqCst), "element at removed index must be dropped");
-        assert!(!drop0.load(Ordering::SeqCst), "element 0 must NOT be dropped");
-        assert!(!drop2.load(Ordering::SeqCst), "element 2 must NOT be dropped (moved, not dropped)");
+        assert!(
+            drop1.load(Ordering::SeqCst),
+            "element at removed index must be dropped"
+        );
+        assert!(
+            !drop0.load(Ordering::SeqCst),
+            "element 0 must NOT be dropped"
+        );
+        assert!(
+            !drop2.load(Ordering::SeqCst),
+            "element 2 must NOT be dropped (moved, not dropped)"
+        );
         assert_eq!(blob.len(), 2);
     }
 
@@ -456,7 +468,9 @@ mod sparse_set_mutation_tests {
     fn sparse_set_remove_middle_of_five() {
         // Test with larger set to ensure swap is correct
         let mut set = SparseSet::new();
-        let entities: Vec<Entity> = (0..5).map(|i| unsafe { Entity::from_raw(i * 10) }).collect();
+        let entities: Vec<Entity> = (0..5)
+            .map(|i| unsafe { Entity::from_raw(i * 10) })
+            .collect();
         for &e in &entities {
             set.insert(e);
         }
@@ -467,7 +481,11 @@ mod sparse_set_mutation_tests {
         assert_eq!(set.len(), 4);
 
         // Entity 4 (last) should have moved to index 2
-        assert_eq!(set.get(entities[4]), Some(2), "last entity must move to removed index");
+        assert_eq!(
+            set.get(entities[4]),
+            Some(2),
+            "last entity must move to removed index"
+        );
         assert_eq!(set.get(entities[0]), Some(0), "entity 0 unchanged");
         assert_eq!(set.get(entities[1]), Some(1), "entity 1 unchanged");
         assert_eq!(set.get(entities[3]), Some(3), "entity 3 unchanged");
@@ -700,7 +718,10 @@ mod archetype_mutation_tests {
 
         // Test get on non-existent entity
         let e3 = unsafe { Entity::from_raw(3) };
-        assert!(arch.get::<Pos>(e3).is_none(), "non-existent entity returns None");
+        assert!(
+            arch.get::<Pos>(e3).is_none(),
+            "non-existent entity returns None"
+        );
 
         // Test get_mut
         {
@@ -715,7 +736,10 @@ mod archetype_mutation_tests {
         let (storage, id) = make_blob_archetype_in_storage();
         let arch = storage.get_archetype(id).unwrap();
         let result = arch.iter_components_blob::<Pos>();
-        assert!(result.is_some(), "blob archetype with Pos should return Some");
+        assert!(
+            result.is_some(),
+            "blob archetype with Pos should return Some"
+        );
         let (entities, components) = result.unwrap();
         assert_eq!(entities.len(), 0);
         assert_eq!(components.len(), 0);
@@ -733,10 +757,7 @@ mod archetype_mutation_tests {
 
         let e1 = unsafe { Entity::from_raw(1) };
         let hp_val = Hp(42);
-        let components = vec![(
-            TypeId::of::<Hp>(),
-            &hp_val as *const Hp as *const u8,
-        )];
+        let components = vec![(TypeId::of::<Hp>(), &hp_val as *const Hp as *const u8)];
         arch.add_entity_typed_raw(e1, &components);
 
         assert_eq!(arch.len(), 1);
@@ -774,7 +795,10 @@ mod archetype_mutation_tests {
         arch.add_entity(e1, c);
 
         let result = arch.remove_entity(e1);
-        assert!(result.is_some(), "remove_entity must return Some for existing entity");
+        assert!(
+            result.is_some(),
+            "remove_entity must return Some for existing entity"
+        );
     }
 
     #[test]
@@ -888,7 +912,11 @@ mod entity_allocator_mutation_tests {
         let mut alloc = EntityAllocator::new();
         alloc.reserve(100);
         assert_eq!(alloc.alive_count(), 0, "reserve must not spawn entities");
-        assert_eq!(alloc.capacity(), 0, "capacity reflects spawned slots, not reserved");
+        assert_eq!(
+            alloc.capacity(),
+            0,
+            "capacity reflects spawned slots, not reserved"
+        );
         // reserve() should at minimum not panic or corrupt state
         // After reserving, spawning should work normally
         let e = alloc.spawn();
@@ -937,7 +965,11 @@ mod entity_allocator_mutation_tests {
         // Respawn — LIFO means we get e2's id first, then e1, then e0
         let r1 = alloc.spawn();
         assert_eq!(r1.id(), 2, "LIFO: last despawned (e2) recycled first");
-        assert_eq!(r1.generation(), 1, "recycled entity has incremented generation");
+        assert_eq!(
+            r1.generation(),
+            1,
+            "recycled entity has incremented generation"
+        );
 
         let r2 = alloc.spawn();
         assert_eq!(r2.id(), 1, "LIFO: e1 recycled second");
@@ -970,7 +1002,10 @@ mod entity_allocator_mutation_tests {
         // Kills: is_alive → true for unallocated slots
         let alloc = EntityAllocator::new();
         let fake = Entity::new(999, 0);
-        assert!(!alloc.is_alive(fake), "unallocated entity must not be alive");
+        assert!(
+            !alloc.is_alive(fake),
+            "unallocated entity must not be alive"
+        );
     }
 
     #[test]
@@ -978,7 +1013,10 @@ mod entity_allocator_mutation_tests {
         // Kills: despawn >= → < (would skip bounds check)
         let mut alloc = EntityAllocator::new();
         let fake = Entity::new(999, 0);
-        assert!(!alloc.despawn(fake), "despawn of unallocated must return false");
+        assert!(
+            !alloc.despawn(fake),
+            "despawn of unallocated must return false"
+        );
     }
 
     #[test]
@@ -1105,7 +1143,10 @@ mod component_meta_mutation_tests {
         assert_eq!(blob.len(), 1);
 
         let read_back = unsafe { std::ptr::read(blob.get_raw(0).unwrap() as *const Point) };
-        assert_eq!(read_back, p, "value must survive push_raw + get_raw roundtrip");
+        assert_eq!(
+            read_back, p,
+            "value must survive push_raw + get_raw roundtrip"
+        );
     }
 
     #[test]
@@ -1134,7 +1175,10 @@ mod component_meta_mutation_tests {
     #[test]
     fn drop_fn_some_for_heap_types_none_for_copy() {
         let copy_meta = ComponentMeta::of::<Point>();
-        assert!(copy_meta.drop_fn.is_none(), "Copy type must have no drop_fn");
+        assert!(
+            copy_meta.drop_fn.is_none(),
+            "Copy type must have no drop_fn"
+        );
 
         let heap_meta = ComponentMeta::of::<Named>();
         assert!(heap_meta.drop_fn.is_some(), "Heap type must have drop_fn");
@@ -1154,7 +1198,10 @@ mod component_meta_mutation_tests {
     fn registry_register_returns_true_first_false_after() {
         let mut reg = ComponentMetaRegistry::new();
         assert!(reg.register::<Point>(), "first register must return true");
-        assert!(!reg.register::<Point>(), "duplicate register must return false");
+        assert!(
+            !reg.register::<Point>(),
+            "duplicate register must return false"
+        );
     }
 
     #[test]
@@ -1166,7 +1213,10 @@ mod component_meta_mutation_tests {
         assert_eq!(meta.layout.size(), std::mem::size_of::<Point>());
         assert_eq!(meta.layout.align(), std::mem::align_of::<Point>());
 
-        assert!(reg.get(TypeId::of::<Named>()).is_none(), "unregistered type returns None");
+        assert!(
+            reg.get(TypeId::of::<Named>()).is_none(),
+            "unregistered type returns None"
+        );
     }
 
     #[test]
@@ -1207,7 +1257,11 @@ mod counting_alloc_tests {
         let a = counting_alloc::allocs();
         let d = counting_alloc::deallocs();
         let net = counting_alloc::net_allocs();
-        assert_eq!(net, a as isize - d as isize, "net_allocs = allocs - deallocs");
+        assert_eq!(
+            net,
+            a as isize - d as isize,
+            "net_allocs = allocs - deallocs"
+        );
     }
 }
 
@@ -1233,7 +1287,11 @@ mod events_mutation_tests {
     #[test]
     fn with_keep_frames_sets_value() {
         let events = Events::new().with_keep_frames(5);
-        assert_eq!(events.keep_frames(), 5, "keep_frames must reflect set value");
+        assert_eq!(
+            events.keep_frames(),
+            5,
+            "keep_frames must reflect set value"
+        );
 
         let events2 = Events::new().with_keep_frames(0);
         assert_eq!(events2.keep_frames(), 0);
@@ -1278,22 +1336,21 @@ mod events_mutation_tests {
     fn clear_removes_specific_type_only() {
         let mut events = Events::new();
         events.send(PingEvent { seq: 1 });
-        events.send(PongEvent {
-            reply: "hi".into(),
-        });
+        events.send(PongEvent { reply: "hi".into() });
 
         events.clear::<PingEvent>();
         assert!(events.is_empty::<PingEvent>());
-        assert!(!events.is_empty::<PongEvent>(), "PongEvent must survive PingEvent clear");
+        assert!(
+            !events.is_empty::<PongEvent>(),
+            "PongEvent must survive PingEvent clear"
+        );
     }
 
     #[test]
     fn clear_all_removes_all_types() {
         let mut events = Events::new();
         events.send(PingEvent { seq: 1 });
-        events.send(PongEvent {
-            reply: "hi".into(),
-        });
+        events.send(PongEvent { reply: "hi".into() });
 
         events.clear_all();
         assert!(events.is_empty::<PingEvent>());
@@ -1523,7 +1580,10 @@ mod world_mutation_tests {
         let e = world.spawn();
         world.despawn(e);
         world.insert(e, Hp(100));
-        assert!(world.get::<Hp>(e).is_none(), "insert on dead entity must be ignored");
+        assert!(
+            world.get::<Hp>(e).is_none(),
+            "insert on dead entity must be ignored"
+        );
     }
 
     #[test]
@@ -1600,7 +1660,11 @@ mod world_mutation_tests {
         cmds.insert(e, Hp(42));
         cmds.flush(&mut world);
 
-        assert_eq!(world.get::<Hp>(e).unwrap().0, 42, "command buffer insert must work");
+        assert_eq!(
+            world.get::<Hp>(e).unwrap().0,
+            42,
+            "command buffer insert must work"
+        );
 
         let mut cmds2 = CommandBuffer::new();
         cmds2.remove::<Hp>(e);
@@ -1658,9 +1722,7 @@ mod schedule_mutation_tests {
             world.insert_resource(val + 10);
         }
 
-        let mut schedule = Schedule::default()
-            .with_stage("a")
-            .with_stage("b");
+        let mut schedule = Schedule::default().with_stage("a").with_stage("b");
         schedule.add_system("a", sys1);
         schedule.add_system("b", sys2);
 
@@ -1880,7 +1942,10 @@ mod round2_mutation_kills {
         // Never inserted entity — remove must return None, not Some(0) or Some(1)
         let fake_entity = Entity::new(999, 0);
         let result = arch.remove_entity(fake_entity);
-        assert_eq!(result, None, "remove_entity on unknown entity must return None");
+        assert_eq!(
+            result, None,
+            "remove_entity on unknown entity must return None"
+        );
     }
 
     #[test]
@@ -1894,22 +1959,39 @@ mod round2_mutation_kills {
         let e1 = Entity::new(1, 0);
         let e2 = Entity::new(2, 0);
         let mut comps0 = HashMap::new();
-        comps0.insert(TypeId::of::<u32>(), Box::new(10u32) as Box<dyn std::any::Any + Send + Sync>);
+        comps0.insert(
+            TypeId::of::<u32>(),
+            Box::new(10u32) as Box<dyn std::any::Any + Send + Sync>,
+        );
         arch.add_entity(e0, comps0);
         let mut comps1 = HashMap::new();
-        comps1.insert(TypeId::of::<u32>(), Box::new(20u32) as Box<dyn std::any::Any + Send + Sync>);
+        comps1.insert(
+            TypeId::of::<u32>(),
+            Box::new(20u32) as Box<dyn std::any::Any + Send + Sync>,
+        );
         arch.add_entity(e1, comps1);
         let mut comps2 = HashMap::new();
-        comps2.insert(TypeId::of::<u32>(), Box::new(30u32) as Box<dyn std::any::Any + Send + Sync>);
+        comps2.insert(
+            TypeId::of::<u32>(),
+            Box::new(30u32) as Box<dyn std::any::Any + Send + Sync>,
+        );
         arch.add_entity(e2, comps2);
 
         // e1 is at dense index 1 — removing it should return Some(1)
         let idx = arch.remove_entity(e1);
-        assert_eq!(idx, Some(1), "remove_entity must return the correct dense index");
+        assert_eq!(
+            idx,
+            Some(1),
+            "remove_entity must return the correct dense index"
+        );
 
         // e0 is at dense index 0
         let idx0 = arch.remove_entity(e0);
-        assert_eq!(idx0, Some(0), "remove_entity must return correct index after prior removal");
+        assert_eq!(
+            idx0,
+            Some(0),
+            "remove_entity must return correct index after prior removal"
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -1923,7 +2005,9 @@ mod round2_mutation_kills {
         // First reserve: capacity goes to max(additional, 0*2, 4) = max(additional, 4)
         // Push 4 items to fill capacity
         for i in 0u32..4 {
-            unsafe { blob.push(i); }
+            unsafe {
+                blob.push(i);
+            }
         }
         assert_eq!(blob.capacity(), 4, "initial capacity should be 4");
 
@@ -1931,9 +2015,12 @@ mod round2_mutation_kills {
         // new_capacity = max(5, 4*2, 4) = max(5, 8, 4) = 8  (correct)
         // with +2: max(5, 4+2, 4) = max(5, 6, 4) = 6
         // with /2: max(5, 4/2, 4) = max(5, 2, 4) = 5
-        unsafe { blob.push(4u32); }
+        unsafe {
+            blob.push(4u32);
+        }
         assert_eq!(
-            blob.capacity(), 8,
+            blob.capacity(),
+            8,
             "capacity must double from 4 to 8 (growth factor * 2)"
         );
     }
@@ -1961,8 +2048,16 @@ mod round2_mutation_kills {
         assert_eq!(removed, Some(100));
 
         // e1 and e2 must still be accessible with correct values
-        assert_eq!(set.get(e1), Some(&200), "e1 must still be accessible after removing e0");
-        assert_eq!(set.get(e2), Some(&300), "e2 must still be accessible after removing e0");
+        assert_eq!(
+            set.get(e1),
+            Some(&200),
+            "e1 must still be accessible after removing e0"
+        );
+        assert_eq!(
+            set.get(e2),
+            Some(&300),
+            "e2 must still be accessible after removing e0"
+        );
         assert_eq!(set.len(), 2);
     }
 
@@ -1980,7 +2075,11 @@ mod round2_mutation_kills {
         // With wrong ==: dense_index == last_index → tries to swap with itself
         let removed = set.remove(e1);
         assert_eq!(removed, Some(20));
-        assert_eq!(set.get(e0), Some(&10), "e0 must survive after removing last element");
+        assert_eq!(
+            set.get(e0),
+            Some(&10),
+            "e0 must survive after removing last element"
+        );
         assert_eq!(set.len(), 1);
     }
 

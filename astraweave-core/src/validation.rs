@@ -325,9 +325,9 @@ pub fn validate_and_execute(
                     let dmg = ((*duration) * 5.0) as i32;
                     h.hp -= dmg.max(1);
                 }
-                let ammo = w.ammo_mut(actor).ok_or_else(|| {
-                    EngineError::Resource("ammo".into())
-                })?;
+                let ammo = w
+                    .ammo_mut(actor)
+                    .ok_or_else(|| EngineError::Resource("ammo".into()))?;
                 ammo.rounds = (ammo.rounds - 3).max(0);
                 log(format!(
                     "  [{}] COVER_FIRE on #{} for {:.1}s",
@@ -1695,13 +1695,19 @@ mod tests {
                 duration: 2.0, // dmg = (2.0 * 5.0) as i32 = 10
             }],
         };
-        let cfg = ValidateCfg { world_bounds: (-100, -100, 100, 100) };
+        let cfg = ValidateCfg {
+            world_bounds: (-100, -100, 100, 100),
+        };
         let mut logs = vec![];
         let result = validate_and_execute(&mut w, actor, &plan, &cfg, &mut |s| logs.push(s));
         assert!(result.is_ok());
         let hp = w.health(enemy).unwrap().hp;
         // 100 - 10 = 90
-        assert_eq!(hp, 90, "CoverFire with duration=2.0 should deal 10 dmg (2.0*5.0), got hp={}", hp);
+        assert_eq!(
+            hp, 90,
+            "CoverFire with duration=2.0 should deal 10 dmg (2.0*5.0), got hp={}",
+            hp
+        );
     }
 
     /// Catches: arithmetic mutations in draw_line_obs (lines 381-382, 389)
@@ -1732,7 +1738,11 @@ mod tests {
         assert!(obs.contains(&(1, 0)));
         assert!(obs.contains(&(2, 0)));
         assert!(obs.contains(&(3, 0)));
-        assert_eq!(obs.len(), 4, "Horizontal line from (0,0) to (3,0) should have 4 points");
+        assert_eq!(
+            obs.len(),
+            4,
+            "Horizontal line from (0,0) to (3,0) should have 4 points"
+        );
     }
 
     /// Catches: spawn wave coordinate arithmetic mutations (lines 439-440)
@@ -1767,8 +1777,10 @@ mod tests {
         // k=3: x = 10 + (3%3) - 1 = 9,   y = 20 + (3/3) = 21
         // k=4: x = 10 + (4%3) - 1 = 10,  y = 20 + (4/3) = 21
         // k=5: x = 10 + (5%3) - 1 = 11,  y = 20 + (5/3) = 21
-        let expected: std::collections::HashSet<(i32,i32)> = 
-            [(9,20),(10,20),(11,20),(9,21),(10,21),(11,21)].into_iter().collect();
+        let expected: std::collections::HashSet<(i32, i32)> =
+            [(9, 20), (10, 20), (11, 20), (9, 21), (10, 21), (11, 21)]
+                .into_iter()
+                .collect();
         let all = w.entities();
         let mut actual = std::collections::HashSet::new();
         for &eid in all.iter().skip(initial_count) {
@@ -1776,7 +1788,10 @@ mod tests {
                 actual.insert((pos.x, pos.y));
             }
         }
-        assert_eq!(actual, expected, "Spawn positions should form 3×2 grid offset from origin");
+        assert_eq!(
+            actual, expected,
+            "Spawn positions should form 3×2 grid offset from origin"
+        );
     }
 
     // ========================================================================
@@ -1795,9 +1810,19 @@ mod tests {
         draw_line_obs(&mut obs, a, b);
         // With correct signum: dx=(1-4).signum()=-1, dy=-1
         // Steps: (4,4), (3,3), (2,2), (1,1) — 4 points
-        assert!(obs.contains(&(3, 3)), "(3,3) must be on line from (4,4) to (1,1)");
-        assert!(obs.contains(&(2, 2)), "(2,2) must be on line from (4,4) to (1,1)");
-        assert_eq!(obs.len(), 4, "diagonal from (4,4) to (1,1) should have 4 points");
+        assert!(
+            obs.contains(&(3, 3)),
+            "(3,3) must be on line from (4,4) to (1,1)"
+        );
+        assert!(
+            obs.contains(&(2, 2)),
+            "(2,2) must be on line from (4,4) to (1,1)"
+        );
+        assert_eq!(
+            obs.len(),
+            4,
+            "diagonal from (4,4) to (1,1) should have 4 points"
+        );
         // With mutation: dx=(1+4).signum()=+1 → steps go (4,4),(5,5),(6,6)... infinite loop
     }
 

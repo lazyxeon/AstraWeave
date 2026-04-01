@@ -184,7 +184,7 @@ Snapshot: {snap}"#,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState, Poi};
+    use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance};
     use std::collections::BTreeMap;
 
     fn create_test_snapshot() -> WorldSnapshot {
@@ -193,7 +193,7 @@ mod tests {
             player: PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 5, y: 5 },
-                stance: "stand".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {
@@ -206,7 +206,7 @@ mod tests {
                 id: 99,
                 pos: IVec2 { x: 10, y: 8 },
                 hp: 100,
-                cover: "wall".to_string(),
+                cover: CoverType::Wall,
                 last_seen: 0.0,
             }],
             pois: vec![Poi {

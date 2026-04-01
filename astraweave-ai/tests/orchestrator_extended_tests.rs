@@ -9,7 +9,9 @@
 //! Target: +10-15pp coverage for astraweave-ai orchestrator.rs
 
 use astraweave_ai::{GoapOrchestrator, Orchestrator, RuleOrchestrator, UtilityOrchestrator};
-use astraweave_core::{ActionStep, CompanionState, EnemyState, IVec2, PlayerState, WorldSnapshot};
+use astraweave_core::{
+    ActionStep, CompanionState, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot,
+};
 use std::collections::BTreeMap;
 
 const COOLDOWN_THROW_SMOKE: &str = "throw:smoke";
@@ -33,7 +35,7 @@ fn make_snapshot(
         player: PlayerState {
             pos: IVec2 { x: 0, y: 0 },
             hp: player_hp,
-            stance: "standing".to_string(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         me: CompanionState {

@@ -13,49 +13,69 @@ use std::marker::PhantomData;
 /// Event trait marker
 pub trait Event: 'static + Send + Sync {}
 
-/// Event storage for a single event type
+/// Single entry pairing an event with its frame timestamp.
+/// Stored contiguously in a single VecDeque for cache locality.
+struct EventEntry<E: Event> {
+    event: E,
+    frame: u64,
+}
+
+/// Event storage for a single event type.
+/// Uses a single VecDeque<EventEntry> instead of dual VecDeques
+/// for better cache locality (event + frame data are adjacent in memory).
 struct EventQueue<E: Event> {
-    events: VecDeque<E>,
-    /// Frame when events were added (for cleanup)
-    frame_added: VecDeque<u64>,
+    entries: VecDeque<EventEntry<E>>,
 }
 
 impl<E: Event> EventQueue<E> {
     fn new() -> Self {
         Self {
-            events: VecDeque::new(),
-            frame_added: VecDeque::new(),
+            entries: VecDeque::new(),
+        }
+    }
+
+    /// Remove events older than `current_frame - keep_frames`.
+    fn cleanup(&mut self, current_frame: u64, keep_frames: u64) {
+        let cutoff = current_frame.saturating_sub(keep_frames);
+        while let Some(front) = self.entries.front() {
+            if front.frame < cutoff {
+                self.entries.pop_front();
+            } else {
+                break;
+            }
         }
     }
 
     fn send(&mut self, event: E, frame: u64) {
-        self.events.push_back(event);
-        self.frame_added.push_back(frame);
+        self.entries.push_back(EventEntry { event, frame });
     }
 
     fn drain(&mut self) -> impl Iterator<Item = E> + '_ {
-        self.frame_added.clear();
-        self.events.drain(..)
+        self.entries.drain(..).map(|entry| entry.event)
     }
 
     fn iter(&self) -> impl Iterator<Item = &E> {
-        self.events.iter()
+        self.entries.iter().map(|entry| &entry.event)
     }
 
     fn len(&self) -> usize {
-        self.events.len()
+        self.entries.len()
     }
 
     fn clear(&mut self) {
-        self.events.clear();
-        self.frame_added.clear();
+        self.entries.clear();
     }
 }
+
+/// Type-erased cleanup function: takes the queue Box, current_frame, keep_frames
+type CleanupFn = fn(&mut Box<dyn Any + Send + Sync>, u64, u64);
 
 /// Central event registry for all event types
 pub struct Events {
     /// Map from TypeId to type-erased event queue
     queues: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
+    /// Cleanup functions per event type (stored separately to avoid trait object overhead)
+    cleanup_fns: HashMap<TypeId, CleanupFn>,
     /// Current simulation frame
     current_frame: u64,
     /// How many frames to keep events before cleanup
@@ -75,6 +95,7 @@ impl Events {
     pub fn new() -> Self {
         Self {
             queues: HashMap::new(),
+            cleanup_fns: HashMap::new(),
             current_frame: 0,
             keep_frames: 2, // Keep events for 2 frames by default
         }
@@ -108,10 +129,25 @@ impl Events {
     /// ```
     #[allow(clippy::expect_used)] // INVARIANT: or_insert_with just inserted EventQueue<E>, downcast cannot fail
     pub fn send<E: Event>(&mut self, event: E) {
+        let type_id = TypeId::of::<E>();
         let queue = self
             .queues
-            .entry(TypeId::of::<E>())
+            .entry(type_id)
             .or_insert_with(|| Box::new(EventQueue::<E>::new()));
+
+        // Register cleanup function for this event type (idempotent)
+        self.cleanup_fns.entry(type_id).or_insert_with(|| {
+            fn cleanup_typed<T: Event>(
+                queue: &mut Box<dyn Any + Send + Sync>,
+                current_frame: u64,
+                keep_frames: u64,
+            ) {
+                if let Some(q) = queue.downcast_mut::<EventQueue<T>>() {
+                    q.cleanup(current_frame, keep_frames);
+                }
+            }
+            cleanup_typed::<E>
+        });
 
         let queue = queue.downcast_mut::<EventQueue<E>>().expect(
             "EventQueue type mismatch: just inserted correct type, downcast should never fail",
@@ -170,18 +206,21 @@ impl Events {
         self.len::<E>() == 0
     }
 
-    /// Advance frame and cleanup old events
+    /// Advance frame and cleanup old events past the retention window.
     pub fn update(&mut self) {
         #[cfg(feature = "profiling")]
         span!("ECS::Events::update");
 
         self.current_frame += 1;
 
-        // Cleanup old events from all queues
-        for _queue in self.queues.values_mut() {
-            // Type erasure: we need to cast to EventQueue<T> but don't know T
-            // For now, we'll skip automatic cleanup and rely on explicit clear
-            // TODO: Store cleanup function pointer or use trait object
+        // Cleanup old events from all queues using registered type-erased cleanup fns
+        let current_frame = self.current_frame;
+        let keep_frames = self.keep_frames;
+        let cleanup_fns = &self.cleanup_fns;
+        for (type_id, queue) in self.queues.iter_mut() {
+            if let Some(cleanup) = cleanup_fns.get(type_id) {
+                cleanup(queue, current_frame, keep_frames);
+            }
         }
     }
 
@@ -651,21 +690,66 @@ mod tests {
     fn test_with_keep_frames_zero() {
         // Edge case: 0 frames should be stored, distinguishable from default 2
         let events = Events::new().with_keep_frames(0);
-        assert_eq!(
-            events.keep_frames(),
-            0,
-            "with_keep_frames(0) must store 0"
-        );
+        assert_eq!(events.keep_frames(), 0, "with_keep_frames(0) must store 0");
     }
 
     #[test]
     fn test_keep_frames_default_is_two() {
         // Baseline: Events::new() default is 2
         let events = Events::new();
+        assert_eq!(events.keep_frames(), 2, "default keep_frames must be 2");
+    }
+
+    #[test]
+    fn test_update_cleans_up_old_events() {
+        // keep_frames=2 means events from frame N are cleaned at frame N+3
+        let mut events = Events::new(); // keep_frames=2, current_frame=0
+
+        // Frame 0: send events
+        events.send(TestEvent { value: 1 });
+        events.send(TestEvent { value: 2 });
+        assert_eq!(events.len::<TestEvent>(), 2);
+
+        // Frame 1
+        events.update();
         assert_eq!(
-            events.keep_frames(),
+            events.len::<TestEvent>(),
             2,
-            "default keep_frames must be 2"
+            "events from frame 0 kept at frame 1"
         );
+
+        // Frame 2
+        events.update();
+        assert_eq!(
+            events.len::<TestEvent>(),
+            2,
+            "events from frame 0 kept at frame 2"
+        );
+
+        // Frame 3: events from frame 0 should be cleaned (3 - 2 = 1, 0 < 1)
+        events.update();
+        assert_eq!(
+            events.len::<TestEvent>(),
+            0,
+            "events from frame 0 cleaned at frame 3"
+        );
+    }
+
+    #[test]
+    fn test_update_preserves_recent_events() {
+        let mut events = Events::new().with_keep_frames(2);
+
+        // Frame 0: send old events
+        events.send(TestEvent { value: 1 });
+        events.update(); // frame 1
+        events.update(); // frame 2
+
+        // Frame 2: send new events
+        events.send(TestEvent { value: 2 });
+
+        events.update(); // frame 3: old events cleaned, new events kept
+        assert_eq!(events.len::<TestEvent>(), 1, "recent events preserved");
+        let remaining: Vec<_> = events.read::<TestEvent>().collect();
+        assert_eq!(remaining[0].value, 2, "only new event remains");
     }
 }

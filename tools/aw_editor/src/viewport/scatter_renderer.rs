@@ -23,28 +23,51 @@
 //! - One draw call per mesh type via multi-draw-indirect
 //! - CPU frustum cull before GPU upload
 
-#![allow(dead_code)]
-
 use anyhow::{Context as _, Result};
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
+
+// ─── Background Mesh Loading ────────────────────────────────────────────────
+
+/// Request sent to the background mesh-loading thread.
+struct MeshLoadRequest {
+    key: String,
+    path: String,
+}
+
+/// Result returned from the background mesh-loading thread.
+struct MeshLoadResult {
+    key: String,
+    mesh: Result<LoadedMeshData>,
+}
+
+/// Successfully loaded mesh data (GPU resources created on worker thread).
+struct LoadedMeshData {
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    index_count: u32,
+    vertex_count: u32,
+    texture_bind_group: Option<wgpu::BindGroup>,
+    has_texture: bool,
+}
 
 use super::camera::OrbitCamera;
 use super::terrain_renderer::{TerrainFogParams, TerrainLightingParams};
 
 // ─── GPU Data Structures ─────────────────────────────────────────────────────
 
-/// Per-vertex data (matches entity shader layout for GLTF mesh reuse).
+/// Per-vertex data with UV coordinates for texture sampling.
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 struct ScatterVertex {
     position: [f32; 3],
     normal: [f32; 3],
     color: [f32; 4],
+    uv: [f32; 2],
 }
 
 /// Per-instance data uploaded to the GPU each frame.
@@ -53,17 +76,6 @@ struct ScatterVertex {
 struct ScatterInstance {
     model_matrix: [[f32; 4]; 4], // 64 bytes
     tint: [f32; 4],              // 16 bytes  (RGBA, alpha = LOD fade)
-}
-
-/// Indirect draw arguments (wgpu `DrawIndexedIndirect`).
-#[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
-struct DrawIndexedIndirectArgs {
-    index_count: u32,
-    instance_count: u32,
-    first_index: u32,
-    base_vertex: i32,
-    first_instance: u32,
 }
 
 /// Uniforms matching the scatter.wgsl shader.
@@ -97,6 +109,228 @@ struct CachedMesh {
     index_count: u32,
     vertex_count: u32,
     index_format: wgpu::IndexFormat,
+    /// Per-mesh texture bind group (albedo texture + sampler). None = vertex-color only.
+    texture_bind_group: Option<wgpu::BindGroup>,
+    /// Whether this mesh has real texture data (vs vertex-color fallback)
+    has_texture: bool,
+}
+
+// ─── Background Mesh Worker ─────────────────────────────────────────────────
+
+/// Standalone mesh loading function executed on the background thread.
+/// All I/O, GLTF parsing, and GPU buffer creation happen here — off the render thread.
+fn load_mesh_on_worker(
+    key: &str,
+    path: &str,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture_bgl: &wgpu::BindGroupLayout,
+) -> Result<LoadedMeshData> {
+    const MAX_SCATTER_MESH_BYTES: u64 = 150 * 1024 * 1024;
+
+    let file_size = std::fs::metadata(path)
+        .with_context(|| format!("Cannot stat: {path}"))?
+        .len();
+    if file_size > MAX_SCATTER_MESH_BYTES {
+        anyhow::bail!(
+            "File too large for scatter ({:.1} MB, limit {:.0} MB)",
+            file_size as f64 / (1024.0 * 1024.0),
+            MAX_SCATTER_MESH_BYTES as f64 / (1024.0 * 1024.0),
+        );
+    }
+
+    let base = Path::new(path).parent();
+    let gltf_data =
+        gltf::Gltf::open(path).with_context(|| format!("Failed to parse glTF: {path}"))?;
+    let gltf::Gltf { document, blob } = gltf_data;
+    let buffers = gltf::import_buffers(&document, base, blob)
+        .with_context(|| format!("Failed to load glTF buffers: {path}"))?;
+
+    let mesh = document.meshes().next().context("No meshes in glTF file")?;
+
+    let mut all_vertices: Vec<ScatterVertex> = Vec::new();
+    let mut all_indices: Vec<u32> = Vec::new();
+
+    for primitive in mesh.primitives() {
+        let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+
+        let positions: Vec<[f32; 3]> = match reader.read_positions() {
+            Some(p) => p.collect(),
+            None => continue,
+        };
+
+        let normals: Vec<[f32; 3]> = reader
+            .read_normals()
+            .map(|n| n.collect())
+            .unwrap_or_else(|| vec![[0.0, 1.0, 0.0]; positions.len()]);
+
+        let uvs: Vec<[f32; 2]> = reader
+            .read_tex_coords(0)
+            .map(|tc| tc.into_f32().collect())
+            .unwrap_or_else(|| vec![[0.0, 0.0]; positions.len()]);
+
+        let vertex_colors: Vec<[f32; 4]> = if let Some(colors) = reader.read_colors(0) {
+            colors.into_rgba_f32().collect()
+        } else {
+            let pbr = primitive.material().pbr_metallic_roughness();
+            vec![pbr.base_color_factor(); positions.len()]
+        };
+
+        let indices: Vec<u32> = match reader.read_indices() {
+            Some(idx) => idx.into_u32().collect(),
+            None => continue,
+        };
+
+        let base_vertex = all_vertices.len() as u32;
+        for (((p, n), c), uv) in positions
+            .iter()
+            .zip(normals.iter())
+            .zip(vertex_colors.iter())
+            .zip(uvs.iter())
+        {
+            all_vertices.push(ScatterVertex {
+                position: *p,
+                normal: *n,
+                color: *c,
+                uv: *uv,
+            });
+        }
+        for idx in &indices {
+            all_indices.push(idx + base_vertex);
+        }
+    }
+
+    anyhow::ensure!(!all_vertices.is_empty(), "No vertex data in any primitive");
+    anyhow::ensure!(!all_indices.is_empty(), "No index data in any primitive");
+
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&format!("Scatter VB: {key}")),
+        contents: bytemuck::cast_slice(&all_vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+
+    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&format!("Scatter IB: {key}")),
+        contents: bytemuck::cast_slice(&all_indices),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+
+    // Try to extract albedo texture
+    let (texture_bind_group, has_texture) =
+        try_extract_albedo(path, &document, &buffers, device, queue, texture_bgl)
+            .unwrap_or((None, false));
+
+    tracing::info!(
+        "Scatter: loaded mesh '{key}': {} verts, {} tris, texture={}",
+        all_vertices.len(),
+        all_indices.len() / 3,
+        if has_texture { "yes" } else { "vertex-color" },
+    );
+
+    Ok(LoadedMeshData {
+        vertex_buffer,
+        index_buffer,
+        index_count: all_indices.len() as u32,
+        vertex_count: all_vertices.len() as u32,
+        texture_bind_group,
+        has_texture,
+    })
+}
+
+/// Extract albedo texture from GLTF (standalone version for worker thread).
+fn try_extract_albedo(
+    path: &str,
+    document: &gltf::Document,
+    buffers: &[gltf::buffer::Data],
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture_bgl: &wgpu::BindGroupLayout,
+) -> Result<(Option<wgpu::BindGroup>, bool)> {
+    let material = document
+        .materials()
+        .next()
+        .context("no materials in GLTF")?;
+    let tex_info = material
+        .pbr_metallic_roughness()
+        .base_color_texture()
+        .context("no base_color_texture in material")?;
+    let image_source = document
+        .images()
+        .nth(tex_info.texture().source().index())
+        .context("texture source image index out of bounds")?;
+
+    let img_data = match image_source.source() {
+        gltf::image::Source::View { view, mime_type } => {
+            let buf = &buffers[view.buffer().index()];
+            let start = view.offset();
+            let end = start + view.length();
+            let bytes = &buf[start..end];
+            image::load_from_memory_with_format(
+                bytes,
+                match mime_type {
+                    "image/png" => image::ImageFormat::Png,
+                    "image/jpeg" => image::ImageFormat::Jpeg,
+                    _ => anyhow::bail!("unsupported embedded image mime: {mime_type}"),
+                },
+            )?
+        }
+        gltf::image::Source::Uri { uri, .. } => {
+            let base_dir = Path::new(path).parent().unwrap_or(Path::new("."));
+            let img_path = base_dir.join(uri);
+            image::open(&img_path)
+                .with_context(|| format!("failed to load texture: {}", img_path.display()))?
+        }
+    };
+
+    let rgba = img_data.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+
+    let texture = device.create_texture_with_data(
+        queue,
+        &wgpu::TextureDescriptor {
+            label: Some("Scatter Mesh Albedo"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        wgpu::util::TextureDataOrder::LayerMajor,
+        &rgba,
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("Scatter Mesh Sampler"),
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::FilterMode::Linear,
+        address_mode_u: wgpu::AddressMode::Repeat,
+        address_mode_v: wgpu::AddressMode::Repeat,
+        ..Default::default()
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Scatter Mesh Texture BG"),
+        layout: texture_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+    });
+
+    Ok((Some(bind_group), true))
 }
 
 // ─── CPU-side Scatter Instance ───────────────────────────────────────────────
@@ -115,26 +349,32 @@ struct DrawGroup {
 /// Maximum instances supported per frame.
 const MAX_SCATTER_INSTANCES: u32 = 65_536;
 
-/// Maximum indirect draw commands (= max unique mesh types in one frame).
-const MAX_DRAW_COMMANDS: u32 = 64;
-
 pub struct ScatterRenderer {
     device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
 
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
 
     instance_buffer: wgpu::Buffer,
-    indirect_buffer: wgpu::Buffer,
+
+    /// Layout for per-mesh texture bind groups (Arc for sharing with worker thread)
+    texture_bind_group_layout: Arc<wgpu::BindGroupLayout>,
+    /// Fallback bind group (1×1 white texture) for meshes without textures
+    fallback_texture_bind_group: wgpu::BindGroup,
 
     mesh_cache: HashMap<String, CachedMesh>,
 
-    // Negative cache: mesh keys that failed to load, to avoid infinite retry loop
-    failed_meshes: HashSet<String>,
+    // Negative cache: mesh keys that failed to load, with timestamp for retry after cooldown
+    failed_meshes: HashMap<String, std::time::Instant>,
 
-    // Progressive mesh loading: load max N meshes per frame to avoid freezes
-    pending_mesh_loads: std::collections::VecDeque<(String, String)>,
+    // Keys already sent to the background loader (prevents duplicate requests)
+    inflight_mesh_keys: std::collections::HashSet<String>,
+
+    // Background mesh loading channels
+    mesh_load_tx: std::sync::mpsc::Sender<MeshLoadRequest>,
+    mesh_load_rx: std::sync::mpsc::Receiver<MeshLoadResult>,
 
     // Wind / environment
     wind_strength: f32,
@@ -162,7 +402,7 @@ pub struct ScatterRenderer {
 }
 
 impl ScatterRenderer {
-    pub fn new(device: Arc<wgpu::Device>) -> Result<Self> {
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Result<Self> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Scatter Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/scatter.wgsl").into()),
@@ -182,13 +422,37 @@ impl ScatterRenderer {
             }],
         });
 
+        // Bind group 1: per-mesh albedo texture (optional — vertex-color fallback when absent)
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Scatter Texture BGL"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Scatter Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts: &[&bind_group_layout, &texture_bind_group_layout],
             push_constant_ranges: &[],
         });
 
-        // Vertex buffer layout 0: per-vertex (position + normal + color)
+        // Vertex buffer layout 0: per-vertex (position + normal + color + uv)
         let vertex_attrs = [
             wgpu::VertexAttribute {
                 offset: 0,
@@ -204,6 +468,11 @@ impl ScatterRenderer {
                 offset: 24,
                 shader_location: 2,
                 format: wgpu::VertexFormat::Float32x4,
+            },
+            wgpu::VertexAttribute {
+                offset: 40, // position(12) + normal(12) + color(16) = 40
+                shader_location: 8,
+                format: wgpu::VertexFormat::Float32x2,
             },
         ];
 
@@ -335,24 +604,89 @@ impl ScatterRenderer {
             mapped_at_creation: false,
         });
 
-        let indirect_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Scatter Indirect Draw Buffer"),
-            size: (MAX_DRAW_COMMANDS as u64)
-                * std::mem::size_of::<DrawIndexedIndirectArgs>() as u64,
-            usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+        // Create fallback 1×1 white texture for meshes without embedded textures
+        let fallback_tex = device.create_texture_with_data(
+            &queue,
+            &wgpu::TextureDescriptor {
+                label: Some("Scatter Fallback 1x1 White"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::LayerMajor,
+            &[255u8, 255, 255, 255],
+        );
+        let fallback_tex_view = fallback_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let fallback_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Scatter Fallback Sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            ..Default::default()
         });
+        let fallback_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Scatter Fallback Texture BG"),
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&fallback_tex_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&fallback_sampler),
+                },
+            ],
+        });
+
+        // Wrap the BGL in Arc for sharing with the worker thread
+        let texture_bind_group_layout = Arc::new(texture_bind_group_layout);
+
+        // Spawn background mesh-loading thread
+        let (req_tx, req_rx) = std::sync::mpsc::channel::<MeshLoadRequest>();
+        let (res_tx, res_rx) = std::sync::mpsc::channel::<MeshLoadResult>();
+        {
+            let device = device.clone();
+            let queue = queue.clone();
+            let bgl = texture_bind_group_layout.clone();
+            std::thread::Builder::new()
+                .name("scatter-mesh-loader".into())
+                .spawn(move || {
+                    for req in req_rx {
+                        let mesh = load_mesh_on_worker(&req.key, &req.path, &device, &queue, &bgl);
+                        // If the main thread dropped the receiver, exit gracefully
+                        if res_tx.send(MeshLoadResult { key: req.key, mesh }).is_err() {
+                            break;
+                        }
+                    }
+                })
+                .context("Failed to spawn scatter mesh loader thread")?;
+        }
 
         Ok(Self {
             device,
+            queue,
             pipeline,
             bind_group,
             uniform_buffer,
             instance_buffer,
-            indirect_buffer,
+            texture_bind_group_layout,
+            fallback_texture_bind_group,
             mesh_cache: HashMap::new(),
-            failed_meshes: HashSet::new(),
-            pending_mesh_loads: std::collections::VecDeque::new(),
+            failed_meshes: HashMap::new(),
+            inflight_mesh_keys: std::collections::HashSet::new(),
+            mesh_load_tx: req_tx,
+            mesh_load_rx: res_rx,
             wind_strength: 0.5,
             wind_frequency: 1.2,
             cull_distance: 700.0,
@@ -433,142 +767,20 @@ impl ScatterRenderer {
 
     // ─── Mesh Management ─────────────────────────────────────────────────────
 
-    /// Load a GLTF/GLB mesh and cache it by key. No-op if already cached.
+    /// Enqueue a mesh for background loading. Non-blocking — returns immediately.
+    /// The mesh will appear in the cache once the background thread completes loading.
     pub fn ensure_mesh_loaded(&mut self, key: &str, path: &str) -> Result<()> {
-        if self.mesh_cache.contains_key(key) {
+        if self.mesh_cache.contains_key(key)
+            || self.inflight_mesh_keys.contains(key)
+            || self.failed_meshes.contains_key(key)
+        {
             return Ok(());
         }
-        self.load_gltf_mesh(key, path)
-    }
-
-    fn load_gltf_mesh(&mut self, key: &str, path: &str) -> Result<()> {
-        // Pre-check file size — skip absurdly large files (terrain-scale pieces)
-        let file_size = std::fs::metadata(path)
-            .with_context(|| format!("Cannot stat: {path}"))?
-            .len();
-        const MAX_SCATTER_MESH_BYTES: u64 = 150 * 1024 * 1024; // 150 MB
-        if file_size > MAX_SCATTER_MESH_BYTES {
-            anyhow::bail!(
-                "File too large for scatter ({:.1} MB, limit {:.0} MB)",
-                file_size as f64 / (1024.0 * 1024.0),
-                MAX_SCATTER_MESH_BYTES as f64 / (1024.0 * 1024.0),
-            );
-        }
-
-        // Parse glTF/GLB and load buffer data WITHOUT decoding images.
-        // The Namaqualand GLBs embed 4K textures whose image formats cause
-        // gltf::import() to fail.  import_buffers() skips image decoding
-        // entirely — we only need geometry for scatter vertex-color rendering.
-        let base = Path::new(path).parent();
-        let gltf = gltf::Gltf::open(path)
-            .with_context(|| format!("Failed to parse glTF: {path}"))?;
-        let buffers = gltf::import_buffers(&gltf.document, base, gltf.blob)
-            .with_context(|| format!("Failed to load glTF buffers: {path}"))?;
-
-        let mesh = gltf
-            .document
-            .meshes()
-            .next()
-            .context("No meshes in glTF file")?;
-
-        // Merge ALL primitives into one vertex/index buffer so every material
-        // (e.g. leaves + bark) is rendered in a single draw call with correct colors.
-        let mut all_vertices: Vec<ScatterVertex> = Vec::new();
-        let mut all_indices: Vec<u32> = Vec::new();
-
-        for primitive in mesh.primitives() {
-            let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
-
-            let positions: Vec<[f32; 3]> = match reader.read_positions() {
-                Some(p) => p.collect(),
-                None => continue,
-            };
-
-            let normals: Vec<[f32; 3]> = if let Some(normals) = reader.read_normals() {
-                normals.collect()
-            } else {
-                vec![[0.0, 1.0, 0.0]; positions.len()]
-            };
-
-            // Vertex colors: prefer explicit attributes, otherwise use material base_color_factor.
-            // Texture baking is not available since we skip image decoding for performance.
-            let vertex_colors: Vec<[f32; 4]> = if let Some(colors) = reader.read_colors(0) {
-                colors.into_rgba_f32().collect()
-            } else {
-                let material = primitive.material();
-                let pbr = material.pbr_metallic_roughness();
-                let base_color_factor = pbr.base_color_factor();
-                tracing::info!(
-                    "Scatter mesh '{key}': flat base_color_factor [{:.2},{:.2},{:.2},{:.2}]",
-                    base_color_factor[0],
-                    base_color_factor[1],
-                    base_color_factor[2],
-                    base_color_factor[3],
-                );
-                vec![base_color_factor; positions.len()]
-            };
-
-            let indices: Vec<u32> = match reader.read_indices() {
-                Some(idx) => idx.into_u32().collect(),
-                None => continue,
-            };
-
-            // Offset indices by current vertex count to merge into one buffer
-            let base_vertex = all_vertices.len() as u32;
-
-            for ((p, n), c) in positions
-                .iter()
-                .zip(normals.iter())
-                .zip(vertex_colors.iter())
-            {
-                all_vertices.push(ScatterVertex {
-                    position: *p,
-                    normal: *n,
-                    color: *c,
-                });
-            }
-
-            for idx in &indices {
-                all_indices.push(idx + base_vertex);
-            }
-        }
-
-        anyhow::ensure!(!all_vertices.is_empty(), "No vertex data in any primitive");
-        anyhow::ensure!(!all_indices.is_empty(), "No index data in any primitive");
-
-        let vertex_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Scatter VB: {key}")),
-                contents: bytemuck::cast_slice(&all_vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-
-        let index_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Scatter IB: {key}")),
-                contents: bytemuck::cast_slice(&all_indices),
-                usage: wgpu::BufferUsages::INDEX,
-            });
-
-        tracing::info!(
-            "Scatter: loaded mesh '{key}': {} verts, {} tris",
-            all_vertices.len(),
-            all_indices.len() / 3
-        );
-
-        self.mesh_cache.insert(
-            key.to_string(),
-            CachedMesh {
-                vertex_buffer,
-                index_buffer,
-                index_count: all_indices.len() as u32,
-                vertex_count: all_vertices.len() as u32,
-                index_format: wgpu::IndexFormat::Uint32,
-            },
-        );
-
+        self.inflight_mesh_keys.insert(key.to_string());
+        let _ = self.mesh_load_tx.send(MeshLoadRequest {
+            key: key.to_string(),
+            path: path.to_string(),
+        });
         Ok(())
     }
 
@@ -621,43 +833,65 @@ impl ScatterRenderer {
             }),
         );
 
-        // Progressive mesh loading: enqueue new meshes, load max 3 per frame
-        // to avoid freezing the render loop when hundreds of meshes are needed.
-        // Meshes in failed_meshes are skipped — they won't load no matter how
-        // many times we retry, and retrying every frame tanks FPS.
-        let new_meshes: HashMap<String, String> = placements
+        // ── Async mesh loading: enqueue new requests to background thread ────
+        // Retry failed meshes after 30-second cooldown
+        let retry_keys: Vec<String> = self
+            .failed_meshes
             .iter()
-            .filter(|p| {
-                !self.mesh_cache.contains_key(&p.mesh_key)
-                    && !self.failed_meshes.contains(&p.mesh_key)
-                    && !self
-                        .pending_mesh_loads
-                        .iter()
-                        .any(|(k, _)| k == &p.mesh_key)
-            })
-            .map(|p| (p.mesh_key.clone(), p.mesh_path.clone()))
+            .filter(|(_, t)| t.elapsed().as_secs() >= 30)
+            .map(|(k, _)| k.clone())
             .collect();
-
-        for (key, path) in new_meshes {
-            self.pending_mesh_loads.push_back((key, path));
+        for key in &retry_keys {
+            tracing::info!("Scatter: retrying previously failed mesh '{key}' after cooldown");
+            self.failed_meshes.remove(key);
+            self.inflight_mesh_keys.remove(key);
         }
 
-        const MAX_LOADS_PER_FRAME: usize = 3;
-        let mut loaded_this_frame = 0;
-        while loaded_this_frame < MAX_LOADS_PER_FRAME {
-            let Some((key, path)) = self.pending_mesh_loads.pop_front() else {
-                break;
-            };
-            if self.mesh_cache.contains_key(&key) || self.failed_meshes.contains(&key) {
+        for p in placements {
+            if self.mesh_cache.contains_key(&p.mesh_key)
+                || self.failed_meshes.contains_key(&p.mesh_key)
+                || self.inflight_mesh_keys.contains(&p.mesh_key)
+            {
                 continue;
             }
-            if let Err(e) = self.load_gltf_mesh(&key, &path) {
-                tracing::warn!("Scatter: failed to load mesh '{key}': {e:#}");
-                self.failed_meshes.insert(key);
-            }
-            loaded_this_frame += 1;
+            self.inflight_mesh_keys.insert(p.mesh_key.clone());
+            let _ = self.mesh_load_tx.send(MeshLoadRequest {
+                key: p.mesh_key.clone(),
+                path: p.mesh_path.clone(),
+            });
         }
-        if loaded_this_frame > 0 {
+
+        // ── Drain completed loads from background thread (non-blocking) ─────
+        let mut any_loaded = false;
+        while let Ok(result) = self.mesh_load_rx.try_recv() {
+            self.inflight_mesh_keys.remove(&result.key);
+            match result.mesh {
+                Ok(data) => {
+                    self.mesh_cache.insert(
+                        result.key,
+                        CachedMesh {
+                            vertex_buffer: data.vertex_buffer,
+                            index_buffer: data.index_buffer,
+                            index_count: data.index_count,
+                            vertex_count: data.vertex_count,
+                            index_format: wgpu::IndexFormat::Uint32,
+                            texture_bind_group: data.texture_bind_group,
+                            has_texture: data.has_texture,
+                        },
+                    );
+                    any_loaded = true;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Scatter: background load failed for '{}': {e:#}. Will retry in 30s.",
+                        result.key,
+                    );
+                    self.failed_meshes
+                        .insert(result.key, std::time::Instant::now());
+                }
+            }
+        }
+        if any_loaded {
             self.cache_valid = false;
         }
 
@@ -811,6 +1045,12 @@ impl ScatterRenderer {
         // Issue one direct draw per mesh type (simpler and more portable than indirect draws)
         for group in &self.cached_draw_groups {
             if let Some(mesh) = self.mesh_cache.get(&group.mesh_key) {
+                // Bind per-mesh texture (or fallback white texture for vertex-color meshes)
+                let tex_bg = mesh
+                    .texture_bind_group
+                    .as_ref()
+                    .unwrap_or(&self.fallback_texture_bind_group);
+                pass.set_bind_group(1, tex_bg, &[]);
                 pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                 pass.set_index_buffer(mesh.index_buffer.slice(..), mesh.index_format);
                 pass.draw_indexed(

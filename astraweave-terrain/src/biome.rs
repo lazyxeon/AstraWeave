@@ -1171,10 +1171,7 @@ impl BiomeConfig {
     ///
     /// All vegetation types, scatter parameters, ground textures, conditions,
     /// and sky settings are populated from the pack.
-    pub fn from_biome_pack(
-        pack: &crate::biome_pack::BiomePack,
-        biome_type: BiomeType,
-    ) -> Self {
+    pub fn from_biome_pack(pack: &crate::biome_pack::BiomePack, biome_type: BiomeType) -> Self {
         pack.to_biome_config(biome_type)
     }
 }

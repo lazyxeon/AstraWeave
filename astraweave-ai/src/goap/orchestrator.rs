@@ -173,7 +173,7 @@ impl Default for GOAPOrchestrator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::IVec2;
+    use astraweave_core::{CoverType, IVec2, Stance};
     use std::collections::BTreeMap;
 
     fn make_test_snapshot() -> WorldSnapshot {
@@ -182,7 +182,7 @@ mod tests {
             player: astraweave_core::PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 0, y: 0 },
-                stance: "stand".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: astraweave_core::CompanionState {
@@ -195,7 +195,7 @@ mod tests {
                 id: 1,
                 pos: IVec2 { x: 10, y: 10 },
                 hp: 50,
-                cover: "none".to_string(),
+                cover: CoverType::None,
                 last_seen: 1.0,
             }],
             pois: vec![],
@@ -484,7 +484,7 @@ mod tests {
             player: astraweave_core::PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 0, y: 0 },
-                stance: "stand".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: astraweave_core::CompanionState {
@@ -497,7 +497,7 @@ mod tests {
                 id: 1,
                 pos: IVec2 { x: e_x, y: e_y },
                 hp: 50,
-                cover: "none".to_string(),
+                cover: CoverType::None,
                 last_seen: 1.0,
             }],
             pois: vec![],

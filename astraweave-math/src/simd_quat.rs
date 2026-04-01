@@ -28,8 +28,10 @@ use std::arch::x86_64::*;
 /// let result = mul_quat_simd(q1, q2);
 /// assert_eq!(result, q2);
 /// ```
-#[inline]
+#[inline(always)]
 pub fn mul_quat_simd(a: Quat, b: Quat) -> Quat {
+    debug_assert!(a.is_finite(), "mul_quat_simd: input 'a' contains NaN/Inf");
+    debug_assert!(b.is_finite(), "mul_quat_simd: input 'b' contains NaN/Inf");
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("sse2") {
@@ -116,8 +118,9 @@ unsafe fn mul_quat_simd_sse2(a: Quat, b: Quat) -> Quat {
 /// let len = normalized.length();
 /// assert!((len - 1.0).abs() < 0.0001);
 /// ```
-#[inline]
+#[inline(always)]
 pub fn normalize_quat_simd(q: Quat) -> Quat {
+    debug_assert!(q.is_finite(), "normalize_quat_simd: input contains NaN/Inf");
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("sse2") {
@@ -153,6 +156,12 @@ unsafe fn normalize_quat_simd_sse2(q: Quat) -> Quat {
     // Broadcast to all lanes
     let len_sq = _mm_shuffle_ps(sum, sum, 0b00_00_00_00);
 
+    // Guard against zero-length quaternions to prevent division by zero / NaN
+    let len_sq_scalar = _mm_cvtss_f32(len_sq);
+    if len_sq_scalar < 1e-16 {
+        return Quat::IDENTITY;
+    }
+
     // Use sqrt + div for better precision (vs rsqrt)
     let len = _mm_sqrt_ps(len_sq);
 
@@ -185,7 +194,7 @@ unsafe fn normalize_quat_simd_sse2(q: Quat) -> Quat {
 /// let mid = slerp_simd(q1, q2, 0.5);
 /// // mid is halfway rotation
 /// ```
-#[inline]
+#[inline(always)]
 pub fn slerp_simd(a: Quat, b: Quat, t: f32) -> Quat {
     #[cfg(target_arch = "x86_64")]
     {
@@ -238,6 +247,14 @@ pub fn normalize_batch(quats: &[Quat]) -> Vec<Quat> {
     quats.iter().map(|&q| normalize_quat_simd(q)).collect()
 }
 
+/// In-place batch normalize — avoids heap allocation.
+/// Prefer this on hot paths where the input can be modified.
+pub fn normalize_batch_mut(quats: &mut [Quat]) {
+    for q in quats.iter_mut() {
+        *q = normalize_quat_simd(*q);
+    }
+}
+
 /// Batch slerp multiple quaternion pairs
 ///
 /// Interpolates multiple (a, b) pairs with same t value.
@@ -263,6 +280,15 @@ pub fn slerp_batch(pairs: &[(Quat, Quat)], t: f32) -> Vec<Quat> {
     pairs.iter().map(|&(a, b)| slerp_simd(a, b, t)).collect()
 }
 
+/// In-place batch slerp — writes results into a pre-allocated output slice.
+/// `out` must have the same length as `pairs`.
+pub fn slerp_batch_into(pairs: &[(Quat, Quat)], t: f32, out: &mut [Quat]) {
+    debug_assert_eq!(pairs.len(), out.len(), "slerp_batch_into: length mismatch");
+    for (pair, o) in pairs.iter().zip(out.iter_mut()) {
+        *o = slerp_simd(pair.0, pair.1, t);
+    }
+}
+
 /// Compute dot product of two quaternions (SIMD)
 ///
 /// Returns scalar value representing rotation similarity.
@@ -283,7 +309,7 @@ pub fn slerp_batch(pairs: &[(Quat, Quat)], t: f32) -> Vec<Quat> {
 /// let dot = dot_quat_simd(q1, q2);
 /// assert_eq!(dot, 1.0);
 /// ```
-#[inline]
+#[inline(always)]
 pub fn dot_quat_simd(a: Quat, b: Quat) -> f32 {
     #[cfg(target_arch = "x86_64")]
     {

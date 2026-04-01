@@ -7,7 +7,7 @@ use criterion::{criterion_group, criterion_main};
 use std::hint::black_box;
 
 #[cfg(feature = "planner_advanced")]
-use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState, WorldSnapshot};
+use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot};
 #[cfg(feature = "planner_advanced")]
 use criterion::{BenchmarkId, Criterion};
 #[cfg(feature = "planner_advanced")]
@@ -27,7 +27,7 @@ fn create_test_snapshot(enemy_count: usize, distance: i32) -> WorldSnapshot {
                 physics_context: None,
             },
             hp: 50,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 1.0,
         })
         .collect();
@@ -38,7 +38,7 @@ fn create_test_snapshot(enemy_count: usize, distance: i32) -> WorldSnapshot {
             hp: 100,
             physics_context: None,
             pos: IVec2 { x: 0, y: 0 },
-            stance: "stand".to_string(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         me: CompanionState {

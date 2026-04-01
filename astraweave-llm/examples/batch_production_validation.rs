@@ -8,7 +8,8 @@
 //! - Compression validation (Ollama logs)
 
 use astraweave_core::{
-    CompanionState, EnemyState, IVec2, PlayerState, Poi, ToolRegistry, WorldSnapshot,
+    CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance, ToolRegistry,
+    WorldSnapshot,
 };
 use astraweave_llm::{batch_executor::AgentId, fallback_system::FallbackOrchestrator};
 use std::collections::BTreeMap;
@@ -188,7 +189,7 @@ fn create_test_snapshot(agent_id: AgentId) -> WorldSnapshot {
         player: PlayerState {
             pos: IVec2::new(10, 10),
             hp: 100,
-            stance: "stand".to_string(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         me: CompanionState {
@@ -201,7 +202,7 @@ fn create_test_snapshot(agent_id: AgentId) -> WorldSnapshot {
             id: 20,
             pos: IVec2::new(20, 20),
             hp: 50,
-            cover: "low".to_string(),
+            cover: CoverType::Low,
             last_seen: 0.0,
         }],
         pois: vec![Poi {

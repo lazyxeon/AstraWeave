@@ -10,7 +10,7 @@
 //! 4. **Performance**: Full pipeline completes within frame budget
 
 use astraweave_ai::core_loop::{dispatch_planner, CAiController, PlannerMode};
-use astraweave_core::{ActionStep, CompanionState, EnemyState, IVec2, PlayerState, WorldSnapshot};
+use astraweave_core::{ActionStep, CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot};
 use astraweave_ecs::{Entity, World};
 use astraweave_nav::{NavMesh, Triangle};
 use glam::Vec3;
@@ -107,7 +107,7 @@ fn extract_snapshot(world: &World, agent: Entity, enemies: &[Entity]) -> WorldSn
                         y: enemy_pos.z as i32,
                     },
                     hp: enemy_health.current,
-                    cover: "none".to_string(),
+                    cover: CoverType::None,
                     last_seen: 0.0,
                 });
             }
@@ -128,7 +128,7 @@ fn extract_snapshot(world: &World, agent: Entity, enemies: &[Entity]) -> WorldSn
         player: PlayerState {
             hp: 100,
             pos: IVec2 { x: 0, y: 0 },
-            stance: "stand".into(),
+            stance: Stance::Stand,
             orders: vec!["advance".to_string()],
         },
         enemies: enemy_states,

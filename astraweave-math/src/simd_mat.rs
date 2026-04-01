@@ -28,7 +28,7 @@ use std::arch::x86_64::*;
 /// let c = mul_simd(a, b);
 /// assert_eq!(c, b);
 /// ```
-#[inline]
+#[inline(always)]
 pub fn mul_simd(a: Mat4, b: Mat4) -> Mat4 {
     #[cfg(target_arch = "x86_64")]
     {
@@ -57,40 +57,48 @@ unsafe fn mul_simd_sse2(a: Mat4, b: Mat4) -> Mat4 {
     let b_col2 = _mm_loadu_ps(b.col(2).as_ref().as_ptr());
     let b_col3 = _mm_loadu_ps(b.col(3).as_ref().as_ptr());
 
-    let mut result = Mat4::ZERO;
+    // Accumulate all 4 result rows into a flat array, then construct Mat4 once.
+    // This eliminates 16 col_mut() calls (4 per row × 4 rows).
+    let mut result_data = [0.0f32; 16];
 
-    // Process each row of A
     for i in 0..4 {
         let a_row = a.row(i);
 
-        // Broadcast each element of row to 4-wide vector
         let a0 = _mm_set1_ps(a_row.x);
         let a1 = _mm_set1_ps(a_row.y);
         let a2 = _mm_set1_ps(a_row.z);
         let a3 = _mm_set1_ps(a_row.w);
 
-        // Multiply and accumulate: result[i] = a0*b0 + a1*b1 + a2*b2 + a3*b3
+        // result_row = a0*b0 + a1*b1 + a2*b2 + a3*b3
         let mut acc = _mm_mul_ps(a0, b_col0);
         acc = _mm_add_ps(acc, _mm_mul_ps(a1, b_col1));
         acc = _mm_add_ps(acc, _mm_mul_ps(a2, b_col2));
         acc = _mm_add_ps(acc, _mm_mul_ps(a3, b_col3));
 
-        // Store result row
-        let mut row_data = [0.0f32; 4];
-        _mm_storeu_ps(row_data.as_mut_ptr(), acc);
-
-        // Set row in result matrix
-        let result_col0 = result.col_mut(0);
-        result_col0[i] = row_data[0];
-        let result_col1 = result.col_mut(1);
-        result_col1[i] = row_data[1];
-        let result_col2 = result.col_mut(2);
-        result_col2[i] = row_data[2];
-        let result_col3 = result.col_mut(3);
-        result_col3[i] = row_data[3];
+        // Store row into flat array (row-major: row i occupies indices [i*4..i*4+4])
+        _mm_storeu_ps(result_data.as_mut_ptr().add(i * 4), acc);
     }
 
-    result
+    // glam::Mat4 is column-major: from_cols_array expects column-major layout.
+    // Our result_data is row-major, so transpose the 4x4 flat array.
+    Mat4::from_cols_array(&[
+        result_data[0],
+        result_data[4],
+        result_data[8],
+        result_data[12],
+        result_data[1],
+        result_data[5],
+        result_data[9],
+        result_data[13],
+        result_data[2],
+        result_data[6],
+        result_data[10],
+        result_data[14],
+        result_data[3],
+        result_data[7],
+        result_data[11],
+        result_data[15],
+    ])
 }
 
 /// Transpose Mat4 using SIMD
@@ -116,7 +124,7 @@ unsafe fn mul_simd_sse2(a: Mat4, b: Mat4) -> Mat4 {
 /// let t = transpose_simd(m);
 /// assert_eq!(t.row(0), m.col(0));
 /// ```
-#[inline]
+#[inline(always)]
 pub fn transpose_simd(m: Mat4) -> Mat4 {
     #[cfg(target_arch = "x86_64")]
     {
@@ -200,7 +208,7 @@ unsafe fn transpose_simd_sse2(m: Mat4) -> Mat4 {
 /// let identity = mul_simd(m, inv);
 /// // identity should be close to Mat4::IDENTITY
 /// ```
-#[inline]
+#[inline(always)]
 pub fn inverse_simd(m: Mat4) -> Mat4 {
     // For now, delegate to glam (inverse is complex, SIMD gains are smaller)
     // Future: Implement SIMD Cramer's rule for ~1.5× speedup
@@ -227,7 +235,7 @@ pub fn inverse_simd(m: Mat4) -> Mat4 {
 /// let transformed = transform_point_simd(m, p);
 /// assert_eq!(transformed, Vec3::new(1.0, 2.0, 3.0));
 /// ```
-#[inline]
+#[inline(always)]
 pub fn transform_point_simd(m: Mat4, p: Vec3) -> Vec3 {
     #[cfg(target_arch = "x86_64")]
     {
@@ -299,6 +307,13 @@ unsafe fn transform_point_simd_sse2(m: Mat4, p: Vec3) -> Vec3 {
 /// ```
 pub fn transform_points_batch(m: Mat4, points: &[Vec3]) -> Vec<Vec3> {
     points.iter().map(|&p| transform_point_simd(m, p)).collect()
+}
+
+/// In-place batch transform — modifies points directly, avoiding heap allocation.
+pub fn transform_points_batch_mut(m: Mat4, points: &mut [Vec3]) {
+    for p in points.iter_mut() {
+        *p = transform_point_simd(m, *p);
+    }
 }
 
 #[cfg(test)]

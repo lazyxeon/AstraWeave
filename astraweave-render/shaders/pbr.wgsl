@@ -29,6 +29,8 @@ struct Camera {
   view_proj: mat4x4<f32>,
   light_dir: vec3<f32>,
   _pad: f32,
+  camera_pos: vec3<f32>,
+  _pad2: f32,
 };
 
 @group(0) @binding(0) var<uniform> uCamera: Camera;
@@ -108,7 +110,7 @@ fn geometry_smith(N: vec3<f32>, V: vec3<f32>, L: vec3<f32>, roughness: f32) -> f
 
 @fragment
 fn fs(input: VSOut) -> @location(0) vec4<f32> {
-    let V = normalize(-input.world_pos); // fake view dir from origin camera
+    let V = normalize(uCamera.camera_pos - input.world_pos);
     let L = normalize(-uCamera.light_dir);
     let H = normalize(V + L);
     // Base normal from geometry
@@ -205,7 +207,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let clustered_light = calculate_clustered_lighting(
         input.world_pos,
         N,
-        vec3<f32>(0.0, 0.0, 0.0),
+        uCamera.camera_pos,
         base_color,
         metallic,
         roughness,

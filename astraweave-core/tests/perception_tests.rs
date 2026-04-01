@@ -2,7 +2,7 @@
 //! Tests cover: WorldSnapshot building, PerceptionConfig, LOS filtering, enemy state aggregation
 
 use astraweave_core::perception::{build_snapshot, PerceptionConfig};
-use astraweave_core::{Entity, IVec2, Team, World};
+use astraweave_core::{CoverType, Entity, IVec2, Stance, Team, World};
 
 #[test]
 fn test_build_snapshot_basic() {
@@ -28,7 +28,7 @@ fn test_build_snapshot_basic() {
     assert_eq!(snap.player.hp, 100);
     assert_eq!(snap.player.pos.x, 0);
     assert_eq!(snap.player.pos.y, 0);
-    assert_eq!(snap.player.stance, "crouch");
+    assert_eq!(snap.player.stance, Stance::Crouch);
 
     // Verify companion state
     assert_eq!(snap.me.ammo, 30);
@@ -95,12 +95,12 @@ fn test_build_snapshot_los_filtering() {
 
     // Close enemy should have "low" cover
     let close = snap.enemies.iter().find(|e| e.id == enemy_close).unwrap();
-    assert_eq!(close.cover, "low");
+    assert_eq!(close.cover, CoverType::Low);
     assert_eq!(close.last_seen, 5.0);
 
     // Far enemy should have "unknown" cover (beyond LOS max)
     let far = snap.enemies.iter().find(|e| e.id == enemy_far).unwrap();
-    assert_eq!(far.cover, "unknown");
+    assert_eq!(far.cover, CoverType::Unknown);
 }
 
 #[test]

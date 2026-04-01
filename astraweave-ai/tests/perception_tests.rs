@@ -7,7 +7,7 @@
 //! - ✅ Snapshot data matches world state (100% accuracy)
 //! - ✅ <10% performance degradation over 1000 frames
 
-use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState, Poi, WorldSnapshot};
+use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, WorldSnapshot};
 use std::collections::BTreeMap;
 use std::time::Instant;
 
@@ -22,7 +22,7 @@ fn create_test_snapshot(time: f32, enemy_count: usize) -> WorldSnapshot {
                 y: 15 + (i as i32 % 3),
             },
             hp: 50 + (i as i32) * 5,
-            cover: if i % 2 == 0 { "low" } else { "high" }.to_string(),
+            cover: if i % 2 == 0 { CoverType::Low } else { CoverType::High },
             last_seen: (i as f32) * 0.5,
         });
     }
@@ -59,7 +59,7 @@ fn create_complex_snapshot(time: f32) -> WorldSnapshot {
                 y: 15 + (i % 3),
             },
             hp: 50 + i * 5,
-            cover: if i % 2 == 0 { "low" } else { "high" }.to_string(),
+            cover: if i % 2 == 0 { CoverType::Low } else { CoverType::High },
             last_seen: (i as f32) * 0.5,
         });
     }

@@ -217,7 +217,7 @@ impl BossEncounter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState};
+    use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance};
     use std::collections::BTreeMap;
 
     fn boss_snapshot(boss_hp: i32) -> WorldSnapshot {
@@ -226,7 +226,7 @@ mod tests {
             player: PlayerState {
                 pos: IVec2::new(10, 10),
                 hp: 80,
-                stance: "stand".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {
@@ -239,7 +239,7 @@ mod tests {
                 id: 100,
                 pos: IVec2::new(30, 30),
                 hp: boss_hp,
-                cover: "none".to_string(),
+                cover: CoverType::None,
                 last_seen: 0.0,
             }],
             pois: vec![],

@@ -40,6 +40,8 @@ struct CameraUniforms {
     inv_view_proj: mat4x4<f32>,
     position: vec3<f32>,
     _padding: f32,
+    light_dir: vec3<f32>,
+    _padding2: f32,
 }
 
 @group(0) @binding(0)
@@ -197,7 +199,7 @@ fn sample_shadow_csm(
     }
     
     // Calculate adaptive bias (slope-dependent)
-    let light_dir = normalize(vec3<f32>(0.0, -1.0, 0.0)); // TODO: Pass as uniform
+    let light_dir = normalize(camera.light_dir);
     let cos_theta = clamp(dot(normal, -light_dir), 0.0, 1.0);
     let base_bias = 0.005; // DEPTH_BIAS constant
     let slope_bias = base_bias * tan(acos(cos_theta));

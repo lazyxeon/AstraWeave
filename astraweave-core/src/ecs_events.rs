@@ -5,11 +5,26 @@ use std::collections::VecDeque;
 
 pub struct Events<T> {
     q: VecDeque<T>,
+    /// Maximum number of events to retain. Oldest events are dropped when exceeded.
+    /// None means unbounded (default).
+    max_size: Option<usize>,
 }
 
 impl<T> Events<T> {
+    /// Create an event queue with a maximum size limit.
+    /// When the limit is reached, the oldest event is dropped before inserting new ones.
+    pub fn with_max_size(max_size: usize) -> Self {
+        Self {
+            q: VecDeque::with_capacity(max_size.min(1024)),
+            max_size: Some(max_size),
+        }
+    }
+
     pub fn writer(&mut self) -> EventWriter<'_, T> {
-        EventWriter { q: &mut self.q }
+        EventWriter {
+            q: &mut self.q,
+            max_size: self.max_size,
+        }
     }
     pub fn reader(&mut self) -> EventReader<'_, T> {
         EventReader { q: &mut self.q }
@@ -27,15 +42,25 @@ impl<T> Events<T> {
 
 impl<T> Default for Events<T> {
     fn default() -> Self {
-        Self { q: VecDeque::new() }
+        Self {
+            q: VecDeque::new(),
+            max_size: None,
+        }
     }
 }
 
 pub struct EventWriter<'a, T> {
     q: &'a mut VecDeque<T>,
+    max_size: Option<usize>,
 }
 impl<'a, T> EventWriter<'a, T> {
     pub fn send(&mut self, ev: T) {
+        // Enforce max_size: drop oldest event if at capacity
+        if let Some(max) = self.max_size {
+            if self.q.len() >= max {
+                self.q.pop_front();
+            }
+        }
         self.q.push_back(ev);
     }
 }

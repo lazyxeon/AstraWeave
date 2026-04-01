@@ -201,10 +201,7 @@ fn test_spawn_order_with_components() {
 
     // Check spawn order preserved even with different component combinations
     for (entity, expected) in collected.iter().zip(expected_order.iter()) {
-        assert_eq!(
-            entity, expected,
-            "Entity should match spawn order"
-        );
+        assert_eq!(entity, expected, "Entity should match spawn order");
     }
 }
 

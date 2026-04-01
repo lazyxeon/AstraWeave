@@ -1,6 +1,5 @@
-use crate::schema::Poi;
+use crate::schema::{CoverType, Poi, Stance};
 use crate::{CompanionState, EnemyState, Entity, IVec2, PlayerState, World, WorldSnapshot};
-use std::collections::BTreeMap;
 
 pub struct PerceptionConfig {
     pub los_max: i32,
@@ -27,7 +26,7 @@ pub fn build_snapshot(
             .expect("Player entity should have Health component")
             .hp,
         pos: ppos,
-        stance: "crouch".into(),
+        stance: Stance::Crouch,
         orders: vec!["hold_east".into()],
     };
     let me = CompanionState {
@@ -35,13 +34,12 @@ pub fn build_snapshot(
             .ammo(t_companion)
             .expect("Companion entity should have Ammo component")
             .rounds,
+        // Direct clone — World now uses BTreeMap, matching schema. No conversion needed.
         cooldowns: w
             .cooldowns(t_companion)
             .expect("Companion entity should have Cooldowns component")
             .map
-            .clone()
-            .into_iter()
-            .collect::<BTreeMap<_, _>>(),
+            .clone(),
         morale: 0.8,
         pos: cpos,
     };
@@ -52,15 +50,15 @@ pub fn build_snapshot(
             let hp = w.health(e)?.hp;
             // LOS consider simple radius; real LOS in validator
             let cover = if (pos.x - ppos.x).abs() + (pos.y - ppos.y).abs() > cfg.los_max {
-                "unknown"
+                CoverType::Unknown
             } else {
-                "low"
+                CoverType::Low
             };
             Some(EnemyState {
                 id: e,
                 pos,
                 hp,
-                cover: cover.into(),
+                cover,
                 last_seen: w.t,
             })
         })
@@ -76,6 +74,80 @@ pub fn build_snapshot(
             pos: IVec2 { x: 15, y: 8 },
         }],
         obstacles: w.obstacles.iter().map(|&(x, y)| IVec2 { x, y }).collect(),
+        objective,
+    }
+}
+
+/// Build a snapshot with pre-computed obstacles to avoid redundant conversion
+/// when building multiple snapshots per frame (e.g., one per AI agent).
+#[allow(clippy::expect_used)]
+pub fn build_snapshot_shared_obstacles(
+    w: &World,
+    t_player: Entity,
+    t_companion: Entity,
+    enemies: &[Entity],
+    objective: Option<String>,
+    cfg: &PerceptionConfig,
+    obstacles: Vec<IVec2>,
+) -> WorldSnapshot {
+    let ppos = w
+        .pos_of(t_player)
+        .expect("Player entity should have Position component");
+    let cpos = w
+        .pos_of(t_companion)
+        .expect("Companion entity should have Position component");
+    let player = PlayerState {
+        hp: w
+            .health(t_player)
+            .expect("Player entity should have Health component")
+            .hp,
+        pos: ppos,
+        stance: Stance::Crouch,
+        orders: vec!["hold_east".into()],
+    };
+    let me = CompanionState {
+        ammo: w
+            .ammo(t_companion)
+            .expect("Companion entity should have Ammo component")
+            .rounds,
+        cooldowns: w
+            .cooldowns(t_companion)
+            .expect("Companion entity should have Cooldowns component")
+            .map
+            .clone(),
+        morale: 0.8,
+        pos: cpos,
+    };
+    let enemies = enemies
+        .iter()
+        .filter_map(|&e| {
+            let pos = w.pos_of(e)?;
+            let hp = w.health(e)?.hp;
+            let cover = if (pos.x - ppos.x).abs() + (pos.y - ppos.y).abs() > cfg.los_max {
+                CoverType::Unknown
+            } else {
+                CoverType::Low
+            };
+            Some(EnemyState {
+                id: e,
+                pos,
+                hp,
+                cover,
+                last_seen: w.t,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    WorldSnapshot {
+        t: w.t,
+        player,
+        me,
+        enemies,
+        pois: vec![Poi {
+            k: "breach_door".into(),
+            pos: IVec2 { x: 15, y: 8 },
+        }],
+        obstacles,
         objective,
     }
 }
@@ -192,7 +264,7 @@ mod tests {
 
         assert_eq!(snap.player.hp, 75);
         assert_eq!(snap.player.pos, iv2(10, 20));
-        assert_eq!(snap.player.stance, "crouch");
+        assert_eq!(snap.player.stance, Stance::Crouch);
         assert_eq!(snap.player.orders.len(), 1);
         assert_eq!(snap.player.orders[0], "hold_east");
     }
@@ -321,7 +393,7 @@ mod tests {
 
         assert_eq!(snap.enemies.len(), 1);
         // Enemy within los_max should have cover "low"
-        assert_eq!(snap.enemies[0].cover, "low");
+        assert_eq!(snap.enemies[0].cover, CoverType::Low);
     }
 
     #[test]
@@ -338,7 +410,7 @@ mod tests {
 
         assert_eq!(snap.enemies.len(), 1);
         // Enemy beyond los_max should have cover "unknown"
-        assert_eq!(snap.enemies[0].cover, "unknown");
+        assert_eq!(snap.enemies[0].cover, CoverType::Unknown);
     }
 
     #[test]
@@ -407,8 +479,8 @@ mod tests {
         assert_eq!(snap.me.ammo, 8);
         assert_eq!(snap.me.cooldowns.len(), 1);
         assert_eq!(snap.enemies.len(), 2);
-        assert_eq!(snap.enemies[0].cover, "low"); // Within LOS
-        assert_eq!(snap.enemies[1].cover, "unknown"); // Beyond LOS
+        assert_eq!(snap.enemies[0].cover, CoverType::Low); // Within LOS
+        assert_eq!(snap.enemies[1].cover, CoverType::Unknown); // Beyond LOS
         assert_eq!(snap.obstacles.len(), 2);
         assert_eq!(snap.pois.len(), 1);
         assert_eq!(snap.objective, Some("Defend position".to_string()));
@@ -429,7 +501,11 @@ mod tests {
         let cfg = PerceptionConfig { los_max: 10 };
         let snap = build_snapshot(&w, player, companion, &[enemy], None, &cfg);
         // dist == los_max → NOT > los_max → cover = "low"
-        assert_eq!(snap.enemies[0].cover, "low", "dist == los_max should be low, not unknown");
+        assert_eq!(
+            snap.enemies[0].cover,
+            CoverType::Low,
+            "dist == los_max should be low, not unknown"
+        );
     }
 
     #[test]
@@ -443,7 +519,11 @@ mod tests {
 
         let cfg = PerceptionConfig { los_max: 10 };
         let snap = build_snapshot(&w, player, companion, &[enemy], None, &cfg);
-        assert_eq!(snap.enemies[0].cover, "unknown", "dist > los_max should be unknown");
+        assert_eq!(
+            snap.enemies[0].cover,
+            CoverType::Unknown,
+            "dist > los_max should be unknown"
+        );
     }
 
     #[test]
@@ -459,8 +539,11 @@ mod tests {
         let cfg = PerceptionConfig { los_max: 10 };
         let snap = build_snapshot(&w, player, companion, &[enemy], None, &cfg);
         // Correct distance: 5, so enemy is within LOS
-        assert_eq!(snap.enemies[0].cover, "low",
-            "Enemy near player (non-origin) should have cover=low, not unknown");
+        assert_eq!(
+            snap.enemies[0].cover,
+            CoverType::Low,
+            "Enemy near player (non-origin) should have cover=low, not unknown"
+        );
     }
 
     #[test]
@@ -475,6 +558,10 @@ mod tests {
 
         let cfg = PerceptionConfig { los_max: 15 };
         let snap = build_snapshot(&w, player, companion, &[enemy], None, &cfg);
-        assert_eq!(snap.enemies[0].cover, "low", "Negative dir subtraction must work");
+        assert_eq!(
+            snap.enemies[0].cover,
+            CoverType::Low,
+            "Negative dir subtraction must work"
+        );
     }
 }

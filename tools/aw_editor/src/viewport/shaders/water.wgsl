@@ -11,7 +11,8 @@ struct WaterUniforms {
     fog_density: f32,
     water_level: f32,
     fog_enabled: u32,
-    _pad: vec2<f32>,
+    sun_dir: vec3<f32>,
+    sun_intensity: f32,
 }
 
 struct VertexInput {
@@ -142,7 +143,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sky_reflect = vec3<f32>(0.30, 0.45, 0.65);
 
     // Sun specular — attenuated at distance to prevent sparkle
-    let light_dir = normalize(vec3<f32>(0.4, 0.8, 0.3));
+    let light_dir = normalize(u.sun_dir);
     let half_dir = normalize(light_dir + view_dir);
     let spec_atten = 1.0 - smoothstep(40.0, 120.0, cam_dist);
     let spec = pow(max(dot(n, half_dir), 0.0), 128.0) * 0.8 * spec_atten;

@@ -9,7 +9,7 @@
 //! - ✅ Mode switching completes without errors
 
 use astraweave_ai::core_loop::{dispatch_planner, CAiController, PlannerMode};
-use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState, WorldSnapshot};
+use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot};
 use std::collections::BTreeMap;
 use std::time::Instant;
 
@@ -27,14 +27,14 @@ fn create_tactical_snapshot() -> WorldSnapshot {
         player: PlayerState {
             hp: 100,
             pos: IVec2 { x: 10, y: 10 },
-            stance: "stand".into(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         enemies: vec![EnemyState {
             id: 100,
             pos: IVec2 { x: 30, y: 30 },
             hp: 100,
-            cover: "low".to_string(),
+            cover: CoverType::Low,
             last_seen: 0.5,
         }],
         pois: vec![],
@@ -60,14 +60,14 @@ fn create_defensive_snapshot() -> WorldSnapshot {
         player: PlayerState {
             hp: 100,
             pos: IVec2 { x: 10, y: 10 },
-            stance: "stand".into(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         enemies: vec![EnemyState {
             id: 100,
             pos: IVec2 { x: 30, y: 30 },
             hp: 100,
-            cover: "low".to_string(),
+            cover: CoverType::Low,
             last_seen: 0.5,
         }],
         pois: vec![],
@@ -90,7 +90,7 @@ fn create_empty_snapshot() -> WorldSnapshot {
         player: PlayerState {
             hp: 100,
             pos: IVec2 { x: 10, y: 10 },
-            stance: "stand".into(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         enemies: vec![], // No enemies

@@ -36,7 +36,7 @@ use aw_editor_lib::scene_serialization::SceneValidationIssue;
 use aw_editor_lib::{EditorRuntime, RuntimeState, RuntimeStats};
 use aw_editor_lib::{EntityData, SceneData};
 use glam::{Quat, Vec2, Vec3};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 // =============================================================================
 // DISTRIBUTION FORMAT — EXTENSION TESTS (7 variants)
@@ -1198,7 +1198,7 @@ mod clipboard_entity_validate_tests {
             hp,
             team_id: 0,
             ammo,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         }
     }
@@ -1531,7 +1531,7 @@ mod scene_data_validate_tests {
             hp,
             team_id: 0,
             ammo,
-            cooldowns: HashMap::new(),
+            cooldowns: BTreeMap::new(),
             behavior_graph: None,
         }
     }

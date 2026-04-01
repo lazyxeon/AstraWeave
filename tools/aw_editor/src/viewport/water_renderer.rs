@@ -22,7 +22,8 @@ struct WaterUniforms {
     fog_density: f32,
     water_level: f32,
     fog_enabled: u32,
-    _pad: [f32; 2],
+    sun_dir: [f32; 3],
+    sun_intensity: f32,
 }
 
 pub struct WaterRenderer {
@@ -38,6 +39,8 @@ pub struct WaterRenderer {
     fog_enabled: bool,
     fog_density: f32,
     fog_color: [f32; 3],
+    sun_dir: [f32; 3],
+    sun_intensity: f32,
 }
 
 impl WaterRenderer {
@@ -140,7 +143,8 @@ impl WaterRenderer {
                 fog_density: 0.01,
                 water_level: 0.0,
                 fog_enabled: 0,
-                _pad: [0.0; 2],
+                sun_dir: [0.5, 0.7, 0.35],
+                sun_intensity: 1.6,
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -182,6 +186,8 @@ impl WaterRenderer {
             fog_enabled: false,
             fog_density: 0.01,
             fog_color: [0.6, 0.6, 0.62],
+            sun_dir: [0.5, 0.7, 0.35],
+            sun_intensity: 1.6,
         })
     }
 
@@ -236,6 +242,11 @@ impl WaterRenderer {
         self.fog_color = color;
     }
 
+    pub fn set_sun(&mut self, dir: [f32; 3], intensity: f32) {
+        self.sun_dir = dir;
+        self.sun_intensity = intensity;
+    }
+
     pub fn render(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -261,7 +272,8 @@ impl WaterRenderer {
             fog_density: self.fog_density,
             water_level: self.water_level,
             fog_enabled: if self.fog_enabled { 1 } else { 0 },
-            _pad: [0.0; 2],
+            sun_dir: self.sun_dir,
+            sun_intensity: self.sun_intensity,
         };
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));

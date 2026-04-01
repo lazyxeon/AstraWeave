@@ -12,7 +12,7 @@ use aw_editor_lib::plugin::{
     PluginMetadata, PluginState,
 };
 use aw_editor_lib::scene_serialization::{EntityData, SceneData, SceneValidationIssue};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 // ============================================================================
 // PluginEvent — All 9 Variants × Display
@@ -823,7 +823,7 @@ fn make_entity(id: u32, name: &str, scale: f32, hp: i32, ammo: i32) -> EntityDat
         hp,
         team_id: 0,
         ammo,
-        cooldowns: HashMap::new(),
+        cooldowns: BTreeMap::new(),
         behavior_graph: None,
     }
 }

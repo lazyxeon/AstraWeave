@@ -3,7 +3,7 @@ use astraweave_behavior::BehaviorGraph;
 use astraweave_core::{Entity, IVec2, World};
 use astraweave_security::path::{safe_under, validate_extension};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use tracing::debug;
@@ -20,7 +20,7 @@ pub struct EntityData {
     pub hp: i32,
     pub team_id: u8,
     pub ammo: i32,
-    pub cooldowns: HashMap<String, f32>,
+    pub cooldowns: BTreeMap<String, f32>,
     #[serde(default)]
     pub behavior_graph: Option<BehaviorGraph>,
 }
@@ -813,7 +813,7 @@ mod tests {
                     hp: 100,
                     team_id: 0,
                     ammo: 30,
-                    cooldowns: std::collections::HashMap::new(),
+                    cooldowns: std::collections::BTreeMap::new(),
                     behavior_graph: None,
                 },
                 EntityData {
@@ -827,7 +827,7 @@ mod tests {
                     hp: 50,
                     team_id: 1,
                     ammo: 15,
-                    cooldowns: std::collections::HashMap::new(),
+                    cooldowns: std::collections::BTreeMap::new(),
                     behavior_graph: None,
                 },
             ],
@@ -859,7 +859,7 @@ mod tests {
                 hp: 100,
                 team_id: 0,
                 ammo: 30,
-                cooldowns: std::collections::HashMap::new(),
+                cooldowns: std::collections::BTreeMap::new(),
                 behavior_graph: None,
             }],
             obstacles: vec![],
@@ -889,7 +889,7 @@ mod tests {
                 hp: -50, // Warning
                 team_id: 0,
                 ammo: 30,
-                cooldowns: std::collections::HashMap::new(),
+                cooldowns: std::collections::BTreeMap::new(),
                 behavior_graph: None,
             }],
             obstacles: vec![],
@@ -919,7 +919,7 @@ mod tests {
                 hp: 100,
                 team_id: 0,
                 ammo: 30,
-                cooldowns: std::collections::HashMap::new(),
+                cooldowns: std::collections::BTreeMap::new(),
                 behavior_graph: None,
             }],
             obstacles: vec![],
@@ -957,7 +957,7 @@ mod tests {
     fn test_scene_stats_populated() {
         use astraweave_behavior::{BehaviorGraph, BehaviorNode};
 
-        let mut cooldowns = std::collections::HashMap::new();
+        let mut cooldowns = std::collections::BTreeMap::new();
         cooldowns.insert("fire".to_string(), 1.5);
         cooldowns.insert("jump".to_string(), 0.5);
 
@@ -991,7 +991,7 @@ mod tests {
                     hp: 50,
                     team_id: 1,
                     ammo: 15,
-                    cooldowns: std::collections::HashMap::new(),
+                    cooldowns: std::collections::BTreeMap::new(),
                     behavior_graph: None,
                 },
             ],

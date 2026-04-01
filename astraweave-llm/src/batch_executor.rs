@@ -400,7 +400,7 @@ impl Default for BatchInferenceExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState};
+    use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState};
     use std::collections::BTreeMap;
     fn create_test_snapshot(agent_x: i32, agent_y: i32) -> WorldSnapshot {
         WorldSnapshot {
@@ -419,7 +419,7 @@ mod tests {
                 id: 1,
                 pos: IVec2 { x: 10, y: 10 },
                 hp: 100,
-                cover: "none".to_string(),
+                cover: CoverType::None,
                 last_seen: 0.0,
             }],
             pois: vec![],

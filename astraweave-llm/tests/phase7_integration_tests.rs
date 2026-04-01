@@ -9,8 +9,8 @@ use anyhow::Result;
 /// - Robust plan parser (5-stage extraction, hallucination detection)
 /// - Semantic cache similarity matching
 use astraweave_core::{
-    ActionStep, CompanionState, Constraints, EnemyState, IVec2, PlanIntent, PlayerState,
-    ToolRegistry, ToolSpec, WorldSnapshot,
+    ActionStep, CompanionState, Constraints, CoverType, EnemyState, IVec2, PlanIntent,
+    PlayerState, Stance, ToolRegistry, ToolSpec, WorldSnapshot,
 };
 use astraweave_llm::{plan_from_llm, LlmClient, PlanSource};
 use async_trait::async_trait;
@@ -399,7 +399,7 @@ fn create_combat_scenario() -> WorldSnapshot {
         player: PlayerState {
             pos: IVec2 { x: 0, y: 0 },
             hp: 100,
-            stance: "crouching".to_string(),
+            stance: Stance::Crouch,
             orders: vec!["hold position".to_string()],
         },
         me: CompanionState {
@@ -413,14 +413,14 @@ fn create_combat_scenario() -> WorldSnapshot {
                 id: 1,
                 pos: IVec2 { x: 15, y: 12 },
                 hp: 50,
-                cover: "partial".to_string(),
+                cover: CoverType::Partial,
                 last_seen: 0.5,
             },
             EnemyState {
                 id: 2,
                 pos: IVec2 { x: 20, y: 8 },
                 hp: 75,
-                cover: "none".to_string(),
+                cover: CoverType::None,
                 last_seen: 1.0,
             },
         ],
@@ -436,7 +436,7 @@ fn create_simple_scenario() -> WorldSnapshot {
         player: PlayerState {
             pos: IVec2 { x: 0, y: 0 },
             hp: 100,
-            stance: "standing".to_string(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         me: CompanionState {

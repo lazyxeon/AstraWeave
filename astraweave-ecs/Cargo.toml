@@ -15,9 +15,11 @@ serde_json = { workspace = true }
 rand = { workspace = true }
 astraweave-profiling = { path = "../astraweave-profiling", optional = true }
 tracy-client = { version = "0.18", optional = true }
+rayon = { version = "1.10", optional = true }
 
 [features]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
+parallel = ["dep:rayon"]
 loom = []
 alloc-counter = []
 

@@ -387,6 +387,11 @@ impl SplatMapGenerator {
         }
     }
 
+    /// Mutable access to rules for parameter override (e.g., editor UI adjustments).
+    pub fn rules_mut(&mut self) -> &mut Vec<SplatRule> {
+        &mut self.rules
+    }
+
     /// Add a splat rule
     pub fn add_rule(&mut self, rule: SplatRule) {
         self.rules.push(rule);

@@ -17,7 +17,7 @@
 
 #![allow(clippy::unnecessary_cast, clippy::approx_constant)]
 
-use astraweave_ecs::{Event, World, Events};
+use astraweave_ecs::{Event, Events, World};
 use std::collections::HashSet;
 
 // ============================================================================
@@ -63,11 +63,7 @@ fn test_entity_ids_unique() {
 
     // All entity IDs should be unique
     let unique: HashSet<_> = entities.iter().map(|e| e.id()).collect();
-    assert_eq!(
-        unique.len(),
-        100,
-        "All 100 entities should have unique IDs"
-    );
+    assert_eq!(unique.len(), 100, "All 100 entities should have unique IDs");
 }
 
 /// Verify entity count tracks correctly (catches off-by-one)
@@ -81,13 +77,21 @@ fn test_entity_count_accuracy() {
     assert_eq!(world.entity_count(), 1, "Count should be 1 after spawn");
 
     let e2 = world.spawn();
-    assert_eq!(world.entity_count(), 2, "Count should be 2 after second spawn");
+    assert_eq!(
+        world.entity_count(),
+        2,
+        "Count should be 2 after second spawn"
+    );
 
     world.despawn(e1);
     assert_eq!(world.entity_count(), 1, "Count should be 1 after despawn");
 
     world.despawn(e2);
-    assert_eq!(world.entity_count(), 0, "Count should be 0 after all despawned");
+    assert_eq!(
+        world.entity_count(),
+        0,
+        "Count should be 0 after all despawned"
+    );
 }
 
 /// Verify is_alive returns correct values
@@ -221,7 +225,10 @@ fn test_component_remove() {
     let removed = world.remove::<Health>(e);
 
     assert!(removed, "Remove should return true");
-    assert!(!world.has::<Health>(e), "Should NOT have Health after remove");
+    assert!(
+        !world.has::<Health>(e),
+        "Should NOT have Health after remove"
+    );
     assert!(world.has::<Position>(e), "Should still have Position");
 }
 
@@ -233,7 +240,10 @@ fn test_component_remove_nonexistent() {
 
     let removed = world.remove::<Health>(e);
 
-    assert!(!removed, "Remove non-existent component should return false");
+    assert!(
+        !removed,
+        "Remove non-existent component should return false"
+    );
 }
 
 /// Verify multiple components per entity
@@ -246,10 +256,7 @@ fn test_multiple_components() {
     world.insert(e, Velocity { dx: 0.5, dy: -0.5 });
     world.insert(e, Health(100));
 
-    assert_eq!(
-        world.get::<Position>(e),
-        Some(&Position { x: 1.0, y: 2.0 })
-    );
+    assert_eq!(world.get::<Position>(e), Some(&Position { x: 1.0, y: 2.0 }));
     assert_eq!(
         world.get::<Velocity>(e),
         Some(&Velocity { dx: 0.5, dy: -0.5 })
@@ -376,7 +383,11 @@ fn test_entities_with_completeness() {
         world.insert(e, Position { x: 0.0, y: 0.0 });
     }
 
-    let found: HashSet<_> = world.entities_with::<Health>().iter().map(|e| e.id()).collect();
+    let found: HashSet<_> = world
+        .entities_with::<Health>()
+        .iter()
+        .map(|e| e.id())
+        .collect();
 
     assert_eq!(
         found, expected,
@@ -533,8 +544,14 @@ impl Event for DamageEvent {}
 fn test_event_roundtrip() {
     let mut events = Events::new();
 
-    events.send(DamageEvent { target: 1, amount: 10 });
-    events.send(DamageEvent { target: 2, amount: 20 });
+    events.send(DamageEvent {
+        target: 1,
+        amount: 10,
+    });
+    events.send(DamageEvent {
+        target: 2,
+        amount: 20,
+    });
 
     let collected: Vec<_> = events.read::<DamageEvent>().collect();
 
@@ -570,10 +587,16 @@ fn test_event_count() {
 
     assert_eq!(events.len::<DamageEvent>(), 0, "Initial count should be 0");
 
-    events.send(DamageEvent { target: 1, amount: 10 });
+    events.send(DamageEvent {
+        target: 1,
+        amount: 10,
+    });
     assert_eq!(events.len::<DamageEvent>(), 1, "Count should be 1");
 
-    events.send(DamageEvent { target: 2, amount: 20 });
+    events.send(DamageEvent {
+        target: 2,
+        amount: 20,
+    });
     assert_eq!(events.len::<DamageEvent>(), 2, "Count should be 2");
 }
 
@@ -582,14 +605,24 @@ fn test_event_count() {
 fn test_event_drain() {
     let mut events = Events::new();
 
-    events.send(DamageEvent { target: 1, amount: 10 });
-    events.send(DamageEvent { target: 2, amount: 20 });
+    events.send(DamageEvent {
+        target: 1,
+        amount: 10,
+    });
+    events.send(DamageEvent {
+        target: 2,
+        amount: 20,
+    });
 
     // Drain all events
     let drained: Vec<_> = events.drain::<DamageEvent>().collect();
-    
+
     assert_eq!(drained.len(), 2, "Should drain 2 events");
-    assert_eq!(events.len::<DamageEvent>(), 0, "Should be empty after drain");
+    assert_eq!(
+        events.len::<DamageEvent>(),
+        0,
+        "Should be empty after drain"
+    );
 }
 
 /// Verify event clear
@@ -597,12 +630,22 @@ fn test_event_drain() {
 fn test_event_clear() {
     let mut events = Events::new();
 
-    events.send(DamageEvent { target: 1, amount: 10 });
-    events.send(DamageEvent { target: 2, amount: 20 });
+    events.send(DamageEvent {
+        target: 1,
+        amount: 10,
+    });
+    events.send(DamageEvent {
+        target: 2,
+        amount: 20,
+    });
 
     events.clear::<DamageEvent>();
 
-    assert_eq!(events.len::<DamageEvent>(), 0, "Should be empty after clear");
+    assert_eq!(
+        events.len::<DamageEvent>(),
+        0,
+        "Should be empty after clear"
+    );
 }
 
 // ============================================================================
@@ -624,8 +667,16 @@ fn test_iteration_determinism() {
     }
 
     // Collect iteration order from both
-    let order1: Vec<_> = world1.entities_with::<Health>().iter().map(|e| e.id()).collect();
-    let order2: Vec<_> = world2.entities_with::<Health>().iter().map(|e| e.id()).collect();
+    let order1: Vec<_> = world1
+        .entities_with::<Health>()
+        .iter()
+        .map(|e| e.id())
+        .collect();
+    let order2: Vec<_> = world2
+        .entities_with::<Health>()
+        .iter()
+        .map(|e| e.id())
+        .collect();
 
     assert_eq!(
         order1, order2,
@@ -640,7 +691,10 @@ fn test_component_value_preservation() {
     let e = world.spawn();
 
     // Use specific float values that could be affected by floating point errors
-    let pos = Position { x: 0.1 + 0.2, y: -3.14159 };
+    let pos = Position {
+        x: 0.1 + 0.2,
+        y: -3.14159,
+    };
     world.insert(e, pos);
 
     let retrieved = world.get::<Position>(e).unwrap();
@@ -682,7 +736,10 @@ fn test_mutation_has_component() {
     let mut world = World::new();
     let e = world.spawn();
 
-    assert!(!world.has::<Health>(e), "Should NOT have Health before insert");
+    assert!(
+        !world.has::<Health>(e),
+        "Should NOT have Health before insert"
+    );
 
     world.insert(e, Health(100));
 
@@ -716,9 +773,20 @@ fn test_mutation_sign_errors() {
 fn test_mutation_empty_world() {
     let world = World::new();
 
-    assert_eq!(world.entity_count(), 0, "Empty world should have 0 entities");
-    assert_eq!(world.count::<Health>(), 0, "Empty world should have 0 Health components");
-    assert!(world.entities_with::<Health>().is_empty(), "Empty world should return empty vec");
+    assert_eq!(
+        world.entity_count(),
+        0,
+        "Empty world should have 0 entities"
+    );
+    assert_eq!(
+        world.count::<Health>(),
+        0,
+        "Empty world should have 0 Health components"
+    );
+    assert!(
+        world.entities_with::<Health>().is_empty(),
+        "Empty world should return empty vec"
+    );
 }
 
 /// Catch boolean inversion in is_alive
@@ -749,7 +817,10 @@ fn test_stale_entity_safety() {
     // All operations on stale entity should be safe
     assert!(!world.is_alive(e), "Stale entity should not be alive");
     assert!(world.get::<Health>(e).is_none(), "get should return None");
-    assert!(world.get_mut::<Health>(e).is_none(), "get_mut should return None");
+    assert!(
+        world.get_mut::<Health>(e).is_none(),
+        "get_mut should return None"
+    );
     assert!(!world.has::<Health>(e), "has should return false");
     assert!(!world.remove::<Health>(e), "remove should return false");
     assert!(!world.despawn(e), "despawn should return false");

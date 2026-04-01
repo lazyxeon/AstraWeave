@@ -264,17 +264,18 @@ impl<'w, A: Component, B: Component> Iterator for Query2Mut<'w, A, B> {
             }
             let archetype_id = self.archetype_ids[self.arch_idx];
 
-            // SAFETY: We hold *mut World for 'w lifetime. We reconstruct references for each iteration.
-            // This is safe because:
-            // 1. The world pointer is valid for 'w
-            // 2. We only access one entity at a time
-            // 3. A and B are different types (no aliasing within single entity)
+            // SAFETY: We hold *mut World for 'w lifetime. We reconstruct a single mutable
+            // reference per iteration step. This is safe because:
+            // 1. The world pointer is valid for 'w (borrowed in Query2Mut::new)
+            // 2. We only access one entity at a time (sequential iteration)
+            // 3. A and B are different types (separate columns, no aliasing)
+            // 4. We take raw pointers to the components BEFORE releasing the borrow,
+            //    and the returned references are valid for 'w since the World lives that long.
             let world_ref = unsafe { &mut *self.world };
 
-            // Get immutable reference to archetype for metadata access
             let archetype = world_ref
                 .archetypes
-                .get_archetype(archetype_id)
+                .get_archetype_mut(archetype_id)
                 .expect("BUG: archetype should exist from archetype_ids");
 
             if self.entity_idx >= archetype.len() {
@@ -286,32 +287,21 @@ impl<'w, A: Component, B: Component> Iterator for Query2Mut<'w, A, B> {
             let entity = archetype.entities_vec()[self.entity_idx];
             self.entity_idx += 1;
 
-            // SAFETY: Now get the actual component data using raw pointers to avoid borrow conflicts.
-            // We get component A mutably and B immutably through separate archetype lookups.
-            // This is safe because:
-            // 1. A and B are different types (ensured by type system)
-            // 2. We're returning references that live for 'w
-            // 3. Iterator ensures sequential access (no overlapping entity borrows)
-            let world_ref2 = unsafe { &mut *self.world };
-            let archetype_mut = world_ref2
-                .archetypes
-                .get_archetype_mut(archetype_id)
-                .expect("BUG: archetype should exist");
-            let component_a = archetype_mut
+            // Get both components from the same archetype reference.
+            // A and B are different types so their columns are disjoint memory.
+            let component_a = archetype
                 .get_mut::<A>(entity)
                 .expect("BUG: entity should have component A in archetype");
             let ptr_a = component_a as *mut A;
 
-            let world_ref3 = unsafe { &*self.world };
-            let archetype_imm = world_ref3
-                .archetypes
-                .get_archetype(archetype_id)
-                .expect("BUG: archetype should exist");
-            let component_b = archetype_imm
+            let component_b = archetype
                 .get::<B>(entity)
                 .expect("BUG: entity should have component B in archetype");
             let ptr_b = component_b as *const B;
 
+            // SAFETY: ptr_a and ptr_b point to different component columns (A != B),
+            // and the underlying storage lives for 'w. Sequential iteration ensures
+            // we never hand out overlapping references to the same entity.
             return Some((entity, unsafe { &mut *ptr_a }, unsafe { &*ptr_b }));
         }
     }

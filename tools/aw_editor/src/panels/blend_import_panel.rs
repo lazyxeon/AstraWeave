@@ -33,6 +33,8 @@ pub enum BlendImportAction {
     BrowseOutputDir { path: PathBuf },
     /// Clear the current import session
     ClearSession,
+    /// Create a blueprint zone from the generated biome pack for 1:1 scene replica
+    CreateReplicaZone { pack_path: PathBuf },
 }
 
 // ============================================================================
@@ -259,6 +261,8 @@ pub struct BlendImportPanel {
     category_filter: String,
     /// Whether to show only assets included in pack
     show_included_only: bool,
+    /// Path to the generated biome pack file (set after successful pack generation)
+    generated_pack_path: Option<PathBuf>,
     /// Collapsible section states
     section_file: bool,
     section_textures: bool,
@@ -290,6 +294,7 @@ impl BlendImportPanel {
             actions: Vec::new(),
             category_filter: "All".into(),
             show_included_only: false,
+            generated_pack_path: None,
             section_file: true,
             section_textures: true,
             section_scatter: true,
@@ -345,6 +350,11 @@ impl BlendImportPanel {
         self.phase = ImportPhase::Complete;
         self.progress = 1.0;
         self.status_message = format!("Biome pack '{}' generated successfully", self.pack_name);
+    }
+
+    /// Store the path to the generated biome pack file (for zone creation flow).
+    pub fn set_generated_pack_path(&mut self, path: PathBuf) {
+        self.generated_pack_path = Some(path);
     }
 
     /// Select all assets for pack inclusion
@@ -901,6 +911,28 @@ impl BlendImportPanel {
                         self.reset();
                     }
                 });
+                // Offer one-click zone creation from the generated pack
+                if let Some(ref pack_path) = self.generated_pack_path {
+                    ui.add_space(4.0);
+                    ui.separator();
+                    ui.add_space(2.0);
+                    ui.label(RichText::new("Scene Reconstruction").strong().size(12.0));
+                    ui.label("Create a blueprint zone to place this scene in the viewport.");
+                    if ui
+                        .button(
+                            RichText::new("Create Replica Zone")
+                                .strong()
+                                .color(Color32::from_rgb(60, 180, 220)),
+                        )
+                        .clicked()
+                    {
+                        self.actions.push(BlendImportAction::CreateReplicaZone {
+                            pack_path: pack_path.clone(),
+                        });
+                        self.status_message =
+                            "Creating replica zone — switch to Blueprint panel...".into();
+                    }
+                }
             }
         }
     }
@@ -1021,6 +1053,7 @@ impl BlendImportPanel {
         self.error_message = None;
         self.category_filter = "All".into();
         self.show_included_only = false;
+        self.generated_pack_path = None;
     }
 }
 

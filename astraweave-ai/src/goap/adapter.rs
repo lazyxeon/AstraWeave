@@ -18,7 +18,7 @@ impl SnapshotAdapter {
         state.set("player_y", StateValue::Int(snap.player.pos.y));
         state.set(
             "player_stance",
-            StateValue::String(snap.player.stance.clone()),
+            StateValue::String(snap.player.stance.to_string()),
         );
 
         // Player health categories
@@ -66,7 +66,7 @@ impl SnapshotAdapter {
             state.set("enemy_hp", StateValue::Int(first_enemy.hp));
             state.set("enemy_x", StateValue::Int(first_enemy.pos.x));
             state.set("enemy_y", StateValue::Int(first_enemy.pos.y));
-            state.set("enemy_cover", StateValue::String(first_enemy.cover.clone()));
+            state.set("enemy_cover", StateValue::String(first_enemy.cover.to_string()));
 
             // Calculate distance to closest enemy
             let dist_x = (snap.me.pos.x - first_enemy.pos.x).abs();
@@ -173,7 +173,7 @@ impl SnapshotAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState};
+    use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance};
     use std::collections::BTreeMap;
 
     fn make_test_snapshot() -> WorldSnapshot {
@@ -182,7 +182,7 @@ mod tests {
             player: PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 0, y: 0 },
-                stance: "stand".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {
@@ -195,7 +195,7 @@ mod tests {
                 id: 1,
                 pos: IVec2 { x: 10, y: 10 },
                 hp: 50,
-                cover: "none".to_string(),
+                cover: CoverType::None,
                 last_seen: 1.0,
             }],
             pois: vec![],

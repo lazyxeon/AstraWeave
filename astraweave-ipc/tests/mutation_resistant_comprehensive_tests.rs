@@ -10,7 +10,7 @@
 //! orchestrator integration are immediately detected.
 
 use astraweave_ai::{Orchestrator, RuleOrchestrator};
-use astraweave_core::schema::{CompanionState, EnemyState, IVec2, PlayerState, Poi};
+use astraweave_core::schema::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance};
 use astraweave_core::{ActionStep, PlanIntent, WorldSnapshot};
 use std::collections::BTreeMap;
 
@@ -24,7 +24,7 @@ fn base_snapshot() -> WorldSnapshot {
         player: PlayerState {
             pos: IVec2::new(5, 5),
             hp: 100,
-            stance: "standing".to_string(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         me: CompanionState {
@@ -37,7 +37,7 @@ fn base_snapshot() -> WorldSnapshot {
             id: 0,
             pos: IVec2::new(10, 10),
             hp: 50,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         }],
         pois: vec![Poi {
@@ -55,7 +55,7 @@ fn empty_snapshot() -> WorldSnapshot {
         player: PlayerState {
             pos: IVec2::new(0, 0),
             hp: 100,
-            stance: "standing".to_string(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         me: CompanionState {
@@ -111,7 +111,7 @@ fn snapshot_json_roundtrip_preserves_player_stance() {
     let snap = base_snapshot();
     let json = serde_json::to_string(&snap).unwrap();
     let rt: WorldSnapshot = serde_json::from_str(&json).unwrap();
-    assert_eq!(rt.player.stance, "standing");
+    assert_eq!(rt.player.stance, Stance::Stand);
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn snapshot_json_roundtrip_preserves_enemy_fields() {
     assert_eq!(e.pos.x, 10);
     assert_eq!(e.pos.y, 10);
     assert_eq!(e.hp, 50);
-    assert_eq!(e.cover, "none");
+    assert_eq!(e.cover, CoverType::None);
     assert_eq!(e.last_seen, 0.0);
 }
 
@@ -530,7 +530,7 @@ async fn ws_roundtrip_multiple_enemies_still_uses_first() {
         id: 1,
         pos: IVec2::new(20, 20),
         hp: 75,
-        cover: "wall".to_string(),
+        cover: CoverType::Wall,
         last_seen: 1.0,
     });
     let url = format!("ws://{}", addr);
@@ -661,9 +661,9 @@ fn snapshot_many_enemies_roundtrip() {
             pos: IVec2::new(i * 3, i * 3),
             hp: 100 - i,
             cover: if i % 2 == 0 {
-                "none".to_string()
+                CoverType::None
             } else {
-                "wall".to_string()
+                CoverType::Wall
             },
             last_seen: i as f32,
         })
@@ -674,7 +674,7 @@ fn snapshot_many_enemies_roundtrip() {
     assert_eq!(rt.enemies.len(), 50);
     assert_eq!(rt.enemies[49].id, 49);
     assert_eq!(rt.enemies[49].hp, 51);
-    assert_eq!(rt.enemies[49].cover, "wall");
+    assert_eq!(rt.enemies[49].cover, CoverType::Wall);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -741,7 +741,7 @@ fn rule_orch_smoke_midpoint_calculation_x() {
         id: 0,
         pos: IVec2::new(10, 0),
         hp: 50,
-        cover: "none".to_string(),
+        cover: CoverType::None,
         last_seen: 0.0,
     });
     let plan = RuleOrchestrator.propose_plan(&snap);
@@ -760,7 +760,7 @@ fn rule_orch_smoke_midpoint_calculation_y() {
         id: 0,
         pos: IVec2::new(0, 8),
         hp: 50,
-        cover: "none".to_string(),
+        cover: CoverType::None,
         last_seen: 0.0,
     });
     let plan = RuleOrchestrator.propose_plan(&snap);
@@ -779,7 +779,7 @@ fn rule_orch_move_direction_positive() {
         id: 0,
         pos: IVec2::new(10, 10),
         hp: 50,
-        cover: "none".to_string(),
+        cover: CoverType::None,
         last_seen: 0.0,
     });
     let plan = RuleOrchestrator.propose_plan(&snap);
@@ -801,7 +801,7 @@ fn rule_orch_move_direction_negative() {
         id: 0,
         pos: IVec2::new(0, 0),
         hp: 50,
-        cover: "none".to_string(),
+        cover: CoverType::None,
         last_seen: 0.0,
     });
     let plan = RuleOrchestrator.propose_plan(&snap);
@@ -876,7 +876,7 @@ fn rule_orch_same_position_enemy_midpoint_is_self() {
         id: 0,
         pos: IVec2::new(5, 5),
         hp: 50,
-        cover: "none".to_string(),
+        cover: CoverType::None,
         last_seen: 0.0,
     });
     let plan = RuleOrchestrator.propose_plan(&snap);

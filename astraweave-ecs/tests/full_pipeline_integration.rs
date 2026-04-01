@@ -83,10 +83,29 @@ fn create_game_world(agent_count: usize, enemy_count: usize) -> (World, Vec<Enti
                 z: 5.0,
             },
         );
-        world.insert(e, Velocity { x: 0.0, y: 0.0, z: 0.0 });
-        world.insert(e, Health { current: 100, max: 100 });
+        world.insert(
+            e,
+            Velocity {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        );
+        world.insert(
+            e,
+            Health {
+                current: 100,
+                max: 100,
+            },
+        );
         world.insert(e, Team(1));
-        world.insert(e, Ammo { current: 30, max: 30 });
+        world.insert(
+            e,
+            Ammo {
+                current: 30,
+                max: 30,
+            },
+        );
         world.insert(
             e,
             AIState {
@@ -109,8 +128,21 @@ fn create_game_world(agent_count: usize, enemy_count: usize) -> (World, Vec<Enti
                 z: 20.0,
             },
         );
-        world.insert(e, Velocity { x: 0.0, y: 0.0, z: 0.0 });
-        world.insert(e, Health { current: 50, max: 50 });
+        world.insert(
+            e,
+            Velocity {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        );
+        world.insert(
+            e,
+            Health {
+                current: 50,
+                max: 50,
+            },
+        );
         world.insert(e, Team(2));
         enemies.push(e);
     }
@@ -143,14 +175,11 @@ fn ai_decide(
     }
 
     // Find closest enemy
-    let closest = enemies
-        .iter()
-        .filter(|(_, hp)| *hp > 0)
-        .min_by(|a, b| {
-            let dist_a = ((a.0.x - pos.x).powi(2) + (a.0.z - pos.z).powi(2)).sqrt();
-            let dist_b = ((b.0.x - pos.x).powi(2) + (b.0.z - pos.z).powi(2)).sqrt();
-            dist_a.partial_cmp(&dist_b).unwrap()
-        });
+    let closest = enemies.iter().filter(|(_, hp)| *hp > 0).min_by(|a, b| {
+        let dist_a = ((a.0.x - pos.x).powi(2) + (a.0.z - pos.z).powi(2)).sqrt();
+        let dist_b = ((b.0.x - pos.x).powi(2) + (b.0.z - pos.z).powi(2)).sqrt();
+        dist_a.partial_cmp(&dist_b).unwrap()
+    });
 
     if let Some((enemy_pos, _)) = closest {
         let dist = ((enemy_pos.x - pos.x).powi(2) + (enemy_pos.z - pos.z).powi(2)).sqrt();
@@ -177,7 +206,11 @@ fn physics_update(pos: &Position, vel: &Velocity, dt: f32) -> Position {
 }
 
 // Convert AI decision to velocity
-fn action_to_velocity(action: &AIAction, current: &Position, target: Option<&Position>) -> Velocity {
+fn action_to_velocity(
+    action: &AIAction,
+    current: &Position,
+    target: Option<&Position>,
+) -> Velocity {
     match action {
         AIAction::MoveTo | AIAction::TakeCover => {
             if let Some(t) = target {
@@ -192,13 +225,25 @@ fn action_to_velocity(action: &AIAction, current: &Position, target: Option<&Pos
                         z: (dz / dist) * speed,
                     }
                 } else {
-                    Velocity { x: 0.0, y: 0.0, z: 0.0 }
+                    Velocity {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    }
                 }
             } else {
-                Velocity { x: 0.0, y: 0.0, z: 0.0 }
+                Velocity {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                }
             }
         }
-        _ => Velocity { x: 0.0, y: 0.0, z: 0.0 },
+        _ => Velocity {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
     }
 }
 
@@ -280,7 +325,10 @@ fn test_ecs_ai_physics_loop_basic() {
 
     let elapsed = start.elapsed();
     println!("   Total time: {:?}", elapsed);
-    println!("   Per-frame: {:.3} ms", elapsed.as_secs_f64() * 1000.0 / 60.0);
+    println!(
+        "   Per-frame: {:.3} ms",
+        elapsed.as_secs_f64() * 1000.0 / 60.0
+    );
 
     // Validate: Positions should have changed (agents moved)
     let mut moved_count = 0;
@@ -433,16 +481,31 @@ fn test_determinism_3_runs() {
         assert!(
             (x1 - x2).abs() < 1e-6 && (y1 - y2).abs() < 1e-6 && (z1 - z2).abs() < 1e-6,
             "Run 1 vs Run 2 mismatch at agent {}: ({}, {}, {}) vs ({}, {}, {})",
-            i, x1, y1, z1, x2, y2, z2
+            i,
+            x1,
+            y1,
+            z1,
+            x2,
+            y2,
+            z2
         );
         assert!(
             (x2 - x3).abs() < 1e-6 && (y2 - y3).abs() < 1e-6 && (z2 - z3).abs() < 1e-6,
             "Run 2 vs Run 3 mismatch at agent {}: ({}, {}, {}) vs ({}, {}, {})",
-            i, x2, y2, z2, x3, y3, z3
+            i,
+            x2,
+            y2,
+            z2,
+            x3,
+            y3,
+            z3
         );
     }
 
-    println!("   3 runs produced identical results for {} agents", run1.len());
+    println!(
+        "   3 runs produced identical results for {} agents",
+        run1.len()
+    );
     println!("✅ Determinism validated (100 frames × 3 runs)");
 }
 
@@ -457,7 +520,11 @@ fn test_1000_agents_at_60fps() {
     let (mut world, agents, enemies) = create_game_world(1000, 100);
     let dt = 1.0 / 60.0;
 
-    println!("   Spawned: {} agents, {} enemies", agents.len(), enemies.len());
+    println!(
+        "   Spawned: {} agents, {} enemies",
+        agents.len(),
+        enemies.len()
+    );
 
     let start = Instant::now();
 
@@ -514,8 +581,10 @@ fn test_1000_agents_at_60fps() {
     // Validate memory didn't explode
     // (In real test, would use allocator tracking)
 
-    println!("✅ 1000 agents @ 60 FPS validated (frame budget: {:.1}%)", 
-        frame_time_ms / 16.67 * 100.0);
+    println!(
+        "✅ 1000 agents @ 60 FPS validated (frame budget: {:.1}%)",
+        frame_time_ms / 16.67 * 100.0
+    );
 }
 
 #[test]
@@ -579,15 +648,21 @@ fn test_component_lifecycle_during_simulation() {
         .filter(|e| world.get::<Health>(**e).is_some())
         .count();
 
-    assert_eq!(agents_with_pos, agents.len(), "All agents should still have Position");
+    assert_eq!(
+        agents_with_pos,
+        agents.len(),
+        "All agents should still have Position"
+    );
     assert_eq!(
         enemies_with_health,
         enemies.len() - removed_count,
         "Some enemies should have lost Health component"
     );
 
-    println!("   Final state: {} agents with Position, {} enemies with Health",
-        agents_with_pos, enemies_with_health);
+    println!(
+        "   Final state: {} agents with Position, {} enemies with Health",
+        agents_with_pos, enemies_with_health
+    );
     println!("✅ Component lifecycle during simulation validated");
 }
 

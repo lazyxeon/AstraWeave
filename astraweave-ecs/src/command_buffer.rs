@@ -350,7 +350,10 @@ mod tests {
         buffer.insert(entity, Position { x: 1.0, y: 2.0 });
         buffer.flush(&mut world);
 
-        assert_eq!(world.get::<Position>(entity), Some(&Position { x: 1.0, y: 2.0 }));
+        assert_eq!(
+            world.get::<Position>(entity),
+            Some(&Position { x: 1.0, y: 2.0 })
+        );
     }
 
     #[test]
@@ -430,9 +433,18 @@ mod tests {
 
         buffer.flush(&mut world);
 
-        assert_eq!(world.get::<Position>(e1), Some(&Position { x: 1.0, y: 2.0 }));
-        assert_eq!(world.get::<Position>(e2), Some(&Position { x: 1.0, y: 2.0 }));
-        assert_eq!(world.get::<Position>(e3), Some(&Position { x: 1.0, y: 2.0 }));
+        assert_eq!(
+            world.get::<Position>(e1),
+            Some(&Position { x: 1.0, y: 2.0 })
+        );
+        assert_eq!(
+            world.get::<Position>(e2),
+            Some(&Position { x: 1.0, y: 2.0 })
+        );
+        assert_eq!(
+            world.get::<Position>(e3),
+            Some(&Position { x: 1.0, y: 2.0 })
+        );
     }
 
     #[test]
@@ -469,6 +481,9 @@ mod tests {
 
         buffer.flush(&mut world);
 
-        assert_eq!(world.get::<Position>(e1), Some(&Position { x: 2.0, y: 2.0 }));
+        assert_eq!(
+            world.get::<Position>(e1),
+            Some(&Position { x: 2.0, y: 2.0 })
+        );
     }
 }

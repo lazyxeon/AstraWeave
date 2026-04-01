@@ -1,14 +1,15 @@
 use astraweave_ecs as ecs;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 /// Public bridge resource mapping legacy `Entity` ids from `World` to ECS entity handles.
 /// Also stores the reverse mapping (ecs -> legacy) for round-trip lookups.
+/// Uses HashMap for O(1) lookups (no range queries needed).
 #[derive(Default, Debug)]
 pub struct EntityBridge {
     // legacy id -> ecs::Entity
-    map: BTreeMap<crate::Entity, ecs::Entity>,
+    map: HashMap<crate::Entity, ecs::Entity>,
     // ecs::Entity -> legacy id
-    rev: BTreeMap<ecs::Entity, crate::Entity>,
+    rev: HashMap<ecs::Entity, crate::Entity>,
 }
 
 impl EntityBridge {

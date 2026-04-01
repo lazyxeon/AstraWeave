@@ -4,7 +4,7 @@ impl Default for PlayerState {
         PlayerState {
             hp: 100,
             pos: IVec2 { x: 0, y: 0 },
-            stance: "stand".to_string(),
+            stance: Stance::Stand,
             orders: vec![],
         }
     }
@@ -27,7 +27,7 @@ impl Default for EnemyState {
             id: 0,
             pos: IVec2 { x: 0, y: 0 },
             hp: 100,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         }
     }
@@ -57,8 +57,105 @@ impl Default for WorldSnapshot {
 }
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt;
 
 pub type Entity = u32;
+
+// ============================================================================
+// Zero-cost enums replacing per-snapshot String allocations
+// ============================================================================
+
+/// Character stance — replaces `stance: String` to eliminate per-snapshot allocation.
+/// Serializes to the same JSON strings for backward compatibility.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Stance {
+    Stand,
+    Crouch,
+    Prone,
+}
+
+impl Default for Stance {
+    fn default() -> Self {
+        Self::Stand
+    }
+}
+
+impl fmt::Display for Stance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Stand => write!(f, "stand"),
+            Self::Crouch => write!(f, "crouch"),
+            Self::Prone => write!(f, "prone"),
+        }
+    }
+}
+
+impl From<&str> for Stance {
+    fn from(s: &str) -> Self {
+        match s {
+            "crouch" => Self::Crouch,
+            "prone" => Self::Prone,
+            _ => Self::Stand,
+        }
+    }
+}
+
+impl From<String> for Stance {
+    fn from(s: String) -> Self {
+        Self::from(s.as_str())
+    }
+}
+
+/// Cover level for enemies — replaces `cover: String` to eliminate per-snapshot allocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CoverType {
+    None,
+    Low,
+    High,
+    Wall,
+    Unknown,
+    Partial,
+}
+
+impl Default for CoverType {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl fmt::Display for CoverType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Low => write!(f, "low"),
+            Self::High => write!(f, "high"),
+            Self::Wall => write!(f, "wall"),
+            Self::Unknown => write!(f, "unknown"),
+            Self::Partial => write!(f, "partial"),
+        }
+    }
+}
+
+impl From<&str> for CoverType {
+    fn from(s: &str) -> Self {
+        match s {
+            "low" => Self::Low,
+            "high" => Self::High,
+            "wall" => Self::Wall,
+            "unknown" => Self::Unknown,
+            "partial" => Self::Partial,
+            _ => Self::None,
+        }
+    }
+}
+
+impl From<String> for CoverType {
+    fn from(s: String) -> Self {
+        Self::from(s.as_str())
+    }
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 /// A 2D integer vector used for grid-based positions.
@@ -243,7 +340,7 @@ impl std::fmt::Display for WorldSnapshot {
 pub struct PlayerState {
     pub hp: i32,
     pub pos: IVec2,
-    pub stance: String,
+    pub stance: Stance,
     pub orders: Vec<String>,
 }
 
@@ -260,7 +357,7 @@ pub struct EnemyState {
     pub id: Entity,
     pub pos: IVec2,
     pub hp: i32,
-    pub cover: String,
+    pub cover: CoverType,
     pub last_seen: f32,
 }
 
@@ -1093,7 +1190,7 @@ mod tests {
         let player = PlayerState::default();
         assert_eq!(player.hp, 100);
         assert_eq!(player.pos, IVec2 { x: 0, y: 0 });
-        assert_eq!(player.stance, "stand");
+        assert_eq!(player.stance, Stance::Stand);
         assert!(player.orders.is_empty());
     }
 
@@ -1111,7 +1208,7 @@ mod tests {
         let enemy = EnemyState::default();
         assert_eq!(enemy.id, 0);
         assert_eq!(enemy.hp, 100);
-        assert_eq!(enemy.cover, "none");
+        assert_eq!(enemy.cover, CoverType::None);
         assert_eq!(enemy.last_seen, 0.0);
     }
 

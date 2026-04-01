@@ -314,7 +314,10 @@ mod blob_vec_arithmetic {
         // Push first element → triggers first allocation (min capacity 4)
         unsafe { blob.push(1u32) };
         let cap_after_first = blob.capacity();
-        assert!(cap_after_first >= 4, "initial cap should be >= 4, got {cap_after_first}");
+        assert!(
+            cap_after_first >= 4,
+            "initial cap should be >= 4, got {cap_after_first}"
+        );
 
         // Fill to capacity
         while blob.len() < cap_after_first {
@@ -490,15 +493,9 @@ mod entity_kani_mirrors {
         let raw = entity.to_raw();
 
         // Low 32 bits = ID
-        assert_eq!(
-            (raw as u32), id,
-            "Low 32 bits must be ID"
-        );
+        assert_eq!((raw as u32), id, "Low 32 bits must be ID");
         // High 32 bits = generation
-        assert_eq!(
-            ((raw >> 32) as u32), gen,
-            "High 32 bits must be generation"
-        );
+        assert_eq!(((raw >> 32) as u32), gen, "High 32 bits must be generation");
     }
 
     #[test]
@@ -559,9 +556,9 @@ mod entity_kani_mirrors {
         let e2 = entity(1, 0);
         let e3 = entity(0, 1);
 
-        assert!(e1 < e2);  // id 0 < id 1
-        assert!(e1 < e3);  // same id, gen 0 < gen 1
-        // Antisymmetry
+        assert!(e1 < e2); // id 0 < id 1
+        assert!(e1 < e3); // same id, gen 0 < gen 1
+                          // Antisymmetry
         assert!(!(e2 < e1));
         // Symmetry of equality
         assert_eq!(entity(5, 5), entity(5, 5));
@@ -1256,7 +1253,10 @@ mod rng_mutations {
                 break;
             }
         }
-        assert!(any_different, "different seeds must produce different sequences");
+        assert!(
+            any_different,
+            "different seeds must produce different sequences"
+        );
     }
 
     #[test]
@@ -1602,7 +1602,10 @@ mod blob_vec_drop_safety {
 
         blob.swap_remove_raw(0);
         // Should have dropped the removed item
-        assert!(counter.get() >= 1, "swap_remove_raw must drop removed element");
+        assert!(
+            counter.get() >= 1,
+            "swap_remove_raw must drop removed element"
+        );
     }
 }
 
@@ -1842,10 +1845,7 @@ mod blob_vec_component_meta_integration {
         };
 
         unsafe {
-            blob.push_raw(
-                &pos as *const Pos as *const u8,
-                meta.clone_fn,
-            );
+            blob.push_raw(&pos as *const Pos as *const u8, meta.clone_fn);
         }
 
         assert_eq!(blob.len(), 1);
@@ -1966,7 +1966,10 @@ mod component_registry_tests {
         let world = World::new();
         // UnregisteredComponent was never registered
         let result = world.is_component_registered_blob::<UnregisteredComponent>();
-        assert!(!result, "Expected false for unregistered component, got true");
+        assert!(
+            !result,
+            "Expected false for unregistered component, got true"
+        );
     }
 
     /// Verifies that is_component_registered_blob returns TRUE after registration.
@@ -1985,10 +1988,10 @@ mod component_registry_tests {
     fn registration_is_type_specific() {
         let mut world = World::new();
         world.register_component::<RegisteredComponent>();
-        
+
         // RegisteredComponent should be true
         assert!(world.is_component_registered_blob::<RegisteredComponent>());
-        
+
         // UnregisteredComponent should still be false
         assert!(!world.is_component_registered_blob::<UnregisteredComponent>());
     }
@@ -1997,16 +2000,16 @@ mod component_registry_tests {
     #[test]
     fn multiple_component_registrations() {
         let mut world = World::new();
-        
+
         // Initially neither is registered
         assert!(!world.is_component_registered_blob::<RegisteredComponent>());
         assert!(!world.is_component_registered_blob::<AnotherRegisteredComponent>());
-        
+
         // Register first type
         world.register_component::<RegisteredComponent>();
         assert!(world.is_component_registered_blob::<RegisteredComponent>());
         assert!(!world.is_component_registered_blob::<AnotherRegisteredComponent>());
-        
+
         // Register second type
         world.register_component::<AnotherRegisteredComponent>();
         assert!(world.is_component_registered_blob::<RegisteredComponent>());
@@ -2019,7 +2022,7 @@ mod component_registry_tests {
         let mut world = World::new();
         world.register_component::<RegisteredComponent>();
         world.register_component::<RegisteredComponent>(); // Register again
-        
+
         // Should still return true
         assert!(world.is_component_registered_blob::<RegisteredComponent>());
     }
@@ -2056,7 +2059,10 @@ mod blob_vec_raw_pointer_remediation {
         for (i, expected) in [111u32, 222, 333].iter().enumerate() {
             let ptr = blob.get_raw(i).expect("should return Some");
             let val = unsafe { *(ptr as *const u32) };
-            assert_eq!(val, *expected, "get_raw({i}) returned wrong value: {val} != {expected}");
+            assert_eq!(
+                val, *expected,
+                "get_raw({i}) returned wrong value: {val} != {expected}"
+            );
         }
     }
 
@@ -2074,7 +2080,10 @@ mod blob_vec_raw_pointer_remediation {
         for (i, expected) in [1000u64, 2000, 3000].iter().enumerate() {
             let ptr = blob.get_raw_mut(i).expect("should return Some");
             let val = unsafe { *(ptr as *const u64) };
-            assert_eq!(val, *expected, "get_raw_mut({i}) wrong value: {val} != {expected}");
+            assert_eq!(
+                val, *expected,
+                "get_raw_mut({i}) wrong value: {val} != {expected}"
+            );
         }
         // Mutate index 1 and verify
         let ptr = blob.get_raw_mut(1).unwrap();
@@ -2135,7 +2144,10 @@ mod blob_vec_raw_pointer_remediation {
         blob.swap_remove_raw(1);
         assert_eq!(blob.len(), 1);
         let val = unsafe { *(blob.get_raw(0).unwrap() as *const u32) };
-        assert_eq!(val, 10, "first element should be untouched after removing last");
+        assert_eq!(
+            val, 10,
+            "first element should be untouched after removing last"
+        );
     }
 
     /// Verifies reserve multiplication is correct (not addition or division).
@@ -2182,7 +2194,11 @@ mod blob_vec_raw_pointer_remediation {
         let layout = Layout::new::<u32>();
         let blob = BlobVec::from_layout_with_capacity(layout, None, 0);
         assert_eq!(blob.len(), 0);
-        assert_eq!(blob.capacity(), 0, "from_layout_with_capacity(0) should not allocate");
+        assert_eq!(
+            blob.capacity(),
+            0,
+            "from_layout_with_capacity(0) should not allocate"
+        );
     }
 }
 

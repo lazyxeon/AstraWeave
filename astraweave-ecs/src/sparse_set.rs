@@ -673,14 +673,8 @@ mod tests {
             2,
             "entities() must return all inserted entities"
         );
-        assert!(
-            ents.contains(&e1),
-            "entities() must contain e1"
-        );
-        assert!(
-            ents.contains(&e2),
-            "entities() must contain e2"
-        );
+        assert!(ents.contains(&e1), "entities() must contain e1");
+        assert!(ents.contains(&e2), "entities() must contain e2");
     }
 
     #[test]
@@ -707,7 +701,11 @@ mod tests {
         set.insert(e2, 200);
 
         let ents = set.entities();
-        assert_eq!(ents.len(), 2, "entities() must return all inserted entities");
+        assert_eq!(
+            ents.len(),
+            2,
+            "entities() must return all inserted entities"
+        );
         assert!(ents.contains(&e1), "entities() must contain e1");
         assert!(ents.contains(&e2), "entities() must contain e2");
     }

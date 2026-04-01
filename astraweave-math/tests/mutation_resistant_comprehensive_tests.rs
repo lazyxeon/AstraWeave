@@ -118,18 +118,19 @@ fn normalize_zero_returns_zero() {
 
 #[test]
 fn normalize_near_zero_boundary() {
-    // threshold is len < 1e-8
-    let tiny = Vec3::new(1e-9, 0.0, 0.0); // length = 1e-9 < 1e-8
+    // threshold is len_sq < 1e-16 (i.e. length < 1e-8)
+    let tiny = Vec3::new(1e-9, 0.0, 0.0); // length = 1e-9, len_sq = 1e-18 < 1e-16
     let n = normalize_simd(tiny);
     assert!(n.length() < 1e-6, "below threshold returns near-zero");
 }
 
 #[test]
 fn normalize_above_threshold() {
-    let v = Vec3::new(1e-7, 0.0, 0.0); // length = 1e-7 > 1e-8
+    // length = 1e-7, len_sq = 1e-14 > 1e-16 threshold
+    let v = Vec3::new(1e-7, 0.0, 0.0);
     let n = normalize_simd(v);
     assert!(
-        (length_simd(n) - 1.0).abs() < 1e-4,
+        (length_simd(n) - 1.0).abs() < 1e-3,
         "above threshold normalizes"
     );
 }

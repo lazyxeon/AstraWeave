@@ -80,7 +80,6 @@ pub struct Archetype {
     // ========================================================================
     // BlobVec Storage (High-Performance Path)
     // ========================================================================
-
     /// BlobVec component columns: TypeId -> BlobVec
     /// Used when ComponentMeta is available (typed path)
     /// NOTE: Lazy initialized (Option) to avoid allocation in Box mode
@@ -211,11 +210,7 @@ impl Archetype {
     /// # Arguments
     /// * `entity` - The entity to add
     /// * `components` - Raw component data as bytes with clone functions
-    pub fn add_entity_typed_raw(
-        &mut self,
-        entity: Entity,
-        components: &[(TypeId, *const u8)],
-    ) {
+    pub fn add_entity_typed_raw(&mut self, entity: Entity, components: &[(TypeId, *const u8)]) {
         debug_assert!(self.uses_blob, "add_entity_typed_raw requires BlobVec mode");
 
         self.entity_index.insert(entity);
@@ -944,9 +939,7 @@ mod tests {
         }
 
         // Verify mutations persisted via immutable path
-        let (_, healths_after) = archetype
-            .iter_components_blob::<Health>()
-            .unwrap();
+        let (_, healths_after) = archetype.iter_components_blob::<Health>().unwrap();
         assert_eq!(healths_after[0], Health(999));
         assert_eq!(healths_after[1], Health(888));
     }
@@ -967,10 +960,7 @@ mod tests {
         let mut metas2 = HashMap::new();
         metas2.insert(TypeId::of::<Position>(), ComponentMeta::of::<Position>());
 
-        let sig3 = ArchetypeSignature::new(vec![
-            TypeId::of::<Health>(),
-            TypeId::of::<Position>(),
-        ]);
+        let sig3 = ArchetypeSignature::new(vec![TypeId::of::<Health>(), TypeId::of::<Position>()]);
         let mut metas3 = HashMap::new();
         metas3.insert(TypeId::of::<Health>(), ComponentMeta::of::<Health>());
         metas3.insert(TypeId::of::<Position>(), ComponentMeta::of::<Position>());

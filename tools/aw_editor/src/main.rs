@@ -3900,7 +3900,7 @@ impl EditorApp {
             let water_biome = matches!(biome, "swamp" | "beach" | "river");
             viewport.set_water_enabled(water_biome);
             if water_biome {
-                viewport.set_water_level(0.0);
+                viewport.set_water_level(self.dock_tab_viewer.water_level());
             }
         }
 
@@ -4663,6 +4663,171 @@ impl EditorApp {
                                 let count = scatter_placements.len();
                                 renderer.set_scatter_placements(scatter_placements);
                                 tracing::info!("Scatter: {count} placements uploaded to renderer");
+                            }
+                        }
+                    }
+
+                    // Inject BiomePack ground textures into the GPU texture layers
+                    // that the splat generator actually references (layers 0-7).
+                    // Map pack texture names to the correct material layer index:
+                    //   "sand"/"ground" → 1 (desert primary)
+                    //   "cliff"/"rock"  → 3 (mountain rock, used on slopes)
+                    //   "mud"/"dirt"    → 5 (depressions)
+                    //   "stone"/"gravel"→ 7 (mid-elevation breakup)
+                    //   "grass"         → 0 (grassland)
+                    //   "snow"          → 4 (tundra)
+                    // Unmapped names get injected starting at layer 12 (custom slots).
+                    let pack_info = self.dock_tab_viewer.cached_biome_pack().map(|p| (p.name.clone(), p.ground_textures.len()));
+                    eprintln!("=== BIOMEPACK CHECK: {:?}", pack_info);
+                    if let Some(pack) = self.dock_tab_viewer.cached_biome_pack() {
+                        eprintln!(
+                            "=== BIOMEPACK: name='{}', ground_textures={}, root={:?}",
+                            pack.name,
+                            pack.ground_textures.len(),
+                            pack.root_dir
+                        );
+                        if let Some(viewport) = &self.viewport {
+                            if let Ok(mut renderer) = viewport.renderer().lock() {
+                                let root = pack.root_dir.clone();
+                                let mut next_custom_layer = 12u32;
+                                for gt in pack.ground_textures.iter() {
+                                    let name_lower = gt.name.to_lowercase();
+                                    let layer_index = if name_lower.contains("sand")
+                                        || name_lower.contains("ground")
+                                        || name_lower.contains("gravel")
+                                    {
+                                        1u32
+                                    } else if name_lower.contains("cliff")
+                                        || name_lower.contains("rock")
+                                    {
+                                        3
+                                    } else if name_lower.contains("mud")
+                                        || name_lower.contains("dirt")
+                                    {
+                                        5
+                                    } else if name_lower.contains("stone") {
+                                        7
+                                    } else if name_lower.contains("grass") {
+                                        0
+                                    } else if name_lower.contains("snow") {
+                                        4
+                                    } else {
+                                        let idx = next_custom_layer;
+                                        if next_custom_layer < 17 {
+                                            next_custom_layer += 1;
+                                        }
+                                        idx
+                                    };
+                                    let load_tex = |rel_path: &Option<String>| -> Vec<u8> {
+                                        let gray_fallback =
+                                            || vec![128u8, 128, 128, 255].repeat(2048 * 2048);
+                                        let Some(rel) = rel_path else {
+                                            return gray_fallback();
+                                        };
+                                        let full = root.join(rel);
+                                        let img = match image::open(&full) {
+                                            Ok(i) => i,
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    "BiomePack texture load failed: {:?}: {e}",
+                                                    full
+                                                );
+                                                return gray_fallback();
+                                            }
+                                        };
+                                        // Convert to RGBA and resize to 2048 if needed
+                                        // Use Triangle filter (fast) instead of CatmullRom (slow)
+                                        let rgba = img.to_rgba8();
+                                        if rgba.width() == 2048 && rgba.height() == 2048 {
+                                            rgba.into_raw()
+                                        } else {
+                                            image::imageops::resize(
+                                                &rgba,
+                                                2048,
+                                                2048,
+                                                image::imageops::FilterType::Triangle,
+                                            )
+                                            .into_raw()
+                                        }
+                                    };
+
+                                    let albedo = load_tex(&gt.diffuse);
+                                    // Normal maps: skip .exr.png files — these were
+                                    // tonemapped during blend export (Reinhard) which
+                                    // destroys normal vector data. Use flat normal fallback.
+                                    let normal = if gt
+                                        .normal
+                                        .as_ref()
+                                        .is_some_and(|p| p.contains(".exr."))
+                                    {
+                                        tracing::info!(
+                                            "BiomePack: skipping tonemapped normal map '{:?}' — using flat normal fallback",
+                                            gt.normal
+                                        );
+                                        // Flat tangent-space normal: (0, 0, 1) encoded as (128, 128, 255)
+                                        vec![128u8, 128, 255, 255].repeat(2048 * 2048)
+                                    } else {
+                                        load_tex(&gt.normal)
+                                    };
+                                    // Build MRA from roughness (no metallic/AO in pack format)
+                                    // Skip .exr.png roughness — tonemapped values are wrong for PBR
+                                    let mra = if let Some(rough_path) = &gt.roughness {
+                                        if rough_path.contains(".exr.") {
+                                            tracing::info!(
+                                                "BiomePack: skipping tonemapped roughness '{rough_path}' — using default MRA"
+                                            );
+                                            vec![0u8, 128, 255, 255].repeat(2048 * 2048)
+                                        } else {
+                                            let full = root.join(rough_path);
+                                            match image::open(&full) {
+                                                Ok(img) => {
+                                                    let converted = img.to_rgba8();
+                                                    let rgba = if converted.width() == 2048
+                                                        && converted.height() == 2048
+                                                    {
+                                                        converted
+                                                    } else {
+                                                        image::imageops::resize(
+                                                            &converted,
+                                                            2048,
+                                                            2048,
+                                                            image::imageops::FilterType::Triangle,
+                                                        )
+                                                    };
+                                                    let mut mra_data = vec![0u8; 2048 * 2048 * 4];
+                                                    for (j, pixel) in
+                                                        rgba.as_raw().chunks_exact(4).enumerate()
+                                                    {
+                                                        let roughness = pixel[0];
+                                                        mra_data[j * 4] = 0; // metallic = 0
+                                                        mra_data[j * 4 + 1] = roughness;
+                                                        mra_data[j * 4 + 2] = 255; // AO = 1.0
+                                                        mra_data[j * 4 + 3] = 255;
+                                                    }
+                                                    mra_data
+                                                }
+                                                Err(_) => {
+                                                    vec![0u8, 128, 255, 255].repeat(2048 * 2048)
+                                                }
+                                            }
+                                        } // end non-exr roughness branch
+                                    } else {
+                                        // Default MRA: metallic=0, roughness=0.5, AO=1.0
+                                        vec![0u8, 128, 255, 255].repeat(2048 * 2048)
+                                    };
+
+                                    renderer.replace_terrain_texture_layer(
+                                        layer_index,
+                                        &albedo,
+                                        &normal,
+                                        &mra,
+                                    );
+                                    tracing::info!(
+                                        "BiomePack: injected ground texture '{}' → layer {}",
+                                        gt.name,
+                                        layer_index
+                                    );
+                                }
                             }
                         }
                     }
@@ -5754,10 +5919,60 @@ impl EditorApp {
 
                                 let _ = tx.send(DecompThreadMsg::Progress(
                                     0.2,
-                                    "Blender found — running scene decomposition (this may take several minutes)...".into(),
+                                    "Blender found — running scene decomposition...".into(),
                                 ));
 
-                                match importer.decompose(&blend_path_clone, &output_dir_clone).await {
+                                // Spawn a progress estimator that sends synthetic updates
+                                // while the blocking decompose() call runs. Uses an
+                                // asymptotic curve: progress = 0.2 + 0.7 * (1 - e^(-t/60))
+                                // so it approaches 90% over ~3 minutes but never overshoots.
+                                let tx_progress = tx.clone();
+                                let progress_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                                let progress_done_clone = progress_done.clone();
+                                tokio::spawn(async move {
+                                    let start = std::time::Instant::now();
+                                    let stages = [
+                                        (0.25, "Loading .blend file..."),
+                                        (0.35, "Processing scene objects..."),
+                                        (0.45, "Exporting meshes..."),
+                                        (0.55, "Extracting textures..."),
+                                        (0.65, "Processing materials..."),
+                                        (0.72, "Generating manifest..."),
+                                    ];
+                                    let mut stage_idx = 0;
+                                    loop {
+                                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                                        if progress_done_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                                            break;
+                                        }
+                                        let elapsed = start.elapsed().as_secs_f32();
+                                        // Slow asymptotic curve that scales with scene complexity:
+                                        // Uses t/300 (5-min time constant) so large scenes don't
+                                        // plateau at 89% after 90s. Caps at 0.94 to leave room
+                                        // for actual completion.
+                                        let pct = (0.15 + 0.79 * (1.0 - (-elapsed / 300.0).exp())).min(0.94);
+                                        let msg = if stage_idx < stages.len() && pct >= stages[stage_idx].0 {
+                                            let m = stages[stage_idx].1;
+                                            stage_idx += 1;
+                                            m.to_string()
+                                        } else {
+                                            let mins = (elapsed / 60.0) as u32;
+                                            let secs = (elapsed % 60.0) as u32;
+                                            if mins > 0 {
+                                                format!("Blender processing scene ({mins}m {secs}s elapsed — large scenes may take 5-15 minutes)...")
+                                            } else {
+                                                format!("Blender processing scene ({secs}s elapsed)...")
+                                            }
+                                        };
+                                        if tx_progress.send(DecompThreadMsg::Progress(pct, msg)).is_err() {
+                                            break;
+                                        }
+                                    }
+                                });
+
+                                let decomp_result = importer.decompose(&blend_path_clone, &output_dir_clone).await;
+                                progress_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                                match decomp_result {
                                     Ok(result) => {
                                         if result.assets.is_empty() {
                                             // Read the raw JSON for diagnostics
@@ -5884,9 +6099,13 @@ impl EditorApp {
                                         "[Blend Import] Biome pack saved: {}",
                                         pack_path.display()
                                     ));
-                                    self.dock_tab_viewer
-                                        .blend_import_panel_mut()
-                                        .set_pack_complete();
+                                    let bip = self.dock_tab_viewer.blend_import_panel_mut();
+                                    bip.set_pack_complete();
+                                    bip.set_generated_pack_path(pack_path.clone());
+                                    info!(
+                                        "[Blend Import] Pack path set for zone creation: {}",
+                                        pack_path.display()
+                                    );
                                     self.status = format!(
                                         "Biome pack '{}' generated successfully",
                                         pack_name
@@ -5940,16 +6159,97 @@ impl EditorApp {
                         .push("[Blend Import] Session cleared".into());
                     self.status = "Blend import session cleared".into();
                 }
+                BlendImportAction::CreateReplicaZone { pack_path } => {
+                    // Load the BiomePack to get scene footprint for default zone size.
+                    // Try the path as-is first, then try relative to CWD.
+                    let resolved_path = if pack_path.exists() {
+                        pack_path.clone()
+                    } else if pack_path.is_relative() {
+                        let abs = std::env::current_dir()
+                            .unwrap_or_else(|_| PathBuf::from("."))
+                            .join(&pack_path);
+                        if abs.exists() {
+                            abs
+                        } else {
+                            pack_path.clone()
+                        }
+                    } else {
+                        pack_path.clone()
+                    };
+                    let pack_path_str = resolved_path.to_string_lossy().to_string();
+                    self.console_logs.push(format!(
+                        "[Blend Import] Creating replica zone from: {}",
+                        resolved_path.display()
+                    ));
+                    match astraweave_terrain::BiomePack::load(&resolved_path) {
+                        Ok(pack) => {
+                            // Calculate default zone size from scene footprint
+                            let footprint = pack.scene_footprint_area.unwrap_or(10000.0);
+                            let half_side = (footprint.sqrt() / 2.0).max(32.0);
+
+                            // Create a zone state centered at origin (user can reposition)
+                            let zone = panels::blueprint_panel::ZoneState {
+                                name: format!("{} (Replica)", pack.name),
+                                vertices: vec![
+                                    glam::Vec2::new(-half_side, -half_side),
+                                    glam::Vec2::new(half_side, -half_side),
+                                    glam::Vec2::new(half_side, half_side),
+                                    glam::Vec2::new(-half_side, half_side),
+                                ],
+                                source: panels::blueprint_panel::ZoneSourceState::BlendScene {
+                                    pack_path: pack_path_str,
+                                    replica: true,
+                                },
+                                enabled: true,
+                                priority: 10,
+                                blend_margin: 8.0,
+                                scene_scale_override: None,
+                            };
+
+                            self.dock_tab_viewer.add_blueprint_zone(zone);
+                            self.console_logs.push(format!(
+                                "[Blend Import] Created replica zone for '{}' ({:.0}m x {:.0}m)",
+                                pack.name,
+                                half_side * 2.0,
+                                half_side * 2.0
+                            ));
+                            self.status = format!(
+                                "Replica zone created — switch to Blueprint panel to generate"
+                            );
+                        }
+                        Err(e) => {
+                            let msg = format!("Failed to load biome pack for zone creation: {e}");
+                            self.console_logs.push(format!("[Blend Import] {}", msg));
+                            self.status = msg;
+                        }
+                    }
+                }
             }
         }
     }
 
     /// Poll background blend decomposition thread for results.
+    /// Drains all pending messages so progress updates don't lag behind.
     fn poll_blend_decomposition(&mut self) {
-        let msg = if let Some(rx) = &self.decomp_receiver {
+        let rx = match &self.decomp_receiver {
+            Some(rx) => rx,
+            None => return,
+        };
+
+        // Drain all pending messages — keep only the latest progress,
+        // but process Done/Failed immediately.
+        let mut latest_progress: Option<(f32, String)> = None;
+        let mut final_msg: Option<DecompThreadMsg> = None;
+        loop {
             match rx.try_recv() {
-                Ok(m) => m,
-                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                Ok(DecompThreadMsg::Progress(pct, text)) => {
+                    latest_progress = Some((pct, text));
+                }
+                Ok(msg @ DecompThreadMsg::Done(_)) | Ok(msg @ DecompThreadMsg::Failed(_)) => {
+                    final_msg = Some(msg);
+                    break;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     // Thread died without sending — treat as error
                     self.decomp_receiver = None;
@@ -5962,16 +6262,22 @@ impl EditorApp {
                     return;
                 }
             }
-        } else {
-            return;
+        }
+
+        // Apply latest progress update
+        if let Some((pct, text)) = latest_progress {
+            let panel = self.dock_tab_viewer.blend_import_panel_mut();
+            panel.set_progress(pct, &text);
+        }
+
+        // Process final message if received
+        let msg = match final_msg {
+            Some(m) => m,
+            None => return,
         };
 
         match msg {
-            DecompThreadMsg::Progress(pct, text) => {
-                // Intermediate progress — update panel but keep receiver alive
-                let panel = self.dock_tab_viewer.blend_import_panel_mut();
-                panel.set_progress(pct, &text);
-            }
+            DecompThreadMsg::Progress(..) => unreachable!(),
             DecompThreadMsg::Done(decomp) => {
                 self.decomp_receiver = None;
                 let msg = decomp.status_message.clone();
@@ -6057,11 +6363,34 @@ impl EditorApp {
                 }
                 BlueprintAction::GenerateAll => {
                     let zone_count = self.dock_tab_viewer.blueprint_zones().len();
+                    let mut all_scatter = Vec::new();
+                    let mut total_placements = 0usize;
+
                     for i in 0..zone_count {
-                        self.handle_generate_zone(i);
+                        let (scatter, patches, count) = self.generate_zone_results(i);
+                        // Apply heightmap patches per zone (order matters for priority)
+                        if !patches.is_empty() {
+                            self.dock_tab_viewer.apply_zone_heightmap_patches(&patches);
+                        }
+                        all_scatter.extend(scatter);
+                        total_placements += count;
                     }
-                    self.console_logs
-                        .push(format!("[Blueprint] Generated all {} zones", zone_count));
+
+                    // Apply ALL scatter at once so all zones render together
+                    if !all_scatter.is_empty() {
+                        if let Some(viewport) = &self.viewport {
+                            viewport.set_scatter_placements(all_scatter);
+                        }
+                    }
+
+                    self.console_logs.push(format!(
+                        "[Blueprint] Generated all {} zones: {} total placements",
+                        zone_count, total_placements
+                    ));
+                    self.status = format!(
+                        "{} zones generated: {} objects placed",
+                        zone_count, total_placements
+                    );
                 }
                 BlueprintAction::ClearGeneration => {
                     // Clear zone registry — remove all previously generated zones
@@ -6091,8 +6420,16 @@ impl EditorApp {
         self.sync_zone_overlay();
     }
 
-    /// Handle generation for a single zone by index in the blueprint panel.
-    fn handle_generate_zone(&mut self, zone_index: usize) {
+    /// Generate scatter results for a single zone without applying to viewport.
+    /// Returns (scatter_placements, heightmap_patches, placement_count).
+    fn generate_zone_results(
+        &mut self,
+        zone_index: usize,
+    ) -> (
+        Vec<terrain_integration::ScatterPlacement>,
+        Vec<astraweave_terrain::HeightmapPatch>,
+        usize,
+    ) {
         use astraweave_terrain::{
             zone_scatter::ZoneScatterGenerator, BlueprintZone, PlacementMode, ZoneSource,
         };
@@ -6103,7 +6440,7 @@ impl EditorApp {
             Some(z) => z.clone(),
             None => {
                 warn!("Blueprint: invalid zone index {}", zone_index);
-                return;
+                return (Vec::new(), Vec::new(), 0);
             }
         };
 
@@ -6112,7 +6449,7 @@ impl EditorApp {
                 "[Blueprint] Zone '{}' has fewer than 3 vertices — skipping",
                 zone_state.name
             ));
-            return;
+            return (Vec::new(), Vec::new(), 0);
         }
 
         // Convert panel ZoneState → terrain BlueprintZone
@@ -6152,12 +6489,24 @@ impl EditorApp {
             },
         };
 
+        bz.adaptive_scale_override = zone_state.scene_scale_override;
+
         // Register the zone
         self.dock_tab_viewer
             .zone_registry_mut()
             .add_zone(bz.clone());
 
-        // Run the scatter generator and pipe results to viewport
+        // Ensure terrain chunks exist — auto-generate if the user hasn't
+        // clicked "Generate" in the terrain panel yet.
+        let auto_count = self.dock_tab_viewer.ensure_terrain_exists();
+        if auto_count > 0 {
+            self.console_logs.push(format!(
+                "[Blueprint] Auto-generated {} terrain chunks for zone scatter",
+                auto_count
+            ));
+        }
+
+        // Run the scatter generator
         let terrain_chunks = self.dock_tab_viewer.collect_terrain_chunks();
         let chunk_refs: Vec<&astraweave_terrain::TerrainChunk> =
             terrain_chunks.iter().copied().collect();
@@ -6171,33 +6520,35 @@ impl EditorApp {
         match generator.generate_zone_scatter(&bz, &chunk_refs, seed) {
             Ok(result) => {
                 let placement_count = result.placement_count();
-                if placement_count > 0 {
-                    // Convert VegetationInstances to ScatterPlacements for the viewport
-                    let scatter_placements: Vec<terrain_integration::ScatterPlacement> = result
-                        .placements
-                        .iter()
-                        .map(terrain_integration::ScatterPlacement::from_vegetation_instance)
-                        .collect();
 
-                    if let Some(viewport) = &self.viewport {
-                        viewport.set_scatter_placements(scatter_placements);
+                self.console_logs.push(format!(
+                    "[Blueprint] Zone '{}' generated: {} placements",
+                    zone_state.name, placement_count
+                ));
+
+                // Load BiomePack for dimension-aware mesh path resolution
+                let loaded_pack = match &zone_state.source {
+                    ZoneSourceState::BlendScene { pack_path, .. } => {
+                        astraweave_terrain::BiomePack::load(&std::path::PathBuf::from(pack_path))
+                            .ok()
                     }
+                    _ => None,
+                };
+                let pack_ref = loaded_pack.as_ref();
 
-                    self.console_logs.push(format!(
-                        "[Blueprint] Zone '{}' generated: {} placements → viewport",
-                        zone_state.name, placement_count
-                    ));
-                    self.status = format!(
-                        "Zone '{}': {} objects placed",
-                        zone_state.name, placement_count
-                    );
-                } else {
-                    self.console_logs.push(format!(
-                        "[Blueprint] Zone '{}' generated: 0 placements (check zone area overlaps terrain)",
-                        zone_state.name
-                    ));
-                    self.status = format!("Zone '{}': no placements generated", zone_state.name);
-                }
+                let scatter_placements: Vec<terrain_integration::ScatterPlacement> = result
+                    .placements
+                    .iter()
+                    .map(|vi| {
+                        terrain_integration::ScatterPlacement::from_zone_placement(vi, pack_ref)
+                    })
+                    .collect();
+
+                (
+                    scatter_placements,
+                    result.heightmap_patches,
+                    placement_count,
+                )
             }
             Err(e) => {
                 error!("Zone scatter generation failed: {}", e);
@@ -6205,14 +6556,41 @@ impl EditorApp {
                     "[Blueprint] Generation failed for '{}': {}",
                     zone_state.name, e
                 ));
-                self.status = format!("Generation failed: {}", zone_state.name);
+                (Vec::new(), Vec::new(), 0)
             }
+        }
+    }
+
+    /// Handle generation for a single zone by index in the blueprint panel.
+    fn handle_generate_zone(&mut self, zone_index: usize) {
+        let (scatter, patches, count) = self.generate_zone_results(zone_index);
+
+        // Apply heightmap patches
+        if !patches.is_empty() {
+            self.dock_tab_viewer.apply_zone_heightmap_patches(&patches);
+        }
+
+        // Apply scatter to viewport
+        if !scatter.is_empty() {
+            if let Some(viewport) = &self.viewport {
+                viewport.set_scatter_placements(scatter);
+            }
+        }
+
+        if count > 0 {
+            self.status = format!("Zone: {} objects placed", count);
+        } else {
+            self.status = "Zone: no placements generated".into();
         }
     }
 
     /// Save all blueprint panel zones to a .zones.json file.
     fn handle_save_zones(&mut self) {
         let path = std::path::PathBuf::from("assets/zones.json");
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
         let registry = self.dock_tab_viewer.zone_registry();
         match registry.save(&path) {
             Ok(()) => {
@@ -6273,6 +6651,7 @@ impl EditorApp {
                             priority: bz.priority,
                             enabled: bz.enabled,
                             blend_margin: bz.blend_margin,
+                            scene_scale_override: bz.adaptive_scale_override,
                         }
                     })
                     .collect();

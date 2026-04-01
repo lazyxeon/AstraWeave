@@ -280,24 +280,19 @@ fn sample_biome_material(pos: vec3<f32>, n: vec3<f32>, layer: i32) -> Material {
 
     // Macro samples (always present)
     let macro_albedo = triplanar_sample_albedo(warped_pos, n, macro_scale, layer);
-    let macro_nm = triplanar_sample_normal_raw(warped_pos, n, macro_scale, layer);
     let macro_mra = triplanar_sample_mra(warped_pos, n, macro_scale, layer);
 
     // Detail samples (fade out at distance)
     var albedo = macro_albedo;
-    var nm_raw = macro_nm;
     var roughness = macro_mra.g;
     var metallic = macro_mra.r;
     var ao = macro_mra.b;
     if detail_fade > 0.01 {
         let detail_albedo = triplanar_sample_albedo(warped_pos, n, detail_scale, layer);
-        let detail_nm = triplanar_sample_normal_raw(warped_pos, n, detail_scale, layer);
         // Overlay detail: multiply-blend albedo for natural micro-variation
         let detail_overlay = detail_albedo / max(macro_albedo, vec3<f32>(0.01));
         let overlay_blended = mix(vec3<f32>(1.0), detail_overlay, detail_mix * detail_fade);
         albedo = macro_albedo * overlay_blended;
-        // Blend normals: detail adds high-frequency perturbation
-        nm_raw = mix(macro_nm, detail_nm, (0.30 + detail_mix * 0.35) * detail_fade);
     }
 
     // Cheap macro breakup for color and surface response without extra texture fetches.
@@ -311,14 +306,19 @@ fn sample_biome_material(pos: vec3<f32>, n: vec3<f32>, layer: i32) -> Material {
 
     var mat: Material;
     mat.albedo = albedo;
-    mat.normal = decode_normal_map(nm_raw, n, normal_strength);
+    // Use vertex normal directly instead of decoded normal map.
+    // Normal map decoding requires a proper tangent frame (per-vertex tangent/bitangent)
+    // which the terrain mesh doesn't provide. The procedural tangent frame from
+    // decode_normal_map() creates radial streak artifacts and blue color contamination.
+    // Vertex normals from the heightmap already capture terrain surface detail correctly.
+    mat.normal = n;
     mat.metallic = metallic;
     mat.roughness = roughness;
     mat.ao = ao;
     mat.height_proxy = clamp(
-        0.45 * luminance(macro_albedo)
-            + 0.25 * macro_nm.z
-            + 0.20 * (1.0 - roughness)
+        0.50 * luminance(macro_albedo)
+            + 0.25 * n.y
+            + 0.15 * (1.0 - roughness)
             + 0.10 * variation.x,
         0.0,
         1.0,
@@ -597,6 +597,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Wireframe
     if uniforms.shading_mode == 2u {
         return vec4<f32>(0.1, 0.1, 0.1, 1.0);
+    }
+    // Debug: raw albedo from material slot 0 (no PBR, no blending, just texture)
+    if uniforms.shading_mode == 3u {
+        let id0 = i32(in.material_ids.x + 0.5);
+        let raw = textureSample(biome_textures, biome_sampler, pos.xz * 0.14, id0).rgb;
+        return vec4<f32>(raw, 1.0);
+    }
+    // Debug: show material IDs as color bands
+    if uniforms.shading_mode == 4u {
+        let id0 = in.material_ids.x / 21.0;
+        let w0 = in.material_weights.x;
+        return vec4<f32>(id0, w0, 1.0 - id0, 1.0);
+    }
+    // Debug: bright orange forced output (shader is running test)
+    if uniforms.shading_mode == 5u {
+        return vec4<f32>(0.9, 0.5, 0.1, 1.0);
     }
 
     // Full PBR with multi-scale texture sampling — smooth crossfade at LOD boundaries

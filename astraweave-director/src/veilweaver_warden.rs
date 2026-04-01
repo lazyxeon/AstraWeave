@@ -234,8 +234,8 @@ fn detect_storm_choice(snap: &WorldSnapshot) -> Option<StormChoice> {
 }
 
 fn choose_adaptive_ability(player: &astraweave_core::PlayerState) -> AdaptiveAbility {
-    let stance_ranged = player.stance.to_lowercase().contains("ranged")
-        || player.stance.to_lowercase().contains("marksman");
+    // Stance enum has no ranged/marksman variants currently — future-proofing
+    let stance_ranged = false; // Stance::Stand/Crouch/Prone are not ranged
     let order_ranged = player
         .orders
         .iter()

@@ -86,6 +86,12 @@ pub struct BlueprintZone {
     /// Same resolution as the terrain heightmap. Values 0.0 = full zone, 1.0 = full surrounding.
     /// When `None`, only auto-blend is used.
     pub blend_mask: Option<BlendMask>,
+    /// Manual override for the scene-to-zone scale ratio.
+    /// When `Some(ratio)`, adaptive scaling uses this value instead of computing
+    /// from zone area / scene footprint area. Range: 0.25–4.0 (1.0 = exact 1:1).
+    /// When `None`, automatic scaling is used.
+    #[serde(default)]
+    pub adaptive_scale_override: Option<f32>,
 }
 
 impl BlueprintZone {
@@ -101,6 +107,7 @@ impl BlueprintZone {
             scatter_config_override: None,
             blend_margin: 10.0,
             blend_mask: None,
+            adaptive_scale_override: None,
         }
     }
 
@@ -271,11 +278,7 @@ impl ZoneRegistry {
     }
 
     /// Get all zones whose bounding rect overlaps with the given chunk bounds.
-    pub fn zones_overlapping_rect(
-        &self,
-        min: Vec2,
-        max: Vec2,
-    ) -> Vec<&BlueprintZone> {
+    pub fn zones_overlapping_rect(&self, min: Vec2, max: Vec2) -> Vec<&BlueprintZone> {
         self.zones
             .iter()
             .filter(|z| {
@@ -637,7 +640,10 @@ mod tests {
     #[test]
     fn test_centroid_degenerate() {
         assert_eq!(polygon_centroid(&[]), Vec2::ZERO);
-        assert_eq!(polygon_centroid(&[Vec2::new(3.0, 4.0)]), Vec2::new(3.0, 4.0));
+        assert_eq!(
+            polygon_centroid(&[Vec2::new(3.0, 4.0)]),
+            Vec2::new(3.0, 4.0)
+        );
     }
 
     // --- Bounding rect tests ---
@@ -667,7 +673,10 @@ mod tests {
             Vec2::new(0.0, 10.0),
         ];
         let d = point_distance_to_polygon_edge(Vec2::new(5.0, 5.0), &square);
-        assert!((d - 5.0).abs() < 0.01, "Center of 10×10 square should be 5 from edge");
+        assert!(
+            (d - 5.0).abs() < 0.01,
+            "Center of 10×10 square should be 5 from edge"
+        );
 
         let d2 = point_distance_to_polygon_edge(Vec2::new(1.0, 5.0), &square);
         assert!((d2 - 1.0).abs() < 0.01, "1 unit from left edge");
@@ -817,7 +826,11 @@ mod tests {
         let mut reg = ZoneRegistry::new();
         let id = reg.next_zone_id();
         let mut zone = BlueprintZone::new(id, "SerTest".to_string());
-        zone.vertices = vec![Vec2::new(1.0, 2.0), Vec2::new(3.0, 4.0), Vec2::new(5.0, 6.0)];
+        zone.vertices = vec![
+            Vec2::new(1.0, 2.0),
+            Vec2::new(3.0, 4.0),
+            Vec2::new(5.0, 6.0),
+        ];
         zone.source = ZoneSource::BiomePreset(BiomeType::Desert);
         zone.priority = 5;
         reg.add_zone(zone);
@@ -842,7 +855,10 @@ mod tests {
 
         // Center should interpolate to ~0.5
         let center = mask.sample(5.0, 5.0);
-        assert!(center > 0.3 && center < 0.7, "Center should be ~0.5, got {center}");
+        assert!(
+            center > 0.3 && center < 0.7,
+            "Center should be ~0.5, got {center}"
+        );
 
         // Corner samples
         let bottom_left = mask.sample(0.0, 0.0);
@@ -888,7 +904,15 @@ mod tests {
             Vec2::new(15.0, 15.0),
             Vec2::new(5.0, 15.0),
         ];
-        assert!(polygon_overlaps_rect(&poly, Vec2::ZERO, Vec2::new(10.0, 10.0)));
-        assert!(!polygon_overlaps_rect(&poly, Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0)));
+        assert!(polygon_overlaps_rect(
+            &poly,
+            Vec2::ZERO,
+            Vec2::new(10.0, 10.0)
+        ));
+        assert!(!polygon_overlaps_rect(
+            &poly,
+            Vec2::new(20.0, 20.0),
+            Vec2::new(30.0, 30.0)
+        ));
     }
 }

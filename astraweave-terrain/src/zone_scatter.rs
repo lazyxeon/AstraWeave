@@ -191,12 +191,8 @@ impl ZoneScatterGenerator {
                 pack_path,
                 placement_mode,
             } => match placement_mode {
-                PlacementMode::Replica => {
-                    self.generate_replica(zone, chunks, pack_path)
-                }
-                PlacementMode::Inspired => {
-                    self.generate_inspired(zone, chunks, pack_path, seed)
-                }
+                PlacementMode::Replica => self.generate_replica(zone, chunks, pack_path),
+                PlacementMode::Inspired => self.generate_inspired(zone, chunks, pack_path, seed),
             },
             ZoneSource::BiomePreset(biome_type) => {
                 self.generate_biome_preset(zone, chunks, *biome_type, seed)
@@ -225,17 +221,21 @@ impl ZoneScatterGenerator {
             None => return Ok(result), // No placements file → nothing to place
         };
 
-        let placements = load_fixed_placements(&placements_path)
-            .context("Failed to load fixed placements")?;
+        let placements =
+            load_fixed_placements(&placements_path).context("Failed to load fixed placements")?;
 
         if placements.is_empty() {
             return Ok(result);
         }
 
-        // Compute adaptive scaling
+        // Compute adaptive scaling (use manual override if set)
         let scene_footprint = estimate_scene_footprint_from_placements(&placements);
         let zone_area = polygon_area(&zone.vertices);
-        let scale_params = AdaptiveScaleParams::compute(scene_footprint, zone_area);
+        let scale_params = if let Some(override_ratio) = zone.adaptive_scale_override {
+            AdaptiveScaleParams::compute(1.0, override_ratio)
+        } else {
+            AdaptiveScaleParams::compute(scene_footprint, zone_area)
+        };
         let zone_centroid = polygon_centroid(&zone.vertices);
 
         // Compute scene centroid (XZ only, from placement positions)
@@ -247,12 +247,8 @@ impl ZoneScatterGenerator {
 
         // Also inject zone heightmap if available
         if let Some(ref hm) = source_heightmap {
-            result.heightmap_patches = self.generate_heightmap_patches(
-                zone,
-                chunks,
-                hm,
-                &scale_params,
-            );
+            result.heightmap_patches =
+                self.generate_heightmap_patches(zone, chunks, hm, &scale_params);
             self.apply_boundary_blending(zone, chunks, &mut result.heightmap_patches);
         }
 
@@ -319,10 +315,14 @@ impl ZoneScatterGenerator {
             .clone()
             .unwrap_or_else(|| load_scatter_config_from_pack(pack_path));
 
-        // Compute adaptive scaling  
+        // Compute adaptive scaling (use manual override if set)
         let zone_area = polygon_area(&zone.vertices);
         let scene_footprint = load_scene_footprint(pack_path).unwrap_or(zone_area);
-        let scale_params = AdaptiveScaleParams::compute(scene_footprint, zone_area);
+        let scale_params = if let Some(override_ratio) = zone.adaptive_scale_override {
+            AdaptiveScaleParams::compute(1.0, override_ratio)
+        } else {
+            AdaptiveScaleParams::compute(scene_footprint, zone_area)
+        };
 
         // Apply density multiplier from adaptive scaling
         let mut adjusted_config = biome_config;
@@ -333,12 +333,8 @@ impl ZoneScatterGenerator {
         let source_heightmap = heightmap_path.and_then(|p| load_source_heightmap(&p).ok());
 
         if let Some(ref hm) = source_heightmap {
-            result.heightmap_patches = self.generate_heightmap_patches(
-                zone,
-                chunks,
-                hm,
-                &scale_params,
-            );
+            result.heightmap_patches =
+                self.generate_heightmap_patches(zone, chunks, hm, &scale_params);
             self.apply_boundary_blending(zone, chunks, &mut result.heightmap_patches);
         }
 
@@ -364,9 +360,7 @@ impl ZoneScatterGenerator {
             }
 
             // Generate vegetation for this chunk
-            let chunk_seed = seed
-                ^ ((chunk.id().x as u64) << 32)
-                ^ (chunk.id().z as u64);
+            let chunk_seed = seed ^ ((chunk.id().x as u64) << 32) ^ (chunk.id().z as u64);
 
             let instances = scatter
                 .scatter_vegetation(chunk, self.chunk_size, &adjusted_config, chunk_seed)
@@ -400,17 +394,12 @@ impl ZoneScatterGenerator {
         let mut result = ZoneGenerationResult::empty();
 
         let biome_config = biome_config_for_type(biome_type);
-        let scatter_config = zone
-            .scatter_config_override
-            .clone()
-            .unwrap_or_default();
+        let scatter_config = zone.scatter_config_override.clone().unwrap_or_default();
 
         let scatter = VegetationScatter::new(scatter_config);
 
         for chunk in chunks {
-            let chunk_seed = seed
-                ^ ((chunk.id().x as u64) << 32)
-                ^ (chunk.id().z as u64);
+            let chunk_seed = seed ^ ((chunk.id().x as u64) << 32) ^ (chunk.id().z as u64);
 
             let instances = scatter
                 .scatter_vegetation(chunk, self.chunk_size, &biome_config, chunk_seed)
@@ -862,6 +851,7 @@ mod tests {
             scatter_config_override: None,
             blend_margin: 5.0,
             blend_mask: None,
+            adaptive_scale_override: None,
         }
     }
 
@@ -987,6 +977,7 @@ mod tests {
             scatter_config_override: None,
             blend_margin: 0.0,
             blend_mask: None,
+            adaptive_scale_override: None,
         };
 
         let chunk = make_flat_chunk(ChunkId::new(0, 0), 16);
@@ -1085,6 +1076,7 @@ mod tests {
             scatter_config_override: None,
             blend_margin: 0.0,
             blend_mask: None,
+            adaptive_scale_override: None,
         };
 
         let high_zone = BlueprintZone {
@@ -1102,6 +1094,7 @@ mod tests {
             scatter_config_override: None,
             blend_margin: 0.0,
             blend_mask: None,
+            adaptive_scale_override: None,
         };
 
         let chunk = make_flat_chunk(ChunkId::new(0, 0), 16);
@@ -1182,6 +1175,7 @@ mod tests {
             scatter_config_override: None,
             blend_margin: 30.0,
             blend_mask: None,
+            adaptive_scale_override: None,
         };
 
         // Create patches with a uniform injected height of 100.0
@@ -1216,11 +1210,7 @@ mod tests {
         // Cells near the edge (within blend_margin=30) should be blended toward 0.0
         // Cell at (4, 8) → world (64, 128), right at the edge → should be near 0.0
         if let Some(&h) = patches[0].heights.get(&(4, 8)) {
-            assert!(
-                h < 80.0,
-                "Edge cell should be blended toward 0, got {}",
-                h
-            );
+            assert!(h < 80.0, "Edge cell should be blended toward 0, got {}", h);
         }
     }
 
@@ -1245,6 +1235,7 @@ mod tests {
             scatter_config_override: None,
             blend_margin: 0.0, // No blending
             blend_mask: None,
+            adaptive_scale_override: None,
         };
 
         let mut heights = HashMap::new();
@@ -1289,6 +1280,7 @@ mod tests {
                 resolution: 2,
                 world_bounds: (0.0, 0.0, 256.0, 256.0),
             }),
+            adaptive_scale_override: None,
         };
 
         let mut heights = HashMap::new();

@@ -15,6 +15,8 @@ pub struct GBufferFormats {
     pub position: wgpu::TextureFormat,
     /// Emissive (RGBA8)
     pub emissive: wgpu::TextureFormat,
+    /// Velocity / motion vectors (RG16Float — screen-space pixel delta)
+    pub velocity: wgpu::TextureFormat,
     /// Depth (Depth32Float)
     pub depth: wgpu::TextureFormat,
 }
@@ -26,6 +28,7 @@ impl Default for GBufferFormats {
             normal: wgpu::TextureFormat::Rgba16Float,
             position: wgpu::TextureFormat::Rgba16Float,
             emissive: wgpu::TextureFormat::Rgba8UnormSrgb,
+            velocity: wgpu::TextureFormat::Rg16Float,
             depth: wgpu::TextureFormat::Depth32Float,
         }
     }
@@ -48,6 +51,10 @@ pub struct GBuffer {
     /// Emissive texture
     pub emissive_texture: wgpu::Texture,
     pub emissive_view: wgpu::TextureView,
+
+    /// Velocity / motion vectors (RG = screen-space pixel delta)
+    pub velocity_texture: wgpu::Texture,
+    pub velocity_view: wgpu::TextureView,
 
     /// Depth texture
     pub depth_texture: wgpu::Texture,
@@ -122,6 +129,19 @@ impl GBuffer {
         });
         let emissive_view = emissive_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        // Velocity / motion vectors texture
+        let velocity_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("GBuffer Velocity"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: formats.velocity,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let velocity_view = velocity_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         // Depth texture
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("GBuffer Depth"),
@@ -144,6 +164,8 @@ impl GBuffer {
             position_view,
             emissive_texture,
             emissive_view,
+            velocity_texture,
+            velocity_view,
             depth_texture,
             depth_view,
             width,
@@ -161,7 +183,8 @@ impl GBuffer {
         *self = Self::new(device, width, height, self.formats);
     }
 
-    /// Get color attachment descriptors for G-buffer pass
+    /// Get color attachment descriptors for G-buffer pass (without velocity).
+    /// Use `color_attachments_with_velocity()` for the full 5-target MRT.
     pub fn color_attachments(&self) -> [Option<wgpu::RenderPassColorAttachment<'_>>; 4] {
         [
             Some(wgpu::RenderPassColorAttachment {
@@ -192,6 +215,55 @@ impl GBuffer {
                 view: &self.emissive_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            }),
+        ]
+    }
+
+    /// Get color attachment descriptors including velocity buffer for motion vectors.
+    pub fn color_attachments_with_velocity(
+        &self,
+    ) -> [Option<wgpu::RenderPassColorAttachment<'_>>; 5] {
+        [
+            Some(wgpu::RenderPassColorAttachment {
+                view: &self.albedo_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            }),
+            Some(wgpu::RenderPassColorAttachment {
+                view: &self.normal_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            }),
+            Some(wgpu::RenderPassColorAttachment {
+                view: &self.position_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            }),
+            Some(wgpu::RenderPassColorAttachment {
+                view: &self.emissive_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            }),
+            Some(wgpu::RenderPassColorAttachment {
+                view: &self.velocity_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    // Clear to zero velocity (no motion)
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                     store: wgpu::StoreOp::Store,
                 },
@@ -486,15 +558,18 @@ mod tests {
         assert_eq!(f.normal, wgpu::TextureFormat::Rgba16Float);
         assert_eq!(f.position, wgpu::TextureFormat::Rgba16Float);
         assert_eq!(f.emissive, wgpu::TextureFormat::Rgba8UnormSrgb);
+        assert_eq!(f.velocity, wgpu::TextureFormat::Rg16Float);
         assert_eq!(f.depth, wgpu::TextureFormat::Depth32Float);
     }
 
     #[test]
-    fn gbuffer_has_five_attachment_formats() {
-        // 4 color + 1 depth
+    fn gbuffer_has_six_attachment_formats() {
+        // 5 color (albedo, normal, position, emissive, velocity) + 1 depth
         let f = GBufferFormats::default();
-        let formats = [f.albedo, f.normal, f.position, f.emissive, f.depth];
-        assert_eq!(formats.len(), 5);
+        let formats = [
+            f.albedo, f.normal, f.position, f.emissive, f.velocity, f.depth,
+        ];
+        assert_eq!(formats.len(), 6);
     }
 
     #[test]
@@ -532,5 +607,9 @@ mod tests {
         assert_ne!(f.depth, f.albedo, "depth should differ from color format");
         // Normal and position share format
         assert_eq!(f.normal, f.position);
+        // Velocity is RG16Float (different from all others)
+        assert_ne!(f.velocity, f.albedo);
+        assert_ne!(f.velocity, f.normal);
+        assert_ne!(f.velocity, f.depth);
     }
 }

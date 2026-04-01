@@ -162,6 +162,9 @@ pub struct EntityRenderer {
     /// Cache of loaded GLTF meshes keyed by file path
     mesh_cache: HashMap<String, LoadedMesh>,
 
+    /// Negative cache: paths that failed to load (prevents per-frame retry spam)
+    failed_mesh_paths: std::collections::HashSet<String>,
+
     /// Mapping from World entity ID to mesh file path
     entity_meshes: HashMap<Entity, String>,
 
@@ -684,6 +687,7 @@ impl EntityRenderer {
             max_instances,
             index_count,
             mesh_cache: HashMap::new(),
+            failed_mesh_paths: std::collections::HashSet::new(),
             entity_meshes: HashMap::new(),
             texture_bind_group_layout,
             queue,
@@ -694,11 +698,11 @@ impl EntityRenderer {
             texture_path_cache: HashMap::new(),
             entity_texture_overrides: HashMap::new(),
             scene_lights: Vec::new(),
-            sun_direction: [0.5, 1.0, 0.3],
-            sun_color: [1.0, 0.98, 0.92],
-            sun_intensity: 0.7,
-            ambient_color: [0.6, 0.65, 0.75],
-            ambient_intensity: 0.3,
+            sun_direction: [0.5, 0.7, 0.35],
+            sun_color: [1.0, 0.95, 0.85],
+            sun_intensity: 1.8,
+            ambient_color: [0.55, 0.52, 0.48],
+            ambient_intensity: 0.35,
         })
     }
 
@@ -1360,14 +1364,6 @@ impl EntityRenderer {
             .unwrap_or(&[])
     }
 
-    /// Check if a cached mesh has skinning data.
-    pub fn mesh_has_skinning(&self, mesh_path: &str) -> bool {
-        self.mesh_cache
-            .get(mesh_path)
-            .and_then(|m| m.skinning_data.as_ref())
-            .is_some()
-    }
-
     // ========================================================================
     // Phase 4: CPU Skinning
     // ========================================================================
@@ -1479,15 +1475,16 @@ impl EntityRenderer {
             return Ok(());
         }
 
-        // Lazy-load any GLTF meshes not yet cached
+        // Lazy-load any GLTF meshes not yet cached (skip known-failed paths)
         let paths_to_load: Vec<String> = draw_groups
             .iter()
             .filter_map(|(mesh, _, _)| mesh.clone())
-            .filter(|p| !self.mesh_cache.contains_key(p))
+            .filter(|p| !self.mesh_cache.contains_key(p) && !self.failed_mesh_paths.contains(p))
             .collect();
         for path in paths_to_load {
             if let Err(e) = self.load_gltf_mesh(&path) {
                 tracing::warn!("Failed to load mesh {}: {}", path, e);
+                self.failed_mesh_paths.insert(path);
             }
         }
 

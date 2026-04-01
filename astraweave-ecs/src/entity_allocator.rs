@@ -621,8 +621,16 @@ mod tests {
         let mut allocator = EntityAllocator::new();
 
         // Before any spawn, slot 0 doesn't exist
-        assert_eq!(allocator.generation(0), None, "unallocated slot must be None");
-        assert_eq!(allocator.generation(999), None, "far-away slot must be None");
+        assert_eq!(
+            allocator.generation(0),
+            None,
+            "unallocated slot must be None"
+        );
+        assert_eq!(
+            allocator.generation(999),
+            None,
+            "far-away slot must be None"
+        );
 
         // After spawn, generation 0
         let e1 = allocator.spawn();

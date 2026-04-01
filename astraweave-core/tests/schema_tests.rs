@@ -11,8 +11,8 @@
 //! Target Coverage: 75% of schema.rs (426 lines)
 
 use astraweave_core::schema::{
-    ActionStep, CompanionState, EnemyState, IVec2, MovementSpeed, PlanIntent, PlayerState, Poi,
-    StrafeDirection, WorldSnapshot,
+    ActionStep, CompanionState, CoverType, EnemyState, IVec2, MovementSpeed, PlanIntent,
+    PlayerState, Poi, Stance, StrafeDirection, WorldSnapshot,
 };
 use std::collections::BTreeMap;
 
@@ -41,7 +41,7 @@ fn test_worldsnapshot_with_data() {
     let player = PlayerState {
         hp: 80,
         pos: IVec2 { x: 5, y: 10 },
-        stance: "crouch".to_string(),
+        stance: Stance::Crouch,
         orders: vec!["hold".to_string(), "defend".to_string()],
     };
 
@@ -61,14 +61,14 @@ fn test_worldsnapshot_with_data() {
             id: 1,
             pos: IVec2 { x: 20, y: 15 },
             hp: 50,
-            cover: "half".to_string(),
+            cover: CoverType::Unknown,
             last_seen: 1.5,
         },
         EnemyState {
             id: 2,
             pos: IVec2 { x: 25, y: 18 },
             hp: 30,
-            cover: "full".to_string(),
+            cover: CoverType::High,
             last_seen: 2.0,
         },
     ];
@@ -99,7 +99,7 @@ fn test_worldsnapshot_with_data() {
     // Validate field access
     assert_eq!(snap.t, 12.5);
     assert_eq!(snap.player.hp, 80);
-    assert_eq!(snap.player.stance, "crouch");
+    assert_eq!(snap.player.stance, Stance::Crouch);
     assert_eq!(snap.player.orders.len(), 2);
     assert_eq!(snap.me.ammo, 25);
     assert_eq!(snap.me.morale, 0.75);
@@ -189,7 +189,7 @@ fn test_enemystate_edge_cases() {
         id: 10,
         pos: IVec2 { x: 5, y: 5 },
         hp: 0,
-        cover: "none".to_string(),
+        cover: CoverType::None,
         last_seen: 0.0,
     };
     assert_eq!(dead.hp, 0);
@@ -199,7 +199,7 @@ fn test_enemystate_edge_cases() {
         id: 11,
         pos: IVec2 { x: 6, y: 6 },
         hp: -10,
-        cover: "none".to_string(),
+        cover: CoverType::None,
         last_seen: 0.0,
     };
     assert_eq!(overkilled.hp, -10);
@@ -209,13 +209,19 @@ fn test_enemystate_edge_cases() {
         id: 12,
         pos: IVec2 { x: 7, y: 7 },
         hp: 50,
-        cover: "full".to_string(),
+        cover: CoverType::High,
         last_seen: 100.0, // 100 seconds ago
     };
     assert_eq!(forgotten.last_seen, 100.0);
 
     // Various cover types
-    let covers = ["none", "half", "full", "partial", "heavy"];
+    let covers = [
+        CoverType::None,
+        CoverType::Low,
+        CoverType::High,
+        CoverType::Partial,
+        CoverType::Wall,
+    ];
     for (i, cover_type) in covers.iter().enumerate() {
         let enemy = EnemyState {
             id: i as u32,
@@ -224,7 +230,7 @@ fn test_enemystate_edge_cases() {
                 y: i as i32,
             },
             hp: 100,
-            cover: cover_type.to_string(),
+            cover: *cover_type,
             last_seen: 0.0,
         };
         assert_eq!(enemy.cover, *cover_type);
@@ -237,7 +243,7 @@ fn test_playerstate_edge_cases() {
     let dead = PlayerState {
         hp: 0,
         pos: IVec2 { x: 0, y: 0 },
-        stance: "prone".to_string(),
+        stance: Stance::Prone,
         orders: vec![],
     };
     assert_eq!(dead.hp, 0);
@@ -246,7 +252,7 @@ fn test_playerstate_edge_cases() {
     let busy = PlayerState {
         hp: 100,
         pos: IVec2 { x: 0, y: 0 },
-        stance: "stand".to_string(),
+        stance: Stance::Stand,
         orders: vec![
             "move_to_alpha".to_string(),
             "secure_bravo".to_string(),
@@ -259,7 +265,7 @@ fn test_playerstate_edge_cases() {
     assert_eq!(busy.orders[3], "regroup_delta");
 
     // Various stances
-    let stances = ["stand", "crouch", "prone", "cover"];
+    let stances = [Stance::Stand, Stance::Crouch, Stance::Prone];
     for (i, stance) in stances.iter().enumerate() {
         let player = PlayerState {
             hp: 100,
@@ -267,7 +273,7 @@ fn test_playerstate_edge_cases() {
                 x: i as i32,
                 y: i as i32,
             },
-            stance: stance.to_string(),
+            stance: *stance,
             orders: vec![],
         };
         assert_eq!(player.stance, *stance);

@@ -286,7 +286,8 @@ fn enforce_max_resolution(
         match image::open(&path) {
             Ok(img) => {
                 if img.width() > max || img.height() > max {
-                    let resized = img.resize(max, max, image::imageops::FilterType::Lanczos3);
+                    // Triangle filter is ~5x faster than Lanczos3 with acceptable quality
+                    let resized = img.resize(max, max, image::imageops::FilterType::Triangle);
                     if let Err(e) = resized.save(&path) {
                         result
                             .warnings
@@ -470,30 +471,45 @@ fn generate_category_placeholder(category: &str, size: u32) -> DynamicImage {
 /// Simple Reinhard tonemapping for HDR → LDR conversion.
 ///
 /// Maps HDR values to [0, 255] using: L_out = L / (1 + L)
+/// Uses a pre-computed gamma LUT (256 entries) instead of per-pixel powf() calls.
 fn tonemap_reinhard(img: &DynamicImage) -> DynamicImage {
+    // Pre-compute gamma correction LUT: index [0..255] → sRGB byte
+    // Avoids 3× powf() per pixel (massive speedup for 4K+ textures)
+    let gamma_lut: Vec<u8> = (0..=255)
+        .map(|i| {
+            let linear = i as f32 / 255.0;
+            let srgb = linear.powf(1.0 / 2.2);
+            (srgb * 255.0).clamp(0.0, 255.0) as u8
+        })
+        .collect();
+
     let rgb32f = img.to_rgb32f();
     let (w, h) = (rgb32f.width(), rgb32f.height());
-    let mut output = RgbaImage::new(w, h);
+    let raw = rgb32f.as_raw();
+    let mut out = vec![0u8; (w * h * 4) as usize];
 
-    for (x, y, pixel) in rgb32f.enumerate_pixels() {
-        let r = pixel[0];
-        let g = pixel[1];
-        let b = pixel[2];
+    for y in 0..h {
+        for x in 0..w {
+            let idx = ((y * w + x) * 3) as usize;
+            let r = raw[idx];
+            let g = raw[idx + 1];
+            let b = raw[idx + 2];
 
-        // Reinhard tonemapping per channel
-        let tr = r / (1.0 + r);
-        let tg = g / (1.0 + g);
-        let tb = b / (1.0 + b);
+            // Reinhard tonemapping per channel
+            let tr = (r / (1.0 + r)).clamp(0.0, 1.0);
+            let tg = (g / (1.0 + g)).clamp(0.0, 1.0);
+            let tb = (b / (1.0 + b)).clamp(0.0, 1.0);
 
-        // Gamma correction (linear → sRGB)
-        let sr = (tr.powf(1.0 / 2.2).clamp(0.0, 1.0) * 255.0) as u8;
-        let sg = (tg.powf(1.0 / 2.2).clamp(0.0, 1.0) * 255.0) as u8;
-        let sb = (tb.powf(1.0 / 2.2).clamp(0.0, 1.0) * 255.0) as u8;
-
-        output.put_pixel(x, y, image::Rgba([sr, sg, sb, 255]));
+            // Gamma via LUT
+            let out_idx = ((y * w + x) * 4) as usize;
+            out[out_idx] = gamma_lut[(tr * 255.0) as usize];
+            out[out_idx + 1] = gamma_lut[(tg * 255.0) as usize];
+            out[out_idx + 2] = gamma_lut[(tb * 255.0) as usize];
+            out[out_idx + 3] = 255;
+        }
     }
 
-    DynamicImage::ImageRgba8(output)
+    DynamicImage::ImageRgba8(RgbaImage::from_raw(w, h, out).expect("valid image dimensions"))
 }
 
 /// Sanitize a filename by replacing non-alphanumeric chars.

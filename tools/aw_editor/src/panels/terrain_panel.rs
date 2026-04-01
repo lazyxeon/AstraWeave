@@ -425,6 +425,9 @@ pub struct TerrainPanel {
     /// Texture splatting parameters
     splat_params: SplatParams,
 
+    /// Water surface level (world Y height)
+    pub water_level: f32,
+
     /// Fluid simulation parameters
     fluid_params: FluidSimParams,
     fluid_stats: FluidStats,
@@ -651,6 +654,7 @@ impl Default for TerrainPanel {
             wind_erosion: WindErosionParams::default(),
             biome_blend: BiomeBlendParams::default(),
             splat_params: SplatParams::default(),
+            water_level: 0.0,
             fluid_params: FluidSimParams::default(),
             fluid_stats: FluidStats::default(),
             detected_water_bodies: Vec::new(),
@@ -713,6 +717,11 @@ impl TerrainPanel {
     /// Returns (min_height, max_height, avg_height) from the last generation.
     pub fn height_stats(&self) -> (f32, f32, f32) {
         self.last_height_stats
+    }
+
+    /// Return the currently loaded BiomePack (if any) for texture injection.
+    pub fn cached_biome_pack(&self) -> Option<&astraweave_terrain::BiomePack> {
+        self.terrain_state.cached_biome_pack()
     }
 
     /// Returns the current primary biome name (e.g. "mountain", "swamp", "grassland").
@@ -1723,13 +1732,21 @@ impl TerrainPanel {
     fn regenerate_splatmaps(&mut self) {
         let start = std::time::Instant::now();
 
-        // In a real implementation, this would regenerate splatmaps
-        tracing::info!(
-            "Regenerating splatmaps with params: {:?}",
-            self.splat_params
+        self.terrain_state.regenerate_splatmaps(
+            self.splat_params.rock_slope_threshold * 45.0, // normalize 0-1 → degrees
+            self.splat_params.snow_height_threshold,
+            self.splat_params.sand_height_max * 200.0, // normalize 0-1 → world height
         );
 
+        // Queue a terrain update so dirty chunks get re-uploaded to GPU
+        self.pending_actions.push(TerrainAction::BrushUpdate);
+
         self.generation_stats.splatmap_time_ms = start.elapsed().as_secs_f32() * 1000.0;
+        tracing::info!(
+            "Splatmaps regenerated in {:.1}ms with params: {:?}",
+            self.generation_stats.splatmap_time_ms,
+            self.splat_params,
+        );
     }
 
     fn material_name(id: usize) -> &'static str {
@@ -1819,9 +1836,13 @@ impl TerrainPanel {
                 "beach"
             } else if name.contains("river") {
                 "river"
-            } else {
-                // Default to desert for nature/savanna/arid packs (e.g. Namaqualand)
+            } else if name.contains("desert") || name.contains("dune") || name.contains("sand") {
                 "desert"
+            } else {
+                // Default to grassland — gentle rolling hills work best for
+                // arbitrary .blend scenes. Desert's high detail_scale (0.06)
+                // and mountain amplitude (35) create exaggerated geometric patterns.
+                "grassland"
             };
             return Self::noise_preset_for_biome(detected);
         }

@@ -3,16 +3,15 @@
 //! These tests verify the full flow: polygon definition → zone creation →
 //! scatter generation → heightmap injection → boundary blending → multi-zone overlap.
 
-use astraweave_terrain::{
-    AdaptiveScaleParams, BiomeType, BlueprintZone, ChunkId, Heightmap,
-    TerrainChunk, ZoneId, ZoneRegistry, ZoneSource,
-};
-use astraweave_terrain::zone_scatter::{
-    apply_heightmap_patches, generate_multi_zone_scatter, HeightmapPatch,
-    ZoneScatterGenerator,
-};
 use astraweave_terrain::blueprint_zone::{
     point_in_polygon, polygon_area, polygon_bounding_rect, polygon_centroid,
+};
+use astraweave_terrain::zone_scatter::{
+    apply_heightmap_patches, generate_multi_zone_scatter, HeightmapPatch, ZoneScatterGenerator,
+};
+use astraweave_terrain::{
+    AdaptiveScaleParams, BiomeType, BlueprintZone, ChunkId, Heightmap, TerrainChunk, ZoneId,
+    ZoneRegistry, ZoneSource,
 };
 use glam::Vec2;
 use std::collections::HashMap;
@@ -65,7 +64,12 @@ fn test_biome_preset_scatter_within_polygon() {
         Vec2::new(10.0, 200.0),
     ];
 
-    let zone = biome_zone(1, "Grassland Zone", zone_verts.clone(), BiomeType::Grassland);
+    let zone = biome_zone(
+        1,
+        "Grassland Zone",
+        zone_verts.clone(),
+        BiomeType::Grassland,
+    );
     let chunk = make_flat_chunk(0, 0, resolution);
     let chunks: Vec<&TerrainChunk> = vec![&chunk];
 
@@ -107,7 +111,9 @@ fn test_heightmap_patch_application() {
             assert!(
                 (h - 0.0).abs() < 1e-6,
                 "Initial height at ({},{}) = {}, expected 0.0",
-                gx, gz, h
+                gx,
+                gz,
+                h
             );
         }
     }
@@ -203,12 +209,7 @@ fn test_multi_zone_overlap_priority() {
 
     // Two overlapping zones: low priority grassland, high priority forest
     let zone_low = {
-        let mut z = biome_zone(
-            1,
-            "Grassland",
-            square_zone(100.0),
-            BiomeType::Grassland,
-        );
+        let mut z = biome_zone(1, "Grassland", square_zone(100.0), BiomeType::Grassland);
         z.priority = 0;
         z
     };
@@ -227,14 +228,9 @@ fn test_multi_zone_overlap_priority() {
     let chunk = make_flat_chunk(0, 0, resolution);
     let chunks: Vec<&TerrainChunk> = vec![&chunk];
 
-    let results = generate_multi_zone_scatter(
-        &[zone_low, zone_high],
-        &chunks,
-        chunk_size,
-        resolution,
-        42,
-    )
-    .unwrap();
+    let results =
+        generate_multi_zone_scatter(&[zone_low, zone_high], &chunks, chunk_size, resolution, 42)
+            .unwrap();
 
     assert_eq!(results.len(), 2, "Should get results for both zones");
 
@@ -297,11 +293,17 @@ fn test_zone_registry_save_load_roundtrip() {
     assert_eq!(loaded_z1.vertices.len(), 4);
     assert_eq!(loaded_z1.priority, 5);
     assert!((loaded_z1.blend_margin - 12.0).abs() < 1e-6);
-    assert!(matches!(loaded_z1.source, ZoneSource::BiomePreset(BiomeType::Forest)));
+    assert!(matches!(
+        loaded_z1.source,
+        ZoneSource::BiomePreset(BiomeType::Forest)
+    ));
 
     let loaded_z2 = loaded.get_zone(id2).expect("zone 2 not found");
     assert_eq!(loaded_z2.name, "Desert Dunes");
-    assert!(matches!(loaded_z2.source, ZoneSource::BiomePreset(BiomeType::Desert)));
+    assert!(matches!(
+        loaded_z2.source,
+        ZoneSource::BiomePreset(BiomeType::Desert)
+    ));
 }
 
 // ============================================================================
@@ -395,11 +397,7 @@ fn test_blend_mask_bilinear_sampling() {
 
     // Sample at corners
     let s00 = mask.sample(0.0, 0.0);
-    assert!(
-        s00.abs() < 0.2,
-        "Sample at (0,0) = {}, expected ~0.0",
-        s00
-    );
+    assert!(s00.abs() < 0.2, "Sample at (0,0) = {}, expected ~0.0", s00);
 
     let s30 = mask.sample(100.0, 0.0);
     assert!(

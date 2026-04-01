@@ -248,16 +248,28 @@ fn e2e_biome_pack_asset_classification() {
         .find(|a| a.name == "QuiverTree_01")
         .expect("Should find QuiverTree_01");
     assert_eq!(quiver1.vertex_count, 8500);
-    let dims = quiver1.dimensions.expect("QuiverTree should have dimensions");
-    assert!(dims[1] > 1.0, "QuiverTree should be tall (height={})", dims[1]);
+    let dims = quiver1
+        .dimensions
+        .expect("QuiverTree should have dimensions");
+    assert!(
+        dims[1] > 1.0,
+        "QuiverTree should be tall (height={})",
+        dims[1]
+    );
 
     // Verify succulents are small vegetation
     let succulent = vegetation
         .iter()
         .find(|a| a.name == "Succulent_Small_01")
         .expect("Should find Succulent_Small_01");
-    let dims = succulent.dimensions.expect("Succulent should have dimensions");
-    assert!(dims[1] < 1.0, "Succulent should be short (height={})", dims[1]);
+    let dims = succulent
+        .dimensions
+        .expect("Succulent should have dimensions");
+    assert!(
+        dims[1] < 1.0,
+        "Succulent should be short (height={})",
+        dims[1]
+    );
 }
 
 #[test]

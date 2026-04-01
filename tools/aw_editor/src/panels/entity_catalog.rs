@@ -214,6 +214,12 @@ pub fn build_catalog() -> Vec<CatalogEntry> {
         }
     }
 
+    // Deduplicate by file path (multiple scan passes can find the same model)
+    {
+        let mut seen_paths = std::collections::HashSet::new();
+        entries.retain(|e| seen_paths.insert(e.path.clone()));
+    }
+
     entries.sort_by(|a, b| {
         a.category
             .label()
@@ -862,8 +868,90 @@ fn draw_prop_icon(pixels: &mut [u8], size: usize, r: u8, g: u8, b: u8) {
     }
 }
 
+/// Try to load a companion thumbnail image for a model file.
+/// Searches for: Preview.png, Sample.png, thumbnail.png in the same directory,
+/// or a file with the same stem + _preview.png / _thumbnail.png.
+fn try_load_companion_thumbnail(
+    ctx: &egui::Context,
+    entry: &CatalogEntry,
+) -> Option<TextureHandle> {
+    let model_path = std::path::Path::new(&entry.path);
+    let parent = model_path.parent()?;
+    let stem = model_path.file_stem()?.to_string_lossy();
+
+    // Check for companion image files in priority order
+    let candidates: Vec<std::path::PathBuf> = vec![
+        parent.join(format!("{stem}_preview.png")),
+        parent.join(format!("{stem}_thumbnail.png")),
+        parent.join(format!("{stem}.png")),
+        parent.join("Preview.png"),
+        parent.join("Sample.png"),
+        parent.join("thumbnail.png"),
+    ];
+
+    for candidate in &candidates {
+        if candidate.exists() {
+            if let Ok(img) = image::open(candidate) {
+                let rgba = img
+                    .resize_exact(64, 64, image::imageops::FilterType::Triangle)
+                    .to_rgba8();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                    [64, 64],
+                    rgba.as_raw(),
+                );
+                let name_hash = entry
+                    .path
+                    .bytes()
+                    .fold(0u32, |a, c| a.wrapping_mul(31).wrapping_add(c as u32));
+                return Some(ctx.load_texture(
+                    format!("ent_{name_hash:08x}"),
+                    egui::ImageData::Color(std::sync::Arc::new(color_image)),
+                    egui::TextureOptions::LINEAR,
+                ));
+            }
+        }
+    }
+
+    // Also check for thumbnails/ directory relative to the pack root
+    // (biome pack imports generate thumbnails here)
+    if let Some(grandparent) = parent.parent() {
+        let thumbnails_dir = grandparent.join("thumbnails");
+        if thumbnails_dir.is_dir() {
+            let thumb_path = thumbnails_dir.join(format!("{stem}.png"));
+            if thumb_path.exists() {
+                if let Ok(img) = image::open(&thumb_path) {
+                    let rgba = img
+                        .resize_exact(64, 64, image::imageops::FilterType::Triangle)
+                        .to_rgba8();
+                    let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                        [64, 64],
+                        rgba.as_raw(),
+                    );
+                    let name_hash = entry
+                        .path
+                        .bytes()
+                        .fold(0u32, |a, c| a.wrapping_mul(31).wrapping_add(c as u32));
+                    return Some(ctx.load_texture(
+                        format!("ent_{name_hash:08x}"),
+                        egui::ImageData::Color(std::sync::Arc::new(color_image)),
+                        egui::TextureOptions::LINEAR,
+                    ));
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Generate a procedural thumbnail with category-specific icon and pack-varied color.
+/// Falls back to procedural icon when no companion image file exists.
 fn generate_thumbnail(ctx: &egui::Context, entry: &CatalogEntry) -> TextureHandle {
+    // First try to load a real image thumbnail
+    if let Some(tex) = try_load_companion_thumbnail(ctx, entry) {
+        return tex;
+    }
+
     let size = 64usize;
     let mut pixels = vec![0u8; size * size * 4];
     let base = entry.category.color();

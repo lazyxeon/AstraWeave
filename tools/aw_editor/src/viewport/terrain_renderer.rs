@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
@@ -83,10 +81,10 @@ impl Default for TerrainLightingParams {
         Self {
             sun_dir: [0.5, 0.7, 0.35],
             sun_color: [1.0, 0.95, 0.85],
-            sun_intensity: 1.6,
-            ambient_color: [0.50, 0.45, 0.42],
-            ambient_intensity: 0.20,
-            exposure: 0.85,
+            sun_intensity: 1.8,
+            ambient_color: [0.55, 0.52, 0.48],
+            ambient_intensity: 0.35,
+            exposure: 1.1,
         }
     }
 }
@@ -155,6 +153,10 @@ pub fn find_assets_dir() -> PathBuf {
     // Try working directory first
     let cwd = std::env::current_dir().unwrap_or_default();
     if cwd.join("assets/materials/grass.png").exists() {
+        tracing::info!(
+            "[terrain] Assets dir resolved via CWD: {:?}",
+            cwd.join("assets")
+        );
         return cwd.join("assets");
     }
     // Walk up from executable location
@@ -162,29 +164,95 @@ pub fn find_assets_dir() -> PathBuf {
         let mut dir = exe.parent().map(|p| p.to_path_buf());
         while let Some(d) = dir {
             if d.join("assets/materials/grass.png").exists() {
+                tracing::info!(
+                    "[terrain] Assets dir resolved via exe walk-up: {:?}",
+                    d.join("assets")
+                );
                 return d.join("assets");
             }
             dir = d.parent().map(|p| p.to_path_buf());
         }
     }
-    // Fallback
+    // Fallback — warn loudly since textures will likely fail
+    tracing::warn!(
+        "[terrain] Could not locate assets directory! \
+         Checked CWD ({:?}) and walked up from executable. \
+         Falling back to relative 'assets/' — textures will likely fail to load.",
+        cwd,
+    );
     PathBuf::from("assets")
 }
 
 /// Load a single texture from disk, resize to `target_size`, return RGBA8 bytes.
-/// Returns magenta fallback on failure.
+/// Returns magenta fallback on failure with detailed diagnostic logging.
 fn load_texture_layer(path: &Path, target_size: u32) -> Vec<u8> {
-    let fallback = || -> Vec<u8> {
-        eprintln!(
-            "[terrain] WARN: missing texture {:?}, using magenta fallback",
-            path
+    let fallback = |reason: &str| -> Vec<u8> {
+        eprintln!("=== TEXTURE FALLBACK: {:?} — {}", path, reason,);
+        tracing::error!(
+            "[terrain] Texture load FAILED: {:?} — {}. Using magenta fallback. \
+             Check that the file exists, is a valid image, and the assets directory is correct.",
+            path,
+            reason,
         );
         vec![255u8, 0, 255, 255].repeat((target_size * target_size) as usize)
     };
 
+    if !path.exists() {
+        return fallback(&format!(
+            "file does not exist (checked: {})",
+            path.display()
+        ));
+    }
+
     let img = match image::open(path) {
         Ok(i) => i,
-        Err(_) => return fallback(),
+        Err(e) => return fallback(&format!("image decode error: {e}")),
+    };
+
+    let (w, h) = img.dimensions();
+    let resized = if w == target_size && h == target_size {
+        img.to_rgba8()
+    } else {
+        image::imageops::resize(
+            &img.to_rgba8(),
+            target_size,
+            target_size,
+            image::imageops::FilterType::CatmullRom,
+        )
+    };
+
+    resized.into_raw()
+}
+
+/// Load a texture layer with a physically neutral fallback for MRA/normal channels.
+/// Fallback: metallic=0, roughness=0.5 (128), AO=1.0 (255) — matte non-metallic surface.
+/// This prevents the catastrophic "mirror terrain" when MRA textures are missing.
+fn load_texture_layer_with_neutral_fallback(
+    path: &Path,
+    target_size: u32,
+    fallback_pixel: [u8; 4],
+) -> Vec<u8> {
+    if !path.exists() {
+        eprintln!(
+            "=== NEUTRAL FALLBACK: {:?} — file not found, pixel={:?}",
+            path, fallback_pixel,
+        );
+        tracing::warn!(
+            "[terrain] Texture not found: {:?} — using neutral fallback",
+            path,
+        );
+        return fallback_pixel.repeat((target_size * target_size) as usize);
+    }
+
+    let img = match image::open(path) {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::warn!(
+                "[terrain] Texture decode error: {:?}: {e} — using neutral fallback",
+                path,
+            );
+            return fallback_pixel.repeat((target_size * target_size) as usize);
+        }
     };
 
     let (w, h) = img.dimensions();
@@ -203,25 +271,46 @@ fn load_texture_layer(path: &Path, target_size: u32) -> Vec<u8> {
 }
 
 /// Load a texture and swap ORM channels (R=AO,G=Rough,B=Metal) to MRA (R=Metal,G=Rough,B=AO).
+/// Uses neutral MRA fallback (metallic=0, roughness=128, AO=255) when file is missing.
 fn load_texture_layer_orm_to_mra(path: &Path, target_size: u32) -> Vec<u8> {
-    let mut data = load_texture_layer(path, target_size);
-    // Swap R↔B in every pixel: ORM(AO,Rough,Metal,A) → MRA(Metal,Rough,AO,A)
-    for pixel in data.chunks_exact_mut(4) {
-        pixel.swap(0, 2);
+    // Neutral MRA fallback for missing ORM textures
+    let neutral_mra = [0u8, 128, 255, 255]; // metallic=0, roughness=0.5, AO=1.0
+    let mut data = load_texture_layer_with_neutral_fallback(path, target_size, neutral_mra);
+    // Only swap if data was actually loaded (not the fallback — fallback is already MRA)
+    // Check if first pixel matches the neutral fallback (indicates file was missing)
+    let is_fallback = data.len() >= 4
+        && data[0] == neutral_mra[0]
+        && data[1] == neutral_mra[1]
+        && data[2] == neutral_mra[2]
+        && data[3] == neutral_mra[3];
+    if !is_fallback {
+        // Swap R↔B in every pixel: ORM(AO,Rough,Metal,A) → MRA(Metal,Rough,AO,A)
+        for pixel in data.chunks_exact_mut(4) {
+            pixel.swap(0, 2);
+        }
     }
     data
 }
 
 /// Build MRA from a separate roughness-only texture (R→G, metallic=0, AO=255).
 /// Used for Polyhaven textures that ship individual maps instead of packed ORM.
+/// Uses neutral MRA fallback when file is missing.
 fn load_texture_layer_rough_to_mra(path: &Path, target_size: u32) -> Vec<u8> {
-    let mut data = load_texture_layer(path, target_size);
-    for pixel in data.chunks_exact_mut(4) {
-        let roughness = pixel[0]; // grayscale roughness → R channel
-        pixel[0] = 0; // metallic = 0 (organic material)
-        pixel[1] = roughness; // roughness
-        pixel[2] = 255; // AO = 1.0 (no separate AO available)
-        pixel[3] = 255;
+    let neutral_mra = [0u8, 128, 255, 255];
+    let mut data = load_texture_layer_with_neutral_fallback(path, target_size, neutral_mra);
+    let is_fallback = data.len() >= 4
+        && data[0] == neutral_mra[0]
+        && data[1] == neutral_mra[1]
+        && data[2] == neutral_mra[2]
+        && data[3] == neutral_mra[3];
+    if !is_fallback {
+        for pixel in data.chunks_exact_mut(4) {
+            let roughness = pixel[0]; // grayscale roughness → R channel
+            pixel[0] = 0; // metallic = 0 (organic material)
+            pixel[1] = roughness; // roughness
+            pixel[2] = 255; // AO = 1.0 (no separate AO available)
+            pixel[3] = 255;
+        }
     }
     data
 }
@@ -410,7 +499,7 @@ fn load_biome_texture_array(
         };
 
         let layer = if let Some(ph_path) = polyhaven_path {
-            eprintln!(
+            tracing::debug!(
                 "[terrain] Polyhaven 4K override layer {idx} ({filename}) → {:?}",
                 ph_path
             );
@@ -421,7 +510,7 @@ fn load_biome_texture_array(
                 load_texture_layer(&ph_path, target_size)
             }
         } else if let Some(pbr_path) = packed_path {
-            eprintln!(
+            tracing::debug!(
                 "[terrain] PBR override layer {idx} ({filename}) → {:?}",
                 pbr_path
             );
@@ -431,7 +520,7 @@ fn load_biome_texture_array(
                 load_texture_layer(&pbr_path, target_size)
             }
         } else if let Some(sep_path) = separate_path {
-            eprintln!(
+            tracing::debug!(
                 "[terrain] PBR override layer {idx} ({filename}) → {:?}",
                 sep_path
             );
@@ -442,7 +531,26 @@ fn load_biome_texture_array(
             }
         } else {
             let path = materials_dir.join(filename);
-            load_texture_layer(&path, target_size)
+            // Use channel-aware fallback: MRA gets neutral PBR defaults instead of magenta
+            match channel {
+                1 => {
+                    // Normal map fallback: flat normal (128, 128, 255, 255) = (0, 0, 1) in tangent space
+                    load_texture_layer_with_neutral_fallback(
+                        &path,
+                        target_size,
+                        [128, 128, 255, 255],
+                    )
+                }
+                2 => {
+                    // MRA fallback: metallic=0, roughness=128 (0.5), AO=255 (1.0)
+                    // Prevents catastrophic "mirror terrain" when MRA textures are missing
+                    load_texture_layer_with_neutral_fallback(&path, target_size, [0, 128, 255, 255])
+                }
+                _ => {
+                    // Albedo: keep magenta fallback to make missing textures visually obvious
+                    load_texture_layer(&path, target_size)
+                }
+            }
         };
         assert_eq!(layer.len(), layer_bytes);
         data.extend_from_slice(&layer);
@@ -684,7 +792,7 @@ impl TerrainRenderer {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None, // No culling — prevents holes on steep sculpted slopes
+                cull_mode: None, // No culling — terrain mesh winding order is mixed/CW
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
@@ -718,11 +826,11 @@ impl TerrainRenderer {
                 time: 0.0,
                 water_level: 0.0,
                 sun_dir: [0.5, 0.7, 0.35],
-                sun_intensity: 1.6,
+                sun_intensity: 1.8,
                 sun_color: [1.0, 0.95, 0.85],
-                ambient_intensity: 0.22,
-                ambient_color: [0.50, 0.45, 0.42],
-                exposure: 0.9,
+                ambient_intensity: 0.35,
+                ambient_color: [0.55, 0.52, 0.48],
+                exposure: 1.1,
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -730,7 +838,30 @@ impl TerrainRenderer {
         // ─── Load PBR texture arrays from disk ─────────────────────────────────
         let assets_dir = find_assets_dir();
         let materials_dir = assets_dir.join("materials");
-        eprintln!("[terrain] Loading PBR textures from {:?}", materials_dir);
+
+        // Validate asset directories exist before attempting texture loads
+        if !assets_dir.exists() {
+            tracing::error!(
+                "[terrain] Assets directory does NOT exist: {:?}. All textures will use magenta fallback!",
+                assets_dir,
+            );
+        }
+        if !materials_dir.exists() {
+            tracing::error!(
+                "[terrain] Materials directory does NOT exist: {:?}. All terrain textures will use magenta fallback!",
+                materials_dir,
+            );
+        } else {
+            // Check a few key textures to give early diagnostics
+            let spot_checks = ["grass.png", "sand.png", "mountain_rock.png"];
+            for name in &spot_checks {
+                let p = materials_dir.join(name);
+                if !p.exists() {
+                    tracing::warn!("[terrain] Missing base texture: {:?}", p);
+                }
+            }
+        }
+        tracing::info!("[terrain] Loading PBR textures from {:?}", materials_dir);
 
         let albedo_data = load_biome_texture_array(
             &materials_dir,
@@ -753,7 +884,7 @@ impl TerrainRenderer {
             &assets_dir,
             2,
         );
-        eprintln!(
+        tracing::info!(
             "[terrain] Loaded {} albedo + {} normal + {} MRA bytes",
             albedo_data.len(),
             normal_data.len(),
@@ -770,23 +901,23 @@ impl TerrainRenderer {
                     albedo_data[center + 1],
                     albedo_data[center + 2],
                 );
-                eprintln!("[terrain] DIAG layer0 (grass) albedo center: R={r} G={g} B={b}");
+                tracing::debug!("[terrain] DIAG layer0 (grass) albedo center: R={r} G={g} B={b}");
             }
             if albedo_data.len() >= layer_bytes * 2 {
                 let off = layer_bytes + center;
                 let (r, g, b) = (albedo_data[off], albedo_data[off + 1], albedo_data[off + 2]);
-                eprintln!("[terrain] DIAG layer1 (sand)  albedo center: R={r} G={g} B={b}");
+                tracing::debug!("[terrain] DIAG layer1 (sand)  albedo center: R={r} G={g} B={b}");
             }
             if mra_data.len() >= layer_bytes {
                 let (m, rough, ao) = (mra_data[center], mra_data[center + 1], mra_data[center + 2]);
-                eprintln!(
+                tracing::debug!(
                     "[terrain] DIAG layer0 (grass) MRA center: metallic={m} roughness={rough} ao={ao}"
                 );
             }
             if mra_data.len() >= layer_bytes * 2 {
                 let off = layer_bytes + center;
                 let (m, rough, ao) = (mra_data[off], mra_data[off + 1], mra_data[off + 2]);
-                eprintln!(
+                tracing::debug!(
                     "[terrain] DIAG layer1 (sand)  MRA center: metallic={m} roughness={rough} ao={ao}"
                 );
             }
@@ -1123,6 +1254,115 @@ impl TerrainRenderer {
         self.water_level = level;
     }
 
+    /// Replace a single material layer's textures in the existing GPU texture arrays.
+    ///
+    /// `layer_index` must be in 0..22 (use layers 12-17 for custom BiomePack slots).
+    /// Each data slice must be exactly `BIOME_TEX_SIZE * BIOME_TEX_SIZE * 4` bytes (RGBA).
+    /// After writing mip 0, CPU mipmaps are regenerated and uploaded for the replaced layer.
+    pub fn replace_texture_layer(
+        &self,
+        layer_index: u32,
+        albedo_data: &[u8],
+        normal_data: &[u8],
+        mra_data: &[u8],
+    ) {
+        if layer_index >= MATERIAL_LAYER_COUNT {
+            return;
+        }
+        let expected = (BIOME_TEX_SIZE * BIOME_TEX_SIZE * 4) as usize;
+
+        let write_layer = |texture: &wgpu::Texture, data: &[u8]| {
+            if data.len() != expected {
+                eprintln!(
+                    "=== replace_texture_layer: REJECTED layer {} — data.len()={} expected={}",
+                    layer_index,
+                    data.len(),
+                    expected,
+                );
+                return;
+            }
+            // Upload mip 0 for this single layer
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layer_index,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                data,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(BIOME_TEX_SIZE * 4),
+                    rows_per_image: Some(BIOME_TEX_SIZE),
+                },
+                wgpu::Extent3d {
+                    width: BIOME_TEX_SIZE,
+                    height: BIOME_TEX_SIZE,
+                    depth_or_array_layers: 1,
+                },
+            );
+
+            // Generate and upload CPU mipmaps for this single layer (box filter)
+            let size = BIOME_TEX_SIZE as usize;
+            let mut prev_data = data.to_vec();
+            let mut prev_size = size;
+            let mip_count = (BIOME_TEX_SIZE as f32).log2() as u32 + 1;
+            for mip in 1..mip_count {
+                let new_size = prev_size / 2;
+                if new_size == 0 {
+                    break;
+                }
+                let mut mip_data = vec![0u8; new_size * new_size * 4];
+                for y in 0..new_size {
+                    for x in 0..new_size {
+                        for c in 0..4usize {
+                            let s00 = prev_data[((y * 2) * prev_size + x * 2) * 4 + c] as u32;
+                            let s10 = prev_data[((y * 2) * prev_size + x * 2 + 1) * 4 + c] as u32;
+                            let s01 = prev_data[((y * 2 + 1) * prev_size + x * 2) * 4 + c] as u32;
+                            let s11 =
+                                prev_data[((y * 2 + 1) * prev_size + x * 2 + 1) * 4 + c] as u32;
+                            mip_data[(y * new_size + x) * 4 + c] =
+                                ((s00 + s10 + s01 + s11 + 2) / 4) as u8;
+                        }
+                    }
+                }
+                self.queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture,
+                        mip_level: mip,
+                        origin: wgpu::Origin3d {
+                            x: 0,
+                            y: 0,
+                            z: layer_index,
+                        },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &mip_data,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(new_size as u32 * 4),
+                        rows_per_image: Some(new_size as u32),
+                    },
+                    wgpu::Extent3d {
+                        width: new_size as u32,
+                        height: new_size as u32,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                prev_data = mip_data;
+                prev_size = new_size;
+            }
+        };
+
+        write_layer(&self._biome_texture, albedo_data);
+        write_layer(&self._biome_normal_texture, normal_data);
+        write_layer(&self._biome_mra_texture, mra_data);
+    }
+
     pub fn render(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -1153,8 +1393,8 @@ impl TerrainRenderer {
                 let ac = self.lighting_params.ambient_color;
                 let sc = self.lighting_params.sun_color;
                 let sd = self.lighting_params.sun_dir;
-                eprintln!(
-                    "[terrain] DIAG uniforms: fog=[{:.2},{:.2},{:.2}] ambient=[{:.2},{:.2},{:.2}] sun_color=[{:.2},{:.2},{:.2}] sun_dir=[{:.2},{:.2},{:.2}] exposure={:.2}",
+                tracing::debug!(
+                    "[terrain] uniforms: fog=[{:.2},{:.2},{:.2}] ambient=[{:.2},{:.2},{:.2}] sun_color=[{:.2},{:.2},{:.2}] sun_dir=[{:.2},{:.2},{:.2}] exposure={:.2}",
                     fc[0], fc[1], fc[2], ac[0], ac[1], ac[2], sc[0], sc[1], sc[2], sd[0], sd[1], sd[2], self.lighting_params.exposure,
                 );
             }

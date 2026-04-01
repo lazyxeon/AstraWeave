@@ -47,6 +47,8 @@ pub mod post; // compile-only WGSL placeholders & tests
 pub mod primitives;
 pub mod renderer;
 pub mod shadow_csm; // Cascaded Shadow Mapping (Phase 2)
+pub mod shadow_point; // Point/spot light shadow maps with priority selection
+pub mod shadow_quality; // Shadow quality: PCSS, Poisson PCF, cascade stabilization, normal-offset bias
 pub mod terrain;
 pub mod texture;
 pub mod types; // clustered-lighting WGSL placeholders & tests // gpu upload & caching
@@ -61,6 +63,8 @@ pub mod culling; // GPU-driven frustum culling (Phase 2 Task 3)
 pub mod culling_node; // Culling node for render graph
 pub mod graph; // minimal render graph scaffolding (Phase 2)
 pub mod graph_adapter; // runs a graph on Renderer frames
+pub mod gtao; // Ground Truth Ambient Occlusion with visibility bitmask
+pub mod hdr_pipeline; // HDR rendering pipeline orchestration (tonemap, color grading, post-FX chain)
 pub mod hdri_catalog;
 pub mod material; // shared authored materials API + GPU arrays
 pub mod material_extended; // Phase PBR-E: Advanced materials (clearcoat, anisotropy, SSS, sheen, transmission)
@@ -72,8 +76,11 @@ pub mod mesh_gltf; // glTF loader
 pub mod mesh_obj;
 pub mod residency;
 pub mod scene_environment;
+pub mod ssgi; // Screen-Space Global Illumination with temporal denoise
+pub mod ssr; // Screen-Space Reflections with Hi-Z ray marching
 pub mod terrain_material;
 pub mod texture_streaming;
+pub mod velocity; // Motion vector / velocity buffer for temporal effects (TAA, motion blur, TSR)
 pub mod weather_system; // Texture streaming with LRU cache and priority-based loading // Phase PBR-F: Terrain layering with splat maps and triplanar projection // asset streaming and residency management // OBJ fallback loader // Phase 2 Task 5: Skeletal animation with CPU/GPU skinning
 
 #[cfg(feature = "skinning-gpu")]

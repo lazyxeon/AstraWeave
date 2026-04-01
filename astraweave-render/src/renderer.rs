@@ -46,6 +46,8 @@ struct Camera {
   view_proj: mat4x4<f32>,
   light_dir: vec3<f32>,
   _pad: f32,
+  camera_pos: vec3<f32>,
+  _pad2: f32,
 };
 
 @group(0) @binding(0) var<uniform> uCamera: Camera;
@@ -92,6 +94,23 @@ struct SceneEnv {
 };
 @group(4) @binding(0) var<uniform> uScene: SceneEnv;
 
+// ── IBL (Image-Based Lighting) ─────────
+// Prefiltered specular cubemap (mip levels encode roughness)
+@group(5) @binding(0) var ibl_specular: texture_cube<f32>;
+// Irradiance cubemap (diffuse IBL)
+@group(5) @binding(1) var ibl_irradiance: texture_cube<f32>;
+// BRDF integration LUT (split-sum approximation)
+@group(5) @binding(2) var ibl_brdf_lut: texture_2d<f32>;
+// IBL sampler
+@group(5) @binding(3) var ibl_sampler: sampler;
+
+struct IblParams {
+    ibl_intensity: f32,
+    max_spec_lod: f32,
+    _pad: vec2<f32>,
+};
+@group(5) @binding(4) var<uniform> uIbl: IblParams;
+
 // Distance-based fog (linear + exponential blend)
 fn apply_scene_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {
     // Linear fog component
@@ -128,9 +147,42 @@ fn vs(input: VSIn) -> VSOut {
     return out;
 }
 
-// Simple Cook-Torrance PBR with single directional light, no IBL
+// Cook-Torrance PBR with IBL environment lighting
 fn fresnel_schlick(cos_theta: f32, F0: vec3<f32>) -> vec3<f32> {
     return F0 + (vec3<f32>(1.0,1.0,1.0) - F0) * pow(1.0 - cos_theta, 5.0);
+}
+
+// Fresnel with roughness for IBL (smoother at grazing angles for rough surfaces)
+fn fresnel_schlick_roughness(cos_theta: f32, F0: vec3<f32>, roughness: f32) -> vec3<f32> {
+    let one_minus_rough = vec3<f32>(1.0 - roughness);
+    return F0 + (max(one_minus_rough, F0) - F0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+// Sample IBL for diffuse and specular indirect lighting
+fn compute_ibl(
+    N: vec3<f32>,
+    V: vec3<f32>,
+    base_color: vec3<f32>,
+    metallic: f32,
+    roughness: f32,
+    F0: vec3<f32>,
+) -> vec3<f32> {
+    let NdotV = max(dot(N, V), 0.0);
+    let F = fresnel_schlick_roughness(NdotV, F0, roughness);
+
+    // Diffuse IBL: irradiance cubemap sampled by normal
+    let kd = (vec3<f32>(1.0) - F) * (1.0 - metallic);
+    let irradiance = textureSample(ibl_irradiance, ibl_sampler, N).rgb;
+    let diffuse_ibl = kd * base_color * irradiance;
+
+    // Specular IBL: prefiltered environment map + BRDF LUT
+    let R = reflect(-V, N);
+    let mip = roughness * uIbl.max_spec_lod;
+    let prefiltered = textureSampleLevel(ibl_specular, ibl_sampler, R, mip).rgb;
+    let brdf = textureSample(ibl_brdf_lut, ibl_sampler, vec2<f32>(NdotV, roughness)).rg;
+    let specular_ibl = prefiltered * (F * brdf.x + brdf.y);
+
+    return (diffuse_ibl + specular_ibl) * uIbl.ibl_intensity;
 }
 
 fn distribution_ggx(N: vec3<f32>, H: vec3<f32>, roughness: f32) -> f32 {
@@ -154,7 +206,7 @@ fn geometry_smith(N: vec3<f32>, V: vec3<f32>, L: vec3<f32>, roughness: f32) -> f
 
 @fragment
 fn fs(input: VSOut) -> @location(0) vec4<f32> {
-    let V = normalize(-input.world_pos); // fake view dir from origin camera
+    let V = normalize(uCamera.camera_pos - input.world_pos);
     let L = normalize(-uCamera.light_dir);
     let H = normalize(V + L);
     // Base normal from geometry
@@ -229,9 +281,16 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             if (use_c0) { tint = vec3<f32>(1.0, 0.3, 0.0); } else { tint = vec3<f32>(0.0, 0.2, 1.0); }
             base_color = mix(base_color, tint, 0.35);
         }
-    // Add ambient from scene environment UBO (replaces hardcoded 0.2)
-    let ambient = uScene.ambient_color * uScene.ambient_intensity;
-    var lit_color = (diffuse + specular) * radiance * NdotL * shadow + base_color * ambient;
+    // Direct lighting
+    var lit_color = (diffuse + specular) * radiance * NdotL * shadow;
+
+    // IBL indirect lighting (replaces flat ambient)
+    let ibl_color = compute_ibl(N, V, base_color, metallic, roughness, F0);
+    lit_color = lit_color + ibl_color;
+
+    // Scene ambient as fallback floor (very low, IBL dominates)
+    let ambient = uScene.ambient_color * uScene.ambient_intensity * 0.1;
+    lit_color = lit_color + base_color * ambient;
         // Clustered point lights accumulation (Lambert + simple attenuation)
     // Clustered lighting disabled for this example build; use lit_color directly
 
@@ -366,6 +425,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
 struct CameraUBO {
     view_proj: [[f32; 4]; 4],
     light_dir_pad: [f32; 4],
+    camera_pos_pad: [f32; 4],
 }
 
 /// A named model with its mesh and instance data for multi-model rendering.
@@ -521,6 +581,8 @@ pub struct Renderer {
     // IBL
     pub ibl: crate::ibl::IblManager,
     pub ibl_resources: Option<crate::ibl::IblResources>,
+    ibl_bind_group: wgpu::BindGroup,
+    ibl_params_buf: wgpu::Buffer,
 
     // Water rendering
     water_renderer: Option<crate::water::WaterRenderer>,
@@ -1424,15 +1486,203 @@ impl Renderer {
             }],
         });
 
+        // IBL bind group layout (group 5): specular cube, irradiance cube, BRDF LUT, sampler, params
+        let ibl_params_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("ibl-params-bgl"),
+            entries: &[
+                // 0: specular cube
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::Cube,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                // 1: irradiance cube
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::Cube,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                // 2: BRDF LUT
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                // 3: sampler
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                // 4: IBL params uniform
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // IBL params uniform buffer
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+        struct IblParamsGpu {
+            ibl_intensity: f32,
+            max_spec_lod: f32,
+            _pad: [f32; 2],
+        }
+        let ibl_params_data = IblParamsGpu {
+            ibl_intensity: 1.0,
+            max_spec_lod: 4.0,
+            _pad: [0.0; 2],
+        };
+        let ibl_params_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ibl_params_buf"),
+            contents: bytemuck::bytes_of(&ibl_params_data),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Fallback 1x1 black cubemap for when no IBL environment is loaded
+        let fallback_cube_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("fallback_ibl_cube"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 6,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &fallback_cube_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &[0u8; 4 * 6], // 6 faces, 1 pixel each, RGBA
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 6,
+            },
+        );
+        let fallback_cube_view = fallback_cube_tex.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::Cube),
+            ..Default::default()
+        });
+        // Fallback 1x1 BRDF LUT
+        let fallback_brdf_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("fallback_brdf_lut"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &fallback_brdf_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &[0u8; 4],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        let fallback_brdf_view =
+            fallback_brdf_tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let ibl_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("ibl_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        let ibl_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ibl_fallback_bg"),
+            layout: &ibl_params_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&fallback_cube_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&fallback_cube_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&fallback_brdf_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&ibl_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: ibl_params_buf.as_entire_binding(),
+                },
+            ],
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("pipeline layout"),
-            // Group indices: 0: camera, 1: material, 2: shadow/light, 3: textures, 4: scene environment
+            // Group indices: 0: camera, 1: material, 2: shadow/light, 3: textures, 4: scene env, 5: IBL
             bind_group_layouts: &[
                 &bind_layout,
                 &material_bgl,
                 &shadow_bgl,
                 &tex_bgl,
                 &scene_env_bgl,
+                &ibl_params_bgl,
             ],
             push_constant_ranges: &[],
         });
@@ -1949,7 +2199,7 @@ struct VSOut {
   @location(2) color: vec4<f32>,
 };
 
-struct Camera { view_proj: mat4x4<f32>, light_dir: vec3<f32>, _pad: f32 };
+struct Camera { view_proj: mat4x4<f32>, light_dir: vec3<f32>, _pad: f32, camera_pos: vec3<f32>, _pad2: f32 };
 @group(0) @binding(0) var<uniform> uCamera: Camera;
 
 struct MaterialUbo { base_color: vec4<f32>, metallic: f32, roughness: f32, _pad: vec2<f32> };
@@ -2024,7 +2274,7 @@ fn geometry_smith(N: vec3<f32>, V: vec3<f32>, L: vec3<f32>, roughness: f32) -> f
 }
 @fragment
 fn fs(input: VSOut) -> @location(0) vec4<f32> {
-    let V = normalize(-input.world_pos);
+    let V = normalize(uCamera.camera_pos - input.world_pos);
     let L = normalize(-uCamera.light_dir);
     let H = normalize(V + L);
     var N = normalize(input.normal);
@@ -2531,6 +2781,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             camera_ubo: CameraUBO {
                 view_proj: Mat4::IDENTITY.to_cols_array_2d(),
                 light_dir_pad: [0.5, 1.0, 0.8, 0.0],
+                camera_pos_pad: [0.0, 0.0, 0.0, 0.0],
             },
             camera_buf,
             camera_bind_group,
@@ -2576,6 +2827,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             ext_inst_count: 0,
             ibl,
             ibl_resources: None,
+            ibl_bind_group,
+            ibl_params_buf,
             water_renderer: None,
             biome_system: crate::biome_material::BiomeMaterialSystem::new(
                 crate::biome_material::BiomeMaterialConfig::default(),
@@ -2665,8 +2918,66 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         let resources = self
             .ibl
             .bake_environment(&self.device, &self.queue, quality)?;
+        self.rebuild_ibl_bind_group(&resources);
         self.ibl_resources = Some(resources);
         Ok(())
+    }
+
+    /// Rebuild the IBL bind group from loaded IBL resources.
+    fn rebuild_ibl_bind_group(&mut self, res: &crate::ibl::IblResources) {
+        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("ibl_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+        struct IblParamsGpu {
+            ibl_intensity: f32,
+            max_spec_lod: f32,
+            _pad: [f32; 2],
+        }
+        let params = IblParamsGpu {
+            ibl_intensity: 1.0,
+            max_spec_lod: res.mips_specular.saturating_sub(1).max(1) as f32,
+            _pad: [0.0; 2],
+        };
+        self.queue
+            .write_buffer(&self.ibl_params_buf, 0, bytemuck::bytes_of(&params));
+
+        // Recreate bind group with actual IBL textures.
+        // We need the layout — extract from the current bind group's pipeline.
+        // Use the IBL bind group layout from the pipeline.
+        let bgl = self.pipeline.get_bind_group_layout(5);
+        self.ibl_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ibl_bg"),
+            layout: &bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&res.specular_cube),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&res.irradiance_cube),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&res.brdf_lut),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: self.ibl_params_buf.as_entire_binding(),
+                },
+            ],
+        });
     }
 
     // ── Biome Material System ────────────────────────────────────────────
@@ -2714,6 +3025,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         let resources = self
             .ibl
             .bake_environment(&self.device, &self.queue, quality)?;
+        self.rebuild_ibl_bind_group(&resources);
         self.ibl_resources = Some(resources);
 
         // Track state
@@ -2754,6 +3066,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         let resources = self
             .ibl
             .bake_environment(&self.device, &self.queue, quality)?;
+        self.rebuild_ibl_bind_group(&resources);
         self.ibl_resources = Some(resources);
 
         // 2. Terrain material textures
@@ -2798,6 +3111,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             let resources = self
                 .ibl
                 .bake_environment(&self.device, &self.queue, quality)?;
+            self.rebuild_ibl_bind_group(&resources);
             self.ibl_resources = Some(resources);
             self.biome_system.mark_loaded(biome, hdri_path);
 
@@ -3034,6 +3348,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         // Update light dir from time-of-day system (simple linkage for Phase 0)
         let light_dir = self.sky.time_of_day().get_light_direction();
         self.camera_ubo.light_dir_pad = [light_dir.x, light_dir.y, light_dir.z, 0.0];
+        let cam_pos = camera.position;
+        self.camera_ubo.camera_pos_pad = [cam_pos.x, cam_pos.y, cam_pos.z, 0.0];
         self.queue
             .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&self.camera_ubo));
         // Compute splits from camera frustum with lambda blend
@@ -3636,6 +3952,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             rp.set_bind_group(2, &self.light_bg, &[]);
             rp.set_bind_group(3, &self.tex_bg, &[]);
             rp.set_bind_group(4, &self.scene_env_bg, &[]);
+            rp.set_bind_group(5, &self.ibl_bind_group, &[]);
 
             // Ground plane (scaled) - DISABLED (Interferes with Terrain)
             /*
@@ -4016,6 +4333,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             rp.set_bind_group(2, &self.light_bg, &[]);
             rp.set_bind_group(3, &self.tex_bg, &[]);
             rp.set_bind_group(4, &self.scene_env_bg, &[]);
+            rp.set_bind_group(5, &self.ibl_bind_group, &[]);
 
             // Ground plane
             rp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));

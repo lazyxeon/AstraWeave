@@ -8,7 +8,7 @@
 //! - ✅ Squad coordination produces valid tactical plans
 
 use astraweave_ai::core_loop::{dispatch_planner, CAiController, PlannerMode};
-use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState, WorldSnapshot};
+use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, WorldSnapshot};
 use std::collections::BTreeMap;
 use std::time::Instant;
 
@@ -23,7 +23,7 @@ fn create_combat_snapshot(frame: usize, agent_id: usize) -> WorldSnapshot {
                 y: 15 + ((frame + i) % 3) as i32,
             },
             hp: 50 + (i as i32) * 10,
-            cover: if i % 2 == 0 { "low" } else { "high" }.to_string(),
+            cover: if i % 2 == 0 { CoverType::Low } else { CoverType::High },
             last_seen: (i as f32) * 0.5,
         });
     }

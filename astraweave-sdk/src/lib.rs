@@ -135,6 +135,10 @@ struct AwWorldWrap {
     delta_cb: CStringCallback,
     // Previous entity states for delta computation
     prev: HashMap<u32, SimpleEntity>,
+    // Reusable buffers to avoid per-tick allocation
+    json_buf: Vec<u8>,
+    changed_buf: Vec<SimpleEntity>,
+    removed_buf: Vec<u32>,
 }
 
 #[no_mangle]
@@ -149,6 +153,9 @@ pub extern "C" fn aw_world_create() -> AWWorld {
         snapshot_cb: None,
         delta_cb: None,
         prev: HashMap::new(),
+        json_buf: Vec::with_capacity(1024),
+        changed_buf: Vec::new(),
+        removed_buf: Vec::new(),
     });
     AWWorld(Box::into_raw(boxed))
 }
@@ -178,12 +185,14 @@ pub extern "C" fn aw_world_tick(_w: AWWorld, _dt: f32) {
     // If a snapshot callback is registered, emit the snapshot JSON
     if let Some(cb) = wrap.snapshot_cb {
         let snap = crate_snapshot(&wrap.world);
-        if let Ok(s) = serde_json::to_string(&snap) {
+        // Reuse json_buf to avoid per-tick String allocation
+        wrap.json_buf.clear();
+        if serde_json::to_writer(&mut wrap.json_buf, &snap).is_ok() {
             // SAFETY: `cb` is a valid C function pointer (caller guarantee).
             // CString ensures null-termination. Pointer is valid for the cb() call duration.
             unsafe {
                 use std::ffi::CString;
-                if let Ok(cs) = CString::new(s) {
+                if let Ok(cs) = CString::new(wrap.json_buf.as_slice()) {
                     cb(cs.as_ptr());
                 }
             }
@@ -192,37 +201,42 @@ pub extern "C" fn aw_world_tick(_w: AWWorld, _dt: f32) {
     // If a delta callback is registered, compute and emit delta JSON relative to previous state
     if let Some(cb) = wrap.delta_cb {
         let cur = current_map(&wrap.world);
-        let mut changed: Vec<SimpleEntity> = Vec::new();
-        let mut removed: Vec<u32> = Vec::new();
+        // Reuse changed/removed buffers to avoid per-tick Vec allocation
+        wrap.changed_buf.clear();
+        wrap.removed_buf.clear();
         // Detect changes and additions
         for (id, ent) in cur.iter() {
             match wrap.prev.get(id) {
                 Some(prev) if prev == ent => { /* unchanged */ }
-                _ => changed.push(ent.clone()),
+                _ => wrap.changed_buf.push(ent.clone()),
             }
         }
         // Detect removals
         for id in wrap.prev.keys() {
             if !cur.contains_key(id) {
-                removed.push(*id);
+                wrap.removed_buf.push(*id);
             }
         }
         wrap.prev = cur; // update baseline
         let d = SimpleDelta {
             t: wrap.world.t,
-            changed,
-            removed,
+            changed: std::mem::take(&mut wrap.changed_buf),
+            removed: std::mem::take(&mut wrap.removed_buf),
         };
-        if let Ok(s) = serde_json::to_string(&d) {
+        // Reuse json_buf for delta serialization
+        wrap.json_buf.clear();
+        if serde_json::to_writer(&mut wrap.json_buf, &d).is_ok() {
             // SAFETY: Same as snapshot callback above — `cb` is a valid C function pointer,
             // CString provides null termination, pointer valid for call duration.
             unsafe {
                 use std::ffi::CString;
-                if let Ok(cs) = CString::new(s) {
+                if let Ok(cs) = CString::new(wrap.json_buf.as_slice()) {
                     cb(cs.as_ptr());
                 }
             }
         }
+        // Reclaim the vecs back from the delta (they were moved out with mem::take)
+        // This is fine because SimpleDelta is dropped at end of this block
     }
 }
 
@@ -736,7 +750,10 @@ mod tests {
         // causing a null pointer write. We test that null buf returns required size.
         let bytes = b"hello";
         let n = write_cstr(bytes, std::ptr::null_mut(), 100);
-        assert_eq!(n, 6, "Null buf should return required size (len + 1 for NUL)");
+        assert_eq!(
+            n, 6,
+            "Null buf should return required size (len + 1 for NUL)"
+        );
     }
 
     #[test]

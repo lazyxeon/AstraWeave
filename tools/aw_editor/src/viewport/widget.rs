@@ -156,6 +156,9 @@ pub struct ViewportWidget {
     /// Clipboard for copy/paste operations
     clipboard: Option<crate::clipboard::ClipboardData>,
 
+    /// Cached entity count for dirty tracking (skip HashMap rebuild when unchanged)
+    cached_entity_count: usize,
+
     /// Whether terrain brush mode is active (set externally)
     terrain_brush_active: bool,
 
@@ -224,10 +227,13 @@ impl ViewportWidget {
         )?;
 
         // Create renderer (wrapped in Arc<Mutex<>> for thread-safe interior mutability)
-        let renderer = Arc::new(Mutex::new(
-            ViewportRenderer::from_eframe(render_state)
-                .context("Failed to create viewport renderer")?,
-        ));
+        let renderer = Arc::new(Mutex::new({
+            let mut r = ViewportRenderer::from_eframe(render_state)
+                .context("Failed to create viewport renderer")?;
+            // Eagerly initialize all sub-renderers to avoid frame hitches during editing
+            r.eagerly_init_all();
+            r
+        }));
 
         Ok(Self {
             renderer,
@@ -251,6 +257,7 @@ impl ViewportWidget {
                 None, None, None, None, None, None, None, None, None, None, None, None,
             ],
             clipboard: None,
+            cached_entity_count: 0,
             terrain_brush_active: false,
             terrain_brush_radius: 5.0,
             terrain_brush_is_paint: false,
@@ -304,6 +311,7 @@ impl ViewportWidget {
                 None, None, None, None, None, None, None, None, None, None, None, None,
             ],
             clipboard: None,
+            cached_entity_count: 0,
             terrain_brush_active: false,
             terrain_brush_radius: 5.0,
             terrain_brush_is_paint: false,
@@ -524,63 +532,76 @@ impl ViewportWidget {
                     self.selected_entities.iter().map(|&id| id as u32).collect();
                 renderer.set_selected_entities(&entities_u32);
 
-                // Build entity-to-mesh mapping from EntityManager
-                let mesh_map: std::collections::HashMap<u32, String> = entity_manager
-                    .entities()
-                    .iter()
-                    .filter_map(|(&id, entity)| {
-                        entity.mesh.as_ref().map(|path| (id as u32, path.clone()))
-                    })
-                    .collect();
-                renderer.set_entity_meshes(mesh_map);
+                // Dirty check: only rebuild entity maps when entity count changes.
+                // Selection changes, transforms, and component edits trigger via
+                // other paths (undo events, panel actions). This avoids 3 HashMap
+                // rebuilds + string clones every frame for static scenes.
+                let current_count = entity_manager.count();
+                if current_count != self.cached_entity_count {
+                    self.cached_entity_count = current_count;
 
-                // Build entity-to-texture override mapping from EntityMaterial.texture_slots
-                let tex_overrides: std::collections::HashMap<u32, String> = entity_manager
-                    .entities()
-                    .iter()
-                    .filter_map(|(&id, entity)| {
-                        entity
-                            .material
-                            .get_texture(crate::entity_manager::MaterialSlot::Albedo)
-                            .and_then(|p| p.to_str())
-                            .map(|s| (id as u32, s.to_string()))
-                    })
-                    .collect();
-                if !tex_overrides.is_empty() {
-                    renderer.set_entity_texture_overrides(tex_overrides);
-                }
-
-                // Collect point lights from entities with Light components
-                let scene_lights: Vec<super::entity_renderer::SceneLight> = entity_manager
-                    .entities()
-                    .iter()
-                    .filter_map(|(_, entity)| {
-                        let data = entity.components.get("Light")?;
-                        let ltype = data.get("type")?.as_str().unwrap_or("point");
-                        if ltype != "point" {
-                            return None;
-                        }
-                        Some(super::entity_renderer::SceneLight {
-                            position: [entity.position.x, entity.position.y, entity.position.z],
-                            range: data.get("range").and_then(|v| v.as_f64()).unwrap_or(10.0)
-                                as f32,
-                            color: [
-                                data.get("color_r").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
-                                data.get("color_g").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
-                                data.get("color_b").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
-                            ],
-                            intensity: data
-                                .get("intensity")
-                                .and_then(|v| v.as_f64())
-                                .unwrap_or(1.0) as f32,
+                    // Build entity-to-mesh mapping from EntityManager
+                    let mesh_map: std::collections::HashMap<u32, String> = entity_manager
+                        .entities()
+                        .iter()
+                        .filter_map(|(&id, entity)| {
+                            entity.mesh.as_ref().map(|path| (id as u32, path.clone()))
                         })
-                    })
-                    .collect();
-                renderer.set_scene_lights(scene_lights);
+                        .collect();
+                    renderer.set_entity_meshes(mesh_map);
 
-                // Generate component gizmo lines (light radius, collider shapes, audio range)
-                let gizmo_lines = Self::generate_component_gizmo_lines(entity_manager);
-                renderer.set_component_gizmo_lines(gizmo_lines);
+                    // Build entity-to-texture override mapping
+                    let tex_overrides: std::collections::HashMap<u32, String> = entity_manager
+                        .entities()
+                        .iter()
+                        .filter_map(|(&id, entity)| {
+                            entity
+                                .material
+                                .get_texture(crate::entity_manager::MaterialSlot::Albedo)
+                                .and_then(|p| p.to_str())
+                                .map(|s| (id as u32, s.to_string()))
+                        })
+                        .collect();
+                    if !tex_overrides.is_empty() {
+                        renderer.set_entity_texture_overrides(tex_overrides);
+                    }
+
+                    // Collect point lights from entities with Light components
+                    let scene_lights: Vec<super::entity_renderer::SceneLight> = entity_manager
+                        .entities()
+                        .iter()
+                        .filter_map(|(_, entity)| {
+                            let data = entity.components.get("Light")?;
+                            let ltype = data.get("type")?.as_str().unwrap_or("point");
+                            if ltype != "point" {
+                                return None;
+                            }
+                            Some(super::entity_renderer::SceneLight {
+                                position: [entity.position.x, entity.position.y, entity.position.z],
+                                range: data.get("range").and_then(|v| v.as_f64()).unwrap_or(10.0)
+                                    as f32,
+                                color: [
+                                    data.get("color_r").and_then(|v| v.as_f64()).unwrap_or(1.0)
+                                        as f32,
+                                    data.get("color_g").and_then(|v| v.as_f64()).unwrap_or(1.0)
+                                        as f32,
+                                    data.get("color_b").and_then(|v| v.as_f64()).unwrap_or(1.0)
+                                        as f32,
+                                ],
+                                intensity: data
+                                    .get("intensity")
+                                    .and_then(|v| v.as_f64())
+                                    .unwrap_or(1.0)
+                                    as f32,
+                            })
+                        })
+                        .collect();
+                    renderer.set_scene_lights(scene_lights);
+
+                    // Generate component gizmo lines
+                    let gizmo_lines = Self::generate_component_gizmo_lines(entity_manager);
+                    renderer.set_component_gizmo_lines(gizmo_lines);
+                }
             }
         }
 
@@ -1151,7 +1172,7 @@ impl ViewportWidget {
 
                     // Try depth-based pick first
                     let mut hit = None;
-                    if let Ok(renderer) = self.renderer.lock() {
+                    if let Ok(mut renderer) = self.renderer.lock() {
                         if let Some(depth) = renderer.read_depth_at_pixel(px, py) {
                             if depth < 1.0 {
                                 // Depth hit on geometry — unproject to world space
@@ -1206,7 +1227,7 @@ impl ViewportWidget {
 
                 // Get world hit for cursor center
                 let mut cursor_center = None;
-                if let Ok(renderer) = self.renderer.lock() {
+                if let Ok(mut renderer) = self.renderer.lock() {
                     if let Some(depth) = renderer.read_depth_at_pixel(px, py) {
                         if depth < 1.0 {
                             let wp = self.camera.unproject_depth_to_world(

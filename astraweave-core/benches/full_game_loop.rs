@@ -18,8 +18,8 @@
 
 use astraweave_ai::{Orchestrator, RuleOrchestrator};
 use astraweave_core::{
-    ActionStep, CompanionState, EnemyState, IVec2, PlanIntent, PlayerState, Pose, Team, World,
-    WorldSnapshot,
+    ActionStep, CompanionState, CoverType, EnemyState, IVec2, PlanIntent, PlayerState, Pose,
+    Stance, Team, World, WorldSnapshot,
 };
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::collections::BTreeMap;
@@ -244,7 +244,7 @@ fn perception_stage(world: &World, ai_agents: &[u32]) -> Vec<WorldSnapshot> {
                             id: enemy_id,
                             pos: enemy_pose.pos,
                             hp: enemy_hp,
-                            cover: "none".to_string(),
+                            cover: CoverType::None,
                             last_seen: 0.0,
                         })
                     } else {
@@ -264,7 +264,7 @@ fn perception_stage(world: &World, ai_agents: &[u32]) -> Vec<WorldSnapshot> {
                 player: PlayerState {
                     hp: 100,
                     pos: player_pos,
-                    stance: "stand".into(),
+                    stance: Stance::Stand,
                     orders: vec![],
                 },
                 enemies,

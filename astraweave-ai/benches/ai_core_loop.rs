@@ -1,5 +1,5 @@
 use astraweave_ai::core_loop::{dispatch_planner, CAiController, PlannerMode};
-use astraweave_core::{CompanionState, IVec2, PlayerState, WorldSnapshot};
+use astraweave_core::{CompanionState, CoverType, IVec2, PlayerState, Stance, WorldSnapshot};
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::BTreeMap;
 use std::hint::black_box;
@@ -18,7 +18,7 @@ fn create_simple_snapshot() -> WorldSnapshot {
         player: PlayerState {
             hp: 100,
             pos: IVec2 { x: 5, y: 5 },
-            stance: "stand".into(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         enemies: vec![],
@@ -48,7 +48,7 @@ fn create_moderate_snapshot() -> WorldSnapshot {
         player: PlayerState {
             hp: 75,
             pos: IVec2 { x: 8, y: 10 },
-            stance: "crouch".into(),
+            stance: Stance::Crouch,
             orders: vec!["hold_position".to_string()],
         },
         enemies: vec![
@@ -56,14 +56,14 @@ fn create_moderate_snapshot() -> WorldSnapshot {
                 id: 100,
                 pos: IVec2 { x: 20, y: 15 },
                 hp: 50,
-                cover: "low".to_string(),
+                cover: CoverType::Low,
                 last_seen: 1.0,
             },
             EnemyState {
                 id: 101,
                 pos: IVec2 { x: 22, y: 18 },
                 hp: 80,
-                cover: "high".to_string(),
+                cover: CoverType::High,
                 last_seen: 0.5,
             },
         ],
@@ -99,7 +99,7 @@ fn create_complex_snapshot() -> WorldSnapshot {
                 y: 15 + (i % 3),
             },
             hp: 50 + i * 5,
-            cover: if i % 2 == 0 { "low" } else { "high" }.to_string(),
+            cover: if i % 2 == 0 { CoverType::Low } else { CoverType::High },
             last_seen: (i as f32) * 0.5,
         });
     }
@@ -141,7 +141,7 @@ fn create_complex_snapshot() -> WorldSnapshot {
         player: PlayerState {
             hp: 30,
             pos: IVec2 { x: 12, y: 18 },
-            stance: "prone".into(),
+            stance: Stance::Prone,
             orders: vec![
                 "retreat".to_string(),
                 "call_for_backup".to_string(),

@@ -11,6 +11,7 @@
 use crate::panels::Panel;
 use egui::{Color32, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 use glam::Vec2 as GVec2;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 // ============================================================================
@@ -174,7 +175,7 @@ impl BlueprintUndoStack {
 // ============================================================================
 
 /// Source type for a zone (panel-side mirror of terrain's ZoneSource).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ZoneSourceState {
     BiomePreset(String),
     BlendScene { pack_path: String, replica: bool },
@@ -187,7 +188,7 @@ impl Default for ZoneSourceState {
 }
 
 /// Panel-local zone state (lightweight mirror of BlueprintZone).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZoneState {
     pub name: String,
     pub vertices: Vec<GVec2>,
@@ -195,6 +196,8 @@ pub struct ZoneState {
     pub priority: i32,
     pub enabled: bool,
     pub blend_margin: f32,
+    /// Manual scene scale override (None = auto, Some(ratio) = user-controlled).
+    pub scene_scale_override: Option<f32>,
 }
 
 impl Default for ZoneState {
@@ -206,6 +209,7 @@ impl Default for ZoneState {
             priority: 0,
             enabled: true,
             blend_margin: 8.0,
+            scene_scale_override: None,
         }
     }
 }
@@ -310,7 +314,7 @@ impl Default for BlueprintPanel {
             show_grid: true,
             grid_spacing: 64.0,
             next_zone_id: 1,
-            vertex_hit_radius: 8.0,
+            vertex_hit_radius: 10.0,
         }
     }
 }
@@ -337,6 +341,12 @@ impl BlueprintPanel {
         self.pending_vertices.clear();
     }
 
+    /// Add a single zone (e.g., from blend import "Create Replica Zone" flow).
+    pub fn add_zone(&mut self, zone: ZoneState) {
+        self.zones.push(zone);
+        self.selected_zone = Some(self.zones.len() - 1);
+    }
+
     // ---- undo / redo helpers ----
 
     fn execute_cmd(&mut self, cmd: BlueprintCommand) {
@@ -345,6 +355,12 @@ impl BlueprintPanel {
     }
 
     fn undo(&mut self) {
+        // If actively placing nodes, pop the last pending vertex first.
+        // This gives per-node undo during the PlaceNode workflow.
+        if self.tool == BlueprintTool::PlaceNode && !self.pending_vertices.is_empty() {
+            self.pending_vertices.pop();
+            return;
+        }
         if let Some(cmd) = self.undo_stack.undo.pop_back() {
             self.apply_command(&cmd, true);
             self.undo_stack.redo.push(cmd);
@@ -667,6 +683,7 @@ impl BlueprintPanel {
                     BlueprintTool::DeleteNode => self.tool_delete_node(pos, canvas_center),
                     BlueprintTool::ConnectNodes => self.tool_connect_nodes(pos, canvas_center),
                     BlueprintTool::Select => {
+                        // Simple click (no drag) selects zone
                         self.selected_zone = self.hit_zone(world);
                     }
                     BlueprintTool::MoveNode => {} // handled via drag below
@@ -674,13 +691,17 @@ impl BlueprintPanel {
             }
         }
 
-        // Drag for MoveNode
-        if self.tool == BlueprintTool::MoveNode {
+        // Drag vertices — works in both MoveNode and Select tools.
+        // In Select mode, a vertex hit takes priority over zone selection,
+        // giving intuitive direct manipulation.
+        if self.tool == BlueprintTool::MoveNode || self.tool == BlueprintTool::Select {
             if response.drag_started_by(egui::PointerButton::Primary) {
                 if let Some(pos) = response.interact_pointer_pos() {
                     if let Some((zi, vi)) = self.hit_vertex(pos, canvas_center) {
                         let orig = self.zones[zi].vertices[vi];
                         self.drag_state = Some((zi, vi, orig));
+                        // Also select the zone being dragged
+                        self.selected_zone = Some(zi);
                     }
                 }
             }
@@ -701,8 +722,6 @@ impl BlueprintPanel {
                     if let Some(z) = self.zones.get(zi) {
                         if let Some(&new_pos) = z.vertices.get(vi) {
                             if (new_pos - old_pos).length() > 0.01 {
-                                // Don't apply_command — already moved live.
-                                // Just push to undo stack.
                                 self.undo_stack.push(BlueprintCommand::MoveVertex {
                                     zone_index: zi,
                                     vertex_index: vi,
@@ -774,8 +793,10 @@ impl BlueprintPanel {
                 }
             }
             ui.separator();
+            // Undo is available when there are pending vertices OR undo stack entries
+            let can_undo = !self.pending_vertices.is_empty() || self.undo_stack.can_undo();
             if ui
-                .add_enabled(self.undo_stack.can_undo(), egui::Button::new("Undo"))
+                .add_enabled(can_undo, egui::Button::new("Undo"))
                 .clicked()
             {
                 self.undo();
@@ -901,6 +922,36 @@ impl BlueprintPanel {
             });
         }
 
+        // Scene Scale override (only for BlendScene zones)
+        if matches!(self.zones[idx].source, ZoneSourceState::BlendScene { .. }) {
+            ui.separator();
+            ui.label(RichText::new("Scene Scale").strong());
+            let mut use_auto = self.zones[idx].scene_scale_override.is_none();
+            ui.checkbox(&mut use_auto, "Auto scale");
+            if use_auto && self.zones[idx].scene_scale_override.is_some() {
+                self.zones[idx].scene_scale_override = None;
+            } else if !use_auto && self.zones[idx].scene_scale_override.is_none() {
+                self.zones[idx].scene_scale_override = Some(1.0);
+            }
+            if let Some(ref mut scale) = self.zones[idx].scene_scale_override {
+                ui.horizontal(|ui| {
+                    ui.label("Scale:");
+                    ui.add(
+                        egui::Slider::new(scale, 0.25..=4.0)
+                            .logarithmic(true)
+                            .text("x"),
+                    );
+                });
+                ui.label(
+                    RichText::new(format!(
+                        "1.0x = exact replica, <1.0 = compress, >1.0 = expand"
+                    ))
+                    .weak()
+                    .size(10.0),
+                );
+            }
+        }
+
         // Source type selector
         ui.separator();
         ui.label(RichText::new("Source").strong());
@@ -931,31 +982,28 @@ impl BlueprintPanel {
         match &self.zones[idx].source {
             ZoneSourceState::BiomePreset(biome) => {
                 let biome = biome.clone();
-                let biomes = [
-                    "Grassland",
-                    "Desert",
-                    "Forest",
-                    "Mountain",
-                    "Tundra",
-                    "Swamp",
-                    "Beach",
-                    "River",
-                ];
+                let all_options = crate::terrain_integration::cached_biome_options();
                 ui.horizontal(|ui| {
                     ui.label("Biome:");
                     egui::ComboBox::from_id_salt("biome_select")
                         .selected_text(&biome)
                         .show_ui(ui, |ui| {
-                            for b in &biomes {
-                                if ui.selectable_label(*b == biome.as_str(), *b).clicked()
-                                    && *b != biome.as_str()
+                            for opt in &all_options {
+                                let is_selected = opt.display == biome || opt.value == biome;
+                                if ui.selectable_label(is_selected, &opt.display).clicked()
+                                    && !is_selected
                                 {
                                     let old = ZoneSourceState::BiomePreset(biome.clone());
-                                    let new = ZoneSourceState::BiomePreset(b.to_string());
-                                    // We need to push cmd but we're inside a closure.
-                                    // queue it.
-                                    self.pending_actions
-                                        .push(BlueprintAction::GenerateZone { zone_index: idx });
+                                    // Pack options use "pack:path" format → BlendScene source
+                                    let new =
+                                        if let Some(pack_path) = opt.value.strip_prefix("pack:") {
+                                            ZoneSourceState::BlendScene {
+                                                pack_path: pack_path.to_string(),
+                                                replica: false,
+                                            }
+                                        } else {
+                                            ZoneSourceState::BiomePreset(opt.display.clone())
+                                        };
                                     self.zones[idx].source = new.clone();
                                     self.undo_stack.push(BlueprintCommand::UpdateZoneSource {
                                         zone_index: idx,
@@ -970,13 +1018,55 @@ impl BlueprintPanel {
             ZoneSourceState::BlendScene { pack_path, replica } => {
                 let pack_path = pack_path.clone();
                 let replica = *replica;
-                ui.horizontal(|ui| {
-                    ui.label("Pack path:");
-                    ui.label(if pack_path.is_empty() {
-                        "(none)"
-                    } else {
-                        &pack_path
+
+                // Show biome/pack selector — user can switch to built-in or another pack
+                let all_options = crate::terrain_integration::cached_biome_options();
+                let current_display = all_options
+                    .iter()
+                    .find(|o| {
+                        o.value
+                            .strip_prefix("pack:")
+                            .is_some_and(|p| p == pack_path)
+                    })
+                    .map(|o| o.display.clone())
+                    .unwrap_or_else(|| {
+                        std::path::Path::new(&pack_path)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("Pack")
+                            .to_string()
                     });
+                ui.horizontal(|ui| {
+                    ui.label("Source:");
+                    egui::ComboBox::from_id_salt("blend_biome_select")
+                        .selected_text(&current_display)
+                        .show_ui(ui, |ui| {
+                            for opt in &all_options {
+                                let is_selected = opt
+                                    .value
+                                    .strip_prefix("pack:")
+                                    .is_some_and(|p| p == pack_path);
+                                if ui.selectable_label(is_selected, &opt.display).clicked()
+                                    && !is_selected
+                                {
+                                    let old = self.zones[idx].source.clone();
+                                    let new = if let Some(pp) = opt.value.strip_prefix("pack:") {
+                                        ZoneSourceState::BlendScene {
+                                            pack_path: pp.to_string(),
+                                            replica,
+                                        }
+                                    } else {
+                                        ZoneSourceState::BiomePreset(opt.display.clone())
+                                    };
+                                    self.zones[idx].source = new.clone();
+                                    self.undo_stack.push(BlueprintCommand::UpdateZoneSource {
+                                        zone_index: idx,
+                                        old_source: old,
+                                        new_source: new,
+                                    });
+                                }
+                            }
+                        });
                 });
                 ui.horizontal(|ui| {
                     ui.label("Mode:");

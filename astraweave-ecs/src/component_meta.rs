@@ -216,7 +216,10 @@ mod tests {
         registry.register::<Position>();
 
         let meta = registry.get(TypeId::of::<Position>()).unwrap();
-        assert_eq!(meta.type_name, "astraweave_ecs::component_meta::tests::Position");
+        assert_eq!(
+            meta.type_name,
+            "astraweave_ecs::component_meta::tests::Position"
+        );
 
         assert!(registry.get(TypeId::of::<Health>()).is_none());
     }

@@ -70,6 +70,36 @@ pub mod simd_movement;
 pub mod simd_quat;
 pub mod simd_vec;
 
+/// Enable flush-to-zero (FTZ) and denormals-are-zero (DAZ) modes on x86_64.
+///
+/// Denormalized floats (magnitude < ~1.18e-38) cause 10-100x performance penalties
+/// on x86 processors. This function sets the MXCSR register bits to flush subnormal
+/// results to zero and treat subnormal inputs as zero.
+///
+/// Call this once at engine initialization before any math-heavy workloads.
+///
+/// # Safety
+/// This is safe to call — it only affects the current thread's floating-point behavior.
+/// Subnormal precision is lost, which is acceptable for game engine math.
+///
+/// # Platform
+/// - x86_64: Sets FTZ (bit 15) and DAZ (bit 6) in MXCSR
+/// - Other platforms: No-op
+pub fn enable_flush_to_zero() {
+    #[cfg(target_arch = "x86_64")]
+    {
+        // SAFETY: stmxcsr/ldmxcsr read/write the MXCSR register which controls
+        // SSE floating-point behavior. Setting FTZ and DAZ only affects subnormal
+        // handling for the current thread — no memory safety implications.
+        unsafe {
+            let mut mxcsr: u32 = 0;
+            std::arch::asm!("stmxcsr [{}]", in(reg) &mut mxcsr, options(nostack));
+            mxcsr |= 0x8040; // FTZ (bit 15) | DAZ (bit 6)
+            std::arch::asm!("ldmxcsr [{}]", in(reg) &mxcsr, options(nostack));
+        }
+    }
+}
+
 #[cfg(test)]
 mod mutation_tests;
 

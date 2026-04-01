@@ -17,7 +17,8 @@
 
 use astraweave_ai::core_loop::{dispatch_planner, CAiController, PlannerMode};
 use astraweave_core::{
-    ActionStep, CompanionState, EnemyState, IVec2, PlanIntent, PlayerState, WorldSnapshot,
+    ActionStep, CompanionState, CoverType, EnemyState, IVec2, PlanIntent, PlayerState, Stance,
+    WorldSnapshot,
 };
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::collections::BTreeMap;
@@ -38,7 +39,7 @@ fn create_agent_snapshot(agent_id: usize, agent_pos: IVec2, enemy_count: usize) 
                 y: 50 + (i as i32) * 5,
             },
             hp: 80,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         })
         .collect();
@@ -54,7 +55,7 @@ fn create_agent_snapshot(agent_id: usize, agent_pos: IVec2, enemy_count: usize) 
         player: PlayerState {
             hp: 100,
             pos: IVec2 { x: 0, y: 0 },
-            stance: "stand".into(),
+            stance: Stance::Stand,
             orders: vec!["attack".to_string()],
         },
         enemies,

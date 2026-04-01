@@ -35,10 +35,7 @@ fn entity_to_raw_encoding() {
     let entity = Entity::new(id, generation);
     let raw = entity.to_raw();
 
-    kani::assert(
-        (raw as u32) == id,
-        "Low 32 bits must be ID",
-    );
+    kani::assert((raw as u32) == id, "Low 32 bits must be ID");
     kani::assert(
         ((raw >> 32) as u32) == generation,
         "High 32 bits must be generation",
@@ -102,7 +99,10 @@ fn allocator_despawn_returns_correct_bool() {
     let mut allocator = EntityAllocator::new();
     let entity = allocator.spawn();
 
-    kani::assert(allocator.is_alive(entity), "Just spawned entity must be alive");
+    kani::assert(
+        allocator.is_alive(entity),
+        "Just spawned entity must be alive",
+    );
 
     let first_despawn = allocator.despawn(entity);
     kani::assert(first_despawn, "First despawn must return true");
@@ -118,7 +118,10 @@ fn allocator_is_alive_false_after_despawn() {
     let mut allocator = EntityAllocator::new();
     let entity = allocator.spawn();
 
-    kani::assert(allocator.is_alive(entity), "Entity must be alive after spawn");
+    kani::assert(
+        allocator.is_alive(entity),
+        "Entity must be alive after spawn",
+    );
 
     allocator.despawn(entity);
 
@@ -179,10 +182,10 @@ fn allocator_recycled_entity_generation() {
 #[kani::proof]
 fn allocator_is_alive_rejects_invalid_id() {
     let allocator = EntityAllocator::new();
-    
+
     // Entity with ID 0 doesn't exist yet
     let fake_entity = unsafe { Entity::from_raw(0) };
-    
+
     kani::assert(
         !allocator.is_alive(fake_entity),
         "Non-existent entity must report dead",
@@ -217,10 +220,16 @@ fn allocator_despawned_count_accurate() {
     let e2 = allocator.spawn();
 
     allocator.despawn(e1);
-    kani::assert(allocator.despawned_count() == 1, "despawned_count must be 1");
+    kani::assert(
+        allocator.despawned_count() == 1,
+        "despawned_count must be 1",
+    );
 
     allocator.despawn(e2);
-    kani::assert(allocator.despawned_count() == 2, "despawned_count must be 2");
+    kani::assert(
+        allocator.despawned_count() == 2,
+        "despawned_count must be 2",
+    );
 }
 
 /// Verify entity ordering is consistent

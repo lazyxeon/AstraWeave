@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(toml|json\\)$|rules\")",
+      "Bash(grep -E \"^[^/]*\\(/[^/]*\\)?$\")",
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(xargs grep:*)",
+      "Bash(find /c/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine -name *.rs -type f 2)",
+      "Bash(/dev/null -path *terrain*)",
+      "Bash(find /c/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine -name *.rs -type f)",
+      "Bash(ls -la /c/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/tools/aw_editor/src/viewport/*.rs)",
+      "Bash(wc:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(grep -r \"Bgra8UnormSrgb\\\\|Rgba8Unorm\\\\|Rgba8UnormSrgb\\\\|format:\" /c/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/tools/aw_editor/src/viewport/*.rs)",
+      "Bash(grep -rn \"clone\\(\\)\" /c/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/tools/aw_editor/src/viewport/*.rs)",
+      "Bash(grep -v \"//\")",
+      "Bash(/tmp/audit_report.md:*)",
+      "Bash(/tmp/check_layout.rs:*)",
+      "Bash(python3)",
+      "Bash(/tmp/shader_verification_report.txt:*)",
+      "Bash(grep:*)",
+      "Bash(cargo editor-dev:*)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\(''''assets/imported/Namaqualand/namaqualand.biomepack.json''''\\)\\); [print\\(f  {i}: name=''''{gt[''''name'''']}'''', diffuse={gt.get\\(''''diffuse'''',''''None''''\\)}\\) for i,gt in enumerate\\(d.get\\(''''ground_textures'''',[]\\)\\)]\")",
+      "Bash(ls assets/materials/*_mra.png)",
+      "Bash(python3:*)",
+      "Bash(timeout 15 cargo run --bin aw_editor --profile release-fast)",
+      "Bash(timeout 20 cargo run --bin aw_editor --profile release-fast)",
+      "Bash(timeout 25 cargo run --bin aw_editor --profile release-fast)",
+      "Bash(timeout 40 cargo run --bin aw_editor --profile release-fast)",
+      "WebSearch",
+      "Bash(cargo check-all:*)"
+    ]
+  }
+}

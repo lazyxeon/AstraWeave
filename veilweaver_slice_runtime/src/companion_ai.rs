@@ -101,7 +101,7 @@ impl CompanionAI {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState};
+    use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance};
     use std::collections::BTreeMap;
 
     fn test_snapshot() -> WorldSnapshot {
@@ -110,7 +110,7 @@ mod tests {
             player: PlayerState {
                 pos: IVec2::new(10, 10),
                 hp: 80,
-                stance: "stand".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {
@@ -123,7 +123,7 @@ mod tests {
                 id: 1,
                 pos: IVec2::new(20, 15),
                 hp: 50,
-                cover: "none".to_string(),
+                cover: CoverType::None,
                 last_seen: 0.0,
             }],
             pois: vec![],

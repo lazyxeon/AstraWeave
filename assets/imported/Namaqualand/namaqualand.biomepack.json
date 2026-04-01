@@ -8999,18 +8999,18 @@
   "hdris": [],
   "ground_textures": [
     {
-      "name": "sand",
-      "diffuse": "textures/sandy_gravel_02_diff_4k.jpg.png",
-      "normal": "textures/sandy_gravel_02_nor_gl_4k.exr.png",
-      "roughness": "textures/sandy_gravel_02_rough_4k.exr.png",
-      "displacement": "textures/sandy_gravel_02_disp_4k.png.png"
-    },
-    {
       "name": "cliff",
       "diffuse": "textures/namaqualand_cliff_02_diff_4k.jpg.png",
       "normal": "textures/namaqualand_cliff_02_nor_gl_4k.exr.png",
       "roughness": "textures/namaqualand_cliff_02_rough_4k.exr.png",
       "displacement": "textures/cliff_side_disp_4k.png.png"
+    },
+    {
+      "name": "sand",
+      "diffuse": "textures/sandy_gravel_02_diff_4k.jpg.png",
+      "normal": "textures/sandy_gravel_02_nor_gl_4k.exr.png",
+      "roughness": "textures/sandy_gravel_02_rough_4k.exr.png",
+      "displacement": "textures/sandy_gravel_02_disp_4k.png.png"
     }
   ],
   "scatter": {

@@ -1682,15 +1682,15 @@ impl EditorTabViewer {
             asset_type_filter: 0, // All
             asset_view_mode: 0,   // List
             // World settings
-            world_ambient_color: [0.50, 0.45, 0.42],
+            world_ambient_color: [0.55, 0.52, 0.48],
             world_fog_enabled: false,
             world_fog_density: 0.01,
-            world_sun_intensity: 1.6,
-            world_sun_elevation: 45.0,
+            world_sun_intensity: 1.8,
+            world_sun_elevation: 50.0,
             world_sun_azimuth: 35.0,
             world_sun_color: [1.0, 0.95, 0.85],
-            world_ambient_intensity: 0.22,
-            world_exposure: 0.9,
+            world_ambient_intensity: 0.35,
+            world_exposure: 1.1,
             world_gravity: -9.81,
             // Transform settings
             transform_snap_value: 1.0,
@@ -2017,6 +2017,16 @@ impl EditorTabViewer {
         self.terrain_panel.height_stats()
     }
 
+    /// Return the currently loaded BiomePack (if any) for texture injection.
+    pub fn cached_biome_pack(&self) -> Option<&astraweave_terrain::BiomePack> {
+        self.terrain_panel.cached_biome_pack()
+    }
+
+    /// Current water surface level from terrain panel.
+    pub fn water_level(&self) -> f32 {
+        self.terrain_panel.water_level
+    }
+
     /// Sample the terrain height at a world (x, z) position.
     /// Returns the height if terrain exists at that location.
     pub fn sample_terrain_height_at(&self, world_x: f32, world_z: f32) -> Option<f32> {
@@ -2053,6 +2063,21 @@ impl EditorTabViewer {
     }
 
     /// Collect terrain chunks for zone scatter generation.
+    /// Ensure terrain chunks exist — auto-generates with default grassland if empty.
+    /// Returns the number of chunks generated (0 if terrain already existed).
+    pub fn ensure_terrain_exists(&mut self) -> usize {
+        let ts = self.terrain_panel.terrain_state_mut();
+        if ts.chunks().next().is_some() {
+            return 0; // Already have terrain
+        }
+        // Auto-generate with current biome (or default grassland), radius 2
+        ts.configure(42, "grassland");
+        match ts.generate_terrain(2) {
+            Ok(count) => count,
+            Err(_) => 0,
+        }
+    }
+
     /// Returns borrowed TerrainChunks from the terrain state.
     pub fn collect_terrain_chunks(&self) -> Vec<&astraweave_terrain::TerrainChunk> {
         self.terrain_panel
@@ -2067,6 +2092,14 @@ impl EditorTabViewer {
     pub fn trigger_terrain_generation(&mut self, seed: u64, biome: &str, chunk_radius: i32) {
         self.terrain_panel
             .configure_and_generate(seed, biome, chunk_radius);
+    }
+
+    /// Apply heightmap patches from zone scatter generation to the terrain state.
+    /// Mutates affected chunks and marks them dirty for GPU re-upload.
+    pub fn apply_zone_heightmap_patches(&mut self, patches: &[astraweave_terrain::HeightmapPatch]) {
+        self.terrain_panel
+            .terrain_state_mut()
+            .apply_zone_heightmap_patches(patches);
     }
 
     /// Apply terrain brush at world coordinates (forwarded from viewport)
@@ -2345,6 +2378,11 @@ impl EditorTabViewer {
     /// Replace all zones in the blueprint panel (e.g., after loading from file)
     pub fn set_blueprint_zones(&mut self, zones: Vec<crate::panels::blueprint_panel::ZoneState>) {
         self.blueprint_panel.set_zones(zones);
+    }
+
+    /// Add a single zone to the blueprint panel (e.g., from blend import flow).
+    pub fn add_blueprint_zone(&mut self, zone: crate::panels::blueprint_panel::ZoneState) {
+        self.blueprint_panel.add_zone(zone);
     }
 
     /// Get mutable access to the zone registry
@@ -6262,12 +6300,12 @@ impl TabViewer for EditorTabViewer {
                         ui.horizontal(|ui| {
                             ui.label("Presets:");
                             if ui.small_button("Bright Day").clicked() {
-                                self.world_sun_intensity = 1.6;
-                                self.world_sun_elevation = 60.0;
-                                self.world_ambient_intensity = 0.22;
-                                self.world_exposure = 0.9;
+                                self.world_sun_intensity = 1.8;
+                                self.world_sun_elevation = 50.0;
+                                self.world_ambient_intensity = 0.35;
+                                self.world_exposure = 1.1;
                                 self.world_sun_color = [1.0, 0.95, 0.85];
-                                self.world_ambient_color = [0.50, 0.45, 0.42];
+                                self.world_ambient_color = [0.55, 0.52, 0.48];
                             }
                             if ui.small_button("Golden Hour").clicked() {
                                 self.world_sun_intensity = 1.2;

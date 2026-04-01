@@ -31,6 +31,7 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) vertex_color: vec4<f32>,
+    @location(8) uv: vec2<f32>,
 }
 
 struct InstanceInput {
@@ -48,10 +49,17 @@ struct VertexOutput {
     @location(2) color: vec4<f32>,
     @location(3) fog_factor: f32,
     @location(4) lod_fade: f32,
+    @location(5) uv: vec2<f32>,
 }
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
+
+// Per-mesh albedo texture (Group 1). Falls back to 1×1 white for vertex-color meshes.
+@group(1) @binding(0)
+var albedo_tex: texture_2d<f32>;
+@group(1) @binding(1)
+var albedo_samp: sampler;
 
 // Simple hash for per-instance wind phase variation
 fn hash_position(p: vec3<f32>) -> f32 {
@@ -134,11 +142,23 @@ fn vs_main(
     );
     output.fog_factor = fog_factor;
     output.lod_fade = 0.0;
+    output.uv = vertex.uv;
     return output;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Sample albedo texture (1×1 white for vertex-color-only meshes, real texture otherwise)
+    let tex_color = textureSample(albedo_tex, albedo_samp, in.uv);
+
+    // Alpha test: discard transparent fragments (vegetation cutouts)
+    if tex_color.a < 0.5 {
+        discard;
+    }
+
+    // Combine: texture × vertex color (vertex color modulates the texture)
+    let base_color = in.color.rgb * tex_color.rgb;
+
     // Dynamic directional lighting from terrain sun uniforms
     let light_dir = normalize(uniforms.sun_dir);
     let n = normalize(in.world_normal);
@@ -149,7 +169,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Ambient: ambient color × intensity
     let ambient = uniforms.ambient_color * uniforms.ambient_intensity;
     // Combine lighting
-    var lit_color = in.color.rgb * (diffuse + ambient);
+    var lit_color = base_color * (diffuse + ambient);
 
     // Apply exposure and simple Reinhard tone mapping
     lit_color = lit_color * uniforms.exposure;

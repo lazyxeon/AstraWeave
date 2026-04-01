@@ -86,28 +86,28 @@
       ],
       "textures": [
         {
-          "filename": "gravelly_sand_disp_4k.png.png",
+          "filename": "gravelly_sand_disp_4k.png",
           "channel": "unknown",
           "original_name": "gravelly_sand_disp_4k.png",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "gravelly_sand_diff_4k.jpg.png",
+          "filename": "gravelly_sand_diff_4k.png",
           "channel": "diffuse",
           "original_name": "gravelly_sand_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "gravelly_sand_rough_4k.exr.png",
+          "filename": "gravelly_sand_rough_4k.png",
           "channel": "roughness",
           "original_name": "gravelly_sand_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "gravelly_sand_nor_gl_4k.exr.png",
+          "filename": "gravelly_sand_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "gravelly_sand_nor_gl_4k.exr",
           "width": 4096,
@@ -161,14 +161,14 @@
       ],
       "textures": [
         {
-          "filename": "bee.png.png",
+          "filename": "bee.png",
           "channel": "displacement",
           "original_name": "bee.png",
           "width": 599,
           "height": 599
         },
         {
-          "filename": "bee.png.png",
+          "filename": "bee.png",
           "channel": "diffuse",
           "original_name": "bee.png",
           "width": 599,
@@ -224,21 +224,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -299,21 +299,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -374,21 +374,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -449,21 +449,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -524,21 +524,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -599,21 +599,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -674,21 +674,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -749,21 +749,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -824,21 +824,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -899,21 +899,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -974,21 +974,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -1049,21 +1049,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -1124,21 +1124,21 @@
       ],
       "textures": [
         {
-          "filename": "billboard_foliage_billboards_albedo.psd.png",
+          "filename": "billboard_foliage_billboards_albedo.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_albedo.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_alphamask.psd.png",
+          "filename": "billboard_foliage_billboards_alphamask.png",
           "channel": "unknown",
           "original_name": "billboard_foliage_billboards_alphamask.psd",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "billboard_foliage_billboards_normal.psd.png",
+          "filename": "billboard_foliage_billboards_normal.png",
           "channel": "diffuse",
           "original_name": "billboard_foliage_billboards_normal.psd",
           "width": 4096,
@@ -1199,28 +1199,28 @@
       ],
       "textures": [
         {
-          "filename": "cliff_side_disp_4k.png.png",
+          "filename": "cliff_side_disp_4k.png",
           "channel": "displacement",
           "original_name": "cliff_side_disp_4k.png",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "cliff_side_diff_4k.jpg.png",
+          "filename": "cliff_side_diff_4k.png",
           "channel": "diffuse",
           "original_name": "cliff_side_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "cliff_side_rough_4k.exr.png",
+          "filename": "cliff_side_rough_4k.png",
           "channel": "roughness",
           "original_name": "cliff_side_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "cliff_side_nor_gl_4k.exr.png",
+          "filename": "cliff_side_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "cliff_side_nor_gl_4k.exr",
           "width": 4096,
@@ -1274,28 +1274,28 @@
       ],
       "textures": [
         {
-          "filename": "crystalline_iceplant_diff.png.png",
+          "filename": "crystalline_iceplant_diff.png",
           "channel": "unknown",
           "original_name": "crystalline_iceplant_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_rough.png.png",
+          "filename": "crystalline_iceplant_rough.png",
           "channel": "roughness",
           "original_name": "crystalline_iceplant_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_alpha.png.png",
+          "filename": "crystalline_iceplant_alpha.png",
           "channel": "alpha",
           "original_name": "crystalline_iceplant_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_nor_gl.png.png",
+          "filename": "crystalline_iceplant_nor_gl.png",
           "channel": "normal",
           "original_name": "crystalline_iceplant_nor_gl.png",
           "width": 1024,
@@ -1349,28 +1349,28 @@
       ],
       "textures": [
         {
-          "filename": "crystalline_iceplant_diff.png.png",
+          "filename": "crystalline_iceplant_diff.png",
           "channel": "unknown",
           "original_name": "crystalline_iceplant_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_rough.png.png",
+          "filename": "crystalline_iceplant_rough.png",
           "channel": "roughness",
           "original_name": "crystalline_iceplant_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_alpha.png.png",
+          "filename": "crystalline_iceplant_alpha.png",
           "channel": "alpha",
           "original_name": "crystalline_iceplant_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_nor_gl.png.png",
+          "filename": "crystalline_iceplant_nor_gl.png",
           "channel": "normal",
           "original_name": "crystalline_iceplant_nor_gl.png",
           "width": 1024,
@@ -1424,28 +1424,28 @@
       ],
       "textures": [
         {
-          "filename": "crystalline_iceplant_diff.png.png",
+          "filename": "crystalline_iceplant_diff.png",
           "channel": "unknown",
           "original_name": "crystalline_iceplant_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_rough.png.png",
+          "filename": "crystalline_iceplant_rough.png",
           "channel": "roughness",
           "original_name": "crystalline_iceplant_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_alpha.png.png",
+          "filename": "crystalline_iceplant_alpha.png",
           "channel": "alpha",
           "original_name": "crystalline_iceplant_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_nor_gl.png.png",
+          "filename": "crystalline_iceplant_nor_gl.png",
           "channel": "normal",
           "original_name": "crystalline_iceplant_nor_gl.png",
           "width": 1024,
@@ -1499,28 +1499,28 @@
       ],
       "textures": [
         {
-          "filename": "crystalline_iceplant_diff.png.png",
+          "filename": "crystalline_iceplant_diff.png",
           "channel": "unknown",
           "original_name": "crystalline_iceplant_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_rough.png.png",
+          "filename": "crystalline_iceplant_rough.png",
           "channel": "roughness",
           "original_name": "crystalline_iceplant_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_alpha.png.png",
+          "filename": "crystalline_iceplant_alpha.png",
           "channel": "alpha",
           "original_name": "crystalline_iceplant_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_nor_gl.png.png",
+          "filename": "crystalline_iceplant_nor_gl.png",
           "channel": "normal",
           "original_name": "crystalline_iceplant_nor_gl.png",
           "width": 1024,
@@ -1574,28 +1574,28 @@
       ],
       "textures": [
         {
-          "filename": "crystalline_iceplant_diff.png.png",
+          "filename": "crystalline_iceplant_diff.png",
           "channel": "unknown",
           "original_name": "crystalline_iceplant_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_rough.png.png",
+          "filename": "crystalline_iceplant_rough.png",
           "channel": "roughness",
           "original_name": "crystalline_iceplant_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_alpha.png.png",
+          "filename": "crystalline_iceplant_alpha.png",
           "channel": "alpha",
           "original_name": "crystalline_iceplant_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_nor_gl.png.png",
+          "filename": "crystalline_iceplant_nor_gl.png",
           "channel": "normal",
           "original_name": "crystalline_iceplant_nor_gl.png",
           "width": 1024,
@@ -1649,28 +1649,28 @@
       ],
       "textures": [
         {
-          "filename": "crystalline_iceplant_diff.png.png",
+          "filename": "crystalline_iceplant_diff.png",
           "channel": "unknown",
           "original_name": "crystalline_iceplant_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_rough.png.png",
+          "filename": "crystalline_iceplant_rough.png",
           "channel": "roughness",
           "original_name": "crystalline_iceplant_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_alpha.png.png",
+          "filename": "crystalline_iceplant_alpha.png",
           "channel": "alpha",
           "original_name": "crystalline_iceplant_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_nor_gl.png.png",
+          "filename": "crystalline_iceplant_nor_gl.png",
           "channel": "normal",
           "original_name": "crystalline_iceplant_nor_gl.png",
           "width": 1024,
@@ -1724,28 +1724,28 @@
       ],
       "textures": [
         {
-          "filename": "crystalline_iceplant_diff.png.png",
+          "filename": "crystalline_iceplant_diff.png",
           "channel": "unknown",
           "original_name": "crystalline_iceplant_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_rough.png.png",
+          "filename": "crystalline_iceplant_rough.png",
           "channel": "roughness",
           "original_name": "crystalline_iceplant_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_alpha.png.png",
+          "filename": "crystalline_iceplant_alpha.png",
           "channel": "alpha",
           "original_name": "crystalline_iceplant_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_nor_gl.png.png",
+          "filename": "crystalline_iceplant_nor_gl.png",
           "channel": "normal",
           "original_name": "crystalline_iceplant_nor_gl.png",
           "width": 1024,
@@ -1799,28 +1799,28 @@
       ],
       "textures": [
         {
-          "filename": "crystalline_iceplant_diff.png.png",
+          "filename": "crystalline_iceplant_diff.png",
           "channel": "unknown",
           "original_name": "crystalline_iceplant_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_rough.png.png",
+          "filename": "crystalline_iceplant_rough.png",
           "channel": "roughness",
           "original_name": "crystalline_iceplant_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_alpha.png.png",
+          "filename": "crystalline_iceplant_alpha.png",
           "channel": "alpha",
           "original_name": "crystalline_iceplant_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "crystalline_iceplant_nor_gl.png.png",
+          "filename": "crystalline_iceplant_nor_gl.png",
           "channel": "normal",
           "original_name": "crystalline_iceplant_nor_gl.png",
           "width": 1024,
@@ -1921,21 +1921,21 @@
       ],
       "textures": [
         {
-          "filename": "dead_quiver_branch_01_diff.png.png",
+          "filename": "dead_quiver_branch_01_diff.png",
           "channel": "diffuse",
           "original_name": "dead_quiver_branch_01_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "dead_quiver_branch_01_rough.png.png",
+          "filename": "dead_quiver_branch_01_rough.png",
           "channel": "roughness",
           "original_name": "dead_quiver_branch_01_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "dead_quiver_branch_01_nor_gl.png.png",
+          "filename": "dead_quiver_branch_01_nor_gl.png",
           "channel": "diffuse",
           "original_name": "dead_quiver_branch_01_nor_gl.png",
           "width": 1024,
@@ -2036,21 +2036,21 @@
       ],
       "textures": [
         {
-          "filename": "dead_quiver_branch_02_diff.png.png",
+          "filename": "dead_quiver_branch_02_diff.png",
           "channel": "diffuse",
           "original_name": "dead_quiver_branch_02_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "dead_quiver_branch_02_rough.png.png",
+          "filename": "dead_quiver_branch_02_rough.png",
           "channel": "roughness",
           "original_name": "dead_quiver_branch_02_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "dead_quiver_branch_02_nor_gl.png.png",
+          "filename": "dead_quiver_branch_02_nor_gl.png",
           "channel": "diffuse",
           "original_name": "dead_quiver_branch_02_nor_gl.png",
           "width": 1024,
@@ -2151,35 +2151,35 @@
       ],
       "textures": [
         {
-          "filename": "didelta_spinosa_diff.png.png",
+          "filename": "didelta_spinosa_diff.png",
           "channel": "diffuse",
           "original_name": "didelta_spinosa_diff.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_rough.png.png",
+          "filename": "didelta_spinosa_rough.png",
           "channel": "roughness",
           "original_name": "didelta_spinosa_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_gl_norm.png.png",
+          "filename": "didelta_spinosa_gl_norm.png",
           "channel": "normal",
           "original_name": "didelta_spinosa_gl_norm.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_mask.png.png",
+          "filename": "didelta_spinosa_mask.png",
           "channel": "alpha",
           "original_name": "didelta_spinosa_mask.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_flower_mask.png.png",
+          "filename": "didelta_spinosa_flower_mask.png",
           "channel": "unknown",
           "original_name": "didelta_spinosa_flower_mask.png",
           "width": 2048,
@@ -2509,35 +2509,35 @@
       ],
       "textures": [
         {
-          "filename": "didelta_spinosa_diff.png.png",
+          "filename": "didelta_spinosa_diff.png",
           "channel": "diffuse",
           "original_name": "didelta_spinosa_diff.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_rough.png.png",
+          "filename": "didelta_spinosa_rough.png",
           "channel": "roughness",
           "original_name": "didelta_spinosa_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_gl_norm.png.png",
+          "filename": "didelta_spinosa_gl_norm.png",
           "channel": "normal",
           "original_name": "didelta_spinosa_gl_norm.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_mask.png.png",
+          "filename": "didelta_spinosa_mask.png",
           "channel": "alpha",
           "original_name": "didelta_spinosa_mask.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_flower_mask.png.png",
+          "filename": "didelta_spinosa_flower_mask.png",
           "channel": "unknown",
           "original_name": "didelta_spinosa_flower_mask.png",
           "width": 2048,
@@ -2683,35 +2683,35 @@
       ],
       "textures": [
         {
-          "filename": "didelta_spinosa_diff.png.png",
+          "filename": "didelta_spinosa_diff.png",
           "channel": "diffuse",
           "original_name": "didelta_spinosa_diff.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_rough.png.png",
+          "filename": "didelta_spinosa_rough.png",
           "channel": "roughness",
           "original_name": "didelta_spinosa_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_gl_norm.png.png",
+          "filename": "didelta_spinosa_gl_norm.png",
           "channel": "normal",
           "original_name": "didelta_spinosa_gl_norm.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_mask.png.png",
+          "filename": "didelta_spinosa_mask.png",
           "channel": "alpha",
           "original_name": "didelta_spinosa_mask.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "didelta_spinosa_flower_mask.png.png",
+          "filename": "didelta_spinosa_flower_mask.png",
           "channel": "unknown",
           "original_name": "didelta_spinosa_flower_mask.png",
           "width": 2048,
@@ -2811,21 +2811,21 @@
       ],
       "textures": [
         {
-          "filename": "tree_bark_03_diff_8k.jpg.png",
+          "filename": "tree_bark_03_diff_8k.png",
           "channel": "diffuse",
           "original_name": "tree_bark_03_diff_8k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tree_bark_03_rough_8k.jpg.png",
+          "filename": "tree_bark_03_rough_8k.png",
           "channel": "roughness",
           "original_name": "tree_bark_03_rough_8k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tree_bark_03_nor_gl_8k.exr.png",
+          "filename": "tree_bark_03_nor_gl_8k.png",
           "channel": "diffuse",
           "original_name": "tree_bark_03_nor_gl_8k.exr",
           "width": 2048,
@@ -2839,7 +2839,7 @@
           "height": 2048
         },
         {
-          "filename": "fine_leaf_01_rough.png.png",
+          "filename": "fine_leaf_01_rough.png",
           "channel": "roughness",
           "original_name": "fine_leaf_01_rough.png",
           "width": 2048,
@@ -2860,14 +2860,14 @@
           "height": 2048
         },
         {
-          "filename": "fine_leaf_01_translucency.png.png",
+          "filename": "fine_leaf_01_translucency.png",
           "channel": "unknown",
           "original_name": "fine_leaf_01_translucency.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "fine_leaf_01_ao.png.png",
+          "filename": "fine_leaf_01_ao.png",
           "channel": "unknown",
           "original_name": "fine_leaf_01_ao.png",
           "width": 2048,
@@ -3110,21 +3110,21 @@
       ],
       "textures": [
         {
-          "filename": "tree_bark_03_diff_8k.jpg.png",
+          "filename": "tree_bark_03_diff_8k.png",
           "channel": "diffuse",
           "original_name": "tree_bark_03_diff_8k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tree_bark_03_rough_8k.jpg.png",
+          "filename": "tree_bark_03_rough_8k.png",
           "channel": "roughness",
           "original_name": "tree_bark_03_rough_8k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tree_bark_03_nor_gl_8k.exr.png",
+          "filename": "tree_bark_03_nor_gl_8k.png",
           "channel": "diffuse",
           "original_name": "tree_bark_03_nor_gl_8k.exr",
           "width": 2048,
@@ -3138,7 +3138,7 @@
           "height": 2048
         },
         {
-          "filename": "fine_leaf_01_rough.png.png",
+          "filename": "fine_leaf_01_rough.png",
           "channel": "roughness",
           "original_name": "fine_leaf_01_rough.png",
           "width": 2048,
@@ -3159,14 +3159,14 @@
           "height": 2048
         },
         {
-          "filename": "fine_leaf_01_translucency.png.png",
+          "filename": "fine_leaf_01_translucency.png",
           "channel": "unknown",
           "original_name": "fine_leaf_01_translucency.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "fine_leaf_01_ao.png.png",
+          "filename": "fine_leaf_01_ao.png",
           "channel": "unknown",
           "original_name": "fine_leaf_01_ao.png",
           "width": 2048,
@@ -3268,21 +3268,21 @@
       ],
       "textures": [
         {
-          "filename": "tree_bark_03_diff_8k.jpg.png",
+          "filename": "tree_bark_03_diff_8k.png",
           "channel": "diffuse",
           "original_name": "tree_bark_03_diff_8k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tree_bark_03_rough_8k.jpg.png",
+          "filename": "tree_bark_03_rough_8k.png",
           "channel": "roughness",
           "original_name": "tree_bark_03_rough_8k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tree_bark_03_nor_gl_8k.exr.png",
+          "filename": "tree_bark_03_nor_gl_8k.png",
           "channel": "diffuse",
           "original_name": "tree_bark_03_nor_gl_8k.exr",
           "width": 2048,
@@ -3296,7 +3296,7 @@
           "height": 2048
         },
         {
-          "filename": "fine_leaf_01_rough.png.png",
+          "filename": "fine_leaf_01_rough.png",
           "channel": "roughness",
           "original_name": "fine_leaf_01_rough.png",
           "width": 2048,
@@ -3317,14 +3317,14 @@
           "height": 2048
         },
         {
-          "filename": "fine_leaf_01_translucency.png.png",
+          "filename": "fine_leaf_01_translucency.png",
           "channel": "unknown",
           "original_name": "fine_leaf_01_translucency.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "fine_leaf_01_ao.png.png",
+          "filename": "fine_leaf_01_ao.png",
           "channel": "unknown",
           "original_name": "fine_leaf_01_ao.png",
           "width": 2048,
@@ -3661,35 +3661,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -3743,35 +3743,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -3825,35 +3825,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -3907,35 +3907,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -3989,35 +3989,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -4071,35 +4071,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -4153,35 +4153,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -4235,35 +4235,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -4317,35 +4317,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -4399,35 +4399,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -4527,35 +4527,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -4655,35 +4655,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -4783,35 +4783,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_gazania_disp.png.png",
+          "filename": "flower_gazania_disp.png",
           "channel": "displacement",
           "original_name": "flower_gazania_disp.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_rough.png.png",
+          "filename": "flower_gazania_rough.png",
           "channel": "roughness",
           "original_name": "flower_gazania_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_nor_gl.png.png",
+          "filename": "flower_gazania_nor_gl.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_nor_gl.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_alpha.png.png",
+          "filename": "flower_gazania_alpha.png",
           "channel": "unknown",
           "original_name": "flower_gazania_alpha.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "flower_gazania_diff.png.png",
+          "filename": "flower_gazania_diff.png",
           "channel": "diffuse",
           "original_name": "flower_gazania_diff.png",
           "width": 2048,
@@ -4911,35 +4911,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_heliophila_diff.png.png",
+          "filename": "flower_heliophila_diff.png",
           "channel": "unknown",
           "original_name": "flower_heliophila_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_nor_gl.png.png",
+          "filename": "flower_heliophila_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_heliophila_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_alpha.png.png",
+          "filename": "flower_heliophila_alpha.png",
           "channel": "alpha",
           "original_name": "flower_heliophila_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_rough.png.png",
+          "filename": "flower_heliophila_rough.png",
           "channel": "roughness",
           "original_name": "flower_heliophila_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_translucency.png.png",
+          "filename": "flower_heliophila_translucency.png",
           "channel": "unknown",
           "original_name": "flower_heliophila_translucency.png",
           "width": 1024,
@@ -5177,35 +5177,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_heliophila_diff.png.png",
+          "filename": "flower_heliophila_diff.png",
           "channel": "unknown",
           "original_name": "flower_heliophila_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_nor_gl.png.png",
+          "filename": "flower_heliophila_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_heliophila_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_alpha.png.png",
+          "filename": "flower_heliophila_alpha.png",
           "channel": "alpha",
           "original_name": "flower_heliophila_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_rough.png.png",
+          "filename": "flower_heliophila_rough.png",
           "channel": "roughness",
           "original_name": "flower_heliophila_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_translucency.png.png",
+          "filename": "flower_heliophila_translucency.png",
           "channel": "unknown",
           "original_name": "flower_heliophila_translucency.png",
           "width": 1024,
@@ -6225,35 +6225,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_heliophila_diff.png.png",
+          "filename": "flower_heliophila_diff.png",
           "channel": "unknown",
           "original_name": "flower_heliophila_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_nor_gl.png.png",
+          "filename": "flower_heliophila_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_heliophila_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_alpha.png.png",
+          "filename": "flower_heliophila_alpha.png",
           "channel": "alpha",
           "original_name": "flower_heliophila_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_rough.png.png",
+          "filename": "flower_heliophila_rough.png",
           "channel": "roughness",
           "original_name": "flower_heliophila_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_heliophila_translucency.png.png",
+          "filename": "flower_heliophila_translucency.png",
           "channel": "unknown",
           "original_name": "flower_heliophila_translucency.png",
           "width": 1024,
@@ -7430,35 +7430,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -7512,35 +7512,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -7594,35 +7594,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -7676,35 +7676,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -7758,35 +7758,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -7840,35 +7840,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -7922,35 +7922,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -8004,35 +8004,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -8086,35 +8086,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -8168,35 +8168,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -8250,35 +8250,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -8332,35 +8332,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -8414,35 +8414,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -8496,35 +8496,35 @@
       ],
       "textures": [
         {
-          "filename": "flower_ursinia_diff.png.png",
+          "filename": "flower_ursinia_diff.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_rough.png.png",
+          "filename": "flower_ursinia_rough.png",
           "channel": "roughness",
           "original_name": "flower_ursinia_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_nor_gl.png.png",
+          "filename": "flower_ursinia_nor_gl.png",
           "channel": "normal",
           "original_name": "flower_ursinia_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_alpha.png.png",
+          "filename": "flower_ursinia_alpha.png",
           "channel": "alpha",
           "original_name": "flower_ursinia_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "flower_ursinia_mask.png.png",
+          "filename": "flower_ursinia_mask.png",
           "channel": "unknown",
           "original_name": "flower_ursinia_mask.png",
           "width": 1024,
@@ -8671,56 +8671,56 @@
       ],
       "textures": [
         {
-          "filename": "gravelly_sand_disp_4k.png.png",
+          "filename": "gravelly_sand_disp_4k.png",
           "channel": "unknown",
           "original_name": "gravelly_sand_disp_4k.png",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "gravelly_sand_diff_4k.jpg.png",
+          "filename": "gravelly_sand_diff_4k.png",
           "channel": "diffuse",
           "original_name": "gravelly_sand_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "gravelly_sand_rough_4k.exr.png",
+          "filename": "gravelly_sand_rough_4k.png",
           "channel": "roughness",
           "original_name": "gravelly_sand_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "gravelly_sand_nor_gl_4k.exr.png",
+          "filename": "gravelly_sand_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "gravelly_sand_nor_gl_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "sandy_gravel_02_disp_4k.png.png",
+          "filename": "sandy_gravel_02_disp_4k.png",
           "channel": "unknown",
           "original_name": "sandy_gravel_02_disp_4k.png",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "sandy_gravel_02_diff_4k.jpg.png",
+          "filename": "sandy_gravel_02_diff_4k.png",
           "channel": "unknown",
           "original_name": "sandy_gravel_02_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "sandy_gravel_02_rough_4k.exr.png",
+          "filename": "sandy_gravel_02_rough_4k.png",
           "channel": "roughness",
           "original_name": "sandy_gravel_02_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "sandy_gravel_02_nor_gl_4k.exr.png",
+          "filename": "sandy_gravel_02_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "sandy_gravel_02_nor_gl_4k.exr",
           "width": 4096,
@@ -8774,14 +8774,14 @@
       ],
       "textures": [
         {
-          "filename": "LoL_diff.jpg.png",
+          "filename": "LoL_diff.png",
           "channel": "diffuse",
           "original_name": "LoL_diff.jpg",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "LoL_nor_gl.jpg.png",
+          "filename": "LoL_nor_gl.png",
           "channel": "diffuse",
           "original_name": "LoL_nor_gl.jpg",
           "width": 1024,
@@ -8835,21 +8835,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_02_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_02_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_02_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_02_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_02_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_02_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_02_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_02_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_02_nor_gl_4k.exr",
           "width": 4096,
@@ -9363,21 +9363,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_03_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_03_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_03_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_03_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_03_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_03_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_03_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_03_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_03_nor_gl_4k.exr",
           "width": 4096,
@@ -9431,21 +9431,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_03_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_03_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_03_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_03_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_03_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_03_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_03_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_03_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_03_nor_gl_4k.exr",
           "width": 4096,
@@ -9683,21 +9683,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_03_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_03_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_03_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_03_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_03_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_03_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_03_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_03_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_03_nor_gl_4k.exr",
           "width": 4096,
@@ -9795,21 +9795,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_04_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_04_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_04_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_04_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_04_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_04_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_04_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_04_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_04_nor_gl_4k.exr",
           "width": 4096,
@@ -9863,21 +9863,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_04_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_04_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_04_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_04_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_04_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_04_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_04_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_04_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_04_nor_gl_4k.exr",
           "width": 4096,
@@ -9975,21 +9975,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_05_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_05_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_05_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_05_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_05_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_05_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_05_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_05_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_05_nor_gl_4k.exr",
           "width": 4096,
@@ -10043,21 +10043,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_05_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_05_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_05_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_05_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_05_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_05_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_05_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_05_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_05_nor_gl_4k.exr",
           "width": 4096,
@@ -10155,21 +10155,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_06_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_06_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_06_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_06_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_06_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_06_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_06_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_06_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_06_nor_gl_4k.exr",
           "width": 4096,
@@ -10453,21 +10453,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulder_06_diff_4k.jpg.png",
+          "filename": "namaqualand_boulder_06_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_06_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_06_rough_4k.exr.png",
+          "filename": "namaqualand_boulder_06_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulder_06_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_boulder_06_nor_gl_4k.exr.png",
+          "filename": "namaqualand_boulder_06_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulder_06_nor_gl_4k.exr",
           "width": 4096,
@@ -10565,21 +10565,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulders_01_diff_2k.jpg.png",
+          "filename": "namaqualand_boulders_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulders_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_boulders_01_rough_2k.exr.png",
+          "filename": "namaqualand_boulders_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulders_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_boulders_01_nor_gl.png.png",
+          "filename": "namaqualand_boulders_01_nor_gl.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulders_01_nor_gl.png",
           "width": 1024,
@@ -10633,21 +10633,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulders_01_diff_2k.jpg.png",
+          "filename": "namaqualand_boulders_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulders_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_boulders_01_rough_2k.exr.png",
+          "filename": "namaqualand_boulders_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulders_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_boulders_01_nor_gl.png.png",
+          "filename": "namaqualand_boulders_01_nor_gl.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulders_01_nor_gl.png",
           "width": 1024,
@@ -10701,21 +10701,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulders_01_diff_2k.jpg.png",
+          "filename": "namaqualand_boulders_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulders_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_boulders_01_rough_2k.exr.png",
+          "filename": "namaqualand_boulders_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulders_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_boulders_01_nor_gl.png.png",
+          "filename": "namaqualand_boulders_01_nor_gl.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulders_01_nor_gl.png",
           "width": 1024,
@@ -10769,21 +10769,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_boulders_01_diff_2k.jpg.png",
+          "filename": "namaqualand_boulders_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulders_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_boulders_01_rough_2k.exr.png",
+          "filename": "namaqualand_boulders_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_boulders_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_boulders_01_nor_gl.png.png",
+          "filename": "namaqualand_boulders_01_nor_gl.png",
           "channel": "diffuse",
           "original_name": "namaqualand_boulders_01_nor_gl.png",
           "width": 1024,
@@ -10837,21 +10837,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_cliff_01_diff.png.png",
+          "filename": "namaqualand_cliff_01_diff.png",
           "channel": "diffuse",
           "original_name": "namaqualand_cliff_01_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "namaqualand_cliff_01_rough.png.png",
+          "filename": "namaqualand_cliff_01_rough.png",
           "channel": "roughness",
           "original_name": "namaqualand_cliff_01_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "namaqualand_cliff_01_nor_gl.png.png",
+          "filename": "namaqualand_cliff_01_nor_gl.png",
           "channel": "diffuse",
           "original_name": "namaqualand_cliff_01_nor_gl.png",
           "width": 1024,
@@ -10952,21 +10952,21 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_cliff_02_diff_4k.jpg.png",
+          "filename": "namaqualand_cliff_02_diff_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_cliff_02_diff_4k.jpg",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_cliff_02_rough_4k.exr.png",
+          "filename": "namaqualand_cliff_02_rough_4k.png",
           "channel": "roughness",
           "original_name": "namaqualand_cliff_02_rough_4k.exr",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "namaqualand_cliff_02_nor_gl_4k.exr.png",
+          "filename": "namaqualand_cliff_02_nor_gl_4k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_cliff_02_nor_gl_4k.exr",
           "width": 4096,
@@ -11067,28 +11067,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_rocks_01_diff_2k.jpg.png",
+          "filename": "namaqualand_rocks_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_rough_2k.exr.png",
+          "filename": "namaqualand_rocks_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_rocks_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_rocks_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_mask_2k.png.png",
+          "filename": "namaqualand_rocks_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_rocks_01_mask_2k.png",
           "width": 2048,
@@ -11142,28 +11142,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_rocks_01_diff_2k.jpg.png",
+          "filename": "namaqualand_rocks_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_rough_2k.exr.png",
+          "filename": "namaqualand_rocks_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_rocks_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_rocks_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_mask_2k.png.png",
+          "filename": "namaqualand_rocks_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_rocks_01_mask_2k.png",
           "width": 2048,
@@ -11217,28 +11217,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_rocks_01_diff_2k.jpg.png",
+          "filename": "namaqualand_rocks_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_rough_2k.exr.png",
+          "filename": "namaqualand_rocks_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_rocks_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_rocks_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_mask_2k.png.png",
+          "filename": "namaqualand_rocks_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_rocks_01_mask_2k.png",
           "width": 2048,
@@ -11292,28 +11292,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_rocks_01_diff_2k.jpg.png",
+          "filename": "namaqualand_rocks_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_rough_2k.exr.png",
+          "filename": "namaqualand_rocks_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_rocks_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_rocks_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_mask_2k.png.png",
+          "filename": "namaqualand_rocks_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_rocks_01_mask_2k.png",
           "width": 2048,
@@ -11367,28 +11367,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_rocks_01_diff_2k.jpg.png",
+          "filename": "namaqualand_rocks_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_rough_2k.exr.png",
+          "filename": "namaqualand_rocks_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_rocks_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_rocks_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_mask_2k.png.png",
+          "filename": "namaqualand_rocks_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_rocks_01_mask_2k.png",
           "width": 2048,
@@ -11442,28 +11442,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_rocks_01_diff_2k.jpg.png",
+          "filename": "namaqualand_rocks_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_rough_2k.exr.png",
+          "filename": "namaqualand_rocks_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_rocks_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_rocks_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_mask_2k.png.png",
+          "filename": "namaqualand_rocks_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_rocks_01_mask_2k.png",
           "width": 2048,
@@ -11517,28 +11517,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_rocks_01_diff_2k.jpg.png",
+          "filename": "namaqualand_rocks_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_rough_2k.exr.png",
+          "filename": "namaqualand_rocks_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_rocks_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_rocks_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_mask_2k.png.png",
+          "filename": "namaqualand_rocks_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_rocks_01_mask_2k.png",
           "width": 2048,
@@ -11592,28 +11592,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_rocks_01_diff_2k.jpg.png",
+          "filename": "namaqualand_rocks_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_rough_2k.exr.png",
+          "filename": "namaqualand_rocks_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_rocks_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_rocks_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_rocks_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_rocks_01_mask_2k.png.png",
+          "filename": "namaqualand_rocks_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_rocks_01_mask_2k.png",
           "width": 2048,
@@ -11667,28 +11667,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -11742,28 +11742,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -11817,28 +11817,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -11892,28 +11892,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -11967,28 +11967,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -12042,28 +12042,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -12117,28 +12117,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -12192,28 +12192,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -12267,28 +12267,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -12342,28 +12342,28 @@
       ],
       "textures": [
         {
-          "filename": "namaqualand_stones_01_diff_2k.jpg.png",
+          "filename": "namaqualand_stones_01_diff_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_rough_2k.exr.png",
+          "filename": "namaqualand_stones_01_rough_2k.png",
           "channel": "roughness",
           "original_name": "namaqualand_stones_01_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_nor_gl_2k.exr.png",
+          "filename": "namaqualand_stones_01_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "namaqualand_stones_01_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "namaqualand_stones_01_mask_2k.png.png",
+          "filename": "namaqualand_stones_01_mask_2k.png",
           "channel": "unknown",
           "original_name": "namaqualand_stones_01_mask_2k.png",
           "width": 2048,
@@ -12417,56 +12417,56 @@
       ],
       "textures": [
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "unknown",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "normal",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
@@ -12568,56 +12568,56 @@
       ],
       "textures": [
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "unknown",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "normal",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
@@ -12860,56 +12860,56 @@
       ],
       "textures": [
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "unknown",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "normal",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
@@ -13011,56 +13011,56 @@
       ],
       "textures": [
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "unknown",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "normal",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
@@ -13209,56 +13209,56 @@
       ],
       "textures": [
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "unknown",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "normal",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
@@ -13407,56 +13407,56 @@
       ],
       "textures": [
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "unknown",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "normal",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
@@ -13605,56 +13605,56 @@
       ],
       "textures": [
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "diffuse",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_diff_2k.jpg.png",
+          "filename": "othonna_cerarioides_diff_2k.png",
           "channel": "unknown",
           "original_name": "othonna_cerarioides_diff_2k.jpg",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_rough_2k.exr.png",
+          "filename": "othonna_cerarioides_rough_2k.png",
           "channel": "roughness",
           "original_name": "othonna_cerarioides_rough_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_nor_gl_2k.exr.png",
+          "filename": "othonna_cerarioides_nor_gl_2k.png",
           "channel": "normal",
           "original_name": "othonna_cerarioides_nor_gl_2k.exr",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "othonna_cerarioides_alpha_2k.png.png",
+          "filename": "othonna_cerarioides_alpha_2k.png",
           "channel": "alpha",
           "original_name": "othonna_cerarioides_alpha_2k.png",
           "width": 2048,
@@ -14132,28 +14132,28 @@
       ],
       "textures": [
         {
-          "filename": "damp_sand_disp.png.png",
+          "filename": "damp_sand_disp.png",
           "channel": "displacement",
           "original_name": "damp_sand_disp.png",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "damp_sand_diff.png.png",
+          "filename": "damp_sand_diff.png",
           "channel": "diffuse",
           "original_name": "damp_sand_diff.png",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "damp_sand_rough.png.png",
+          "filename": "damp_sand_rough.png",
           "channel": "roughness",
           "original_name": "damp_sand_rough.png",
           "width": 4096,
           "height": 4096
         },
         {
-          "filename": "damp_sand_nor_gl.png.png",
+          "filename": "damp_sand_nor_gl.png",
           "channel": "diffuse",
           "original_name": "damp_sand_nor_gl.png",
           "width": 4096,
@@ -14207,42 +14207,42 @@
       ],
       "textures": [
         {
-          "filename": "quiver_tree_01_trunk_diff.png.png",
+          "filename": "quiver_tree_01_trunk_diff.png",
           "channel": "diffuse",
           "original_name": "quiver_tree_01_trunk_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "quiver_tree_01_trunk_rough.png.png",
+          "filename": "quiver_tree_01_trunk_rough.png",
           "channel": "roughness",
           "original_name": "quiver_tree_01_trunk_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "quiver_tree_01_trunk_nor_gl.png.png",
+          "filename": "quiver_tree_01_trunk_nor_gl.png",
           "channel": "diffuse",
           "original_name": "quiver_tree_01_trunk_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "quiver_tree_01_leaf_diff.png.png",
+          "filename": "quiver_tree_01_leaf_diff.png",
           "channel": "unknown",
           "original_name": "quiver_tree_01_leaf_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "quiver_tree_01_leaf_rough.png.png",
+          "filename": "quiver_tree_01_leaf_rough.png",
           "channel": "roughness",
           "original_name": "quiver_tree_01_leaf_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "quiver_tree_01_leaf_nor_gl.png.png",
+          "filename": "quiver_tree_01_leaf_nor_gl.png",
           "channel": "normal",
           "original_name": "quiver_tree_01_leaf_nor_gl.png",
           "width": 1024,
@@ -14859,28 +14859,28 @@
       ],
       "textures": [
         {
-          "filename": "quiver_tree_02_diff.png.png",
+          "filename": "quiver_tree_02_diff.png",
           "channel": "diffuse",
           "original_name": "quiver_tree_02_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "quiver_tree_02_rough.png.png",
+          "filename": "quiver_tree_02_rough.png",
           "channel": "roughness",
           "original_name": "quiver_tree_02_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "quiver_tree_02_nor_gl.png.png",
+          "filename": "quiver_tree_02_nor_gl.png",
           "channel": "diffuse",
           "original_name": "quiver_tree_02_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "quiver_tree_02_mask.png.png",
+          "filename": "quiver_tree_02_mask.png",
           "channel": "unknown",
           "original_name": "quiver_tree_02_mask.png",
           "width": 1024,
@@ -15027,77 +15027,77 @@
       ],
       "textures": [
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "unknown",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
@@ -15153,77 +15153,77 @@
       ],
       "textures": [
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "unknown",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
@@ -16335,77 +16335,77 @@
       ],
       "textures": [
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "unknown",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
@@ -16557,77 +16557,77 @@
       ],
       "textures": [
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "unknown",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
@@ -16683,77 +16683,77 @@
       ],
       "textures": [
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "unknown",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
@@ -16809,77 +16809,77 @@
       ],
       "textures": [
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "unknown",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
@@ -16935,77 +16935,77 @@
       ],
       "textures": [
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "unknown",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
@@ -17061,77 +17061,77 @@
       ],
       "textures": [
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "unknown",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
@@ -17187,77 +17187,77 @@
       ],
       "textures": [
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "unknown",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_alpha.png.png",
+          "filename": "searsia_lucida_alpha.png",
           "channel": "alpha",
           "original_name": "searsia_lucida_alpha.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_diff.png.png",
+          "filename": "searsia_lucida_diff.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_diff.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_rough.png.png",
+          "filename": "searsia_lucida_rough.png",
           "channel": "roughness",
           "original_name": "searsia_lucida_rough.png",
           "width": 1024,
           "height": 1024
         },
         {
-          "filename": "searsia_lucida_nor_gl.png.png",
+          "filename": "searsia_lucida_nor_gl.png",
           "channel": "diffuse",
           "original_name": "searsia_lucida_nor_gl.png",
           "width": 1024,
@@ -17313,28 +17313,28 @@
       ],
       "textures": [
         {
-          "filename": "tiny_purple_succulant_diff.png.png",
+          "filename": "tiny_purple_succulant_diff.png",
           "channel": "unknown",
           "original_name": "tiny_purple_succulant_diff.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tiny_purple_succulant_rough.png.png",
+          "filename": "tiny_purple_succulant_rough.png",
           "channel": "roughness",
           "original_name": "tiny_purple_succulant_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tiny_purple_succulant_nor_flat.png.png",
+          "filename": "tiny_purple_succulant_nor_flat.png",
           "channel": "normal",
           "original_name": "tiny_purple_succulant_nor_flat.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tiny_purple_succulant_mask.png.png",
+          "filename": "tiny_purple_succulant_mask.png",
           "channel": "alpha",
           "original_name": "tiny_purple_succulant_mask.png",
           "width": 2048,
@@ -17388,28 +17388,28 @@
       ],
       "textures": [
         {
-          "filename": "tiny_purple_succulant_diff.png.png",
+          "filename": "tiny_purple_succulant_diff.png",
           "channel": "unknown",
           "original_name": "tiny_purple_succulant_diff.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tiny_purple_succulant_rough.png.png",
+          "filename": "tiny_purple_succulant_rough.png",
           "channel": "roughness",
           "original_name": "tiny_purple_succulant_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tiny_purple_succulant_nor_flat.png.png",
+          "filename": "tiny_purple_succulant_nor_flat.png",
           "channel": "normal",
           "original_name": "tiny_purple_succulant_nor_flat.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tiny_purple_succulant_mask.png.png",
+          "filename": "tiny_purple_succulant_mask.png",
           "channel": "alpha",
           "original_name": "tiny_purple_succulant_mask.png",
           "width": 2048,
@@ -17463,28 +17463,28 @@
       ],
       "textures": [
         {
-          "filename": "tiny_purple_succulant_diff.png.png",
+          "filename": "tiny_purple_succulant_diff.png",
           "channel": "unknown",
           "original_name": "tiny_purple_succulant_diff.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tiny_purple_succulant_rough.png.png",
+          "filename": "tiny_purple_succulant_rough.png",
           "channel": "roughness",
           "original_name": "tiny_purple_succulant_rough.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tiny_purple_succulant_nor_flat.png.png",
+          "filename": "tiny_purple_succulant_nor_flat.png",
           "channel": "normal",
           "original_name": "tiny_purple_succulant_nor_flat.png",
           "width": 2048,
           "height": 2048
         },
         {
-          "filename": "tiny_purple_succulant_mask.png.png",
+          "filename": "tiny_purple_succulant_mask.png",
           "channel": "alpha",
           "original_name": "tiny_purple_succulant_mask.png",
           "width": 2048,
@@ -17538,21 +17538,21 @@
       ],
       "textures": [
         {
-          "filename": "goegap_road_8k.hdr.png",
+          "filename": "goegap_road_8k.png",
           "channel": "unknown",
           "original_name": "goegap_road_8k.hdr",
           "width": 8192,
           "height": 4096
         },
         {
-          "filename": "rogland_sunset_8k.hdr.png",
+          "filename": "rogland_sunset_8k.png",
           "channel": "diffuse",
           "original_name": "rogland_sunset_8k.hdr",
           "width": 8192,
           "height": 4096
         },
         {
-          "filename": "kloofendal_48d_partly_cloudy_puresky_8k.hdr.png",
+          "filename": "kloofendal_48d_partly_cloudy_puresky_8k.png",
           "channel": "diffuse",
           "original_name": "kloofendal_48d_partly_cloudy_puresky_8k.hdr",
           "width": 8192,

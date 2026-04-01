@@ -619,7 +619,7 @@ impl SliceOrchestrator {
     /// Used by feature-gated AI subsystems (boss director, companion planner).
     #[allow(unused)] // Only used when boss-director or ai-companion features enabled
     fn build_world_snapshot(&self) -> astraweave_core::WorldSnapshot {
-        use astraweave_core::{CompanionState, IVec2, WorldSnapshot};
+        use astraweave_core::{CompanionState, IVec2, Stance, WorldSnapshot};
         use std::collections::BTreeMap;
 
         let player_pos = IVec2::new(
@@ -632,7 +632,7 @@ impl SliceOrchestrator {
             player: astraweave_core::PlayerState {
                 pos: player_pos,
                 hp: self.player.hp as i32,
-                stance: "combat".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: CompanionState {
@@ -651,7 +651,7 @@ impl SliceOrchestrator {
     /// Builds a minimal enemy list from combat encounter state.
     #[allow(unused)] // Only used when boss-director or ai-companion features enabled
     fn build_enemy_snapshot(&self) -> Vec<astraweave_core::EnemyState> {
-        use astraweave_core::{EnemyState, IVec2};
+        use astraweave_core::{CoverType, EnemyState, IVec2};
 
         if !self.combat.is_active() {
             return vec![];
@@ -668,7 +668,7 @@ impl SliceOrchestrator {
                     id: e.id,
                     pos: IVec2::new(20 + i as i32 * 3, 15),
                     hp: e.hp as i32,
-                    cover: "none".to_string(),
+                    cover: CoverType::None,
                     last_seen: 0.0,
                 })
                 .collect()

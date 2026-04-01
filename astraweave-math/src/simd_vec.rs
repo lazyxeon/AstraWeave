@@ -59,6 +59,8 @@ use glam::Vec3;
 /// ```
 #[inline(always)]
 pub fn dot_simd(a: Vec3, b: Vec3) -> f32 {
+    debug_assert!(a.is_finite(), "dot_simd: input 'a' contains NaN/Inf");
+    debug_assert!(b.is_finite(), "dot_simd: input 'b' contains NaN/Inf");
     #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
     // SAFETY: cfg guard guarantees SSE2 is available. dot_simd_sse2 is a
     // #[target_feature(enable = "sse2")] fn that only uses SSE2 intrinsics.
@@ -91,6 +93,8 @@ pub fn dot_simd(a: Vec3, b: Vec3) -> f32 {
 /// ```
 #[inline(always)]
 pub fn cross_simd(a: Vec3, b: Vec3) -> Vec3 {
+    debug_assert!(a.is_finite(), "cross_simd: input 'a' contains NaN/Inf");
+    debug_assert!(b.is_finite(), "cross_simd: input 'b' contains NaN/Inf");
     #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
     // SAFETY: cfg guard guarantees SSE2 is available. cross_simd_sse2 uses
     // only SSE2 shuffle/mul/sub intrinsics on valid Vec3 data.
@@ -122,6 +126,7 @@ pub fn cross_simd(a: Vec3, b: Vec3) -> Vec3 {
 /// ```
 #[inline(always)]
 pub fn normalize_simd(v: Vec3) -> Vec3 {
+    debug_assert!(v.is_finite(), "normalize_simd: input contains NaN/Inf");
     #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
     unsafe {
         normalize_simd_sse2(v)
@@ -244,10 +249,14 @@ unsafe fn length_simd_sse2(v: Vec3) -> f32 {
 #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 #[inline(always)]
 unsafe fn normalize_simd_sse2(v: Vec3) -> Vec3 {
-    let len = length_simd_sse2(v);
-    if len < 1e-8 {
+    let len_sq = dot_simd_sse2(v, v);
+    // Guard against near-zero vectors: use length_squared threshold to avoid
+    // both division by zero and denormalized float penalties (10-100x slower).
+    // 1e-16 corresponds to length ~1e-8, safe above denormal range.
+    if len_sq < 1e-16 {
         return Vec3::ZERO;
     }
+    let len = len_sq.sqrt();
 
     let v_simd = _mm_set_ps(0.0, v.z, v.y, v.x);
     let len_simd = _mm_set1_ps(len);

@@ -248,11 +248,7 @@ impl BiomeBlender {
                         let nx = x as i32 + dx;
                         let nz = z as i32 + dz;
 
-                        if nx >= 0
-                            && nx < resolution as i32
-                            && nz >= 0
-                            && nz < resolution as i32
-                        {
+                        if nx >= 0 && nx < resolution as i32 && nz >= 0 && nz < resolution as i32 {
                             let idx = nz as usize * resolution + nx as usize;
                             if let Some(&biome) = biome_map.get(idx) {
                                 let neighbor_pos = world_offset

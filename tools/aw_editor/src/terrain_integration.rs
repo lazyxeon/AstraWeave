@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
 use astraweave_terrain::{
-    BiomeBlendConfig, BiomeBlender, BiomeConfig, BiomeType, ChunkId, Heightmap, PackedBiomeBlend,
-    ScatterConfig, SplatConfig, SplatMapGenerator, SplatRule, SplatWeights, TerrainChunk,
-    VegetationInstance, VegetationScatter, WorldConfig, WorldGenerator,
+    BiomeBlendConfig, BiomeBlender, BiomeConfig, BiomePack, BiomeType, ChunkId, Heightmap,
+    HeightmapPatch, PackedBiomeBlend, ScatterConfig, SplatConfig, SplatMapGenerator, SplatRule,
+    SplatWeights, TerrainChunk, VegetationInstance, VegetationScatter, WorldConfig, WorldGenerator,
 };
 use glam::{Vec2, Vec3};
 use std::collections::HashMap;
@@ -113,6 +113,11 @@ impl Default for TerrainState {
 impl TerrainState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Return the currently cached BiomePack (if any).
+    pub fn cached_biome_pack(&self) -> Option<&astraweave_terrain::BiomePack> {
+        self.cached_pack.as_ref().map(|(_, pack)| pack)
     }
 
     pub fn configure(&mut self, seed: u64, primary_biome: &str) {
@@ -302,7 +307,15 @@ impl TerrainState {
                 // generate_chunk_with_scatter which runs extremely expensive
                 // O(n²) Poisson disk sampling for vegetation/resources that
                 // the editor doesn't render anyway.
-                let chunk = generator.generate_chunk(chunk_id)?;
+                let mut chunk = generator.generate_chunk(chunk_id)?;
+
+                // Override biome map to match the primary biome type.
+                // The WorldGenerator scores biomes by climate conditions which
+                // may default to Grassland even when Desert is configured.
+                // This ensures biome weights in vertices match the splat rules.
+                for b in chunk.biome_map_mut() {
+                    *b = primary_biome;
+                }
 
                 let world_pos = chunk_id.to_world_pos(chunk_size);
                 let world_offset = Vec3::new(world_pos.x, 0.0, world_pos.z);
@@ -639,7 +652,7 @@ impl TerrainState {
                     slope_falloff: 0.05,
                 });
                 generator.add_rule(SplatRule {
-                    material_id: 9, // dirt
+                    material_id: 5, // mud (was 9/dirt, but MAX_SPLAT_LAYERS=8 drops ids≥8)
                     min_height: -4.0,
                     max_height: 6.0,
                     min_slope: 0.0,
@@ -864,6 +877,80 @@ impl TerrainState {
         self.generated_chunks.iter()
     }
 
+    /// Regenerate splatmap material weights for all chunks using the given parameters.
+    /// Updates vertex `material_ids` and `material_weights` in-place and marks all
+    /// chunks as dirty for GPU re-upload.
+    pub fn regenerate_splatmaps(
+        &mut self,
+        rock_slope_threshold: f32,
+        snow_height_threshold: f32,
+        sand_height_max: f32,
+    ) {
+        let seed = self.config.seed;
+        let primary_biome = self.primary_biome_type();
+        let chunk_size = self.config.chunk_size;
+
+        self.dirty_chunk_indices.clear();
+        for (order_idx, chunk_id) in self.chunk_order.iter().enumerate() {
+            let Some(gen_chunk) = self.generated_chunks.get_mut(chunk_id) else {
+                continue;
+            };
+            let hm = gen_chunk.chunk.heightmap();
+            let res = hm.resolution() as usize;
+            let cell_size = chunk_size / (res - 1) as f32;
+
+            let mut heights = Vec::with_capacity(res * res);
+            let mut normals = Vec::with_capacity(res * res);
+            for z in 0..res {
+                for x in 0..res {
+                    heights.push(hm.get_height(x as u32, z as u32));
+                    normals.push(Self::calculate_normal(hm, x, z, cell_size));
+                }
+            }
+
+            // Create splat generator with modified thresholds
+            let mut generator = Self::create_local_splat_generator(seed, primary_biome);
+            // Override rules based on UI parameters: adjust rock slope and snow height
+            for rule in generator.rules_mut() {
+                // Rock: adjust slope threshold
+                if rule.material_id == 3 || rule.material_id == 7 || rule.material_id == 8 {
+                    rule.min_slope = rock_slope_threshold * 0.5;
+                    rule.max_slope = rock_slope_threshold + 20.0;
+                }
+                // Snow: adjust height threshold
+                if rule.material_id == 4 {
+                    let scaled = snow_height_threshold * 200.0;
+                    rule.min_height = scaled - 20.0;
+                }
+                // Sand: adjust max height
+                if rule.material_id == 1 {
+                    rule.max_height = sand_height_max * 200.0;
+                }
+            }
+
+            let splat_map = generator.generate_splat_map(&heights, &normals, res as u32);
+
+            for (i, splat) in splat_map.iter().enumerate() {
+                if i >= gen_chunk.vertices.len() {
+                    break;
+                }
+                let (ids, weights) = Self::splat_weights_to_material_slots(*splat);
+                gen_chunk.vertices[i].material_ids = ids;
+                gen_chunk.vertices[i].material_weights = weights;
+            }
+
+            self.dirty_chunk_indices.push(order_idx);
+        }
+
+        tracing::info!(
+            "Splatmaps regenerated for {} chunks (rock_slope={:.1}, snow_h={:.2}, sand_max={:.2})",
+            self.dirty_chunk_indices.len(),
+            rock_slope_threshold,
+            snow_height_threshold,
+            sand_height_max,
+        );
+    }
+
     pub fn get_gpu_chunks(&self) -> Vec<(Vec<TerrainVertex>, Vec<u32>)> {
         // Use stable ordering so GPU chunk indices stay consistent
         self.chunk_order
@@ -888,6 +975,54 @@ impl TerrainState {
             .collect();
         self.dirty_chunk_indices.clear();
         dirty
+    }
+
+    /// Apply heightmap patches from zone scatter generation.
+    ///
+    /// Mutates the heightmap in each affected chunk, regenerates vertex positions
+    /// and normals, and marks the chunks dirty for GPU re-upload.
+    pub fn apply_zone_heightmap_patches(&mut self, patches: &[HeightmapPatch]) {
+        let chunk_size = self.config.chunk_size;
+
+        for patch in patches {
+            if patch.heights.is_empty() {
+                continue;
+            }
+            let gen_chunk = match self.generated_chunks.get_mut(&patch.chunk_id) {
+                Some(c) => c,
+                None => continue,
+            };
+
+            let res = gen_chunk.chunk.heightmap().resolution();
+            let cell_size = chunk_size / (res - 1) as f32;
+
+            // Write patched heights into the chunk heightmap
+            for (&(gx, gz), &height) in &patch.heights {
+                gen_chunk.chunk.heightmap_mut().set_height(gx, gz, height);
+            }
+
+            // Regenerate vertex positions and normals for the entire chunk
+            // (patches may affect normals of neighboring vertices)
+            for gz in 0..res as usize {
+                for gx in 0..res as usize {
+                    let idx = gz * res as usize + gx;
+                    if idx < gen_chunk.vertices.len() {
+                        let new_h = gen_chunk.chunk.heightmap().get_height(gx as u32, gz as u32);
+                        gen_chunk.vertices[idx].position[1] = new_h;
+                        let normal =
+                            Self::calculate_normal(gen_chunk.chunk.heightmap(), gx, gz, cell_size);
+                        gen_chunk.vertices[idx].normal = [normal.x, normal.y, normal.z];
+                    }
+                }
+            }
+
+            // Mark dirty for GPU re-upload
+            if let Some(gpu_idx) = self.chunk_order.iter().position(|id| *id == patch.chunk_id) {
+                if !self.dirty_chunk_indices.contains(&gpu_idx) {
+                    self.dirty_chunk_indices.push(gpu_idx);
+                }
+            }
+        }
     }
 
     /// Begin a new brush stroke — enables heightmap snapshotting for undo.
@@ -1627,6 +1762,93 @@ impl ScatterPlacement {
             mesh_key: vi.vegetation_type.clone(),
             mesh_path: vi.model_path.clone(),
             bounding_radius: world_scale * 2.0,
+            tint,
+            terrain_normal: vi.terrain_normal,
+        }
+    }
+
+    /// Create a ScatterPlacement from a zone-generated VegetationInstance with
+    /// BiomePack context for physically-correct scaling.
+    ///
+    /// When a BiomePack is provided, asset dimensions from the pack drive the
+    /// bounding radius and the heuristic type-multiplier is bypassed (scale 1:1).
+    /// Mesh paths are resolved to absolute paths via `pack.root_dir`.
+    pub fn from_zone_placement(vi: &VegetationInstance, pack: Option<&BiomePack>) -> Self {
+        // Try to find matching asset in the pack for dimension-based scaling
+        let pack_asset = pack.and_then(|p| {
+            // Match by mesh_path (relative) — the zone scatter uses the same paths
+            p.assets.iter().find(|a| {
+                vi.model_path.ends_with(&a.mesh_path)
+                    || a.mesh_path.ends_with(
+                        std::path::Path::new(&vi.model_path)
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_str()
+                            .unwrap_or_default(),
+                    )
+            })
+        });
+
+        // Resolve mesh path to absolute
+        let resolved_path = match pack {
+            Some(p) if !std::path::Path::new(&vi.model_path).is_absolute() => p
+                .root_dir
+                .join(&vi.model_path)
+                .to_string_lossy()
+                .to_string(),
+            _ => vi.model_path.clone(),
+        };
+
+        // Use pack dimensions for correct scaling, fall back to heuristics
+        let (world_scale, sink_factor, tint, bounding_radius) = if let Some(asset) = pack_asset {
+            // Use actual Blender dimensions — no heuristic multiplier needed.
+            // The zone scatter system already handles adaptive scaling via
+            // AdaptiveScaleParams, so we use scale 1:1 here.
+            let dims = asset.dimensions.unwrap_or([1.0, 1.0, 1.0]);
+            let max_dim = dims[0].max(dims[1]).max(dims[2]) as f32;
+            let radius = max_dim * vi.scale * 0.5;
+            let sink = 0.02 * vi.scale;
+            // Category-aware tint for visual variety
+            let tint = match asset.category.as_str() {
+                "vegetation" => [0.35, 0.55, 0.25, 1.0],
+                "rock" => [0.60, 0.58, 0.55, 1.0],
+                "structure" | "furniture" => [0.70, 0.65, 0.60, 1.0],
+                _ => [0.50, 0.50, 0.50, 1.0],
+            };
+            (vi.scale, sink, tint, radius)
+        } else {
+            // Fall back to heuristic scaling for non-pack placements
+            let (type_multiplier, sink, tint) = match vi.vegetation_type.as_str() {
+                s if s.contains("tree") || s.contains("pine") => {
+                    (14.0, 0.06, [0.35, 0.55, 0.25, 1.0])
+                }
+                s if s.contains("cactus") => (8.0, 0.04, [0.45, 0.60, 0.30, 1.0]),
+                s if s.contains("bush") => (7.0, 0.04, [0.30, 0.58, 0.22, 1.0]),
+                s if s.contains("rock")
+                    || s.contains("stone")
+                    || s.contains("boulder")
+                    || s.contains("cliff") =>
+                {
+                    (8.0, 0.03, [0.60, 0.58, 0.55, 1.0])
+                }
+                s if s.contains("mushroom") => (5.0, 0.01, [0.70, 0.55, 0.40, 1.0]),
+                s if s.contains("flower") => (3.5, 0.02, [0.90, 0.85, 0.80, 1.0]),
+                _ => (3.5, 0.02, [0.40, 0.68, 0.28, 1.0]),
+            };
+            let ws = vi.scale * type_multiplier;
+            (ws, sink, tint, ws * 2.0)
+        };
+
+        let mut pos = vi.position;
+        pos.y -= sink_factor * world_scale;
+
+        Self {
+            position: pos,
+            rotation: vi.rotation,
+            scale: world_scale,
+            mesh_key: vi.vegetation_type.clone(),
+            mesh_path: resolved_path,
+            bounding_radius,
             tint,
             terrain_normal: vi.terrain_normal,
         }

@@ -597,8 +597,8 @@ fn edge_noise_different_seeds_differ() {
     let blender2 = BiomeBlender::new(config, 999);
 
     let neighbors = vec![
-        (Vec2::new(57.0, 73.0), BiomeType::Forest),   // dist=2 from query
-        (Vec2::new(42.0, 73.0), BiomeType::Desert),    // dist=13 from query (near edge)
+        (Vec2::new(57.0, 73.0), BiomeType::Forest), // dist=2 from query
+        (Vec2::new(42.0, 73.0), BiomeType::Desert), // dist=13 from query (near edge)
     ];
 
     let r1 = blender1.calculate_blend_weights(Vec2::new(55.0, 73.0), 10.0, &neighbors);

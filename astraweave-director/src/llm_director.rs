@@ -556,7 +556,7 @@ Consider:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::IVec2;
+    use astraweave_core::{CoverType, IVec2, Stance};
 
     #[tokio::test]
     async fn test_player_behavior_model_analysis() {
@@ -567,7 +567,7 @@ mod tests {
                 hp: 100,
 
                 pos: IVec2 { x: 5, y: 5 },
-                stance: "stand".to_string(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: astraweave_core::CompanionState {
@@ -581,14 +581,14 @@ mod tests {
                     id: 1,
                     pos: IVec2 { x: 3, y: 3 },
                     hp: 100,
-                    cover: "none".to_string(),
+                    cover: CoverType::None,
                     last_seen: 0.0,
                 },
                 astraweave_core::EnemyState {
                     id: 2,
                     pos: IVec2 { x: 7, y: 7 },
                     hp: 100,
-                    cover: "none".to_string(),
+                    cover: CoverType::None,
                     last_seen: 0.0,
                 },
             ],
@@ -649,7 +649,7 @@ mod tests {
             player: astraweave_core::PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 5, y: 5 },
-                stance: "stand".into(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: astraweave_core::CompanionState {
@@ -678,7 +678,7 @@ mod tests {
             player: astraweave_core::PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 0, y: 0 },
-                stance: "stand".into(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: astraweave_core::CompanionState {
@@ -691,7 +691,7 @@ mod tests {
                 id: 1,
                 pos: IVec2 { x: 20, y: 0 }, // distance = 20, > 10
                 hp: 100,
-                cover: "none".into(),
+                cover: CoverType::None,
                 last_seen: 0.0,
             }],
             pois: vec![],
@@ -710,7 +710,7 @@ mod tests {
             player: astraweave_core::PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 0, y: 0 },
-                stance: "stand".into(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: astraweave_core::CompanionState {
@@ -723,7 +723,7 @@ mod tests {
                 id: 1,
                 pos: IVec2 { x: 2, y: 0 }, // distance = 2, < 4
                 hp: 100,
-                cover: "none".into(),
+                cover: CoverType::None,
                 last_seen: 0.0,
             }],
             pois: vec![],
@@ -745,7 +745,7 @@ mod tests {
             player: astraweave_core::PlayerState {
                 hp: 100,
                 pos: IVec2 { x: 0, y: 0 },
-                stance: "stand".into(),
+                stance: Stance::Stand,
                 orders: vec![],
             },
             me: astraweave_core::CompanionState {
@@ -758,7 +758,7 @@ mod tests {
                 id: 1,
                 pos: IVec2 { x: 1, y: 0 }, // dist=1, <4
                 hp: 100,
-                cover: "none".into(),
+                cover: CoverType::None,
                 last_seen: 0.0,
             }],
             pois: vec![],

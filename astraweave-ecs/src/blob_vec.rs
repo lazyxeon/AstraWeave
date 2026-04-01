@@ -991,7 +991,10 @@ mod tests {
         // Push enough to trigger first reserve
         unsafe { blob.push(Chunk([0; 128])) };
         let cap_after_first = blob.capacity();
-        assert!(cap_after_first >= 1, "must have capacity for at least 1 element");
+        assert!(
+            cap_after_first >= 1,
+            "must have capacity for at least 1 element"
+        );
 
         // Reserve a large amount — exercises the capacity * 2 growth path
         blob.reserve(100);
@@ -1012,9 +1015,8 @@ mod tests {
         // Verify data integrity after all the pushing
         let first_val = unsafe { std::ptr::read(blob.get_raw(0).unwrap() as *const Chunk) };
         assert_eq!(first_val.0[0], 0);
-        let last_val = unsafe {
-            std::ptr::read(blob.get_raw(blob.len() - 1).unwrap() as *const Chunk)
-        };
+        let last_val =
+            unsafe { std::ptr::read(blob.get_raw(blob.len() - 1).unwrap() as *const Chunk) };
         assert_eq!(last_val.0[0], (remaining - 1) as u8);
     }
 

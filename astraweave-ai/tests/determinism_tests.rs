@@ -8,7 +8,7 @@
 //! - ✅ No panics, no crashes, no resource exhaustion
 
 use astraweave_ai::core_loop::{dispatch_planner, CAiController, PlannerMode};
-use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState, WorldSnapshot};
+use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, WorldSnapshot};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -40,7 +40,7 @@ fn create_deterministic_snapshot(seed: u64) -> WorldSnapshot {
                 y: 30 + ((seed / 10) % 10) as i32,
             },
             hp: 100,
-            cover: if seed % 2 == 0 { "low" } else { "high" }.to_string(),
+            cover: if seed % 2 == 0 { CoverType::Low } else { CoverType::High },
             last_seen: 0.5,
         }],
         pois: vec![],

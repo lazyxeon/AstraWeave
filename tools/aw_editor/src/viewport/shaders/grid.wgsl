@@ -73,8 +73,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Intersect ray with Y=0 plane (relative to camera)
     // Camera-relative near_point.y = near_point_world.y - camera_pos.y
     // We need t such that near_point.y + camera_pos.y + ray_dir.y * t = 0
+    // Guard: when ray is nearly parallel to ground (ray_dir.y ≈ 0), discard to avoid inf/NaN
+    if abs(ray_dir.y) < 0.0001 {
+        discard;
+    }
     let t = -(in.near_point.y + uniforms.camera_pos.y) / ray_dir.y;
-    
+
     // Discard if ray doesn't hit ground plane or hits behind camera
     if t < 0.0 {
         discard;

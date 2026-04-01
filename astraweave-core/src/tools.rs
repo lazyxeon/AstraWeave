@@ -743,7 +743,12 @@ mod tests {
         let path = astar_path(&obstacles, iv2(-3, -3), iv2(3, 3), bounds);
         assert!(!path.is_empty());
         // Path should be optimal: exactly 12 steps + 1 for start = 13
-        assert_eq!(path.len(), 13, "A* should find optimal 12-step path, got {}", path.len() - 1);
+        assert_eq!(
+            path.len(),
+            13,
+            "A* should find optimal 12-step path, got {}",
+            path.len() - 1
+        );
         assert_eq!((path[0].x, path[0].y), (-3, -3));
         assert_eq!((path.last().unwrap().x, path.last().unwrap().y), (3, 3));
     }
@@ -792,7 +797,11 @@ mod tests {
         let path = astar_path(&obstacles, iv2(0, 0), iv2(2, 0), bounds);
         assert!(!path.is_empty());
         // With correct A*, path should be short (4 steps)
-        assert!(path.len() <= 5, "A* should find efficient path, got {} steps", path.len());
+        assert!(
+            path.len() <= 5,
+            "A* should find efficient path, got {} steps",
+            path.len()
+        );
     }
 
     /// Catches: `cur_g + 1` → `cur_g - 1` or `cur_g * 1` (line 207)
@@ -822,8 +831,14 @@ mod tests {
         // With obstacle at (3,0), positions behind it (>3 x) should have no enemy LOS
         // but the actual positions depend on radius from `from`
         for pos in &cover {
-            assert!(los_clear(&obstacles, player, *pos), "Cover pos should have player LOS");
-            assert!(!los_clear(&obstacles, enemy, *pos), "Cover pos should NOT have enemy LOS");
+            assert!(
+                los_clear(&obstacles, player, *pos),
+                "Cover pos should have player LOS"
+            );
+            assert!(
+                !los_clear(&obstacles, enemy, *pos),
+                "Cover pos should NOT have enemy LOS"
+            );
         }
     }
 
@@ -912,8 +927,7 @@ mod tests {
         assert!(
             has_neg_x_offset,
             "Cover at negative x offset from from.x={} required; got {:?}",
-            from.x,
-            cover
+            from.x, cover
         );
     }
 

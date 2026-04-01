@@ -18,7 +18,8 @@ use astraweave_ai::{
     tool_sandbox::{validate_tool_action, ToolVerb, ValidationContext},
 };
 use astraweave_core::{
-    ActionStep, CompanionState, EnemyState, IVec2, PlanIntent, PlayerState, Poi, WorldSnapshot,
+    ActionStep, CompanionState, CoverType, EnemyState, IVec2, PlanIntent, PlayerState, Poi, Stance,
+    WorldSnapshot,
 };
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::{collections::BTreeMap, hint::black_box};
@@ -160,7 +161,7 @@ fn create_minimal_snapshot(num_enemies: usize, num_pois: usize) -> WorldSnapshot
                 y: 0,
             },
             hp: 50,
-            cover: "none".to_string(),
+            cover: CoverType::None,
             last_seen: 0.0,
         })
         .collect();
@@ -180,7 +181,7 @@ fn create_minimal_snapshot(num_enemies: usize, num_pois: usize) -> WorldSnapshot
         player: PlayerState {
             pos: IVec2 { x: 0, y: 0 },
             hp: 100,
-            stance: "stand".to_string(),
+            stance: Stance::Stand,
             orders: vec![],
         },
         me: CompanionState {
@@ -206,7 +207,7 @@ fn create_complex_snapshot() -> WorldSnapshot {
         player: PlayerState {
             pos: IVec2 { x: 10, y: 10 },
             hp: 75,
-            stance: "crouch".to_string(),
+            stance: Stance::Crouch,
             orders: vec!["hold_position".to_string()],
         },
         me: CompanionState {
@@ -220,21 +221,21 @@ fn create_complex_snapshot() -> WorldSnapshot {
                 id: 1,
                 pos: IVec2 { x: 20, y: 20 },
                 hp: 60,
-                cover: "low".to_string(),
+                cover: CoverType::Low,
                 last_seen: 0.5,
             },
             EnemyState {
                 id: 2,
                 pos: IVec2 { x: 25, y: 18 },
                 hp: 40,
-                cover: "none".to_string(),
+                cover: CoverType::None,
                 last_seen: 0.7,
             },
             EnemyState {
                 id: 3,
                 pos: IVec2 { x: 30, y: 22 },
                 hp: 80,
-                cover: "high".to_string(),
+                cover: CoverType::High,
                 last_seen: 0.1,
             },
         ],
