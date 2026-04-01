@@ -197,7 +197,7 @@
 <a href=#197 id=197 data-nosnippet>197</a><span class="attr">#[cfg(test)]
 <a href=#198 id=198 data-nosnippet>198</a></span><span class="kw">mod </span>tests {
 <a href=#199 id=199 data-nosnippet>199</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#200 id=200 data-nosnippet>200</a>    <span class="kw">use </span>astraweave_core::{CompanionState, Constraints, EnemyState, PlayerState, Poi, ToolSpec};
+<a href=#200 id=200 data-nosnippet>200</a>    <span class="kw">use </span>astraweave_core::{CompanionState, Constraints, CoverType, EnemyState, PlayerState, Poi, Stance, ToolSpec};
 <a href=#201 id=201 data-nosnippet>201</a>    <span class="kw">use </span>std::collections::BTreeMap;
 <a href=#202 id=202 data-nosnippet>202</a>
 <a href=#203 id=203 data-nosnippet>203</a>    <span class="kw">fn </span>create_basic_snapshot() -&gt; WorldSnapshot {
@@ -206,7 +206,7 @@
 <a href=#206 id=206 data-nosnippet>206</a>            player: PlayerState {
 <a href=#207 id=207 data-nosnippet>207</a>                hp: <span class="number">100</span>,
 <a href=#208 id=208 data-nosnippet>208</a>                pos: IVec2 { x: <span class="number">5</span>, y: <span class="number">5 </span>},
-<a href=#209 id=209 data-nosnippet>209</a>                stance: <span class="string">"stand"</span>.to_string(),
+<a href=#209 id=209 data-nosnippet>209</a>                stance: Stance::Stand,
 <a href=#210 id=210 data-nosnippet>210</a>                orders: <span class="macro">vec!</span>[],
 <a href=#211 id=211 data-nosnippet>211</a>            },
 <a href=#212 id=212 data-nosnippet>212</a>            me: CompanionState {
@@ -363,7 +363,7 @@
 <a href=#363 id=363 data-nosnippet>363</a>            id: <span class="number">99</span>,
 <a href=#364 id=364 data-nosnippet>364</a>            pos: IVec2 { x: <span class="number">4</span>, y: <span class="number">4 </span>}, <span class="comment">// 2 tiles away (manhattan)
 <a href=#365 id=365 data-nosnippet>365</a>            </span>hp: <span class="number">100</span>,
-<a href=#366 id=366 data-nosnippet>366</a>            cover: <span class="string">"none"</span>.to_string(),
+<a href=#366 id=366 data-nosnippet>366</a>            cover: CoverType::None,
 <a href=#367 id=367 data-nosnippet>367</a>            last_seen: <span class="number">0.0</span>,
 <a href=#368 id=368 data-nosnippet>368</a>        });
 <a href=#369 id=369 data-nosnippet>369</a>
@@ -382,7 +382,7 @@
 <a href=#382 id=382 data-nosnippet>382</a>            id: <span class="number">99</span>,
 <a href=#383 id=383 data-nosnippet>383</a>            pos: IVec2 { x: <span class="number">20</span>, y: <span class="number">20 </span>}, <span class="comment">// 34 tiles away
 <a href=#384 id=384 data-nosnippet>384</a>            </span>hp: <span class="number">100</span>,
-<a href=#385 id=385 data-nosnippet>385</a>            cover: <span class="string">"none"</span>.to_string(),
+<a href=#385 id=385 data-nosnippet>385</a>            cover: CoverType::None,
 <a href=#386 id=386 data-nosnippet>386</a>            last_seen: <span class="number">0.0</span>,
 <a href=#387 id=387 data-nosnippet>387</a>        });
 <a href=#388 id=388 data-nosnippet>388</a>
@@ -413,7 +413,7 @@
 <a href=#413 id=413 data-nosnippet>413</a>            id: <span class="number">99</span>,
 <a href=#414 id=414 data-nosnippet>414</a>            pos: IVec2 { x: <span class="number">100</span>, y: <span class="number">100 </span>},
 <a href=#415 id=415 data-nosnippet>415</a>            hp: <span class="number">100</span>,
-<a href=#416 id=416 data-nosnippet>416</a>            cover: <span class="string">"none"</span>.to_string(),
+<a href=#416 id=416 data-nosnippet>416</a>            cover: CoverType::None,
 <a href=#417 id=417 data-nosnippet>417</a>            last_seen: <span class="number">0.0</span>,
 <a href=#418 id=418 data-nosnippet>418</a>        });
 <a href=#419 id=419 data-nosnippet>419</a>
@@ -565,7 +565,7 @@
 <a href=#565 id=565 data-nosnippet>565</a>            id: <span class="number">42</span>,
 <a href=#566 id=566 data-nosnippet>566</a>            pos: IVec2 { x: <span class="number">5</span>, y: <span class="number">5 </span>},
 <a href=#567 id=567 data-nosnippet>567</a>            hp: <span class="number">100</span>,
-<a href=#568 id=568 data-nosnippet>568</a>            cover: <span class="string">"none"</span>.to_string(),
+<a href=#568 id=568 data-nosnippet>568</a>            cover: CoverType::None,
 <a href=#569 id=569 data-nosnippet>569</a>            last_seen: <span class="number">0.0</span>,
 <a href=#570 id=570 data-nosnippet>570</a>        });
 <a href=#571 id=571 data-nosnippet>571</a>        <span class="kw">let </span>reg = create_full_registry();
@@ -604,7 +604,7 @@
 <a href=#604 id=604 data-nosnippet>604</a>            id: <span class="number">42</span>,
 <a href=#605 id=605 data-nosnippet>605</a>            pos: IVec2 { x: <span class="number">5</span>, y: <span class="number">5 </span>},
 <a href=#606 id=606 data-nosnippet>606</a>            hp: <span class="number">100</span>,
-<a href=#607 id=607 data-nosnippet>607</a>            cover: <span class="string">"none"</span>.to_string(),
+<a href=#607 id=607 data-nosnippet>607</a>            cover: CoverType::None,
 <a href=#608 id=608 data-nosnippet>608</a>            last_seen: <span class="number">0.0</span>,
 <a href=#609 id=609 data-nosnippet>609</a>        });
 <a href=#610 id=610 data-nosnippet>610</a>        <span class="kw">let </span>reg = create_empty_registry();
@@ -626,7 +626,7 @@
 <a href=#626 id=626 data-nosnippet>626</a>            id: <span class="number">99</span>,
 <a href=#627 id=627 data-nosnippet>627</a>            pos: IVec2 { x: <span class="number">5</span>, y: <span class="number">5 </span>},
 <a href=#628 id=628 data-nosnippet>628</a>            hp: <span class="number">100</span>,
-<a href=#629 id=629 data-nosnippet>629</a>            cover: <span class="string">"none"</span>.to_string(),
+<a href=#629 id=629 data-nosnippet>629</a>            cover: CoverType::None,
 <a href=#630 id=630 data-nosnippet>630</a>            last_seen: <span class="number">0.0</span>,
 <a href=#631 id=631 data-nosnippet>631</a>        });
 <a href=#632 id=632 data-nosnippet>632</a>        <span class="kw">let </span>reg = create_full_registry();
@@ -658,7 +658,7 @@
 <a href=#658 id=658 data-nosnippet>658</a>            id: <span class="number">99</span>,
 <a href=#659 id=659 data-nosnippet>659</a>            pos: IVec2 { x: <span class="number">10</span>, y: <span class="number">5 </span>},
 <a href=#660 id=660 data-nosnippet>660</a>            hp: <span class="number">100</span>,
-<a href=#661 id=661 data-nosnippet>661</a>            cover: <span class="string">"none"</span>.to_string(),
+<a href=#661 id=661 data-nosnippet>661</a>            cover: CoverType::None,
 <a href=#662 id=662 data-nosnippet>662</a>            last_seen: <span class="number">0.0</span>,
 <a href=#663 id=663 data-nosnippet>663</a>        });
 <a href=#664 id=664 data-nosnippet>664</a>        <span class="kw">let </span>reg = create_full_registry();

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["build_snapshot"],"struct":["PerceptionConfig"]};
+window.SIDEBAR_ITEMS = {"fn":["build_snapshot","build_snapshot_shared_obstacles"],"struct":["PerceptionConfig"]};

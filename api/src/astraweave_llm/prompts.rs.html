@@ -313,7 +313,7 @@
 <a href=#313 id=313 data-nosnippet>313</a><span class="attr">#[cfg(test)]
 <a href=#314 id=314 data-nosnippet>314</a></span><span class="kw">mod </span>tests {
 <a href=#315 id=315 data-nosnippet>315</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#316 id=316 data-nosnippet>316</a>    <span class="kw">use </span>astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState};
+<a href=#316 id=316 data-nosnippet>316</a>    <span class="kw">use </span>astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance};
 <a href=#317 id=317 data-nosnippet>317</a>    <span class="kw">use </span>std::collections::BTreeMap;
 <a href=#318 id=318 data-nosnippet>318</a>
 <a href=#319 id=319 data-nosnippet>319</a>    <span class="kw">fn </span>create_test_snapshot() -&gt; WorldSnapshot {
@@ -322,7 +322,7 @@
 <a href=#322 id=322 data-nosnippet>322</a>            player: PlayerState {
 <a href=#323 id=323 data-nosnippet>323</a>                hp: <span class="number">100</span>,
 <a href=#324 id=324 data-nosnippet>324</a>                pos: IVec2 { x: <span class="number">5</span>, y: <span class="number">5 </span>},
-<a href=#325 id=325 data-nosnippet>325</a>                stance: <span class="string">"stand"</span>.to_string(),
+<a href=#325 id=325 data-nosnippet>325</a>                stance: Stance::Stand,
 <a href=#326 id=326 data-nosnippet>326</a>                orders: <span class="macro">vec!</span>[],
 <a href=#327 id=327 data-nosnippet>327</a>            },
 <a href=#328 id=328 data-nosnippet>328</a>            me: CompanionState {
@@ -335,7 +335,7 @@
 <a href=#335 id=335 data-nosnippet>335</a>                id: <span class="number">99</span>,
 <a href=#336 id=336 data-nosnippet>336</a>                pos: IVec2 { x: <span class="number">10</span>, y: <span class="number">8 </span>},
 <a href=#337 id=337 data-nosnippet>337</a>                hp: <span class="number">100</span>,
-<a href=#338 id=338 data-nosnippet>338</a>                cover: <span class="string">"wall"</span>.to_string(),
+<a href=#338 id=338 data-nosnippet>338</a>                cover: CoverType::Wall,
 <a href=#339 id=339 data-nosnippet>339</a>                last_seen: <span class="number">0.0</span>,
 <a href=#340 id=340 data-nosnippet>340</a>            }],
 <a href=#341 id=341 data-nosnippet>341</a>            pois: <span class="macro">vec!</span>[],

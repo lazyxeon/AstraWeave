@@ -400,7 +400,7 @@
 <a href=#400 id=400 data-nosnippet>400</a><span class="attr">#[cfg(test)]
 <a href=#401 id=401 data-nosnippet>401</a></span><span class="kw">mod </span>tests {
 <a href=#402 id=402 data-nosnippet>402</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#403 id=403 data-nosnippet>403</a>    <span class="kw">use </span>astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState};
+<a href=#403 id=403 data-nosnippet>403</a>    <span class="kw">use </span>astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState};
 <a href=#404 id=404 data-nosnippet>404</a>    <span class="kw">use </span>std::collections::BTreeMap;
 <a href=#405 id=405 data-nosnippet>405</a>    <span class="kw">fn </span>create_test_snapshot(agent_x: i32, agent_y: i32) -&gt; WorldSnapshot {
 <a href=#406 id=406 data-nosnippet>406</a>        WorldSnapshot {
@@ -419,7 +419,7 @@
 <a href=#419 id=419 data-nosnippet>419</a>                id: <span class="number">1</span>,
 <a href=#420 id=420 data-nosnippet>420</a>                pos: IVec2 { x: <span class="number">10</span>, y: <span class="number">10 </span>},
 <a href=#421 id=421 data-nosnippet>421</a>                hp: <span class="number">100</span>,
-<a href=#422 id=422 data-nosnippet>422</a>                cover: <span class="string">"none"</span>.to_string(),
+<a href=#422 id=422 data-nosnippet>422</a>                cover: CoverType::None,
 <a href=#423 id=423 data-nosnippet>423</a>                last_seen: <span class="number">0.0</span>,
 <a href=#424 id=424 data-nosnippet>424</a>            }],
 <a href=#425 id=425 data-nosnippet>425</a>            pois: <span class="macro">vec!</span>[],

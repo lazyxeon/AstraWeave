@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["build_shadow_params","compute_cascade_splits","compute_normal_offset","stabilize_cascade_matrix"],"struct":["ShadowParamsGpu","ShadowQualityConfig"]};

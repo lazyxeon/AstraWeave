@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_POINT_SHADOW_LIGHTS","MAX_SPOT_SHADOW_LIGHTS","POINT_SHADOW_RESOLUTION","SPOT_SHADOW_RESOLUTION"],"fn":["point_light_projection","point_light_view_matrices","select_shadow_casters","spot_light_vp"],"struct":["PointShadowConfig","PointShadowPass","ShadowLightCandidate"]};

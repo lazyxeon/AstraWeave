@@ -991,119 +991,121 @@
 <a href=#991 id=991 data-nosnippet>991</a>        <span class="comment">// Push enough to trigger first reserve
 <a href=#992 id=992 data-nosnippet>992</a>        </span><span class="kw">unsafe </span>{ blob.push(Chunk([<span class="number">0</span>; <span class="number">128</span>])) };
 <a href=#993 id=993 data-nosnippet>993</a>        <span class="kw">let </span>cap_after_first = blob.capacity();
-<a href=#994 id=994 data-nosnippet>994</a>        <span class="macro">assert!</span>(cap_after_first &gt;= <span class="number">1</span>, <span class="string">"must have capacity for at least 1 element"</span>);
-<a href=#995 id=995 data-nosnippet>995</a>
-<a href=#996 id=996 data-nosnippet>996</a>        <span class="comment">// Reserve a large amount — exercises the capacity * 2 growth path
-<a href=#997 id=997 data-nosnippet>997</a>        </span>blob.reserve(<span class="number">100</span>);
-<a href=#998 id=998 data-nosnippet>998</a>        <span class="kw">let </span>cap_after_reserve = blob.capacity();
-<a href=#999 id=999 data-nosnippet>999</a>        <span class="macro">assert!</span>(
-<a href=#1000 id=1000 data-nosnippet>1000</a>            cap_after_reserve &gt;= <span class="number">101</span>,
-<a href=#1001 id=1001 data-nosnippet>1001</a>            <span class="string">"capacity must be &gt;= len(1) + additional(100) = 101, got {}"</span>,
-<a href=#1002 id=1002 data-nosnippet>1002</a>            cap_after_reserve
-<a href=#1003 id=1003 data-nosnippet>1003</a>        );
-<a href=#1004 id=1004 data-nosnippet>1004</a>
-<a href=#1005 id=1005 data-nosnippet>1005</a>        <span class="comment">// Now fill up to capacity and verify we can push without panic
-<a href=#1006 id=1006 data-nosnippet>1006</a>        </span><span class="kw">let </span>remaining = cap_after_reserve - blob.len();
-<a href=#1007 id=1007 data-nosnippet>1007</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..remaining {
-<a href=#1008 id=1008 data-nosnippet>1008</a>            <span class="kw">unsafe </span>{ blob.push(Chunk([i <span class="kw">as </span>u8; <span class="number">128</span>])) };
-<a href=#1009 id=1009 data-nosnippet>1009</a>        }
-<a href=#1010 id=1010 data-nosnippet>1010</a>        <span class="macro">assert_eq!</span>(blob.len(), cap_after_reserve);
-<a href=#1011 id=1011 data-nosnippet>1011</a>
-<a href=#1012 id=1012 data-nosnippet>1012</a>        <span class="comment">// Verify data integrity after all the pushing
-<a href=#1013 id=1013 data-nosnippet>1013</a>        </span><span class="kw">let </span>first_val = <span class="kw">unsafe </span>{ std::ptr::read(blob.get_raw(<span class="number">0</span>).unwrap() <span class="kw">as </span><span class="kw-2">*const </span>Chunk) };
-<a href=#1014 id=1014 data-nosnippet>1014</a>        <span class="macro">assert_eq!</span>(first_val.<span class="number">0</span>[<span class="number">0</span>], <span class="number">0</span>);
-<a href=#1015 id=1015 data-nosnippet>1015</a>        <span class="kw">let </span>last_val = <span class="kw">unsafe </span>{
-<a href=#1016 id=1016 data-nosnippet>1016</a>            std::ptr::read(blob.get_raw(blob.len() - <span class="number">1</span>).unwrap() <span class="kw">as </span><span class="kw-2">*const </span>Chunk)
-<a href=#1017 id=1017 data-nosnippet>1017</a>        };
-<a href=#1018 id=1018 data-nosnippet>1018</a>        <span class="macro">assert_eq!</span>(last_val.<span class="number">0</span>[<span class="number">0</span>], (remaining - <span class="number">1</span>) <span class="kw">as </span>u8);
-<a href=#1019 id=1019 data-nosnippet>1019</a>    }
-<a href=#1020 id=1020 data-nosnippet>1020</a>
-<a href=#1021 id=1021 data-nosnippet>1021</a>    <span class="attr">#[test]
-<a href=#1022 id=1022 data-nosnippet>1022</a>    </span><span class="kw">fn </span>test_with_capacity_boundary() {
-<a href=#1023 id=1023 data-nosnippet>1023</a>        <span class="comment">// Kills: with_capacity &gt; → &gt;= (capacity 0 should NOT allocate)
-<a href=#1024 id=1024 data-nosnippet>1024</a>        </span><span class="kw">let </span>blob_zero = BlobVec::with_capacity::&lt;u64&gt;(<span class="number">0</span>);
-<a href=#1025 id=1025 data-nosnippet>1025</a>        <span class="macro">assert_eq!</span>(blob_zero.len(), <span class="number">0</span>);
-<a href=#1026 id=1026 data-nosnippet>1026</a>        <span class="macro">assert_eq!</span>(blob_zero.capacity(), <span class="number">0</span>, <span class="string">"capacity=0 should not allocate"</span>);
-<a href=#1027 id=1027 data-nosnippet>1027</a>
-<a href=#1028 id=1028 data-nosnippet>1028</a>        <span class="kw">let </span>blob_one = BlobVec::with_capacity::&lt;u64&gt;(<span class="number">1</span>);
-<a href=#1029 id=1029 data-nosnippet>1029</a>        <span class="macro">assert_eq!</span>(blob_one.len(), <span class="number">0</span>);
-<a href=#1030 id=1030 data-nosnippet>1030</a>        <span class="macro">assert!</span>(blob_one.capacity() &gt;= <span class="number">1</span>, <span class="string">"capacity=1 must allocate"</span>);
-<a href=#1031 id=1031 data-nosnippet>1031</a>    }
-<a href=#1032 id=1032 data-nosnippet>1032</a>
-<a href=#1033 id=1033 data-nosnippet>1033</a>    <span class="attr">#[test]
-<a href=#1034 id=1034 data-nosnippet>1034</a>    </span><span class="kw">fn </span>test_from_layout_with_capacity_boundary() {
-<a href=#1035 id=1035 data-nosnippet>1035</a>        <span class="comment">// Kills: from_layout_with_capacity &gt; → &gt;=
-<a href=#1036 id=1036 data-nosnippet>1036</a>        </span><span class="kw">let </span>layout = Layout::new::&lt;f64&gt;();
-<a href=#1037 id=1037 data-nosnippet>1037</a>        <span class="kw">let </span>blob_zero = BlobVec::from_layout_with_capacity(layout, <span class="prelude-val">None</span>, <span class="number">0</span>);
-<a href=#1038 id=1038 data-nosnippet>1038</a>        <span class="macro">assert_eq!</span>(blob_zero.capacity(), <span class="number">0</span>, <span class="string">"capacity=0 should not allocate"</span>);
-<a href=#1039 id=1039 data-nosnippet>1039</a>
-<a href=#1040 id=1040 data-nosnippet>1040</a>        <span class="kw">let </span>blob_one = BlobVec::from_layout_with_capacity(layout, <span class="prelude-val">None</span>, <span class="number">1</span>);
-<a href=#1041 id=1041 data-nosnippet>1041</a>        <span class="macro">assert!</span>(blob_one.capacity() &gt;= <span class="number">1</span>, <span class="string">"capacity=1 must allocate"</span>);
-<a href=#1042 id=1042 data-nosnippet>1042</a>    }
-<a href=#1043 id=1043 data-nosnippet>1043</a>
-<a href=#1044 id=1044 data-nosnippet>1044</a>    <span class="attr">#[test]
-<a href=#1045 id=1045 data-nosnippet>1045</a>    </span><span class="kw">fn </span>test_get_raw_boundary_at_len() {
-<a href=#1046 id=1046 data-nosnippet>1046</a>        <span class="comment">// Specifically tests index == len (out of bounds) vs index == len-1 (valid)
-<a href=#1047 id=1047 data-nosnippet>1047</a>        // Kills: &gt;= → &lt; in get_raw/get_raw_mut bounds check
-<a href=#1048 id=1048 data-nosnippet>1048</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>blob = BlobVec::new::&lt;u32&gt;();
-<a href=#1049 id=1049 data-nosnippet>1049</a>        <span class="kw">unsafe </span>{
-<a href=#1050 id=1050 data-nosnippet>1050</a>            blob.push(<span class="number">10_u32</span>);
-<a href=#1051 id=1051 data-nosnippet>1051</a>            blob.push(<span class="number">20_u32</span>);
-<a href=#1052 id=1052 data-nosnippet>1052</a>        }
-<a href=#1053 id=1053 data-nosnippet>1053</a>        <span class="comment">// index == len-1 = 1: valid
-<a href=#1054 id=1054 data-nosnippet>1054</a>        </span><span class="macro">assert!</span>(blob.get_raw(<span class="number">1</span>).is_some());
-<a href=#1055 id=1055 data-nosnippet>1055</a>        <span class="macro">assert!</span>(blob.get_raw_mut(<span class="number">1</span>).is_some());
-<a href=#1056 id=1056 data-nosnippet>1056</a>
-<a href=#1057 id=1057 data-nosnippet>1057</a>        <span class="comment">// index == len = 2: out of bounds
-<a href=#1058 id=1058 data-nosnippet>1058</a>        </span><span class="macro">assert!</span>(blob.get_raw(<span class="number">2</span>).is_none());
-<a href=#1059 id=1059 data-nosnippet>1059</a>        <span class="macro">assert!</span>(blob.get_raw_mut(<span class="number">2</span>).is_none());
-<a href=#1060 id=1060 data-nosnippet>1060</a>    }
-<a href=#1061 id=1061 data-nosnippet>1061</a>
-<a href=#1062 id=1062 data-nosnippet>1062</a>    <span class="attr">#[test]
-<a href=#1063 id=1063 data-nosnippet>1063</a>    </span><span class="kw">fn </span>test_drop_impl_deallocates_correctly() {
-<a href=#1064 id=1064 data-nosnippet>1064</a>        <span class="comment">// Kills: Drop &gt; → &lt; (would skip dealloc for capacity &gt; 0)
-<a href=#1065 id=1065 data-nosnippet>1065</a>        // Kills: Drop * → + / * → / (would compute wrong layout size for dealloc)
-<a href=#1066 id=1066 data-nosnippet>1066</a>        // Allocator crash (UB) or mismatch when dealloc layout ≠ alloc layout.
-<a href=#1067 id=1067 data-nosnippet>1067</a>        // We test by creating a BlobVec with known capacity, pushing data,
-<a href=#1068 id=1068 data-nosnippet>1068</a>        // and dropping it in a scope. If the layout math is wrong, allocator
-<a href=#1069 id=1069 data-nosnippet>1069</a>        // panics or crashes (undefined behavior on Windows → likely access violation).
-<a href=#1070 id=1070 data-nosnippet>1070</a>        // Use large types so the size arithmetic difference is big.
-<a href=#1071 id=1071 data-nosnippet>1071</a>        </span><span class="attr">#[derive(Clone, Copy)]
-<a href=#1072 id=1072 data-nosnippet>1072</a>        #[repr(C)]
-<a href=#1073 id=1073 data-nosnippet>1073</a>        </span><span class="kw">struct </span>BigChunk([u8; <span class="number">256</span>]);
-<a href=#1074 id=1074 data-nosnippet>1074</a>
-<a href=#1075 id=1075 data-nosnippet>1075</a>        <span class="kw">for </span>cap <span class="kw">in </span>[<span class="number">1</span>, <span class="number">2</span>, <span class="number">5</span>, <span class="number">16</span>, <span class="number">100</span>] {
-<a href=#1076 id=1076 data-nosnippet>1076</a>            <span class="kw">let </span><span class="kw-2">mut </span>blob = BlobVec::with_capacity::&lt;BigChunk&gt;(cap);
-<a href=#1077 id=1077 data-nosnippet>1077</a>            <span class="macro">assert!</span>(blob.capacity() &gt;= cap);
-<a href=#1078 id=1078 data-nosnippet>1078</a>            <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..cap {
-<a href=#1079 id=1079 data-nosnippet>1079</a>                <span class="kw">unsafe </span>{ blob.push(BigChunk([i <span class="kw">as </span>u8; <span class="number">256</span>])) };
-<a href=#1080 id=1080 data-nosnippet>1080</a>            }
-<a href=#1081 id=1081 data-nosnippet>1081</a>            <span class="macro">assert_eq!</span>(blob.len(), cap);
-<a href=#1082 id=1082 data-nosnippet>1082</a>            <span class="comment">// Verify data before drop
-<a href=#1083 id=1083 data-nosnippet>1083</a>            </span><span class="kw">let </span>last_ptr = blob.get_raw(cap - <span class="number">1</span>).unwrap();
-<a href=#1084 id=1084 data-nosnippet>1084</a>            <span class="kw">let </span>last_val = <span class="kw">unsafe </span>{ std::ptr::read(last_ptr <span class="kw">as </span><span class="kw-2">*const </span>BigChunk) };
-<a href=#1085 id=1085 data-nosnippet>1085</a>            <span class="macro">assert_eq!</span>(last_val.<span class="number">0</span>[<span class="number">0</span>], (cap - <span class="number">1</span>) <span class="kw">as </span>u8);
-<a href=#1086 id=1086 data-nosnippet>1086</a>            <span class="comment">// blob drops here — if Drop layout is wrong, this would crash
-<a href=#1087 id=1087 data-nosnippet>1087</a>        </span>}
-<a href=#1088 id=1088 data-nosnippet>1088</a>
-<a href=#1089 id=1089 data-nosnippet>1089</a>        <span class="comment">// Also test drop with zero capacity (empty BlobVec, no dealloc needed)
-<a href=#1090 id=1090 data-nosnippet>1090</a>        </span>{
-<a href=#1091 id=1091 data-nosnippet>1091</a>            <span class="kw">let </span>blob = BlobVec::new::&lt;BigChunk&gt;();
-<a href=#1092 id=1092 data-nosnippet>1092</a>            <span class="macro">assert_eq!</span>(blob.capacity(), <span class="number">0</span>);
-<a href=#1093 id=1093 data-nosnippet>1093</a>            <span class="comment">// Drop should skip dealloc entirely when capacity == 0
-<a href=#1094 id=1094 data-nosnippet>1094</a>        </span>}
-<a href=#1095 id=1095 data-nosnippet>1095</a>
-<a href=#1096 id=1096 data-nosnippet>1096</a>        <span class="comment">// Test drop after clear (len=0 but capacity&gt;0 → must still dealloc)
-<a href=#1097 id=1097 data-nosnippet>1097</a>        </span>{
-<a href=#1098 id=1098 data-nosnippet>1098</a>            <span class="kw">let </span><span class="kw-2">mut </span>blob = BlobVec::with_capacity::&lt;BigChunk&gt;(<span class="number">10</span>);
-<a href=#1099 id=1099 data-nosnippet>1099</a>            <span class="kw">unsafe </span>{
-<a href=#1100 id=1100 data-nosnippet>1100</a>                blob.push(BigChunk([<span class="number">0xFF</span>; <span class="number">256</span>]));
-<a href=#1101 id=1101 data-nosnippet>1101</a>                blob.push(BigChunk([<span class="number">0xAA</span>; <span class="number">256</span>]));
-<a href=#1102 id=1102 data-nosnippet>1102</a>            }
-<a href=#1103 id=1103 data-nosnippet>1103</a>            blob.clear();
-<a href=#1104 id=1104 data-nosnippet>1104</a>            <span class="macro">assert_eq!</span>(blob.len(), <span class="number">0</span>);
-<a href=#1105 id=1105 data-nosnippet>1105</a>            <span class="macro">assert!</span>(blob.capacity() &gt;= <span class="number">10</span>);
-<a href=#1106 id=1106 data-nosnippet>1106</a>            <span class="comment">// Drop with capacity&gt;0 but len=0 → must dealloc memory
-<a href=#1107 id=1107 data-nosnippet>1107</a>        </span>}
-<a href=#1108 id=1108 data-nosnippet>1108</a>    }
-<a href=#1109 id=1109 data-nosnippet>1109</a>}</code></pre></div></section></main></body></html>
+<a href=#994 id=994 data-nosnippet>994</a>        <span class="macro">assert!</span>(
+<a href=#995 id=995 data-nosnippet>995</a>            cap_after_first &gt;= <span class="number">1</span>,
+<a href=#996 id=996 data-nosnippet>996</a>            <span class="string">"must have capacity for at least 1 element"
+<a href=#997 id=997 data-nosnippet>997</a>        </span>);
+<a href=#998 id=998 data-nosnippet>998</a>
+<a href=#999 id=999 data-nosnippet>999</a>        <span class="comment">// Reserve a large amount — exercises the capacity * 2 growth path
+<a href=#1000 id=1000 data-nosnippet>1000</a>        </span>blob.reserve(<span class="number">100</span>);
+<a href=#1001 id=1001 data-nosnippet>1001</a>        <span class="kw">let </span>cap_after_reserve = blob.capacity();
+<a href=#1002 id=1002 data-nosnippet>1002</a>        <span class="macro">assert!</span>(
+<a href=#1003 id=1003 data-nosnippet>1003</a>            cap_after_reserve &gt;= <span class="number">101</span>,
+<a href=#1004 id=1004 data-nosnippet>1004</a>            <span class="string">"capacity must be &gt;= len(1) + additional(100) = 101, got {}"</span>,
+<a href=#1005 id=1005 data-nosnippet>1005</a>            cap_after_reserve
+<a href=#1006 id=1006 data-nosnippet>1006</a>        );
+<a href=#1007 id=1007 data-nosnippet>1007</a>
+<a href=#1008 id=1008 data-nosnippet>1008</a>        <span class="comment">// Now fill up to capacity and verify we can push without panic
+<a href=#1009 id=1009 data-nosnippet>1009</a>        </span><span class="kw">let </span>remaining = cap_after_reserve - blob.len();
+<a href=#1010 id=1010 data-nosnippet>1010</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..remaining {
+<a href=#1011 id=1011 data-nosnippet>1011</a>            <span class="kw">unsafe </span>{ blob.push(Chunk([i <span class="kw">as </span>u8; <span class="number">128</span>])) };
+<a href=#1012 id=1012 data-nosnippet>1012</a>        }
+<a href=#1013 id=1013 data-nosnippet>1013</a>        <span class="macro">assert_eq!</span>(blob.len(), cap_after_reserve);
+<a href=#1014 id=1014 data-nosnippet>1014</a>
+<a href=#1015 id=1015 data-nosnippet>1015</a>        <span class="comment">// Verify data integrity after all the pushing
+<a href=#1016 id=1016 data-nosnippet>1016</a>        </span><span class="kw">let </span>first_val = <span class="kw">unsafe </span>{ std::ptr::read(blob.get_raw(<span class="number">0</span>).unwrap() <span class="kw">as </span><span class="kw-2">*const </span>Chunk) };
+<a href=#1017 id=1017 data-nosnippet>1017</a>        <span class="macro">assert_eq!</span>(first_val.<span class="number">0</span>[<span class="number">0</span>], <span class="number">0</span>);
+<a href=#1018 id=1018 data-nosnippet>1018</a>        <span class="kw">let </span>last_val =
+<a href=#1019 id=1019 data-nosnippet>1019</a>            <span class="kw">unsafe </span>{ std::ptr::read(blob.get_raw(blob.len() - <span class="number">1</span>).unwrap() <span class="kw">as </span><span class="kw-2">*const </span>Chunk) };
+<a href=#1020 id=1020 data-nosnippet>1020</a>        <span class="macro">assert_eq!</span>(last_val.<span class="number">0</span>[<span class="number">0</span>], (remaining - <span class="number">1</span>) <span class="kw">as </span>u8);
+<a href=#1021 id=1021 data-nosnippet>1021</a>    }
+<a href=#1022 id=1022 data-nosnippet>1022</a>
+<a href=#1023 id=1023 data-nosnippet>1023</a>    <span class="attr">#[test]
+<a href=#1024 id=1024 data-nosnippet>1024</a>    </span><span class="kw">fn </span>test_with_capacity_boundary() {
+<a href=#1025 id=1025 data-nosnippet>1025</a>        <span class="comment">// Kills: with_capacity &gt; → &gt;= (capacity 0 should NOT allocate)
+<a href=#1026 id=1026 data-nosnippet>1026</a>        </span><span class="kw">let </span>blob_zero = BlobVec::with_capacity::&lt;u64&gt;(<span class="number">0</span>);
+<a href=#1027 id=1027 data-nosnippet>1027</a>        <span class="macro">assert_eq!</span>(blob_zero.len(), <span class="number">0</span>);
+<a href=#1028 id=1028 data-nosnippet>1028</a>        <span class="macro">assert_eq!</span>(blob_zero.capacity(), <span class="number">0</span>, <span class="string">"capacity=0 should not allocate"</span>);
+<a href=#1029 id=1029 data-nosnippet>1029</a>
+<a href=#1030 id=1030 data-nosnippet>1030</a>        <span class="kw">let </span>blob_one = BlobVec::with_capacity::&lt;u64&gt;(<span class="number">1</span>);
+<a href=#1031 id=1031 data-nosnippet>1031</a>        <span class="macro">assert_eq!</span>(blob_one.len(), <span class="number">0</span>);
+<a href=#1032 id=1032 data-nosnippet>1032</a>        <span class="macro">assert!</span>(blob_one.capacity() &gt;= <span class="number">1</span>, <span class="string">"capacity=1 must allocate"</span>);
+<a href=#1033 id=1033 data-nosnippet>1033</a>    }
+<a href=#1034 id=1034 data-nosnippet>1034</a>
+<a href=#1035 id=1035 data-nosnippet>1035</a>    <span class="attr">#[test]
+<a href=#1036 id=1036 data-nosnippet>1036</a>    </span><span class="kw">fn </span>test_from_layout_with_capacity_boundary() {
+<a href=#1037 id=1037 data-nosnippet>1037</a>        <span class="comment">// Kills: from_layout_with_capacity &gt; → &gt;=
+<a href=#1038 id=1038 data-nosnippet>1038</a>        </span><span class="kw">let </span>layout = Layout::new::&lt;f64&gt;();
+<a href=#1039 id=1039 data-nosnippet>1039</a>        <span class="kw">let </span>blob_zero = BlobVec::from_layout_with_capacity(layout, <span class="prelude-val">None</span>, <span class="number">0</span>);
+<a href=#1040 id=1040 data-nosnippet>1040</a>        <span class="macro">assert_eq!</span>(blob_zero.capacity(), <span class="number">0</span>, <span class="string">"capacity=0 should not allocate"</span>);
+<a href=#1041 id=1041 data-nosnippet>1041</a>
+<a href=#1042 id=1042 data-nosnippet>1042</a>        <span class="kw">let </span>blob_one = BlobVec::from_layout_with_capacity(layout, <span class="prelude-val">None</span>, <span class="number">1</span>);
+<a href=#1043 id=1043 data-nosnippet>1043</a>        <span class="macro">assert!</span>(blob_one.capacity() &gt;= <span class="number">1</span>, <span class="string">"capacity=1 must allocate"</span>);
+<a href=#1044 id=1044 data-nosnippet>1044</a>    }
+<a href=#1045 id=1045 data-nosnippet>1045</a>
+<a href=#1046 id=1046 data-nosnippet>1046</a>    <span class="attr">#[test]
+<a href=#1047 id=1047 data-nosnippet>1047</a>    </span><span class="kw">fn </span>test_get_raw_boundary_at_len() {
+<a href=#1048 id=1048 data-nosnippet>1048</a>        <span class="comment">// Specifically tests index == len (out of bounds) vs index == len-1 (valid)
+<a href=#1049 id=1049 data-nosnippet>1049</a>        // Kills: &gt;= → &lt; in get_raw/get_raw_mut bounds check
+<a href=#1050 id=1050 data-nosnippet>1050</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>blob = BlobVec::new::&lt;u32&gt;();
+<a href=#1051 id=1051 data-nosnippet>1051</a>        <span class="kw">unsafe </span>{
+<a href=#1052 id=1052 data-nosnippet>1052</a>            blob.push(<span class="number">10_u32</span>);
+<a href=#1053 id=1053 data-nosnippet>1053</a>            blob.push(<span class="number">20_u32</span>);
+<a href=#1054 id=1054 data-nosnippet>1054</a>        }
+<a href=#1055 id=1055 data-nosnippet>1055</a>        <span class="comment">// index == len-1 = 1: valid
+<a href=#1056 id=1056 data-nosnippet>1056</a>        </span><span class="macro">assert!</span>(blob.get_raw(<span class="number">1</span>).is_some());
+<a href=#1057 id=1057 data-nosnippet>1057</a>        <span class="macro">assert!</span>(blob.get_raw_mut(<span class="number">1</span>).is_some());
+<a href=#1058 id=1058 data-nosnippet>1058</a>
+<a href=#1059 id=1059 data-nosnippet>1059</a>        <span class="comment">// index == len = 2: out of bounds
+<a href=#1060 id=1060 data-nosnippet>1060</a>        </span><span class="macro">assert!</span>(blob.get_raw(<span class="number">2</span>).is_none());
+<a href=#1061 id=1061 data-nosnippet>1061</a>        <span class="macro">assert!</span>(blob.get_raw_mut(<span class="number">2</span>).is_none());
+<a href=#1062 id=1062 data-nosnippet>1062</a>    }
+<a href=#1063 id=1063 data-nosnippet>1063</a>
+<a href=#1064 id=1064 data-nosnippet>1064</a>    <span class="attr">#[test]
+<a href=#1065 id=1065 data-nosnippet>1065</a>    </span><span class="kw">fn </span>test_drop_impl_deallocates_correctly() {
+<a href=#1066 id=1066 data-nosnippet>1066</a>        <span class="comment">// Kills: Drop &gt; → &lt; (would skip dealloc for capacity &gt; 0)
+<a href=#1067 id=1067 data-nosnippet>1067</a>        // Kills: Drop * → + / * → / (would compute wrong layout size for dealloc)
+<a href=#1068 id=1068 data-nosnippet>1068</a>        // Allocator crash (UB) or mismatch when dealloc layout ≠ alloc layout.
+<a href=#1069 id=1069 data-nosnippet>1069</a>        // We test by creating a BlobVec with known capacity, pushing data,
+<a href=#1070 id=1070 data-nosnippet>1070</a>        // and dropping it in a scope. If the layout math is wrong, allocator
+<a href=#1071 id=1071 data-nosnippet>1071</a>        // panics or crashes (undefined behavior on Windows → likely access violation).
+<a href=#1072 id=1072 data-nosnippet>1072</a>        // Use large types so the size arithmetic difference is big.
+<a href=#1073 id=1073 data-nosnippet>1073</a>        </span><span class="attr">#[derive(Clone, Copy)]
+<a href=#1074 id=1074 data-nosnippet>1074</a>        #[repr(C)]
+<a href=#1075 id=1075 data-nosnippet>1075</a>        </span><span class="kw">struct </span>BigChunk([u8; <span class="number">256</span>]);
+<a href=#1076 id=1076 data-nosnippet>1076</a>
+<a href=#1077 id=1077 data-nosnippet>1077</a>        <span class="kw">for </span>cap <span class="kw">in </span>[<span class="number">1</span>, <span class="number">2</span>, <span class="number">5</span>, <span class="number">16</span>, <span class="number">100</span>] {
+<a href=#1078 id=1078 data-nosnippet>1078</a>            <span class="kw">let </span><span class="kw-2">mut </span>blob = BlobVec::with_capacity::&lt;BigChunk&gt;(cap);
+<a href=#1079 id=1079 data-nosnippet>1079</a>            <span class="macro">assert!</span>(blob.capacity() &gt;= cap);
+<a href=#1080 id=1080 data-nosnippet>1080</a>            <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..cap {
+<a href=#1081 id=1081 data-nosnippet>1081</a>                <span class="kw">unsafe </span>{ blob.push(BigChunk([i <span class="kw">as </span>u8; <span class="number">256</span>])) };
+<a href=#1082 id=1082 data-nosnippet>1082</a>            }
+<a href=#1083 id=1083 data-nosnippet>1083</a>            <span class="macro">assert_eq!</span>(blob.len(), cap);
+<a href=#1084 id=1084 data-nosnippet>1084</a>            <span class="comment">// Verify data before drop
+<a href=#1085 id=1085 data-nosnippet>1085</a>            </span><span class="kw">let </span>last_ptr = blob.get_raw(cap - <span class="number">1</span>).unwrap();
+<a href=#1086 id=1086 data-nosnippet>1086</a>            <span class="kw">let </span>last_val = <span class="kw">unsafe </span>{ std::ptr::read(last_ptr <span class="kw">as </span><span class="kw-2">*const </span>BigChunk) };
+<a href=#1087 id=1087 data-nosnippet>1087</a>            <span class="macro">assert_eq!</span>(last_val.<span class="number">0</span>[<span class="number">0</span>], (cap - <span class="number">1</span>) <span class="kw">as </span>u8);
+<a href=#1088 id=1088 data-nosnippet>1088</a>            <span class="comment">// blob drops here — if Drop layout is wrong, this would crash
+<a href=#1089 id=1089 data-nosnippet>1089</a>        </span>}
+<a href=#1090 id=1090 data-nosnippet>1090</a>
+<a href=#1091 id=1091 data-nosnippet>1091</a>        <span class="comment">// Also test drop with zero capacity (empty BlobVec, no dealloc needed)
+<a href=#1092 id=1092 data-nosnippet>1092</a>        </span>{
+<a href=#1093 id=1093 data-nosnippet>1093</a>            <span class="kw">let </span>blob = BlobVec::new::&lt;BigChunk&gt;();
+<a href=#1094 id=1094 data-nosnippet>1094</a>            <span class="macro">assert_eq!</span>(blob.capacity(), <span class="number">0</span>);
+<a href=#1095 id=1095 data-nosnippet>1095</a>            <span class="comment">// Drop should skip dealloc entirely when capacity == 0
+<a href=#1096 id=1096 data-nosnippet>1096</a>        </span>}
+<a href=#1097 id=1097 data-nosnippet>1097</a>
+<a href=#1098 id=1098 data-nosnippet>1098</a>        <span class="comment">// Test drop after clear (len=0 but capacity&gt;0 → must still dealloc)
+<a href=#1099 id=1099 data-nosnippet>1099</a>        </span>{
+<a href=#1100 id=1100 data-nosnippet>1100</a>            <span class="kw">let </span><span class="kw-2">mut </span>blob = BlobVec::with_capacity::&lt;BigChunk&gt;(<span class="number">10</span>);
+<a href=#1101 id=1101 data-nosnippet>1101</a>            <span class="kw">unsafe </span>{
+<a href=#1102 id=1102 data-nosnippet>1102</a>                blob.push(BigChunk([<span class="number">0xFF</span>; <span class="number">256</span>]));
+<a href=#1103 id=1103 data-nosnippet>1103</a>                blob.push(BigChunk([<span class="number">0xAA</span>; <span class="number">256</span>]));
+<a href=#1104 id=1104 data-nosnippet>1104</a>            }
+<a href=#1105 id=1105 data-nosnippet>1105</a>            blob.clear();
+<a href=#1106 id=1106 data-nosnippet>1106</a>            <span class="macro">assert_eq!</span>(blob.len(), <span class="number">0</span>);
+<a href=#1107 id=1107 data-nosnippet>1107</a>            <span class="macro">assert!</span>(blob.capacity() &gt;= <span class="number">10</span>);
+<a href=#1108 id=1108 data-nosnippet>1108</a>            <span class="comment">// Drop with capacity&gt;0 but len=0 → must dealloc memory
+<a href=#1109 id=1109 data-nosnippet>1109</a>        </span>}
+<a href=#1110 id=1110 data-nosnippet>1110</a>    }
+<a href=#1111 id=1111 data-nosnippet>1111</a>}</code></pre></div></section></main></body></html>

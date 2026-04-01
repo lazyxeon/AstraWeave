@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["Resource"],"struct":["ClearNode","GraphContext","RenderGraph","RendererMainNode","ResourceTable"],"trait":["RenderNode"]};
+window.SIDEBAR_ITEMS = {"enum":["Resource","ResourceSlot"],"struct":["ClearNode","CompiledGraph","FullscreenPassNode","GraphContext","PassDecl","PassOutput","RenderGraph","RendererMainNode","ResourceTable","TransientTextureDesc"],"trait":["RenderNode"]};
