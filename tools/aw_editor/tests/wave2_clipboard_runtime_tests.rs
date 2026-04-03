@@ -37,6 +37,8 @@ fn make_entity_data(name: &str, hp: i32, ammo: i32, team: u8) -> ClipboardEntity
         ammo,
         cooldowns: BTreeMap::new(),
         behavior_graph: None,
+        height: 0.0,
+        parent: None,
     }
 }
 

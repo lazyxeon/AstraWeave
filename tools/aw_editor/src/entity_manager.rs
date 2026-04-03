@@ -211,6 +211,10 @@ pub struct EditorEntity {
     pub components: HashMap<String, serde_json::Value>,
     /// Parent entity ID (None = root)
     pub parent: Option<EntityId>,
+    /// Auto-generated scatter object (vegetation, rocks, props from biome packs).
+    /// Scatter entities are procedural — excluded from serialization and scene hierarchy.
+    #[serde(default)]
+    pub is_scatter: bool,
 }
 
 #[allow(dead_code)]
@@ -226,6 +230,15 @@ impl EditorEntity {
             material: EntityMaterial::new(),
             components: HashMap::new(),
             parent: None,
+            is_scatter: false,
+        }
+    }
+
+    /// Create a scatter entity (auto-generated vegetation/rocks from biome packs)
+    pub fn new_scatter(id: EntityId, name: String) -> Self {
+        Self {
+            is_scatter: true,
+            ..Self::new(id, name)
         }
     }
 
@@ -453,6 +466,26 @@ impl EntityManager {
     /// Get entity count
     pub fn count(&self) -> usize {
         self.entities.len()
+    }
+
+    /// Remove all scatter entities (auto-generated from biome packs).
+    /// Returns the IDs of removed entities for World cleanup.
+    pub fn remove_scatter_entities(&mut self) -> Vec<EntityId> {
+        let scatter_ids: Vec<EntityId> = self
+            .entities
+            .iter()
+            .filter(|(_, e)| e.is_scatter)
+            .map(|(&id, _)| id)
+            .collect();
+        for id in &scatter_ids {
+            self.entities.remove(id);
+        }
+        scatter_ids
+    }
+
+    /// Count of scatter entities
+    pub fn scatter_count(&self) -> usize {
+        self.entities.values().filter(|e| e.is_scatter).count()
     }
 
     /// Validate all entities and return a summary.

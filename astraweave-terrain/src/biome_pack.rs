@@ -428,20 +428,30 @@ impl BiomePack {
             .filter(|a| a.category == "billboard")
             .map(&to_veg)
             .collect();
+        let mut props: Vec<VegetationType> = self
+            .assets
+            .iter()
+            .filter(|a| a.category == "prop")
+            .map(&to_veg)
+            .collect();
 
         sort_desc(&mut rocks);
         sort_desc(&mut veg);
         sort_desc(&mut billboards);
+        sort_desc(&mut props);
 
         // Stratified selection: reserve slots per category, then fill remainder.
         const MAX_VEG_TYPES: usize = 25;
         let rock_slots = rocks.len().min(8); // Up to 8 rocks
         let billboard_slots = billboards.len().min(4); // Up to 4 billboards
-        let veg_slots = MAX_VEG_TYPES.saturating_sub(rock_slots + billboard_slots);
+        let prop_slots = props.len().min(4); // Up to 4 props
+        let veg_slots =
+            MAX_VEG_TYPES.saturating_sub(rock_slots + billboard_slots + prop_slots);
 
         let mut vegetation_types: Vec<VegetationType> = Vec::with_capacity(MAX_VEG_TYPES);
         vegetation_types.extend(rocks.into_iter().take(rock_slots));
         vegetation_types.extend(billboards.into_iter().take(billboard_slots));
+        vegetation_types.extend(props.into_iter().take(prop_slots));
         vegetation_types.extend(veg.into_iter().take(veg_slots));
 
         // Re-normalize weights so they sum correctly

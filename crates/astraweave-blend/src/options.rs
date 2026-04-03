@@ -155,7 +155,7 @@ impl ConversionOptions {
         Self {
             format: OutputFormat::GlbBinary,
             gltf: GltfExportOptions {
-                draco_compression: true,
+                draco_compression: false, // Disabled: Rust gltf crate doesn't support Draco
                 ..Default::default()
             },
             textures: TextureOptions {
@@ -230,8 +230,8 @@ impl ConversionOptions {
         Self {
             format: OutputFormat::GlbBinary,
             gltf: GltfExportOptions {
-                draco_compression: true,
-                selected_only: true, // Critical: export one object at a time
+                draco_compression: false, // Disabled: Rust gltf crate doesn't support KHR_draco_mesh_compression
+                selected_only: true,      // Critical: export one object at a time
                 export_extras: true,
                 ..Default::default()
             },
@@ -326,7 +326,7 @@ pub struct GltfExportOptions {
 impl Default for GltfExportOptions {
     fn default() -> Self {
         Self {
-            draco_compression: true,
+            draco_compression: false, // Disabled by default: Rust gltf crate doesn't support Draco
             draco_compression_level: 6,
             export_extras: true,
             export_lights: false,
@@ -684,7 +684,7 @@ mod tests {
     #[test]
     fn test_default_options() {
         let options = ConversionOptions::default();
-        assert!(options.gltf.draco_compression);
+        assert!(!options.gltf.draco_compression); // Draco disabled: unsupported by Rust gltf crate
         assert!(options.textures.unpack_embedded);
         assert!(options.linked_libraries.process_recursively);
     }
@@ -692,7 +692,7 @@ mod tests {
     #[test]
     fn test_game_runtime_preset() {
         let options = ConversionOptions::game_runtime();
-        assert!(options.gltf.draco_compression);
+        assert!(!options.gltf.draco_compression); // Draco disabled: unsupported by Rust gltf crate
         assert!(options.mesh.triangulate);
         assert_eq!(options.textures.max_resolution, Some(2048));
     }

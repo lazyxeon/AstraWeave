@@ -334,7 +334,13 @@ def export_gltf():
         'use_visible': {visible_only},
         'use_active_collection': {active_collection_only},
     }}
-    
+
+    # Enable KHR material extensions for full PBR fidelity (Blender 3.6+)
+    try:
+        export_params['export_import_convert_lighting_mode'] = 'SPEC'
+    except Exception:
+        pass  # Older Blender versions may not support this param
+
     # Add Draco compression if enabled
     if DRACO_COMPRESSION:
         export_params['export_draco_mesh_compression_enable'] = True
@@ -483,6 +489,7 @@ pub fn generate_decomposition_script(
     script.push_str(&generate_category_classifier(decomp));
     script.push_str(&generate_bounding_box_fn(decomp));
     script.push_str(&generate_texture_collector());
+    script.push_str(&generate_material_desc_collector());
     script.push_str(&generate_hdri_extractor(decomp));
     script.push_str(&generate_per_object_exporter(options));
     script.push_str(&generate_decomp_entry_point(decomp));
@@ -696,6 +703,8 @@ def collect_textures_for_object(obj, output_dir):
                     channel = 'alpha'
                 elif 'displace' in to_socket or 'height' in to_socket:
                     channel = 'displacement'
+                elif 'emit' in to_socket or 'emission' in to_socket:
+                    channel = 'emission'
 
             if not tex_path.exists():
                 try:
@@ -714,6 +723,112 @@ def collect_textures_for_object(obj, output_dir):
             })
 
     return textures
+
+"#
+    .to_string()
+}
+
+fn generate_material_desc_collector() -> String {
+    r#"
+def collect_material_descs(obj):
+    """Extract structured PBR material parameters from an object's materials.
+
+    Reads Principled BSDF node inputs when available, falling back to defaults.
+    """
+    descs = []
+    if obj.type != 'MESH' or obj.data is None:
+        return descs
+
+    for mat_slot in obj.material_slots:
+        mat = mat_slot.material
+        if mat is None:
+            continue
+
+        desc = {
+            'name': mat.name,
+            'base_color_factor': [1.0, 1.0, 1.0, 1.0],
+            'metallic_factor': 0.0,
+            'roughness_factor': 1.0,
+            'emissive_factor': [0.0, 0.0, 0.0],
+            'emissive_strength': 1.0,
+            'alpha_mode': 'OPAQUE',
+            'alpha_cutoff': 0.5,
+            'double_sided': False,
+            'ior': 1.5,
+            'transmission_factor': 0.0,
+        }
+
+        if not mat.use_nodes:
+            descs.append(desc)
+            continue
+
+        # Find Principled BSDF node
+        principled = None
+        for node in mat.node_tree.nodes:
+            if node.type == 'BSDF_PRINCIPLED':
+                principled = node
+                break
+
+        if principled is None:
+            descs.append(desc)
+            continue
+
+        # Helper to read a socket's default value
+        def get_input(name, default=None):
+            inp = principled.inputs.get(name)
+            if inp is None:
+                return default
+            return inp.default_value
+
+        # Base color
+        bc = get_input('Base Color')
+        if bc is not None:
+            desc['base_color_factor'] = [bc[0], bc[1], bc[2], get_input('Alpha', 1.0) or 1.0]
+
+        # Metallic / Roughness
+        m = get_input('Metallic')
+        if m is not None:
+            desc['metallic_factor'] = float(m)
+        r = get_input('Roughness')
+        if r is not None:
+            desc['roughness_factor'] = float(r)
+
+        # Emission
+        ec = get_input('Emission Color', get_input('Emission'))  # Blender 4.x vs 3.x
+        if ec is not None:
+            try:
+                desc['emissive_factor'] = [ec[0], ec[1], ec[2]]
+            except (TypeError, IndexError):
+                pass
+        es = get_input('Emission Strength')
+        if es is not None:
+            desc['emissive_strength'] = float(es)
+
+        # IOR
+        ior = get_input('IOR')
+        if ior is not None:
+            desc['ior'] = float(ior)
+
+        # Transmission
+        trans = get_input('Transmission Weight', get_input('Transmission'))
+        if trans is not None:
+            desc['transmission_factor'] = float(trans)
+
+        # Alpha / blend mode
+        alpha_val = get_input('Alpha')
+        if alpha_val is not None and float(alpha_val) < 1.0:
+            desc['alpha_mode'] = mat.blend_method if hasattr(mat, 'blend_method') else 'BLEND'
+            desc['base_color_factor'][3] = float(alpha_val)
+        if mat.blend_method == 'CLIP' if hasattr(mat, 'blend_method') else False:
+            desc['alpha_mode'] = 'MASK'
+            desc['alpha_cutoff'] = mat.alpha_threshold if hasattr(mat, 'alpha_threshold') else 0.5
+
+        # Double-sided
+        desc['double_sided'] = not mat.use_backface_culling if hasattr(mat, 'use_backface_culling') else False
+
+        descs.append(desc)
+
+    return descs
 
 "#
     .to_string()
@@ -815,6 +930,9 @@ def export_single_object(obj, output_path):
 
         # Material
         'export_materials': '{export_materials}',
+
+        # KHR material extensions (Blender 3.6+)
+        # These are passed through; unsupported params are silently ignored by Blender
 
         # No animations for static assets
         'export_animations': False,
@@ -1013,6 +1131,7 @@ def main():
                     'scale': list(obj.scale),
                     'textures': [],
                     'materials': [ms.material.name for ms in obj.material_slots if ms.material],
+                    'material_descs': collect_material_descs(obj),
                     'collections': [c.name for c in obj.users_collection],
                 }
                 assets.append(asset_entry)
@@ -1074,6 +1193,7 @@ def main():
                 'scale': list(obj.scale),
                 'textures': object_textures,
                 'materials': [ms.material.name for ms in obj.material_slots if ms.material],
+                'material_descs': collect_material_descs(obj),
                 'collections': [c.name for c in obj.users_collection],
             }
             assets.append(asset_entry)

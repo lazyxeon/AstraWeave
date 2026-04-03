@@ -166,8 +166,8 @@ impl SplatWeights {
             result.weights_0 /= total;
             result.weights_1 /= total;
         } else {
-            // Fallback to first layer
-            result.weights_0.x = 1.0;
+            // Fallback to sand (layer 1) — avoids grass bleed in non-grassland biomes
+            result.weights_0.y = 1.0;
         }
 
         result

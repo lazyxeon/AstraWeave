@@ -1979,12 +1979,19 @@ impl ViewportWidget {
         {
             let data = buffer_slice.get_mapped_range();
 
-            // Convert to non-padded RGBA8 (egui expects tightly packed data)
+            // Convert from GPU's BGRA byte order to RGBA (egui expects RGBA)
             let mut rgba_data = Vec::with_capacity((size.0 * size.1 * 4) as usize);
             for row in 0..size.1 {
                 let row_start = (row * padded_bytes_per_row) as usize;
                 let row_end = row_start + (size.0 * 4) as usize;
-                rgba_data.extend_from_slice(&data[row_start..row_end]);
+                let row_bytes = &data[row_start..row_end];
+                // Swap B↔R: BGRA → RGBA for each pixel
+                for pixel in row_bytes.chunks_exact(4) {
+                    rgba_data.push(pixel[2]); // R (was B in BGRA)
+                    rgba_data.push(pixel[1]); // G
+                    rgba_data.push(pixel[0]); // B (was R in BGRA)
+                    rgba_data.push(pixel[3]); // A
+                }
             }
 
             // Create egui ColorImage
@@ -2723,6 +2730,16 @@ impl ViewportWidget {
     ) {
         if let Ok(mut renderer) = self.renderer.lock() {
             renderer.set_scatter_placements(placements);
+        }
+    }
+
+    /// Preload glTF meshes from decomposed blend files into the entity renderer cache.
+    /// Returns the number of meshes successfully loaded.
+    pub fn preload_gltf_meshes(&self, paths: &[String]) -> usize {
+        if let Ok(mut renderer) = self.renderer.lock() {
+            renderer.preload_gltf_meshes(paths)
+        } else {
+            0
         }
     }
 

@@ -132,8 +132,7 @@ impl TaaPass {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: fmt,
-                usage: wgpu::TextureUsages::STORAGE_BINDING
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             })
         };
@@ -147,7 +146,12 @@ impl TaaPass {
         let uniforms = TaaUniforms {
             resolution: [width as f32, height as f32],
             inv_resolution: [1.0 / width as f32, 1.0 / height as f32],
-            config: [config.blend_factor, config.clamp_margin, config.sharpen_strength, 0.0],
+            config: [
+                config.blend_factor,
+                config.clamp_margin,
+                config.sharpen_strength,
+                0.0,
+            ],
         };
         let params_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("taa_params"),
@@ -158,12 +162,12 @@ impl TaaPass {
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("taa_bgl"),
             entries: &[
-                tex_entry(0),      // current / sharpen input
-                tex_entry(1),      // history
-                tex_entry(2),      // velocity
-                tex_entry(3),      // depth
-                sampler_entry(4),  // sampler
-                uniform_entry(5),  // params
+                tex_entry(0),          // current / sharpen input
+                tex_entry(1),          // history
+                tex_entry(2),          // velocity
+                tex_entry(3),          // depth
+                sampler_entry(4),      // sampler
+                uniform_entry(5),      // params
                 storage_entry(6, fmt), // output
             ],
         });
@@ -215,7 +219,11 @@ impl TaaPass {
 
     /// Get the current jitter offset in pixels.
     pub fn current_jitter(&self) -> (f32, f32) {
-        get_jitter(self.frame_index, self.config.jitter_samples, self.config.jitter_scale)
+        get_jitter(
+            self.frame_index,
+            self.config.jitter_samples,
+            self.config.jitter_scale,
+        )
     }
 
     /// Get the resolved output view.
@@ -257,6 +265,104 @@ impl TaaPass {
             ],
         };
         queue.write_buffer(&self.params_buf, 0, bytemuck::bytes_of(&uniforms));
+    }
+
+    /// Execute the TAA resolve pass: blend current frame with history using velocity.
+    ///
+    /// After execution, `resolved_view()` contains the anti-aliased result.
+    /// Call `copy_to_history()` and `next_frame()` after this.
+    pub fn execute(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        current_view: &wgpu::TextureView,
+        depth_view: &wgpu::TextureView,
+        velocity_view: &wgpu::TextureView,
+    ) {
+        if !self.config.enabled {
+            return;
+        }
+
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("taa_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("taa_resolve_bg"),
+            layout: &self.bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(current_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&self.history_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(velocity_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(depth_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: self.params_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(&self.resolved_view),
+                },
+            ],
+        });
+
+        let wg_x = (self.width + 7) / 8;
+        let wg_y = (self.height + 7) / 8;
+
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("taa_resolve"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&self.resolve_pipeline);
+        pass.set_bind_group(0, &bg, &[]);
+        pass.dispatch_workgroups(wg_x, wg_y, 1);
+    }
+
+    /// Copy resolved output to history for next frame's reprojection.
+    pub fn copy_to_history(&self, encoder: &mut wgpu::CommandEncoder) {
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.resolved_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.history_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    /// Get the output view (alias for resolved_view, consistency with other passes).
+    pub fn output_view(&self) -> &wgpu::TextureView {
+        &self.resolved_view
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {

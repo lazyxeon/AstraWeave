@@ -13,6 +13,9 @@ pub struct EntityData {
     pub id: Entity,
     pub name: String,
     pub pos: IVec2,
+    /// Vertical position (Y axis in 3D).
+    #[serde(default)]
+    pub height: f32,
     pub rotation: f32,
     pub rotation_x: f32,
     pub rotation_z: f32,
@@ -23,6 +26,9 @@ pub struct EntityData {
     pub cooldowns: BTreeMap<String, f32>,
     #[serde(default)]
     pub behavior_graph: Option<BehaviorGraph>,
+    /// Parent entity ID for hierarchy preservation.
+    #[serde(default)]
+    pub parent: Option<Entity>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -46,6 +52,9 @@ impl SceneData {
                 rotation_x: 0.0,
                 rotation_z: 0.0,
                 scale: 1.0,
+                float_x: 0.0,
+                float_z: 0.0,
+                use_float_pos: false,
             });
 
             let health = world.health(entity_id).map(|h| h.hp).unwrap_or(100);
@@ -59,11 +68,13 @@ impl SceneData {
                 .unwrap_or_default();
 
             let behavior_graph = world.behavior_graph(entity_id).cloned();
+            let parent = world.parent_of(entity_id);
 
             entities.push(EntityData {
                 id: entity_id,
                 name,
                 pos: pose.pos,
+                height: pose.height,
                 rotation: pose.rotation,
                 rotation_x: pose.rotation_x,
                 rotation_z: pose.rotation_z,
@@ -73,6 +84,7 @@ impl SceneData {
                 ammo: ammo_rounds,
                 cooldowns,
                 behavior_graph,
+                parent,
             });
         }
 
@@ -107,6 +119,7 @@ impl SceneData {
             );
 
             if let Some(pose) = world.pose_mut(id) {
+                pose.height = entity_data.height;
                 pose.rotation = entity_data.rotation;
                 pose.rotation_x = entity_data.rotation_x;
                 pose.rotation_z = entity_data.rotation_z;
@@ -119,6 +132,13 @@ impl SceneData {
 
             if let Some(graph) = &entity_data.behavior_graph {
                 world.set_behavior_graph(id, graph.clone());
+            }
+        }
+
+        // Restore parent-child hierarchy (must be done after all entities are spawned)
+        for entity_data in &self.entities {
+            if let Some(parent_id) = entity_data.parent {
+                world.set_parent(entity_data.id, parent_id);
             }
         }
 
@@ -233,6 +253,26 @@ impl SceneData {
                     "Entity '{}' (ID {}) has negative ammo: {}",
                     entity.name, entity.id, entity.ammo
                 )));
+            }
+        }
+
+        // Validate parent references
+        let entity_ids: std::collections::HashSet<Entity> =
+            self.entities.iter().map(|e| e.id).collect();
+        for entity in &self.entities {
+            if let Some(parent_id) = entity.parent {
+                if !entity_ids.contains(&parent_id) {
+                    issues.push(SceneValidationIssue::Error(format!(
+                        "Entity '{}' (ID {}) references non-existent parent ID {}",
+                        entity.name, entity.id, parent_id
+                    )));
+                }
+                if parent_id == entity.id {
+                    issues.push(SceneValidationIssue::Error(format!(
+                        "Entity '{}' (ID {}) is its own parent",
+                        entity.name, entity.id
+                    )));
+                }
             }
         }
 
@@ -806,6 +846,7 @@ mod tests {
                     id: 1,
                     name: "E1".to_string(),
                     pos: IVec2 { x: 0, y: 0 },
+                    height: 0.0,
                     rotation: 0.0,
                     rotation_x: 0.0,
                     rotation_z: 0.0,
@@ -815,11 +856,13 @@ mod tests {
                     ammo: 30,
                     cooldowns: std::collections::BTreeMap::new(),
                     behavior_graph: None,
+                    parent: None,
                 },
                 EntityData {
                     id: 1, // Duplicate!
                     name: "E2".to_string(),
                     pos: IVec2 { x: 5, y: 5 },
+                    height: 0.0,
                     rotation: 0.0,
                     rotation_x: 0.0,
                     rotation_z: 0.0,
@@ -829,6 +872,7 @@ mod tests {
                     ammo: 15,
                     cooldowns: std::collections::BTreeMap::new(),
                     behavior_graph: None,
+                    parent: None,
                 },
             ],
             obstacles: vec![],
@@ -852,6 +896,7 @@ mod tests {
                 id: 1,
                 name: "BadScale".to_string(),
                 pos: IVec2 { x: 0, y: 0 },
+                height: 0.0,
                 rotation: 0.0,
                 rotation_x: 0.0,
                 rotation_z: 0.0,
@@ -861,6 +906,7 @@ mod tests {
                 ammo: 30,
                 cooldowns: std::collections::BTreeMap::new(),
                 behavior_graph: None,
+                parent: None,
             }],
             obstacles: vec![],
         };
@@ -882,6 +928,7 @@ mod tests {
                 id: 1,
                 name: "NegativeHP".to_string(),
                 pos: IVec2 { x: 0, y: 0 },
+                height: 0.0,
                 rotation: 0.0,
                 rotation_x: 0.0,
                 rotation_z: 0.0,
@@ -891,6 +938,7 @@ mod tests {
                 ammo: 30,
                 cooldowns: std::collections::BTreeMap::new(),
                 behavior_graph: None,
+                parent: None,
             }],
             obstacles: vec![],
         };
@@ -912,6 +960,7 @@ mod tests {
                 id: 10, // Max ID is 10
                 name: "Entity".to_string(),
                 pos: IVec2 { x: 0, y: 0 },
+                height: 0.0,
                 rotation: 0.0,
                 rotation_x: 0.0,
                 rotation_z: 0.0,
@@ -921,6 +970,7 @@ mod tests {
                 ammo: 30,
                 cooldowns: std::collections::BTreeMap::new(),
                 behavior_graph: None,
+                parent: None,
             }],
             obstacles: vec![],
         };
@@ -970,6 +1020,7 @@ mod tests {
                     id: 1,
                     name: "E1".to_string(),
                     pos: IVec2 { x: 0, y: 0 },
+                    height: 0.0,
                     rotation: 0.0,
                     rotation_x: 0.0,
                     rotation_z: 0.0,
@@ -979,11 +1030,13 @@ mod tests {
                     ammo: 30,
                     cooldowns: cooldowns.clone(),
                     behavior_graph: Some(BehaviorGraph::new(BehaviorNode::Action("test".into()))),
+                    parent: None,
                 },
                 EntityData {
                     id: 2,
                     name: "E2".to_string(),
                     pos: IVec2 { x: 5, y: 5 },
+                    height: 0.0,
                     rotation: 0.0,
                     rotation_x: 0.0,
                     rotation_z: 0.0,
@@ -993,6 +1046,7 @@ mod tests {
                     ammo: 15,
                     cooldowns: std::collections::BTreeMap::new(),
                     behavior_graph: None,
+                    parent: None,
                 },
             ],
             obstacles: vec![(3, 3)],

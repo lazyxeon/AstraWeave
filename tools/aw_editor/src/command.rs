@@ -1,4 +1,4 @@
-﻿//! Editor command system - Undo/Redo infrastructure
+//! Editor command system - Undo/Redo infrastructure
 //!
 //! Implements the Command pattern for all editor operations.
 //! Every action (transform, create, delete, edit) is wrapped in a command
@@ -1007,6 +1007,9 @@ impl EditorCommand for SpawnEntitiesCommand {
                     rotation: 0.0,
                     rotation_x: 0.0,
                     rotation_z: 0.0,
+                    float_x: 0.0,
+                    float_z: 0.0,
+                    use_float_pos: false,
                     scale: 0.0,
                 };
             }
@@ -1055,6 +1058,9 @@ impl EditorCommand for DuplicateEntitiesCommand {
                     rotation: 0.0,
                     rotation_x: 0.0,
                     rotation_z: 0.0,
+                    float_x: 0.0,
+                    float_z: 0.0,
+                    use_float_pos: false,
                     scale: 0.0,
                 };
             }
@@ -1135,6 +1141,117 @@ impl EditorCommand for DeleteEntitiesCommand {
 }
 
 // ============================================================================
+// Hierarchy Commands
+// ============================================================================
+
+/// Command to rename an entity with undo support.
+#[derive(Debug)]
+pub struct RenameEntityCommand {
+    entity: Entity,
+    old_name: String,
+    new_name: String,
+}
+
+impl RenameEntityCommand {
+    pub fn new(entity: Entity, old_name: String, new_name: String) -> Box<dyn EditorCommand> {
+        Box::new(Self {
+            entity,
+            old_name,
+            new_name,
+        })
+    }
+}
+
+impl EditorCommand for RenameEntityCommand {
+    fn execute(&mut self, world: &mut World) -> Result<()> {
+        world.set_name(self.entity, self.new_name.clone());
+        Ok(())
+    }
+
+    fn undo(&mut self, world: &mut World) -> Result<()> {
+        world.set_name(self.entity, self.old_name.clone());
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        format!("Rename entity {} to '{}'", self.entity, self.new_name)
+    }
+}
+
+/// Command to set a parent-child relationship with undo support.
+#[derive(Debug)]
+pub struct SetParentCommand {
+    child: Entity,
+    new_parent: Entity,
+    old_parent: Option<Entity>,
+}
+
+impl SetParentCommand {
+    pub fn new(
+        child: Entity,
+        new_parent: Entity,
+        old_parent: Option<Entity>,
+    ) -> Box<dyn EditorCommand> {
+        Box::new(Self {
+            child,
+            new_parent,
+            old_parent,
+        })
+    }
+}
+
+impl EditorCommand for SetParentCommand {
+    fn execute(&mut self, world: &mut World) -> Result<()> {
+        world.set_parent(self.child, self.new_parent);
+        Ok(())
+    }
+
+    fn undo(&mut self, world: &mut World) -> Result<()> {
+        if let Some(old_parent) = self.old_parent {
+            world.set_parent(self.child, old_parent);
+        } else {
+            world.remove_parent(self.child);
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        format!("Set parent of {} to {}", self.child, self.new_parent)
+    }
+}
+
+/// Command to unparent an entity with undo support.
+#[derive(Debug)]
+pub struct UnparentCommand {
+    entity: Entity,
+    old_parent: Option<Entity>,
+}
+
+impl UnparentCommand {
+    pub fn new(entity: Entity, old_parent: Option<Entity>) -> Box<dyn EditorCommand> {
+        Box::new(Self { entity, old_parent })
+    }
+}
+
+impl EditorCommand for UnparentCommand {
+    fn execute(&mut self, world: &mut World) -> Result<()> {
+        world.remove_parent(self.entity);
+        Ok(())
+    }
+
+    fn undo(&mut self, world: &mut World) -> Result<()> {
+        if let Some(parent) = self.old_parent {
+            world.set_parent(self.entity, parent);
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        format!("Unparent entity {}", self.entity)
+    }
+}
+
+// ============================================================================
 // Prefab Commands
 // ============================================================================
 
@@ -1191,6 +1308,9 @@ impl EditorCommand for PrefabSpawnCommand {
                     rotation: 0.0,
                     rotation_x: 0.0,
                     rotation_z: 0.0,
+                    float_x: 0.0,
+                    float_z: 0.0,
+                    use_float_pos: false,
                     scale: 0.0,
                 };
             }

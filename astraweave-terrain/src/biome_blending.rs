@@ -68,8 +68,9 @@ impl PackedBiomeBlend {
                 *w /= total_weight;
             }
         } else {
-            // Fallback to grassland if no weights
-            result.biome_ids[0] = BiomeType::Grassland as u8;
+            // Fallback to desert/sand if no weights — avoids green grass in non-grass biomes.
+            // Desert (1) is a safer default than Grassland (0) for arid scenes.
+            result.biome_ids[0] = BiomeType::Desert as u8;
             result.weights[0] = 1.0;
         }
 

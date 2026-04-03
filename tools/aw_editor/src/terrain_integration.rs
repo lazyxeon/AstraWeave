@@ -394,11 +394,22 @@ impl TerrainState {
 
                 let normal = normals[biome_idx];
 
+                // Fallback uses the primary biome (e.g., Desert=index 1) not Grassland
+                let primary_biome_id = Self::biome_to_id(primary_biome) as usize;
+                let mut fallback_w0 = [0.0f32; 4];
+                let mut fallback_w1 = [0.0f32; 4];
+                if primary_biome_id < 4 {
+                    fallback_w0[primary_biome_id] = 1.0;
+                } else if primary_biome_id < 8 {
+                    fallback_w1[primary_biome_id - 4] = 1.0;
+                } else {
+                    fallback_w0[0] = 1.0;
+                }
                 let (biome_weights_0, biome_weights_1) = biome_blends
                     .get(biome_idx)
                     .copied()
                     .map(Self::packed_biome_to_weight_sets)
-                    .unwrap_or(([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]));
+                    .unwrap_or((fallback_w0, fallback_w1));
                 let (material_ids, material_weights) = splat_map
                     .get(biome_idx)
                     .copied()
@@ -550,8 +561,8 @@ impl TerrainState {
                 *w /= total;
             }
         } else {
-            ids[0] = 0.0;
-            ws[0] = 1.0; // fallback to grass (layer 0)
+            ids[0] = 1.0;
+            ws[0] = 1.0; // fallback to sand (layer 1) — safer default for all biomes
         }
 
         (ids, ws)
@@ -587,29 +598,53 @@ impl TerrainState {
                 });
             }
             BiomeType::Desert => {
-                // Sand covers ALL heights on flat terrain. The built-in
-                // SplatRule::sand() only spans -5..8 (beach-level), which
-                // leaves heights >11 with zero weight → fallback to grass.
+                // Catch-all sand base: covers ALL heights/slopes at low priority
+                // so that the fallback is always sand (layer 1), never grass (layer 0).
+                generator.add_rule(SplatRule {
+                    material_id: 1, // sand
+                    min_height: f32::MIN,
+                    max_height: f32::MAX,
+                    min_slope: 0.0,
+                    max_slope: 90.0,
+                    priority: 1,     // lowest priority — overridden by all specific rules
+                    weight: 0.5,     // moderate base weight
+                    height_falloff: 0.0,
+                    slope_falloff: 0.0,
+                });
+                // Sand covers terrain aggressively — arid biomes are sand-dominated.
+                // Very high weight (4.0) and wide slope tolerance (0..50) ensures
+                // sand is the dominant material even on moderate slopes.
                 generator.add_rule(SplatRule {
                     material_id: 1, // sand
                     min_height: -10.0,
-                    max_height: 200.0,
+                    max_height: 300.0,
                     min_slope: 0.0,
-                    max_slope: 30.0,
-                    priority: 15,
-                    weight: 2.0,
-                    height_falloff: 0.005,
-                    slope_falloff: 0.05,
+                    max_slope: 50.0, // sand even on moderate slopes in arid biomes
+                    priority: 18,    // high priority to dominate
+                    weight: 4.0,     // very strong
+                    height_falloff: 0.002,
+                    slope_falloff: 0.03,
                 });
-                generator.add_rule(SplatRule::rock());
+                // Rock only on very steep cliffs (>45°)
                 generator.add_rule(SplatRule {
-                    material_id: 3, // mountain rock on moderate slopes
+                    material_id: 7, // stone
+                    min_height: f32::MIN,
+                    max_height: f32::MAX,
+                    min_slope: 45.0, // only very steep slopes
+                    max_slope: 90.0,
+                    priority: 20,
+                    weight: 1.0,
+                    height_falloff: 0.0,
+                    slope_falloff: 0.08,
+                });
+                generator.add_rule(SplatRule {
+                    material_id: 3, // mountain rock on steep slopes
                     min_height: -2.0,
                     max_height: 120.0,
-                    min_slope: 8.0,
-                    max_slope: 35.0,
+                    min_slope: 30.0, // increased from 8.0 — less rock in desert
+                    max_slope: 50.0,
                     priority: 13,
-                    weight: 0.55,
+                    weight: 0.35, // reduced from 0.55
                     height_falloff: 0.02,
                     slope_falloff: 0.05,
                 });
@@ -1598,6 +1633,8 @@ impl TerrainState {
                 .wrapping_add(chunk_id.z as u64);
 
             // Generate vegetation instances via the terrain scatter system
+            let veg_count = biome_config.vegetation.vegetation_types.len();
+            let density = biome_config.vegetation.density;
             let vegetation =
                 match scatter.scatter_vegetation(chunk, chunk_size, &biome_config, seed) {
                     Ok(v) => v,
@@ -1606,6 +1643,26 @@ impl TerrainState {
                         continue;
                     }
                 };
+
+            if placements.is_empty() && !vegetation.is_empty() {
+                // Log first successful chunk for diagnostics
+                eprintln!(
+                    "=== SCATTER GEN: chunk {:?}: {} instances from {} veg types (density={:.4})",
+                    chunk_id, vegetation.len(), veg_count, density,
+                );
+                if let Some(vi) = vegetation.first() {
+                    eprintln!(
+                        "=== SCATTER INSTANCE: type='{}' path='{}' pos=({:.1},{:.1},{:.1})",
+                        vi.vegetation_type, vi.model_path,
+                        vi.position.x, vi.position.y, vi.position.z,
+                    );
+                }
+            } else if vegetation.is_empty() && placements.is_empty() {
+                eprintln!(
+                    "=== SCATTER GEN: chunk {:?}: 0 instances (veg_types={}, density={:.4})",
+                    chunk_id, veg_count, density,
+                );
+            }
 
             for vi in vegetation {
                 placements.push(ScatterPlacement::from_vegetation_instance(&vi));
@@ -1708,6 +1765,33 @@ impl TerrainVertex {
     }
 }
 
+/// Resolve a potentially relative mesh path to absolute using the project root (CWD).
+/// If the path is already absolute, returns it unchanged.
+fn resolve_mesh_path(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    if p.is_absolute() {
+        return path.to_string();
+    }
+    // Try resolving relative to CWD (project root)
+    match std::env::current_dir() {
+        Ok(cwd) => {
+            let resolved = cwd.join(p);
+            if resolved.exists() {
+                return resolved.to_string_lossy().into_owned();
+            }
+            // Also try under assets/ subdirectory
+            let assets_resolved = cwd.join("assets").join(p);
+            if assets_resolved.exists() {
+                return assets_resolved.to_string_lossy().into_owned();
+            }
+            // Return the CWD-joined path even if it doesn't exist yet
+            // (it might be loaded later or the file might be missing)
+            resolved.to_string_lossy().into_owned()
+        }
+        Err(_) => path.to_string(),
+    }
+}
+
 /// CPU-side scatter placement (bridges terrain VegetationInstance to GPU renderer).
 #[derive(Debug, Clone)]
 pub struct ScatterPlacement {
@@ -1760,7 +1844,7 @@ impl ScatterPlacement {
             rotation: vi.rotation,
             scale: world_scale,
             mesh_key: vi.vegetation_type.clone(),
-            mesh_path: vi.model_path.clone(),
+            mesh_path: resolve_mesh_path(&vi.model_path),
             bounding_radius: world_scale * 2.0,
             tint,
             terrain_normal: vi.terrain_normal,

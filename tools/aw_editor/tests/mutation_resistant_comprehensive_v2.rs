@@ -1200,6 +1200,8 @@ mod clipboard_entity_validate_tests {
             ammo,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         }
     }
 
@@ -1524,6 +1526,7 @@ mod scene_data_validate_tests {
             id,
             name: name.to_string(),
             pos: IVec2 { x: 0, y: 0 },
+            height: 0.0,
             rotation: 0.0,
             rotation_x: 0.0,
             rotation_z: 0.0,
@@ -1533,6 +1536,7 @@ mod scene_data_validate_tests {
             ammo,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            parent: None,
         }
     }
 

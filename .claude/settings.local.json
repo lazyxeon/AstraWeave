@@ -30,7 +30,32 @@
       "Bash(timeout 25 cargo run --bin aw_editor --profile release-fast)",
       "Bash(timeout 40 cargo run --bin aw_editor --profile release-fast)",
       "WebSearch",
-      "Bash(cargo check-all:*)"
+      "Bash(cargo check-all:*)",
+      "Bash(for file:*)",
+      "Bash(do if:*)",
+      "Read(//c/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/**)",
+      "Bash(then echo:*)",
+      "Bash(find /c/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/tools/aw_editor/src/viewport -name \"*.rs\" -type f -exec head -80 {} +)",
+      "Bash(cargo build:*)",
+      "Bash(cargo run:*)",
+      "Bash(echo \"EXIT CODE: $?\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"DONE: $?\")",
+      "Bash(RUST_BACKTRACE=1 timeout 20 target/release-fast/aw_editor.exe)",
+      "Bash(RUST_BACKTRACE=1 timeout 30 target/release-fast/aw_editor.exe)",
+      "Bash(find /c/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/tools/aw_editor/src/panels -type f -name *.rs)",
+      "Bash(timeout 25 target/release-fast/aw_editor.exe)",
+      "Bash(find C:/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/assets -name *namaqualand* -o -name *Namaqualand*)",
+      "Bash(find C:/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/assets/imported/Namaqualand -name *.biomepack* -o -name manifest*)",
+      "Bash(find C:/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/assets -iname *sand*desert* -type f)",
+      "Bash(identify \"C:/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/assets/textures/pbr/PBR_4K/Sand_Desert/Sand_Desert_BaseColor.png\")",
+      "Bash(timeout 20 target/release-fast/aw_editor.exe)",
+      "Bash(find:*)",
+      "Bash(sed:*)",
+      "Bash(ls -1 assets/materials/*.png)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); cats={}:*)",
+      "Bash(ls -la assets/imported/Namaqualand/meshes/*.glb)",
+      "Bash(sort -k5 -n -r)"
     ]
   }
 }

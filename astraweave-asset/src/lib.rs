@@ -339,7 +339,19 @@ pub mod gltf_loader {
         pub rgba8: Vec<u8>,
     }
 
-    #[derive(Debug, Clone, Default)]
+    /// Alpha rendering mode for a material.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum AlphaMode {
+        /// Fully opaque (default).
+        #[default]
+        Opaque,
+        /// Alpha-tested with a cutoff threshold.
+        Mask,
+        /// Alpha-blended (sorted transparency).
+        Blend,
+    }
+
+    #[derive(Debug, Clone)]
     pub struct MaterialData {
         pub base_color_factor: [f32; 4],
         pub metallic_factor: f32,
@@ -347,6 +359,56 @@ pub mod gltf_loader {
         pub base_color_texture: Option<ImageData>,
         pub metallic_roughness_texture: Option<ImageData>,
         pub normal_texture: Option<ImageData>,
+        // --- Extended PBR fields (Phase 1) ---
+        /// Emissive color factor [R, G, B].
+        pub emissive_factor: [f32; 3],
+        /// Emissive strength multiplier (KHR_materials_emissive_strength). Default 1.0.
+        pub emissive_strength: f32,
+        /// Emissive texture.
+        pub emissive_texture: Option<ImageData>,
+        /// Occlusion (AO) texture.
+        pub occlusion_texture: Option<ImageData>,
+        /// Occlusion strength factor (0.0–1.0). Default 1.0.
+        pub occlusion_strength: f32,
+        /// Alpha rendering mode.
+        pub alpha_mode: AlphaMode,
+        /// Alpha cutoff threshold for Mask mode. Default 0.5.
+        pub alpha_cutoff: f32,
+        /// Whether the material should be rendered double-sided.
+        pub double_sided: bool,
+        /// Index of refraction (KHR_materials_ior). Default 1.5.
+        pub ior: f32,
+        /// Transmission factor (KHR_materials_transmission). 0.0 = opaque, 1.0 = fully transmissive.
+        pub transmission_factor: f32,
+        /// Clearcoat factor (KHR_materials_clearcoat). 0.0 = no clearcoat.
+        pub clearcoat_factor: f32,
+        /// Clearcoat roughness (KHR_materials_clearcoat). Default 0.0.
+        pub clearcoat_roughness: f32,
+    }
+
+    impl Default for MaterialData {
+        fn default() -> Self {
+            Self {
+                base_color_factor: [1.0, 1.0, 1.0, 1.0],
+                metallic_factor: 1.0,
+                roughness_factor: 1.0,
+                base_color_texture: None,
+                metallic_roughness_texture: None,
+                normal_texture: None,
+                emissive_factor: [0.0, 0.0, 0.0],
+                emissive_strength: 1.0,
+                emissive_texture: None,
+                occlusion_texture: None,
+                occlusion_strength: 1.0,
+                alpha_mode: AlphaMode::Opaque,
+                alpha_cutoff: 0.5,
+                double_sided: false,
+                ior: 1.5,
+                transmission_factor: 0.0,
+                clearcoat_factor: 0.0,
+                clearcoat_roughness: 0.0,
+            }
+        }
     }
 
     /// Load the first mesh primitive from a GLB (embedded bin) into MeshData.
@@ -514,6 +576,84 @@ pub mod gltf_loader {
         }
     }
 
+    /// Extract extended PBR material properties from a glTF material.
+    /// This reads core PBR, emissive, occlusion, alpha, and KHR extensions.
+    fn extract_extended_material<F>(
+        mat_g: &gltf::Material,
+        mut decode_image: F,
+    ) -> Result<MaterialData>
+    where
+        F: FnMut(gltf::image::Source) -> Result<ImageData>,
+    {
+        let mut mat = MaterialData::default();
+        let pbr = mat_g.pbr_metallic_roughness();
+
+        // Core PBR metallic-roughness
+        mat.base_color_factor = pbr.base_color_factor();
+        mat.metallic_factor = pbr.metallic_factor();
+        mat.roughness_factor = pbr.roughness_factor();
+        if let Some(tex) = pbr.base_color_texture() {
+            mat.base_color_texture = Some(decode_image(tex.texture().source().source())?);
+        }
+        if let Some(tex) = pbr.metallic_roughness_texture() {
+            mat.metallic_roughness_texture = Some(decode_image(tex.texture().source().source())?);
+        }
+
+        // Normal map
+        if let Some(n) = mat_g.normal_texture() {
+            mat.normal_texture = Some(decode_image(n.texture().source().source())?);
+        }
+
+        // Emissive
+        mat.emissive_factor = mat_g.emissive_factor();
+        if let Some(tex) = mat_g.emissive_texture() {
+            mat.emissive_texture = Some(decode_image(tex.texture().source().source())?);
+        }
+        // KHR_materials_emissive_strength
+        if let Some(strength) = mat_g.emissive_strength() {
+            mat.emissive_strength = strength;
+        }
+
+        // Occlusion
+        if let Some(occ) = mat_g.occlusion_texture() {
+            mat.occlusion_strength = occ.strength();
+            mat.occlusion_texture = Some(decode_image(occ.texture().source().source())?);
+        }
+
+        // Alpha mode
+        mat.alpha_mode = match mat_g.alpha_mode() {
+            gltf::material::AlphaMode::Opaque => AlphaMode::Opaque,
+            gltf::material::AlphaMode::Mask => AlphaMode::Mask,
+            gltf::material::AlphaMode::Blend => AlphaMode::Blend,
+        };
+        mat.alpha_cutoff = mat_g.alpha_cutoff().unwrap_or(0.5);
+        mat.double_sided = mat_g.double_sided();
+
+        // KHR_materials_ior
+        if let Some(ior) = mat_g.ior() {
+            mat.ior = ior;
+        }
+
+        // KHR_materials_transmission
+        if let Some(transmission) = mat_g.transmission() {
+            mat.transmission_factor = transmission.transmission_factor();
+        }
+
+        // KHR_materials_clearcoat (read from raw extensions JSON — not yet typed in gltf 1.4)
+        if let Some(ext_map) = mat_g.extensions() {
+            if let Some(clearcoat_val) = ext_map.get("KHR_materials_clearcoat") {
+                if let Some(factor) = clearcoat_val.get("clearcoatFactor").and_then(|v| v.as_f64()) {
+                    mat.clearcoat_factor = factor as f32;
+                }
+                if let Some(roughness) = clearcoat_val.get("clearcoatRoughnessFactor").and_then(|v| v.as_f64()) {
+                    mat.clearcoat_roughness = roughness as f32;
+                }
+            }
+        }
+
+        Ok(mat)
+    }
+
     fn load_from_glb(bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
         use gltf::buffer::Data as BufferData;
         let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
@@ -563,26 +703,12 @@ pub mod gltf_loader {
             gltf::mesh::util::ReadIndices::U8(_) => bail!("u8 indices unsupported"),
         };
 
-        let mut mat = MaterialData::default();
-        {
+        let mat = {
             let mat_g = prim.material();
-            let pbr = mat_g.pbr_metallic_roughness();
-            mat.base_color_factor = pbr.base_color_factor();
-            mat.metallic_factor = pbr.metallic_factor();
-            mat.roughness_factor = pbr.roughness_factor();
-            if let Some(tex) = pbr.base_color_texture() {
-                let img = decode_image_from_gltf(tex.texture().source().source(), Some(&buffers))?;
-                mat.base_color_texture = Some(img);
-            }
-            if let Some(tex) = pbr.metallic_roughness_texture() {
-                let img = decode_image_from_gltf(tex.texture().source().source(), Some(&buffers))?;
-                mat.metallic_roughness_texture = Some(img);
-            }
-            if let Some(n) = mat_g.normal_texture() {
-                let img = decode_image_from_gltf(n.texture().source().source(), Some(&buffers))?;
-                mat.normal_texture = Some(img);
-            }
-        }
+            extract_extended_material(&mat_g, |source| {
+                decode_image_from_gltf(source, Some(&buffers))
+            })?
+        };
 
         Ok((
             MeshData {
@@ -639,24 +765,10 @@ pub mod gltf_loader {
             gltf::mesh::util::ReadIndices::U8(_) => bail!("u8 indices unsupported"),
         };
 
-        let mut mat = MaterialData::default();
         let prim_mat = prim.material();
-        let pbr = prim_mat.pbr_metallic_roughness();
-        mat.base_color_factor = pbr.base_color_factor();
-        mat.metallic_factor = pbr.metallic_factor();
-        mat.roughness_factor = pbr.roughness_factor();
-        if let Some(tex) = pbr.base_color_texture() {
-            let img = decode_image_from_gltf(tex.texture().source().source(), None)?;
-            mat.base_color_texture = Some(img);
-        }
-        if let Some(tex) = pbr.metallic_roughness_texture() {
-            let img = decode_image_from_gltf(tex.texture().source().source(), None)?;
-            mat.metallic_roughness_texture = Some(img);
-        }
-        if let Some(n) = prim_mat.normal_texture() {
-            let img = decode_image_from_gltf(n.texture().source().source(), None)?;
-            mat.normal_texture = Some(img);
-        }
+        let mat = extract_extended_material(&prim_mat, |source| {
+            decode_image_from_gltf(source, None)
+        })?;
 
         Ok((
             MeshData {

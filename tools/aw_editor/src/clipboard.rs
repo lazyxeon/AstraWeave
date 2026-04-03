@@ -68,6 +68,9 @@ impl ClipboardValidation {
 pub struct ClipboardEntityData {
     pub name: String,
     pub pos: IVec2,
+    /// Vertical position (Y axis in 3D).
+    #[serde(default)]
+    pub height: f32,
     pub rotation: f32,
     pub rotation_x: f32,
     pub rotation_z: f32,
@@ -77,6 +80,9 @@ pub struct ClipboardEntityData {
     pub ammo: i32,
     pub cooldowns: BTreeMap<String, f32>,
     pub behavior_graph: Option<astraweave_behavior::BehaviorGraph>,
+    /// Parent entity ID for hierarchy preservation.
+    #[serde(default)]
+    pub parent: Option<Entity>,
 }
 
 impl ClipboardEntityData {
@@ -291,6 +297,9 @@ impl ClipboardData {
                 rotation_x: 0.0,
                 rotation_z: 0.0,
                 scale: 1.0,
+                float_x: 0.0,
+                float_z: 0.0,
+                use_float_pos: false,
             });
 
             let health = world.health(entity_id).map(|h| h.hp).unwrap_or(100);
@@ -305,9 +314,11 @@ impl ClipboardData {
 
             let behavior_graph = world.behavior_graph(entity_id).cloned();
 
+            let parent = world.parent_of(entity_id);
             entities.push(ClipboardEntityData {
                 name,
                 pos: pose.pos,
+                height: pose.height,
                 rotation: pose.rotation,
                 rotation_x: pose.rotation_x,
                 rotation_z: pose.rotation_z,
@@ -317,6 +328,7 @@ impl ClipboardData {
                 ammo: ammo_rounds,
                 cooldowns,
                 behavior_graph,
+                parent,
             });
         }
 
@@ -709,6 +721,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
 
         let validation = entity.validate();
@@ -731,6 +745,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
 
         let validation = entity.validate();
@@ -753,6 +769,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
 
         let validation = entity.validate();
@@ -775,6 +793,8 @@ mod tests {
             ammo: -10, // Warning
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
 
         let validation = entity.validate();
@@ -842,6 +862,8 @@ mod tests {
                 ammo: 30,
                 cooldowns: BTreeMap::new(),
                 behavior_graph: None,
+                height: 0.0,
+                parent: None,
             }],
         };
 
@@ -870,6 +892,8 @@ mod tests {
                 ammo: 30,
                 cooldowns: BTreeMap::new(),
                 behavior_graph: None,
+                height: 0.0,
+                parent: None,
             }],
         };
 
@@ -1049,6 +1073,8 @@ mod tests {
                     ammo: 30,
                     cooldowns: BTreeMap::new(),
                     behavior_graph: None,
+                    height: 0.0,
+                    parent: None,
                 },
                 ClipboardEntityData {
                     name: "EnemyUnit".to_string(),
@@ -1062,6 +1088,8 @@ mod tests {
                     ammo: 30,
                     cooldowns: BTreeMap::new(),
                     behavior_graph: None,
+                    height: 0.0,
+                    parent: None,
                 },
             ],
         };
@@ -1091,6 +1119,8 @@ mod tests {
                     ammo: 30,
                     cooldowns: BTreeMap::new(),
                     behavior_graph: None,
+                    height: 0.0,
+                    parent: None,
                 },
                 ClipboardEntityData {
                     name: "Enemy1".to_string(),
@@ -1104,6 +1134,8 @@ mod tests {
                     ammo: 30,
                     cooldowns: BTreeMap::new(),
                     behavior_graph: None,
+                    height: 0.0,
+                    parent: None,
                 },
                 ClipboardEntityData {
                     name: "Ally2".to_string(),
@@ -1117,6 +1149,8 @@ mod tests {
                     ammo: 30,
                     cooldowns: BTreeMap::new(),
                     behavior_graph: None,
+                    height: 0.0,
+                    parent: None,
                 },
             ],
         };
@@ -1230,6 +1264,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         assert!(!without_ai.has_ai());
     }
@@ -1248,6 +1284,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         assert!(!data.has_cooldowns());
         data.cooldowns.insert("attack".to_string(), 1.5);
@@ -1269,6 +1307,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         assert!(!normal.is_scaled());
 
@@ -1284,6 +1324,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         assert!(scaled.is_scaled());
     }
@@ -1302,6 +1344,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         assert!(!not_rotated.is_rotated());
 
@@ -1317,6 +1361,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         assert!(rotated.is_rotated());
     }
@@ -1335,6 +1381,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         assert_eq!(data.position(), (5, 10));
     }
@@ -1353,6 +1401,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         let summary = data.summary();
         assert!(summary.contains("Soldier"));
@@ -1373,6 +1423,8 @@ mod tests {
             ammo: 30,
             cooldowns: BTreeMap::new(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         let display = format!("{}", data);
         assert!(display.contains("Unit"));

@@ -28,6 +28,14 @@ pub enum HierarchyAction {
     Unparent(Entity),
     /// Open the prefab source for in-place editing
     EditPrefab(Entity),
+    /// Rename entity (entity, new_name)
+    Rename(Entity, String),
+    /// Delete entity and all descendants
+    DeleteWithChildren(Entity),
+    /// Move entity up among siblings
+    MoveUp(Entity),
+    /// Move entity down among siblings
+    MoveDown(Entity),
 }
 
 impl std::fmt::Display for HierarchyAction {
@@ -49,6 +57,10 @@ impl HierarchyAction {
             HierarchyAction::SetParent(_, _) => "Set Parent",
             HierarchyAction::Unparent(_) => "Unparent",
             HierarchyAction::EditPrefab(_) => "Edit Prefab",
+            HierarchyAction::Rename(_, _) => "Rename",
+            HierarchyAction::DeleteWithChildren(_) => "Delete With Children",
+            HierarchyAction::MoveUp(_) => "Move Up",
+            HierarchyAction::MoveDown(_) => "Move Down",
         }
     }
 
@@ -64,6 +76,10 @@ impl HierarchyAction {
             HierarchyAction::SetParent(_, _) => "[P+]",
             HierarchyAction::Unparent(_) => "[P-]",
             HierarchyAction::EditPrefab(_) => "[Ed]",
+            HierarchyAction::Rename(_, _) => "[Rn]",
+            HierarchyAction::DeleteWithChildren(_) => "[Dx]",
+            HierarchyAction::MoveUp(_) => "[Up]",
+            HierarchyAction::MoveDown(_) => "[Dn]",
         }
     }
 
@@ -71,7 +87,9 @@ impl HierarchyAction {
     pub fn is_destructive(&self) -> bool {
         matches!(
             self,
-            HierarchyAction::DeleteEntity(_) | HierarchyAction::BreakPrefabConnection(_)
+            HierarchyAction::DeleteEntity(_)
+                | HierarchyAction::DeleteWithChildren(_)
+                | HierarchyAction::BreakPrefabConnection(_)
         )
     }
 
@@ -183,20 +201,26 @@ impl HierarchyPanel {
     pub fn sync_with_world(&mut self, world: &World) {
         let world_entities: HashSet<Entity> = world.entities().into_iter().collect();
 
+        // Remove entities that no longer exist
         self.hierarchy.retain(|e, _| world_entities.contains(e));
-        self.root_entities.retain(|e| world_entities.contains(e));
         self.selected_entities
             .retain(|e| world_entities.contains(e));
 
+        // Rebuild hierarchy from World's authoritative parent/children data
         for entity in world.entities() {
-            if let std::collections::hash_map::Entry::Vacant(e) = self.hierarchy.entry(entity) {
-                e.insert(HierarchyNode {
-                    entity,
-                    children: Vec::new(),
-                });
-                self.root_entities.push(entity);
-            }
+            let children: Vec<Entity> = world.children_of(entity).to_vec();
+            self.hierarchy
+                .entry(entity)
+                .and_modify(|node| node.children = children.clone())
+                .or_insert(HierarchyNode { entity, children });
         }
+
+        // Rebuild root entities list: entities without a parent
+        self.root_entities = world
+            .entities()
+            .into_iter()
+            .filter(|e| world.parent_of(*e).is_none())
+            .collect();
     }
 
     /// Rebuild the parent-child tree from EntityManager parent fields.
@@ -546,6 +570,17 @@ impl HierarchyPanel {
                     ui.close();
                 }
 
+                let has_kids = self
+                    .hierarchy
+                    .get(&entity)
+                    .map(|n| !n.children.is_empty())
+                    .unwrap_or(false);
+                if has_kids && ui.button("Delete with Children").clicked() {
+                    self.pending_actions
+                        .push(HierarchyAction::DeleteWithChildren(entity));
+                    ui.close();
+                }
+
                 ui.separator();
 
                 if ui.button("Create Prefab").clicked() {
@@ -587,7 +622,17 @@ impl HierarchyPanel {
 
                 ui.separator();
 
-                if ui.button("📤 Unparent").clicked() {
+                if ui.button("Move Up").clicked() {
+                    self.pending_actions.push(HierarchyAction::MoveUp(entity));
+                    ui.close();
+                }
+
+                if ui.button("Move Down").clicked() {
+                    self.pending_actions.push(HierarchyAction::MoveDown(entity));
+                    ui.close();
+                }
+
+                if ui.button("Unparent").clicked() {
                     self.remove_from_parent(entity);
                     self.pending_actions.push(HierarchyAction::Unparent(entity));
                     ui.close();
@@ -665,6 +710,24 @@ impl HierarchyPanel {
                 }
             }
 
+            // Draw entity type icon
+            let icon = Self::entity_type_icon(name);
+            let is_prefab_inst = self.prefab_instances.contains(&entity);
+            let icon_color = if is_prefab_inst {
+                egui::Color32::from_rgb(100, 180, 255) // Blue for prefab instances
+            } else {
+                egui::Color32::from_rgb(120, 120, 120)
+            };
+            painter.text(
+                text_pos - egui::vec2(if has_children { 0.0 } else { 0.0 }, 0.0),
+                egui::Align2::LEFT_TOP,
+                icon,
+                egui::FontId::proportional(10.0),
+                icon_color,
+            );
+            let icon_width = 24.0;
+            let name_pos = text_pos + egui::vec2(icon_width, 0.0);
+
             if Some(entity) == self.rename_entity {
                 let text_edit =
                     egui::TextEdit::singleline(&mut self.rename_buffer).desired_width(150.0);
@@ -674,6 +737,10 @@ impl HierarchyPanel {
                 );
 
                 if text_response.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    if !self.rename_buffer.is_empty() {
+                        self.pending_actions
+                            .push(HierarchyAction::Rename(entity, self.rename_buffer.clone()));
+                    }
                     self.rename_entity = None;
                 }
             } else {
@@ -695,7 +762,7 @@ impl HierarchyPanel {
                             egui::Color32::LIGHT_GRAY
                         };
 
-                        let mut x_offset = text_pos.x;
+                        let mut x_offset = name_pos.x;
                         let font = egui::FontId::default();
 
                         if !before.is_empty() {
@@ -706,7 +773,7 @@ impl HierarchyPanel {
                             );
                             let w = galley.rect.width();
                             painter.galley(
-                                egui::Pos2::new(x_offset, text_pos.y),
+                                egui::Pos2::new(x_offset, name_pos.y),
                                 galley,
                                 text_color,
                             );
@@ -721,7 +788,7 @@ impl HierarchyPanel {
                         );
                         let w = galley.rect.width();
                         let highlight_rect = egui::Rect::from_min_size(
-                            egui::Pos2::new(x_offset, text_pos.y),
+                            egui::Pos2::new(x_offset, name_pos.y),
                             egui::vec2(w, 14.0),
                         );
                         painter.rect_filled(
@@ -730,7 +797,7 @@ impl HierarchyPanel {
                             egui::Color32::from_rgb(255, 200, 50),
                         );
                         painter.galley(
-                            egui::Pos2::new(x_offset, text_pos.y),
+                            egui::Pos2::new(x_offset, name_pos.y),
                             galley,
                             egui::Color32::BLACK,
                         );
@@ -740,14 +807,14 @@ impl HierarchyPanel {
                             let galley =
                                 painter.layout_no_wrap(after.to_string(), font, text_color);
                             painter.galley(
-                                egui::Pos2::new(x_offset, text_pos.y),
+                                egui::Pos2::new(x_offset, name_pos.y),
                                 galley,
                                 text_color,
                             );
                         }
                     } else {
                         painter.text(
-                            text_pos,
+                            name_pos,
                             egui::Align2::LEFT_TOP,
                             name,
                             egui::FontId::default(),
@@ -762,7 +829,7 @@ impl HierarchyPanel {
                     }
                 } else {
                     painter.text(
-                        text_pos,
+                        name_pos,
                         egui::Align2::LEFT_TOP,
                         name,
                         egui::FontId::default(),
@@ -862,6 +929,66 @@ impl HierarchyPanel {
         }
 
         selected_changed
+    }
+
+    /// Infer entity type icon from name prefix.
+    fn entity_type_icon(name: &str) -> &'static str {
+        let lower = name.to_lowercase();
+        if lower.starts_with("light") {
+            "[L]"
+        } else if lower.starts_with("camera") {
+            "[C]"
+        } else if lower.starts_with("player") {
+            "[P]"
+        } else if lower.starts_with("enemy") || lower.starts_with("boss") {
+            "[E]"
+        } else if lower.starts_with("companion") || lower.starts_with("npc") {
+            "[N]"
+        } else if lower.starts_with("trigger") {
+            "[T]"
+        } else if lower.starts_with("prop") {
+            "[M]"
+        } else {
+            "[O]"
+        }
+    }
+
+    /// Move entity up among its siblings.
+    pub fn move_entity_up(&mut self, entity: Entity) {
+        let parent = self.get_parent(entity);
+        let siblings = if let Some(p) = parent {
+            if let Some(node) = self.hierarchy.get_mut(&p) {
+                &mut node.children
+            } else {
+                return;
+            }
+        } else {
+            &mut self.root_entities
+        };
+        if let Some(idx) = siblings.iter().position(|&e| e == entity) {
+            if idx > 0 {
+                siblings.swap(idx, idx - 1);
+            }
+        }
+    }
+
+    /// Move entity down among its siblings.
+    pub fn move_entity_down(&mut self, entity: Entity) {
+        let parent = self.get_parent(entity);
+        let siblings = if let Some(p) = parent {
+            if let Some(node) = self.hierarchy.get_mut(&p) {
+                &mut node.children
+            } else {
+                return;
+            }
+        } else {
+            &mut self.root_entities
+        };
+        if let Some(idx) = siblings.iter().position(|&e| e == entity) {
+            if idx + 1 < siblings.len() {
+                siblings.swap(idx, idx + 1);
+            }
+        }
     }
 
     fn get_all_entities_in_tree(&self) -> Vec<Entity> {

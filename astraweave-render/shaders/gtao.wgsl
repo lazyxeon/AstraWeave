@@ -26,7 +26,7 @@ struct GtaoParams {
     _pad: u32,
 };
 
-@group(0) @binding(0) var depth_tex: texture_2d<f32>;
+@group(0) @binding(0) var depth_tex: texture_depth_2d;
 @group(0) @binding(1) var normal_tex: texture_2d<f32>;
 @group(0) @binding(2) var depth_sampler: sampler;
 @group(0) @binding(3) var<uniform> params: GtaoParams;
@@ -77,7 +77,7 @@ fn gtao_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let uv = (vec2<f32>(pixel) + 0.5) * params.inv_resolution;
 
     // Sample center depth and normal
-    let center_depth = textureSampleLevel(depth_tex, depth_sampler, uv, 0.0).r;
+    let center_depth = textureLoad(depth_tex, pixel, 0);
     if (center_depth >= 1.0) {
         // Sky pixel — no AO
         textureStore(ao_output, pixel, vec4<f32>(1.0, 0.0, 0.0, 0.0));
@@ -114,7 +114,8 @@ fn gtao_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 continue;
             }
 
-            let sample_depth = textureSampleLevel(depth_tex, depth_sampler, sample_uv, 0.0).r;
+            let sample_pixel = vec2<i32>(sample_uv * params.resolution);
+            let sample_depth = textureLoad(depth_tex, sample_pixel, 0);
             let sample_pos = reconstruct_view_pos(sample_uv, sample_depth);
 
             let delta = sample_pos - center_pos;

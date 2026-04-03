@@ -21,8 +21,13 @@ toml = "0.9"
 ron = "0.11"
 tracing = { workspace = true }
 
-# Optional: glTF parsing (CPU side) – stub for Phase 0; wire actual loader later
-gltf = { version = "1.4", optional = true }
+# Optional: glTF parsing (CPU side) with KHR material extensions
+gltf = { version = "1.4", optional = true, features = [
+    "KHR_materials_transmission",
+    "KHR_materials_ior",
+    "KHR_materials_emissive_strength",
+    "extensions",
+] }
 
 # Optional: Blender .blend file import via subprocess conversion
 astraweave-blend = { path = "../crates/astraweave-blend", optional = true }

@@ -61,16 +61,16 @@ pub struct OrbitCamera {
     pitch: f32,
 
     /// Field of view (degrees)
-    fov: f32,
+    pub(crate) fov: f32,
 
     /// Aspect ratio (width / height)
-    aspect: f32,
+    pub(crate) aspect: f32,
 
     /// Near clip plane (meters)
-    near: f32,
+    pub(crate) near: f32,
 
     /// Far clip plane (meters)
-    far: f32,
+    pub(crate) far: f32,
 
     /// Minimum distance from focal point (meters)
     min_distance: f32,

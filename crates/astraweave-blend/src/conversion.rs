@@ -238,6 +238,11 @@ impl ConversionJob {
                 blender_output: None,
             })?;
 
+        // Validate the GLB output file
+        self.progress
+            .set_message("Validating GLB output integrity...");
+        validate_glb(&self.output_path).await?;
+
         // Collect texture files
         let texture_files = self
             .collect_texture_files(
@@ -633,6 +638,196 @@ impl Default for ConversionJobBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Validates a GLB file's structural integrity.
+///
+/// Checks:
+/// 1. File exists and is readable
+/// 2. GLB magic bytes (`glTF` = 0x46546C67)
+/// 3. GLB version (must be 2)
+/// 4. Total length matches file size
+/// 5. JSON chunk present with valid header
+/// 6. Binary chunk length doesn't exceed file bounds
+async fn validate_glb(path: &Path) -> BlendResult<()> {
+    use tokio::io::AsyncReadExt;
+
+    let mut file = tokio::fs::File::open(path).await.map_err(|e| {
+        BlendError::ConversionFailed {
+            message: format!("Cannot open GLB output for validation: {e}"),
+            exit_code: None,
+            stderr: String::new(),
+            blender_output: None,
+        }
+    })?;
+
+    let file_size = file
+        .metadata()
+        .await
+        .map_err(BlendError::IoError)?
+        .len();
+
+    if file_size < 12 {
+        return Err(BlendError::ConversionFailed {
+            message: format!("GLB file too small ({file_size} bytes, minimum 12)"),
+            exit_code: None,
+            stderr: String::new(),
+            blender_output: None,
+        });
+    }
+
+    // Read the 12-byte GLB header
+    let mut header = [0u8; 12];
+    file.read_exact(&mut header).await.map_err(BlendError::IoError)?;
+
+    // Check magic bytes: 0x46546C67 = "glTF" in little-endian
+    let magic = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
+    if magic != 0x46546C67 {
+        return Err(BlendError::ConversionFailed {
+            message: format!(
+                "Invalid GLB magic bytes: expected 0x46546C67 (glTF), got 0x{magic:08X}"
+            ),
+            exit_code: None,
+            stderr: String::new(),
+            blender_output: None,
+        });
+    }
+
+    // Check version (must be 2)
+    let version = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
+    if version != 2 {
+        return Err(BlendError::ConversionFailed {
+            message: format!("Unsupported GLB version: {version} (expected 2)"),
+            exit_code: None,
+            stderr: String::new(),
+            blender_output: None,
+        });
+    }
+
+    // Check total length matches file size
+    let total_length = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
+    if u64::from(total_length) != file_size {
+        return Err(BlendError::ConversionFailed {
+            message: format!(
+                "GLB length mismatch: header says {total_length} bytes, file is {file_size} bytes"
+            ),
+            exit_code: None,
+            stderr: String::new(),
+            blender_output: None,
+        });
+    }
+
+    // Read JSON chunk header (8 bytes: length + type)
+    if file_size < 20 {
+        return Err(BlendError::ConversionFailed {
+            message: "GLB file too small for JSON chunk header".to_string(),
+            exit_code: None,
+            stderr: String::new(),
+            blender_output: None,
+        });
+    }
+
+    let mut chunk_header = [0u8; 8];
+    file.read_exact(&mut chunk_header)
+        .await
+        .map_err(BlendError::IoError)?;
+
+    let json_chunk_length = u32::from_le_bytes([
+        chunk_header[0],
+        chunk_header[1],
+        chunk_header[2],
+        chunk_header[3],
+    ]);
+    let json_chunk_type = u32::from_le_bytes([
+        chunk_header[4],
+        chunk_header[5],
+        chunk_header[6],
+        chunk_header[7],
+    ]);
+
+    // JSON chunk type must be 0x4E4F534A = "JSON" in little-endian
+    if json_chunk_type != 0x4E4F534A {
+        return Err(BlendError::ConversionFailed {
+            message: format!(
+                "First GLB chunk is not JSON: expected 0x4E4F534A, got 0x{json_chunk_type:08X}"
+            ),
+            exit_code: None,
+            stderr: String::new(),
+            blender_output: None,
+        });
+    }
+
+    // Check JSON chunk doesn't exceed file bounds
+    let json_end = 12u64 + 8 + u64::from(json_chunk_length);
+    if json_end > file_size {
+        return Err(BlendError::ConversionFailed {
+            message: format!(
+                "JSON chunk exceeds file bounds: chunk ends at byte {json_end}, file is {file_size} bytes"
+            ),
+            exit_code: None,
+            stderr: String::new(),
+            blender_output: None,
+        });
+    }
+
+    // If there's a binary chunk, validate its header too
+    if json_end + 8 <= file_size {
+        // Seek past JSON data to the binary chunk header
+        let json_data_remaining = json_chunk_length as usize;
+        let mut skip_buf = vec![0u8; json_data_remaining.min(65536)];
+        let mut remaining = json_data_remaining;
+        while remaining > 0 {
+            let to_read = remaining.min(skip_buf.len());
+            file.read_exact(&mut skip_buf[..to_read])
+                .await
+                .map_err(BlendError::IoError)?;
+            remaining -= to_read;
+        }
+
+        let mut bin_header = [0u8; 8];
+        file.read_exact(&mut bin_header)
+            .await
+            .map_err(BlendError::IoError)?;
+
+        let bin_chunk_length = u32::from_le_bytes([
+            bin_header[0],
+            bin_header[1],
+            bin_header[2],
+            bin_header[3],
+        ]);
+        let bin_chunk_type = u32::from_le_bytes([
+            bin_header[4],
+            bin_header[5],
+            bin_header[6],
+            bin_header[7],
+        ]);
+
+        // Binary chunk type must be 0x004E4942 = "BIN\0" in little-endian
+        if bin_chunk_type != 0x004E4942 {
+            warn!(
+                "Second GLB chunk is not BIN: got 0x{:08X} (may be valid extension chunk)",
+                bin_chunk_type
+            );
+        }
+
+        let bin_end = json_end + 8 + u64::from(bin_chunk_length);
+        if bin_end > file_size {
+            return Err(BlendError::ConversionFailed {
+                message: format!(
+                    "Binary chunk exceeds file bounds: chunk ends at byte {bin_end}, file is {file_size} bytes"
+                ),
+                exit_code: None,
+                stderr: String::new(),
+                blender_output: None,
+            });
+        }
+    }
+
+    debug!(
+        "GLB validation passed: {} ({file_size} bytes, version {version})",
+        path.display()
+    );
+    Ok(())
 }
 
 #[cfg(test)]

@@ -33,6 +33,13 @@ pub struct Pose {
     pub rotation_x: f32, // Pitch (rotation around X axis)
     pub rotation_z: f32, // Roll (rotation around Z axis)
     pub scale: f32,      // Uniform scale factor
+    /// High-precision float X position (overrides pos.x when use_float_pos is true).
+    /// Used for scatter objects that need sub-grid-unit precision.
+    pub float_x: f32,
+    /// High-precision float Z position (overrides pos.y when use_float_pos is true).
+    pub float_z: f32,
+    /// When true, renderer uses float_x/float_z instead of pos for world placement.
+    pub use_float_pos: bool,
 }
 
 #[derive(Default)]
@@ -47,6 +54,11 @@ pub struct World {
     cds: HashMap<Entity, Cooldowns>,
     names: HashMap<Entity, String>,
     behavior_graphs: HashMap<Entity, BehaviorGraph>,
+    /// Parent-child hierarchy: maps child → parent.
+    parents: HashMap<Entity, Entity>,
+    /// Derived index: maps parent → ordered children list.
+    /// Kept in sync with `parents` by `set_parent` / `remove_parent`.
+    children_map: HashMap<Entity, Vec<Entity>>,
     /// Cached obstacles as IVec2 for efficient sharing across snapshots.
     /// Rebuilt lazily when `obstacles_as_ivec2()` is called after changes.
     obstacles_cache: Option<Arc<Vec<IVec2>>>,
@@ -102,6 +114,9 @@ impl World {
                 rotation_x: 0.0,
                 rotation_z: 0.0,
                 scale: 1.0,
+                float_x: 0.0,
+                float_z: 0.0,
+                use_float_pos: false,
             },
         );
         self.health.insert(id, Health { hp });
@@ -127,6 +142,8 @@ impl World {
     }
 
     /// Destroy an entity, removing all its components from the world.
+    /// Also cleans up hierarchy: removes from parent's children list,
+    /// and orphans any children (makes them roots).
     /// Returns true if the entity existed and was destroyed, false otherwise.
     pub fn destroy_entity(&mut self, e: Entity) -> bool {
         let existed = self.poses.remove(&e).is_some();
@@ -137,6 +154,20 @@ impl World {
             self.cds.remove(&e);
             self.names.remove(&e);
             self.behavior_graphs.remove(&e);
+
+            // Remove from parent's children list
+            if let Some(parent) = self.parents.remove(&e) {
+                if let Some(siblings) = self.children_map.get_mut(&parent) {
+                    siblings.retain(|&child| child != e);
+                }
+            }
+
+            // Orphan any children (remove their parent reference)
+            if let Some(children) = self.children_map.remove(&e) {
+                for child in children {
+                    self.parents.remove(&child);
+                }
+            }
         }
         existed
     }
@@ -186,6 +217,102 @@ impl World {
     }
     pub fn remove_behavior_graph(&mut self, e: Entity) -> Option<BehaviorGraph> {
         self.behavior_graphs.remove(&e)
+    }
+
+    // ========================================================================
+    // Hierarchy: parent-child relationships
+    // ========================================================================
+
+    /// Set the parent of a child entity. Removes any previous parent.
+    /// Does nothing if child == parent or if it would create a cycle.
+    pub fn set_parent(&mut self, child: Entity, parent: Entity) {
+        if child == parent {
+            return;
+        }
+        // Prevent cycles: if child is an ancestor of parent, skip
+        if self.is_ancestor_of(child, parent) {
+            return;
+        }
+        // Remove from old parent's children list
+        self.remove_parent(child);
+        // Set new parent
+        self.parents.insert(child, parent);
+        self.children_map.entry(parent).or_default().push(child);
+    }
+
+    /// Remove the parent of an entity (make it a root).
+    /// Returns the old parent if one existed.
+    pub fn remove_parent(&mut self, child: Entity) -> Option<Entity> {
+        if let Some(old_parent) = self.parents.remove(&child) {
+            if let Some(siblings) = self.children_map.get_mut(&old_parent) {
+                siblings.retain(|&e| e != child);
+                if siblings.is_empty() {
+                    self.children_map.remove(&old_parent);
+                }
+            }
+            Some(old_parent)
+        } else {
+            None
+        }
+    }
+
+    /// Get the parent of an entity, if any.
+    pub fn parent_of(&self, e: Entity) -> Option<Entity> {
+        self.parents.get(&e).copied()
+    }
+
+    /// Get the ordered children of an entity.
+    pub fn children_of(&self, e: Entity) -> &[Entity] {
+        self.children_map
+            .get(&e)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// Check if `ancestor` is an ancestor of `descendant` (recursive).
+    pub fn is_ancestor_of(&self, ancestor: Entity, descendant: Entity) -> bool {
+        let mut current = descendant;
+        while let Some(parent) = self.parents.get(&current) {
+            if *parent == ancestor {
+                return true;
+            }
+            current = *parent;
+        }
+        false
+    }
+
+    /// Collect all descendants of an entity (recursive, depth-first).
+    pub fn descendants_of(&self, e: Entity) -> Vec<Entity> {
+        let mut result = Vec::new();
+        self.collect_descendants(e, &mut result);
+        result
+    }
+
+    fn collect_descendants(&self, e: Entity, result: &mut Vec<Entity>) {
+        for &child in self.children_of(e) {
+            result.push(child);
+            self.collect_descendants(child, result);
+        }
+    }
+
+    /// Get all root entities (entities without a parent).
+    pub fn root_entities(&self) -> Vec<Entity> {
+        self.poses
+            .keys()
+            .filter(|e| !self.parents.contains_key(e))
+            .copied()
+            .collect()
+    }
+
+    // ========================================================================
+    // Name mutation
+    // ========================================================================
+
+    /// Set or update the name of an entity.
+    pub fn set_name(&mut self, e: Entity, name: String) {
+        if self.poses.contains_key(&e) {
+            self.names.insert(e, name);
+        }
     }
 
     pub fn all_of_team(&self, team_id: u8) -> Vec<Entity> {
@@ -663,6 +790,168 @@ mod tests {
         assert_eq!(w.health(e2).unwrap().hp, 80);
         assert_eq!(w.team(e2).unwrap().id, 1);
         assert_eq!(w.ammo(e2).unwrap().rounds, 20);
+    }
+
+    // ========================================================================
+    // Hierarchy tests
+    // ========================================================================
+
+    #[test]
+    fn test_set_parent() {
+        let mut w = World::new();
+        let parent = w.spawn("parent", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+        let child = w.spawn("child", IVec2 { x: 1, y: 1 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(child, parent);
+        assert_eq!(w.parent_of(child), Some(parent));
+        assert_eq!(w.children_of(parent), &[child]);
+    }
+
+    #[test]
+    fn test_remove_parent() {
+        let mut w = World::new();
+        let parent = w.spawn("parent", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+        let child = w.spawn("child", IVec2 { x: 1, y: 1 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(child, parent);
+        let old = w.remove_parent(child);
+        assert_eq!(old, Some(parent));
+        assert_eq!(w.parent_of(child), None);
+        assert!(w.children_of(parent).is_empty());
+    }
+
+    #[test]
+    fn test_set_parent_prevents_self_parenting() {
+        let mut w = World::new();
+        let e = w.spawn("entity", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(e, e);
+        assert_eq!(w.parent_of(e), None);
+    }
+
+    #[test]
+    fn test_set_parent_prevents_cycles() {
+        let mut w = World::new();
+        let a = w.spawn("a", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+        let b = w.spawn("b", IVec2 { x: 1, y: 1 }, Team { id: 0 }, 100, 0);
+        let c = w.spawn("c", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(b, a); // a -> b
+        w.set_parent(c, b); // a -> b -> c
+
+        // Trying to make a a child of c should be rejected (cycle)
+        w.set_parent(a, c);
+        assert_eq!(w.parent_of(a), None);
+    }
+
+    #[test]
+    fn test_is_ancestor_of() {
+        let mut w = World::new();
+        let a = w.spawn("a", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+        let b = w.spawn("b", IVec2 { x: 1, y: 1 }, Team { id: 0 }, 100, 0);
+        let c = w.spawn("c", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(b, a);
+        w.set_parent(c, b);
+
+        assert!(w.is_ancestor_of(a, c));
+        assert!(w.is_ancestor_of(a, b));
+        assert!(!w.is_ancestor_of(c, a));
+    }
+
+    #[test]
+    fn test_descendants_of() {
+        let mut w = World::new();
+        let a = w.spawn("a", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+        let b = w.spawn("b", IVec2 { x: 1, y: 1 }, Team { id: 0 }, 100, 0);
+        let c = w.spawn("c", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(b, a);
+        w.set_parent(c, b);
+
+        let desc = w.descendants_of(a);
+        assert_eq!(desc.len(), 2);
+        assert!(desc.contains(&b));
+        assert!(desc.contains(&c));
+
+        assert!(w.descendants_of(c).is_empty());
+    }
+
+    #[test]
+    fn test_root_entities() {
+        let mut w = World::new();
+        let a = w.spawn("a", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+        let b = w.spawn("b", IVec2 { x: 1, y: 1 }, Team { id: 0 }, 100, 0);
+        let c = w.spawn("c", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(b, a);
+
+        let roots = w.root_entities();
+        assert_eq!(roots.len(), 2);
+        assert!(roots.contains(&a));
+        assert!(roots.contains(&c));
+        assert!(!roots.contains(&b));
+    }
+
+    #[test]
+    fn test_destroy_entity_cleans_hierarchy() {
+        let mut w = World::new();
+        let parent = w.spawn("parent", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+        let child = w.spawn("child", IVec2 { x: 1, y: 1 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(child, parent);
+
+        // Destroying parent should orphan child
+        w.destroy_entity(parent);
+        assert_eq!(w.parent_of(child), None);
+    }
+
+    #[test]
+    fn test_destroy_child_cleans_parent() {
+        let mut w = World::new();
+        let parent = w.spawn("parent", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+        let child = w.spawn("child", IVec2 { x: 1, y: 1 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(child, parent);
+
+        // Destroying child should remove from parent's children
+        w.destroy_entity(child);
+        assert!(w.children_of(parent).is_empty());
+    }
+
+    #[test]
+    fn test_set_name() {
+        let mut w = World::new();
+        let e = w.spawn("original", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+
+        assert_eq!(w.name(e), Some("original"));
+        w.set_name(e, "renamed".to_string());
+        assert_eq!(w.name(e), Some("renamed"));
+    }
+
+    #[test]
+    fn test_set_name_nonexistent() {
+        let mut w = World::new();
+        // Should not panic
+        w.set_name(999, "ghost".to_string());
+        assert!(w.name(999).is_none());
+    }
+
+    #[test]
+    fn test_reparent_moves_child() {
+        let mut w = World::new();
+        let a = w.spawn("a", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
+        let b = w.spawn("b", IVec2 { x: 1, y: 1 }, Team { id: 0 }, 100, 0);
+        let child = w.spawn("child", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
+
+        w.set_parent(child, a);
+        assert_eq!(w.children_of(a), &[child]);
+
+        // Reparent to b
+        w.set_parent(child, b);
+        assert!(w.children_of(a).is_empty());
+        assert_eq!(w.children_of(b), &[child]);
+        assert_eq!(w.parent_of(child), Some(b));
     }
 
     // ========================================================================

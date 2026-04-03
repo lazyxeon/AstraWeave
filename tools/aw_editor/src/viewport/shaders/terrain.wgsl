@@ -111,7 +111,7 @@ fn triplanar_sample_albedo(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: i32)
     let uv_xz = pos.xz * scale;
     let uv_xy = pos.xy * scale;
     let uv_yz = pos.yz * scale;
-    let bias = -0.5;
+    let bias = 0.0;
     let t_xz = textureSampleBias(biome_textures, biome_sampler, uv_xz, layer, bias).rgb;
     let t_xy = textureSampleBias(biome_textures, biome_sampler, uv_xy, layer, bias).rgb;
     let t_yz = textureSampleBias(biome_textures, biome_sampler, uv_yz, layer, bias).rgb;
@@ -123,7 +123,7 @@ fn triplanar_sample_normal_raw(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: 
     let uv_xz = pos.xz * scale;
     let uv_xy = pos.xy * scale;
     let uv_yz = pos.yz * scale;
-    let bias = -0.5;
+    let bias = 0.0;
     let t_xz = textureSampleBias(biome_normals, biome_sampler, uv_xz, layer, bias).rgb;
     let t_xy = textureSampleBias(biome_normals, biome_sampler, uv_xy, layer, bias).rgb;
     let t_yz = textureSampleBias(biome_normals, biome_sampler, uv_yz, layer, bias).rgb;
@@ -135,7 +135,7 @@ fn triplanar_sample_mra(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: i32) ->
     let uv_xz = pos.xz * scale;
     let uv_xy = pos.xy * scale;
     let uv_yz = pos.yz * scale;
-    let bias = -0.5;
+    let bias = 0.0;
     let t_xz = textureSampleBias(biome_mra, biome_sampler, uv_xz, layer, bias).rgb;
     let t_xy = textureSampleBias(biome_mra, biome_sampler, uv_xy, layer, bias).rgb;
     let t_yz = textureSampleBias(biome_mra, biome_sampler, uv_yz, layer, bias).rgb;
@@ -143,6 +143,21 @@ fn triplanar_sample_mra(pos: vec3<f32>, n: vec3<f32>, scale: f32, layer: i32) ->
 }
 
 // ─── Normal Map Decoding with Strength ────────────────────────────────────────
+
+// UDN (Unreal Derivative Normal) blending for triplanar terrain.
+// Avoids tangent frame construction entirely — works by perturbing the vertex normal
+// with the tangent-space XY from the normal map. Proven technique used by UE for terrain.
+// Strength is scaled down by 0.35 because UDN adds tangent offsets directly to the
+// world-space normal, which is more impactful than tangent-frame-based decoding.
+fn apply_triplanar_normal(sampled: vec3<f32>, vertex_n: vec3<f32>, strength: f32) -> vec3<f32> {
+    let tn = sampled * 2.0 - 1.0;
+    let s = strength * 0.35;
+    return normalize(vec3<f32>(
+        vertex_n.x + tn.x * s,
+        vertex_n.y,
+        vertex_n.z + tn.y * s,
+    ));
+}
 
 fn decode_normal_map(tex_normal: vec3<f32>, vertex_normal: vec3<f32>, strength: f32) -> vec3<f32> {
     // Decode from [0,1] to [-1,1]
@@ -172,8 +187,9 @@ struct Material {
 }
 
 fn dominant_biome_layer(weights_0: vec4<f32>, weights_1: vec4<f32>) -> i32 {
-    var best_index = 0i;
-    var best_weight = weights_0.x;
+    // Start with Desert (index 1) as default so zero-weight fallback produces sand, not grass
+    var best_index = 1i;
+    var best_weight = weights_0.y;
 
     if weights_0.y > best_weight { best_weight = weights_0.y; best_index = 1; }
     if weights_0.z > best_weight { best_weight = weights_0.z; best_index = 2; }
@@ -276,7 +292,7 @@ fn sample_biome_material(pos: vec3<f32>, n: vec3<f32>, layer: i32) -> Material {
 
     // Distance-based LOD: fade detail at far range to save ALU
     let cam_dist = distance(uniforms.camera_pos, pos);
-    let detail_fade = 1.0 - smoothstep(300.0, 800.0, cam_dist);
+    let detail_fade = 1.0 - smoothstep(500.0, 2000.0, cam_dist);
 
     // Macro samples (always present)
     let macro_albedo = triplanar_sample_albedo(warped_pos, n, macro_scale, layer);
@@ -306,12 +322,12 @@ fn sample_biome_material(pos: vec3<f32>, n: vec3<f32>, layer: i32) -> Material {
 
     var mat: Material;
     mat.albedo = albedo;
-    // Use vertex normal directly instead of decoded normal map.
-    // Normal map decoding requires a proper tangent frame (per-vertex tangent/bitangent)
-    // which the terrain mesh doesn't provide. The procedural tangent frame from
-    // decode_normal_map() creates radial streak artifacts and blue color contamination.
-    // Vertex normals from the heightmap already capture terrain surface detail correctly.
-    mat.normal = n;
+    // Apply normal mapping via UDN blending — avoids tangent frame entirely.
+    // The old decode_normal_map() required per-vertex tangents which the terrain mesh
+    // doesn't provide; its procedural tangent frame caused radial streak artifacts.
+    // UDN blending perturbs the vertex normal directly with the normal map XY components.
+    let normal_raw = triplanar_sample_normal_raw(warped_pos, n, macro_scale, layer);
+    mat.normal = apply_triplanar_normal(normal_raw, n, normal_strength);
     mat.metallic = metallic;
     mat.roughness = roughness;
     mat.ao = ao;
@@ -343,13 +359,14 @@ fn biome_weight(w0: vec4<f32>, w1: vec4<f32>, idx: i32) -> f32 {
 
 fn blend_biome_materials(pos: vec3<f32>, n: vec3<f32>, weights_0: vec4<f32>, weights_1: vec4<f32>) -> Material {
     // Performance: only sample the top 2 biome layers instead of all 8.
-    var best_idx = 0i;
-    var best_w = weights_0.x;
+    // Start with index 1 (Desert/sand) as default — avoids grass fallback for non-grass biomes.
+    var best_idx = 1i;
+    var best_w = weights_0.y;
     var second_idx = -1i;
     var second_w = 0.0;
 
-    // Find top 2 weights
-    if weights_0.y > best_w { second_w = best_w; second_idx = best_idx; best_w = weights_0.y; best_idx = 1; } else if weights_0.y > second_w { second_w = weights_0.y; second_idx = 1; }
+    // Find top 2 weights — check ALL 8 biome slots including index 0 (Grassland)
+    if weights_0.x > best_w { second_w = best_w; second_idx = best_idx; best_w = weights_0.x; best_idx = 0; } else if weights_0.x > second_w { second_w = weights_0.x; second_idx = 0; }
     if weights_0.z > best_w { second_w = best_w; second_idx = best_idx; best_w = weights_0.z; best_idx = 2; } else if weights_0.z > second_w { second_w = weights_0.z; second_idx = 2; }
     if weights_0.w > best_w { second_w = best_w; second_idx = best_idx; best_w = weights_0.w; best_idx = 3; } else if weights_0.w > second_w { second_w = weights_0.w; second_idx = 3; }
     if weights_1.x > best_w { second_w = best_w; second_idx = best_idx; best_w = weights_1.x; best_idx = 4; } else if weights_1.x > second_w { second_w = weights_1.x; second_idx = 4; }
@@ -364,7 +381,7 @@ fn blend_biome_materials(pos: vec3<f32>, n: vec3<f32>, weights_0: vec4<f32>, wei
     }
 
     if best_w < 0.0001 {
-        return sample_biome_material(pos, n, 0);
+        return sample_biome_material(pos, n, 1); // sand fallback (avoids grass in non-grass biomes)
     }
 
     let mat1 = sample_biome_material(pos, n, best_idx);
@@ -457,7 +474,7 @@ fn blend_material_slots(
     }
 
     if total_weight < 0.0001 {
-        return sample_biome_material(pos, n, 0);
+        return sample_biome_material(pos, n, 1); // sand fallback (avoids grass in non-grass biomes)
     }
 
     var result: Material;
@@ -546,12 +563,13 @@ fn pbr_lighting(mat: Material, pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     let kS = F;
     let kD = (vec3<f32>(1.0) - kS) * (1.0 - mat.metallic);
     let direct = (kD * mat.albedo / PI + spec) * light_color * n_dot_l;
-    // Hemisphere ambient from uniform colors — AO provides depth in crevices
-    let ground_c = uniforms.ambient_color * 0.40;
+    // Hemisphere ambient with warm ground bounce — prevents cool blue-grey in shadows
+    let ground_c = uniforms.ambient_color * vec3<f32>(0.55, 0.48, 0.40); // warm ground bounce
+    let sky_c = uniforms.ambient_color * vec3<f32>(0.90, 0.92, 1.00); // slightly cool sky
     let amb_blend = n.y * 0.5 + 0.5;
-    let ambient = mix(ground_c, uniforms.ambient_color, amb_blend) * mat.albedo * mat.ao * uniforms.ambient_intensity;
-    // Minimal indirect fill — avoids washing out shadow contrast
-    let indirect = mat.albedo * 0.025;
+    let ambient = mix(ground_c, sky_c, amb_blend) * mat.albedo * mat.ao * uniforms.ambient_intensity;
+    // Warm indirect fill to prevent shadows from going cold/teal
+    let indirect = mat.albedo * vec3<f32>(0.04, 0.035, 0.03);
     // Subtle warm rim
     let rim = pow(1.0 - n_dot_v, 4.0) * 0.025;
     return direct + ambient + indirect + vec3<f32>(rim * 1.0, rim * 0.9, rim * 0.7);
@@ -589,10 +607,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let near_blend = 1.0 - smoothstep(400.0, 1200.0, perturbed_dist);  // 1 close, 0 far
     let mid_blend  = 1.0 - smoothstep(1000.0, 2500.0, perturbed_dist); // 1 close, 0 far
 
-    // Unlit: quick sample at macro scale only
+    // Unlit mode: raw albedo from dominant splat material (no lighting/tonemapping)
     if uniforms.shading_mode == 1u {
-        let mat = sample_biome_material(pos, n, dominant_biome_layer(in.biome_weights_0, in.biome_weights_1));
-        return vec4<f32>(mat.albedo, 1.0);
+        let dom_layer = dominant_material_layer(in.material_ids, in.material_weights);
+        let raw_albedo = triplanar_sample_albedo(pos, n, 0.06, dom_layer);
+        return vec4<f32>(raw_albedo, 1.0);
     }
     // Wireframe
     if uniforms.shading_mode == 2u {

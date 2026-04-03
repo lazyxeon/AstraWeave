@@ -1682,15 +1682,15 @@ impl EditorTabViewer {
             asset_type_filter: 0, // All
             asset_view_mode: 0,   // List
             // World settings
-            world_ambient_color: [0.55, 0.52, 0.48],
+            world_ambient_color: [0.65, 0.58, 0.50],
             world_fog_enabled: false,
             world_fog_density: 0.01,
-            world_sun_intensity: 1.8,
-            world_sun_elevation: 50.0,
+            world_sun_intensity: 2.2,
+            world_sun_elevation: 55.0,
             world_sun_azimuth: 35.0,
-            world_sun_color: [1.0, 0.95, 0.85],
-            world_ambient_intensity: 0.35,
-            world_exposure: 1.1,
+            world_sun_color: [1.0, 0.96, 0.88],
+            world_ambient_intensity: 0.45,
+            world_exposure: 1.3,
             world_gravity: -9.81,
             // Transform settings
             transform_snap_value: 1.0,
@@ -2066,12 +2066,22 @@ impl EditorTabViewer {
     /// Ensure terrain chunks exist — auto-generates with default grassland if empty.
     /// Returns the number of chunks generated (0 if terrain already existed).
     pub fn ensure_terrain_exists(&mut self) -> usize {
+        self.ensure_terrain_exists_with_biome("grassland", 12345)
+    }
+
+    /// Get the terrain generator seed from the terrain panel.
+    pub fn terrain_seed(&self) -> u64 {
+        self.terrain_panel.terrain_state().seed()
+    }
+
+    /// Ensure terrain chunks exist, generating with the specified biome if empty.
+    /// Used by blueprint zone generation to create terrain matching the zone's biome.
+    pub fn ensure_terrain_exists_with_biome(&mut self, biome: &str, seed: u64) -> usize {
         let ts = self.terrain_panel.terrain_state_mut();
         if ts.chunks().next().is_some() {
             return 0; // Already have terrain
         }
-        // Auto-generate with current biome (or default grassland), radius 2
-        ts.configure(42, "grassland");
+        ts.configure(seed, biome);
         match ts.generate_terrain(2) {
             Ok(count) => count,
             Err(_) => 0,

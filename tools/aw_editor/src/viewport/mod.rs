@@ -41,6 +41,8 @@ pub(crate) mod entity_renderer;
 mod gizmo_renderer;
 mod grid_renderer;
 mod physics_renderer;
+#[cfg(feature = "astraweave-render")]
+pub(crate) mod post_process;
 mod rain_renderer;
 mod renderer;
 mod scatter_renderer;

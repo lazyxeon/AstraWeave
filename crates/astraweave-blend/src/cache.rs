@@ -209,6 +209,9 @@ pub struct ConversionCache {
 
 impl ConversionCache {
     /// Creates a new cache in the specified directory.
+    ///
+    /// The cache directory path is canonicalized. Symlinks within the cache
+    /// directory are rejected for security (prevents symlink traversal attacks).
     pub fn new(cache_dir: impl Into<PathBuf>) -> BlendResult<Self> {
         let cache_dir = cache_dir.into();
 
@@ -220,6 +223,18 @@ impl ConversionCache {
                 source: e,
             })?;
         }
+
+        // Canonicalize to resolve any ".." or "." components and prevent traversal
+        let cache_dir = fs::canonicalize(&cache_dir).map_err(|e| {
+            BlendError::CacheDirectoryError {
+                path: cache_dir.clone(),
+                message: "Failed to canonicalize cache directory path".to_string(),
+                source: e,
+            }
+        })?;
+
+        // Reject symlinks within the cache directory (security hardening)
+        Self::reject_symlinks_in_dir(&cache_dir)?;
 
         // Load or create manifest
         let manifest_path = cache_dir.join(MANIFEST_FILENAME);
@@ -370,6 +385,9 @@ impl ConversionCache {
         );
         let cached_output_path = self.cache_dir.join(&cache_filename);
 
+        // Security: verify the resolved output path stays within the cache directory
+        Self::verify_path_within_cache(&self.cache_dir, &cached_output_path)?;
+
         // Copy output to cache directory
         if output_path != cached_output_path {
             fs::copy(output_path, &cached_output_path).map_err(|e| {
@@ -390,10 +408,18 @@ impl ConversionCache {
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "texture".to_string());
                 let cached_texture = self.cache_dir.join(&texture_filename);
-                if texture != &cached_texture {
-                    let _ = fs::copy(texture, &cached_texture);
+                // Security: verify texture path stays within cache directory
+                if Self::verify_path_within_cache(&self.cache_dir, &cached_texture).is_ok() {
+                    if texture != &cached_texture {
+                        let _ = fs::copy(texture, &cached_texture);
+                    }
+                    cached_textures.push(PathBuf::from(&texture_filename));
+                } else {
+                    warn!(
+                        "Skipping texture with suspicious path: {}",
+                        texture.display()
+                    );
                 }
-                cached_textures.push(PathBuf::from(&texture_filename));
             }
         }
 
@@ -622,6 +648,100 @@ impl ConversionCache {
         let mut hasher = Sha256::new();
         hasher.update(serialized.as_bytes());
         Ok(hex::encode(hasher.finalize()))
+    }
+
+    /// Scans a directory for symlinks and rejects them.
+    ///
+    /// This prevents symlink traversal attacks where a malicious symlink
+    /// inside the cache directory points to an arbitrary location on disk.
+    fn reject_symlinks_in_dir(dir: &Path) -> BlendResult<()> {
+        if dir.is_symlink() {
+            return Err(BlendError::CacheDirectoryError {
+                path: dir.to_path_buf(),
+                message: "Cache directory itself is a symlink (security risk)".to_string(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "symlink in cache directory",
+                ),
+            });
+        }
+
+        let entries = match fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return Ok(()), // Empty or unreadable — no symlinks to find
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_symlink() {
+                warn!(
+                    "Removing symlink in cache directory: {}",
+                    path.display()
+                );
+                // Remove the symlink (not the target) to sanitize the cache
+                let _ = fs::remove_file(&path);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Verifies that a resolved path stays within the cache directory.
+    ///
+    /// Prevents path traversal attacks where filenames like `../../etc/passwd`
+    /// could escape the cache directory.
+    fn verify_path_within_cache(cache_dir: &Path, target_path: &Path) -> BlendResult<()> {
+        // Canonicalize the cache dir (should already be canonical, but be safe)
+        let canonical_cache = fs::canonicalize(cache_dir).unwrap_or_else(|_| cache_dir.to_path_buf());
+
+        // For the target, we can't canonicalize if it doesn't exist yet,
+        // so we normalize manually by resolving the joined path
+        let canonical_target = if target_path.exists() {
+            fs::canonicalize(target_path).unwrap_or_else(|_| target_path.to_path_buf())
+        } else {
+            // For not-yet-existing files, verify the parent is within bounds
+            // and the filename has no path separators
+            if let Some(file_name) = target_path.file_name() {
+                let name_str = file_name.to_string_lossy();
+                if name_str.contains('/') || name_str.contains('\\') || name_str.contains("..") {
+                    return Err(BlendError::CacheWriteError {
+                        path: target_path.to_path_buf(),
+                        message: "Cache filename contains path traversal characters".to_string(),
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            "path traversal in cache filename",
+                        ),
+                    });
+                }
+                canonical_cache.join(file_name)
+            } else {
+                return Err(BlendError::CacheWriteError {
+                    path: target_path.to_path_buf(),
+                    message: "Cache target path has no filename".to_string(),
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "no filename in cache target",
+                    ),
+                });
+            }
+        };
+
+        if !canonical_target.starts_with(&canonical_cache) {
+            return Err(BlendError::CacheWriteError {
+                path: target_path.to_path_buf(),
+                message: format!(
+                    "Path escapes cache directory: {} is not within {}",
+                    canonical_target.display(),
+                    canonical_cache.display()
+                ),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "path traversal attempt",
+                ),
+            });
+        }
+
+        Ok(())
     }
 }
 

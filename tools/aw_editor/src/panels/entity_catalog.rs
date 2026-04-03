@@ -895,10 +895,7 @@ fn try_load_companion_thumbnail(
                 let rgba = img
                     .resize_exact(64, 64, image::imageops::FilterType::Triangle)
                     .to_rgba8();
-                let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                    [64, 64],
-                    rgba.as_raw(),
-                );
+                let color_image = egui::ColorImage::from_rgba_unmultiplied([64, 64], rgba.as_raw());
                 let name_hash = entry
                     .path
                     .bytes()
@@ -923,10 +920,8 @@ fn try_load_companion_thumbnail(
                     let rgba = img
                         .resize_exact(64, 64, image::imageops::FilterType::Triangle)
                         .to_rgba8();
-                    let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                        [64, 64],
-                        rgba.as_raw(),
-                    );
+                    let color_image =
+                        egui::ColorImage::from_rgba_unmultiplied([64, 64], rgba.as_raw());
                     let name_hash = entry
                         .path
                         .bytes()

@@ -816,6 +816,7 @@ fn make_entity(id: u32, name: &str, scale: f32, hp: i32, ammo: i32) -> EntityDat
         id,
         name: name.to_string(),
         pos: IVec2 { x: 0, y: 0 },
+        height: 0.0,
         rotation: 0.0,
         rotation_x: 0.0,
         rotation_z: 0.0,
@@ -825,6 +826,7 @@ fn make_entity(id: u32, name: &str, scale: f32, hp: i32, ammo: i32) -> EntityDat
         ammo,
         cooldowns: BTreeMap::new(),
         behavior_graph: None,
+        parent: None,
     }
 }
 

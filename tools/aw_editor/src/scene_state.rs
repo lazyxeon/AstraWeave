@@ -70,7 +70,11 @@ impl EditorSceneState {
     }
 
     /// Apply a panel-authored transform back into the world/cache.
+    /// Propagates translation delta to all descendants (transform inheritance).
     pub fn apply_transform(&mut self, entity: Entity, transform: &Transform) {
+        // Compute delta from old position for child propagation
+        let old_pos = self.world.pose(entity).map(|p| (p.pos, p.height));
+
         if let Some(pose) = self.world.pose_mut(entity) {
             pose.pos = IVec2 {
                 x: transform.position.x.round() as i32,
@@ -83,7 +87,36 @@ impl EditorSceneState {
             pose.rotation_z = rz;
             pose.scale = transform.scale.x;
         }
+
+        // Propagate translation delta to descendants
+        if let Some((old_p, old_h)) = old_pos {
+            let new_pos = self
+                .world
+                .pose(entity)
+                .map(|p| (p.pos, p.height))
+                .unwrap_or((old_p, old_h));
+            let dx = new_pos.0.x - old_p.x;
+            let dy = new_pos.0.y - old_p.y;
+            let dh = new_pos.1 - old_h;
+
+            if dx != 0 || dy != 0 || dh != 0.0 {
+                let descendants = self.world.descendants_of(entity);
+                for desc in descendants {
+                    if let Some(pose) = self.world.pose_mut(desc) {
+                        pose.pos.x += dx;
+                        pose.pos.y += dy;
+                        pose.height += dh;
+                    }
+                }
+            }
+        }
+
         self.sync_entity(entity);
+        // Sync descendants so UI cache stays up-to-date
+        let descendants = self.world.descendants_of(entity);
+        for desc in descendants {
+            self.sync_entity(desc);
+        }
     }
 
     /// Sync every cached entity (used when loading a scene).
@@ -109,6 +142,7 @@ impl EditorSceneState {
             .map(|s| s.to_string())
             .unwrap_or_else(|| format!("Entity_{}", entity));
 
+        let parent = self.world.parent_of(entity).map(|p| p as EntityId);
         let entry = self.cache.entry(entity).or_insert_with(|| EditorEntity {
             id: entity as EntityId,
             name,
@@ -118,8 +152,10 @@ impl EditorSceneState {
             mesh: None,
             material: crate::entity_manager::EntityMaterial::new(),
             components: HashMap::new(),
-            parent: None,
+            parent,
+            is_scatter: false,
         });
+        entry.parent = parent;
 
         entry.position = Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
         entry.rotation = Quat::from_euler(
@@ -369,6 +405,7 @@ mod tests {
             material: EntityMaterial::new(),
             components: StdHashMap::new(),
             parent: None,
+            is_scatter: false,
         }
     }
 
@@ -390,6 +427,7 @@ mod tests {
             material: EntityMaterial::new(),
             components: StdHashMap::new(),
             parent: None,
+            is_scatter: false,
         }
     }
 

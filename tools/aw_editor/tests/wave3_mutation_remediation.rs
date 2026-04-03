@@ -767,6 +767,8 @@ mod clipboard_exact {
             ammo: 0,
             cooldowns: Default::default(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         let v = entity.validate();
         assert!(v.has_warnings(), "Empty name should warn");
@@ -786,6 +788,8 @@ mod clipboard_exact {
             ammo: 0,
             cooldowns: Default::default(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         let v = entity.validate();
         assert!(v.has_errors(), "Name > 256 should be error");
@@ -805,6 +809,8 @@ mod clipboard_exact {
             ammo: 0,
             cooldowns: Default::default(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         let v = entity.validate();
         assert!(v.has_errors(), "scale <= 0 should be error");
@@ -824,6 +830,8 @@ mod clipboard_exact {
             ammo: 0,
             cooldowns: Default::default(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         let v = entity.validate();
         assert!(v.has_warnings(), "hp < 0 should warn");
@@ -843,6 +851,8 @@ mod clipboard_exact {
             ammo: 0,
             cooldowns: Default::default(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         assert!(!entity.is_scaled(), "scale=1.0 should not be scaled");
 
@@ -873,6 +883,8 @@ mod clipboard_exact {
             ammo: 0,
             cooldowns: Default::default(),
             behavior_graph: None,
+            height: 0.0,
+            parent: None,
         };
         assert!(!entity.is_rotated(), "zero rotation → not rotated");
 

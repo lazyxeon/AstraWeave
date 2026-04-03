@@ -4657,12 +4657,16 @@ impl EditorApp {
                     // Use pre-computed scatter placements from background thread
                     // (avoids expensive O(n²) Poisson disk sampling on the main thread)
                     let scatter_placements = self.dock_tab_viewer.take_cached_scatter_placements();
+                    // Upload scatter placements to the GPU-instanced scatter renderer
+                    // (high-performance: 65K instances @ 60fps with background mesh loading)
                     if !scatter_placements.is_empty() {
                         if let Some(viewport) = &self.viewport {
                             if let Ok(mut renderer) = viewport.renderer().lock() {
                                 let count = scatter_placements.len();
                                 renderer.set_scatter_placements(scatter_placements);
-                                tracing::info!("Scatter: {count} placements uploaded to renderer");
+                                tracing::info!(
+                                    "Scatter: {count} placements uploaded to renderer"
+                                );
                             }
                         }
                     }
@@ -4677,7 +4681,10 @@ impl EditorApp {
                     //   "grass"         → 0 (grassland)
                     //   "snow"          → 4 (tundra)
                     // Unmapped names get injected starting at layer 12 (custom slots).
-                    let pack_info = self.dock_tab_viewer.cached_biome_pack().map(|p| (p.name.clone(), p.ground_textures.len()));
+                    let pack_info = self
+                        .dock_tab_viewer
+                        .cached_biome_pack()
+                        .map(|p| (p.name.clone(), p.ground_textures.len()));
                     eprintln!("=== BIOMEPACK CHECK: {:?}", pack_info);
                     if let Some(pack) = self.dock_tab_viewer.cached_biome_pack() {
                         eprintln!(
@@ -4827,6 +4834,19 @@ impl EditorApp {
                                         gt.name,
                                         layer_index
                                     );
+
+                                    // For sand/ground textures, also overwrite layer 0 (grass)
+                                    // to prevent green bleed from any code path that samples
+                                    // the default grass texture (biome blender edge fallbacks,
+                                    // shader defaults, interpolation artifacts).
+                                    if layer_index == 1 {
+                                        renderer.replace_terrain_texture_layer(
+                                            0, &albedo, &normal, &mra,
+                                        );
+                                        tracing::info!(
+                                            "BiomePack: also overwrote layer 0 (grass) with sand to prevent green bleed"
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -5777,12 +5797,30 @@ impl EditorApp {
                     self.revert_to_original_prefab(entity);
                 }
                 HierarchyAction::SetParent(child, parent) => {
+                    if let Some(scene_state) = self.scene_state.as_mut() {
+                        let old_parent = scene_state.world().parent_of(child);
+                        let cmd = command::SetParentCommand::new(child, parent, old_parent);
+                        if let Err(e) = self.undo_stack.execute(cmd, scene_state.world_mut()) {
+                            self.log(format!("SetParent failed: {}", e));
+                        } else {
+                            scene_state.sync_entity(child);
+                        }
+                    }
                     if let Some(child_entity) = self.entity_manager.get_mut(child as u64) {
                         child_entity.parent = Some(parent as u64);
                     }
                     self.log(format!("Set parent of {} to {}", child, parent));
                 }
                 HierarchyAction::Unparent(entity) => {
+                    if let Some(scene_state) = self.scene_state.as_mut() {
+                        let old_parent = scene_state.world().parent_of(entity);
+                        let cmd = command::UnparentCommand::new(entity, old_parent);
+                        if let Err(e) = self.undo_stack.execute(cmd, scene_state.world_mut()) {
+                            self.log(format!("Unparent failed: {}", e));
+                        } else {
+                            scene_state.sync_entity(entity);
+                        }
+                    }
                     if let Some(e) = self.entity_manager.get_mut(entity as u64) {
                         e.parent = None;
                     }
@@ -5790,6 +5828,55 @@ impl EditorApp {
                 }
                 HierarchyAction::EditPrefab(entity) => {
                     self.enter_prefab_editing(entity);
+                }
+                HierarchyAction::Rename(entity, new_name) => {
+                    if let Some(scene_state) = self.scene_state.as_mut() {
+                        let old_name = scene_state
+                            .world()
+                            .name(entity)
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        let cmd =
+                            command::RenameEntityCommand::new(entity, old_name, new_name.clone());
+                        if let Err(e) = self.undo_stack.execute(cmd, scene_state.world_mut()) {
+                            self.log(format!("Rename failed: {}", e));
+                        } else {
+                            scene_state.sync_entity(entity);
+                        }
+                    }
+                    self.log(format!("Renamed entity {} to '{}'", entity, new_name));
+                }
+                HierarchyAction::DeleteWithChildren(entity) => {
+                    if let Some(scene_state) = self.scene_state.as_mut() {
+                        // Collect entity + all descendants for cascading delete
+                        let mut to_delete = vec![entity];
+                        to_delete.extend(scene_state.world().descendants_of(entity));
+                        let delete_cmd = command::DeleteEntitiesCommand::new(to_delete.clone());
+                        if let Err(e) = self.undo_stack.execute(delete_cmd, scene_state.world_mut())
+                        {
+                            self.log(format!("Cascading delete failed: {}", e));
+                        } else {
+                            for &e in &to_delete {
+                                scene_state.sync_entity(e);
+                            }
+                            self.log(format!(
+                                "Deleted entity {} and {} descendants",
+                                entity,
+                                to_delete.len() - 1
+                            ));
+                            if self.selected_entity == Some(entity as u64) {
+                                self.selected_entity = None;
+                            }
+                        }
+                    }
+                }
+                HierarchyAction::MoveUp(entity) => {
+                    self.hierarchy_panel.move_entity_up(entity);
+                    self.log(format!("Moved entity {} up", entity));
+                }
+                HierarchyAction::MoveDown(entity) => {
+                    self.hierarchy_panel.move_entity_down(entity);
+                    self.log(format!("Moved entity {} down", entity));
                 }
             }
         }
@@ -5852,12 +5939,31 @@ impl EditorApp {
                         panel.set_progress(0.5, "Loading cached decomposition...");
                         match self.load_cached_decomposition(&manifest) {
                             Ok(result) => {
+                                // Collect mesh paths before moving assets into panel
+                                let mesh_paths: Vec<String> = result
+                                    .assets
+                                    .iter()
+                                    .map(|a| a.mesh_path.to_string_lossy().into_owned())
+                                    .collect();
+
                                 let p = self.dock_tab_viewer.blend_import_panel_mut();
                                 p.set_decomposition_result(
                                     result.assets,
                                     result.hdri_paths,
                                     result.ground_texture_groups,
                                 );
+
+                                // Preload meshes into viewport
+                                if let Some(viewport) = &self.viewport {
+                                    let loaded = viewport.preload_gltf_meshes(&mesh_paths);
+                                    if loaded > 0 {
+                                        self.console_logs.push(format!(
+                                            "[Blend Import] Preloaded {} cached meshes into viewport",
+                                            loaded
+                                        ));
+                                    }
+                                }
+
                                 self.console_logs.push(format!(
                                     "[Blend Import] Loaded cached decomposition: {}",
                                     manifest.display()
@@ -6281,12 +6387,33 @@ impl EditorApp {
             DecompThreadMsg::Done(decomp) => {
                 self.decomp_receiver = None;
                 let msg = decomp.status_message.clone();
+
+                // Collect mesh paths before moving assets into panel
+                let mesh_paths: Vec<String> = decomp
+                    .assets
+                    .iter()
+                    .map(|a| a.mesh_path.to_string_lossy().into_owned())
+                    .collect();
+
                 let panel = self.dock_tab_viewer.blend_import_panel_mut();
                 panel.set_decomposition_result(
                     decomp.assets,
                     decomp.hdri_paths,
                     decomp.ground_texture_groups,
                 );
+
+                // Preload decomposed meshes into the viewport so they're
+                // available when entities or scatter reference them.
+                if let Some(viewport) = &self.viewport {
+                    let loaded = viewport.preload_gltf_meshes(&mesh_paths);
+                    if loaded > 0 {
+                        self.console_logs.push(format!(
+                            "[Blend Import] Preloaded {} meshes into viewport",
+                            loaded
+                        ));
+                    }
+                }
+
                 self.console_logs.push(format!("[Blend Import] {}", msg));
                 self.status = msg;
             }
@@ -6365,6 +6492,21 @@ impl EditorApp {
                     let zone_count = self.dock_tab_viewer.blueprint_zones().len();
                     let mut all_scatter = Vec::new();
                     let mut total_placements = 0usize;
+
+                    // Determine the dominant biome from the first enabled zone
+                    // and regenerate terrain with that biome if it differs from current.
+                    if let Some(first_zone) = self.dock_tab_viewer.blueprint_zones().first() {
+                        let target_biome = match &first_zone.source {
+                            panels::blueprint_panel::ZoneSourceState::BiomePreset(name) => {
+                                name.clone()
+                            }
+                            _ => "grassland".to_string(),
+                        };
+                        let seed = self.dock_tab_viewer.terrain_seed();
+                        // Reconfigure terrain to match the zone biome
+                        self.dock_tab_viewer
+                            .trigger_terrain_generation(seed, &target_biome, 5);
+                    }
 
                     for i in 0..zone_count {
                         let (scatter, patches, count) = self.generate_zone_results(i);
@@ -6498,11 +6640,19 @@ impl EditorApp {
 
         // Ensure terrain chunks exist — auto-generate if the user hasn't
         // clicked "Generate" in the terrain panel yet.
-        let auto_count = self.dock_tab_viewer.ensure_terrain_exists();
+        // Use the zone's biome so terrain matches the zone configuration.
+        let zone_biome = match &zone_state.source {
+            ZoneSourceState::BiomePreset(name) => name.as_str(),
+            _ => "grassland",
+        };
+        let zone_seed = self.dock_tab_viewer.terrain_seed();
+        let auto_count = self
+            .dock_tab_viewer
+            .ensure_terrain_exists_with_biome(zone_biome, zone_seed);
         if auto_count > 0 {
             self.console_logs.push(format!(
-                "[Blueprint] Auto-generated {} terrain chunks for zone scatter",
-                auto_count
+                "[Blueprint] Auto-generated {} terrain chunks (biome: {}) for zone scatter",
+                auto_count, zone_biome
             ));
         }
 

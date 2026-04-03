@@ -38,6 +38,40 @@ use std::collections::HashSet;
 
 use crate::World;
 
+/// Send-able wrapper for a World raw pointer (only used with `parallel` feature).
+#[cfg(feature = "parallel")]
+mod send_ptr {
+    use crate::World;
+
+    /// # Safety
+    ///
+    /// Only used within `run_group_parallel` where disjoint access is guaranteed
+    /// by the scheduler's conflict analysis. The pointer is derived from a valid
+    /// `&mut World` and `rayon::scope` guarantees it outlives all spawned tasks.
+    #[derive(Clone, Copy)]
+    pub(super) struct SendWorldPtr(pub(super) *mut World);
+
+    // SAFETY: We only create SendWorldPtr inside run_group_parallel where we have verified
+    // that all systems in the group have disjoint access sets. The pointer is derived from
+    // a valid &mut World and rayon::scope guarantees it outlives all spawned tasks.
+    unsafe impl Send for SendWorldPtr {}
+    unsafe impl Sync for SendWorldPtr {}
+
+    impl SendWorldPtr {
+        /// # Safety
+        /// Caller must ensure no other thread concurrently accesses overlapping
+        /// resources/components (guaranteed by disjoint access sets).
+        #[inline(always)]
+        #[allow(clippy::mut_from_ref)] // Intentional: parallel systems have disjoint access
+        pub(super) unsafe fn as_mut(&self) -> &mut World {
+            &mut *self.0
+        }
+    }
+}
+
+#[cfg(feature = "parallel")]
+use send_ptr::SendWorldPtr;
+
 /// Describes what data a system accesses.
 ///
 /// Used by the parallel scheduler to determine which systems can run concurrently.
@@ -200,7 +234,9 @@ impl ParallelSchedule {
             let mut placed = false;
             for group in &mut groups {
                 // Check if this system conflicts with any system already in the group
-                let conflicts = group.iter().any(|&j| sys.access.conflicts_with(&systems[j].access));
+                let conflicts = group
+                    .iter()
+                    .any(|&j| sys.access.conflicts_with(&systems[j].access));
                 if !conflicts {
                     group.push(i);
                     placed = true;
@@ -249,15 +285,10 @@ impl ParallelSchedule {
     ///    (no write-write or read-write conflicts on the same TypeId).
     /// 2. Rayon's `scope` ensures all spawned tasks complete before returning.
     /// 3. The World pointer remains valid for the entire scope duration.
-    fn run_group_parallel(
-        &self,
-        systems: &[SystemDescriptor],
-        group: &[usize],
-        world: &mut World,
-    ) {
+    fn run_group_parallel(&self, systems: &[SystemDescriptor], group: &[usize], world: &mut World) {
         #[cfg(feature = "parallel")]
         {
-            let world_ptr = world as *mut World;
+            let world_ptr = SendWorldPtr(world as *mut World);
 
             // SAFETY: All systems in this group have been verified by build_groups()
             // to have non-conflicting access sets. Each system accesses disjoint
@@ -268,9 +299,9 @@ impl ParallelSchedule {
                     let func = systems[idx].func;
                     let ptr = world_ptr;
                     s.spawn(move |_| {
-                        // SAFETY: See above — disjoint access guaranteed by scheduler.
-                        let world_ref = unsafe { &mut *ptr };
-                        func(world_ref);
+                        // SAFETY: Disjoint access guaranteed by scheduler's
+                        // conflict analysis (build_groups). SendWorldPtr is Send.
+                        func(unsafe { ptr.as_mut() });
                     });
                 }
             });
@@ -363,7 +394,10 @@ mod tests {
             ..Default::default()
         };
         let b = SystemAccess::default();
-        assert!(a.conflicts_with(&b), "exclusive should conflict with anything");
+        assert!(
+            a.conflicts_with(&b),
+            "exclusive should conflict with anything"
+        );
     }
 
     #[test]
@@ -394,10 +428,18 @@ mod tests {
     #[test]
     fn test_build_groups_mixed() {
         let systems = vec![
-            SystemDescriptor::new(|_| {}).writes::<PhysicsData>().named("physics"),
-            SystemDescriptor::new(|_| {}).reads::<RenderData>().named("render1"),
-            SystemDescriptor::new(|_| {}).reads::<RenderData>().named("render2"),
-            SystemDescriptor::new(|_| {}).writes::<RenderData>().named("render_write"),
+            SystemDescriptor::new(|_| {})
+                .writes::<PhysicsData>()
+                .named("physics"),
+            SystemDescriptor::new(|_| {})
+                .reads::<RenderData>()
+                .named("render1"),
+            SystemDescriptor::new(|_| {})
+                .reads::<RenderData>()
+                .named("render2"),
+            SystemDescriptor::new(|_| {})
+                .writes::<RenderData>()
+                .named("render_write"),
         ];
         let groups = ParallelSchedule::build_groups(&systems);
         // physics + render1 + render2 can go together (disjoint or read-read)
@@ -423,8 +465,7 @@ mod tests {
             COUNTER.fetch_add(100, Ordering::SeqCst);
         }
 
-        let mut schedule = ParallelSchedule::new()
-            .with_stage("sim");
+        let mut schedule = ParallelSchedule::new().with_stage("sim");
         schedule.add_system("sim", SystemDescriptor::new(sys_a).reads::<PhysicsData>());
         schedule.add_system("sim", SystemDescriptor::new(sys_b).reads::<RenderData>());
         schedule.add_system("sim", SystemDescriptor::new(sys_c).reads::<AudioData>());
@@ -439,7 +480,9 @@ mod tests {
     fn test_exclusive_system_runs_alone() {
         let systems = vec![
             SystemDescriptor::new(|_| {}).exclusive().named("exclusive"),
-            SystemDescriptor::new(|_| {}).reads::<PhysicsData>().named("physics"),
+            SystemDescriptor::new(|_| {})
+                .reads::<PhysicsData>()
+                .named("physics"),
         ];
         let groups = ParallelSchedule::build_groups(&systems);
         // Exclusive system must be in its own group
@@ -451,12 +494,18 @@ mod tests {
     #[test]
     fn test_undeclared_system_defaults_to_exclusive() {
         let desc = SystemDescriptor::new(|_| {});
-        assert!(desc.access.exclusive, "undeclared access should default to exclusive");
+        assert!(
+            desc.access.exclusive,
+            "undeclared access should default to exclusive"
+        );
     }
 
     #[test]
     fn test_descriptor_builder_clears_exclusive() {
         let desc = SystemDescriptor::new(|_| {}).reads::<PhysicsData>();
-        assert!(!desc.access.exclusive, "reads() should clear exclusive flag");
+        assert!(
+            !desc.access.exclusive,
+            "reads() should clear exclusive flag"
+        );
     }
 }

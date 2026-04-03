@@ -22,17 +22,83 @@ struct WaterUniforms {
     fog_density: f32,
     water_level: f32,
     fog_enabled: u32,
+    near_plane: f32,
+    far_plane: f32,
     sun_dir: [f32; 3],
     sun_intensity: f32,
+    screen_size: [f32; 2],
+    wave_amplitude: f32,
+    turbidity: f32,
+    water_color_shallow: [f32; 3],
+    shore_foam_intensity: f32,
+    water_color_deep: [f32; 3],
+    _pad: f32,
+}
+
+/// Water style presets for different biome types.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WaterStyle {
+    Ocean,
+    River,
+    Lake,
+    Swamp,
+}
+
+/// Configuration derived from WaterStyle.
+struct WaterStyleConfig {
+    color_shallow: [f32; 3],
+    color_deep: [f32; 3],
+    wave_amplitude: f32,
+    turbidity: f32,
+    shore_foam_intensity: f32,
+}
+
+impl WaterStyle {
+    fn config(&self) -> WaterStyleConfig {
+        match self {
+            WaterStyle::Ocean => WaterStyleConfig {
+                color_shallow: [0.02, 0.12, 0.18],
+                color_deep: [0.005, 0.03, 0.07],
+                wave_amplitude: 1.0,
+                turbidity: 0.4,
+                shore_foam_intensity: 0.8,
+            },
+            WaterStyle::River => WaterStyleConfig {
+                color_shallow: [0.04, 0.10, 0.08],
+                color_deep: [0.01, 0.05, 0.04],
+                wave_amplitude: 0.3,
+                turbidity: 0.6,
+                shore_foam_intensity: 0.5,
+            },
+            WaterStyle::Lake => WaterStyleConfig {
+                color_shallow: [0.02, 0.09, 0.12],
+                color_deep: [0.005, 0.04, 0.06],
+                wave_amplitude: 0.15,
+                turbidity: 0.25,
+                shore_foam_intensity: 0.3,
+            },
+            WaterStyle::Swamp => WaterStyleConfig {
+                color_shallow: [0.05, 0.06, 0.03],
+                color_deep: [0.02, 0.03, 0.01],
+                wave_amplitude: 0.08,
+                turbidity: 0.9,
+                shore_foam_intensity: 0.1,
+            },
+        }
+    }
 }
 
 pub struct WaterRenderer {
     pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     index_count: u32,
+    depth_sampler: wgpu::Sampler,
+    /// Fallback 1x1 depth texture view used until real depth is bound
+    fallback_depth_view: wgpu::TextureView,
     start_time: std::time::Instant,
     water_level: f32,
     enabled: bool,
@@ -41,10 +107,11 @@ pub struct WaterRenderer {
     fog_color: [f32; 3],
     sun_dir: [f32; 3],
     sun_intensity: f32,
+    water_style: WaterStyle,
 }
 
 impl WaterRenderer {
-    pub fn new(device: &wgpu::Device) -> Result<Self> {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Water Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/water.wgsl").into()),
@@ -52,16 +119,37 @@ impl WaterRenderer {
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Water Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                // Binding 0: Uniforms
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                // Binding 1: Depth texture for terrain depth reading
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // Binding 2: Depth sampler (non-comparison, for reading raw depth)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                    count: None,
+                },
+            ],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -112,14 +200,14 @@ impl WaterRenderer {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None, // Render both sides of water
+                cull_mode: None,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: false, // Transparent — don't write depth
+                depth_write_enabled: false,
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
@@ -143,23 +231,89 @@ impl WaterRenderer {
                 fog_density: 0.01,
                 water_level: 0.0,
                 fog_enabled: 0,
+                near_plane: 0.1,
+                far_plane: 50000.0,
                 sun_dir: [0.5, 0.7, 0.35],
                 sun_intensity: 1.6,
+                screen_size: [1920.0, 1080.0],
+                wave_amplitude: 1.0,
+                turbidity: 0.4,
+                water_color_shallow: [0.02, 0.12, 0.18],
+                shore_foam_intensity: 0.8,
+                water_color_deep: [0.005, 0.03, 0.07],
+                _pad: 0.0,
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Non-filtering sampler for reading raw depth values
+        let depth_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Water Depth Sampler"),
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        // Create fallback 1x1 depth texture for initial bind group
+        let fallback_depth_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Water Fallback Depth"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let fallback_depth_view = fallback_depth_tex.create_view(&wgpu::TextureViewDescriptor {
+            aspect: wgpu::TextureAspect::DepthOnly,
+            ..Default::default()
+        });
+
+        // Clear the fallback depth to 1.0 (far plane)
+        let mut init_encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        init_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Water Fallback Depth Clear"),
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &fallback_depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        queue.submit(std::iter::once(init_encoder.finish()));
+
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Water Bind Group"),
             layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&fallback_depth_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&depth_sampler),
+                },
+            ],
         });
 
-        // Generate water grid mesh (128x128, spanning -200..200)
-        let (vertices, indices) = Self::generate_water_mesh(128, 200.0);
+        // Generate water grid mesh (256x256, spanning -1000..1000)
+        let (vertices, indices) = Self::generate_water_mesh(256, 1000.0);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Water Vertex Buffer"),
@@ -175,11 +329,14 @@ impl WaterRenderer {
 
         Ok(Self {
             pipeline,
+            bind_group_layout,
             bind_group,
             uniform_buffer,
             vertex_buffer,
             index_buffer,
             index_count: indices.len() as u32,
+            depth_sampler,
+            fallback_depth_view,
             start_time: std::time::Instant::now(),
             water_level: 0.0,
             enabled: false,
@@ -188,6 +345,7 @@ impl WaterRenderer {
             fog_color: [0.6, 0.6, 0.62],
             sun_dir: [0.5, 0.7, 0.35],
             sun_intensity: 1.6,
+            water_style: WaterStyle::Ocean,
         })
     }
 
@@ -247,6 +405,36 @@ impl WaterRenderer {
         self.sun_intensity = intensity;
     }
 
+    pub fn set_water_style(&mut self, style: WaterStyle) {
+        self.water_style = style;
+    }
+
+    /// Update the depth texture binding when the viewport resizes or at render time.
+    pub fn update_depth_binding(
+        &mut self,
+        device: &wgpu::Device,
+        depth_sample_view: &wgpu::TextureView,
+    ) {
+        self.bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Water Bind Group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(depth_sample_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.depth_sampler),
+                },
+            ],
+        });
+    }
+
     pub fn render(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -254,15 +442,17 @@ impl WaterRenderer {
         depth_view: &wgpu::TextureView,
         camera: &OrbitCamera,
         queue: &wgpu::Queue,
+        screen_width: u32,
+        screen_height: u32,
     ) -> Result<()> {
         if !self.enabled {
             return Ok(());
         }
 
         let elapsed = self.start_time.elapsed().as_secs_f32();
-        // Camera-relative VP to avoid f32 jitter far from origin
         let view_proj = camera.view_projection_matrix_relative();
         let camera_pos = camera.position();
+        let style = self.water_style.config();
 
         let uniforms = WaterUniforms {
             view_proj: view_proj.to_cols_array_2d(),
@@ -272,8 +462,17 @@ impl WaterRenderer {
             fog_density: self.fog_density,
             water_level: self.water_level,
             fog_enabled: if self.fog_enabled { 1 } else { 0 },
+            near_plane: camera.near,
+            far_plane: camera.far,
             sun_dir: self.sun_dir,
             sun_intensity: self.sun_intensity,
+            screen_size: [screen_width as f32, screen_height as f32],
+            wave_amplitude: style.wave_amplitude,
+            turbidity: style.turbidity,
+            water_color_shallow: style.color_shallow,
+            shore_foam_intensity: style.shore_foam_intensity,
+            water_color_deep: style.color_deep,
+            _pad: 0.0,
         };
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));

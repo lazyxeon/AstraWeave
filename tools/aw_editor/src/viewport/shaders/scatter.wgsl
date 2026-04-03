@@ -146,9 +146,42 @@ fn vs_main(
     return output;
 }
 
+// ─── PBR Helpers (Cook-Torrance BRDF) ───────────────────────────────────────
+
+const PI: f32 = 3.14159265359;
+
+fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let denom = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
+    return a2 / (PI * denom * denom + 0.0001);
+}
+
+fn geometry_schlick(n_dot_v: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;
+    return n_dot_v / (n_dot_v * (1.0 - k) + k + 0.0001);
+}
+
+fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+// ACES filmic tone mapping
+fn aces_tonemap(x: vec3<f32>) -> vec3<f32> {
+    let a = 2.51;
+    let b = 0.03;
+    let c = 2.43;
+    let d = 0.59;
+    let e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+// ─── Fragment Shader (PBR) ──────────────────────────────────────────────────
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Sample albedo texture (1×1 white for vertex-color-only meshes, real texture otherwise)
+    // Sample albedo texture
     let tex_color = textureSample(albedo_tex, albedo_samp, in.uv);
 
     // Alpha test: discard transparent fragments (vegetation cutouts)
@@ -156,26 +189,51 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
 
-    // Combine: texture × vertex color (vertex color modulates the texture)
-    let base_color = in.color.rgb * tex_color.rgb;
+    // Combine: texture × vertex color
+    let albedo = in.color.rgb * tex_color.rgb;
 
-    // Dynamic directional lighting from terrain sun uniforms
-    let light_dir = normalize(uniforms.sun_dir);
+    // Material properties — estimate from texture luminance
+    let lum = dot(albedo, vec3<f32>(0.299, 0.587, 0.114));
+    let roughness = clamp(0.65 - lum * 0.25, 0.15, 0.95); // darker=rougher
+    let metallic = 0.0; // vegetation/rocks are dielectric
+    let ao = in.color.a; // use vertex alpha as AO (tip brightness encoded earlier)
+
+    // Vectors
     let n = normalize(in.world_normal);
-    let ndotl = max(dot(n, light_dir), 0.0);
+    let v = normalize(uniforms.camera_pos - in.world_position);
+    let light_dir = normalize(uniforms.sun_dir);
+    let h = normalize(light_dir + v);
+    let n_dot_l = max(dot(n, light_dir), 0.0);
+    let n_dot_v = max(dot(n, v), 0.001);
+    let n_dot_h = max(dot(n, h), 0.0);
+    let h_dot_v = max(dot(h, v), 0.0);
 
-    // Diffuse: sun color × intensity × NdotL
-    let diffuse = uniforms.sun_color * uniforms.sun_intensity * ndotl;
-    // Ambient: ambient color × intensity
-    let ambient = uniforms.ambient_color * uniforms.ambient_intensity;
-    // Combine lighting
-    var lit_color = base_color * (diffuse + ambient);
+    // Cook-Torrance BRDF
+    let f0 = mix(vec3<f32>(0.04), albedo, metallic);
+    let D = distribution_ggx(n_dot_h, roughness);
+    let G = geometry_schlick(n_dot_v, roughness) * geometry_schlick(n_dot_l, roughness);
+    let F = fresnel_schlick(h_dot_v, f0);
+    let spec = (D * G * F) / (4.0 * n_dot_v * n_dot_l + 0.0001);
+    let kS = F;
+    let kD = (vec3<f32>(1.0) - kS) * (1.0 - metallic);
 
-    // Apply exposure and simple Reinhard tone mapping
+    // Direct lighting
+    let sun_rad = uniforms.sun_color * uniforms.sun_intensity;
+    let direct = (kD * albedo / PI + spec) * sun_rad * n_dot_l;
+
+    // Hemisphere ambient with warm ground bounce
+    let ground_c = uniforms.ambient_color * vec3<f32>(0.55, 0.48, 0.40);
+    let sky_c = uniforms.ambient_color * vec3<f32>(0.90, 0.92, 1.00);
+    let amb_blend = n.y * 0.5 + 0.5;
+    let ambient = mix(ground_c, sky_c, amb_blend) * albedo * ao * uniforms.ambient_intensity;
+
+    var lit_color = direct + ambient;
+
+    // Exposure + ACES tone mapping
     lit_color = lit_color * uniforms.exposure;
-    lit_color = lit_color / (lit_color + vec3<f32>(1.0));
+    lit_color = aces_tonemap(lit_color);
 
-    // Distance-based alpha fade (smooth, no discard — shader handles far objects gracefully)
+    // Distance-based alpha fade
     let dist = length(in.world_position.xyz - uniforms.camera_pos);
     let fade_start = uniforms.cull_distance * 0.85;
     let fade_end = uniforms.cull_distance;

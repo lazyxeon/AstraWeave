@@ -30,6 +30,8 @@ use super::entity_renderer::EntityRenderer;
 use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
 use super::physics_renderer::PhysicsDebugRenderer;
+#[cfg(feature = "astraweave-render")]
+use super::post_process::PostProcessChain;
 use super::scatter_renderer::{ScatterPlacement, ScatterRenderer};
 use super::skybox_renderer::SkyboxRenderer;
 use super::terrain_renderer::TerrainRenderer;
@@ -77,6 +79,10 @@ pub struct ViewportRenderer {
     /// Engine renderer adapter for PBR mesh rendering (feature-gated)
     #[cfg(feature = "astraweave-render")]
     engine_adapter: Option<EngineRenderAdapter>,
+
+    /// Production post-processing chain (HDR → GTAO → Bloom → Tonemap → LDR)
+    #[cfg(feature = "astraweave-render")]
+    post_chain: Option<PostProcessChain>,
 
     /// Enable engine rendering (PBR meshes) vs cube rendering
     use_engine_rendering: bool,
@@ -131,7 +137,7 @@ impl ViewportRenderer {
         let grid_renderer = GridRenderer::new(&device).context("Failed to create grid renderer")?;
         let skybox_renderer =
             SkyboxRenderer::new(&device).context("Failed to create skybox renderer")?;
-        let entity_renderer = EntityRenderer::new(device.clone(), queue.clone(), 10000)
+        let entity_renderer = EntityRenderer::new(device.clone(), queue.clone(), 20000)
             .context("Failed to create entity renderer")?;
         let gizmo_renderer = GizmoRendererWgpu::new((*device).clone(), (*queue).clone(), 10000)
             .context("Failed to create gizmo renderer")?;
@@ -151,6 +157,8 @@ impl ViewportRenderer {
             scatter_placements: Vec::new(),
             #[cfg(feature = "astraweave-render")]
             engine_adapter: None,
+            #[cfg(feature = "astraweave-render")]
+            post_chain: None,
             use_engine_rendering: false,
             depth_texture: None,
             depth_view: None,
@@ -198,7 +206,7 @@ impl ViewportRenderer {
     fn ensure_water_renderer(&mut self) -> Result<&mut WaterRenderer> {
         if self.water_renderer.is_none() {
             self.water_renderer = Some(
-                WaterRenderer::new(&self.device)
+                WaterRenderer::new(&self.device, &self.queue)
                     .context("Failed to create water renderer (deferred)")?,
             );
         }
@@ -253,7 +261,7 @@ impl ViewportRenderer {
             }
         }
         if self.water_renderer.is_none() {
-            match WaterRenderer::new(&self.device) {
+            match WaterRenderer::new(&self.device, &self.queue) {
                 Ok(r) => self.water_renderer = Some(r),
                 Err(e) => tracing::warn!("Eager init water renderer failed: {e:#}"),
             }
@@ -344,6 +352,19 @@ impl ViewportRenderer {
             adapter.resize(width, height);
         }
 
+        #[cfg(feature = "astraweave-render")]
+        {
+            // Lazily create post chain on first resize (when we know dimensions)
+            if let Some(chain) = &mut self.post_chain {
+                chain.resize(&self.device, width, height);
+            } else {
+                match PostProcessChain::new(&self.device, width, height) {
+                    Ok(chain) => self.post_chain = Some(chain),
+                    Err(e) => tracing::warn!("Failed to create post-process chain: {e}"),
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -389,6 +410,13 @@ impl ViewportRenderer {
 
         let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
 
+        // All scene passes render to the target_view (Bgra8UnormSrgb) directly.
+        // The post-processing chain reads from this after scene rendering completes
+        // and applies GTAO, bloom, god rays as screen-space compute effects.
+        // NOTE: Full HDR pipeline would require refactoring all sub-renderer pipeline
+        // formats to Rgba16Float — deferred to a future pass.
+        let scene_target_view = &target_view;
+
         // Eagerly init scatter renderer before depth_view borrow (avoids self re-borrow)
         if !self.scatter_placements.is_empty() && self.scatter_renderer.is_none() {
             let _ = self.ensure_scatter_renderer();
@@ -417,7 +445,13 @@ impl ViewportRenderer {
 
         // Pass 1: Skybox (clears color/depth and renders gradient background)
         self.skybox_renderer
-            .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+            .render(
+                &mut encoder,
+                scene_target_view,
+                depth_view,
+                camera,
+                &self.queue,
+            )
             .context("Skybox render failed")?;
 
         // Pass 2: Grid (only if enabled)
@@ -425,7 +459,7 @@ impl ViewportRenderer {
             self.grid_renderer
                 .render(
                     &mut encoder,
-                    &target_view,
+                    scene_target_view,
                     depth_view,
                     camera,
                     &self.queue,
@@ -439,7 +473,7 @@ impl ViewportRenderer {
             terrain
                 .render(
                     &mut encoder,
-                    &target_view,
+                    scene_target_view,
                     depth_view,
                     camera,
                     &self.queue,
@@ -457,7 +491,7 @@ impl ViewportRenderer {
                 let placements = std::mem::take(&mut self.scatter_placements);
                 let result = scatter.render(
                     &mut encoder,
-                    &target_view,
+                    scene_target_view,
                     depth_view,
                     camera,
                     &placements,
@@ -471,8 +505,24 @@ impl ViewportRenderer {
         // Pass 2.7: Water plane (transparent, rendered after terrain) — deferred init
         if let Some(water) = self.water_renderer.as_mut() {
             if water.is_enabled() {
+                // Create a depth-only view for sampling terrain depth in the water shader
+                if let Some(depth_tex) = self.depth_texture.as_ref() {
+                    let depth_sample_view = depth_tex.create_view(&wgpu::TextureViewDescriptor {
+                        aspect: wgpu::TextureAspect::DepthOnly,
+                        ..Default::default()
+                    });
+                    water.update_depth_binding(&self.device, &depth_sample_view);
+                }
                 water
-                    .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+                    .render(
+                        &mut encoder,
+                        scene_target_view,
+                        depth_view,
+                        camera,
+                        &self.queue,
+                        self.size.0,
+                        self.size.1,
+                    )
                     .context("Water render failed")?;
             }
         }
@@ -484,13 +534,13 @@ impl ViewportRenderer {
                 if let Some(adapter) = &mut self.engine_adapter {
                     adapter.update_camera(camera);
                     adapter
-                        .render_to_texture(&target_view, &mut encoder)
+                        .render_to_texture(scene_target_view, &mut encoder)
                         .context("Engine render failed")?;
                 } else {
                     self.entity_renderer
                         .render(
                             &mut encoder,
-                            &target_view,
+                            scene_target_view,
                             depth_view,
                             camera,
                             world,
@@ -504,7 +554,7 @@ impl ViewportRenderer {
                 self.entity_renderer
                     .render(
                         &mut encoder,
-                        &target_view,
+                        scene_target_view,
                         depth_view,
                         camera,
                         world,
@@ -520,7 +570,7 @@ impl ViewportRenderer {
             self.entity_renderer
                 .render(
                     &mut encoder,
-                    &target_view,
+                    scene_target_view,
                     depth_view,
                     camera,
                     world,
@@ -549,7 +599,7 @@ impl ViewportRenderer {
                     physics
                         .render(
                             &mut encoder,
-                            &target_view,
+                            scene_target_view,
                             depth_view,
                             camera,
                             &combined_lines,
@@ -562,11 +612,53 @@ impl ViewportRenderer {
         // Pass 4.5: Weather particles (rain, snow, hail, sandstorm, blizzard) — deferred init
         if let Some(weather) = self.weather_renderer.as_mut() {
             weather
-                .render(&mut encoder, &target_view, depth_view, camera, &self.queue)
+                .render(
+                    &mut encoder,
+                    scene_target_view,
+                    depth_view,
+                    camera,
+                    &self.queue,
+                )
                 .context("Weather particle render failed")?;
         }
 
+        // Pass 4.9: Post-processing chain (GTAO → Bloom → God Rays → Auto-Exposure → Tonemap)
+        // Reads from HDR scene target, writes tonemapped LDR to final target.
+        #[cfg(feature = "astraweave-render")]
+        if let Some(chain) = &mut self.post_chain {
+            let fov_y = camera.fov.to_radians();
+            let aspect = if self.size.1 > 0 {
+                self.size.0 as f32 / self.size.1 as f32
+            } else {
+                1.0
+            };
+
+            // Get sun direction from entity renderer for atmosphere/god rays
+            let sun_dir = glam::Vec3::from(self.entity_renderer.sun_direction());
+            let sun_color = glam::Vec3::from(self.entity_renderer.sun_color());
+            let sun_intensity = self.entity_renderer.sun_intensity();
+            let view_proj = camera.view_projection_matrix();
+
+            chain.execute(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                depth_view,
+                None, // TODO: wire normal G-buffer when available
+                &target_view,
+                camera.near,
+                1000.0, // far plane
+                fov_y,
+                aspect,
+                sun_dir,
+                sun_color,
+                sun_intensity,
+                view_proj,
+            );
+        }
+
         // Pass 5: Gizmos (if entity selected and gizmo active)
+        // Gizmos render AFTER post-processing onto the final LDR target for crisp overlays.
         if let (Some(selected), Some(gizmo)) = (self.selected_entity(), gizmo_state) {
             if gizmo.mode != crate::gizmo::GizmoMode::Inactive {
                 // DEBUG: Log gizmo mode and constraint
@@ -1031,6 +1123,11 @@ impl ViewportRenderer {
     // ── Scatter management ──────────────────────────────────────────────
 
     /// Set scatter placements for instanced rendering.
+    /// Preload glTF meshes into the entity renderer's mesh cache.
+    pub fn preload_gltf_meshes(&mut self, paths: &[String]) -> usize {
+        self.entity_renderer.preload_gltf_meshes(paths)
+    }
+
     pub fn set_scatter_placements(&mut self, placements: Vec<ScatterPlacement>) {
         tracing::info!(
             "Renderer: set_scatter_placements({} items)",

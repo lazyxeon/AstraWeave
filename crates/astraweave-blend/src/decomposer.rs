@@ -52,6 +52,9 @@ pub struct DecomposedAsset {
     pub textures: Vec<AssetTexture>,
     /// Material names assigned to this object.
     pub materials: Vec<String>,
+    /// Structured PBR material parameters (populated from Blender data when available).
+    #[serde(default)]
+    pub material_descs: Vec<MaterialDesc>,
     /// Blender collections this object belonged to.
     pub collections: Vec<String>,
 }
@@ -70,7 +73,7 @@ pub struct AssetBounds {
 pub struct AssetTexture {
     /// Filename relative to the textures/ directory.
     pub filename: String,
-    /// PBR channel: `diffuse`, `normal`, `roughness`, `metallic`, `alpha`, `displacement`, `unknown`.
+    /// PBR channel: `diffuse`, `normal`, `roughness`, `metallic`, `alpha`, `displacement`, `emission`, `unknown`.
     pub channel: String,
     /// Original Blender image name.
     pub original_name: String,
@@ -78,6 +81,63 @@ pub struct AssetTexture {
     pub width: u32,
     /// Texture height in pixels.
     pub height: u32,
+}
+
+/// Structured PBR material parameters extracted from a Blender material.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MaterialDesc {
+    /// Material name from Blender.
+    pub name: String,
+    /// Base color factor [R, G, B, A].
+    #[serde(default = "default_base_color")]
+    pub base_color_factor: [f32; 4],
+    /// Metallic factor (0.0–1.0).
+    #[serde(default)]
+    pub metallic_factor: f32,
+    /// Roughness factor (0.0–1.0).
+    #[serde(default = "default_one")]
+    pub roughness_factor: f32,
+    /// Emissive color [R, G, B].
+    #[serde(default)]
+    pub emissive_factor: [f32; 3],
+    /// Emissive strength multiplier.
+    #[serde(default = "default_one")]
+    pub emissive_strength: f32,
+    /// Alpha mode: "OPAQUE", "MASK", or "BLEND".
+    #[serde(default = "default_alpha_mode")]
+    pub alpha_mode: String,
+    /// Alpha cutoff for MASK mode.
+    #[serde(default = "default_alpha_cutoff")]
+    pub alpha_cutoff: f32,
+    /// Whether the material should be rendered double-sided.
+    #[serde(default)]
+    pub double_sided: bool,
+    /// Index of refraction.
+    #[serde(default = "default_ior")]
+    pub ior: f32,
+    /// Transmission factor (0.0–1.0).
+    #[serde(default)]
+    pub transmission_factor: f32,
+}
+
+fn default_base_color() -> [f32; 4] {
+    [1.0, 1.0, 1.0, 1.0]
+}
+
+fn default_one() -> f32 {
+    1.0
+}
+
+fn default_alpha_mode() -> String {
+    "OPAQUE".to_string()
+}
+
+fn default_alpha_cutoff() -> f32 {
+    0.5
+}
+
+fn default_ior() -> f32 {
+    1.5
 }
 
 /// An extracted HDRI environment map.

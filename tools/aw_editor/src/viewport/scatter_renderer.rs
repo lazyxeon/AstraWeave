@@ -128,8 +128,29 @@ fn load_mesh_on_worker(
 ) -> Result<LoadedMeshData> {
     const MAX_SCATTER_MESH_BYTES: u64 = 150 * 1024 * 1024;
 
+    // Try the path as-is first, then resolve relative to CWD if not found
+    let resolved_path = if std::path::Path::new(path).exists() {
+        path.to_string()
+    } else if let Ok(cwd) = std::env::current_dir() {
+        let joined = cwd.join(path);
+        if joined.exists() {
+            joined.to_string_lossy().into_owned()
+        } else {
+            // Log and fail with original path for clear error message
+            tracing::warn!(
+                "Scatter mesh not found at '{}' or '{}'",
+                path,
+                joined.display()
+            );
+            path.to_string()
+        }
+    } else {
+        path.to_string()
+    };
+    let path = &resolved_path;
+
     let file_size = std::fs::metadata(path)
-        .with_context(|| format!("Cannot stat: {path}"))?
+        .with_context(|| format!("Cannot stat scatter mesh: {path}"))?
         .len();
     if file_size > MAX_SCATTER_MESH_BYTES {
         anyhow::bail!(
@@ -217,8 +238,17 @@ fn load_mesh_on_worker(
 
     // Try to extract albedo texture
     let (texture_bind_group, has_texture) =
-        try_extract_albedo(path, &document, &buffers, device, queue, texture_bgl)
-            .unwrap_or((None, false));
+        match try_extract_albedo(path, &document, &buffers, device, queue, texture_bgl) {
+            Ok(result) => result,
+            Err(e) => {
+                tracing::warn!(
+                    "Scatter: failed to load texture for '{}': {} — using vertex colors",
+                    key,
+                    e
+                );
+                (None, false)
+            }
+        };
 
     tracing::info!(
         "Scatter: loaded mesh '{key}': {} verts, {} tris, texture={}",
@@ -855,6 +885,11 @@ impl ScatterRenderer {
                 continue;
             }
             self.inflight_mesh_keys.insert(p.mesh_key.clone());
+            tracing::info!(
+                "Scatter: requesting mesh load '{}' from path: '{}'",
+                p.mesh_key,
+                p.mesh_path
+            );
             let _ = self.mesh_load_tx.send(MeshLoadRequest {
                 key: p.mesh_key.clone(),
                 path: p.mesh_path.clone(),
