@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["VolumetricQuality"],"struct":["ApplyParams","CascadeData","FogDensityParams","IntegrateParams","ScatterParams","VolumetricFogConfig","VolumetricFogPass"]};

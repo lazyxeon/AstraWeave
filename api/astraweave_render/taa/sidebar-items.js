@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["apply_jitter_to_projection","get_jitter","halton"],"struct":["TaaConfig","TaaPass","TaaUniforms"]};

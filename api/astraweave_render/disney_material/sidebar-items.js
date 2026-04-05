@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BRDF_LUT_WGSL","DISNEY_BRDF_WGSL"],"fn":["evaluate_disney_brdf"],"struct":["BrdfResult"]};

@@ -55,134 +55,167 @@
 <a href=#55 id=55 data-nosnippet>55</a>               // See MATERIALS.md for canonical materials arrays and WGSL bindings
 <a href=#56 id=56 data-nosnippet>56</a></span><span class="kw">pub mod </span>animation;
 <a href=#57 id=57 data-nosnippet>57</a><span class="kw">pub mod </span>asset_index;
-<a href=#58 id=58 data-nosnippet>58</a><span class="kw">pub mod </span>biome_audio;
-<a href=#59 id=59 data-nosnippet>59</a><span class="kw">pub mod </span>biome_detector;
-<a href=#60 id=60 data-nosnippet>60</a><span class="kw">pub mod </span>biome_material;
-<a href=#61 id=61 data-nosnippet>61</a><span class="kw">pub mod </span>biome_transition;
-<a href=#62 id=62 data-nosnippet>62</a><span class="kw">pub mod </span>culling; <span class="comment">// GPU-driven frustum culling (Phase 2 Task 3)
-<a href=#63 id=63 data-nosnippet>63</a></span><span class="kw">pub mod </span>culling_node; <span class="comment">// Culling node for render graph
-<a href=#64 id=64 data-nosnippet>64</a></span><span class="kw">pub mod </span>graph; <span class="comment">// minimal render graph scaffolding (Phase 2)
-<a href=#65 id=65 data-nosnippet>65</a></span><span class="kw">pub mod </span>graph_adapter; <span class="comment">// runs a graph on Renderer frames
-<a href=#66 id=66 data-nosnippet>66</a></span><span class="kw">pub mod </span>gtao; <span class="comment">// Ground Truth Ambient Occlusion with visibility bitmask
-<a href=#67 id=67 data-nosnippet>67</a></span><span class="kw">pub mod </span>hdr_pipeline; <span class="comment">// HDR rendering pipeline orchestration (tonemap, color grading, post-FX chain)
-<a href=#68 id=68 data-nosnippet>68</a></span><span class="kw">pub mod </span>hdri_catalog;
-<a href=#69 id=69 data-nosnippet>69</a><span class="kw">pub mod </span>material; <span class="comment">// shared authored materials API + GPU arrays
-<a href=#70 id=70 data-nosnippet>70</a></span><span class="kw">pub mod </span>material_extended; <span class="comment">// Phase PBR-E: Advanced materials (clearcoat, anisotropy, SSS, sheen, transmission)
-<a href=#71 id=71 data-nosnippet>71</a></span><span class="attr">#[cfg(feature = <span class="string">"textures"</span>)]
-<a href=#72 id=72 data-nosnippet>72</a></span><span class="kw">pub mod </span>material_loader; <span class="comment">// internal builder helpers
-<a href=#73 id=73 data-nosnippet>73</a></span><span class="attr">#[cfg(any(feature = <span class="string">"gltf-assets"</span>, feature = <span class="string">"assets"</span>))]
-<a href=#74 id=74 data-nosnippet>74</a></span><span class="kw">pub mod </span>mesh_gltf; <span class="comment">// glTF loader
-<a href=#75 id=75 data-nosnippet>75</a></span><span class="attr">#[cfg(any(feature = <span class="string">"obj-assets"</span>, feature = <span class="string">"assets"</span>))]
-<a href=#76 id=76 data-nosnippet>76</a></span><span class="kw">pub mod </span>mesh_obj;
-<a href=#77 id=77 data-nosnippet>77</a><span class="kw">pub mod </span>residency;
-<a href=#78 id=78 data-nosnippet>78</a><span class="kw">pub mod </span>scene_environment;
-<a href=#79 id=79 data-nosnippet>79</a><span class="kw">pub mod </span>ssgi; <span class="comment">// Screen-Space Global Illumination with temporal denoise
-<a href=#80 id=80 data-nosnippet>80</a></span><span class="kw">pub mod </span>ssr; <span class="comment">// Screen-Space Reflections with Hi-Z ray marching
-<a href=#81 id=81 data-nosnippet>81</a></span><span class="kw">pub mod </span>terrain_material;
-<a href=#82 id=82 data-nosnippet>82</a><span class="kw">pub mod </span>texture_streaming;
-<a href=#83 id=83 data-nosnippet>83</a><span class="kw">pub mod </span>velocity; <span class="comment">// Motion vector / velocity buffer for temporal effects (TAA, motion blur, TSR)
-<a href=#84 id=84 data-nosnippet>84</a></span><span class="kw">pub mod </span>weather_system; <span class="comment">// Texture streaming with LRU cache and priority-based loading // Phase PBR-F: Terrain layering with splat maps and triplanar projection // asset streaming and residency management // OBJ fallback loader // Phase 2 Task 5: Skeletal animation with CPU/GPU skinning
-<a href=#85 id=85 data-nosnippet>85</a>
-<a href=#86 id=86 data-nosnippet>86</a></span><span class="attr">#[cfg(feature = <span class="string">"skinning-gpu"</span>)]
-<a href=#87 id=87 data-nosnippet>87</a></span><span class="kw">pub mod </span>skinning_gpu; <span class="comment">// Phase 2 Task 5 Phase D: GPU skinning pipeline
-<a href=#88 id=88 data-nosnippet>88</a>
-<a href=#89 id=89 data-nosnippet>89</a></span><span class="kw">pub mod </span>instancing;
-<a href=#90 id=90 data-nosnippet>90</a><span class="kw">pub mod </span>lod_generator; <span class="comment">// Week 5 Action 19: LOD generation with quadric error metrics
-<a href=#91 id=91 data-nosnippet>91</a></span><span class="kw">pub mod </span>vertex_compression; <span class="comment">// Week 5 Action 19: Vertex compression // Week 5 Action 19: GPU instancing for draw call reduction (octahedral normals, half-float UVs)
-<a href=#92 id=92 data-nosnippet>92</a>
-<a href=#93 id=93 data-nosnippet>93</a></span><span class="attr">#[cfg(test)]
-<a href=#94 id=94 data-nosnippet>94</a></span><span class="kw">mod </span>animation_extra_tests; <span class="comment">// Phase 7: Additional animation tests
-<a href=#95 id=95 data-nosnippet>95</a>
-<a href=#96 id=96 data-nosnippet>96</a></span><span class="attr">#[cfg(test)]
-<a href=#97 id=97 data-nosnippet>97</a></span><span class="kw">mod </span>mutation_tests; <span class="comment">// Phase 10B: Comprehensive mutation-killing tests
-<a href=#98 id=98 data-nosnippet>98</a>
-<a href=#99 id=99 data-nosnippet>99</a>// Nanite virtualized geometry system
-<a href=#100 id=100 data-nosnippet>100</a></span><span class="attr">#[cfg(feature = <span class="string">"nanite"</span>)]
-<a href=#101 id=101 data-nosnippet>101</a></span><span class="kw">pub mod </span>nanite_gpu_culling;
-<a href=#102 id=102 data-nosnippet>102</a><span class="attr">#[cfg(feature = <span class="string">"nanite"</span>)]
-<a href=#103 id=103 data-nosnippet>103</a></span><span class="kw">pub mod </span>nanite_render;
-<a href=#104 id=104 data-nosnippet>104</a><span class="attr">#[cfg(feature = <span class="string">"nanite"</span>)]
-<a href=#105 id=105 data-nosnippet>105</a></span><span class="kw">pub mod </span>nanite_visibility; <span class="comment">// NEW: GPU-driven culling and visibility
-<a href=#106 id=106 data-nosnippet>106</a>
-<a href=#107 id=107 data-nosnippet>107</a></span><span class="kw">pub use </span>camera::{Camera, CameraController};
-<a href=#108 id=108 data-nosnippet>108</a><span class="kw">pub use </span>environment::{
-<a href=#109 id=109 data-nosnippet>109</a>    SkyConfig, SkyRenderer, TimeOfDay, WeatherParticles, WeatherSystem, WeatherType,
-<a href=#110 id=110 data-nosnippet>110</a>};
-<a href=#111 id=111 data-nosnippet>111</a><span class="kw">pub use </span>error::{RenderError, RenderResult};
-<a href=#112 id=112 data-nosnippet>112</a><span class="kw">pub use </span>renderer::Renderer;
-<a href=#113 id=113 data-nosnippet>113</a><span class="kw">pub use </span>terrain::{TerrainMesh, TerrainRenderer, TerrainVertex, VegetationRenderInstance};
-<a href=#114 id=114 data-nosnippet>114</a><span class="kw">pub use </span>texture::Texture;
-<a href=#115 id=115 data-nosnippet>115</a><span class="kw">pub use </span>types::{Instance, Material, Mesh, SkinnedVertex, Vertex};
-<a href=#116 id=116 data-nosnippet>116</a>
-<a href=#117 id=117 data-nosnippet>117</a><span class="kw">pub mod </span>water; <span class="comment">// Animated ocean with Gerstner waves
-<a href=#118 id=118 data-nosnippet>118</a></span><span class="kw">pub use </span>water::WaterRenderer;
-<a href=#119 id=119 data-nosnippet>119</a>
-<a href=#120 id=120 data-nosnippet>120</a><span class="kw">pub mod </span>advanced_post;
-<a href=#121 id=121 data-nosnippet>121</a><span class="kw">pub mod </span>decals; <span class="comment">// Screen-space decal system
-<a href=#122 id=122 data-nosnippet>122</a></span><span class="kw">pub mod </span>deferred; <span class="comment">// Deferred rendering pipeline
-<a href=#123 id=123 data-nosnippet>123</a></span><span class="kw">pub mod </span>effects; <span class="comment">// NEW
-<a href=#124 id=124 data-nosnippet>124</a></span><span class="kw">pub mod </span>gpu_particles; <span class="comment">// GPU compute-based particle system
-<a href=#125 id=125 data-nosnippet>125</a></span><span class="kw">pub mod </span>msaa; <span class="comment">// MSAA anti-aliasing resources
-<a href=#126 id=126 data-nosnippet>126</a></span><span class="kw">pub mod </span>overlay; <span class="comment">// NEW (for cutscene fades/letterbox later)
-<a href=#127 id=127 data-nosnippet>127</a></span><span class="kw">pub mod </span>transparency; <span class="comment">// Transparency depth sorting and render pass // Advanced post-processing (TAA, motion blur, DOF, color grading)
-<a href=#128 id=128 data-nosnippet>128</a>
-<a href=#129 id=129 data-nosnippet>129</a>// GPU memory management and SSAO
-<a href=#130 id=130 data-nosnippet>130</a></span><span class="kw">pub mod </span>gpu_memory; <span class="comment">// GPU memory budget tracking and enforcement
-<a href=#131 id=131 data-nosnippet>131</a></span><span class="attr">#[cfg(feature = <span class="string">"ssao"</span>)]
-<a href=#132 id=132 data-nosnippet>132</a></span><span class="kw">pub mod </span>ssao; <span class="comment">// Screen-space ambient occlusion
-<a href=#133 id=133 data-nosnippet>133</a>
-<a href=#134 id=134 data-nosnippet>134</a></span><span class="kw">pub use </span>advanced_post::{
-<a href=#135 id=135 data-nosnippet>135</a>    AdvancedPostFx, ColorGradingConfig, DofConfig, MotionBlurConfig, TaaConfig,
-<a href=#136 id=136 data-nosnippet>136</a>};
-<a href=#137 id=137 data-nosnippet>137</a><span class="kw">pub use </span>asset_index::{AssetIndex, HdriRef <span class="kw">as </span>AssetHdriRef, MaterialSetEntry, TextureEntry};
-<a href=#138 id=138 data-nosnippet>138</a><span class="kw">pub use </span>biome_detector::{BiomeDetector, BiomeDetectorConfig, BiomeTransition};
-<a href=#139 id=139 data-nosnippet>139</a><span class="kw">pub use </span>biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
-<a href=#140 id=140 data-nosnippet>140</a><span class="kw">pub use </span>biome_transition::{BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect};
-<a href=#141 id=141 data-nosnippet>141</a><span class="kw">pub use </span>culling::{
-<a href=#142 id=142 data-nosnippet>142</a>    batch_visible_instances, build_indirect_commands_cpu, cpu_frustum_cull, BatchId,
-<a href=#143 id=143 data-nosnippet>143</a>    CullingPipeline, CullingResources, DrawBatch, DrawIndirectCommand, FrustumPlanes, InstanceAABB,
-<a href=#144 id=144 data-nosnippet>144</a>};
-<a href=#145 id=145 data-nosnippet>145</a><span class="kw">pub use </span>culling_node::CullingNode;
-<a href=#146 id=146 data-nosnippet>146</a><span class="kw">pub use </span>decals::{Decal, DecalAtlas, DecalBlendMode, DecalSystem, GpuDecal, DECAL_SHADER};
-<a href=#147 id=147 data-nosnippet>147</a><span class="kw">pub use </span>deferred::{DeferredRenderer, GBuffer, GBufferFormats};
-<a href=#148 id=148 data-nosnippet>148</a><span class="kw">pub use </span>effects::{WeatherFx, WeatherKind};
-<a href=#149 id=149 data-nosnippet>149</a><span class="kw">pub use </span>gpu_particles::{EmitterParams, GpuParticle, GpuParticleSystem};
-<a href=#150 id=150 data-nosnippet>150</a><span class="kw">pub use </span>hdri_catalog::{DayPeriod, HdriCatalog, HdriEntry};
-<a href=#151 id=151 data-nosnippet>151</a><span class="kw">pub use </span>ibl::{IblManager, IblQuality, IblResources, SkyMode};
-<a href=#152 id=152 data-nosnippet>152</a><span class="kw">pub use </span>material::{
-<a href=#153 id=153 data-nosnippet>153</a>    ArrayLayout, MaterialGpu, MaterialGpuArrays, MaterialLayerDesc, MaterialLoadStats,
-<a href=#154 id=154 data-nosnippet>154</a>    MaterialManager, MaterialPackDesc,
-<a href=#155 id=155 data-nosnippet>155</a>};
-<a href=#156 id=156 data-nosnippet>156</a><span class="kw">pub use </span>material_extended::{
-<a href=#157 id=157 data-nosnippet>157</a>    MaterialDefinitionExtended, MaterialGpuExtended, MATERIAL_FLAG_ANISOTROPY,
-<a href=#158 id=158 data-nosnippet>158</a>    MATERIAL_FLAG_CLEARCOAT, MATERIAL_FLAG_SHEEN, MATERIAL_FLAG_SUBSURFACE,
-<a href=#159 id=159 data-nosnippet>159</a>    MATERIAL_FLAG_TRANSMISSION,
-<a href=#160 id=160 data-nosnippet>160</a>};
-<a href=#161 id=161 data-nosnippet>161</a><span class="kw">pub use </span>mesh::{CpuMesh, MeshVertex, MeshVertexLayout};
-<a href=#162 id=162 data-nosnippet>162</a><span class="kw">pub use </span>mesh_registry::{MeshHandle, MeshKey, MeshRegistry};
-<a href=#163 id=163 data-nosnippet>163</a><span class="kw">pub use </span>msaa::{create_msaa_depth_texture, MsaaMode, MsaaRenderTarget};
-<a href=#164 id=164 data-nosnippet>164</a><span class="attr">#[cfg(feature = <span class="string">"bloom"</span>)]
-<a href=#165 id=165 data-nosnippet>165</a></span><span class="kw">pub use </span>post::{BloomConfig, BloomPipeline};
-<a href=#166 id=166 data-nosnippet>166</a><span class="kw">pub use </span>residency::ResidencyManager;
-<a href=#167 id=167 data-nosnippet>167</a><span class="kw">pub use </span>scene_environment::{
-<a href=#168 id=168 data-nosnippet>168</a>    SceneEnvironment, SceneEnvironmentUBO, WGSL_FOG_FUNCTIONS, WGSL_SCENE_ENVIRONMENT,
-<a href=#169 id=169 data-nosnippet>169</a>};
-<a href=#170 id=170 data-nosnippet>170</a><span class="kw">pub use </span>terrain_material::{
-<a href=#171 id=171 data-nosnippet>171</a>    TerrainLayerDesc, TerrainLayerGpu, TerrainMaterialDesc, TerrainMaterialGpu,
-<a href=#172 id=172 data-nosnippet>172</a>};
-<a href=#173 id=173 data-nosnippet>173</a><span class="kw">pub use </span>texture_streaming::{TextureStreamingManager, TextureStreamingStats};
-<a href=#174 id=174 data-nosnippet>174</a><span class="kw">pub use </span>transparency::{create_blend_state, BlendMode, TransparencyManager, TransparentInstance};
-<a href=#175 id=175 data-nosnippet>175</a>
-<a href=#176 id=176 data-nosnippet>176</a><span class="comment">// Phase 2 Task 5: Skeletal Animation exports
-<a href=#177 id=177 data-nosnippet>177</a></span><span class="kw">pub use </span>animation::{
-<a href=#178 id=178 data-nosnippet>178</a>    compute_joint_matrices, skin_vertex_cpu, AnimationChannel, AnimationClip, AnimationState,
-<a href=#179 id=179 data-nosnippet>179</a>    ChannelData, Interpolation, Joint, JointMatrixGPU, JointPalette, Skeleton, Transform,
-<a href=#180 id=180 data-nosnippet>180</a>    MAX_JOINTS,
-<a href=#181 id=181 data-nosnippet>181</a>};
-<a href=#182 id=182 data-nosnippet>182</a>
-<a href=#183 id=183 data-nosnippet>183</a><span class="attr">#[cfg(feature = <span class="string">"skinning-gpu"</span>)]
-<a href=#184 id=184 data-nosnippet>184</a></span><span class="kw">pub use </span>skinning_gpu::{JointPaletteHandle, JointPaletteManager, SKINNING_GPU_SHADER};
-<a href=#185 id=185 data-nosnippet>185</a>
-<a href=#186 id=186 data-nosnippet>186</a><span class="comment">// Comprehensive renderer tests (Phase 1: Foundation)
-<a href=#187 id=187 data-nosnippet>187</a></span><span class="attr">#[cfg(test)]
-<a href=#188 id=188 data-nosnippet>188</a></span><span class="kw">mod </span>renderer_tests;</code></pre></div></section></main></body></html>
+<a href=#58 id=58 data-nosnippet>58</a><span class="kw">pub mod </span>atmosphere; <span class="comment">// Bruneton physically-based atmosphere (Phase 8)
+<a href=#59 id=59 data-nosnippet>59</a></span><span class="kw">pub mod </span>auto_exposure; <span class="comment">// Auto-exposure via luminance histogram with temporal adaptation
+<a href=#60 id=60 data-nosnippet>60</a></span><span class="kw">pub mod </span>biome_audio;
+<a href=#61 id=61 data-nosnippet>61</a><span class="kw">pub mod </span>biome_detector;
+<a href=#62 id=62 data-nosnippet>62</a><span class="kw">pub mod </span>biome_material;
+<a href=#63 id=63 data-nosnippet>63</a><span class="kw">pub mod </span>biome_transition;
+<a href=#64 id=64 data-nosnippet>64</a><span class="kw">pub mod </span>bloom; <span class="comment">// Physically-based bloom with 13-tap downsample and tent upsample
+<a href=#65 id=65 data-nosnippet>65</a></span><span class="kw">pub mod </span>brdf_lut; <span class="comment">// BRDF integration LUT for split-sum IBL (Phase 9)
+<a href=#66 id=66 data-nosnippet>66</a></span><span class="kw">pub mod </span>culling; <span class="comment">// GPU-driven frustum culling (Phase 2 Task 3)
+<a href=#67 id=67 data-nosnippet>67</a></span><span class="kw">pub mod </span>culling_node; <span class="comment">// Culling node for render graph
+<a href=#68 id=68 data-nosnippet>68</a></span><span class="kw">pub mod </span>disney_material; <span class="comment">// Disney principled BRDF evaluation + WGSL source (Phase 9)
+<a href=#69 id=69 data-nosnippet>69</a></span><span class="kw">pub mod </span>distance_field; <span class="comment">// Signed Distance Field generation + Distance-Field AO (Lumen Phase 5)
+<a href=#70 id=70 data-nosnippet>70</a></span><span class="kw">pub mod </span>final_gather; <span class="comment">// Lumen final gather: multi-bounce diffuse indirect compositor
+<a href=#71 id=71 data-nosnippet>71</a></span><span class="kw">pub mod </span>god_rays; <span class="comment">// Screen-space god rays / crepuscular light shafts (Phase 6)
+<a href=#72 id=72 data-nosnippet>72</a></span><span class="kw">pub mod </span>graph; <span class="comment">// minimal render graph scaffolding (Phase 2)
+<a href=#73 id=73 data-nosnippet>73</a></span><span class="kw">pub mod </span>graph_adapter; <span class="comment">// runs a graph on Renderer frames
+<a href=#74 id=74 data-nosnippet>74</a></span><span class="kw">pub mod </span>gtao; <span class="comment">// Ground Truth Ambient Occlusion with visibility bitmask
+<a href=#75 id=75 data-nosnippet>75</a></span><span class="kw">pub mod </span>hdr_pipeline; <span class="comment">// HDR rendering pipeline orchestration (tonemap, color grading, post-FX chain)
+<a href=#76 id=76 data-nosnippet>76</a></span><span class="kw">pub mod </span>hdri_catalog;
+<a href=#77 id=77 data-nosnippet>77</a><span class="kw">pub mod </span>lumen; <span class="comment">// Lumen Global Illumination orchestrator (Phase 5)
+<a href=#78 id=78 data-nosnippet>78</a></span><span class="kw">pub mod </span>material; <span class="comment">// shared authored materials API + GPU arrays
+<a href=#79 id=79 data-nosnippet>79</a></span><span class="kw">pub mod </span>material_extended; <span class="comment">// Phase PBR-E: Advanced materials (clearcoat, anisotropy, SSS, sheen, transmission)
+<a href=#80 id=80 data-nosnippet>80</a></span><span class="attr">#[cfg(feature = <span class="string">"textures"</span>)]
+<a href=#81 id=81 data-nosnippet>81</a></span><span class="kw">pub mod </span>material_loader; <span class="comment">// internal builder helpers
+<a href=#82 id=82 data-nosnippet>82</a></span><span class="attr">#[cfg(any(feature = <span class="string">"gltf-assets"</span>, feature = <span class="string">"assets"</span>))]
+<a href=#83 id=83 data-nosnippet>83</a></span><span class="kw">pub mod </span>mesh_gltf; <span class="comment">// glTF loader
+<a href=#84 id=84 data-nosnippet>84</a></span><span class="attr">#[cfg(any(feature = <span class="string">"obj-assets"</span>, feature = <span class="string">"assets"</span>))]
+<a href=#85 id=85 data-nosnippet>85</a></span><span class="kw">pub mod </span>mesh_obj;
+<a href=#86 id=86 data-nosnippet>86</a><span class="kw">pub mod </span>particle_forces; <span class="comment">// Enhanced particle simulation: forces, curves, emission shapes (Phase 7)
+<a href=#87 id=87 data-nosnippet>87</a></span><span class="kw">pub mod </span>particle_render; <span class="comment">// Billboard particle render pipeline with blending (Phase 7)
+<a href=#88 id=88 data-nosnippet>88</a></span><span class="kw">pub mod </span>particle_sort; <span class="comment">// GPU bitonic sort for depth-ordered particle transparency (Phase 7)
+<a href=#89 id=89 data-nosnippet>89</a></span><span class="kw">pub mod </span>residency;
+<a href=#90 id=90 data-nosnippet>90</a><span class="kw">pub mod </span>scene_environment;
+<a href=#91 id=91 data-nosnippet>91</a><span class="kw">pub mod </span>ssgi; <span class="comment">// Screen-Space Global Illumination with temporal denoise
+<a href=#92 id=92 data-nosnippet>92</a></span><span class="kw">pub mod </span>ssr; <span class="comment">// Screen-Space Reflections with Hi-Z ray marching
+<a href=#93 id=93 data-nosnippet>93</a></span><span class="kw">pub mod </span>surface_cache; <span class="comment">// World-space irradiance probe grid (Lumen Phase 5)
+<a href=#94 id=94 data-nosnippet>94</a></span><span class="kw">pub mod </span>taa; <span class="comment">// Temporal Anti-Aliasing with neighborhood clamping and RCAS sharpening
+<a href=#95 id=95 data-nosnippet>95</a></span><span class="kw">pub mod </span>terrain_material;
+<a href=#96 id=96 data-nosnippet>96</a><span class="kw">pub mod </span>texture_streaming;
+<a href=#97 id=97 data-nosnippet>97</a><span class="kw">pub mod </span>velocity; <span class="comment">// Motion vector / velocity buffer for temporal effects (TAA, motion blur, TSR)
+<a href=#98 id=98 data-nosnippet>98</a></span><span class="kw">pub mod </span>volumetric_fog; <span class="comment">// Froxel-based volumetric fog + light scattering (Phase 6)
+<a href=#99 id=99 data-nosnippet>99</a></span><span class="kw">pub mod </span>weather_system; <span class="comment">// Texture streaming with LRU cache and priority-based loading // Phase PBR-F: Terrain layering with splat maps and triplanar projection // asset streaming and residency management // OBJ fallback loader // Phase 2 Task 5: Skeletal animation with CPU/GPU skinning
+<a href=#100 id=100 data-nosnippet>100</a>
+<a href=#101 id=101 data-nosnippet>101</a></span><span class="attr">#[cfg(feature = <span class="string">"skinning-gpu"</span>)]
+<a href=#102 id=102 data-nosnippet>102</a></span><span class="kw">pub mod </span>skinning_gpu; <span class="comment">// Phase 2 Task 5 Phase D: GPU skinning pipeline
+<a href=#103 id=103 data-nosnippet>103</a>
+<a href=#104 id=104 data-nosnippet>104</a></span><span class="kw">pub mod </span>instancing;
+<a href=#105 id=105 data-nosnippet>105</a><span class="kw">pub mod </span>lod_generator; <span class="comment">// Week 5 Action 19: LOD generation with quadric error metrics
+<a href=#106 id=106 data-nosnippet>106</a></span><span class="kw">pub mod </span>vertex_compression; <span class="comment">// Week 5 Action 19: Vertex compression // Week 5 Action 19: GPU instancing for draw call reduction (octahedral normals, half-float UVs)
+<a href=#107 id=107 data-nosnippet>107</a>
+<a href=#108 id=108 data-nosnippet>108</a></span><span class="attr">#[cfg(test)]
+<a href=#109 id=109 data-nosnippet>109</a></span><span class="kw">mod </span>animation_extra_tests; <span class="comment">// Phase 7: Additional animation tests
+<a href=#110 id=110 data-nosnippet>110</a>
+<a href=#111 id=111 data-nosnippet>111</a></span><span class="attr">#[cfg(test)]
+<a href=#112 id=112 data-nosnippet>112</a></span><span class="kw">mod </span>mutation_tests; <span class="comment">// Phase 10B: Comprehensive mutation-killing tests
+<a href=#113 id=113 data-nosnippet>113</a>
+<a href=#114 id=114 data-nosnippet>114</a>// Nanite virtualized geometry system
+<a href=#115 id=115 data-nosnippet>115</a></span><span class="attr">#[cfg(feature = <span class="string">"nanite"</span>)]
+<a href=#116 id=116 data-nosnippet>116</a></span><span class="kw">pub mod </span>nanite_gpu_culling;
+<a href=#117 id=117 data-nosnippet>117</a><span class="attr">#[cfg(feature = <span class="string">"nanite"</span>)]
+<a href=#118 id=118 data-nosnippet>118</a></span><span class="kw">pub mod </span>nanite_render;
+<a href=#119 id=119 data-nosnippet>119</a><span class="attr">#[cfg(feature = <span class="string">"nanite"</span>)]
+<a href=#120 id=120 data-nosnippet>120</a></span><span class="kw">pub mod </span>nanite_visibility; <span class="comment">// NEW: GPU-driven culling and visibility
+<a href=#121 id=121 data-nosnippet>121</a>
+<a href=#122 id=122 data-nosnippet>122</a></span><span class="kw">pub use </span>camera::{Camera, CameraController};
+<a href=#123 id=123 data-nosnippet>123</a><span class="kw">pub use </span>environment::{
+<a href=#124 id=124 data-nosnippet>124</a>    SkyConfig, SkyRenderer, TimeOfDay, WeatherParticles, WeatherSystem, WeatherType,
+<a href=#125 id=125 data-nosnippet>125</a>};
+<a href=#126 id=126 data-nosnippet>126</a><span class="kw">pub use </span>error::{RenderError, RenderResult};
+<a href=#127 id=127 data-nosnippet>127</a><span class="kw">pub use </span>renderer::Renderer;
+<a href=#128 id=128 data-nosnippet>128</a><span class="kw">pub use </span>terrain::{TerrainMesh, TerrainRenderer, TerrainVertex, VegetationRenderInstance};
+<a href=#129 id=129 data-nosnippet>129</a><span class="kw">pub use </span>texture::Texture;
+<a href=#130 id=130 data-nosnippet>130</a><span class="kw">pub use </span>types::{Instance, Material, Mesh, SkinnedVertex, Vertex};
+<a href=#131 id=131 data-nosnippet>131</a>
+<a href=#132 id=132 data-nosnippet>132</a><span class="kw">pub mod </span>water; <span class="comment">// Animated ocean with Gerstner waves
+<a href=#133 id=133 data-nosnippet>133</a></span><span class="kw">pub use </span>water::WaterRenderer;
+<a href=#134 id=134 data-nosnippet>134</a>
+<a href=#135 id=135 data-nosnippet>135</a><span class="kw">pub mod </span>advanced_post;
+<a href=#136 id=136 data-nosnippet>136</a><span class="kw">pub mod </span>decals; <span class="comment">// Screen-space decal system
+<a href=#137 id=137 data-nosnippet>137</a></span><span class="kw">pub mod </span>deferred; <span class="comment">// Deferred rendering pipeline
+<a href=#138 id=138 data-nosnippet>138</a></span><span class="kw">pub mod </span>effects; <span class="comment">// NEW
+<a href=#139 id=139 data-nosnippet>139</a></span><span class="kw">pub mod </span>gpu_particles; <span class="comment">// GPU compute-based particle system
+<a href=#140 id=140 data-nosnippet>140</a></span><span class="kw">pub mod </span>msaa; <span class="comment">// MSAA anti-aliasing resources
+<a href=#141 id=141 data-nosnippet>141</a></span><span class="kw">pub mod </span>overlay; <span class="comment">// NEW (for cutscene fades/letterbox later)
+<a href=#142 id=142 data-nosnippet>142</a></span><span class="kw">pub mod </span>transparency; <span class="comment">// Transparency depth sorting and render pass // Advanced post-processing (TAA, motion blur, DOF, color grading)
+<a href=#143 id=143 data-nosnippet>143</a>
+<a href=#144 id=144 data-nosnippet>144</a>// GPU memory management and SSAO
+<a href=#145 id=145 data-nosnippet>145</a></span><span class="kw">pub mod </span>gpu_memory; <span class="comment">// GPU memory budget tracking and enforcement
+<a href=#146 id=146 data-nosnippet>146</a></span><span class="attr">#[cfg(feature = <span class="string">"ssao"</span>)]
+<a href=#147 id=147 data-nosnippet>147</a></span><span class="kw">pub mod </span>ssao; <span class="comment">// Screen-space ambient occlusion
+<a href=#148 id=148 data-nosnippet>148</a>
+<a href=#149 id=149 data-nosnippet>149</a></span><span class="kw">pub use </span>advanced_post::{
+<a href=#150 id=150 data-nosnippet>150</a>    AdvancedPostFx, ColorGradingConfig, DofConfig, MotionBlurConfig, TaaConfig,
+<a href=#151 id=151 data-nosnippet>151</a>};
+<a href=#152 id=152 data-nosnippet>152</a><span class="kw">pub use </span>asset_index::{AssetIndex, HdriRef <span class="kw">as </span>AssetHdriRef, MaterialSetEntry, TextureEntry};
+<a href=#153 id=153 data-nosnippet>153</a><span class="kw">pub use </span>atmosphere::{AtmosphereConfig, AtmospherePass};
+<a href=#154 id=154 data-nosnippet>154</a><span class="kw">pub use </span>biome_detector::{BiomeDetector, BiomeDetectorConfig, BiomeTransition};
+<a href=#155 id=155 data-nosnippet>155</a><span class="kw">pub use </span>biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
+<a href=#156 id=156 data-nosnippet>156</a><span class="kw">pub use </span>biome_transition::{BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect};
+<a href=#157 id=157 data-nosnippet>157</a><span class="kw">pub use </span>brdf_lut::{BrdfLutConfig, BrdfLutPass};
+<a href=#158 id=158 data-nosnippet>158</a><span class="kw">pub use </span>culling::{
+<a href=#159 id=159 data-nosnippet>159</a>    batch_visible_instances, build_indirect_commands_cpu, cpu_frustum_cull, BatchId,
+<a href=#160 id=160 data-nosnippet>160</a>    CullingPipeline, CullingResources, DrawBatch, DrawIndirectCommand, FrustumPlanes, InstanceAABB,
+<a href=#161 id=161 data-nosnippet>161</a>};
+<a href=#162 id=162 data-nosnippet>162</a><span class="kw">pub use </span>culling_node::CullingNode;
+<a href=#163 id=163 data-nosnippet>163</a><span class="kw">pub use </span>decals::{Decal, DecalAtlas, DecalBlendMode, DecalSystem, GpuDecal, DECAL_SHADER};
+<a href=#164 id=164 data-nosnippet>164</a><span class="kw">pub use </span>deferred::{DeferredRenderer, GBuffer, GBufferFormats};
+<a href=#165 id=165 data-nosnippet>165</a><span class="kw">pub use </span>disney_material::{evaluate_disney_brdf, BrdfResult, BRDF_LUT_WGSL, DISNEY_BRDF_WGSL};
+<a href=#166 id=166 data-nosnippet>166</a><span class="kw">pub use </span>distance_field::{DfaoConfig, DfaoParams, DfaoPass, SdfBox, SdfConfig, SdfVolume};
+<a href=#167 id=167 data-nosnippet>167</a><span class="kw">pub use </span>effects::{WeatherFx, WeatherKind};
+<a href=#168 id=168 data-nosnippet>168</a><span class="kw">pub use </span>final_gather::{FinalGatherConfig, FinalGatherParams, FinalGatherPass};
+<a href=#169 id=169 data-nosnippet>169</a><span class="kw">pub use </span>god_rays::{sun_to_screen, GodRayConfig, GodRayParams, GodRayPass};
+<a href=#170 id=170 data-nosnippet>170</a><span class="kw">pub use </span>gpu_particles::{EmitterParams, GpuParticle, GpuParticleSystem};
+<a href=#171 id=171 data-nosnippet>171</a><span class="kw">pub use </span>hdri_catalog::{DayPeriod, HdriCatalog, HdriEntry};
+<a href=#172 id=172 data-nosnippet>172</a><span class="kw">pub use </span>ibl::{IblManager, IblQuality, IblResources, SkyMode};
+<a href=#173 id=173 data-nosnippet>173</a><span class="kw">pub use </span>lumen::{LumenConfig, LumenGI, LumenQuality};
+<a href=#174 id=174 data-nosnippet>174</a><span class="kw">pub use </span>material::{
+<a href=#175 id=175 data-nosnippet>175</a>    ArrayLayout, MaterialGpu, MaterialGpuArrays, MaterialLayerDesc, MaterialLoadStats,
+<a href=#176 id=176 data-nosnippet>176</a>    MaterialManager, MaterialPackDesc,
+<a href=#177 id=177 data-nosnippet>177</a>};
+<a href=#178 id=178 data-nosnippet>178</a><span class="kw">pub use </span>material_extended::{
+<a href=#179 id=179 data-nosnippet>179</a>    MaterialDefinitionExtended, MaterialGpuExtended, MATERIAL_FLAG_ANISOTROPY,
+<a href=#180 id=180 data-nosnippet>180</a>    MATERIAL_FLAG_CLEARCOAT, MATERIAL_FLAG_SHEEN, MATERIAL_FLAG_SUBSURFACE,
+<a href=#181 id=181 data-nosnippet>181</a>    MATERIAL_FLAG_TRANSMISSION,
+<a href=#182 id=182 data-nosnippet>182</a>};
+<a href=#183 id=183 data-nosnippet>183</a><span class="kw">pub use </span>mesh::{CpuMesh, MeshVertex, MeshVertexLayout};
+<a href=#184 id=184 data-nosnippet>184</a><span class="kw">pub use </span>mesh_registry::{MeshHandle, MeshKey, MeshRegistry};
+<a href=#185 id=185 data-nosnippet>185</a><span class="kw">pub use </span>msaa::{create_msaa_depth_texture, MsaaMode, MsaaRenderTarget};
+<a href=#186 id=186 data-nosnippet>186</a><span class="kw">pub use </span>particle_forces::{
+<a href=#187 id=187 data-nosnippet>187</a>    ColorGradient, EmissionShape, ParticleForces, ParticleSimPass, SimParams, SizeCurve,
+<a href=#188 id=188 data-nosnippet>188</a>};
+<a href=#189 id=189 data-nosnippet>189</a><span class="kw">pub use </span>particle_render::{
+<a href=#190 id=190 data-nosnippet>190</a>    ParticleBlendMode, ParticleCameraUniforms, ParticleRenderConfig, ParticleRenderPass,
+<a href=#191 id=191 data-nosnippet>191</a>};
+<a href=#192 id=192 data-nosnippet>192</a><span class="kw">pub use </span>particle_sort::{ParticleSortPass, SortEntry};
+<a href=#193 id=193 data-nosnippet>193</a><span class="attr">#[cfg(feature = <span class="string">"bloom"</span>)]
+<a href=#194 id=194 data-nosnippet>194</a></span><span class="kw">pub use </span>post::{BloomConfig, BloomPipeline};
+<a href=#195 id=195 data-nosnippet>195</a><span class="kw">pub use </span>residency::ResidencyManager;
+<a href=#196 id=196 data-nosnippet>196</a><span class="kw">pub use </span>scene_environment::{
+<a href=#197 id=197 data-nosnippet>197</a>    SceneEnvironment, SceneEnvironmentUBO, WGSL_FOG_FUNCTIONS, WGSL_SCENE_ENVIRONMENT,
+<a href=#198 id=198 data-nosnippet>198</a>};
+<a href=#199 id=199 data-nosnippet>199</a><span class="kw">pub use </span>surface_cache::{
+<a href=#200 id=200 data-nosnippet>200</a>    DirectionalLightGpu, ProbeSH, SurfaceCacheConfig, SurfaceCacheParams, SurfaceCachePass,
+<a href=#201 id=201 data-nosnippet>201</a>};
+<a href=#202 id=202 data-nosnippet>202</a><span class="kw">pub use </span>terrain_material::{
+<a href=#203 id=203 data-nosnippet>203</a>    TerrainLayerDesc, TerrainLayerGpu, TerrainMaterialDesc, TerrainMaterialGpu,
+<a href=#204 id=204 data-nosnippet>204</a>};
+<a href=#205 id=205 data-nosnippet>205</a><span class="kw">pub use </span>texture_streaming::{TextureStreamingManager, TextureStreamingStats};
+<a href=#206 id=206 data-nosnippet>206</a><span class="kw">pub use </span>transparency::{create_blend_state, BlendMode, TransparencyManager, TransparentInstance};
+<a href=#207 id=207 data-nosnippet>207</a><span class="kw">pub use </span>volumetric_fog::{VolumetricFogConfig, VolumetricFogPass, VolumetricQuality};
+<a href=#208 id=208 data-nosnippet>208</a>
+<a href=#209 id=209 data-nosnippet>209</a><span class="comment">// Phase 2 Task 5: Skeletal Animation exports
+<a href=#210 id=210 data-nosnippet>210</a></span><span class="kw">pub use </span>animation::{
+<a href=#211 id=211 data-nosnippet>211</a>    compute_joint_matrices, skin_vertex_cpu, AnimationChannel, AnimationClip, AnimationState,
+<a href=#212 id=212 data-nosnippet>212</a>    ChannelData, Interpolation, Joint, JointMatrixGPU, JointPalette, Skeleton, Transform,
+<a href=#213 id=213 data-nosnippet>213</a>    MAX_JOINTS,
+<a href=#214 id=214 data-nosnippet>214</a>};
+<a href=#215 id=215 data-nosnippet>215</a>
+<a href=#216 id=216 data-nosnippet>216</a><span class="attr">#[cfg(feature = <span class="string">"skinning-gpu"</span>)]
+<a href=#217 id=217 data-nosnippet>217</a></span><span class="kw">pub use </span>skinning_gpu::{JointPaletteHandle, JointPaletteManager, SKINNING_GPU_SHADER};
+<a href=#218 id=218 data-nosnippet>218</a>
+<a href=#219 id=219 data-nosnippet>219</a><span class="comment">// Comprehensive renderer tests (Phase 1: Foundation)
+<a href=#220 id=220 data-nosnippet>220</a></span><span class="attr">#[cfg(test)]
+<a href=#221 id=221 data-nosnippet>221</a></span><span class="kw">mod </span>renderer_tests;</code></pre></div></section></main></body></html>

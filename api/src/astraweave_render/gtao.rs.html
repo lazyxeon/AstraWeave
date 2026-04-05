@@ -202,12 +202,12 @@
 <a href=#202 id=202 data-nosnippet>202</a>        </span><span class="kw">let </span>ao_bgl = device.create_bind_group_layout(<span class="kw-2">&amp;</span>wgpu::BindGroupLayoutDescriptor {
 <a href=#203 id=203 data-nosnippet>203</a>            label: <span class="prelude-val">Some</span>(<span class="string">"gtao_ao_bgl"</span>),
 <a href=#204 id=204 data-nosnippet>204</a>            entries: <span class="kw-2">&amp;</span>[
-<a href=#205 id=205 data-nosnippet>205</a>                <span class="comment">// 0: depth texture
+<a href=#205 id=205 data-nosnippet>205</a>                <span class="comment">// 0: depth texture (Depth32Float)
 <a href=#206 id=206 data-nosnippet>206</a>                </span>wgpu::BindGroupLayoutEntry {
 <a href=#207 id=207 data-nosnippet>207</a>                    binding: <span class="number">0</span>,
 <a href=#208 id=208 data-nosnippet>208</a>                    visibility: wgpu::ShaderStages::COMPUTE,
 <a href=#209 id=209 data-nosnippet>209</a>                    ty: wgpu::BindingType::Texture {
-<a href=#210 id=210 data-nosnippet>210</a>                        sample_type: wgpu::TextureSampleType::Float { filterable: <span class="bool-val">true </span>},
+<a href=#210 id=210 data-nosnippet>210</a>                        sample_type: wgpu::TextureSampleType::Depth,
 <a href=#211 id=211 data-nosnippet>211</a>                        view_dimension: wgpu::TextureViewDimension::D2,
 <a href=#212 id=212 data-nosnippet>212</a>                        multisampled: <span class="bool-val">false</span>,
 <a href=#213 id=213 data-nosnippet>213</a>                    },
@@ -271,12 +271,12 @@
 <a href=#271 id=271 data-nosnippet>271</a>                    },
 <a href=#272 id=272 data-nosnippet>272</a>                    count: <span class="prelude-val">None</span>,
 <a href=#273 id=273 data-nosnippet>273</a>                },
-<a href=#274 id=274 data-nosnippet>274</a>                <span class="comment">// 1: depth texture
+<a href=#274 id=274 data-nosnippet>274</a>                <span class="comment">// 1: depth texture (Depth32Float)
 <a href=#275 id=275 data-nosnippet>275</a>                </span>wgpu::BindGroupLayoutEntry {
 <a href=#276 id=276 data-nosnippet>276</a>                    binding: <span class="number">1</span>,
 <a href=#277 id=277 data-nosnippet>277</a>                    visibility: wgpu::ShaderStages::COMPUTE,
 <a href=#278 id=278 data-nosnippet>278</a>                    ty: wgpu::BindingType::Texture {
-<a href=#279 id=279 data-nosnippet>279</a>                        sample_type: wgpu::TextureSampleType::Float { filterable: <span class="bool-val">true </span>},
+<a href=#279 id=279 data-nosnippet>279</a>                        sample_type: wgpu::TextureSampleType::Depth,
 <a href=#280 id=280 data-nosnippet>280</a>                        view_dimension: wgpu::TextureViewDimension::D2,
 <a href=#281 id=281 data-nosnippet>281</a>                        multisampled: <span class="bool-val">false</span>,
 <a href=#282 id=282 data-nosnippet>282</a>                    },

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["EmissionShape"],"struct":["ColorGradient","ParticleForces","ParticleSimPass","SimParams","SimpleRng","SizeCurve"]};
