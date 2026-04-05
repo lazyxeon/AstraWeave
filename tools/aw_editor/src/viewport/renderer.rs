@@ -406,16 +406,37 @@ impl ViewportRenderer {
         // The engine renderer handles: sky, shadows, terrain, scatter,
         // water, entities, weather particles, post-processing.
         // Editor overlays (grid, gizmo, physics debug) render on top.
-        {
-            let adapter = self
-                .engine_adapter
-                .as_mut()
-                .context("Engine adapter not initialized")?;
+        if let Some(adapter) = self.engine_adapter.as_mut() {
             adapter.update_camera(camera);
             adapter.feed_entities(world, &self.entity_mesh_map, &self.selected_entities);
             adapter
                 .render_to_texture(scene_target_view, &mut encoder)
                 .context("Engine render failed")?;
+        } else {
+            // Headless/fallback: clear to dark background when engine adapter unavailable
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Headless Clear Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: scene_target_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.12, g: 0.12, b: 0.15, a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
         }
 
         // Grid overlay (on top of engine scene)
