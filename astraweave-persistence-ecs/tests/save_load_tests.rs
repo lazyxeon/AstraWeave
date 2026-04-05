@@ -244,18 +244,10 @@ fn test_large_world_1000_entities() {
         world.insert(
             e,
             CPos {
-                pos: IVec2 {
-                    x: i,
-                    y: i * 2,
-                },
+                pos: IVec2 { x: i, y: i * 2 },
             },
         );
-        world.insert(
-            e,
-            CHealth {
-                hp: 50 + (i % 100),
-            },
-        );
+        world.insert(e, CHealth { hp: 50 + (i % 100) });
         world.insert(e, CTeam { id: (i % 4) as u8 });
     }
 
@@ -316,10 +308,7 @@ fn test_large_world_10000_entities() {
         world.insert(
             e,
             CPos {
-                pos: IVec2 {
-                    x: i,
-                    y: i * 2,
-                },
+                pos: IVec2 { x: i, y: i * 2 },
             },
         );
         world.insert(e, CHealth { hp: 100 });

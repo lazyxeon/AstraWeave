@@ -40,7 +40,11 @@ fn create_deterministic_snapshot(seed: u64) -> WorldSnapshot {
                 y: 30 + ((seed / 10) % 10) as i32,
             },
             hp: 100,
-            cover: if seed % 2 == 0 { CoverType::Low } else { CoverType::High },
+            cover: if seed % 2 == 0 {
+                CoverType::Low
+            } else {
+                CoverType::High
+            },
             last_seen: 0.5,
         }],
         pois: vec![],

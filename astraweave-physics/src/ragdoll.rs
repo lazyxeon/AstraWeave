@@ -2379,12 +2379,7 @@ mod tests {
         let mut builder = RagdollPresets::humanoid(config);
         let ragdoll = builder.build(&mut pw, Vec3::ZERO);
 
-        ragdoll.apply_impulse_with_propagation(
-            &mut pw,
-            "pelvis",
-            Vec3::new(500.0, 0.0, 0.0),
-            0.5,
-        );
+        ragdoll.apply_impulse_with_propagation(&mut pw, "pelvis", Vec3::new(500.0, 0.0, 0.0), 0.5);
         pw.step();
 
         assert!(
@@ -2455,7 +2450,13 @@ mod tests {
             ..Default::default()
         };
         let mut builder = RagdollBuilder::new(config);
-        builder.add_bone("test", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.5 }, 5.0);
+        builder.add_bone(
+            "test",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.5 },
+            5.0,
+        );
         assert!(
             (builder.bones[0].mass - 15.0).abs() < 1e-5,
             "Mass 5 * scale 3 = 15, got {}",
@@ -2468,8 +2469,16 @@ mod tests {
         let config = RagdollConfig::default();
         let builder = RagdollPresets::humanoid(config);
         // Arms should be symmetric: upper_arm_l has negative X, upper_arm_r has positive X
-        let arm_l = builder.bones.iter().find(|b| b.name == "upper_arm_l").unwrap();
-        let arm_r = builder.bones.iter().find(|b| b.name == "upper_arm_r").unwrap();
+        let arm_l = builder
+            .bones
+            .iter()
+            .find(|b| b.name == "upper_arm_l")
+            .unwrap();
+        let arm_r = builder
+            .bones
+            .iter()
+            .find(|b| b.name == "upper_arm_r")
+            .unwrap();
         assert!(
             arm_l.offset.x < 0.0,
             "Left arm should have negative X offset: {}",
@@ -2635,30 +2644,61 @@ mod tests {
     fn r11_impulse_to_bone_true_for_existing() {
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let mut builder = RagdollBuilder::new(RagdollConfig::default());
-        builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 2.0);
-        builder.add_bone("child", Some("root"), Vec3::new(0.0, 0.5, 0.0), BoneShape::Sphere { radius: 0.15 }, 1.0);
+        builder.add_bone(
+            "root",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.2 },
+            2.0,
+        );
+        builder.add_bone(
+            "child",
+            Some("root"),
+            Vec3::new(0.0, 0.5, 0.0),
+            BoneShape::Sphere { radius: 0.15 },
+            1.0,
+        );
         let ragdoll = builder.build(&mut physics, Vec3::new(0.0, 5.0, 0.0));
 
         let result = ragdoll.apply_impulse_to_bone(&mut physics, "root", Vec3::new(10.0, 0.0, 0.0));
-        assert!(result, "apply_impulse_to_bone should return true for existing bone");
+        assert!(
+            result,
+            "apply_impulse_to_bone should return true for existing bone"
+        );
     }
 
     #[test]
     fn r11_impulse_to_bone_false_for_missing() {
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let mut builder = RagdollBuilder::new(RagdollConfig::default());
-        builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 2.0);
+        builder.add_bone(
+            "root",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.2 },
+            2.0,
+        );
         let ragdoll = builder.build(&mut physics, Vec3::new(0.0, 5.0, 0.0));
 
-        let result = ragdoll.apply_impulse_to_bone(&mut physics, "nonexistent", Vec3::new(10.0, 0.0, 0.0));
-        assert!(!result, "apply_impulse_to_bone should return false for missing bone");
+        let result =
+            ragdoll.apply_impulse_to_bone(&mut physics, "nonexistent", Vec3::new(10.0, 0.0, 0.0));
+        assert!(
+            !result,
+            "apply_impulse_to_bone should return false for missing bone"
+        );
     }
 
     #[test]
     fn r11_impulse_to_bone_changes_velocity() {
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0)); // no gravity
         let mut builder = RagdollBuilder::new(RagdollConfig::default());
-        builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 2.0);
+        builder.add_bone(
+            "root",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.2 },
+            2.0,
+        );
         let ragdoll = builder.build(&mut physics, Vec3::new(0.0, 5.0, 0.0));
 
         let root_id = ragdoll.get_bone_body("root").unwrap();
@@ -2668,42 +2708,94 @@ mod tests {
         ragdoll.apply_impulse_to_bone(&mut physics, "root", Vec3::new(100.0, 0.0, 0.0));
         physics.step();
         let vel_after = physics.get_velocity(root_id).unwrap();
-        assert!(vel_after.x > 1.0, "Impulse should increase velocity: {:?}", vel_after);
+        assert!(
+            vel_after.x > 1.0,
+            "Impulse should increase velocity: {:?}",
+            vel_after
+        );
     }
 
     #[test]
     fn r11_impulse_propagation_parent_gets_reduced() {
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0)); // no gravity
         let mut builder = RagdollBuilder::new(RagdollConfig::default());
-        builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 2.0);
-        builder.add_bone("child", Some("root"), Vec3::new(0.0, 1.0, 0.0), BoneShape::Sphere { radius: 0.15 }, 2.0);
+        builder.add_bone(
+            "root",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.2 },
+            2.0,
+        );
+        builder.add_bone(
+            "child",
+            Some("root"),
+            Vec3::new(0.0, 1.0, 0.0),
+            BoneShape::Sphere { radius: 0.15 },
+            2.0,
+        );
         let ragdoll = builder.build(&mut physics, Vec3::new(0.0, 5.0, 0.0));
 
         // Apply impulse to child with propagation to parent
-        ragdoll.apply_impulse_with_propagation(&mut physics, "child", Vec3::new(100.0, 0.0, 0.0), 0.5);
+        ragdoll.apply_impulse_with_propagation(
+            &mut physics,
+            "child",
+            Vec3::new(100.0, 0.0, 0.0),
+            0.5,
+        );
         physics.step();
 
         let parent_id = ragdoll.get_bone_body("root").unwrap();
         let parent_vel = physics.get_velocity(parent_id).unwrap();
-        assert!(parent_vel.x > 0.5, "Parent should receive propagated impulse: {:?}", parent_vel);
+        assert!(
+            parent_vel.x > 0.5,
+            "Parent should receive propagated impulse: {:?}",
+            parent_vel
+        );
     }
 
     #[test]
     fn r11_impulse_propagation_child_gets_reduced() {
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0));
         let mut builder = RagdollBuilder::new(RagdollConfig::default());
-        builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 2.0);
-        builder.add_bone("child", Some("root"), Vec3::new(0.0, 1.0, 0.0), BoneShape::Sphere { radius: 0.15 }, 2.0);
-        builder.add_bone("grandchild", Some("child"), Vec3::new(0.0, 1.0, 0.0), BoneShape::Sphere { radius: 0.1 }, 1.0);
+        builder.add_bone(
+            "root",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.2 },
+            2.0,
+        );
+        builder.add_bone(
+            "child",
+            Some("root"),
+            Vec3::new(0.0, 1.0, 0.0),
+            BoneShape::Sphere { radius: 0.15 },
+            2.0,
+        );
+        builder.add_bone(
+            "grandchild",
+            Some("child"),
+            Vec3::new(0.0, 1.0, 0.0),
+            BoneShape::Sphere { radius: 0.1 },
+            1.0,
+        );
         let ragdoll = builder.build(&mut physics, Vec3::new(0.0, 5.0, 0.0));
 
         // Apply impulse to child — grandchild should receive propagated impulse
-        ragdoll.apply_impulse_with_propagation(&mut physics, "child", Vec3::new(100.0, 0.0, 0.0), 0.5);
+        ragdoll.apply_impulse_with_propagation(
+            &mut physics,
+            "child",
+            Vec3::new(100.0, 0.0, 0.0),
+            0.5,
+        );
         physics.step();
 
         let gc_id = ragdoll.get_bone_body("grandchild").unwrap();
         let gc_vel = physics.get_velocity(gc_id).unwrap();
-        assert!(gc_vel.x > 0.5, "Child bone should receive propagated impulse: {:?}", gc_vel);
+        assert!(
+            gc_vel.x > 0.5,
+            "Child bone should receive propagated impulse: {:?}",
+            gc_vel
+        );
     }
 
     #[test]
@@ -2712,11 +2804,28 @@ mod tests {
         let run = |factor: f32| -> f32 {
             let mut physics = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0));
             let mut builder = RagdollBuilder::new(RagdollConfig::default());
-            builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 2.0);
-            builder.add_bone("child", Some("root"), Vec3::new(0.0, 1.0, 0.0), BoneShape::Sphere { radius: 0.15 }, 2.0);
+            builder.add_bone(
+                "root",
+                None,
+                Vec3::ZERO,
+                BoneShape::Sphere { radius: 0.2 },
+                2.0,
+            );
+            builder.add_bone(
+                "child",
+                Some("root"),
+                Vec3::new(0.0, 1.0, 0.0),
+                BoneShape::Sphere { radius: 0.15 },
+                2.0,
+            );
             let ragdoll = builder.build(&mut physics, Vec3::new(0.0, 5.0, 0.0));
 
-            ragdoll.apply_impulse_with_propagation(&mut physics, "child", Vec3::new(100.0, 0.0, 0.0), factor);
+            ragdoll.apply_impulse_with_propagation(
+                &mut physics,
+                "child",
+                Vec3::new(100.0, 0.0, 0.0),
+                factor,
+            );
             physics.step();
             let parent_id = ragdoll.get_bone_body("root").unwrap();
             physics.get_velocity(parent_id).unwrap().x
@@ -2726,7 +2835,8 @@ mod tests {
         assert!(
             vel_high > vel_low * 1.2,
             "Higher propagation factor should give more parent velocity: low={}, high={}",
-            vel_low, vel_high
+            vel_low,
+            vel_high
         );
     }
 
@@ -2735,9 +2845,21 @@ mod tests {
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0)); // no gravity
         let mut builder = RagdollBuilder::new(RagdollConfig::default());
         // Root at spawn (0, 5, 0) with mass 1.0
-        builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 1.0);
+        builder.add_bone(
+            "root",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.2 },
+            1.0,
+        );
         // Child at (0, 6, 0) (offset Y+1) with mass 3.0
-        builder.add_bone("child", Some("root"), Vec3::new(0.0, 1.0, 0.0), BoneShape::Sphere { radius: 0.15 }, 3.0);
+        builder.add_bone(
+            "child",
+            Some("root"),
+            Vec3::new(0.0, 1.0, 0.0),
+            BoneShape::Sphere { radius: 0.15 },
+            3.0,
+        );
         let ragdoll = builder.build(&mut physics, Vec3::new(0.0, 5.0, 0.0));
 
         let com = ragdoll.center_of_mass(&physics);
@@ -2755,8 +2877,20 @@ mod tests {
         // Mutation: + with - would place child BELOW parent
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0));
         let mut builder = RagdollBuilder::new(RagdollConfig::default());
-        builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 1.0);
-        builder.add_bone("child", Some("root"), Vec3::new(0.0, 2.0, 0.0), BoneShape::Sphere { radius: 0.15 }, 1.0);
+        builder.add_bone(
+            "root",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.2 },
+            1.0,
+        );
+        builder.add_bone(
+            "child",
+            Some("root"),
+            Vec3::new(0.0, 2.0, 0.0),
+            BoneShape::Sphere { radius: 0.15 },
+            1.0,
+        );
         let ragdoll = builder.build(&mut physics, Vec3::new(0.0, 10.0, 0.0));
 
         let root_id = ragdoll.get_bone_body("root").unwrap();
@@ -2769,7 +2903,8 @@ mod tests {
         assert!(
             child_y > root_y + 0.5,
             "Child should be ABOVE root (offset +2): root_y={}, child_y={}",
-            root_y, child_y
+            root_y,
+            child_y
         );
     }
 
@@ -2777,15 +2912,23 @@ mod tests {
     fn r11_build_next_id_increments() {
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let mut builder = RagdollBuilder::new(RagdollConfig::default());
-        builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 1.0);
+        builder.add_bone(
+            "root",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.2 },
+            1.0,
+        );
 
         let r1 = builder.build(&mut physics, Vec3::ZERO);
         let r2 = builder.build(&mut physics, Vec3::new(5.0, 0.0, 0.0));
         assert_ne!(r1.id, r2.id, "Ragdoll IDs must be different");
         assert_eq!(
-            r2.id, r1.id + 1,
+            r2.id,
+            r1.id + 1,
             "IDs should increment: r1={}, r2={}",
-            r1.id, r2.id
+            r1.id,
+            r2.id
         );
     }
 
@@ -2794,7 +2937,11 @@ mod tests {
         // Mutation: delete - in humanoid preset would make lower_leg offset positive
         let config = RagdollConfig::default();
         let builder = RagdollPresets::humanoid(config);
-        let lower_leg = builder.bones.iter().find(|b| b.name == "lower_leg_l").unwrap();
+        let lower_leg = builder
+            .bones
+            .iter()
+            .find(|b| b.name == "lower_leg_l")
+            .unwrap();
         assert!(
             lower_leg.offset.y < -0.1,
             "Lower leg should have negative Y offset (below upper leg): y={}",
@@ -2806,7 +2953,11 @@ mod tests {
     fn r11_humanoid_lower_arm_offset_y_negative() {
         let config = RagdollConfig::default();
         let builder = RagdollPresets::humanoid(config);
-        let lower_arm = builder.bones.iter().find(|b| b.name == "lower_arm_l").unwrap();
+        let lower_arm = builder
+            .bones
+            .iter()
+            .find(|b| b.name == "lower_arm_l")
+            .unwrap();
         assert!(
             lower_arm.offset.y < -0.1,
             "Lower arm should have negative Y offset: y={}",
@@ -2818,7 +2969,11 @@ mod tests {
     fn r11_humanoid_upper_leg_joint_type_spherical() {
         let config = RagdollConfig::default();
         let builder = RagdollPresets::humanoid(config);
-        let upper_leg = builder.bones.iter().find(|b| b.name == "upper_leg_l").unwrap();
+        let upper_leg = builder
+            .bones
+            .iter()
+            .find(|b| b.name == "upper_leg_l")
+            .unwrap();
         assert!(
             matches!(upper_leg.joint_type, BoneJointType::Spherical { .. }),
             "Upper leg should have spherical joint: {:?}",
@@ -2830,7 +2985,11 @@ mod tests {
     fn r11_humanoid_lower_leg_joint_type_hinge() {
         let config = RagdollConfig::default();
         let builder = RagdollPresets::humanoid(config);
-        let lower_leg = builder.bones.iter().find(|b| b.name == "lower_leg_l").unwrap();
+        let lower_leg = builder
+            .bones
+            .iter()
+            .find(|b| b.name == "lower_leg_l")
+            .unwrap();
         assert!(
             matches!(lower_leg.joint_type, BoneJointType::Hinge { .. }),
             "Lower leg should have hinge joint: {:?}",
@@ -2845,7 +3004,11 @@ mod tests {
             ..Default::default()
         };
         let builder = RagdollPresets::humanoid(config);
-        let upper_leg = builder.bones.iter().find(|b| b.name == "upper_leg_l").unwrap();
+        let upper_leg = builder
+            .bones
+            .iter()
+            .find(|b| b.name == "upper_leg_l")
+            .unwrap();
         // Original mass = 3.0, with scale 2.0 → 6.0
         assert!(
             (upper_leg.mass - 6.0).abs() < 0.01,
@@ -2858,7 +3021,11 @@ mod tests {
     fn r11_quadruped_front_leg_y_negative() {
         let config = RagdollConfig::default();
         let builder = RagdollPresets::quadruped(config);
-        let leg = builder.bones.iter().find(|b| b.name == "front_leg_l").unwrap();
+        let leg = builder
+            .bones
+            .iter()
+            .find(|b| b.name == "front_leg_l")
+            .unwrap();
         assert!(
             leg.offset.y < -0.1,
             "Front leg y offset should be negative: y={}",
@@ -2870,7 +3037,13 @@ mod tests {
     fn r11_is_at_rest_velocity_threshold() {
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0));
         let mut builder = RagdollBuilder::new(RagdollConfig::default());
-        builder.add_bone("root", None, Vec3::ZERO, BoneShape::Sphere { radius: 0.2 }, 1.0);
+        builder.add_bone(
+            "root",
+            None,
+            Vec3::ZERO,
+            BoneShape::Sphere { radius: 0.2 },
+            1.0,
+        );
         let ragdoll = builder.build(&mut physics, Vec3::ZERO);
 
         // At rest initially

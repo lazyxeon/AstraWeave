@@ -895,10 +895,8 @@ mod tests {
         let validator = GoalValidator::new().with_strict_mode(false);
         let mut goal = create_simple_goal();
 
-        goal.desired_state.insert(
-            "my_made_up_var".to_string(),
-            StateValueDef::Bool(true),
-        );
+        goal.desired_state
+            .insert("my_made_up_var".to_string(), StateValueDef::Bool(true));
 
         let result = validator.validate(&goal);
         // Should be valid (only warnings)
@@ -1033,10 +1031,7 @@ mod tests {
         goal.deadline_seconds = Some(3601.0); // > 3600.0
 
         let result = validator.validate(&goal);
-        assert!(result
-            .info
-            .iter()
-            .any(|i| i.message.contains("very long")));
+        assert!(result.info.iter().any(|i| i.message.contains("very long")));
     }
 
     #[test]
@@ -1046,10 +1041,7 @@ mod tests {
         goal.deadline_seconds = Some(3600.0); // exactly 3600 → no info
 
         let result = validator.validate(&goal);
-        assert!(!result
-            .info
-            .iter()
-            .any(|i| i.message.contains("very long")));
+        assert!(!result.info.iter().any(|i| i.message.contains("very long")));
     }
 
     #[test]
@@ -1117,10 +1109,7 @@ mod tests {
         );
 
         let result = validator.validate(&goal);
-        assert!(result
-            .info
-            .iter()
-            .any(|i| i.message.contains("min == max")));
+        assert!(result.info.iter().any(|i| i.message.contains("min == max")));
     }
 
     #[test]
@@ -1679,7 +1668,10 @@ mod tests {
             deadline_seconds: None,
             decomposition: None,
             max_depth: None,
-            desired_state: BTreeMap::from([("enemy_defeated".to_string(), StateValueDef::Bool(true))]),
+            desired_state: BTreeMap::from([(
+                "enemy_defeated".to_string(),
+                StateValueDef::Bool(true),
+            )]),
             sub_goals: None,
         };
 
@@ -1803,10 +1795,8 @@ mod tests {
         // Even in strict mode, custom_ prefix should not error
         let validator = GoalValidator::new().with_strict_mode(true);
         let mut goal = create_simple_goal();
-        goal.desired_state.insert(
-            "custom_flag".to_string(),
-            StateValueDef::Bool(true),
-        );
+        goal.desired_state
+            .insert("custom_flag".to_string(), StateValueDef::Bool(true));
 
         let result = validator.validate(&goal);
         assert!(!result

@@ -863,10 +863,7 @@ impl EditorCommand for ScaleEntityCommand {
             pose.scale_y = self.new_scale[1];
             pose.scale_z = self.new_scale[2];
             if let Some(em) = entities {
-                em.update_scale(
-                    self.entity_id as u64,
-                    glam::Vec3::from(self.new_scale),
-                );
+                em.update_scale(self.entity_id as u64, glam::Vec3::from(self.new_scale));
             }
             Ok(())
         } else {
@@ -880,10 +877,7 @@ impl EditorCommand for ScaleEntityCommand {
             pose.scale_y = self.old_scale[1];
             pose.scale_z = self.old_scale[2];
             if let Some(em) = entities {
-                em.update_scale(
-                    self.entity_id as u64,
-                    glam::Vec3::from(self.old_scale),
-                );
+                em.update_scale(self.entity_id as u64, glam::Vec3::from(self.old_scale));
             }
             Ok(())
         } else {

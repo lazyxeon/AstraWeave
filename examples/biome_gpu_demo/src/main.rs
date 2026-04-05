@@ -36,9 +36,9 @@ fn main() -> Result<()> {
 
     // ── 1. Create headless Renderer ──────────────────────────────────────
     println!("⏳ Creating headless GPU renderer (256×256) …");
-    let mut renderer = pollster::block_on(
-        astraweave_render::renderer::Renderer::new_headless(256, 256),
-    )?;
+    let mut renderer = pollster::block_on(astraweave_render::renderer::Renderer::new_headless(
+        256, 256,
+    ))?;
     println!("✅ Renderer created\n");
 
     // Configure faster transitions for the demo
@@ -184,7 +184,9 @@ fn main() -> Result<()> {
     println!("Mid-transition:");
     println!(
         "  tint=[{:.3},{:.3},{:.3}]  tint_alpha={:.4}  blend={:.3}",
-        mid_ubo.tint_color[0], mid_ubo.tint_color[1], mid_ubo.tint_color[2],
+        mid_ubo.tint_color[0],
+        mid_ubo.tint_color[1],
+        mid_ubo.tint_color[2],
         mid_ubo.tint_alpha,
         mid_ubo.blend_factor,
     );
@@ -197,7 +199,9 @@ fn main() -> Result<()> {
     println!("Post-transition:");
     println!(
         "  tint=[{:.3},{:.3},{:.3}]  tint_alpha={:.4}  blend={:.3}",
-        end_ubo.tint_color[0], end_ubo.tint_color[1], end_ubo.tint_color[2],
+        end_ubo.tint_color[0],
+        end_ubo.tint_color[1],
+        end_ubo.tint_color[2],
         end_ubo.tint_alpha,
         end_ubo.blend_factor,
     );
@@ -213,19 +217,28 @@ fn print_ubo(prefix: &str, ubo: &SceneEnvironmentUBO) {
     println!(
         "{}fog=[{:.3},{:.3},{:.3}] density={:.4} start={:.1} end={:.1}",
         prefix,
-        ubo.fog_color[0], ubo.fog_color[1], ubo.fog_color[2],
-        ubo.fog_density, ubo.fog_start, ubo.fog_end,
+        ubo.fog_color[0],
+        ubo.fog_color[1],
+        ubo.fog_color[2],
+        ubo.fog_density,
+        ubo.fog_start,
+        ubo.fog_end,
     );
     println!(
         "{}ambient=[{:.3},{:.3},{:.3}] intensity={:.4}",
         prefix,
-        ubo.ambient_color[0], ubo.ambient_color[1], ubo.ambient_color[2],
+        ubo.ambient_color[0],
+        ubo.ambient_color[1],
+        ubo.ambient_color[2],
         ubo.ambient_intensity,
     );
     println!(
         "{}tint=[{:.3},{:.3},{:.3}] alpha={:.4} blend={:.3}",
         prefix,
-        ubo.tint_color[0], ubo.tint_color[1], ubo.tint_color[2],
-        ubo.tint_alpha, ubo.blend_factor,
+        ubo.tint_color[0],
+        ubo.tint_color[1],
+        ubo.tint_color[2],
+        ubo.tint_alpha,
+        ubo.blend_factor,
     );
 }

@@ -609,16 +609,25 @@ mod tests {
 
     #[test]
     fn test_from_config_time_scaling() {
-        let config = CausticsConfig { animation_speed: 2.5, ..Default::default() };
+        let config = CausticsConfig {
+            animation_speed: 2.5,
+            ..Default::default()
+        };
         let u = CausticsUniforms::from_config(&config, 3.0);
         // time = 3.0 * 2.5 = 7.5
-        assert!((u.time - 7.5).abs() < 1e-6,
-            "time should be 7.5, got {}", u.time);
+        assert!(
+            (u.time - 7.5).abs() < 1e-6,
+            "time should be 7.5, got {}",
+            u.time
+        );
     }
 
     #[test]
     fn test_update_advances_time() {
-        let config = CausticsConfig { animation_speed: 2.0, ..Default::default() };
+        let config = CausticsConfig {
+            animation_speed: 2.0,
+            ..Default::default()
+        };
         let mut proj = CausticsProjector::new(Vec3::NEG_Y, 0.0);
         assert_eq!(proj.time, 0.0);
 
@@ -672,7 +681,7 @@ mod tests {
             .with_bounds(Vec2::new(-10.0, -20.0), Vec2::new(30.0, 40.0));
 
         // Three sample points at different depths and UVs
-        let p1 = proj.sample(Vec3::new(5.0, 30.0, 10.0), &config);  // depth=20
+        let p1 = proj.sample(Vec3::new(5.0, 30.0, 10.0), &config); // depth=20
         let p2 = proj.sample(Vec3::new(-3.0, 10.0, 25.0), &config); // depth=40
         let p3 = proj.sample(Vec3::new(15.0, 45.0, -5.0), &config); // depth=5
 

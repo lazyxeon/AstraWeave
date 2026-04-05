@@ -1,16 +1,19 @@
 #![forbid(unsafe_code)]
-#![cfg_attr(test, allow(
-    unused_variables,
-    unused_mut,
-    unused_imports,
-    non_snake_case,
-    clippy::manual_range_contains,
-    clippy::field_reassign_with_default,
-    clippy::no_effect,
-    clippy::identity_op,
-    clippy::needless_update,
-    clippy::useless_vec,
-))]
+#![cfg_attr(
+    test,
+    allow(
+        unused_variables,
+        unused_mut,
+        unused_imports,
+        non_snake_case,
+        clippy::manual_range_contains,
+        clippy::field_reassign_with_default,
+        clippy::no_effect,
+        clippy::identity_op,
+        clippy::needless_update,
+        clippy::useless_vec,
+    )
+)]
 //! # AstraWeave Physics
 //!
 //! Full-featured physics simulation for AstraWeave, wrapping **Rapier3D 0.22**.
@@ -3948,11 +3951,7 @@ mod tests {
 
         let transform = pw.body_transform(char_id).unwrap();
         let y = transform.w_axis.y;
-        assert!(
-            y < 10.0,
-            "Character should fall due to gravity: y={}",
-            y
-        );
+        assert!(y < 10.0, "Character should fall due to gravity: y={}", y);
     }
 
     #[test]
@@ -3971,11 +3970,7 @@ mod tests {
 
         let transform = pw.body_transform(char_id).unwrap();
         let x = transform.w_axis.x;
-        assert!(
-            x > 0.1,
-            "Character should have moved in +X: x={}",
-            x
-        );
+        assert!(x > 0.1, "Character should have moved in +X: x={}", x);
     }
 
     #[test]
@@ -4021,10 +4016,7 @@ mod tests {
         assert!(ctrl.coyote_time_limit > 0.0, "Coyote time should be set");
 
         // Verify the controller's time_since_grounded starts at 0
-        assert_eq!(
-            ctrl.time_since_grounded, 0.0,
-            "Should start grounded"
-        );
+        assert_eq!(ctrl.time_since_grounded, 0.0, "Should start grounded");
     }
 
     #[test]
@@ -4159,7 +4151,11 @@ mod tests {
             crate::projectile::FalloffCurve::Linear,
             0.0,
         );
-        assert!(count >= 1, "At least one body should be affected: {}", count);
+        assert!(
+            count >= 1,
+            "At least one body should be affected: {}",
+            count
+        );
 
         pw.step();
 
@@ -4283,11 +4279,7 @@ mod tests {
         pw.step();
 
         let vel = pw.get_velocity(body).unwrap();
-        assert!(
-            vel.x < 10.0,
-            "Drag should slow the body: vel.x={}",
-            vel.x
-        );
+        assert!(vel.x < 10.0, "Drag should slow the body: vel.x={}", vel.x);
     }
 
     // ===== ROUND 6: Deep control_character integration tests =====
@@ -4298,7 +4290,7 @@ mod tests {
         let _ground = pw.create_ground_plane(Vec3::new(100.0, 0.1, 100.0), 0.5);
         pw.step(); // Update query pipeline
 
-        // Character starts slightly above ground 
+        // Character starts slightly above ground
         let ch = pw.add_character(Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.3, 0.8, 0.3));
 
         // Let gravity pull character down, control with no horizontal move
@@ -4310,11 +4302,7 @@ mod tests {
         // Character should have snapped to ground (y near ground level)
         let transform = pw.body_transform(ch).unwrap();
         let y = transform.w_axis.y;
-        assert!(
-            y < 2.0,
-            "Character should have fallen near ground: y={}",
-            y
-        );
+        assert!(y < 2.0, "Character should have fallen near ground: y={}", y);
     }
 
     #[test]
@@ -4349,11 +4337,7 @@ mod tests {
         let x = transform.w_axis.x;
         // Character should have been stopped or deflected by wall
         // Without wall-slide, x would be ~5.0. With it, should be < wall position
-        assert!(
-            x < 6.0,
-            "Wall should limit forward movement: x={}",
-            x
-        );
+        assert!(x < 6.0, "Wall should limit forward movement: x={}", x);
     }
 
     #[test]
@@ -4468,29 +4452,35 @@ mod tests {
     #[test]
     fn r6_radial_impulse_count_returns_affected() {
         let mut pw = PhysicsWorld::new(Vec3::ZERO);
-        let _b1 = pw.add_dynamic_box(Vec3::new(1.0, 0.0, 0.0), Vec3::splat(0.5), 1.0, Layers::DEFAULT);
-        let _b2 = pw.add_dynamic_box(Vec3::new(2.0, 0.0, 0.0), Vec3::splat(0.5), 1.0, Layers::DEFAULT);
-        let _b3 = pw.add_dynamic_box(Vec3::new(100.0, 0.0, 0.0), Vec3::splat(0.5), 1.0, Layers::DEFAULT);
+        let _b1 = pw.add_dynamic_box(
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::splat(0.5),
+            1.0,
+            Layers::DEFAULT,
+        );
+        let _b2 = pw.add_dynamic_box(
+            Vec3::new(2.0, 0.0, 0.0),
+            Vec3::splat(0.5),
+            1.0,
+            Layers::DEFAULT,
+        );
+        let _b3 = pw.add_dynamic_box(
+            Vec3::new(100.0, 0.0, 0.0),
+            Vec3::splat(0.5),
+            1.0,
+            Layers::DEFAULT,
+        );
         pw.step();
 
-        let count = pw.apply_radial_impulse(
-            Vec3::ZERO,
-            5.0,
-            100.0,
-            crate::FalloffCurve::Linear,
-            0.0,
-        );
+        let count =
+            pw.apply_radial_impulse(Vec3::ZERO, 5.0, 100.0, crate::FalloffCurve::Linear, 0.0);
         // b1 and b2 are within radius 5, b3 is at 100 (outside)
         assert!(
             count >= 2,
             "Should affect at least 2 nearby bodies: {}",
             count
         );
-        assert!(
-            count <= 3,
-            "Should not affect far body: {}",
-            count
-        );
+        assert!(count <= 3, "Should not affect far body: {}", count);
     }
 
     #[test]
@@ -4503,11 +4493,7 @@ mod tests {
         pw.step();
 
         let vel = pw.get_velocity(body).unwrap();
-        assert!(
-            vel.x > 0.0,
-            "Force should produce velocity: {:?}",
-            vel
-        );
+        assert!(vel.x > 0.0, "Force should produce velocity: {:?}", vel);
     }
 
     #[test]
@@ -4520,11 +4506,7 @@ mod tests {
         pw.step();
 
         let vel = pw.get_velocity(body).unwrap();
-        assert!(
-            vel.x > 0.0,
-            "Impulse should produce velocity: {:?}",
-            vel
-        );
+        assert!(vel.x > 0.0, "Impulse should produce velocity: {:?}", vel);
     }
 
     #[test]
@@ -4605,14 +4587,20 @@ mod tests {
             end: [1.0, 2.0, 3.0],
             color: [1.0, 0.0, 0.0],
         };
-        assert!(line.is_degenerate(), "Zero-length line should be degenerate");
+        assert!(
+            line.is_degenerate(),
+            "Zero-length line should be degenerate"
+        );
 
         let line2 = DebugLine {
             start: [0.0, 0.0, 0.0],
             end: [1.0, 0.0, 0.0],
             color: [1.0, 0.0, 0.0],
         };
-        assert!(!line2.is_degenerate(), "Unit-length line should not be degenerate");
+        assert!(
+            !line2.is_degenerate(),
+            "Unit-length line should not be degenerate"
+        );
     }
 
     #[test]
@@ -4656,13 +4644,19 @@ mod tests {
             jump_buffer_limit: 0.15,
             pending_jump_velocity: 0.0,
         };
-        assert!(ctrl.can_jump(), "Grounded controller should be able to jump");
+        assert!(
+            ctrl.can_jump(),
+            "Grounded controller should be able to jump"
+        );
     }
 
     #[test]
     fn r8_physics_config_is_earth_gravity() {
         let config = PhysicsConfig::default();
-        assert!(config.is_earth_gravity(), "Default gravity should be earth-like");
+        assert!(
+            config.is_earth_gravity(),
+            "Default gravity should be earth-like"
+        );
 
         let moon = PhysicsConfig {
             gravity: Vec3::new(0.0, -1.625, 0.0),
@@ -4703,7 +4697,8 @@ mod tests {
         assert!(
             after_y < start_y - 1.0,
             "Gravity should pull character down significantly: start={}, after={}",
-            start_y, after_y
+            start_y,
+            after_y
         );
     }
 
@@ -4733,7 +4728,8 @@ mod tests {
         assert!(
             after_x > start_x + 1.0,
             "Horizontal movement should change X: start={}, after={}",
-            start_x, after_x
+            start_x,
+            after_x
         );
     }
 
@@ -4796,7 +4792,8 @@ mod tests {
         assert!(
             after_y > start_y + 0.5,
             "Climb mode should raise character: start={}, after={}",
-            start_y, after_y
+            start_y,
+            after_y
         );
     }
 
@@ -4887,7 +4884,8 @@ mod tests {
         assert!(
             y_2x < y_1x,
             "2x gravity should fall faster: y_2x={}, y_1x={}",
-            y_2x, y_1x
+            y_2x,
+            y_1x
         );
     }
 
@@ -4911,7 +4909,8 @@ mod tests {
         assert!(
             (ctrl.pending_jump_velocity - expected_v).abs() < 0.1,
             "Jump velocity should be sqrt(2*g*h)={}, got={}",
-            expected_v, ctrl.pending_jump_velocity
+            expected_v,
+            ctrl.pending_jump_velocity
         );
     }
 
@@ -4968,11 +4967,7 @@ mod tests {
 
         let x = pw.body_transform(ch).unwrap().w_axis.x;
         // Should not pass through the wall at x=3
-        assert!(
-            x < 3.5,
-            "Character should be blocked by wall: x={}",
-            x
-        );
+        assert!(x < 3.5, "Character should be blocked by wall: x={}", x);
     }
 
     #[test]
@@ -5024,7 +5019,8 @@ mod tests {
         assert!(
             has_upward || jump_was_buffered,
             "Jump near edge should use coyote time or buffer: vv={}, buffer={}",
-            ctrl.vertical_velocity, ctrl.jump_buffer_timer
+            ctrl.vertical_velocity,
+            ctrl.jump_buffer_timer
         );
     }
 
@@ -5049,7 +5045,8 @@ mod tests {
         assert!(
             tsg_after > tsg_initial,
             "time_since_grounded should increase in air: before={}, after={}",
-            tsg_initial, tsg_after
+            tsg_initial,
+            tsg_after
         );
     }
 
@@ -5075,7 +5072,8 @@ mod tests {
         assert!(
             v4 > v1 * 1.5,
             "Higher jump should give higher velocity: v1={}, v4={}",
-            v1, v4
+            v1,
+            v4
         );
     }
 
@@ -5097,7 +5095,8 @@ mod tests {
         assert!(
             (ctrl.pending_jump_velocity - expected).abs() < 0.1,
             "Jump velocity should be sqrt(2*g*h)={}: got={}",
-            expected, ctrl.pending_jump_velocity
+            expected,
+            ctrl.pending_jump_velocity
         );
     }
 
@@ -5118,7 +5117,8 @@ mod tests {
         assert!(
             (ctrl.vertical_velocity - expected).abs() < 0.1,
             "Vertical velocity should be -9.81*dt={}: got={}",
-            expected, ctrl.vertical_velocity
+            expected,
+            ctrl.vertical_velocity
         );
     }
 
@@ -5131,7 +5131,10 @@ mod tests {
         // First, apply gravity
         pw.control_character(ch, Vec3::ZERO, 0.1, false);
         let v_after_gravity = pw.char_map.get(&ch).unwrap().vertical_velocity;
-        assert!(v_after_gravity < -0.5, "Should have negative velocity from gravity");
+        assert!(
+            v_after_gravity < -0.5,
+            "Should have negative velocity from gravity"
+        );
 
         // Now climb — should zero vertical velocity
         pw.control_character(ch, Vec3::ZERO, 0.1, true);
@@ -5155,20 +5158,21 @@ mod tests {
 
         // Move to establish ground contact
         for _ in 0..5 {
-            pw.control_character(ch, Vec3::ZERO, 1.0/60.0, false);
+            pw.control_character(ch, Vec3::ZERO, 1.0 / 60.0, false);
             pw.step();
         }
 
         // Jump
         pw.jump(ch, 1.0);
-        pw.control_character(ch, Vec3::ZERO, 1.0/60.0, false);
+        pw.control_character(ch, Vec3::ZERO, 1.0 / 60.0, false);
 
         let ctrl = pw.char_map.get(&ch).unwrap();
         // After successful jump, time_since_grounded should be > coyote_time_limit
         assert!(
             ctrl.time_since_grounded > ctrl.coyote_time_limit,
             "After jump, time_since_grounded={} should exceed coyote_time_limit={}",
-            ctrl.time_since_grounded, ctrl.coyote_time_limit
+            ctrl.time_since_grounded,
+            ctrl.coyote_time_limit
         );
     }
 
@@ -5180,7 +5184,12 @@ mod tests {
         pw.water_level = 10.0;
         pw.fluid_density = 1000.0;
 
-        let id = pw.add_dynamic_box(Vec3::new(0.0, 5.0, 0.0), Vec3::splat(0.5), 10.0, Layers::DEFAULT);
+        let id = pw.add_dynamic_box(
+            Vec3::new(0.0, 5.0, 0.0),
+            Vec3::splat(0.5),
+            10.0,
+            Layers::DEFAULT,
+        );
         pw.add_buoyancy(id, 2.0, 0.0); // volume=2, drag=0
 
         // Before buoyancy
@@ -5196,7 +5205,8 @@ mod tests {
         assert!(
             vel_after.y > vel_before.y,
             "Buoyancy should push body upward: before_y={}, after_y={}",
-            vel_before.y, vel_after.y
+            vel_before.y,
+            vel_after.y
         );
     }
 
@@ -5205,14 +5215,19 @@ mod tests {
         // to_body = body_pos - center → radial direction
         // If - changed to +, direction would be wrong
         let mut pw = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0)); // no gravity
-        let id = pw.add_dynamic_box(Vec3::new(5.0, 0.0, 0.0), Vec3::splat(0.3), 1.0, Layers::DEFAULT);
+        let id = pw.add_dynamic_box(
+            Vec3::new(5.0, 0.0, 0.0),
+            Vec3::splat(0.3),
+            1.0,
+            Layers::DEFAULT,
+        );
 
         let affected = pw.apply_radial_impulse(
-            Vec3::ZERO,    // center
-            10.0,          // radius
-            100.0,         // force
+            Vec3::ZERO, // center
+            10.0,       // radius
+            100.0,      // force
             crate::projectile::FalloffCurve::Linear,
-            0.0,           // no upward bias
+            0.0, // no upward bias
         );
         assert_eq!(affected, 1);
 
@@ -5305,14 +5320,19 @@ mod tests {
         //   Correct: to_body = (-3,0,0) → push -X (away from center)
         //   Mutated: to_body = (17,0,0) → push +X (WRONG!)
         let mut pw = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0)); // no gravity
-        let id = pw.add_dynamic_box(Vec3::new(7.0, 0.0, 0.0), Vec3::splat(0.3), 1.0, Layers::DEFAULT);
+        let id = pw.add_dynamic_box(
+            Vec3::new(7.0, 0.0, 0.0),
+            Vec3::splat(0.3),
+            1.0,
+            Layers::DEFAULT,
+        );
 
         pw.step(); // Init
 
         let affected = pw.apply_radial_impulse(
             Vec3::new(10.0, 0.0, 0.0), // center at x=10
-            10.0,                        // radius
-            100.0,                       // force
+            10.0,                      // radius
+            100.0,                     // force
             crate::projectile::FalloffCurve::Linear,
             0.0,
         );

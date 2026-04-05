@@ -225,13 +225,12 @@ impl ConversionCache {
         }
 
         // Canonicalize to resolve any ".." or "." components and prevent traversal
-        let cache_dir = fs::canonicalize(&cache_dir).map_err(|e| {
-            BlendError::CacheDirectoryError {
+        let cache_dir =
+            fs::canonicalize(&cache_dir).map_err(|e| BlendError::CacheDirectoryError {
                 path: cache_dir.clone(),
                 message: "Failed to canonicalize cache directory path".to_string(),
                 source: e,
-            }
-        })?;
+            })?;
 
         // Reject symlinks within the cache directory (security hardening)
         Self::reject_symlinks_in_dir(&cache_dir)?;
@@ -674,10 +673,7 @@ impl ConversionCache {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_symlink() {
-                warn!(
-                    "Removing symlink in cache directory: {}",
-                    path.display()
-                );
+                warn!("Removing symlink in cache directory: {}", path.display());
                 // Remove the symlink (not the target) to sanitize the cache
                 let _ = fs::remove_file(&path);
             }
@@ -692,7 +688,8 @@ impl ConversionCache {
     /// could escape the cache directory.
     fn verify_path_within_cache(cache_dir: &Path, target_path: &Path) -> BlendResult<()> {
         // Canonicalize the cache dir (should already be canonical, but be safe)
-        let canonical_cache = fs::canonicalize(cache_dir).unwrap_or_else(|_| cache_dir.to_path_buf());
+        let canonical_cache =
+            fs::canonicalize(cache_dir).unwrap_or_else(|_| cache_dir.to_path_buf());
 
         // For the target, we can't canonicalize if it doesn't exist yet,
         // so we normalize manually by resolving the joined path

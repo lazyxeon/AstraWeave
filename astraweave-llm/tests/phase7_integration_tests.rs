@@ -9,8 +9,8 @@ use anyhow::Result;
 /// - Robust plan parser (5-stage extraction, hallucination detection)
 /// - Semantic cache similarity matching
 use astraweave_core::{
-    ActionStep, CompanionState, Constraints, CoverType, EnemyState, IVec2, PlanIntent,
-    PlayerState, Stance, ToolRegistry, ToolSpec, WorldSnapshot,
+    ActionStep, CompanionState, Constraints, CoverType, EnemyState, IVec2, PlanIntent, PlayerState,
+    Stance, ToolRegistry, ToolSpec, WorldSnapshot,
 };
 use astraweave_llm::{plan_from_llm, LlmClient, PlanSource};
 use async_trait::async_trait;

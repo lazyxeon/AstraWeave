@@ -335,12 +335,7 @@ impl BarChart {
         }
     }
 
-    fn draw_single_bar(
-        &self,
-        painter: &egui::Painter,
-        data_rect: Rect,
-        params: BarDrawParams,
-    ) {
+    fn draw_single_bar(&self, painter: &egui::Painter, data_rect: Rect, params: BarDrawParams) {
         let value_ratio = ((params.value - params.min_y) / (params.max_y - params.min_y)) as f32;
         let bar_height = value_ratio.clamp(0.0, 1.0) * data_rect.height();
 

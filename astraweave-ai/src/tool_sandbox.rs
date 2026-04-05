@@ -2230,8 +2230,10 @@ mod tests {
             rigid_body_set: None,
             collider_set: None,
         };
-        assert!(!ctx.has_physics(),
-            "has_physics should be false when only pipeline is set (&&, not ||)");
+        assert!(
+            !ctx.has_physics(),
+            "has_physics should be false when only pipeline is set (&&, not ||)"
+        );
     }
 
     #[test]
@@ -2246,8 +2248,10 @@ mod tests {
             rigid_body_set: Some(&bodies),
             collider_set: None,
         };
-        assert!(!ctx.has_physics(),
-            "has_physics should be false when collider_set is missing");
+        assert!(
+            !ctx.has_physics(),
+            "has_physics should be false when collider_set is missing"
+        );
     }
 
     #[test]
@@ -2277,9 +2281,16 @@ mod tests {
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
-            0, ToolVerb::Throw, &world, &context, Some(IVec2 { x: 1, y: 0 }),
+            0,
+            ToolVerb::Throw,
+            &world,
+            &context,
+            Some(IVec2 { x: 1, y: 0 }),
         );
-        assert!(result.is_ok(), "Cooldown=0.0 should not block (> 0.0 = false)");
+        assert!(
+            result.is_ok(),
+            "Cooldown=0.0 should not block (> 0.0 = false)"
+        );
     }
 
     #[test]
@@ -2307,9 +2318,16 @@ mod tests {
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
-            0, ToolVerb::Revive, &world, &context, Some(IVec2 { x: 1, y: 0 }),
+            0,
+            ToolVerb::Revive,
+            &world,
+            &context,
+            Some(IVec2 { x: 1, y: 0 }),
         );
-        assert!(result.is_ok(), "Revive at morale=0.5 should pass (< 0.5 is false)");
+        assert!(
+            result.is_ok(),
+            "Revive at morale=0.5 should pass (< 0.5 is false)"
+        );
     }
 
     #[test]
@@ -2341,9 +2359,16 @@ mod tests {
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
-            0, ToolVerb::Revive, &world, &context, Some(IVec2 { x: 2, y: 0 }),
+            0,
+            ToolVerb::Revive,
+            &world,
+            &context,
+            Some(IVec2 { x: 2, y: 0 }),
         );
-        assert!(result.is_err(), "Revive at distance 3.0 should fail (target too far)");
+        assert!(
+            result.is_err(),
+            "Revive at distance 3.0 should fail (target too far)"
+        );
     }
 
     #[test]
@@ -2372,9 +2397,16 @@ mod tests {
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
-            0, ToolVerb::Revive, &world, &context, Some(IVec2 { x: 0, y: 1 }),
+            0,
+            ToolVerb::Revive,
+            &world,
+            &context,
+            Some(IVec2 { x: 0, y: 1 }),
         );
-        assert!(result.is_err(), "Revive at distance 3.0 should fail (dy*dy vs dy+dy)");
+        assert!(
+            result.is_err(),
+            "Revive at distance 3.0 should fail (dy*dy vs dy+dy)"
+        );
     }
 
     #[test]
@@ -2403,8 +2435,10 @@ mod tests {
         };
         // LOS from (0,0) to (0,3) — vertical line, obstacle at (5,1) NOT on path.
         let has_los = has_line_of_sight(IVec2 { x: 0, y: 0 }, IVec2 { x: 0, y: 3 }, &world);
-        assert!(has_los,
-            "Obstacle at (5,1) should NOT block vertical LOS from (0,0) to (0,3)");
+        assert!(
+            has_los,
+            "Obstacle at (5,1) should NOT block vertical LOS from (0,0) to (0,3)"
+        );
     }
 
     #[test]
@@ -2433,7 +2467,9 @@ mod tests {
             obstacles: vec![IVec2 { x: 5, y: 3 }], // On original path (3,2)→(4,3)→(5,3)→(6,4)
         };
         let has_los = has_line_of_sight(IVec2 { x: 3, y: 2 }, IVec2 { x: 6, y: 4 }, &world);
-        assert!(!has_los,
-            "Obstacle at (5,3) should block LOS from (3,2) to (6,4)");
+        assert!(
+            !has_los,
+            "Obstacle at (5,3) should block LOS from (3,2) to (6,4)"
+        );
     }
 }

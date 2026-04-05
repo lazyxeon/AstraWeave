@@ -31,7 +31,11 @@ async fn main() -> Result<()> {
     let plan = PlanIntent {
         plan_id: "client-plan".into(),
         steps: vec![
-            ActionStep::MoveTo { x: 4, y: 3, speed: None },
+            ActionStep::MoveTo {
+                x: 4,
+                y: 3,
+                speed: None,
+            },
             ActionStep::Throw {
                 item: "smoke".into(),
                 x: 7,
@@ -113,7 +117,8 @@ async fn main() -> Result<()> {
                                     .collect();
                                 for (_s, intent) in pending {
                                     // At this level, we don't have a local physics sim; we could re-run naive prediction if desired
-                                    if let Some(ActionStep::MoveTo { x, y, .. }) = intent.steps.first()
+                                    if let Some(ActionStep::MoveTo { x, y, .. }) =
+                                        intent.steps.first()
                                     {
                                         if let Some(e) =
                                             base.entities.iter_mut().find(|e| e.id == actor_id)

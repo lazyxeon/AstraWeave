@@ -1624,7 +1624,11 @@ mod tests {
         // Mutant: `< 1.0` → `<= 1.0` would put 1.0 in sub-ms branch ("{:.2}ms" → "1.00ms")
         let mut stats = UsageStats::new();
         stats.avg_render_time_ms = 1.0;
-        assert_eq!(stats.formatted_render_time(), "1.0ms", "1.0 should use ms-1dp format");
+        assert_eq!(
+            stats.formatted_render_time(),
+            "1.0ms",
+            "1.0 should use ms-1dp format"
+        );
     }
 
     #[test]
@@ -1632,7 +1636,11 @@ mod tests {
         // Mutant: `< 1000.0` → `<= 1000.0` would put 1000.0 in ms branch ("1000.0ms")
         let mut stats = UsageStats::new();
         stats.avg_render_time_ms = 1000.0;
-        assert_eq!(stats.formatted_render_time(), "1.00s", "1000.0 should use seconds format");
+        assert_eq!(
+            stats.formatted_render_time(),
+            "1.00s",
+            "1000.0 should use seconds format"
+        );
     }
 
     #[test]
@@ -1640,7 +1648,11 @@ mod tests {
         // Mutant: `< 1000` → `<= 1000` would put 1000 in ms branch ("1000ms")
         let mut metrics = RenderMetrics::new();
         metrics.total_render_time_ms = 1000;
-        assert_eq!(metrics.formatted_total_time(), "1.00s", "1000ms should use seconds format");
+        assert_eq!(
+            metrics.formatted_total_time(),
+            "1.00s",
+            "1000ms should use seconds format"
+        );
     }
 
     #[test]
@@ -1648,7 +1660,11 @@ mod tests {
         // Mutant: `< 60000` → `<= 60000` would put 60000 in seconds branch ("60.00s")
         let mut metrics = RenderMetrics::new();
         metrics.total_render_time_ms = 60000;
-        assert_eq!(metrics.formatted_total_time(), "1.00m", "60000ms should use minutes format");
+        assert_eq!(
+            metrics.formatted_total_time(),
+            "1.00m",
+            "60000ms should use minutes format"
+        );
     }
 
     #[test]
@@ -1657,8 +1673,11 @@ mod tests {
         // After 1 success: prev_count=0, new_count=1, avg = (0*0 + 50) / 1 = 50
         let mut metrics = RenderMetrics::new();
         metrics.record_success(50.0);
-        assert!((metrics.avg_render_time_ms - 50.0).abs() < 0.01,
-            "First render avg should be 50.0, got {}", metrics.avg_render_time_ms);
+        assert!(
+            (metrics.avg_render_time_ms - 50.0).abs() < 0.01,
+            "First render avg should be 50.0, got {}",
+            metrics.avg_render_time_ms
+        );
     }
 
     #[test]
@@ -1667,8 +1686,11 @@ mod tests {
         let mut metrics = RenderMetrics::new();
         metrics.record_success(50.0);
         metrics.record_success(100.0);
-        assert!((metrics.avg_render_time_ms - 75.0).abs() < 0.01,
-            "Two renders avg should be 75.0, got {}", metrics.avg_render_time_ms);
+        assert!(
+            (metrics.avg_render_time_ms - 75.0).abs() < 0.01,
+            "Two renders avg should be 75.0, got {}",
+            metrics.avg_render_time_ms
+        );
     }
 
     // ===== Additional mutation-resistant tests =====
@@ -1680,8 +1702,10 @@ mod tests {
         let now = current_timestamp();
         let mut stats = UsageStats::new();
         stats.last_used = Some(now.saturating_sub(86400));
-        assert!(!stats.is_recently_used(),
-            "Exactly 24h ago should NOT be 'recently used' (< vs <=)");
+        assert!(
+            !stats.is_recently_used(),
+            "Exactly 24h ago should NOT be 'recently used' (< vs <=)"
+        );
     }
 
     #[test]
@@ -1690,8 +1714,10 @@ mod tests {
         let now = current_timestamp();
         let mut stats = UsageStats::new();
         stats.last_used = Some(now.saturating_sub(86399));
-        assert!(stats.is_recently_used(),
-            "86399s ago should be 'recently used'");
+        assert!(
+            stats.is_recently_used(),
+            "86399s ago should be 'recently used'"
+        );
     }
 
     #[test]
@@ -1709,9 +1735,11 @@ mod tests {
         metrics.record_success(10.0);
         metrics.record_success(20.0);
         metrics.record_success(30.0);
-        assert_eq!(metrics.total_render_time_ms, 60,
+        assert_eq!(
+            metrics.total_render_time_ms, 60,
             "total_render_time_ms should accumulate additively: 10+20+30=60, got {}",
-            metrics.total_render_time_ms);
+            metrics.total_render_time_ms
+        );
     }
 
     #[test]
@@ -1719,7 +1747,11 @@ mod tests {
         // Mutant: `current_timestamp → 0` or `→ 1`
         // Any time after 1970-01-02 guarantees value > 86400
         let ts = current_timestamp();
-        assert!(ts > 86400, "current_timestamp must be well past Unix epoch, got {}", ts);
+        assert!(
+            ts > 86400,
+            "current_timestamp must be well past Unix epoch, got {}",
+            ts
+        );
     }
 
     #[test]
@@ -1730,9 +1762,18 @@ mod tests {
         let si = TemplateFormat::Simple.description();
         let j2 = TemplateFormat::Jinja2.description();
 
-        assert!(hb.contains("Mustache"), "Handlebars description must mention Mustache, got: {hb}");
-        assert!(si.contains("interpolation"), "Simple description must mention interpolation, got: {si}");
-        assert!(j2.contains("Python"), "Jinja2 description must mention Python, got: {j2}");
+        assert!(
+            hb.contains("Mustache"),
+            "Handlebars description must mention Mustache, got: {hb}"
+        );
+        assert!(
+            si.contains("interpolation"),
+            "Simple description must mention interpolation, got: {si}"
+        );
+        assert!(
+            j2.contains("Python"),
+            "Jinja2 description must mention Python, got: {j2}"
+        );
 
         // "xyzzy" would fail all three contain checks
         assert_ne!(hb, "xyzzy");
@@ -1746,7 +1787,10 @@ mod tests {
         let mut meta = TemplateMetadata::new("age_test");
         meta.created_at = 1_000_000;
         let age = meta.age_seconds();
-        assert!(age > 1_000_000, "age_seconds must be > 1M for a very old timestamp, got {age}");
+        assert!(
+            age > 1_000_000,
+            "age_seconds must be > 1M for a very old timestamp, got {age}"
+        );
     }
 
     #[test]
@@ -1821,7 +1865,10 @@ mod tests {
 
         // Very old → NOT recently updated (kills → true)
         m.updated_at = 1_000_000;
-        assert!(!m.is_recently_updated(), "1970 timestamp should not be recent");
+        assert!(
+            !m.is_recently_updated(),
+            "1970 timestamp should not be recent"
+        );
 
         // Exactly 86400s → NOT recent (kills < → ==: 86400 == 86400 = true, < → <=: 86400 <= 86400 = true)
         m.updated_at = now.saturating_sub(86400);
@@ -1835,7 +1882,11 @@ mod tests {
         m.updated_at = 0;
         m.touch();
         let now = current_timestamp();
-        assert!(m.updated_at >= now.saturating_sub(1), "touch must set updated_at to ~now, got {}", m.updated_at);
+        assert!(
+            m.updated_at >= now.saturating_sub(1),
+            "touch must set updated_at to ~now, got {}",
+            m.updated_at
+        );
     }
 
     #[test]
@@ -1844,7 +1895,10 @@ mod tests {
         // default_version() is only invoked as #[serde(default = "default_version")]
         let json = r#"{"name": "test"}"#;
         let meta: TemplateMetadata = serde_json::from_str(json).unwrap();
-        assert_eq!(meta.version, "0.1.0", "serde default version must be '0.1.0'");
+        assert_eq!(
+            meta.version, "0.1.0",
+            "serde default version must be '0.1.0'"
+        );
     }
 
     #[test]
@@ -1868,8 +1922,16 @@ mod tests {
             assert!(desc.len() > 10, "{cat:?} description too short: {desc}");
         }
         // Spot-check specific content
-        assert!(TemplateCategory::Dialogue.description().contains("dialogue"), "Dialogue desc wrong");
-        assert!(TemplateCategory::Combat.description().contains("ombat"), "Combat desc wrong");
+        assert!(
+            TemplateCategory::Dialogue
+                .description()
+                .contains("dialogue"),
+            "Dialogue desc wrong"
+        );
+        assert!(
+            TemplateCategory::Combat.description().contains("ombat"),
+            "Combat desc wrong"
+        );
     }
 
     #[test]
@@ -1891,8 +1953,14 @@ mod tests {
             assert_ne!(uc, "xyzzy", "{cat:?} use_case must not be sentinel");
             assert!(uc.len() > 5, "{cat:?} use_case too short: {uc}");
         }
-        assert!(TemplateCategory::Dialogue.use_case().contains("NPC"), "Dialogue use_case wrong");
-        assert!(TemplateCategory::Combat.use_case().contains("combat"), "Combat use_case wrong");
+        assert!(
+            TemplateCategory::Dialogue.use_case().contains("NPC"),
+            "Dialogue use_case wrong"
+        );
+        assert!(
+            TemplateCategory::Combat.use_case().contains("combat"),
+            "Combat use_case wrong"
+        );
     }
 
     #[test]
@@ -1902,7 +1970,10 @@ mod tests {
         //   With `>`:  0.0 > 0.0 = false → skip block → avg stays 0.0 ✓
         //   With `>=`: 0.0 >= 0.0 = true → (0.0*(-1.0)+42.0)/0.0 → NaN/Inf ✗
         let mut metrics = RenderMetrics::new();
-        assert_eq!(metrics.successful_renders, 0, "precondition: zero successes");
+        assert_eq!(
+            metrics.successful_renders, 0,
+            "precondition: zero successes"
+        );
         metrics.update_avg_time(42.0);
         assert!(
             metrics.avg_render_time_ms.is_finite(),

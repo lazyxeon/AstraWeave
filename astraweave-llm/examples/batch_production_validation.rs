@@ -28,10 +28,8 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "ollama")]
     {
         // Initialize Ollama client with Qwen3-8B
-        let client = OllamaChatClient::new(
-            "http://localhost:11434".to_string(),
-            "qwen3:8b".to_string(),
-        );
+        let client =
+            OllamaChatClient::new("http://localhost:11434".to_string(), "qwen3:8b".to_string());
 
         // Initialize tool registry and fallback system
         let reg = astraweave_core::default_tool_registry();

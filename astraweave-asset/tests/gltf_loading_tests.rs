@@ -285,8 +285,14 @@ mod gltf_tests {
         let result = load_first_mesh_and_material(&bytes);
         match result {
             Ok((mesh, _mat)) => {
-                assert!(!mesh.positions.is_empty(), "Loaded mesh should have vertices");
-                eprintln!("Successfully loaded bed.glb with {} vertices", mesh.positions.len());
+                assert!(
+                    !mesh.positions.is_empty(),
+                    "Loaded mesh should have vertices"
+                );
+                eprintln!(
+                    "Successfully loaded bed.glb with {} vertices",
+                    mesh.positions.len()
+                );
             }
             Err(e) => {
                 // GLB files stored in Git LFS may be pointer stubs on CI

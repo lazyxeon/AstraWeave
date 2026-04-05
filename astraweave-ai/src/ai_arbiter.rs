@@ -1854,6 +1854,9 @@ mod tests {
         let snap5 = create_test_snapshot(5.0);
         arbiter.update(&snap5);
         let (_, r2, _, _, _, _) = arbiter.metrics();
-        assert_eq!(r2, 2, "Second LLM request should fire at exact cooldown boundary");
+        assert_eq!(
+            r2, 2,
+            "Second LLM request should fire at exact cooldown boundary"
+        );
     }
 }

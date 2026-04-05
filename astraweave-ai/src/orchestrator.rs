@@ -1802,7 +1802,11 @@ mod tests {
         let util = UtilityOrchestrator;
         let plan = util.propose_plan(&snap);
         // dist = |7-5| + |5-5| = 2 ≤ 3 → CoverFire should be present
-        assert_eq!(plan.steps.len(), 2, "Should have MoveTo + CoverFire (dist=2)");
+        assert_eq!(
+            plan.steps.len(),
+            2,
+            "Should have MoveTo + CoverFire (dist=2)"
+        );
         assert!(
             matches!(plan.steps.get(1), Some(ActionStep::CoverFire { .. })),
             "CoverFire expected when dist=2 with non-origin me"
@@ -1842,7 +1846,11 @@ mod tests {
         let util = UtilityOrchestrator;
         let plan = util.propose_plan(&snap);
         // dist = |5-5| + |7-5| = 2 ≤ 3 → CoverFire should be present
-        assert_eq!(plan.steps.len(), 2, "Should have MoveTo + CoverFire (dist=2)");
+        assert_eq!(
+            plan.steps.len(),
+            2,
+            "Should have MoveTo + CoverFire (dist=2)"
+        );
         assert!(
             matches!(plan.steps.get(1), Some(ActionStep::CoverFire { .. })),
             "CoverFire expected when dist=2 with non-origin me (y-axis)"
@@ -1882,7 +1890,11 @@ mod tests {
         let util = UtilityOrchestrator;
         let plan = util.propose_plan(&snap);
         // dist = |7-5| + |7-5| = 4 > 3 → no CoverFire (only MoveTo)
-        assert_eq!(plan.steps.len(), 1, "Should have only MoveTo (dist=4, no CoverFire)");
+        assert_eq!(
+            plan.steps.len(),
+            1,
+            "Should have only MoveTo (dist=4, no CoverFire)"
+        );
         assert!(
             matches!(plan.steps.first(), Some(ActionStep::MoveTo { .. })),
             "Only MoveTo expected when dist=4 (no CoverFire)"

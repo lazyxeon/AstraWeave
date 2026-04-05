@@ -2305,7 +2305,8 @@ mod tests {
         assert!(
             speed < initial_speed,
             "Drag should reduce speed: initial={}, now={}",
-            initial_speed, speed
+            initial_speed,
+            speed
         );
         assert!(
             speed > 0.0,
@@ -2358,8 +2359,8 @@ mod tests {
         };
 
         let bodies = vec![
-            (1u64, Vec3::new(1.0, 0.0, 0.0)),  // close
-            (2u64, Vec3::new(8.0, 0.0, 0.0)),  // far
+            (1u64, Vec3::new(1.0, 0.0, 0.0)), // close
+            (2u64, Vec3::new(8.0, 0.0, 0.0)), // far
         ];
 
         let results = mgr.calculate_explosion(&config, bodies);
@@ -2372,7 +2373,8 @@ mod tests {
         assert!(
             close.impulse.length() > far.impulse.length(),
             "Close body impulse ({}) should exceed far body impulse ({})",
-            close.impulse.length(), far.impulse.length()
+            close.impulse.length(),
+            far.impulse.length()
         );
 
         // Both should push outward (positive x)
@@ -2399,7 +2401,11 @@ mod tests {
 
         // With upward_bias=0.5, impulse should have both X and Y components
         assert!(r.impulse.x > 0.0, "Should push outward: x={}", r.impulse.x);
-        assert!(r.impulse.y > 0.0, "Upward bias should add Y: y={}", r.impulse.y);
+        assert!(
+            r.impulse.y > 0.0,
+            "Upward bias should add Y: y={}",
+            r.impulse.y
+        );
     }
 
     #[test]
@@ -2407,10 +2413,10 @@ mod tests {
         // Zero drag, known gravity → verify exact positions
         let pts = predict_trajectory(
             Vec3::ZERO,
-            Vec3::new(10.0, 0.0, 0.0), // 10 m/s in X
+            Vec3::new(10.0, 0.0, 0.0),  // 10 m/s in X
             Vec3::new(0.0, -10.0, 0.0), // gravity -10
-            0.0, // no drag
-            0.1, // dt = 0.1s
+            0.0,                        // no drag
+            0.1,                        // dt = 0.1s
             4,
         );
 
@@ -2521,15 +2527,16 @@ mod tests {
         };
         let id = manager.spawn(config);
 
-        let raycast = move |origin: Vec3, dir: Vec3, max: f32| -> Option<(Vec3, Vec3, Option<u64>, f32)> {
-            if origin.x < wall_x && dir.x > 0.0 {
-                let dist = wall_x - origin.x;
-                if dist < max {
-                    return Some((Vec3::new(wall_x, 0.0, 0.0), n, Some(1), dist));
+        let raycast =
+            move |origin: Vec3, dir: Vec3, max: f32| -> Option<(Vec3, Vec3, Option<u64>, f32)> {
+                if origin.x < wall_x && dir.x > 0.0 {
+                    let dist = wall_x - origin.x;
+                    if dist < max {
+                        return Some((Vec3::new(wall_x, 0.0, 0.0), n, Some(1), dist));
+                    }
                 }
-            }
-            None
-        };
+                None
+            };
 
         manager.update(1.0, raycast);
 

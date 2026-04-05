@@ -2,10 +2,7 @@
 //! These tests are designed to catch subtle mutations like boundary condition changes,
 //! arithmetic operator substitutions, and conditional logic inversions.
 
-#![allow(
-    clippy::field_reassign_with_default,
-    clippy::manual_range_contains
-)]
+#![allow(clippy::field_reassign_with_default, clippy::manual_range_contains)]
 
 #[cfg(test)]
 mod easing_tests {

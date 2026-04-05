@@ -2321,7 +2321,10 @@ mod mutation_kill_tests {
         // difficulty = (0.3 + 5*0.02 + 0.25 + 0.7*0.2).clamp(0,1)
         //            = (0.3 + 0.1 + 0.25 + 0.14) = 0.79
         let diff = quest.quest.metadata.difficulty_level;
-        assert!((diff - 0.79).abs() < 0.01, "difficulty should be ~0.79, got {diff}");
+        assert!(
+            (diff - 0.79).abs() < 0.01,
+            "difficulty should be ~0.79, got {diff}"
+        );
 
         // XP = (100 + 0.79*400) * 1.25 = 416 * 1.25 = 520
         assert_eq!(quest.quest.rewards.experience, 520, "XP should be 520");
@@ -2364,7 +2367,9 @@ mod mutation_kill_tests {
             assert!(
                 quest.quest.description.contains(expected_desc),
                 "{:?} description should contain '{}', got: {}",
-                feature, expected_desc, quest.quest.description
+                feature,
+                expected_desc,
+                quest.quest.description
             );
         }
     }
@@ -2507,5 +2512,4 @@ mod mutation_kill_tests {
         let dur = active.get_duration();
         assert!(dur.num_seconds() > 0, "duration should be positive");
     }
-
 }

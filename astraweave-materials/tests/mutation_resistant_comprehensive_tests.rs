@@ -36,13 +36,18 @@ fn graph_with_texture_base() -> Graph {
 
 #[test]
 fn node_type_name_texture2d() {
-    let n = Node::Texture2D { id: "t".into(), uv: "u".into() };
+    let n = Node::Texture2D {
+        id: "t".into(),
+        uv: "u".into(),
+    };
     assert_eq!(n.type_name(), "Texture2D");
 }
 
 #[test]
 fn node_type_name_constant3() {
-    let n = Node::Constant3 { value: [0.0, 0.0, 0.0] };
+    let n = Node::Constant3 {
+        value: [0.0, 0.0, 0.0],
+    };
     assert_eq!(n.type_name(), "Constant3");
 }
 
@@ -54,25 +59,37 @@ fn node_type_name_constant1() {
 
 #[test]
 fn node_type_name_multiply() {
-    let n = Node::Multiply { a: "a".into(), b: "b".into() };
+    let n = Node::Multiply {
+        a: "a".into(),
+        b: "b".into(),
+    };
     assert_eq!(n.type_name(), "Multiply");
 }
 
 #[test]
 fn node_type_name_add() {
-    let n = Node::Add { a: "a".into(), b: "b".into() };
+    let n = Node::Add {
+        a: "a".into(),
+        b: "b".into(),
+    };
     assert_eq!(n.type_name(), "Add");
 }
 
 #[test]
 fn node_type_name_metallic_roughness() {
-    let n = Node::MetallicRoughness { metallic: "m".into(), roughness: "r".into() };
+    let n = Node::MetallicRoughness {
+        metallic: "m".into(),
+        roughness: "r".into(),
+    };
     assert_eq!(n.type_name(), "MetallicRoughness");
 }
 
 #[test]
 fn node_type_name_clearcoat() {
-    let n = Node::Clearcoat { weight: "w".into(), roughness: "r".into() };
+    let n = Node::Clearcoat {
+        weight: "w".into(),
+        roughness: "r".into(),
+    };
     assert_eq!(n.type_name(), "Clearcoat");
 }
 
@@ -90,7 +107,11 @@ fn node_type_name_transmission() {
 
 #[test]
 fn node_type_name_normal_map() {
-    let n = Node::NormalMap { id: "n".into(), uv: "u".into(), scale: 1.0 };
+    let n = Node::NormalMap {
+        id: "n".into(),
+        uv: "u".into(),
+        scale: 1.0,
+    };
     assert_eq!(n.type_name(), "NormalMap");
 }
 
@@ -100,12 +121,21 @@ fn node_type_name_normal_map() {
 
 #[test]
 fn node_is_texture_true_texture2d() {
-    assert!(Node::Texture2D { id: "t".into(), uv: "u".into() }.is_texture());
+    assert!(Node::Texture2D {
+        id: "t".into(),
+        uv: "u".into()
+    }
+    .is_texture());
 }
 
 #[test]
 fn node_is_texture_true_normal_map() {
-    assert!(Node::NormalMap { id: "n".into(), uv: "u".into(), scale: 1.0 }.is_texture());
+    assert!(Node::NormalMap {
+        id: "n".into(),
+        uv: "u".into(),
+        scale: 1.0
+    }
+    .is_texture());
 }
 
 #[test]
@@ -115,27 +145,46 @@ fn node_is_texture_false_constant1() {
 
 #[test]
 fn node_is_texture_false_constant3() {
-    assert!(!Node::Constant3 { value: [1.0, 0.0, 0.0] }.is_texture());
+    assert!(!Node::Constant3 {
+        value: [1.0, 0.0, 0.0]
+    }
+    .is_texture());
 }
 
 #[test]
 fn node_is_texture_false_add() {
-    assert!(!Node::Add { a: "a".into(), b: "b".into() }.is_texture());
+    assert!(!Node::Add {
+        a: "a".into(),
+        b: "b".into()
+    }
+    .is_texture());
 }
 
 #[test]
 fn node_is_texture_false_multiply() {
-    assert!(!Node::Multiply { a: "a".into(), b: "b".into() }.is_texture());
+    assert!(!Node::Multiply {
+        a: "a".into(),
+        b: "b".into()
+    }
+    .is_texture());
 }
 
 #[test]
 fn node_is_texture_false_metallic_roughness() {
-    assert!(!Node::MetallicRoughness { metallic: "m".into(), roughness: "r".into() }.is_texture());
+    assert!(!Node::MetallicRoughness {
+        metallic: "m".into(),
+        roughness: "r".into()
+    }
+    .is_texture());
 }
 
 #[test]
 fn node_is_texture_false_clearcoat() {
-    assert!(!Node::Clearcoat { weight: "w".into(), roughness: "r".into() }.is_texture());
+    assert!(!Node::Clearcoat {
+        weight: "w".into(),
+        roughness: "r".into()
+    }
+    .is_texture());
 }
 
 #[test]
@@ -159,37 +208,65 @@ fn node_is_constant_true_constant1() {
 
 #[test]
 fn node_is_constant_true_constant3() {
-    assert!(Node::Constant3 { value: [0.0, 0.0, 0.0] }.is_constant());
+    assert!(Node::Constant3 {
+        value: [0.0, 0.0, 0.0]
+    }
+    .is_constant());
 }
 
 #[test]
 fn node_is_constant_false_texture2d() {
-    assert!(!Node::Texture2D { id: "t".into(), uv: "u".into() }.is_constant());
+    assert!(!Node::Texture2D {
+        id: "t".into(),
+        uv: "u".into()
+    }
+    .is_constant());
 }
 
 #[test]
 fn node_is_constant_false_add() {
-    assert!(!Node::Add { a: "a".into(), b: "b".into() }.is_constant());
+    assert!(!Node::Add {
+        a: "a".into(),
+        b: "b".into()
+    }
+    .is_constant());
 }
 
 #[test]
 fn node_is_constant_false_multiply() {
-    assert!(!Node::Multiply { a: "a".into(), b: "b".into() }.is_constant());
+    assert!(!Node::Multiply {
+        a: "a".into(),
+        b: "b".into()
+    }
+    .is_constant());
 }
 
 #[test]
 fn node_is_constant_false_metallic_roughness() {
-    assert!(!Node::MetallicRoughness { metallic: "m".into(), roughness: "r".into() }.is_constant());
+    assert!(!Node::MetallicRoughness {
+        metallic: "m".into(),
+        roughness: "r".into()
+    }
+    .is_constant());
 }
 
 #[test]
 fn node_is_constant_false_normal_map() {
-    assert!(!Node::NormalMap { id: "n".into(), uv: "u".into(), scale: 1.0 }.is_constant());
+    assert!(!Node::NormalMap {
+        id: "n".into(),
+        uv: "u".into(),
+        scale: 1.0
+    }
+    .is_constant());
 }
 
 #[test]
 fn node_is_constant_false_clearcoat() {
-    assert!(!Node::Clearcoat { weight: "w".into(), roughness: "r".into() }.is_constant());
+    assert!(!Node::Clearcoat {
+        weight: "w".into(),
+        roughness: "r".into()
+    }
+    .is_constant());
 }
 
 // ===========================================================================
@@ -198,12 +275,20 @@ fn node_is_constant_false_clearcoat() {
 
 #[test]
 fn node_is_arithmetic_true_add() {
-    assert!(Node::Add { a: "a".into(), b: "b".into() }.is_arithmetic());
+    assert!(Node::Add {
+        a: "a".into(),
+        b: "b".into()
+    }
+    .is_arithmetic());
 }
 
 #[test]
 fn node_is_arithmetic_true_multiply() {
-    assert!(Node::Multiply { a: "a".into(), b: "b".into() }.is_arithmetic());
+    assert!(Node::Multiply {
+        a: "a".into(),
+        b: "b".into()
+    }
+    .is_arithmetic());
 }
 
 #[test]
@@ -218,17 +303,30 @@ fn node_is_arithmetic_false_constant3() {
 
 #[test]
 fn node_is_arithmetic_false_texture2d() {
-    assert!(!Node::Texture2D { id: "t".into(), uv: "u".into() }.is_arithmetic());
+    assert!(!Node::Texture2D {
+        id: "t".into(),
+        uv: "u".into()
+    }
+    .is_arithmetic());
 }
 
 #[test]
 fn node_is_arithmetic_false_metallic_roughness() {
-    assert!(!Node::MetallicRoughness { metallic: "m".into(), roughness: "r".into() }.is_arithmetic());
+    assert!(!Node::MetallicRoughness {
+        metallic: "m".into(),
+        roughness: "r".into()
+    }
+    .is_arithmetic());
 }
 
 #[test]
 fn node_is_arithmetic_false_normal_map() {
-    assert!(!Node::NormalMap { id: "n".into(), uv: "u".into(), scale: 1.0 }.is_arithmetic());
+    assert!(!Node::NormalMap {
+        id: "n".into(),
+        uv: "u".into(),
+        scale: 1.0
+    }
+    .is_arithmetic());
 }
 
 // ===========================================================================
@@ -237,12 +335,20 @@ fn node_is_arithmetic_false_normal_map() {
 
 #[test]
 fn node_is_pbr_true_metallic_roughness() {
-    assert!(Node::MetallicRoughness { metallic: "m".into(), roughness: "r".into() }.is_pbr_property());
+    assert!(Node::MetallicRoughness {
+        metallic: "m".into(),
+        roughness: "r".into()
+    }
+    .is_pbr_property());
 }
 
 #[test]
 fn node_is_pbr_true_clearcoat() {
-    assert!(Node::Clearcoat { weight: "w".into(), roughness: "r".into() }.is_pbr_property());
+    assert!(Node::Clearcoat {
+        weight: "w".into(),
+        roughness: "r".into()
+    }
+    .is_pbr_property());
 }
 
 #[test]
@@ -257,7 +363,11 @@ fn node_is_pbr_true_transmission() {
 
 #[test]
 fn node_is_pbr_false_texture2d() {
-    assert!(!Node::Texture2D { id: "t".into(), uv: "u".into() }.is_pbr_property());
+    assert!(!Node::Texture2D {
+        id: "t".into(),
+        uv: "u".into()
+    }
+    .is_pbr_property());
 }
 
 #[test]
@@ -272,17 +382,30 @@ fn node_is_pbr_false_constant3() {
 
 #[test]
 fn node_is_pbr_false_add() {
-    assert!(!Node::Add { a: "a".into(), b: "b".into() }.is_pbr_property());
+    assert!(!Node::Add {
+        a: "a".into(),
+        b: "b".into()
+    }
+    .is_pbr_property());
 }
 
 #[test]
 fn node_is_pbr_false_multiply() {
-    assert!(!Node::Multiply { a: "a".into(), b: "b".into() }.is_pbr_property());
+    assert!(!Node::Multiply {
+        a: "a".into(),
+        b: "b".into()
+    }
+    .is_pbr_property());
 }
 
 #[test]
 fn node_is_pbr_false_normal_map() {
-    assert!(!Node::NormalMap { id: "n".into(), uv: "u".into(), scale: 1.0 }.is_pbr_property());
+    assert!(!Node::NormalMap {
+        id: "n".into(),
+        uv: "u".into(),
+        scale: 1.0
+    }
+    .is_pbr_property());
 }
 
 // ===========================================================================
@@ -368,7 +491,12 @@ fn node_display_constant1_zero() {
 #[test]
 fn node_display_constant3_exact() {
     assert_eq!(
-        format!("{}", Node::Constant3 { value: [1.0, 0.5, 0.0] }),
+        format!(
+            "{}",
+            Node::Constant3 {
+                value: [1.0, 0.5, 0.0]
+            }
+        ),
         "Constant3(1.00, 0.50, 0.00)"
     );
 }
@@ -376,7 +504,13 @@ fn node_display_constant3_exact() {
 #[test]
 fn node_display_texture2d_exact() {
     assert_eq!(
-        format!("{}", Node::Texture2D { id: "albedo".into(), uv: "uv0".into() }),
+        format!(
+            "{}",
+            Node::Texture2D {
+                id: "albedo".into(),
+                uv: "uv0".into()
+            }
+        ),
         "Texture2D(id=\"albedo\", uv=uv0)"
     );
 }
@@ -384,7 +518,13 @@ fn node_display_texture2d_exact() {
 #[test]
 fn node_display_add_exact() {
     assert_eq!(
-        format!("{}", Node::Add { a: "x".into(), b: "y".into() }),
+        format!(
+            "{}",
+            Node::Add {
+                a: "x".into(),
+                b: "y".into()
+            }
+        ),
         "Add(x + y)"
     );
 }
@@ -392,7 +532,13 @@ fn node_display_add_exact() {
 #[test]
 fn node_display_multiply_exact() {
     assert_eq!(
-        format!("{}", Node::Multiply { a: "x".into(), b: "y".into() }),
+        format!(
+            "{}",
+            Node::Multiply {
+                a: "x".into(),
+                b: "y".into()
+            }
+        ),
         "Multiply(x × y)"
     );
 }
@@ -400,7 +546,13 @@ fn node_display_multiply_exact() {
 #[test]
 fn node_display_metallic_roughness_exact() {
     assert_eq!(
-        format!("{}", Node::MetallicRoughness { metallic: "m".into(), roughness: "r".into() }),
+        format!(
+            "{}",
+            Node::MetallicRoughness {
+                metallic: "m".into(),
+                roughness: "r".into()
+            }
+        ),
         "MetallicRoughness(m=m, r=r)"
     );
 }
@@ -408,7 +560,14 @@ fn node_display_metallic_roughness_exact() {
 #[test]
 fn node_display_normal_map_exact() {
     assert_eq!(
-        format!("{}", Node::NormalMap { id: "nrm".into(), uv: "uv".into(), scale: 1.0 }),
+        format!(
+            "{}",
+            Node::NormalMap {
+                id: "nrm".into(),
+                uv: "uv".into(),
+                scale: 1.0
+            }
+        ),
         "NormalMap(id=\"nrm\", uv=uv, scale=1.00)"
     );
 }
@@ -416,7 +575,13 @@ fn node_display_normal_map_exact() {
 #[test]
 fn node_display_clearcoat_exact() {
     assert_eq!(
-        format!("{}", Node::Clearcoat { weight: "w".into(), roughness: "r".into() }),
+        format!(
+            "{}",
+            Node::Clearcoat {
+                weight: "w".into(),
+                roughness: "r".into()
+            }
+        ),
         "Clearcoat(w=w, r=r)"
     );
 }
@@ -499,7 +664,10 @@ fn node_serde_roundtrip_normal_map() {
 
 #[test]
 fn node_serde_roundtrip_clearcoat() {
-    let n = Node::Clearcoat { weight: "w".into(), roughness: "r".into() };
+    let n = Node::Clearcoat {
+        weight: "w".into(),
+        roughness: "r".into(),
+    };
     let json = serde_json::to_string(&n).unwrap();
     let back: Node = serde_json::from_str(&json).unwrap();
     assert_eq!(n, back);
@@ -772,7 +940,10 @@ fn graph_serde_roundtrip_with_channels() {
 fn compile_minimal_graph_contains_eval_material() {
     let g = minimal_graph();
     let (wgsl, _) = compile_to_wgsl(&g).unwrap();
-    assert!(wgsl.contains("eval_material"), "missing eval_material in WGSL");
+    assert!(
+        wgsl.contains("eval_material"),
+        "missing eval_material in WGSL"
+    );
 }
 
 #[test]
@@ -787,7 +958,10 @@ fn compile_texture_graph_collects_binding() {
     let g = graph_with_texture_base();
     let (wgsl, bindings) = compile_to_wgsl(&g).unwrap();
     assert!(wgsl.contains("textureSample"), "missing textureSample");
-    assert!(bindings.contains(&"albedo".to_string()), "missing albedo binding");
+    assert!(
+        bindings.contains(&"albedo".to_string()),
+        "missing albedo binding"
+    );
 }
 
 #[test]
@@ -835,7 +1009,13 @@ fn compile_multiply_node_in_graph() {
 fn compile_clearcoat_channel() {
     let mut g = Graph::new("base").with_clearcoat("cc");
     g.add_node("base", Node::constant3(1.0, 0.0, 0.0));
-    g.add_node("cc", Node::Clearcoat { weight: "w".into(), roughness: "r".into() });
+    g.add_node(
+        "cc",
+        Node::Clearcoat {
+            weight: "w".into(),
+            roughness: "r".into(),
+        },
+    );
     g.add_node("w", Node::constant1(1.0));
     g.add_node("r", Node::constant1(0.1));
     let (wgsl, _) = compile_to_wgsl(&g).unwrap();
@@ -850,7 +1030,10 @@ fn compile_clearcoat_channel() {
 fn compile_missing_base_node_is_error() {
     let g = Graph::new("nonexistent");
     let result = compile_to_wgsl(&g);
-    assert!(result.is_err(), "Expected error for missing base_color node");
+    assert!(
+        result.is_err(),
+        "Expected error for missing base_color node"
+    );
 }
 
 #[test]
@@ -1035,7 +1218,10 @@ fn bake_config_total_pixels_64() {
 
 #[test]
 fn bake_config_total_pixels_1024() {
-    assert_eq!(BakeConfig::with_resolution(1024).total_pixels(), 1024 * 1024);
+    assert_eq!(
+        BakeConfig::with_resolution(1024).total_pixels(),
+        1024 * 1024
+    );
 }
 
 #[test]
@@ -1084,7 +1270,11 @@ fn bake_config_display_high_quality() {
 fn bake_config_display_preview_no_mipmaps() {
     let s = format!("{}", BakeConfig::preview());
     assert!(s.contains("256x256"), "got: {}", s);
-    assert!(!s.contains("mipmaps"), "mipmaps=false but got mipmaps in: {}", s);
+    assert!(
+        !s.contains("mipmaps"),
+        "mipmaps=false but got mipmaps in: {}",
+        s
+    );
 }
 
 // ===========================================================================
@@ -1553,7 +1743,11 @@ fn brdf_lut_sample_center() {
     let s = lut.sample(0.5, 0.5);
     assert!(s.is_some());
     let [scale, bias] = s.unwrap();
-    assert!((0.0..=1.0).contains(&scale), "scale out of range: {}", scale);
+    assert!(
+        (0.0..=1.0).contains(&scale),
+        "scale out of range: {}",
+        scale
+    );
     assert!((0.0..=1.0).contains(&bias), "bias out of range: {}", bias);
 }
 
@@ -1621,7 +1815,12 @@ fn brdf_lut_display() {
 fn compile_graph_with_anisotropy_channel() {
     let mut g = Graph::new("base");
     g.add_node("base", Node::constant3(1.0, 0.0, 0.0));
-    g.add_node("aniso", Node::Anisotropy { amount: "amt".into() });
+    g.add_node(
+        "aniso",
+        Node::Anisotropy {
+            amount: "amt".into(),
+        },
+    );
     g.add_node("amt", Node::constant1(0.5));
     g.anisotropy = Some("aniso".into());
     let (wgsl, _) = compile_to_wgsl(&g).unwrap();
@@ -1632,7 +1831,12 @@ fn compile_graph_with_anisotropy_channel() {
 fn compile_graph_with_transmission_channel() {
     let mut g = Graph::new("base");
     g.add_node("base", Node::constant3(1.0, 0.0, 0.0));
-    g.add_node("trans", Node::Transmission { amount: "amt".into() });
+    g.add_node(
+        "trans",
+        Node::Transmission {
+            amount: "amt".into(),
+        },
+    );
     g.add_node("amt", Node::constant1(0.3));
     g.transmission = Some("trans".into());
     let (wgsl, _) = compile_to_wgsl(&g).unwrap();
@@ -1713,7 +1917,10 @@ fn material_baker_validate_detects_out_of_range_base_color() {
         wgsl: String::new(),
     };
     let warnings = baker.validate(&baked);
-    assert!(!warnings.is_empty(), "expected warning for negative base color");
+    assert!(
+        !warnings.is_empty(),
+        "expected warning for negative base color"
+    );
 }
 
 // ===========================================================================
@@ -1740,7 +1947,11 @@ fn validate_brdf_reciprocity_always_true() {
     for m in [0.0, 0.5, 1.0] {
         for r in [0.1, 0.5, 1.0] {
             let result = validate_brdf(m, r, [0.5, 0.5, 0.5]);
-            assert!(result.reciprocity, "expected reciprocity=true for m={}, r={}", m, r);
+            assert!(
+                result.reciprocity,
+                "expected reciprocity=true for m={}, r={}",
+                m, r
+            );
         }
     }
 }
@@ -1780,7 +1991,10 @@ fn node_partial_eq_same_variant_same_values() {
 fn graph_with_anisotropy_reports_has_anisotropy_true() {
     let mut g = Graph::new("base");
     g.anisotropy = Some("aniso".into());
-    assert!(g.has_anisotropy(), "graph with anisotropy set must return true");
+    assert!(
+        g.has_anisotropy(),
+        "graph with anisotropy set must return true"
+    );
 }
 
 /// Kills `lib.rs:169` `has_transmission → false`
@@ -1788,7 +2002,10 @@ fn graph_with_anisotropy_reports_has_anisotropy_true() {
 fn graph_with_transmission_reports_has_transmission_true() {
     let mut g = Graph::new("base");
     g.transmission = Some("trans".into());
-    assert!(g.has_transmission(), "graph with transmission set must return true");
+    assert!(
+        g.has_transmission(),
+        "graph with transmission set must return true"
+    );
 }
 
 /// Kills `lib.rs:1017` `wgsl_size → 1`
@@ -1797,7 +2014,11 @@ fn graph_with_transmission_reports_has_transmission_true() {
 fn material_package_wgsl_size_is_realistic() {
     let g = minimal_graph();
     let pkg = MaterialPackage::from_graph(&g).unwrap();
-    assert!(pkg.wgsl_size() > 10, "wgsl shader must be >10 bytes, got {}", pkg.wgsl_size());
+    assert!(
+        pkg.wgsl_size() > 10,
+        "wgsl shader must be >10 bytes, got {}",
+        pkg.wgsl_size()
+    );
 }
 
 /// Kills validate_brdf arithmetic mutations (lines 1310-1311)
@@ -1849,10 +2070,13 @@ fn material_baker_validate_detects_bad_normals() {
     let mut baked = baker.bake(&g).unwrap();
     // Set a wildly denormalized normal — length ≈ √(4+4+4) = 3.46, far from 1.0
     baked.normal[0] = [1.0, 1.0, 1.0, 1.0]; // maps to nx=1, ny=1, nz=1, len=√3≈1.73
-    // Actually, normal is in [0,1] range, converted: nx=1*2-1=1, ny=1*2-1=1, nz=1*2-1=1
-    // len = √(1+1+1) = √3 ≈ 1.732, (1.732-1.0).abs() = 0.732 > 0.1 → should warn
+                                            // Actually, normal is in [0,1] range, converted: nx=1*2-1=1, ny=1*2-1=1, nz=1*2-1=1
+                                            // len = √(1+1+1) = √3 ≈ 1.732, (1.732-1.0).abs() = 0.732 > 0.1 → should warn
     let warnings = baker.validate(&baked);
-    assert!(!warnings.is_empty(), "denormalized normals should produce warnings");
+    assert!(
+        !warnings.is_empty(),
+        "denormalized normals should produce warnings"
+    );
 }
 
 /// Kills BrdfLut math mutations by verifying specific LUT values.
@@ -1865,12 +2089,25 @@ fn brdf_lut_sample_values_discriminate_math() {
     // Head-on view (NdotV≈1), smooth surface (roughness≈0)
     // Scale should be high (>0.5), bias should be low (<0.3)
     let [s_hi, b_hi] = lut.sample(0.95, 0.1).unwrap();
-    assert!(s_hi > 0.5, "head-on smooth: scale should be >0.5, got {}", s_hi);
-    assert!(b_hi < 0.3, "head-on smooth: bias should be <0.3, got {}", b_hi);
+    assert!(
+        s_hi > 0.5,
+        "head-on smooth: scale should be >0.5, got {}",
+        s_hi
+    );
+    assert!(
+        b_hi < 0.3,
+        "head-on smooth: bias should be <0.3, got {}",
+        b_hi
+    );
 
     // Grazing view (NdotV≈0), smooth surface → strong Fresnel
     let [s_lo, b_lo] = lut.sample(0.05, 0.1).unwrap();
-    assert!(b_lo > s_lo, "grazing smooth: bias should exceed scale, got s={}, b={}", s_lo, b_lo);
+    assert!(
+        b_lo > s_lo,
+        "grazing smooth: bias should exceed scale, got s={}, b={}",
+        s_lo,
+        b_lo
+    );
 }
 
 /// Verify geometry_smith behavior through LUT — rough surfaces should reduce specular
@@ -1880,6 +2117,10 @@ fn brdf_lut_rough_surface_reduces_specular() {
     let [s_smooth, _] = lut.sample(0.5, 0.1).unwrap();
     let [s_rough, _] = lut.sample(0.5, 0.9).unwrap();
     // Smoother surfaces should have higher specular scale
-    assert!(s_smooth > s_rough,
-        "smooth should have higher scale than rough: smooth={}, rough={}", s_smooth, s_rough);
+    assert!(
+        s_smooth > s_rough,
+        "smooth should have higher scale than rough: smooth={}, rough={}",
+        s_smooth,
+        s_rough
+    );
 }

@@ -471,7 +471,7 @@ mod tests {
         let audio = AssetType::Audio;
         let sprite = AssetType::Sprite;
         let tileset = AssetType::Tileset;
-        
+
         assert!(matches!(texture, AssetType::Texture));
         assert!(matches!(hdri, AssetType::Hdri));
         assert!(matches!(model, AssetType::Model));
@@ -496,7 +496,11 @@ mod tests {
 
     #[test]
     fn test_license_info_cc_by() {
-        let license = LicenseInfo::cc_by("4.0", "Artist Name".to_string(), Some("https://source.com".to_string()));
+        let license = LicenseInfo::cc_by(
+            "4.0",
+            "Artist Name".to_string(),
+            Some("https://source.com".to_string()),
+        );
         assert_eq!(license.spdx_id, "CC-BY-4.0");
         assert!(license.requires_attribution);
         assert_eq!(license.author, Some("Artist Name".to_string()));
@@ -504,7 +508,11 @@ mod tests {
 
     #[test]
     fn test_license_info_cc_by_sa() {
-        let license = LicenseInfo::cc_by_sa("4.0", "Artist Name".to_string(), Some("https://source.com".to_string()));
+        let license = LicenseInfo::cc_by_sa(
+            "4.0",
+            "Artist Name".to_string(),
+            Some("https://source.com".to_string()),
+        );
         assert_eq!(license.spdx_id, "CC-BY-SA-4.0");
         assert!(license.requires_attribution);
         assert!(license.requires_sharealike);
@@ -519,7 +527,11 @@ mod tests {
 
     #[test]
     fn test_license_attribution_text_cc_by() {
-        let license = LicenseInfo::cc_by("4.0", "Artist Name".to_string(), Some("https://source.com".to_string()));
+        let license = LicenseInfo::cc_by(
+            "4.0",
+            "Artist Name".to_string(),
+            Some("https://source.com".to_string()),
+        );
         let text = license.attribution_text("test_asset").unwrap();
         assert!(text.contains("test_asset"));
         assert!(text.contains("Artist Name"));
@@ -530,8 +542,11 @@ mod tests {
     #[test]
     fn test_resolved_asset_creation() {
         let mut urls = HashMap::new();
-        urls.insert("albedo".to_string(), "https://example.com/albedo.png".to_string());
-        
+        urls.insert(
+            "albedo".to_string(),
+            "https://example.com/albedo.png".to_string(),
+        );
+
         let asset = ResolvedAsset {
             handle: "brick_wall".to_string(),
             provider: "polyhaven".to_string(),
@@ -540,7 +555,7 @@ mod tests {
             license: LicenseInfo::cc0(None, Some("https://polyhaven.com".to_string())),
             metadata: HashMap::new(),
         };
-        
+
         assert_eq!(asset.handle, "brick_wall");
         assert_eq!(asset.provider, "polyhaven");
         assert!(matches!(asset.asset_type, AssetType::Texture));
@@ -560,7 +575,7 @@ mod tests {
             author: None,
             source_url: None,
         };
-        
+
         assert_eq!(config.provider, "polyhaven");
         assert_eq!(config.id, Some("brick_wall_001".to_string()));
         assert_eq!(config.resolution, Some("2k".to_string()));
@@ -581,7 +596,11 @@ mod tests {
 
     #[test]
     fn test_license_info_clone() {
-        let license = LicenseInfo::cc_by("4.0", "Author".to_string(), Some("https://source.com".to_string()));
+        let license = LicenseInfo::cc_by(
+            "4.0",
+            "Author".to_string(),
+            Some("https://source.com".to_string()),
+        );
         let cloned = license.clone();
         assert_eq!(license.spdx_id, cloned.spdx_id);
         assert_eq!(license.author, cloned.author);
@@ -636,7 +655,10 @@ mod tests {
 
     #[test]
     fn test_license_info_cc0_with_author() {
-        let license = LicenseInfo::cc0(Some("Author".to_string()), Some("https://source.com".to_string()));
+        let license = LicenseInfo::cc0(
+            Some("Author".to_string()),
+            Some("https://source.com".to_string()),
+        );
         assert_eq!(license.spdx_id, "CC0-1.0");
         assert_eq!(license.author, Some("Author".to_string()));
     }
@@ -646,7 +668,7 @@ mod tests {
         let mut metadata = HashMap::new();
         metadata.insert("resolution".to_string(), "2k".to_string());
         metadata.insert("format".to_string(), "png".to_string());
-        
+
         let asset = ResolvedAsset {
             handle: "test".to_string(),
             provider: "polyhaven".to_string(),
@@ -655,7 +677,7 @@ mod tests {
             license: LicenseInfo::cc0(None, None),
             metadata,
         };
-        
+
         assert_eq!(asset.metadata.len(), 2);
         assert_eq!(asset.metadata.get("resolution"), Some(&"2k".to_string()));
     }
@@ -674,7 +696,7 @@ mod tests {
             author: None,
             source_url: None,
         };
-        
+
         assert_eq!(config.format, Some("glb".to_string()));
         assert!(config.resolution.is_none());
     }
@@ -682,9 +704,18 @@ mod tests {
     #[test]
     fn test_resolved_asset_multiple_urls() {
         let mut urls = HashMap::new();
-        urls.insert("albedo".to_string(), "https://example.com/albedo.png".to_string());
-        urls.insert("normal".to_string(), "https://example.com/normal.png".to_string());
-        urls.insert("roughness".to_string(), "https://example.com/roughness.png".to_string());
+        urls.insert(
+            "albedo".to_string(),
+            "https://example.com/albedo.png".to_string(),
+        );
+        urls.insert(
+            "normal".to_string(),
+            "https://example.com/normal.png".to_string(),
+        );
+        urls.insert(
+            "roughness".to_string(),
+            "https://example.com/roughness.png".to_string(),
+        );
 
         let asset = ResolvedAsset {
             handle: "pbr_material".to_string(),
@@ -807,7 +838,11 @@ mod tests {
             provider: "dummy".to_string(),
             asset_type: AssetType::Model,
             urls,
-            license: LicenseInfo::cc_by("4.0", "Author".to_string(), Some("https://src".to_string())),
+            license: LicenseInfo::cc_by(
+                "4.0",
+                "Author".to_string(),
+                Some("https://src".to_string()),
+            ),
             metadata: HashMap::new(),
         };
 
@@ -852,7 +887,11 @@ mod tests {
             provider: "dummy".to_string(),
             asset_type: AssetType::Texture,
             urls: HashMap::new(),
-            license: LicenseInfo::cc_by("4.0", "Author".to_string(), Some("https://src".to_string())),
+            license: LicenseInfo::cc_by(
+                "4.0",
+                "Author".to_string(),
+                Some("https://src".to_string()),
+            ),
             metadata: HashMap::new(),
         };
 

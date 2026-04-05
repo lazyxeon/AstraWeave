@@ -42,7 +42,11 @@ fn world_state_empty_blob() {
 
 #[test]
 fn world_state_clone() {
-    let ws = WorldState { tick: 100, ecs_blob: vec![10], state_hash: 55 };
+    let ws = WorldState {
+        tick: 100,
+        ecs_blob: vec![10],
+        state_hash: 55,
+    };
     let ws2 = ws.clone();
     assert_eq!(ws2.tick, 100);
     assert_eq!(ws2.ecs_blob, vec![10]);
@@ -51,7 +55,11 @@ fn world_state_clone() {
 
 #[test]
 fn world_state_json_roundtrip() {
-    let ws = WorldState { tick: 77, ecs_blob: vec![4, 5], state_hash: 12345 };
+    let ws = WorldState {
+        tick: 77,
+        ecs_blob: vec![4, 5],
+        state_hash: 12345,
+    };
     let json = serde_json::to_string(&ws).unwrap();
     let back: WorldState = serde_json::from_str(&json).unwrap();
     assert_eq!(back.tick, 77);
@@ -78,8 +86,16 @@ fn player_inventory_with_items() {
     let inv = PlayerInventory {
         credits: 500,
         items: vec![
-            ItemStack { kind: "sword".into(), qty: 1, attrs: HashMap::new() },
-            ItemStack { kind: "potion".into(), qty: 5, attrs: HashMap::new() },
+            ItemStack {
+                kind: "sword".into(),
+                qty: 1,
+                attrs: HashMap::new(),
+            },
+            ItemStack {
+                kind: "potion".into(),
+                qty: 5,
+                attrs: HashMap::new(),
+            },
         ],
     };
     assert_eq!(inv.credits, 500);
@@ -92,7 +108,10 @@ fn player_inventory_with_items() {
 
 #[test]
 fn player_inventory_clone() {
-    let inv = PlayerInventory { credits: 42, items: vec![] };
+    let inv = PlayerInventory {
+        credits: 42,
+        items: vec![],
+    };
     let inv2 = inv.clone();
     assert_eq!(inv2.credits, 42);
 }
@@ -117,7 +136,11 @@ fn item_stack_fields() {
 
 #[test]
 fn item_stack_empty_attrs() {
-    let item = ItemStack { kind: "gem".into(), qty: 10, attrs: HashMap::new() };
+    let item = ItemStack {
+        kind: "gem".into(),
+        qty: 10,
+        attrs: HashMap::new(),
+    };
     assert!(item.attrs.is_empty());
     assert_eq!(item.qty, 10);
 }
@@ -126,7 +149,11 @@ fn item_stack_empty_attrs() {
 fn item_stack_json_roundtrip() {
     let mut attrs = HashMap::new();
     attrs.insert("power".into(), 100);
-    let item = ItemStack { kind: "ring".into(), qty: 1, attrs };
+    let item = ItemStack {
+        kind: "ring".into(),
+        qty: 1,
+        attrs,
+    };
     let json = serde_json::to_string(&item).unwrap();
     let back: ItemStack = serde_json::from_str(&json).unwrap();
     assert_eq!(back.kind, "ring");
@@ -201,7 +228,11 @@ fn make_bundle() -> SaveBundleV2 {
         created_at: time::OffsetDateTime::now_utc(),
         player_id: "player_1".into(),
         slot: 0,
-        world: WorldState { tick: 100, ecs_blob: vec![1, 2], state_hash: 42 },
+        world: WorldState {
+            tick: 100,
+            ecs_blob: vec![1, 2],
+            state_hash: 42,
+        },
         companions: vec![CompanionProfile {
             id: "comp".into(),
             name: "Buddy".into(),
@@ -210,7 +241,10 @@ fn make_bundle() -> SaveBundleV2 {
             facts: vec![],
             episodes_summarized: vec![],
         }],
-        inventory: PlayerInventory { credits: 1000, items: vec![] },
+        inventory: PlayerInventory {
+            credits: 1000,
+            items: vec![],
+        },
         meta: HashMap::new(),
     }
 }
@@ -284,13 +318,24 @@ fn save_bundle_v1_into_v2_schema() {
         player_id: "old_player".into(),
         slot: 2,
         created_at: time::OffsetDateTime::now_utc(),
-        world: WorldState { tick: 50, ecs_blob: vec![3, 4], state_hash: 7 },
-        inventory: PlayerInventory { credits: 500, items: vec![] },
+        world: WorldState {
+            tick: 50,
+            ecs_blob: vec![3, 4],
+            state_hash: 7,
+        },
+        inventory: PlayerInventory {
+            credits: 500,
+            items: vec![],
+        },
         companion: None,
         meta: HashMap::new(),
     };
     let v2 = v1.into_v2();
-    assert_eq!(v2.schema, SAVE_SCHEMA_VERSION, "migrated schema must be {}", SAVE_SCHEMA_VERSION);
+    assert_eq!(
+        v2.schema, SAVE_SCHEMA_VERSION,
+        "migrated schema must be {}",
+        SAVE_SCHEMA_VERSION
+    );
     assert_eq!(v2.player_id, "old_player");
     assert_eq!(v2.slot, 2);
     assert_eq!(v2.world.tick, 50);
@@ -311,8 +356,15 @@ fn save_bundle_v1_into_v2_with_companion() {
         player_id: "p".into(),
         slot: 0,
         created_at: time::OffsetDateTime::now_utc(),
-        world: WorldState { tick: 0, ecs_blob: vec![], state_hash: 0 },
-        inventory: PlayerInventory { credits: 0, items: vec![] },
+        world: WorldState {
+            tick: 0,
+            ecs_blob: vec![],
+            state_hash: 0,
+        },
+        inventory: PlayerInventory {
+            credits: 0,
+            items: vec![],
+        },
         companion: Some(comp),
         meta: HashMap::new(),
     };
@@ -330,8 +382,15 @@ fn save_bundle_v1_into_v2_preserves_meta() {
         player_id: "p".into(),
         slot: 0,
         created_at: time::OffsetDateTime::now_utc(),
-        world: WorldState { tick: 0, ecs_blob: vec![], state_hash: 0 },
-        inventory: PlayerInventory { credits: 0, items: vec![] },
+        world: WorldState {
+            tick: 0,
+            ecs_blob: vec![],
+            state_hash: 0,
+        },
+        inventory: PlayerInventory {
+            credits: 0,
+            items: vec![],
+        },
         companion: None,
         meta,
     };

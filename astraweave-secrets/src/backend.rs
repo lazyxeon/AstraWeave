@@ -136,7 +136,7 @@ mod tests {
         let backend = mock::MockBackend::new();
         let secret = SecretValue::from_str("my_password");
         backend.set("api_key", secret).unwrap();
-        
+
         let retrieved = backend.get("api_key").unwrap();
         assert_eq!(retrieved.as_str().unwrap(), "my_password");
     }
@@ -153,7 +153,7 @@ mod tests {
         let backend = mock::MockBackend::new();
         let secret = SecretValue::from_str("to_delete");
         backend.set("temp_key", secret).unwrap();
-        
+
         assert!(backend.delete("temp_key").is_ok());
         assert!(backend.get("temp_key").is_err());
     }
@@ -171,7 +171,7 @@ mod tests {
         backend.set("key1", SecretValue::from_str("val1")).unwrap();
         backend.set("key2", SecretValue::from_str("val2")).unwrap();
         backend.set("key3", SecretValue::from_str("val3")).unwrap();
-        
+
         let keys = backend.list_keys().unwrap();
         assert_eq!(keys.len(), 3);
         assert!(keys.contains(&"key1".to_string()));
@@ -191,7 +191,7 @@ mod tests {
         let backend = mock::MockBackend::new();
         backend.set("key", SecretValue::from_str("first")).unwrap();
         backend.set("key", SecretValue::from_str("second")).unwrap();
-        
+
         let retrieved = backend.get("key").unwrap();
         assert_eq!(retrieved.as_str().unwrap(), "second");
     }

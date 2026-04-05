@@ -99,8 +99,11 @@ fn create_tls_acceptor(cert_path: &Path, key_path: &Path) -> Result<TlsAcceptor>
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive("info".parse().map_err(|e| anyhow!("Invalid log directive: {}", e))?)
+            EnvFilter::from_default_env().add_directive(
+                "info"
+                    .parse()
+                    .map_err(|e| anyhow!("Invalid log directive: {}", e))?,
+            ),
         )
         .init();
 
@@ -116,7 +119,9 @@ async fn main() -> Result<()> {
             "--disable-tls" => {
                 #[cfg(not(debug_assertions))]
                 {
-                    return Err(anyhow!("SECURITY: TLS cannot be disabled in release builds"));
+                    return Err(anyhow!(
+                        "SECURITY: TLS cannot be disabled in release builds"
+                    ));
                 }
                 #[cfg(debug_assertions)]
                 {
@@ -162,9 +167,10 @@ async fn main() -> Result<()> {
 
     // Spawn HTTP server
     tokio::spawn(async move {
-        let addr_result: Result<SocketAddr> = "0.0.0.0:8789".parse()
+        let addr_result: Result<SocketAddr> = "0.0.0.0:8789"
+            .parse()
             .map_err(|e| anyhow!("Invalid HTTP admin address: {}", e));
-        
+
         match addr_result {
             Ok(addr) => {
                 info!("HTTP admin on http://{}", addr);
@@ -182,7 +188,8 @@ async fn main() -> Result<()> {
     });
 
     // WS server
-    let ws_addr: SocketAddr = "0.0.0.0:8788".parse()
+    let ws_addr: SocketAddr = "0.0.0.0:8788"
+        .parse()
         .map_err(|e| anyhow!("Invalid WebSocket address: {}", e))?;
 
     let listener = TcpListener::bind(ws_addr).await?;
@@ -618,7 +625,8 @@ async fn handle_socket(
 fn build_snapshot(app: &AppState, rid: &str) -> Result<(ServerToClient, u32)> {
     let (server_tick, sid, payload) = {
         let mut rooms = app.rooms.lock();
-        let room = rooms.get_mut(rid)
+        let room = rooms
+            .get_mut(rid)
             .ok_or_else(|| anyhow!("Room {} not found", rid))?;
         room.tick += 1;
         room.snap_id = room.snap_id.wrapping_add(1);
@@ -670,21 +678,21 @@ async fn on_client_msg(
                     if let Some(p) = room.players.get_mut(pid) {
                         let now = tokio::time::Instant::now();
                         let elapsed = now.duration_since(p.last_refill).as_secs_f32();
-                        
+
                         // Refill tokens based on elapsed time (8 tokens/sec)
                         const REFILL_RATE: f32 = 8.0;
                         const BUCKET_SIZE: f32 = 60.0;
                         const COST_PER_MESSAGE: f32 = 1.0;
-                        
+
                         p.tokens += REFILL_RATE * elapsed;
                         if p.tokens > BUCKET_SIZE {
                             p.tokens = BUCKET_SIZE;
                         }
                         p.last_refill = now;
-                        
+
                         // Deduct cost
                         p.tokens -= COST_PER_MESSAGE;
-                        
+
                         if p.tokens < 0.0 {
                             kick = true;
                         } else {
@@ -695,7 +703,7 @@ async fn on_client_msg(
                         let mut mac = HmacSha256::new_from_slice(&room.session_key.0)
                             .expect("HMAC can take key of any size");
                         mac.update(&input_blob);
-                        
+
                         if mac.verify_slice(&sig).is_err() {
                             warn!("HMAC signature verification failed for pid={pid}");
                         }
@@ -798,21 +806,21 @@ async fn on_client_msg_tls(
                     if let Some(p) = room.players.get_mut(pid) {
                         let now = tokio::time::Instant::now();
                         let elapsed = now.duration_since(p.last_refill).as_secs_f32();
-                        
+
                         // Refill tokens based on elapsed time (8 tokens/sec)
                         const REFILL_RATE: f32 = 8.0;
                         const BUCKET_SIZE: f32 = 60.0;
                         const COST_PER_MESSAGE: f32 = 1.0;
-                        
+
                         p.tokens += REFILL_RATE * elapsed;
                         if p.tokens > BUCKET_SIZE {
                             p.tokens = BUCKET_SIZE;
                         }
                         p.last_refill = now;
-                        
+
                         // Deduct cost
                         p.tokens -= COST_PER_MESSAGE;
-                        
+
                         if p.tokens < 0.0 {
                             kick = true;
                         } else {
@@ -823,7 +831,7 @@ async fn on_client_msg_tls(
                         let mut mac = HmacSha256::new_from_slice(&room.session_key.0)
                             .expect("HMAC can take key of any size");
                         mac.update(&input_blob);
-                        
+
                         if mac.verify_slice(&sig).is_err() {
                             warn!("HMAC signature verification failed for pid={pid}");
                         }

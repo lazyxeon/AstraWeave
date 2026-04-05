@@ -3,7 +3,11 @@
 //! Without the `profiling` feature (default), everything is a zero-cost no-op.
 //! These tests verify the exact deterministic return values.
 
-#![allow(clippy::bool_assert_comparison, clippy::drop_non_drop, clippy::useless_vec)]
+#![allow(
+    clippy::bool_assert_comparison,
+    clippy::drop_non_drop,
+    clippy::useless_vec
+)]
 
 use astraweave_profiling::*;
 

@@ -69,8 +69,8 @@ fn assert_stored_vector_valid(stored: &astraweave_embeddings::StoredVector, expe
 
 /// Generate a random vector of given dimensions
 fn generate_vector(dims: usize, seed: u64) -> Vec<f32> {
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
     let mut result = Vec::with_capacity(dims);
     for i in 0..dims {
@@ -104,7 +104,11 @@ fn generate_sample_text(index: usize) -> String {
         "The village elder shared tales of forgotten kingdoms",
         "A fierce dragon guarded the treasure deep within the cave",
     ];
-    format!("{} - instance {}", templates[index % templates.len()], index)
+    format!(
+        "{} - instance {}",
+        templates[index % templates.len()],
+        index
+    )
 }
 
 /// Create a populated vector store for benchmarking
@@ -141,7 +145,9 @@ fn bench_embedding_client(c: &mut Criterion) {
     group.bench_function("single_embed", |b| {
         b.iter(|| {
             rt.block_on(async {
-                let result = client.embed(black_box("The player approached the door")).await;
+                let result = client
+                    .embed(black_box("The player approached the door"))
+                    .await;
                 let embedding = result.expect("Embed should succeed");
                 assert_vector_valid(&embedding, 384);
                 embedding
@@ -257,7 +263,9 @@ fn bench_vector_store_operations(c: &mut Criterion) {
                 let store = astraweave_embeddings::VectorStore::new(dims);
                 for i in 0..100 {
                     let vector = generate_vector(dims, i as u64);
-                    store.insert(format!("vec_{}", i), vector, "test".to_string()).unwrap();
+                    store
+                        .insert(format!("vec_{}", i), vector, "test".to_string())
+                        .unwrap();
                 }
                 store
             },
@@ -334,8 +342,7 @@ fn bench_distance_calculations(c: &mut Criterion) {
             &(vec_a.clone(), vec_b.clone()),
             |b, (a, b_vec)| {
                 b.iter(|| {
-                    let dot_product: f32 =
-                        a.iter().zip(b_vec.iter()).map(|(x, y)| x * y).sum();
+                    let dot_product: f32 = a.iter().zip(b_vec.iter()).map(|(x, y)| x * y).sum();
                     let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
                     let norm_b: f32 = b_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
                     let distance = if norm_a == 0.0 || norm_b == 0.0 {
@@ -376,11 +383,8 @@ fn bench_distance_calculations(c: &mut Criterion) {
             &(vec_a.clone(), vec_b.clone()),
             |b, (a, b_vec)| {
                 b.iter(|| {
-                    let distance: f32 = a
-                        .iter()
-                        .zip(b_vec.iter())
-                        .map(|(x, y)| (x - y).abs())
-                        .sum();
+                    let distance: f32 =
+                        a.iter().zip(b_vec.iter()).map(|(x, y)| (x - y).abs()).sum();
                     assert!(distance >= 0.0, "Manhattan distance should be non-negative");
                     black_box(distance)
                 })
@@ -425,7 +429,8 @@ fn bench_text_preprocessing(c: &mut Criterion) {
             &text,
             |b, text| {
                 b.iter(|| {
-                    let result = astraweave_embeddings::TextPreprocessor::preprocess(black_box(text));
+                    let result =
+                        astraweave_embeddings::TextPreprocessor::preprocess(black_box(text));
                     assert!(!result.is_empty(), "Preprocessed text should not be empty");
                     result
                 })
@@ -562,15 +567,16 @@ fn bench_batch_operations(c: &mut Criterion) {
         let target_size = initial_size / 2;
 
         group.bench_with_input(
-            BenchmarkId::new("prune_vectors", format!("{}_to_{}", initial_size, target_size)),
+            BenchmarkId::new(
+                "prune_vectors",
+                format!("{}_to_{}", initial_size, target_size),
+            ),
             &(initial_size, target_size),
             |b, &(initial, target)| {
                 b.iter_batched(
                     || create_populated_store(dims, initial),
                     |store| {
-                        let pruned = store
-                            .prune_vectors(target)
-                            .expect("Prune should succeed");
+                        let pruned = store.prune_vectors(target).expect("Prune should succeed");
                         assert!(pruned > 0, "Should prune some vectors");
                         assert!(
                             store.len() <= target,
@@ -620,7 +626,10 @@ fn bench_memory_operations(c: &mut Criterion) {
                 std::hint::black_box(vec!["player_1".to_string(), "dragon_boss".to_string()]),
             );
             assert!(!memory.id.is_empty(), "Memory should have valid ID");
-            assert_eq!(memory.category, astraweave_embeddings::MemoryCategory::Combat);
+            assert_eq!(
+                memory.category,
+                astraweave_embeddings::MemoryCategory::Combat
+            );
             memory
         })
     });
@@ -631,10 +640,13 @@ fn bench_memory_operations(c: &mut Criterion) {
             let memory = astraweave_embeddings::MemoryUtils::create_social_memory(
                 std::hint::black_box("The merchant greeted the player warmly".to_string()),
                 std::hint::black_box(vec!["player_1".to_string(), "merchant_npc".to_string()]),
-                std::hint::black_box(0.7),  // importance
-                std::hint::black_box(0.5),  // valence
+                std::hint::black_box(0.7), // importance
+                std::hint::black_box(0.5), // valence
             );
-            assert_eq!(memory.category, astraweave_embeddings::MemoryCategory::Social);
+            assert_eq!(
+                memory.category,
+                astraweave_embeddings::MemoryCategory::Social
+            );
             memory
         })
     });
@@ -647,7 +659,10 @@ fn bench_memory_operations(c: &mut Criterion) {
                 std::hint::black_box(0.8),
                 std::hint::black_box(astraweave_embeddings::CombatOutcome::Victory),
             );
-            assert_eq!(memory.category, astraweave_embeddings::MemoryCategory::Combat);
+            assert_eq!(
+                memory.category,
+                astraweave_embeddings::MemoryCategory::Combat
+            );
             memory
         })
     });

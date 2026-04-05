@@ -338,13 +338,15 @@ impl EvaluationSuite {
 
         // Check if expected actions appear in the plan
         for expected_action in expected {
-            let action_present = steps.iter().any(|s| matches!(
-                (expected_action.as_str(), s),
-                ("MoveTo", ActionStep::MoveTo { .. })
-                    | ("Throw", ActionStep::Throw { .. })
-                    | ("CoverFire", ActionStep::CoverFire { .. })
-                    | ("Revive", ActionStep::Revive { .. })
-            ));
+            let action_present = steps.iter().any(|s| {
+                matches!(
+                    (expected_action.as_str(), s),
+                    ("MoveTo", ActionStep::MoveTo { .. })
+                        | ("Throw", ActionStep::Throw { .. })
+                        | ("CoverFire", ActionStep::CoverFire { .. })
+                        | ("Revive", ActionStep::Revive { .. })
+                )
+            });
 
             if action_present {
                 score += 1.0 / expected.len() as f64;
@@ -366,13 +368,15 @@ impl EvaluationSuite {
         let violations = steps
             .iter()
             .filter(|s| {
-                forbidden.iter().any(|f| matches!(
-                    (f.as_str(), *s),
-                    ("MoveTo", ActionStep::MoveTo { .. })
-                        | ("Throw", ActionStep::Throw { .. })
-                        | ("CoverFire", ActionStep::CoverFire { .. })
-                        | ("Revive", ActionStep::Revive { .. })
-                ))
+                forbidden.iter().any(|f| {
+                    matches!(
+                        (f.as_str(), *s),
+                        ("MoveTo", ActionStep::MoveTo { .. })
+                            | ("Throw", ActionStep::Throw { .. })
+                            | ("CoverFire", ActionStep::CoverFire { .. })
+                            | ("Revive", ActionStep::Revive { .. })
+                    )
+                })
             })
             .count();
 
@@ -517,7 +521,11 @@ mod tests {
         let plan = PlanIntent {
             plan_id: "test".to_string(),
             steps: vec![
-                ActionStep::MoveTo { x: 10, y: 5, speed: None },
+                ActionStep::MoveTo {
+                    x: 10,
+                    y: 5,
+                    speed: None,
+                },
                 ActionStep::CoverFire {
                     target_id: 99,
                     duration: 2.0,

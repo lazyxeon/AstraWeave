@@ -6,13 +6,13 @@
 use crate::cache::ConversionCache;
 use crate::conversion::{ConversionJob, ConversionResult};
 use crate::decomposer::{DecompositionResult, SceneDecomposer};
-use crate::texture_processor::{
-    process_decomposition_textures, TextureProcessingConfig, TextureProcessingResult,
-};
 use crate::discovery::{BlenderDiscovery, BlenderDiscoveryConfig, BlenderInstallation};
 use crate::error::{BlendError, BlendResult};
 use crate::options::ConversionOptions;
 use crate::progress::{CancellationToken, ConversionProgress, ProgressReceiver, ProgressTracker};
+use crate::texture_processor::{
+    process_decomposition_textures, TextureProcessingConfig, TextureProcessingResult,
+};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -275,8 +275,12 @@ impl BlendImporter {
         source_path: impl AsRef<Path>,
         output_dir: impl AsRef<Path>,
     ) -> BlendResult<DecompositionResult> {
-        self.decompose_with_options(source_path, output_dir, ConversionOptions::scene_decomposition())
-            .await
+        self.decompose_with_options(
+            source_path,
+            output_dir,
+            ConversionOptions::scene_decomposition(),
+        )
+        .await
     }
 
     /// Decomposes a .blend scene with custom options.
@@ -332,13 +336,14 @@ impl BlendImporter {
             .await?;
 
         let tex_config = texture_config.unwrap_or_default();
-        let tex_result = process_decomposition_textures(&result, &tex_config)
-            .map_err(|e| BlendError::ConversionFailed {
+        let tex_result = process_decomposition_textures(&result, &tex_config).map_err(|e| {
+            BlendError::ConversionFailed {
                 message: format!("Texture processing failed: {e}"),
                 exit_code: None,
                 stderr: String::new(),
                 blender_output: None,
-            })?;
+            }
+        })?;
 
         Ok((result, tex_result))
     }

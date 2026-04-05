@@ -278,100 +278,104 @@ impl ApplicationHandler for DemoApp {
                     let height = config.height;
 
                     if let Some(surface) = surface {
-                    if let Ok(frame) = surface.get_current_texture() {
-                        let view = frame
-                            .texture
-                            .create_view(&wgpu::TextureViewDescriptor::default());
+                        if let Ok(frame) = surface.get_current_texture() {
+                            let view = frame
+                                .texture
+                                .create_view(&wgpu::TextureViewDescriptor::default());
 
-                        let mut encoder =
-                            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                label: Some("Render Encoder"),
-                            });
-
-                        // Clear the screen
-                        {
-                            let _render_pass =
-                                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                    label: Some("Main Render Pass"),
-                                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                        view: &view,
-                                        resolve_target: None,
-                                        ops: wgpu::Operations {
-                                            load: wgpu::LoadOp::Clear(wgpu::Color {
-                                                r: 0.1,
-                                                g: 0.2,
-                                                b: 0.3,
-                                                a: 1.0,
-                                            }),
-                                            store: wgpu::StoreOp::Store,
-                                        },
-                                    })],
-                                    depth_stencil_attachment: None,
-                                    timestamp_writes: None,
-                                    occlusion_query_set: None,
-                                });
-                        }
-
-                        // Render egui
-                        let screen_descriptor = egui_wgpu::ScreenDescriptor {
-                            size_in_pixels: [width, height],
-                            pixels_per_point: window.scale_factor() as f32,
-                        };
-
-                        let egui_input = egui_platform.take_egui_input(window);
-                        egui_ctx.begin_pass(egui_input);
-
-                        egui::Window::new("Debug HUD")
-                            .default_pos([10.0, 10.0])
-                            .default_width(350.0)
-                            .show(egui_ctx, |ui| {
-                                app.hud.ui(ui);
-                            });
-
-                        let egui_output = egui_ctx.end_pass();
-                        let clipped_primitives =
-                            egui_ctx.tessellate(egui_output.shapes, egui_output.pixels_per_point);
-
-                        for (id, image_delta) in &egui_output.textures_delta.set {
-                            egui_renderer.update_texture(device, queue, *id, image_delta);
-                        }
-
-                        {
-                            let mut render_pass =
-                                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                    label: Some("Egui Render Pass"),
-                                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                        view: &view,
-                                        resolve_target: None,
-                                        ops: wgpu::Operations {
-                                            load: wgpu::LoadOp::Load,
-                                            store: wgpu::StoreOp::Store,
-                                        },
-                                    })],
-                                    depth_stencil_attachment: None,
-                                    timestamp_writes: None,
-                                    occlusion_query_set: None,
+                            let mut encoder =
+                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: Some("Render Encoder"),
                                 });
 
-                            // SAFETY: The render pass doesn't outlive the encoder scope,
-                            // so extending the lifetime to 'static is safe here.
-                            // This is required due to egui-wgpu's API in version 0.32.
-                            let render_pass_static: &mut wgpu::RenderPass<'static> =
-                                unsafe { std::mem::transmute(&mut render_pass) };
-                            egui_renderer.render(
-                                render_pass_static,
-                                &clipped_primitives,
-                                &screen_descriptor,
-                            );
-                        }
+                            // Clear the screen
+                            {
+                                let _render_pass =
+                                    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                        label: Some("Main Render Pass"),
+                                        color_attachments: &[Some(
+                                            wgpu::RenderPassColorAttachment {
+                                                view: &view,
+                                                resolve_target: None,
+                                                ops: wgpu::Operations {
+                                                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                                                        r: 0.1,
+                                                        g: 0.2,
+                                                        b: 0.3,
+                                                        a: 1.0,
+                                                    }),
+                                                    store: wgpu::StoreOp::Store,
+                                                },
+                                            },
+                                        )],
+                                        depth_stencil_attachment: None,
+                                        timestamp_writes: None,
+                                        occlusion_query_set: None,
+                                    });
+                            }
 
-                        for id in &egui_output.textures_delta.free {
-                            egui_renderer.free_texture(id);
-                        }
+                            // Render egui
+                            let screen_descriptor = egui_wgpu::ScreenDescriptor {
+                                size_in_pixels: [width, height],
+                                pixels_per_point: window.scale_factor() as f32,
+                            };
 
-                        queue.submit(Some(encoder.finish()));
-                        frame.present();
-                    }
+                            let egui_input = egui_platform.take_egui_input(window);
+                            egui_ctx.begin_pass(egui_input);
+
+                            egui::Window::new("Debug HUD")
+                                .default_pos([10.0, 10.0])
+                                .default_width(350.0)
+                                .show(egui_ctx, |ui| {
+                                    app.hud.ui(ui);
+                                });
+
+                            let egui_output = egui_ctx.end_pass();
+                            let clipped_primitives = egui_ctx
+                                .tessellate(egui_output.shapes, egui_output.pixels_per_point);
+
+                            for (id, image_delta) in &egui_output.textures_delta.set {
+                                egui_renderer.update_texture(device, queue, *id, image_delta);
+                            }
+
+                            {
+                                let mut render_pass =
+                                    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                        label: Some("Egui Render Pass"),
+                                        color_attachments: &[Some(
+                                            wgpu::RenderPassColorAttachment {
+                                                view: &view,
+                                                resolve_target: None,
+                                                ops: wgpu::Operations {
+                                                    load: wgpu::LoadOp::Load,
+                                                    store: wgpu::StoreOp::Store,
+                                                },
+                                            },
+                                        )],
+                                        depth_stencil_attachment: None,
+                                        timestamp_writes: None,
+                                        occlusion_query_set: None,
+                                    });
+
+                                // SAFETY: The render pass doesn't outlive the encoder scope,
+                                // so extending the lifetime to 'static is safe here.
+                                // This is required due to egui-wgpu's API in version 0.32.
+                                let render_pass_static: &mut wgpu::RenderPass<'static> =
+                                    unsafe { std::mem::transmute(&mut render_pass) };
+                                egui_renderer.render(
+                                    render_pass_static,
+                                    &clipped_primitives,
+                                    &screen_descriptor,
+                                );
+                            }
+
+                            for id in &egui_output.textures_delta.free {
+                                egui_renderer.free_texture(id);
+                            }
+
+                            queue.submit(Some(encoder.finish()));
+                            frame.present();
+                        }
                     }
 
                     // Update system render time

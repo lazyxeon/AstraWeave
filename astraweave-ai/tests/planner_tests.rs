@@ -9,7 +9,9 @@
 //! - ✅ Mode switching completes without errors
 
 use astraweave_ai::core_loop::{dispatch_planner, CAiController, PlannerMode};
-use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot};
+use astraweave_core::{
+    CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot,
+};
 use std::collections::BTreeMap;
 use std::time::Instant;
 

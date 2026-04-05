@@ -100,7 +100,12 @@ impl ApplicationHandler for PhysicsApp {
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
         let renderer = match self.renderer.as_mut() {
             Some(r) => r,
             None => return,
@@ -213,7 +218,7 @@ impl ApplicationHandler for PhysicsApp {
                             3.0,
                             60.0,
                             14.0,
-                            );
+                        );
                         self.destruct_ids.push(id);
                         println!("Spawned destructible");
                     }
@@ -228,10 +233,8 @@ impl ApplicationHandler for PhysicsApp {
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if button == MouseButton::Right {
-                    self.cam_ctl.process_mouse_button(
-                        MouseButton::Right,
-                        state == ElementState::Pressed,
-                    );
+                    self.cam_ctl
+                        .process_mouse_button(MouseButton::Right, state == ElementState::Pressed);
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -261,7 +264,8 @@ impl ApplicationHandler for PhysicsApp {
         self.cam_ctl.update_camera(&mut self.camera, dt);
 
         let desired = vec3(self.move_dir.x, 0.0, self.move_dir.z);
-        self.phys.control_character(self.char_id, desired, dt, self.climb_try);
+        self.phys
+            .control_character(self.char_id, desired, dt, self.climb_try);
         self.phys.step();
 
         self.instances.clear();

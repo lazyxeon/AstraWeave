@@ -12,8 +12,8 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use serde::{Deserialize, Serialize};
 
 use aw_net_proto::{
-    decode_msg, encode_msg, new_room_id, sign16, ClientToServer, Codec, ServerToClient,
-    SessionKey, PROTOCOL_VERSION,
+    decode_msg, encode_msg, new_room_id, sign16, ClientToServer, Codec, ServerToClient, SessionKey,
+    PROTOCOL_VERSION,
 };
 
 // ============================================================================
@@ -27,7 +27,9 @@ fn assert_encoded_valid(bytes: &[u8]) {
 
 /// Assert that roundtrip preserves data
 #[allow(dead_code)]
-fn assert_roundtrip_valid<T: Serialize + for<'de> Deserialize<'de> + PartialEq + std::fmt::Debug>(
+fn assert_roundtrip_valid<
+    T: Serialize + for<'de> Deserialize<'de> + PartialEq + std::fmt::Debug,
+>(
     original: &T,
     codec: Codec,
 ) {
@@ -78,7 +80,9 @@ fn create_input_frame_msg(seq: u32, payload_size: usize) -> ClientToServer {
 
 /// Create a Ping message
 fn create_ping_msg() -> ClientToServer {
-    ClientToServer::Ping { nano: 123456789012345 }
+    ClientToServer::Ping {
+        nano: 123456789012345,
+    }
 }
 
 /// Create a server HelloAck message
@@ -232,9 +236,8 @@ fn bench_decoding(c: &mut Criterion) {
             &bytes,
             |b, bytes| {
                 b.iter(|| {
-                    let decoded: ClientToServer =
-                        decode_msg(Codec::PostcardLz4, black_box(bytes))
-                            .expect("Decode should succeed");
+                    let decoded: ClientToServer = decode_msg(Codec::PostcardLz4, black_box(bytes))
+                        .expect("Decode should succeed");
                     black_box(decoded)
                 })
             },
@@ -252,9 +255,8 @@ fn bench_decoding(c: &mut Criterion) {
             &bytes,
             |b, bytes| {
                 b.iter(|| {
-                    let decoded: ServerToClient =
-                        decode_msg(Codec::PostcardLz4, black_box(bytes))
-                            .expect("Decode should succeed");
+                    let decoded: ServerToClient = decode_msg(Codec::PostcardLz4, black_box(bytes))
+                        .expect("Decode should succeed");
                     black_box(decoded)
                 })
             },
@@ -296,14 +298,18 @@ fn bench_roundtrip(c: &mut Criterion) {
         );
 
         // Bincode roundtrip
-        group.bench_with_input(BenchmarkId::new("roundtrip_bincode", name), &msg, |b, msg| {
-            b.iter(|| {
-                let bytes = encode_msg(Codec::Bincode, black_box(msg));
-                let decoded: ClientToServer =
-                    decode_msg(Codec::Bincode, &bytes).expect("Decode should succeed");
-                black_box(decoded)
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("roundtrip_bincode", name),
+            &msg,
+            |b, msg| {
+                b.iter(|| {
+                    let bytes = encode_msg(Codec::Bincode, black_box(msg));
+                    let decoded: ClientToServer =
+                        decode_msg(Codec::Bincode, &bytes).expect("Decode should succeed");
+                    black_box(decoded)
+                })
+            },
+        );
     }
 
     group.finish();
@@ -494,7 +500,9 @@ fn bench_server_messages(c: &mut Criterion) {
     });
 
     // Pong message
-    let pong = ServerToClient::Pong { nano: 123456789012345 };
+    let pong = ServerToClient::Pong {
+        nano: 123456789012345,
+    };
     group.bench_function("encode_pong", |b| {
         b.iter(|| {
             let bytes = encode_msg(Codec::PostcardLz4, black_box(&pong));

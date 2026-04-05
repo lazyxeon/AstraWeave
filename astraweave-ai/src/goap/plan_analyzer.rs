@@ -635,10 +635,8 @@ mod tests {
 
     #[test]
     fn test_analyze_total_risk_and_duration() {
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action("a1", 2.0),
-            create_test_action("a2", 3.0),
-        ];
+        let actions: Vec<Box<dyn Action>> =
+            vec![create_test_action("a1", 2.0), create_test_action("a2", 3.0)];
         let plan = vec!["a1".to_string(), "a2".to_string()];
         let history = ActionHistory::new();
         let start = WorldState::new();
@@ -655,10 +653,8 @@ mod tests {
 
     #[test]
     fn test_analyze_success_probability_product() {
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action("a1", 1.0),
-            create_test_action("a2", 1.0),
-        ];
+        let actions: Vec<Box<dyn Action>> =
+            vec![create_test_action("a1", 1.0), create_test_action("a2", 1.0)];
         let plan = vec!["a1".to_string(), "a2".to_string()];
         let history = ActionHistory::new();
         let start = WorldState::new();
@@ -874,8 +870,7 @@ mod tests {
         // High risk → Critical priority
         assert!(suggestions
             .iter()
-            .any(|s| s.priority == SuggestionPriority::Critical
-                && s.message.contains("risk")));
+            .any(|s| s.priority == SuggestionPriority::Critical && s.message.contains("risk")));
     }
 
     #[test]
@@ -892,9 +887,7 @@ mod tests {
 
         let suggestions = PlanAnalyzer::suggest_optimizations(&metrics);
         assert!(
-            suggestions
-                .iter()
-                .any(|s| s.message.contains("long time")),
+            suggestions.iter().any(|s| s.message.contains("long time")),
             "Expected duration suggestion: {:?}",
             suggestions.iter().map(|s| &s.message).collect::<Vec<_>>()
         );
@@ -921,9 +914,7 @@ mod tests {
 
         let suggestions = PlanAnalyzer::suggest_optimizations(&metrics);
         assert!(
-            suggestions
-                .iter()
-                .any(|s| s.message.contains("12 actions")),
+            suggestions.iter().any(|s| s.message.contains("12 actions")),
             "Expected long plan suggestion: {:?}",
             suggestions.iter().map(|s| &s.message).collect::<Vec<_>>()
         );
@@ -993,8 +984,7 @@ mod tests {
         let suggestions = PlanAnalyzer::suggest_optimizations(&metrics);
         assert!(suggestions
             .iter()
-            .any(|s| s.message.contains("slow_action")
-                && s.message.contains("long time")));
+            .any(|s| s.message.contains("slow_action") && s.message.contains("long time")));
         // LongDuration bottleneck → Low priority
         let dur_s = suggestions
             .iter()
@@ -1215,8 +1205,7 @@ mod tests {
         assert!(
             bottlenecks
                 .iter()
-                .any(|b| b.action_name == "slow"
-                    && b.reason == BottleneckReason::LongDuration),
+                .any(|b| b.action_name == "slow" && b.reason == BottleneckReason::LongDuration),
             "Expected LongDuration bottleneck: {:?}",
             bottlenecks
         );
@@ -1329,9 +1318,9 @@ mod tests {
     #[test]
     fn test_generate_report_with_suggestions() {
         let metrics = PlanMetrics {
-            total_cost: 25.0, // triggers high-cost suggestion
-            total_risk: 3.0,  // triggers high-risk suggestion
-            action_count: 12, // triggers long-plan suggestion
+            total_cost: 25.0,         // triggers high-cost suggestion
+            total_risk: 3.0,          // triggers high-risk suggestion
+            action_count: 12,         // triggers long-plan suggestion
             estimated_duration: 35.0, // triggers long-duration suggestion
             success_probability: 0.3, // triggers low success suggestion
             bottlenecks: vec![],
@@ -1401,9 +1390,9 @@ mod tests {
     #[test]
     fn test_suggestion_sorting_by_priority() {
         let metrics = PlanMetrics {
-            total_cost: 25.0,     // High priority
-            total_risk: 3.0,      // Critical priority
-            action_count: 12,     // Medium priority
+            total_cost: 25.0,         // High priority
+            total_risk: 3.0,          // Critical priority
+            action_count: 12,         // Medium priority
             estimated_duration: 35.0, // Medium priority
             success_probability: 0.3, // Critical priority
             bottlenecks: vec![],
@@ -1504,7 +1493,10 @@ mod tests {
             .iter()
             .find(|b| b.action_name == "extreme")
             .unwrap();
-        assert!((bn.severity - 1.0).abs() < 0.01, "Severity should cap at 1.0");
+        assert!(
+            (bn.severity - 1.0).abs() < 0.01,
+            "Severity should cap at 1.0"
+        );
     }
 
     #[test]

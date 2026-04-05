@@ -2683,7 +2683,10 @@ mod tests {
         let (_pw, vm, vid) = spawn_test_vehicle();
         let vehicle = vm.get(vid).unwrap();
         assert_eq!(vehicle.current_gear, 1, "Should start in 1st gear");
-        assert!((vehicle.engine_rpm - 800.0).abs() < 1.0, "Should start at idle RPM");
+        assert!(
+            (vehicle.engine_rpm - 800.0).abs() < 1.0,
+            "Should start at idle RPM"
+        );
     }
 
     #[test]
@@ -3671,10 +3674,12 @@ mod tests {
 
         let v = vm.get(vid).unwrap();
         // average_slip_ratio() should match manual calculation
-        let grounded_wheels: Vec<&WheelState> =
-            v.wheels.iter().filter(|w| w.grounded).collect();
+        let grounded_wheels: Vec<&WheelState> = v.wheels.iter().filter(|w| w.grounded).collect();
         if !grounded_wheels.is_empty() {
-            let manual_avg: f32 = grounded_wheels.iter().map(|w| w.slip_ratio.abs()).sum::<f32>()
+            let manual_avg: f32 = grounded_wheels
+                .iter()
+                .map(|w| w.slip_ratio.abs())
+                .sum::<f32>()
                 / grounded_wheels.len() as f32;
             assert!(
                 (v.average_slip_ratio() - manual_avg).abs() < 1e-5,
@@ -4013,13 +4018,15 @@ mod tests {
     #[test]
     fn r9_torque_at_peak_rpm_returns_max_torque() {
         let engine = EngineConfig::default();
-        // At max_torque_rpm, torque should be max_torque 
+        // At max_torque_rpm, torque should be max_torque
         // (the parabolic curve peaks here)
         let torque = engine.torque_at_rpm(engine.max_torque_rpm);
         assert!(
             (torque - engine.max_torque).abs() < 1.0,
             "Torque at peak RPM ({}) should be ~{}, got {}",
-            engine.max_torque_rpm, engine.max_torque, torque
+            engine.max_torque_rpm,
+            engine.max_torque,
+            torque
         );
     }
 
@@ -4034,7 +4041,11 @@ mod tests {
     fn r9_torque_at_rpm_zero_above_max() {
         let engine = EngineConfig::default();
         let torque = engine.torque_at_rpm(8000.0); // above max_rpm (7000)
-        assert_eq!(torque, 0.0, "Torque above max RPM should be 0, got {}", torque);
+        assert_eq!(
+            torque, 0.0,
+            "Torque above max RPM should be 0, got {}",
+            torque
+        );
     }
 
     #[test]
@@ -4046,7 +4057,8 @@ mod tests {
         assert!(
             torque > 0.0 && torque < engine.max_torque,
             "Mid-range torque should be between 0 and max: got {} at RPM {}",
-            torque, mid_rpm
+            torque,
+            mid_rpm
         );
     }
 
@@ -4059,7 +4071,8 @@ mod tests {
         assert!(
             torque > 0.0 && torque < engine.max_torque,
             "Falloff torque should be less than max: got {} at RPM {}",
-            torque, falloff_rpm
+            torque,
+            falloff_rpm
         );
     }
 
@@ -4078,7 +4091,8 @@ mod tests {
         assert!(
             (ratio - expected).abs() < 0.01,
             "1st gear ratio should be {}, got {}",
-            expected, ratio
+            expected,
+            ratio
         );
     }
 
@@ -4090,7 +4104,8 @@ mod tests {
         assert!(
             (ratio - expected).abs() < 0.01,
             "Reverse ratio should be {}, got {}",
-            expected, ratio
+            expected,
+            ratio
         );
     }
 
@@ -4123,7 +4138,10 @@ mod tests {
         settle_vehicle(&mut pw, &mut vm, vid);
 
         // Apply throttle
-        let input = VehicleInput { throttle: 1.0, ..Default::default() };
+        let input = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..10 {
             vm.update_with_input(vid, &mut pw, &input, 1.0 / 60.0);
             pw.step();
@@ -4131,12 +4149,21 @@ mod tests {
 
         let v = vm.get(vid).unwrap();
         // Grounded wheels should have non-zero force vectors
-        let has_force = v.wheels.iter().any(|w| w.grounded && w.force.length() > 0.01);
-        assert!(has_force, "Grounded wheels should have force after throttle input");
+        let has_force = v
+            .wheels
+            .iter()
+            .any(|w| w.grounded && w.force.length() > 0.01);
+        assert!(
+            has_force,
+            "Grounded wheels should have force after throttle input"
+        );
 
         // At least one wheel force should have a suspension (Y-ish) component
         let has_vertical = v.wheels.iter().any(|w| w.grounded && w.force.y.abs() > 0.1);
-        assert!(has_vertical, "Wheel forces should include suspension (vertical) component");
+        assert!(
+            has_vertical,
+            "Wheel forces should include suspension (vertical) component"
+        );
     }
 
     #[test]
@@ -4148,7 +4175,10 @@ mod tests {
         let initial_rpm = vm.get(vid).unwrap().engine_rpm;
 
         // Full throttle for a while
-        let input = VehicleInput { throttle: 1.0, ..Default::default() };
+        let input = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..60 {
             vm.update_with_input(vid, &mut pw, &input, 1.0 / 60.0);
             pw.step();
@@ -4158,12 +4188,14 @@ mod tests {
         assert!(
             final_rpm > initial_rpm,
             "RPM should increase with throttle: initial={}, final={}",
-            initial_rpm, final_rpm
+            initial_rpm,
+            final_rpm
         );
         assert!(
             final_rpm > idle_rpm * 1.5,
             "RPM should rise well above idle with full throttle: rpm={}, idle={}",
-            final_rpm, idle_rpm
+            final_rpm,
+            idle_rpm
         );
     }
 
@@ -4176,7 +4208,10 @@ mod tests {
         let rpm_before = vm.get(vid).unwrap().engine_rpm;
 
         // One frame of full throttle
-        let input = VehicleInput { throttle: 1.0, ..Default::default() };
+        let input = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         vm.update_with_input(vid, &mut pw, &input, 1.0 / 60.0);
         pw.step();
 
@@ -4190,7 +4225,8 @@ mod tests {
             assert!(
                 change < max_possible_change * 0.5,
                 "RPM change should be gradual (blended): change={}, max={}",
-                change, max_possible_change
+                change,
+                max_possible_change
             );
         }
     }
@@ -4201,14 +4237,21 @@ mod tests {
         settle_vehicle(&mut pw, &mut vm, vid);
 
         // Accelerate first
-        let accel = VehicleInput { throttle: 1.0, ..Default::default() };
+        let accel = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..60 {
             vm.update_with_input(vid, &mut pw, &accel, 1.0 / 60.0);
             pw.step();
         }
 
         // Then steer at speed
-        let steer = VehicleInput { throttle: 0.5, steering: 1.0, ..Default::default() };
+        let steer = VehicleInput {
+            throttle: 0.5,
+            steering: 1.0,
+            ..Default::default()
+        };
         for _ in 0..30 {
             vm.update_with_input(vid, &mut pw, &steer, 1.0 / 60.0);
             pw.step();
@@ -4217,9 +4260,10 @@ mod tests {
         let v = vm.get(vid).unwrap();
         if v.speed > 1.0 {
             // Steered wheels should produce lateral force
-            let has_lat_force = v.wheels.iter().any(|w| {
-                w.grounded && w.force.length() > 0.1
-            });
+            let has_lat_force = v
+                .wheels
+                .iter()
+                .any(|w| w.grounded && w.force.length() > 0.1);
             assert!(
                 has_lat_force,
                 "Steering at speed should produce wheel forces"
@@ -4241,7 +4285,10 @@ mod tests {
             v.config.drag_coefficient *= 10.0;
         }
 
-        let input = VehicleInput { throttle: 1.0, ..Default::default() };
+        let input = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..600 {
             vm_lo.update_with_input(vid_lo, &mut pw_lo, &input, 1.0 / 60.0);
             pw_lo.step();
@@ -4255,7 +4302,8 @@ mod tests {
         assert!(
             speed_lo > speed_hi + 1.0,
             "Low drag vehicle should be faster: lo={}, hi={}",
-            speed_lo, speed_hi
+            speed_lo,
+            speed_hi
         );
     }
 
@@ -4277,7 +4325,8 @@ mod tests {
                 assert!(
                     ws.suspension_force > 0.0,
                     "Wheel {} suspension force should be positive at rest: {}",
-                    i, ws.suspension_force
+                    i,
+                    ws.suspension_force
                 );
             }
         }
@@ -4297,7 +4346,10 @@ mod tests {
             .map(|(_, w)| w.rotation_speed)
             .collect();
 
-        let input = VehicleInput { throttle: 1.0, ..Default::default() };
+        let input = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..30 {
             vm.update_with_input(vid, &mut pw, &input, 1.0 / 60.0);
             pw.step();
@@ -4317,7 +4369,8 @@ mod tests {
             assert!(
                 after.abs() > before.abs() + 0.1,
                 "Driven wheel should spin faster: before={}, after={}",
-                before, after
+                before,
+                after
             );
         }
     }
@@ -4329,7 +4382,10 @@ mod tests {
         settle_vehicle(&mut pw, &mut vm, vid);
 
         // Accelerate to get wheels spinning
-        let accel = VehicleInput { throttle: 1.0, ..Default::default() };
+        let accel = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..60 {
             vm.update_with_input(vid, &mut pw, &accel, 1.0 / 60.0);
             pw.step();
@@ -4339,15 +4395,18 @@ mod tests {
         assert!(speed_accel > 1.0, "Should have some speed: {}", speed_accel);
 
         // Check that wheel forces exist after braking input
-        let brake_input = VehicleInput { brake: 1.0, ..Default::default() };
+        let brake_input = VehicleInput {
+            brake: 1.0,
+            ..Default::default()
+        };
         vm.update_with_input(vid, &mut pw, &brake_input, 1.0 / 60.0);
 
         let v = vm.get(vid).unwrap();
-        let has_brake_force = v.wheels.iter().any(|w| w.grounded && w.force.length() > 0.01);
-        assert!(
-            has_brake_force,
-            "Brake should produce wheel forces"
-        );
+        let has_brake_force = v
+            .wheels
+            .iter()
+            .any(|w| w.grounded && w.force.length() > 0.01);
+        assert!(has_brake_force, "Brake should produce wheel forces");
     }
 
     #[test]
@@ -4359,7 +4418,10 @@ mod tests {
         settle_vehicle(&mut pw_hb, &mut vm_hb, vid_hb);
 
         // Accelerate both
-        let accel = VehicleInput { throttle: 1.0, ..Default::default() };
+        let accel = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..90 {
             vm_coast.update_with_input(vid_coast, &mut pw_coast, &accel, 1.0 / 60.0);
             pw_coast.step();
@@ -4369,7 +4431,10 @@ mod tests {
 
         // Coast vs handbrake
         let coast_input = VehicleInput::default();
-        let hb_input = VehicleInput { handbrake: 1.0, ..Default::default() };
+        let hb_input = VehicleInput {
+            handbrake: 1.0,
+            ..Default::default()
+        };
         for _ in 0..90 {
             vm_coast.update_with_input(vid_coast, &mut pw_coast, &coast_input, 1.0 / 60.0);
             pw_coast.step();
@@ -4382,7 +4447,8 @@ mod tests {
         assert!(
             speed_hb < speed_coast,
             "Handbrake should slow more than coasting: hb={}, coast={}",
-            speed_hb, speed_coast
+            speed_hb,
+            speed_coast
         );
     }
 
@@ -4400,11 +4466,7 @@ mod tests {
             v.forward
         );
         // Up should point mostly upward
-        assert!(
-            v.up.y > 0.5,
-            "Up should point upward: {:?}",
-            v.up
-        );
+        assert!(v.up.y > 0.5, "Up should point upward: {:?}", v.up);
     }
 
     #[test]
@@ -4413,7 +4475,10 @@ mod tests {
         settle_vehicle(&mut pw, &mut vm, vid);
 
         // Accelerate to get some speed + wheel spin
-        let input = VehicleInput { throttle: 1.0, ..Default::default() };
+        let input = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..60 {
             vm.update_with_input(vid, &mut pw, &input, 1.0 / 60.0);
             pw.step();
@@ -4436,7 +4501,10 @@ mod tests {
         let idle_rpm = vm.get(vid).unwrap().engine_rpm;
 
         // Apply throttle
-        let input = VehicleInput { throttle: 1.0, ..Default::default() };
+        let input = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..60 {
             vm.update_with_input(vid, &mut pw, &input, 1.0 / 60.0);
             pw.step();
@@ -4446,7 +4514,8 @@ mod tests {
         assert!(
             throttle_rpm > idle_rpm + 500.0,
             "RPM should increase with throttle: idle={}, throttle={}",
-            idle_rpm, throttle_rpm
+            idle_rpm,
+            throttle_rpm
         );
     }
 
@@ -4505,7 +4574,8 @@ mod tests {
         assert!(
             (at_peak - engine.max_torque).abs() < 1.0,
             "Torque at peak RPM should be max_torque: expected={}, got={}",
-            engine.max_torque, at_peak
+            engine.max_torque,
+            at_peak
         );
     }
 
@@ -4518,7 +4588,8 @@ mod tests {
         assert!(
             (ratio - expected).abs() < 0.01,
             "Gear 1 effective ratio: expected={}, got={}",
-            expected, ratio
+            expected,
+            ratio
         );
     }
 
@@ -4536,7 +4607,10 @@ mod tests {
         settle_vehicle(&mut pw, &mut vm, vid);
 
         // Shift to neutral (gear 1 → gear 0)
-        let shift_down = VehicleInput { shift: -1, ..Default::default() };
+        let shift_down = VehicleInput {
+            shift: -1,
+            ..Default::default()
+        };
         vm.update_with_input(vid, &mut pw, &shift_down, 1.0 / 60.0);
         pw.step();
 
@@ -4553,15 +4627,17 @@ mod tests {
         let rpm_before = vm.get(vid).unwrap().engine_rpm;
 
         // Apply full throttle for 1 frame in neutral
-        let throttle = VehicleInput { throttle: 1.0, ..Default::default() };
+        let throttle = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         vm.update_with_input(vid, &mut pw, &throttle, 1.0 / 60.0);
 
         let rpm_after = vm.get(vid).unwrap().engine_rpm;
         let engine = &vm.get(vid).unwrap().config.engine;
 
         // throttle_rpm_target = idle + 1.0 * (max_rpm - idle) * 0.8
-        let throttle_rpm_target = engine.idle_rpm
-            + 1.0 * (engine.max_rpm - engine.idle_rpm) * 0.8;
+        let throttle_rpm_target = engine.idle_rpm + 1.0 * (engine.max_rpm - engine.idle_rpm) * 0.8;
 
         // In neutral: engine_rpm = rpm_before * 0.85 + throttle_rpm_target * 0.15
         let expected = rpm_before * 0.85 + throttle_rpm_target * 0.15;
@@ -4572,7 +4648,10 @@ mod tests {
         assert!(
             (rpm_after - expected_clamped).abs() < 5.0,
             "RPM blend in neutral: expected={:.1}, got={:.1} (before={:.1}, target={:.1})",
-            expected_clamped, rpm_after, rpm_before, throttle_rpm_target
+            expected_clamped,
+            rpm_after,
+            rpm_before,
+            throttle_rpm_target
         );
     }
 
@@ -4635,7 +4714,10 @@ mod tests {
         settle_vehicle(&mut pw, &mut vm, vid);
 
         // Full throttle for several frames
-        let input = VehicleInput { throttle: 1.0, ..Default::default() };
+        let input = VehicleInput {
+            throttle: 1.0,
+            ..Default::default()
+        };
         for _ in 0..30 {
             vm.update_with_input(vid, &mut pw, &input, 1.0 / 60.0);
             pw.step();
@@ -4648,7 +4730,8 @@ mod tests {
                 assert!(
                     w.rotation_speed > 0.1,
                     "Driven wheel {} should have positive rotation under throttle: rot_speed={}",
-                    i, w.rotation_speed
+                    i,
+                    w.rotation_speed
                 );
             }
         }
@@ -4711,7 +4794,8 @@ mod tests {
             assert!(
                 decel_20 > decel_10 * 1.5,
                 "Drag should increase with speed: decel@10={:.4}, decel@20={:.4}",
-                decel_10, decel_20
+                decel_10,
+                decel_20
             );
         }
     }
@@ -4724,7 +4808,10 @@ mod tests {
         settle_vehicle(&mut pw, &mut vm, vid);
 
         // Run with throttle=0.5 for many frames to approach steady state
-        let input = VehicleInput { throttle: 0.5, ..Default::default() };
+        let input = VehicleInput {
+            throttle: 0.5,
+            ..Default::default()
+        };
         for _ in 0..300 {
             vm.update_with_input(vid, &mut pw, &input, 1.0 / 60.0);
             pw.step();
@@ -4741,12 +4828,14 @@ mod tests {
         assert!(
             v.engine_rpm > engine.idle_rpm + 100.0,
             "RPM should be above idle with throttle=0.5: rpm={}, idle={}",
-            v.engine_rpm, engine.idle_rpm
+            v.engine_rpm,
+            engine.idle_rpm
         );
         assert!(
             v.engine_rpm <= engine.max_rpm + 1.0,
             "RPM should be clamped to max: rpm={}, max={}",
-            v.engine_rpm, engine.max_rpm
+            v.engine_rpm,
+            engine.max_rpm
         );
     }
 
@@ -4762,7 +4851,10 @@ mod tests {
         pw.set_velocity(body_id, Vec3::new(0.0, 0.0, 15.0));
 
         // Full brake for 1 frame (no friction/gravity settling issues for short time)
-        let brake_input = VehicleInput { brake: 1.0, ..Default::default() };
+        let brake_input = VehicleInput {
+            brake: 1.0,
+            ..Default::default()
+        };
         vm.update_with_input(vid, &mut pw, &brake_input, 1.0 / 60.0);
         pw.step();
 

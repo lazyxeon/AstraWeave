@@ -23,7 +23,11 @@ fn create_combat_snapshot(frame: usize, agent_id: usize) -> WorldSnapshot {
                 y: 15 + ((frame + i) % 3) as i32,
             },
             hp: 50 + (i as i32) * 10,
-            cover: if i % 2 == 0 { CoverType::Low } else { CoverType::High },
+            cover: if i % 2 == 0 {
+                CoverType::Low
+            } else {
+                CoverType::High
+            },
             last_seen: (i as f32) * 0.5,
         });
     }

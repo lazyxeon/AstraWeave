@@ -113,12 +113,12 @@ pub use heightmap_raster::{
 pub use options::{
     ConversionOptions, ConversionOptionsBuilder, OutputFormat, SceneDecompositionOptions,
 };
-pub use texture_processor::{
-    process_decomposition_textures, normalize_channel_name,
-    TextureProcessingConfig, TextureProcessingResult, TextureOutputFormat,
-};
 pub use progress::{
     CancellationToken, ConversionProgress, ConversionStage, ProgressReceiver, ProgressTracker,
+};
+pub use texture_processor::{
+    normalize_channel_name, process_decomposition_textures, TextureOutputFormat,
+    TextureProcessingConfig, TextureProcessingResult,
 };
 
 // Re-exports - high-level API

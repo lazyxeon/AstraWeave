@@ -1,7 +1,6 @@
 /// Texture Loading System with Proper Format Handling
 /// Phase 1.1: TextureUsage-based loading with correct sRGB/Linear format selection
 /// and automatic mipmap generation
-
 use anyhow::{Context, Result};
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
 
@@ -57,9 +56,8 @@ pub fn load_texture_with_usage(
     usage: TextureUsage,
 ) -> Result<wgpu::Texture> {
     // Load image
-    let img = image::open(path)
-        .with_context(|| format!("Failed to load texture: {}", path))?;
-    
+    let img = image::open(path).with_context(|| format!("Failed to load texture: {}", path))?;
+
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
 
@@ -146,11 +144,8 @@ fn generate_and_upload_mipmaps(
         let mip_height = (base_image.height() >> level).max(1);
 
         // Downsample using high-quality filter
-        current_image = current_image.resize(
-            mip_width,
-            mip_height,
-            image::imageops::FilterType::Lanczos3,
-        );
+        current_image =
+            current_image.resize(mip_width, mip_height, image::imageops::FilterType::Lanczos3);
 
         let rgba_mip = current_image.to_rgba8();
 
@@ -221,7 +216,9 @@ pub fn create_fallback_texture(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: usage.format(),
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_DST
+            | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
 
@@ -255,17 +252,17 @@ pub fn generate_fallback_texture(
     color: [f32; 4],
 ) -> wgpu::Texture {
     let (width, height) = (16, 16);
-    
+
     let color_u8 = [
         (color[0] * 255.0) as u8,
         (color[1] * 255.0) as u8,
         (color[2] * 255.0) as u8,
         (color[3] * 255.0) as u8,
     ];
-    
-    let data = vec![color_u8[0], color_u8[1], color_u8[2], color_u8[3]]
-        .repeat((width * height) as usize);
-    
+
+    let data =
+        vec![color_u8[0], color_u8[1], color_u8[2], color_u8[3]].repeat((width * height) as usize);
+
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Fallback Solid Color"),
         size: wgpu::Extent3d {
@@ -277,10 +274,12 @@ pub fn generate_fallback_texture(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_DST
+            | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
-    
+
     queue.write_texture(
         wgpu::TexelCopyTextureInfo {
             texture: &texture,
@@ -300,7 +299,7 @@ pub fn generate_fallback_texture(
             depth_or_array_layers: 1,
         },
     );
-    
+
     texture
 }
 
@@ -348,11 +347,13 @@ pub fn create_texture_array(
             height: max_height,
             depth_or_array_layers: textures.len() as u32,
         },
-        mip_level_count: max_mip_count,  // FIX: Was 1, now preserves source mipmaps
+        mip_level_count: max_mip_count, // FIX: Was 1, now preserves source mipmaps
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_DST
+            | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
 
@@ -364,12 +365,12 @@ pub fn create_texture_array(
     for (layer_index, texture) in textures.iter().enumerate() {
         let src_size = texture.size();
         let src_mip_count = texture.mip_level_count();
-        
+
         // Copy all mip levels from source texture
         for mip_level in 0..src_mip_count {
             let mip_width = (src_size.width >> mip_level).max(1);
             let mip_height = (src_size.height >> mip_level).max(1);
-            
+
             encoder.copy_texture_to_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture,
@@ -453,8 +454,8 @@ pub fn create_texture_array_with_mipmaps(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING 
-            | wgpu::TextureUsages::COPY_DST 
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_DST
             | wgpu::TextureUsages::RENDER_ATTACHMENT, // Needed for mipmap generation
         view_formats: &[],
     });
@@ -540,13 +541,7 @@ fn generate_mipmap_chain_cpu(base_data: &[u8], width: u32, height: u32) -> Vec<V
 
 /// Downsample an RGBA8 image using box filter (2x2 averaging)
 /// TASK 2.4: Simple but effective for terrain textures
-fn downsample_rgba8(
-    src: &[u8],
-    src_w: u32,
-    src_h: u32,
-    dst_w: u32,
-    dst_h: u32,
-) -> Vec<u8> {
+fn downsample_rgba8(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> Vec<u8> {
     let mut dst = vec![0u8; (dst_w * dst_h * 4) as usize];
 
     for y in 0..dst_h {
@@ -591,12 +586,7 @@ fn downsample_rgba8(
 }
 
 /// Create a checkerboard pattern (useful for debugging UVs)
-fn create_checkerboard(
-    width: u32,
-    height: u32,
-    color1: [u8; 4],
-    color2: [u8; 4],
-) -> Vec<u8> {
+fn create_checkerboard(width: u32, height: u32, color1: [u8; 4], color2: [u8; 4]) -> Vec<u8> {
     let mut data = Vec::with_capacity((width * height * 4) as usize);
     let checker_size = 2; // 2x2 pixel checkers
 

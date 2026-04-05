@@ -4,9 +4,8 @@
 //! .blend files to glTF/GLB format with all configured options.
 
 use crate::options::{
-    AnimationOptions, BoundingBoxMode, ConversionOptions, DecompositionGrouping,
-    GltfExportOptions, LinkedLibraryOptions, MaterialOptions, MeshOptions,
-    SceneDecompositionOptions, TextureOptions,
+    AnimationOptions, BoundingBoxMode, ConversionOptions, DecompositionGrouping, GltfExportOptions,
+    LinkedLibraryOptions, MaterialOptions, MeshOptions, SceneDecompositionOptions, TextureOptions,
 };
 use std::path::Path;
 
@@ -965,11 +964,15 @@ def export_single_object(obj, output_path):
         export_tangents = python_bool(mesh.export_tangents),
         export_normals = python_bool(mesh.export_normals),
         export_vertex_colors = python_bool(mesh.export_vertex_colors),
-        export_materials = if materials.export_materials {{
-            "EXPORT"
-        }} else {{
-            "NONE"
-        }},
+        export_materials = if materials.export_materials {
+            {
+                "EXPORT"
+            }
+        } else {
+            {
+                "NONE"
+            }
+        },
         export_extras = python_bool(gltf.export_extras),
         y_up = python_bool(gltf.y_up),
     )

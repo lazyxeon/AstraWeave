@@ -374,16 +374,31 @@ mod tests {
     fn test_resolution_fallback_order_known_resolutions() {
         let client = PolyHavenClient::new().unwrap();
 
-        assert_eq!(client.resolution_fallback_order("8k"), vec!["8k", "4k", "2k", "1k"]);
-        assert_eq!(client.resolution_fallback_order("4k"), vec!["4k", "2k", "1k", "8k"]);
-        assert_eq!(client.resolution_fallback_order("2k"), vec!["2k", "1k", "4k", "8k"]);
-        assert_eq!(client.resolution_fallback_order("1k"), vec!["1k", "2k", "4k", "8k"]);
+        assert_eq!(
+            client.resolution_fallback_order("8k"),
+            vec!["8k", "4k", "2k", "1k"]
+        );
+        assert_eq!(
+            client.resolution_fallback_order("4k"),
+            vec!["4k", "2k", "1k", "8k"]
+        );
+        assert_eq!(
+            client.resolution_fallback_order("2k"),
+            vec!["2k", "1k", "4k", "8k"]
+        );
+        assert_eq!(
+            client.resolution_fallback_order("1k"),
+            vec!["1k", "2k", "4k", "8k"]
+        );
     }
 
     #[test]
     fn test_resolution_fallback_order_unknown_defaults_to_2k() {
         let client = PolyHavenClient::new().unwrap();
-        assert_eq!(client.resolution_fallback_order("banana"), vec!["2k", "1k", "4k", "8k"]);
+        assert_eq!(
+            client.resolution_fallback_order("banana"),
+            vec!["2k", "1k", "4k", "8k"]
+        );
     }
 
     #[test]
@@ -515,7 +530,10 @@ mod tests {
 
         assert_eq!(resolved.kind, "hdri");
         assert_eq!(resolved.resolution, "1k");
-        assert_eq!(resolved.urls.get("hdri").unwrap(), &format!("{base}/dl/hdri_1k.exr"));
+        assert_eq!(
+            resolved.urls.get("hdri").unwrap(),
+            &format!("{base}/dl/hdri_1k.exr")
+        );
     }
 
     #[tokio::test]
@@ -552,14 +570,14 @@ mod tests {
             .await;
 
         let client = PolyHavenClient::new_with_base_url(&server.uri()).unwrap();
-        let resolved = client
-            .resolve_model("model01", "4k", "fbx")
-            .await
-            .unwrap();
+        let resolved = client.resolve_model("model01", "4k", "fbx").await.unwrap();
 
         assert_eq!(resolved.kind, "model");
         assert_eq!(resolved.resolution, "2k");
-        assert_eq!(resolved.urls.get("model").unwrap(), &format!("{base}/dl/model_2k.glb"));
+        assert_eq!(
+            resolved.urls.get("model").unwrap(),
+            &format!("{base}/dl/model_2k.glb")
+        );
     }
 
     #[tokio::test]

@@ -39434,8 +39434,11 @@ mod tests {
         batch_distances(pos, &neighbors, &mut distances, &mut directions);
 
         // dist = 1e-8 which is NOT > 1e-8, so direction should be zero
-        assert_eq!(directions[0], [0.0, 0.0, 0.0],
-            "direction at dist=1e-8 should be zero");
+        assert_eq!(
+            directions[0],
+            [0.0, 0.0, 0.0],
+            "direction at dist=1e-8 should be zero"
+        );
     }
 
     #[test]
@@ -39462,8 +39465,20 @@ mod tests {
 
         let rel1 = (values[0] - expected1).abs() / expected1.abs();
         let rel2 = (values[1] - expected2).abs() / expected2.abs();
-        assert!(rel1 < 1e-5, "kernel(q=0.3): got {} expected {} rel={}", values[0], expected1, rel1);
-        assert!(rel2 < 1e-4, "kernel(q=0.7): got {} expected {} rel={}", values[1], expected2, rel2);
+        assert!(
+            rel1 < 1e-5,
+            "kernel(q=0.3): got {} expected {} rel={}",
+            values[0],
+            expected1,
+            rel1
+        );
+        assert!(
+            rel2 < 1e-4,
+            "kernel(q=0.7): got {} expected {} rel={}",
+            values[1],
+            expected2,
+            rel2
+        );
     }
 
     #[test]
@@ -39492,10 +39507,20 @@ mod tests {
 
         let rel1 = (gradients[0][0] - grad1).abs() / grad1.abs();
         let rel2 = (gradients[1][0] - grad2).abs() / grad2.abs();
-        assert!(rel1 < 1e-4,
-            "gradient(q=0.3): got {} expected {} rel={}", gradients[0][0], grad1, rel1);
-        assert!(rel2 < 1e-4,
-            "gradient(q=0.7): got {} expected {} rel={}", gradients[1][0], grad2, rel2);
+        assert!(
+            rel1 < 1e-4,
+            "gradient(q=0.3): got {} expected {} rel={}",
+            gradients[0][0],
+            grad1,
+            rel1
+        );
+        assert!(
+            rel2 < 1e-4,
+            "gradient(q=0.7): got {} expected {} rel={}",
+            gradients[1][0],
+            grad2,
+            rel2
+        );
         // y and z components should be 0
         assert_eq!(gradients[0][1], 0.0);
         assert_eq!(gradients[1][2], 0.0);
@@ -39510,8 +39535,20 @@ mod tests {
         let mut gradients = vec![[0.0; 3]; 3];
         batch_kernel_gradient_cubic(&distances, &directions, h, &mut gradients);
 
-        assert_eq!(gradients[0], [0.0, 0.0, 0.0], "q=0 should give zero gradient");
-        assert_eq!(gradients[1], [0.0, 0.0, 0.0], "q=1 should give zero gradient");
-        assert_eq!(gradients[2], [0.0, 0.0, 0.0], "q=2 should give zero gradient");
+        assert_eq!(
+            gradients[0],
+            [0.0, 0.0, 0.0],
+            "q=0 should give zero gradient"
+        );
+        assert_eq!(
+            gradients[1],
+            [0.0, 0.0, 0.0],
+            "q=1 should give zero gradient"
+        );
+        assert_eq!(
+            gradients[2],
+            [0.0, 0.0, 0.0],
+            "q=2 should give zero gradient"
+        );
     }
 }

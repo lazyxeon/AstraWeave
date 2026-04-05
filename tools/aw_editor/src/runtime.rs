@@ -696,7 +696,9 @@ impl EditorRuntime {
                         self.tick_count += 1;
                     }
                     Err(panic_info) => {
-                        let msg = panic_info.downcast_ref::<&str>().copied()
+                        let msg = panic_info
+                            .downcast_ref::<&str>()
+                            .copied()
                             .or_else(|| panic_info.downcast_ref::<String>().map(|s| s.as_str()))
                             .unwrap_or("(unknown panic payload)");
                         tracing::error!(
@@ -705,7 +707,10 @@ impl EditorRuntime {
                         );
                         // App is lost (consumed by panicked closure). Clear sim state.
                         self.state = RuntimeState::Paused;
-                        return Err(anyhow::anyhow!("Simulation panic at tick {}", self.tick_count));
+                        return Err(anyhow::anyhow!(
+                            "Simulation panic at tick {}",
+                            self.tick_count
+                        ));
                     }
                 }
             }

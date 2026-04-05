@@ -710,12 +710,18 @@ mod tests {
 
         // Slightly within threshold
         goal.current_value = 0.09;
-        assert!(goal.is_satisfied(), "0.09 difference should satisfy Maintain");
+        assert!(
+            goal.is_satisfied(),
+            "0.09 difference should satisfy Maintain"
+        );
 
         // Maintain with None target → false
         let mut goal2 = AgentGoal::new("m".into(), GoalType::Maintain, 0.5);
         goal2.target_value = None;
-        assert!(!goal2.is_satisfied(), "Maintain with no target should be false");
+        assert!(
+            !goal2.is_satisfied(),
+            "Maintain with no target should be false"
+        );
 
         // Achieve boundary: current == target → satisfied (kills >= vs >)
         let mut achieve = AgentGoal::new("a".into(), GoalType::Achieve, 0.5);
@@ -735,14 +741,23 @@ mod tests {
         avoid.current_value = 0.0;
         assert!(avoid.is_satisfied(), "Avoid with 0.0 should be satisfied");
         avoid.current_value = 0.001;
-        assert!(!avoid.is_satisfied(), "Avoid with non-zero should NOT be satisfied");
+        assert!(
+            !avoid.is_satisfied(),
+            "Avoid with non-zero should NOT be satisfied"
+        );
 
         // Explore: satisfied when status == Completed
         let mut explore = AgentGoal::new("explore".into(), GoalType::Explore, 0.5);
         explore.status = GoalStatus::Active;
-        assert!(!explore.is_satisfied(), "Active Explore should NOT be satisfied");
+        assert!(
+            !explore.is_satisfied(),
+            "Active Explore should NOT be satisfied"
+        );
         explore.status = GoalStatus::Completed;
-        assert!(explore.is_satisfied(), "Completed Explore should be satisfied");
+        assert!(
+            explore.is_satisfied(),
+            "Completed Explore should be satisfied"
+        );
 
         // Collaborate: same as Explore
         let mut collab = AgentGoal::new("collab".into(), GoalType::Collaborate, 0.5);
@@ -759,7 +774,10 @@ mod tests {
         let mut goal = AgentGoal::new("g".into(), GoalType::Achieve, 0.5);
         goal.deadline = Some(Utc::now() - chrono::Duration::hours(1));
         goal.status = GoalStatus::Active;
-        assert!(goal.is_overdue(), "Past deadline + Active should be overdue");
+        assert!(
+            goal.is_overdue(),
+            "Past deadline + Active should be overdue"
+        );
 
         // Past deadline + Completed → false (kills != → ==)
         goal.status = GoalStatus::Completed;

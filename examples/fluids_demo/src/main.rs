@@ -537,14 +537,14 @@ impl State {
                     camera_pos,
                 );
                 self.last_frame_time_ms = step_start.elapsed().as_secs_f32() * 1000.0;
-                
+
                 // Auto-adjust quality preset based on controller tier
                 self.quality_preset = result.quality_tier as u32;
             } else {
                 // Traditional direct stepping
                 self.fluid_system
                     .step(&self.device, &mut encoder, &self.queue, dt);
-                    
+
                 // Still record frame for metrics display
                 self.optimization_controller.record_frame(raw_dt * 1000.0);
             }
@@ -805,15 +805,18 @@ impl State {
                         // Optimization Controller Section
                         ui.heading("⚡ Optimization");
                         ui.separator();
-                        
+
                         ui.checkbox(&mut self.use_controller_stepping, "Auto-Tune Mode");
                         ui.checkbox(&mut self.show_optimization_overlay, "Show Details (F2)");
-                        
+
                         if self.use_controller_stepping {
                             let status = self.optimization_controller.status();
                             ui.label(format!("Quality Tier: {}", status.quality_tier));
-                            ui.label(format!("Iterations: {}", self.optimization_controller.recommended_iterations()));
-                            
+                            ui.label(format!(
+                                "Iterations: {}",
+                                self.optimization_controller.recommended_iterations()
+                            ));
+
                             let headroom = self.optimization_controller.budget_headroom();
                             let headroom_color = if headroom > 30.0 {
                                 egui::Color32::GREEN
@@ -849,24 +852,25 @@ impl State {
                     .collapsible(true)
                     .show(ctx, |ui| {
                         let status = self.optimization_controller.status();
-                        
+
                         ui.heading("Performance Budget");
                         ui.separator();
-                        
+
                         // Progress bar for frame budget
                         let budget_usage = if status.target_frame_time_ms > 0.0 {
                             status.avg_frame_time_ms / status.target_frame_time_ms
                         } else {
                             0.0
                         };
-                        ui.add(egui::ProgressBar::new(budget_usage.min(1.5) / 1.5)
-                            .text(format!("{:.2}ms / {:.2}ms", 
-                                status.avg_frame_time_ms, 
-                                status.target_frame_time_ms))
+                        ui.add(
+                            egui::ProgressBar::new(budget_usage.min(1.5) / 1.5).text(format!(
+                                "{:.2}ms / {:.2}ms",
+                                status.avg_frame_time_ms, status.target_frame_time_ms
+                            )),
                         );
-                        
+
                         ui.add_space(4.0);
-                        
+
                         ui.horizontal(|ui| {
                             ui.label("Within Budget:");
                             if status.within_budget {
@@ -875,7 +879,7 @@ impl State {
                                 ui.colored_label(egui::Color32::RED, "✗ No");
                             }
                         });
-                        
+
                         ui.horizontal(|ui| {
                             ui.label("Auto-Tune:");
                             if status.auto_tune_enabled {
@@ -884,21 +888,26 @@ impl State {
                                 ui.colored_label(egui::Color32::GRAY, "Disabled");
                             }
                         });
-                        
+
                         ui.add_space(8.0);
                         ui.heading("Quality Settings");
                         ui.separator();
-                        
+
                         let tier_names = ["Ultra", "High", "Medium", "Low", "Potato"];
-                        let tier_name = tier_names.get(status.quality_tier as usize).unwrap_or(&"Unknown");
+                        let tier_name = tier_names
+                            .get(status.quality_tier as usize)
+                            .unwrap_or(&"Unknown");
                         ui.label(format!("Tier: {} ({})", status.quality_tier, tier_name));
-                        ui.label(format!("Iterations: {}", self.optimization_controller.recommended_iterations()));
+                        ui.label(format!(
+                            "Iterations: {}",
+                            self.optimization_controller.recommended_iterations()
+                        ));
                         ui.label(format!("Frames Recorded: {}", status.frames_recorded));
-                        
+
                         ui.add_space(8.0);
                         ui.heading("Manual Controls");
                         ui.separator();
-                        
+
                         ui.horizontal(|ui| {
                             if ui.button("⬆ Increase Quality").clicked() {
                                 let current = self.optimization_controller.quality_tier();
@@ -913,26 +922,44 @@ impl State {
                                 }
                             }
                         });
-                        
+
                         if ui.button("Reset Metrics").clicked() {
                             self.optimization_controller.reset_metrics();
                         }
-                        
+
                         ui.add_space(8.0);
                         ui.heading("Target Framerate");
                         ui.separator();
-                        
+
                         ui.horizontal(|ui| {
-                            if ui.selectable_label(status.target_frame_time_ms > 30.0, "30").clicked() {
+                            if ui
+                                .selectable_label(status.target_frame_time_ms > 30.0, "30")
+                                .clicked()
+                            {
                                 self.optimization_controller.set_target_framerate(30.0);
                             }
-                            if ui.selectable_label((status.target_frame_time_ms - 16.67).abs() < 1.0, "60").clicked() {
+                            if ui
+                                .selectable_label(
+                                    (status.target_frame_time_ms - 16.67).abs() < 1.0,
+                                    "60",
+                                )
+                                .clicked()
+                            {
                                 self.optimization_controller.set_target_framerate(60.0);
                             }
-                            if ui.selectable_label((status.target_frame_time_ms - 8.33).abs() < 1.0, "120").clicked() {
+                            if ui
+                                .selectable_label(
+                                    (status.target_frame_time_ms - 8.33).abs() < 1.0,
+                                    "120",
+                                )
+                                .clicked()
+                            {
                                 self.optimization_controller.set_target_framerate(120.0);
                             }
-                            if ui.selectable_label(status.target_frame_time_ms < 7.0, "144").clicked() {
+                            if ui
+                                .selectable_label(status.target_frame_time_ms < 7.0, "144")
+                                .clicked()
+                            {
                                 self.optimization_controller.set_target_framerate(144.0);
                             }
                         });

@@ -1,8 +1,8 @@
 use anyhow::Result;
+use astraweave_core::{Constraints, ToolRegistry, ToolSpec};
 use astraweave_llm::parse_llm_plan;
-use astraweave_core::{ToolRegistry, ToolSpec, Constraints};
-use std::fs;
 use std::collections::BTreeMap;
+use std::fs;
 
 fn main() -> Result<()> {
     // Prefer the integration-assembled file, fall back to probe output
@@ -11,7 +11,8 @@ fn main() -> Result<()> {
     let s = if std::path::Path::new(path_primary).exists() {
         fs::read_to_string(path_primary).expect("Failed to read target/ollama_assistant_acc.txt")
     } else {
-        fs::read_to_string(path_fallback).expect("Failed to read target/ollama_probe_assistant_acc.txt")
+        fs::read_to_string(path_fallback)
+            .expect("Failed to read target/ollama_probe_assistant_acc.txt")
     };
     println!("Assembled assistant file content:\n---\n{}\n---", s);
 
@@ -20,30 +21,35 @@ fn main() -> Result<()> {
 
     tools.push(ToolSpec {
         name: "move_to".into(),
-        args: [ ("x".into(), "i32".into()), ("y".into(), "i32".into()) ]
+        args: [("x".into(), "i32".into()), ("y".into(), "i32".into())]
             .into_iter()
             .collect(),
     });
 
     tools.push(ToolSpec {
         name: "throw".into(),
-        args: [ ("item".into(), "enum[smoke,grenade,flashbang]".into()), ("x".into(), "i32".into()), ("y".into(), "i32".into()) ]
-            .into_iter()
-            .collect(),
+        args: [
+            ("item".into(), "enum[smoke,grenade,flashbang]".into()),
+            ("x".into(), "i32".into()),
+            ("y".into(), "i32".into()),
+        ]
+        .into_iter()
+        .collect(),
     });
 
     tools.push(ToolSpec {
         name: "cover_fire".into(),
-        args: [ ("duration".into(), "f32".into()), ("target_id".into(), "u32".into()) ]
-            .into_iter()
-            .collect(),
+        args: [
+            ("duration".into(), "f32".into()),
+            ("target_id".into(), "u32".into()),
+        ]
+        .into_iter()
+        .collect(),
     });
 
     tools.push(ToolSpec {
         name: "revive".into(),
-        args: [ ("ally_id".into(), "u32".into()) ]
-            .into_iter()
-            .collect(),
+        args: [("ally_id".into(), "u32".into())].into_iter().collect(),
     });
 
     let reg = ToolRegistry {

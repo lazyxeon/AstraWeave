@@ -13,7 +13,10 @@ use aw_headless::*;
 fn wrap_fs_contains_module_body() {
     let body = "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }";
     let result = wrap_fs_into_fullscreen(body);
-    assert!(result.contains(body), "should contain the module body verbatim");
+    assert!(
+        result.contains(body),
+        "should contain the module body verbatim"
+    );
 }
 
 #[test]
@@ -26,7 +29,10 @@ fn wrap_fs_contains_vertex_shader() {
 #[test]
 fn wrap_fs_contains_fullscreen_triangle() {
     let result = wrap_fs_into_fullscreen("");
-    assert!(result.contains("vertex_index"), "should use vertex_index builtin");
+    assert!(
+        result.contains("vertex_index"),
+        "should use vertex_index builtin"
+    );
 }
 
 #[test]
@@ -92,7 +98,10 @@ fn srgb_encode_monotonic() {
     for i in 0..=100 {
         let linear = i as f32 / 100.0;
         let srgb = srgb_encode_u8(linear);
-        assert!(srgb >= prev, "srgb should be monotonically increasing: {srgb} < {prev} at {linear}");
+        assert!(
+            srgb >= prev,
+            "srgb should be monotonically increasing: {srgb} < {prev} at {linear}"
+        );
         prev = srgb;
     }
 }
@@ -168,6 +177,6 @@ fn image_delta_mixed() {
     let b = vec![10, 90, 210, 50];
     let (max_d, avg_d) = image_delta(&a, &b);
     assert_eq!(max_d, 10); // max(10,10,10,0) = 10
-    // avg = (10+10+10+0)/4 = 7.5
+                           // avg = (10+10+10+0)/4 = 7.5
     assert!((avg_d - 7.5).abs() < 0.01, "avg_d = {avg_d}");
 }

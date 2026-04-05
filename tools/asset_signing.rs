@@ -25,8 +25,8 @@ pub fn verify_asset(path: &str, public_key: &[u8], signature: &[u8]) -> Result<b
         return Err("invalid key or signature size".into());
     }
     let hash = hash_file(path)?;
-    let vk = VerifyingKey::from_bytes(public_key.try_into().unwrap())
-        .map_err(|e| format!("vk: {e}"))?;
+    let vk =
+        VerifyingKey::from_bytes(public_key.try_into().unwrap()).map_err(|e| format!("vk: {e}"))?;
     let sig = Signature::from_bytes(signature.try_into().unwrap());
     Ok(vk.verify_strict(&hash, &sig).is_ok())
 }

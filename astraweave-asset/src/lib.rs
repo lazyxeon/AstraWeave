@@ -32,11 +32,11 @@ pub mod blend_import {
     use tracing::{debug, info, warn};
 
     pub use astraweave_blend::{
-        BlendImporter, BlendImporterConfig, BlenderDiscovery, BlenderInstallation,
-        CancellationToken, ConversionOptions, ConversionProgress, ConversionResult,
-        DecomposedAsset, DecompositionResult, ImportHandle, ProgressReceiver,
-        SceneDecompositionOptions, TextureProcessingConfig, TextureProcessingResult,
-        TextureOutputFormat, process_decomposition_textures, normalize_channel_name,
+        normalize_channel_name, process_decomposition_textures, BlendImporter, BlendImporterConfig,
+        BlenderDiscovery, BlenderInstallation, CancellationToken, ConversionOptions,
+        ConversionProgress, ConversionResult, DecomposedAsset, DecompositionResult, ImportHandle,
+        ProgressReceiver, SceneDecompositionOptions, TextureOutputFormat, TextureProcessingConfig,
+        TextureProcessingResult,
     };
 
     /// State of the blend import system within the asset database.
@@ -242,7 +242,10 @@ pub mod blend_import {
                 .as_mut()
                 .context("Blend import system not initialized or Blender not available")?;
 
-            info!("Decomposing and processing blend scene: {}", blend_path.display());
+            info!(
+                "Decomposing and processing blend scene: {}",
+                blend_path.display()
+            );
 
             let opts = options.unwrap_or_else(ConversionOptions::scene_decomposition);
 
@@ -642,10 +645,16 @@ pub mod gltf_loader {
         // KHR_materials_clearcoat (read from raw extensions JSON — not yet typed in gltf 1.4)
         if let Some(ext_map) = mat_g.extensions() {
             if let Some(clearcoat_val) = ext_map.get("KHR_materials_clearcoat") {
-                if let Some(factor) = clearcoat_val.get("clearcoatFactor").and_then(|v| v.as_f64()) {
+                if let Some(factor) = clearcoat_val
+                    .get("clearcoatFactor")
+                    .and_then(|v| v.as_f64())
+                {
                     mat.clearcoat_factor = factor as f32;
                 }
-                if let Some(roughness) = clearcoat_val.get("clearcoatRoughnessFactor").and_then(|v| v.as_f64()) {
+                if let Some(roughness) = clearcoat_val
+                    .get("clearcoatRoughnessFactor")
+                    .and_then(|v| v.as_f64())
+                {
                     mat.clearcoat_roughness = roughness as f32;
                 }
             }
@@ -766,9 +775,8 @@ pub mod gltf_loader {
         };
 
         let prim_mat = prim.material();
-        let mat = extract_extended_material(&prim_mat, |source| {
-            decode_image_from_gltf(source, None)
-        })?;
+        let mat =
+            extract_extended_material(&prim_mat, |source| decode_image_from_gltf(source, None))?;
 
         Ok((
             MeshData {

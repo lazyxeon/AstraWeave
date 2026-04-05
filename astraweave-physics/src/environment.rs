@@ -2574,7 +2574,8 @@ mod tests {
 
     #[test]
     fn r6_water_surface_height_varies_with_waves() {
-        let mut water = WaterVolume::new(WaterVolumeId(1), Vec3::ZERO, Vec3::new(100.0, 10.0, 100.0));
+        let mut water =
+            WaterVolume::new(WaterVolumeId(1), Vec3::ZERO, Vec3::new(100.0, 10.0, 100.0));
         water.wave_amplitude = 2.0;
         water.wave_frequency = 1.0;
         water.wave_phase = 1.0;
@@ -2588,15 +2589,17 @@ mod tests {
         assert!(
             !all_same,
             "Wave surface should vary: h(0,0)={}, h(50,0)={}, h(0,50)={}",
-            h1,
-            h2,
-            h3
+            h1, h2, h3
         );
     }
 
     #[test]
     fn r6_water_surface_height_no_wave() {
-        let water = WaterVolume::new(WaterVolumeId(1), Vec3::new(0.0, 5.0, 0.0), Vec3::new(100.0, 10.0, 100.0));
+        let water = WaterVolume::new(
+            WaterVolumeId(1),
+            Vec3::new(0.0, 5.0, 0.0),
+            Vec3::new(100.0, 10.0, 100.0),
+        );
         // wave_amplitude = 0 by default
         let h1 = water.surface_height_at(0.0, 0.0);
         let h2 = water.surface_height_at(10.0, 20.0);
@@ -2684,11 +2687,7 @@ mod tests {
 
         // Point above water (y = 50, surface = 10)
         let force = mgr.buoyancy_force_at(Vec3::new(0.0, 50.0, 0.0), 1.0, 0.5);
-        assert!(
-            force.y.abs() < 0.01,
-            "No buoyancy above water: {:?}",
-            force
-        );
+        assert!(force.y.abs() < 0.01, "No buoyancy above water: {:?}", force);
     }
 
     #[test]
@@ -2761,7 +2760,11 @@ mod tests {
         // At t=0.1 (t_norm=0.05): early ramp up, attack = (0.05*4).min(1) = 0.2
         gust.elapsed = 0.1;
         let s1 = gust.current_strength();
-        assert!(s1 > 0.0 && s1 < 10.0, "At t=0.1, gust should be rising: {}", s1);
+        assert!(
+            s1 > 0.0 && s1 < 10.0,
+            "At t=0.1, gust should be rising: {}",
+            s1
+        );
 
         // At t=1.0 (t_norm=0.5): full peak, attack=min(2,1)=1, release=min(2,1)=1
         gust.elapsed = 1.0;
@@ -2970,11 +2973,20 @@ mod tests {
         wv.wave_amplitude = 0.0;
 
         // Point well below surface (surface at y=5)
-        assert!(em.is_underwater(Vec3::new(0.0, 1.0, 0.0)), "Point at y=1 should be underwater");
+        assert!(
+            em.is_underwater(Vec3::new(0.0, 1.0, 0.0)),
+            "Point at y=1 should be underwater"
+        );
         // Point above surface
-        assert!(!em.is_underwater(Vec3::new(0.0, 10.0, 0.0)), "Point at y=10 should not be underwater");
+        assert!(
+            !em.is_underwater(Vec3::new(0.0, 10.0, 0.0)),
+            "Point at y=10 should not be underwater"
+        );
         // Point outside volume
-        assert!(!em.is_underwater(Vec3::new(100.0, 0.0, 0.0)), "Point outside volume should not be underwater");
+        assert!(
+            !em.is_underwater(Vec3::new(100.0, 0.0, 0.0)),
+            "Point outside volume should not be underwater"
+        );
     }
 
     #[test]
@@ -3004,7 +3016,8 @@ mod tests {
         assert!(
             lin_above == 0.0 && ang_above == 0.0,
             "No drag above water: ({}, {})",
-            lin_above, ang_above
+            lin_above,
+            ang_above
         );
     }
 
@@ -3030,18 +3043,24 @@ mod tests {
         assert!(
             force_center.length() > force_half.length(),
             "Force at center should be stronger than at half radius: center={}, half={}",
-            force_center.length(), force_half.length()
+            force_center.length(),
+            force_half.length()
         );
 
         // Force at center should be non-zero
-        assert!(force_center.length() > 0.1, "Center force should be non-zero");
+        assert!(
+            force_center.length() > 0.1,
+            "Center force should be non-zero"
+        );
     }
 
     #[test]
     fn r8_wind_zone_falloff_box() {
         let config = WindZoneConfig {
             position: Vec3::ZERO,
-            shape: WindZoneShape::Box { half_extents: Vec3::splat(10.0) },
+            shape: WindZoneShape::Box {
+                half_extents: Vec3::splat(10.0),
+            },
             wind_type: WindType::Directional,
             direction: Vec3::new(0.0, 0.0, 1.0),
             strength: 15.0,
@@ -3056,7 +3075,8 @@ mod tests {
         assert!(
             force_center.length() > force_edge.length(),
             "Center should have more force than edge: center={}, edge={}",
-            force_center.length(), force_edge.length()
+            force_center.length(),
+            force_edge.length()
         );
     }
 
@@ -3064,7 +3084,10 @@ mod tests {
     fn r8_wind_zone_falloff_cylinder() {
         let config = WindZoneConfig {
             position: Vec3::ZERO,
-            shape: WindZoneShape::Cylinder { radius: 10.0, height: 20.0 },
+            shape: WindZoneShape::Cylinder {
+                radius: 10.0,
+                height: 20.0,
+            },
             wind_type: WindType::Directional,
             direction: Vec3::new(1.0, 0.0, 0.0),
             strength: 15.0,
@@ -3079,7 +3102,8 @@ mod tests {
         assert!(
             force_center.length() > force_near_edge.length(),
             "Center > edge: center={}, edge={}",
-            force_center.length(), force_near_edge.length()
+            force_center.length(),
+            force_near_edge.length()
         );
     }
 
@@ -3098,7 +3122,10 @@ mod tests {
 
         // Point inside zone
         let force_in = em.wind_force_at(Vec3::ZERO, 1.0, 1.0);
-        assert!(force_in.length() > 0.0, "Inside zone should have wind force");
+        assert!(
+            force_in.length() > 0.0,
+            "Inside zone should have wind force"
+        );
 
         // Point outside zone
         let force_out = em.wind_force_at(Vec3::new(100.0, 0.0, 0.0), 1.0, 1.0);
@@ -3128,7 +3155,8 @@ mod tests {
         assert!(
             (force.length() - expected_mag).abs() < 1.0,
             "Wind force magnitude should be ~{}, got {}",
-            expected_mag, force.length()
+            expected_mag,
+            force.length()
         );
         assert!(force.x > 0.0, "Wind force should be in +X: {:?}", force);
     }
@@ -3157,7 +3185,8 @@ mod tests {
         assert!(
             force_center.length() > force_edge.length(),
             "Center force ({}) should exceed edge force ({})",
-            force_center.length(), force_edge.length()
+            force_center.length(),
+            force_edge.length()
         );
 
         // Wind velocity = direction.normalize() * strength = (1,0,0) * 5.0
@@ -3166,7 +3195,8 @@ mod tests {
         assert!(
             (force_center.length() - expected).abs() < 2.0,
             "Center force should be ~{}, got {}",
-            expected, force_center.length()
+            expected,
+            force_center.length()
         );
     }
 
@@ -3223,7 +3253,8 @@ mod tests {
         assert!(
             (force.x - expected).abs() < 1.0,
             "Force magnitude should be 0.5*1.225*speed^2: expected={}, got={}",
-            expected, force.x
+            expected,
+            force.x
         );
         assert!(
             force.y.abs() < 0.1,
@@ -3265,7 +3296,8 @@ mod tests {
         assert!(
             force.x.abs() < force.z.abs() * 0.5,
             "Force should be primarily tangential, not radial: fx={}, fz={}",
-            force.x, force.z
+            force.x,
+            force.z
         );
     }
 
@@ -3323,15 +3355,17 @@ mod tests {
         assert!(
             mid_force.length() < center_force.length(),
             "Force should decrease with falloff: center={}, mid={}",
-            center_force.length(), mid_force.length()
+            center_force.length(),
+            mid_force.length()
         );
 
-        // Force at edge should be near zero  
+        // Force at edge should be near zero
         let edge_force = zone.wind_force_at(Vec3::new(9.9, 0.0, 0.0), 1.0, 1.0);
         assert!(
             edge_force.length() < center_force.length() * 0.2,
             "Force at edge should be very small: edge={}, center={}",
-            edge_force.length(), center_force.length()
+            edge_force.length(),
+            center_force.length()
         );
     }
 

@@ -305,7 +305,10 @@ fn infer_default_is_srgb_bc7() {
 fn infer_n_suffix() {
     // Files ending with _n.png should be normal maps
     let cfg = aw_asset_cli::texture_baker::infer_config_from_path(Path::new("wall_n.png"));
-    assert!(cfg.is_normal_map, "file ending _n.png should be detected as normal map");
+    assert!(
+        cfg.is_normal_map,
+        "file ending _n.png should be detected as normal map"
+    );
     assert_eq!(cfg.color_space, ColorSpace::Linear);
 }
 

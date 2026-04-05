@@ -409,7 +409,10 @@ mod tests {
         // Just created, age should be 0 or very close
         let age = persisted.age_seconds();
         // The age is at least 0 (just created) and should be less than something reasonable
-        assert!(age < 60, "age_seconds should be small for just-created history");
+        assert!(
+            age < 60,
+            "age_seconds should be small for just-created history"
+        );
     }
 
     /// Kills line 181: `version > CURRENT_VERSION` → `version < CURRENT_VERSION`

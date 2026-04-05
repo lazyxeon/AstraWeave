@@ -427,19 +427,20 @@ mod tests {
     /// Kills lines 115, 119: detect_conflicts with unsatisfied preconditions
     #[test]
     fn test_detect_conflicts_unsatisfied_preconditions() {
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_action_with_preconditions(
-                "needs_ammo",
-                vec![("has_ammo", StateValue::Bool(true))],
-                vec![("fired", StateValue::Bool(true))],
-            ),
-        ];
+        let actions: Vec<Box<dyn Action>> = vec![create_action_with_preconditions(
+            "needs_ammo",
+            vec![("has_ammo", StateValue::Bool(true))],
+            vec![("fired", StateValue::Bool(true))],
+        )];
         let plan = vec!["needs_ammo".to_string()];
         // Start state lacks has_ammo, so precondition is violated
         let start_state = WorldState::new();
 
         let conflicts = PlanStitcher::detect_conflicts(&plan, &actions, &start_state);
-        assert!(!conflicts.is_empty(), "Should detect precondition violation");
+        assert!(
+            !conflicts.is_empty(),
+            "Should detect precondition violation"
+        );
         assert!(
             matches!(conflicts[0], Conflict::PreconditionViolation { .. }),
             "Should be PreconditionViolation"
@@ -449,13 +450,11 @@ mod tests {
     /// Kills lines 115, 119: detect_conflicts with precondition value mismatch
     #[test]
     fn test_detect_conflicts_precondition_value_mismatch() {
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_action_with_preconditions(
-                "needs_high_health",
-                vec![("health", StateValue::Int(100))],
-                vec![("attacked", StateValue::Bool(true))],
-            ),
-        ];
+        let actions: Vec<Box<dyn Action>> = vec![create_action_with_preconditions(
+            "needs_high_health",
+            vec![("health", StateValue::Int(100))],
+            vec![("attacked", StateValue::Bool(true))],
+        )];
         let plan = vec!["needs_high_health".to_string()];
         let mut start_state = WorldState::new();
         start_state.set("health", StateValue::Int(50)); // Wrong value
@@ -511,15 +510,19 @@ mod tests {
         let actions: Vec<Box<dyn Action>> = vec![];
         let start_state = WorldState::new();
         let result = PlanStitcher::optimize(vec![], &actions, &start_state);
-        assert!(result.is_empty(), "Optimizing empty plan should return empty");
+        assert!(
+            result.is_empty(),
+            "Optimizing empty plan should return empty"
+        );
     }
 
     /// Kills line 218: unknown action preserved in optimize
     #[test]
     fn test_optimize_preserves_unknown_actions() {
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action("known", vec![("x", StateValue::Bool(true))]),
-        ];
+        let actions: Vec<Box<dyn Action>> = vec![create_test_action(
+            "known",
+            vec![("x", StateValue::Bool(true))],
+        )];
         let plan = vec!["known".to_string(), "unknown_action".to_string()];
         let start_state = WorldState::new();
 

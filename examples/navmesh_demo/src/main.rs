@@ -147,7 +147,8 @@ impl ApplicationHandler for App {
                 if code == KeyCode::Escape {
                     event_loop.exit();
                 }
-                self.cam_ctl.process_keyboard(code, state == ElementState::Pressed);
+                self.cam_ctl
+                    .process_keyboard(code, state == ElementState::Pressed);
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if button == MouseButton::Right {

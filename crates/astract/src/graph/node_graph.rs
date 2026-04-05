@@ -301,7 +301,8 @@ impl NodeGraph {
     /// Remove a node and its connected edges
     pub fn remove_node(&mut self, id: NodeId) -> Option<GraphNode> {
         // Remove all edges connected to this node
-        self.edges.retain(|e| e.source_node != id && e.target_node != id);
+        self.edges
+            .retain(|e| e.source_node != id && e.target_node != id);
         // Remove the node
         self.nodes.remove(&id)
     }

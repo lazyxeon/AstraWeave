@@ -1988,18 +1988,12 @@ mod tests {
 
         // Damage to zero health → Destroying state
         mgr.apply_damage(id, 100.0);
-        assert_eq!(
-            mgr.get(id).unwrap().state,
-            DestructibleState::Destroying
-        );
+        assert_eq!(mgr.get(id).unwrap().state, DestructibleState::Destroying);
 
         // update() should spawn debris and move to Destroyed
         mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
 
-        assert_eq!(
-            mgr.get(id).unwrap().state,
-            DestructibleState::Destroyed
-        );
+        assert_eq!(mgr.get(id).unwrap().state, DestructibleState::Destroyed);
         assert!(
             mgr.debris_count() > 0,
             "Debris should be spawned: count={}",
@@ -2053,7 +2047,10 @@ mod tests {
                 any_has_velocity = true;
             }
         }
-        assert!(any_has_velocity, "At least some debris should have velocity");
+        assert!(
+            any_has_velocity,
+            "At least some debris should have velocity"
+        );
     }
 
     #[test]
@@ -2306,10 +2303,7 @@ mod tests {
         mgr.destroy(id);
         mgr.update(1.0 / 60.0, Vec3::ZERO);
         let d = mgr.get(id).unwrap();
-        assert!(
-            d.is_destroyed(),
-            "Should be destroyed after destroy+update"
-        );
+        assert!(d.is_destroyed(), "Should be destroyed after destroy+update");
     }
 
     // ===== ROUND 8: spawn_debris/get_mut/on_collision/get_debris =====
@@ -2320,9 +2314,12 @@ mod tests {
         let id = mgr.add_destructible(DestructibleConfig::default(), Vec3::ZERO);
         let d = mgr.get_mut(id);
         assert!(d.is_some(), "get_mut should return Some for existing id");
-        
+
         let bad_id = DestructibleId(9999);
-        assert!(mgr.get_mut(bad_id).is_none(), "get_mut on invalid id should be None");
+        assert!(
+            mgr.get_mut(bad_id).is_none(),
+            "get_mut on invalid id should be None"
+        );
     }
 
     #[test]
@@ -2336,16 +2333,23 @@ mod tests {
             ..Default::default()
         };
         let id = mgr.add_destructible(config, Vec3::ZERO);
-        
+
         // Collision below threshold should not damage
         mgr.on_collision(id, 3.0);
         let d = mgr.get(id).unwrap();
-        assert_eq!(d.health, 50.0, "Below-threshold collision should not damage");
-        
+        assert_eq!(
+            d.health, 50.0,
+            "Below-threshold collision should not damage"
+        );
+
         // Collision above threshold should damage (force=20, threshold=5, damage=(20-5)*1.0=15)
         mgr.on_collision(id, 20.0);
         let d = mgr.get(id).unwrap();
-        assert!(d.health < 50.0, "Above-threshold collision should damage: health={}", d.health);
+        assert!(
+            d.health < 50.0,
+            "Above-threshold collision should damage: health={}",
+            d.health
+        );
     }
 
     #[test]
@@ -2356,15 +2360,18 @@ mod tests {
             ..Default::default()
         };
         let id = mgr.add_destructible(config, Vec3::new(1.0, 2.0, 3.0));
-        
+
         // Destroy and update to spawn debris
         mgr.destroy(id);
         mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
-        
+
         // Get debris - should have spawned some
         let debris_count = mgr.debris_iter().count();
-        assert!(debris_count > 0, "Should have spawned debris after destruction");
-        
+        assert!(
+            debris_count > 0,
+            "Should have spawned debris after destruction"
+        );
+
         // Each debris should be retrievable by ID
         let first_debris = mgr.debris_iter().next().unwrap();
         let retrieved = mgr.get_debris(first_debris.id);
@@ -2381,17 +2388,19 @@ mod tests {
             ..Default::default()
         };
         let id = mgr.add_destructible(config, spawn_pos);
-        
+
         mgr.destroy(id);
         mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
-        
+
         // Debris positions should be near the parent object
         for debris in mgr.debris_iter() {
             let dist = (debris.position - spawn_pos).length();
             assert!(
                 dist < 10.0,
                 "Debris should be near parent: pos={:?}, parent={:?}, dist={}",
-                debris.position, spawn_pos, dist
+                debris.position,
+                spawn_pos,
+                dist
             );
         }
     }
@@ -2405,13 +2414,16 @@ mod tests {
             ..Default::default()
         };
         let id = mgr.add_destructible(config, Vec3::ZERO);
-        
+
         mgr.destroy(id);
         mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
-        
+
         // At least some debris should have non-zero velocity
         let has_velocity = mgr.debris_iter().any(|d| d.velocity.length() > 0.1);
-        assert!(has_velocity, "Some debris should have velocity from destruction force");
+        assert!(
+            has_velocity,
+            "Some debris should have velocity from destruction force"
+        );
     }
 
     #[test]
@@ -2423,10 +2435,10 @@ mod tests {
             ..Default::default()
         };
         let id = mgr.add_destructible(config, Vec3::ZERO);
-        
+
         mgr.destroy(id);
         mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
-        
+
         // Different debris should have different angular velocities (pseudo-random based on ID)
         let angulars: Vec<Vec3> = mgr.debris_iter().map(|d| d.angular_velocity).collect();
         if angulars.len() >= 2 {
@@ -2446,12 +2458,12 @@ mod tests {
             ..Default::default()
         };
         let id = mgr.add_destructible(config, Vec3::ZERO);
-        
+
         // Apply large force from +X direction before destroying
         mgr.apply_force(id, 1000.0);
         mgr.destroy(id);
         mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
-        
+
         // Debris should exist
         let count = mgr.debris_iter().count();
         assert!(count > 0, "Should have debris after force + destroy");
@@ -2473,7 +2485,8 @@ mod tests {
         assert!(
             (first.local_position - expected_pos).length() < 0.01,
             "First debris position should be ({:?}), got {:?}",
-            expected_pos, first.local_position
+            expected_pos,
+            first.local_position
         );
 
         // Loop order is x(outer) → y → z(inner), so index 1 = (x=0,y=0,z=1):
@@ -2483,7 +2496,8 @@ mod tests {
         assert!(
             (second.local_position - expected_pos2).length() < 0.01,
             "Second debris position should be ({:?}), got {:?}",
-            expected_pos2, second.local_position
+            expected_pos2,
+            second.local_position
         );
     }
 
@@ -2498,7 +2512,9 @@ mod tests {
             assert!(
                 (d.mass - expected_mass).abs() < 0.01,
                 "Piece {} mass should be {}, got {}",
-                i, expected_mass, d.mass
+                i,
+                expected_mass,
+                d.mass
             );
         }
     }
@@ -2516,7 +2532,8 @@ mod tests {
                 assert!(
                     (half_extents.x - expected).abs() < 0.01,
                     "Piece half_extent.x should be ~{}, got {}",
-                    expected, half_extents.x
+                    expected,
+                    half_extents.x
                 );
             }
             _ => panic!("Expected Box shape from FracturePattern::uniform"),
@@ -2577,19 +2594,24 @@ mod tests {
             ..Default::default()
         };
         let id = mgr.add_destructible(config, Vec3::ZERO);
-        
+
         // Apply large force from +X to trigger destruction with force direction
         mgr.apply_force(id, 50000.0); // Exceed force threshold to trigger destruction
         mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
-        
+
         // Debris should exist and have been pushed in +X direction due to force
         let count = mgr.debris_iter().count();
         if count > 0 {
             let avg_vx: f32 = mgr.debris_iter().map(|d| d.velocity.x).sum::<f32>() / count as f32;
             // Force was applied in +X direction, so average velocity should lean positive x
             // (At minimum, debris should have non-trivial velocity)
-            let avg_speed: f32 = mgr.debris_iter().map(|d| d.velocity.length()).sum::<f32>() / count as f32;
-            assert!(avg_speed > 0.5, "Debris should have speed from destruction_force=100, got {}", avg_speed);
+            let avg_speed: f32 =
+                mgr.debris_iter().map(|d| d.velocity.length()).sum::<f32>() / count as f32;
+            assert!(
+                avg_speed > 0.5,
+                "Debris should have speed from destruction_force=100, got {}",
+                avg_speed
+            );
         }
     }
 
@@ -2612,7 +2634,10 @@ mod tests {
                 has_angular = true;
             }
         }
-        assert!(has_angular, "At least some debris should have angular velocity");
+        assert!(
+            has_angular,
+            "At least some debris should have angular velocity"
+        );
     }
 
     // ===== ROUND 10: spawn_debris exact arithmetic verification =====
@@ -2644,7 +2669,8 @@ mod tests {
         assert!(
             (d1.angular_velocity - expected).length() < 0.01,
             "Debris 1 angular vel should match formula: expected={:?}, got={:?}",
-            expected, d1.angular_velocity
+            expected,
+            d1.angular_velocity
         );
     }
 
@@ -2670,7 +2696,8 @@ mod tests {
         assert!(
             (d2.angular_velocity - expected).length() < 0.01,
             "Debris 2 angular vel: expected={:?}, got={:?}",
-            expected, d2.angular_velocity
+            expected,
+            d2.angular_velocity
         );
     }
 
@@ -2706,9 +2733,7 @@ mod tests {
 
         // Y component should include the force_direction (Vec3::Y) contribution
         // At minimum, some debris should have positive Y velocity from the +Y force component
-        let has_positive_y = mgr
-            .debris_iter()
-            .any(|d| d.velocity.y > 5.0);
+        let has_positive_y = mgr.debris_iter().any(|d| d.velocity.y > 5.0);
         assert!(
             has_positive_y,
             "Force direction +Y should give some debris positive Y velocity"
@@ -2756,7 +2781,8 @@ mod tests {
         assert!(
             (v1 - v2 * 2.0).abs() < v1 * 0.1,
             "velocity_factor 1.0 should be ~2x of 0.5: v1={}, v2={}",
-            v1, v2
+            v1,
+            v2
         );
     }
 }

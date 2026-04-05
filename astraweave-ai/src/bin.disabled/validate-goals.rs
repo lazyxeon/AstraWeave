@@ -1,8 +1,8 @@
+use anyhow::{Context, Result};
 use astraweave_behavior::goap::*;
-use std::path::PathBuf;
-use std::fs;
-use anyhow::{Result, Context};
 use clap::{Parser, ValueEnum};
+use std::fs;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "validate-goals")]
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let validator = GoalValidator::new();
-    
+
     if cli.path.is_file() {
         validate_file(&cli.path, &validator, &cli)?;
     } else if cli.path.is_dir() {
@@ -148,14 +148,14 @@ fn collect_toml_files(dir: &PathBuf, files: &mut Vec<PathBuf>, recursive: bool) 
 fn print_text_result(path: &PathBuf, result: &ValidationResult, cli: &Cli) {
     if result.is_valid() {
         println!("✓ {} is valid", path.display());
-        
+
         if cli.warnings && !result.warnings.is_empty() {
             println!("  Warnings:");
             for warning in &result.warnings {
                 println!("    - {}", warning.message);
             }
         }
-        
+
         if cli.info && !result.info.is_empty() {
             println!("  Info:");
             for info in &result.info {
@@ -164,19 +164,19 @@ fn print_text_result(path: &PathBuf, result: &ValidationResult, cli: &Cli) {
         }
     } else {
         println!("✗ {} has errors", path.display());
-        
+
         for error in &result.errors {
             print!("  ERROR: {}", error.message);
             if let Some(field) = &error.field {
                 print!(" (in field '{}')", field);
             }
             println!();
-            
+
             if let Some(suggestion) = &error.suggestion {
                 println!("    Suggestion: {}", suggestion);
             }
         }
-        
+
         if cli.warnings && !result.warnings.is_empty() {
             println!("  Warnings:");
             for warning in &result.warnings {
@@ -232,4 +232,3 @@ fn print_json_directory_results(results: &[(PathBuf, ValidationResult)], _cli: &
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
 }
-

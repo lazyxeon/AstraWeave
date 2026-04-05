@@ -77,8 +77,7 @@ impl BossDirector {
 mod tests {
     use super::*;
     use astraweave_core::{
-        CompanionState, DirectorBudget, DirectorOp, EnemyState, IVec2, PlayerState,
-        WorldSnapshot,
+        CompanionState, DirectorBudget, DirectorOp, EnemyState, IVec2, PlayerState, WorldSnapshot,
     };
 
     fn test_snapshot() -> WorldSnapshot {

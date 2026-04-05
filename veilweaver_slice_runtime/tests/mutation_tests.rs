@@ -16,14 +16,19 @@ mod telemetry_rating_tests {
     fn rate_combat(tc: &TelemetryCollector) -> Rating {
         let mut panel = RecapPanel::new();
         tc.finalize(&mut panel);
-        *panel.category_ratings().get(&MetricCategory::Combat).unwrap()
+        *panel
+            .category_ratings()
+            .get(&MetricCategory::Combat)
+            .unwrap()
     }
 
     // Combat: kill_ratio thresholds 8.0/5.0/3.0/1.0
     #[test]
     fn combat_ratio_s_at_8() {
         let mut tc = TelemetryCollector::new();
-        for _ in 0..8 { tc.record_enemy_defeated(); }
+        for _ in 0..8 {
+            tc.record_enemy_defeated();
+        }
         tc.record_death();
         assert_eq!(rate_combat(&tc), Rating::S); // 8/1 = 8.0 >= 8.0
     }
@@ -31,7 +36,9 @@ mod telemetry_rating_tests {
     #[test]
     fn combat_ratio_a_at_5() {
         let mut tc = TelemetryCollector::new();
-        for _ in 0..5 { tc.record_enemy_defeated(); }
+        for _ in 0..5 {
+            tc.record_enemy_defeated();
+        }
         tc.record_death();
         assert_eq!(rate_combat(&tc), Rating::A); // 5/1 = 5.0 >= 5.0
     }
@@ -39,7 +46,9 @@ mod telemetry_rating_tests {
     #[test]
     fn combat_ratio_b_at_3() {
         let mut tc = TelemetryCollector::new();
-        for _ in 0..3 { tc.record_enemy_defeated(); }
+        for _ in 0..3 {
+            tc.record_enemy_defeated();
+        }
         tc.record_death();
         assert_eq!(rate_combat(&tc), Rating::B); // 3/1 = 3.0 >= 3.0
     }
@@ -70,7 +79,9 @@ mod telemetry_rating_tests {
     #[test]
     fn combat_ratio_a_not_s_at_7() {
         let mut tc = TelemetryCollector::new();
-        for _ in 0..7 { tc.record_enemy_defeated(); }
+        for _ in 0..7 {
+            tc.record_enemy_defeated();
+        }
         tc.record_death();
         assert_eq!(rate_combat(&tc), Rating::A); // 7.0 < 8.0
     }
@@ -79,7 +90,10 @@ mod telemetry_rating_tests {
     fn rate_exploration(tc: &TelemetryCollector) -> Rating {
         let mut panel = RecapPanel::new();
         tc.finalize(&mut panel);
-        *panel.category_ratings().get(&MetricCategory::Exploration).unwrap()
+        *panel
+            .category_ratings()
+            .get(&MetricCategory::Exploration)
+            .unwrap()
     }
 
     #[test]
@@ -128,20 +142,27 @@ mod telemetry_rating_tests {
     fn rate_weaving(tc: &TelemetryCollector) -> Rating {
         let mut panel = RecapPanel::new();
         tc.finalize(&mut panel);
-        *panel.category_ratings().get(&MetricCategory::Weaving).unwrap()
+        *panel
+            .category_ratings()
+            .get(&MetricCategory::Weaving)
+            .unwrap()
     }
 
     #[test]
     fn weaving_s_at_5_anchors() {
         let mut tc = TelemetryCollector::new();
-        for _ in 0..5 { tc.record_anchor_repaired(); }
+        for _ in 0..5 {
+            tc.record_anchor_repaired();
+        }
         assert_eq!(rate_weaving(&tc), Rating::S);
     }
 
     #[test]
     fn weaving_a_at_3_anchors() {
         let mut tc = TelemetryCollector::new();
-        for _ in 0..3 { tc.record_anchor_repaired(); }
+        for _ in 0..3 {
+            tc.record_anchor_repaired();
+        }
         assert_eq!(rate_weaving(&tc), Rating::A);
     }
 
@@ -170,7 +191,10 @@ mod telemetry_rating_tests {
     fn rate_timing(tc: &TelemetryCollector) -> Rating {
         let mut panel = RecapPanel::new();
         tc.finalize(&mut panel);
-        *panel.category_ratings().get(&MetricCategory::Timing).unwrap()
+        *panel
+            .category_ratings()
+            .get(&MetricCategory::Timing)
+            .unwrap()
     }
 
     #[test]
@@ -219,7 +243,10 @@ mod telemetry_rating_tests {
     fn rate_companion(tc: &TelemetryCollector) -> Rating {
         let mut panel = RecapPanel::new();
         tc.finalize(&mut panel);
-        *panel.category_ratings().get(&MetricCategory::Companion).unwrap()
+        *panel
+            .category_ratings()
+            .get(&MetricCategory::Companion)
+            .unwrap()
     }
 
     #[test]
@@ -267,7 +294,10 @@ mod telemetry_rating_tests {
     fn rate_narrative(tc: &TelemetryCollector) -> Rating {
         let mut panel = RecapPanel::new();
         tc.finalize(&mut panel);
-        *panel.category_ratings().get(&MetricCategory::Narrative).unwrap()
+        *panel
+            .category_ratings()
+            .get(&MetricCategory::Narrative)
+            .unwrap()
     }
 
     #[test]
@@ -397,7 +427,7 @@ mod boss_hud_boundary_tests {
         let tw = TelegraphWarning::new("test", "text", 2.0);
         let (r, g, b) = tw.urgency_color();
         assert!((r - 1.0).abs() < 0.01);
-        assert!((g - 0.9).abs() < 0.01);  // yellow
+        assert!((g - 0.9).abs() < 0.01); // yellow
         assert!((b - 0.2).abs() < 0.01);
     }
 
@@ -600,7 +630,10 @@ mod companion_hud_boundary_tests {
     #[test]
     fn rank_next() {
         assert_eq!(AffinityRank::Wary.next(), Some(AffinityRank::Cautious));
-        assert_eq!(AffinityRank::Cautious.next(), Some(AffinityRank::Cooperative));
+        assert_eq!(
+            AffinityRank::Cautious.next(),
+            Some(AffinityRank::Cooperative)
+        );
         assert_eq!(AffinityRank::Cooperative.next(), Some(AffinityRank::Bonded));
         assert_eq!(AffinityRank::Bonded.next(), Some(AffinityRank::Synced));
         assert_eq!(AffinityRank::Synced.next(), None);
@@ -642,7 +675,7 @@ mod companion_hud_boundary_tests {
         let mut meter = CompanionAffinityMeter::new("Companion", 0.15);
         let result = meter.apply_event("help", 0.1, 1.0);
         assert!(result.is_some()); // rank changed from Wary to Cautious
-        // pulse_alpha should be near 1.0 (timer just started at 0.5)
+                                   // pulse_alpha should be near 1.0 (timer just started at 0.5)
         assert!(meter.pulse_alpha() > 0.9);
     }
 
@@ -753,7 +786,7 @@ mod hud_state_boundary_tests {
     fn echo_feedback_alpha_at_quarter_progress() {
         let mut fb = EchoFeedback::new(5);
         fb.tick(0.5); // progress = 0.5/2.0 = 0.25
-        // At exactly 0.25: alpha = progress/0.25 = 1.0
+                      // At exactly 0.25: alpha = progress/0.25 = 1.0
         assert!((fb.alpha - 1.0).abs() < 0.01);
     }
 
@@ -761,7 +794,7 @@ mod hud_state_boundary_tests {
     fn echo_feedback_alpha_fade_out_starts_after_quarter() {
         let mut fb = EchoFeedback::new(5);
         fb.tick(1.0); // progress = 0.5
-        // alpha = 1.0 - ((0.5 - 0.25) / 0.75) = 1.0 - 0.333 ≈ 0.667
+                      // alpha = 1.0 - ((0.5 - 0.25) / 0.75) = 1.0 - 0.333 ≈ 0.667
         assert!(fb.alpha > 0.6 && fb.alpha < 0.7);
     }
 
@@ -769,7 +802,7 @@ mod hud_state_boundary_tests {
     fn echo_feedback_alpha_near_end() {
         let mut fb = EchoFeedback::new(5);
         fb.tick(1.9); // progress = 0.95
-        // alpha = 1.0 - ((0.95 - 0.25) / 0.75) = 1.0 - 0.933 ≈ 0.067
+                      // alpha = 1.0 - ((0.95 - 0.25) / 0.75) = 1.0 - 0.933 ≈ 0.067
         assert!(fb.alpha < 0.1);
         assert!(fb.alpha >= 0.0);
     }
@@ -865,7 +898,11 @@ mod recap_panel_tests {
         panel.record_int("b", "B", 1, MetricCategory::Exploration, "");
         // S + B = (5+3)/2 = 4.0 >= 3.5
         panel.finalize_with(|cat, _| {
-            if cat == MetricCategory::Combat { Rating::S } else { Rating::B }
+            if cat == MetricCategory::Combat {
+                Rating::S
+            } else {
+                Rating::B
+            }
         });
         assert_eq!(panel.overall_rating(), Some(Rating::A));
     }
@@ -877,7 +914,11 @@ mod recap_panel_tests {
         panel.record_int("b", "B", 1, MetricCategory::Exploration, "");
         // A + C = (4+2)/2 = 3.0 >= 2.5
         panel.finalize_with(|cat, _| {
-            if cat == MetricCategory::Combat { Rating::A } else { Rating::C }
+            if cat == MetricCategory::Combat {
+                Rating::A
+            } else {
+                Rating::C
+            }
         });
         assert_eq!(panel.overall_rating(), Some(Rating::B));
     }
@@ -889,7 +930,11 @@ mod recap_panel_tests {
         panel.record_int("b", "B", 1, MetricCategory::Exploration, "");
         // B + D = (3+1)/2 = 2.0 >= 1.5
         panel.finalize_with(|cat, _| {
-            if cat == MetricCategory::Combat { Rating::B } else { Rating::D }
+            if cat == MetricCategory::Combat {
+                Rating::B
+            } else {
+                Rating::D
+            }
         });
         assert_eq!(panel.overall_rating(), Some(Rating::C));
     }
@@ -907,7 +952,13 @@ mod recap_panel_tests {
     fn finalize_default_5_metrics_gives_a() {
         let mut panel = RecapPanel::new();
         for i in 0..5 {
-            panel.record_int(&format!("m{}", i), "M", i as i64, MetricCategory::Combat, "");
+            panel.record_int(
+                &format!("m{}", i),
+                "M",
+                i as i64,
+                MetricCategory::Combat,
+                "",
+            );
         }
         panel.finalize_default();
         assert_eq!(
@@ -920,7 +971,13 @@ mod recap_panel_tests {
     fn finalize_default_3_metrics_gives_b() {
         let mut panel = RecapPanel::new();
         for i in 0..3 {
-            panel.record_int(&format!("m{}", i), "M", i as i64, MetricCategory::Combat, "");
+            panel.record_int(
+                &format!("m{}", i),
+                "M",
+                i as i64,
+                MetricCategory::Combat,
+                "",
+            );
         }
         panel.finalize_default();
         assert_eq!(
@@ -1015,8 +1072,20 @@ mod decision_ui_tests {
 
     fn make_radial() -> DecisionRadial {
         let opts = vec![
-            DecisionOption::new("opt_a", "Option A", "First option", "icon_a", (1.0, 0.0, 0.0)),
-            DecisionOption::new("opt_b", "Option B", "Second option", "icon_b", (0.0, 1.0, 0.0)),
+            DecisionOption::new(
+                "opt_a",
+                "Option A",
+                "First option",
+                "icon_a",
+                (1.0, 0.0, 0.0),
+            ),
+            DecisionOption::new(
+                "opt_b",
+                "Option B",
+                "Second option",
+                "icon_b",
+                (0.0, 1.0, 0.0),
+            ),
         ];
         DecisionRadial::new("test", "Pick one", opts)
     }
@@ -1088,7 +1157,13 @@ mod decision_ui_tests {
 
     #[test]
     fn countdown_remaining_decreases() {
-        let opts = vec![DecisionOption::new("a", "A", "desc", "icon_a", (1.0, 0.0, 0.0))];
+        let opts = vec![DecisionOption::new(
+            "a",
+            "A",
+            "desc",
+            "icon_a",
+            (1.0, 0.0, 0.0),
+        )];
         let mut r = DecisionRadial::new("test", "Pick", opts).with_countdown(5.0, 0);
         r.open();
         r.tick(DecisionRadial::ANIM_DURATION + 0.01);
@@ -1159,8 +1234,18 @@ mod vfx_specs_tests {
 
     #[test]
     fn vfx_color_lerp_at_zero() {
-        let a = VfxColor { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
-        let b = VfxColor { r: 1.0, g: 1.0, b: 1.0, a: 0.0 };
+        let a = VfxColor {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        };
+        let b = VfxColor {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 0.0,
+        };
         let result = a.lerp(&b, 0.0);
         assert!((result.r - 0.0).abs() < 0.01);
         assert!((result.a - 1.0).abs() < 0.01);
@@ -1168,8 +1253,18 @@ mod vfx_specs_tests {
 
     #[test]
     fn vfx_color_lerp_at_one() {
-        let a = VfxColor { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
-        let b = VfxColor { r: 1.0, g: 1.0, b: 1.0, a: 0.0 };
+        let a = VfxColor {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        };
+        let b = VfxColor {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 0.0,
+        };
         let result = a.lerp(&b, 1.0);
         assert!((result.r - 1.0).abs() < 0.01);
         assert!((result.a - 0.0).abs() < 0.01);
@@ -1177,8 +1272,18 @@ mod vfx_specs_tests {
 
     #[test]
     fn vfx_color_lerp_at_half() {
-        let a = VfxColor { r: 0.0, g: 0.2, b: 0.0, a: 1.0 };
-        let b = VfxColor { r: 1.0, g: 0.8, b: 1.0, a: 0.0 };
+        let a = VfxColor {
+            r: 0.0,
+            g: 0.2,
+            b: 0.0,
+            a: 1.0,
+        };
+        let b = VfxColor {
+            r: 1.0,
+            g: 0.8,
+            b: 1.0,
+            a: 0.0,
+        };
         let result = a.lerp(&b, 0.5);
         assert!((result.r - 0.5).abs() < 0.01);
         assert!((result.g - 0.5).abs() < 0.01);
@@ -1187,8 +1292,18 @@ mod vfx_specs_tests {
 
     #[test]
     fn vfx_color_lerp_clamps_t() {
-        let a = VfxColor { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
-        let b = VfxColor { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+        let a = VfxColor {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.0,
+        };
+        let b = VfxColor {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 1.0,
+        };
         let result = a.lerp(&b, 2.0);
         assert!((result.r - 1.0).abs() < 0.01); // clamped to 1.0
     }
@@ -1198,10 +1313,22 @@ mod vfx_specs_tests {
         assert_eq!(AnchorVfxState::from_stability(0.9), AnchorVfxState::Perfect);
         assert_eq!(AnchorVfxState::from_stability(0.89), AnchorVfxState::Stable);
         assert_eq!(AnchorVfxState::from_stability(0.6), AnchorVfxState::Stable);
-        assert_eq!(AnchorVfxState::from_stability(0.59), AnchorVfxState::Unstable);
-        assert_eq!(AnchorVfxState::from_stability(0.3), AnchorVfxState::Unstable);
-        assert_eq!(AnchorVfxState::from_stability(0.29), AnchorVfxState::Critical);
-        assert_eq!(AnchorVfxState::from_stability(0.01), AnchorVfxState::Critical);
+        assert_eq!(
+            AnchorVfxState::from_stability(0.59),
+            AnchorVfxState::Unstable
+        );
+        assert_eq!(
+            AnchorVfxState::from_stability(0.3),
+            AnchorVfxState::Unstable
+        );
+        assert_eq!(
+            AnchorVfxState::from_stability(0.29),
+            AnchorVfxState::Critical
+        );
+        assert_eq!(
+            AnchorVfxState::from_stability(0.01),
+            AnchorVfxState::Critical
+        );
         // 0.0 is NOT > 0.0, so it's Broken
         assert_eq!(AnchorVfxState::from_stability(0.0), AnchorVfxState::Broken);
         assert_eq!(AnchorVfxState::from_stability(-0.1), AnchorVfxState::Broken);
@@ -1331,7 +1458,9 @@ mod vfx_specs_tests {
         let redir = StormVfxSpec::redirected();
         assert!(stab.fog_density < redir.fog_density || stab.wind_strength != redir.wind_strength);
         // from_choice should match factory methods
-        let from_stab = StormVfxSpec::from_choice(&veilweaver_slice_runtime::storm_choice::StormChoice::Stabilize);
+        let from_stab = StormVfxSpec::from_choice(
+            &veilweaver_slice_runtime::storm_choice::StormChoice::Stabilize,
+        );
         assert!((from_stab.fog_density - stab.fog_density).abs() < 0.01);
     }
 
@@ -1659,10 +1788,7 @@ mod zone_transitions_tests {
     #[test]
     fn dispatch_cinematic_trigger() {
         let reg = ZoneRegistry::veilweaver_default();
-        let triggers = vec![(
-            "trigger_1".to_string(),
-            "cinematic.play:intro".to_string(),
-        )];
+        let triggers = vec![("trigger_1".to_string(), "cinematic.play:intro".to_string())];
         let events = dispatch_trigger_actions(&triggers, &reg);
         assert_eq!(events.len(), 1);
         match &events[0] {
@@ -1765,7 +1891,10 @@ mod storm_choice_tests {
     fn storm_choice_labels() {
         assert!(!StormChoice::Stabilize.label().is_empty());
         assert!(!StormChoice::Redirect.label().is_empty());
-        assert_ne!(StormChoice::Stabilize.label(), StormChoice::Redirect.label());
+        assert_ne!(
+            StormChoice::Stabilize.label(),
+            StormChoice::Redirect.label()
+        );
     }
 
     #[test]
@@ -1786,11 +1915,26 @@ mod audio_specs_tests {
 
     #[test]
     fn zone_ambience_from_index() {
-        assert_eq!(ZoneAmbienceId::from_zone_index(0), Some(ZoneAmbienceId::LoomspireSanctum));
-        assert_eq!(ZoneAmbienceId::from_zone_index(1), Some(ZoneAmbienceId::ThreadhollowRuins));
-        assert_eq!(ZoneAmbienceId::from_zone_index(2), Some(ZoneAmbienceId::StormreachNexus));
-        assert_eq!(ZoneAmbienceId::from_zone_index(3), Some(ZoneAmbienceId::FrayedExpanse));
-        assert_eq!(ZoneAmbienceId::from_zone_index(4), Some(ZoneAmbienceId::BossCourtyard));
+        assert_eq!(
+            ZoneAmbienceId::from_zone_index(0),
+            Some(ZoneAmbienceId::LoomspireSanctum)
+        );
+        assert_eq!(
+            ZoneAmbienceId::from_zone_index(1),
+            Some(ZoneAmbienceId::ThreadhollowRuins)
+        );
+        assert_eq!(
+            ZoneAmbienceId::from_zone_index(2),
+            Some(ZoneAmbienceId::StormreachNexus)
+        );
+        assert_eq!(
+            ZoneAmbienceId::from_zone_index(3),
+            Some(ZoneAmbienceId::FrayedExpanse)
+        );
+        assert_eq!(
+            ZoneAmbienceId::from_zone_index(4),
+            Some(ZoneAmbienceId::BossCourtyard)
+        );
         assert_eq!(ZoneAmbienceId::from_zone_index(5), None);
     }
 
@@ -2002,9 +2146,9 @@ mod combat_tests {
         enc.clear_current_wave();
         let events = enc.drain_events();
         // Should have wave cleared event with next_wave
-        let has_wave_cleared = events.iter().any(|e| {
-            matches!(e, CombatEvent::WaveCleared { next_wave, .. } if *next_wave)
-        });
+        let has_wave_cleared = events
+            .iter()
+            .any(|e| matches!(e, CombatEvent::WaveCleared { next_wave, .. } if *next_wave));
         assert!(has_wave_cleared);
     }
 
@@ -2284,10 +2428,7 @@ mod checkpoint_tests {
             for _ in 0..i {
                 orch.tick(0.016);
             }
-            let cp = SliceCheckpoint::capture_from_orchestrator(
-                &orch,
-                format!("cp_{}", i),
-            );
+            let cp = SliceCheckpoint::capture_from_orchestrator(&orch, format!("cp_{}", i));
             store.push(cp);
         }
         assert_eq!(store.len(), 3);
@@ -2331,10 +2472,7 @@ mod checkpoint_tests {
     #[test]
     fn checkpoint_store_ticks() {
         let mut store = CheckpointStore::new();
-        let cp = SliceCheckpoint::capture_from_orchestrator(
-            &SliceOrchestrator::new(),
-            "test",
-        );
+        let cp = SliceCheckpoint::capture_from_orchestrator(&SliceOrchestrator::new(), "test");
         store.push(cp);
         let ticks = store.ticks();
         assert_eq!(ticks.len(), 1);
@@ -2454,7 +2592,10 @@ mod walkthrough_tests {
 
     #[test]
     fn walkthrough_beat_display() {
-        assert_eq!(format!("{}", WalkthroughBeat::TutorialBegin), "Tutorial Begin");
+        assert_eq!(
+            format!("{}", WalkthroughBeat::TutorialBegin),
+            "Tutorial Begin"
+        );
         assert_eq!(format!("{}", WalkthroughBeat::Complete), "Complete");
     }
 }
@@ -2463,18 +2604,13 @@ mod walkthrough_tests {
 // Module 18: cinematic_player_tests — state machine, progress
 // ══════════════════════════════════════════════════════════════════════
 mod cinematic_player_tests {
-    use veilweaver_slice_runtime::cinematic_player::*;
     use astraweave_cinematics::{CameraKey, Time, Timeline};
+    use veilweaver_slice_runtime::cinematic_player::*;
 
     fn make_timeline(duration: f32) -> Timeline {
         let mut tl = Timeline::new("test", duration);
         tl.add_camera_track(vec![
-            CameraKey::new(
-                Time::from_secs(0.0),
-                (0.0, 0.0, 0.0),
-                (0.0, 0.0, 1.0),
-                60.0,
-            ),
+            CameraKey::new(Time::from_secs(0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 60.0),
             CameraKey::new(
                 Time::from_secs(duration),
                 (10.0, 0.0, 0.0),
@@ -2572,7 +2708,7 @@ mod cinematic_player_tests {
 // ══════════════════════════════════════════════════════════════════════
 mod vfx_dispatch_tests {
     use veilweaver_slice_runtime::vfx_dispatch::VfxAudioDispatch;
-    use veilweaver_slice_runtime::vfx_specs::{Vec3f, ThreadVfxSpec, TelegraphVfxSpec};
+    use veilweaver_slice_runtime::vfx_specs::{TelegraphVfxSpec, ThreadVfxSpec, Vec3f};
 
     #[test]
     fn initial_state() {
@@ -2585,7 +2721,11 @@ mod vfx_dispatch_tests {
     #[test]
     fn add_and_remove_thread() {
         let mut dispatch = VfxAudioDispatch::new();
-        dispatch.add_thread(ThreadVfxSpec::stable("t1", Vec3f::ZERO, Vec3f::new(1.0, 0.0, 0.0)));
+        dispatch.add_thread(ThreadVfxSpec::stable(
+            "t1",
+            Vec3f::ZERO,
+            Vec3f::new(1.0, 0.0, 0.0),
+        ));
         assert_eq!(dispatch.vfx_scene().threads.len(), 1);
         dispatch.remove_thread("t1");
         assert_eq!(dispatch.vfx_scene().threads.len(), 0);
@@ -2610,7 +2750,10 @@ mod vfx_dispatch_tests {
     #[test]
     fn telegraph_lifecycle() {
         let mut dispatch = VfxAudioDispatch::new();
-        dispatch.add_telegraph(TelegraphVfxSpec::cleave(Vec3f::ZERO, Vec3f::new(1.0, 0.0, 0.0)));
+        dispatch.add_telegraph(TelegraphVfxSpec::cleave(
+            Vec3f::ZERO,
+            Vec3f::new(1.0, 0.0, 0.0),
+        ));
         assert_eq!(dispatch.vfx_scene().telegraphs.len(), 1);
         dispatch.remove_telegraph("Oathbound Cleave");
         assert_eq!(dispatch.vfx_scene().telegraphs.len(), 0);
@@ -2678,7 +2821,9 @@ mod game_loop_tests {
         gl.storm_state.enter_crossroads();
         gl.notify_storm_choice(StormChoice::Redirect);
         let events = gl.tick(0.016);
-        let has_storm = events.iter().any(|e| matches!(e, GameLoopEvent::StormDecisionMade { .. }));
+        let has_storm = events
+            .iter()
+            .any(|e| matches!(e, GameLoopEvent::StormDecisionMade { .. }));
         assert!(has_storm);
     }
 
@@ -2723,7 +2868,12 @@ mod game_loop_tests {
         let mut tl = Timeline::new("test_cine", 2.0);
         tl.add_camera_track(vec![
             CameraKey::new(Time::from_secs(0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 60.0),
-            CameraKey::new(Time::from_secs(2.0), (10.0, 0.0, 0.0), (10.0, 0.0, 1.0), 60.0),
+            CameraKey::new(
+                Time::from_secs(2.0),
+                (10.0, 0.0, 0.0),
+                (10.0, 0.0, 1.0),
+                60.0,
+            ),
         ]);
         gl.cinematics.load("test_cine", tl);
         gl.cinematics.play("test_cine").unwrap();
@@ -2737,8 +2887,8 @@ mod game_loop_tests {
 // Module 21: walkthrough_extended_tests — HUD sync, combat events, VFX
 // ══════════════════════════════════════════════════════════════════════
 mod walkthrough_extended_tests {
-    use veilweaver_slice_runtime::walkthrough::*;
     use veilweaver_slice_runtime::storm_choice::StormChoice;
+    use veilweaver_slice_runtime::walkthrough::*;
 
     #[test]
     fn is_terminal_only_complete() {
@@ -2906,14 +3056,19 @@ mod walkthrough_extended_tests {
 // Module 22: cinematic_player_extended_tests
 // ══════════════════════════════════════════════════════════════════════
 mod cinematic_player_extended_tests {
-    use veilweaver_slice_runtime::cinematic_player::*;
     use astraweave_cinematics::{CameraKey, Time, Timeline};
+    use veilweaver_slice_runtime::cinematic_player::*;
 
     fn make_timeline(duration: f32) -> Timeline {
         let mut tl = Timeline::new("test", duration);
         tl.add_camera_track(vec![
             CameraKey::new(Time::from_secs(0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 60.0),
-            CameraKey::new(Time::from_secs(duration), (10.0, 0.0, 0.0), (10.0, 0.0, 1.0), 60.0),
+            CameraKey::new(
+                Time::from_secs(duration),
+                (10.0, 0.0, 0.0),
+                (10.0, 0.0, 1.0),
+                60.0,
+            ),
         ]);
         tl
     }
@@ -3072,8 +3227,8 @@ mod player_state_extended_tests {
 // Module 25: dialogue_storm_integration — dialogue choice → storm trigger
 // ══════════════════════════════════════════════════════════════════════
 mod dialogue_storm_integration_tests {
-    use veilweaver_slice_runtime::game_loop::*;
     use astraweave_dialogue::toml_loader::load_dialogue_from_toml;
+    use veilweaver_slice_runtime::game_loop::*;
 
     fn storm_dialogue_stabilize() -> astraweave_dialogue::toml_loader::LoadedDialogue {
         let toml = r#"
@@ -3210,8 +3365,8 @@ end = true
 
     #[test]
     fn cinematic_progress_boundary() {
-        use veilweaver_slice_runtime::cinematic_player::CinematicPlayer;
         use astraweave_cinematics::{CameraKey, Time, Timeline};
+        use veilweaver_slice_runtime::cinematic_player::CinematicPlayer;
         let mut player = CinematicPlayer::new();
         let mut tl = Timeline::new("boundary", 1.0);
         tl.add_camera_track(vec![
@@ -3428,14 +3583,18 @@ end = true
 
         gl.notify_trigger_enter(vec!["cine_t".to_string()]);
         let events = gl.tick(0.016);
-        assert!(events.iter().any(|e| matches!(e, GameLoopEvent::CinematicStarted { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, GameLoopEvent::CinematicStarted { .. })));
         assert!(gl.is_cinematic_playing());
 
         // Advance past end
         let _ = gl.tick(0.3);
         let events = gl.tick(0.3);
         // Should get CinematicFinished event
-        let finished = events.iter().any(|e| matches!(e, GameLoopEvent::CinematicFinished { .. }));
+        let finished = events
+            .iter()
+            .any(|e| matches!(e, GameLoopEvent::CinematicFinished { .. }));
         assert!(finished);
         assert!(!gl.is_cinematic_playing());
     }
@@ -3445,13 +3604,14 @@ end = true
 // Module 26 — Beat progression via zone-loading (kills evaluate_beat || → &&)
 // ════════════════════════════════════════════════════════════════════════════
 mod beat_progression_via_zones {
-    use veilweaver_slice_runtime::walkthrough::{SliceOrchestrator, WalkthroughBeat};
     use astraweave_scene::world_partition::GridCoord;
+    use veilweaver_slice_runtime::walkthrough::{SliceOrchestrator, WalkthroughBeat};
 
     /// Helper: register a custom zone and trigger it through the orchestrator.
     fn trigger_zone_entry(orch: &mut SliceOrchestrator, zone_name: &str, coord: GridCoord) {
         orch.game_loop.zone_registry.register(zone_name, coord);
-        orch.game_loop.register_trigger_action("zt", &format!("zone.transition:{}", zone_name));
+        orch.game_loop
+            .register_trigger_action("zt", &format!("zone.transition:{}", zone_name));
         orch.game_loop.notify_trigger_enter(vec!["zt".to_string()]);
         orch.tick(0.016);
         // Clear trigger for reuse
@@ -3579,9 +3739,9 @@ mod beat_progression_via_zones {
         orch.game_loop.storm_state.enter_crossroads();
         orch.game_loop.notify_storm_choice(StormChoice::Stabilize);
         orch.tick(0.016); // consumes deferred choice → StormDecisionMade
-        // After this tick, beat should advance to StormDecisionMade
-        // (StormResolved also fires same tick via process_storm, but testing
-        // that only StormDecisionMade is needed)
+                          // After this tick, beat should advance to StormDecisionMade
+                          // (StormResolved also fires same tick via process_storm, but testing
+                          // that only StormDecisionMade is needed)
         assert!(
             orch.beat() == WalkthroughBeat::StormDecisionMade
                 || orch.beat() == WalkthroughBeat::BossArenaEntry
@@ -3594,8 +3754,8 @@ mod beat_progression_via_zones {
 //   Kills: sync_hud_from_combat_events, sync_vfx_combat, feed_combat_telemetry
 // ════════════════════════════════════════════════════════════════════════════
 mod combat_event_vfx_sync {
-    use veilweaver_slice_runtime::walkthrough::SliceOrchestrator;
     use veilweaver_slice_runtime::audio_specs::StingerKind;
+    use veilweaver_slice_runtime::walkthrough::SliceOrchestrator;
 
     #[test]
     fn enemy_defeated_emits_echo_burst() {
@@ -3603,7 +3763,7 @@ mod combat_event_vfx_sync {
         let mut orch = SliceOrchestrator::new();
         orch.start_combat();
         orch.tick(0.016); // drains EncounterStarted
-        // Now kill enemy 1
+                          // Now kill enemy 1
         orch.combat.damage_enemy(1, 99999.0);
         let _result = orch.tick(0.016); // drains EnemyDefeated
         let bursts = orch.vfx_audio.vfx_scene().echo_bursts.len();
@@ -3616,7 +3776,7 @@ mod combat_event_vfx_sync {
         let mut orch = SliceOrchestrator::new();
         orch.start_combat();
         orch.tick(0.016); // drain EncounterStarted
-        // Kill enemy 1 — remaining = 2 (3 enemies, 1 killed)
+                          // Kill enemy 1 — remaining = 2 (3 enemies, 1 killed)
         orch.combat.damage_enemy(1, 99999.0);
         orch.tick(0.016);
         let bursts = &orch.vfx_audio.vfx_scene().echo_bursts;
@@ -3637,7 +3797,7 @@ mod combat_event_vfx_sync {
         let mut orch = SliceOrchestrator::new();
         orch.start_combat();
         orch.tick(0.016); // drain EncounterStarted
-        // Kill enemies 1 and 2 so remaining=1
+                          // Kill enemies 1 and 2 so remaining=1
         orch.combat.damage_enemy(1, 99999.0);
         orch.combat.damage_enemy(2, 99999.0);
         orch.tick(0.016);
@@ -3684,7 +3844,8 @@ mod combat_event_vfx_sync {
         let stingers_after = orch.vfx_audio.audio_scene().pending_stingers.len();
         // Should have queued WeavingSuccess stinger(s) (from both sync_hud and sync_vfx)
         assert!(
-            stingers_after > stingers_before || !orch.vfx_audio.audio_scene().pending_stingers.is_empty(),
+            stingers_after > stingers_before
+                || !orch.vfx_audio.audio_scene().pending_stingers.is_empty(),
             "EncounterCleared should emit WeavingSuccess stingers"
         );
     }
@@ -3696,7 +3857,9 @@ mod combat_event_vfx_sync {
         orch.start_combat();
         orch.tick(0.016); // EncounterStarted events flow through sync_vfx_combat
         let stingers = &orch.vfx_audio.audio_scene().pending_stingers;
-        let has_weaving_failure = stingers.iter().any(|s| s.kind == StingerKind::WeavingFailure);
+        let has_weaving_failure = stingers
+            .iter()
+            .any(|s| s.kind == StingerKind::WeavingFailure);
         assert!(
             has_weaving_failure,
             "EncounterStarted should queue WeavingFailure stinger via sync_vfx_combat"
@@ -3707,23 +3870,21 @@ mod combat_event_vfx_sync {
     fn wave_cleared_emits_weaving_success_when_next_wave() {
         // Kills: delete WaveCleared arm in sync_vfx_combat
         // Need multi-wave encounter
-        use veilweaver_slice_runtime::combat::{CombatEnemy, CombatWave, CombatEncounter};
-        let wave1 = CombatWave::new(vec![
-            CombatEnemy::new(1, "grunt_a", 10.0, 1.0),
-        ]);
-        let wave2 = CombatWave::new(vec![
-            CombatEnemy::new(2, "grunt_b", 10.0, 1.0),
-        ]);
+        use veilweaver_slice_runtime::combat::{CombatEncounter, CombatEnemy, CombatWave};
+        let wave1 = CombatWave::new(vec![CombatEnemy::new(1, "grunt_a", 10.0, 1.0)]);
+        let wave2 = CombatWave::new(vec![CombatEnemy::new(2, "grunt_b", 10.0, 1.0)]);
         let mut orch = SliceOrchestrator::new();
         orch.combat = CombatEncounter::new("multi", vec![wave1, wave2]);
         orch.combat.start();
         orch.tick(0.016); // drain EncounterStarted
-        // Clear wave 1 → triggers WaveCleared with next_wave=true
+                          // Clear wave 1 → triggers WaveCleared with next_wave=true
         orch.combat.damage_enemy(1, 99999.0);
         orch.tick(0.016);
         // Check for WeavingSuccess stinger from sync_vfx_combat's WaveCleared handler
         let stingers = &orch.vfx_audio.audio_scene().pending_stingers;
-        let has_weaving_success = stingers.iter().any(|s| s.kind == StingerKind::WeavingSuccess);
+        let has_weaving_success = stingers
+            .iter()
+            .any(|s| s.kind == StingerKind::WeavingSuccess);
         assert!(
             has_weaving_success,
             "WaveCleared with next_wave=true should queue WeavingSuccess stinger"
@@ -3758,9 +3919,8 @@ mod tick_result_and_misc_tests {
         let mut orch = SliceOrchestrator::new();
         // Tick with no events
         let result = orch.tick(0.016);
-        let expected = result.game_events.len()
-            + result.combat_events.len()
-            + result.walkthrough_events.len();
+        let expected =
+            result.game_events.len() + result.combat_events.len() + result.walkthrough_events.len();
         assert_eq!(result.event_count(), expected);
 
         // Now with some events
@@ -3770,7 +3930,10 @@ mod tick_result_and_misc_tests {
             + result2.combat_events.len()
             + result2.walkthrough_events.len();
         assert_eq!(result2.event_count(), expected2);
-        assert!(result2.event_count() > 0, "Combat start should produce events");
+        assert!(
+            result2.event_count() > 0,
+            "Combat start should produce events"
+        );
     }
 
     #[test]
@@ -3779,9 +3942,8 @@ mod tick_result_and_misc_tests {
         let mut orch = SliceOrchestrator::new();
         orch.start_combat(); // pushes EncounterStarted to combat events
         let result = orch.tick(0.016);
-        let manual = result.game_events.len()
-            + result.combat_events.len()
-            + result.walkthrough_events.len();
+        let manual =
+            result.game_events.len() + result.combat_events.len() + result.walkthrough_events.len();
         assert_eq!(result.event_count(), manual);
         // Combat start should have at least 1 combat event
         assert!(!result.combat_events.is_empty());
@@ -3841,7 +4003,10 @@ mod combat_targeting_tests {
         assert!(!orch.combat.waves[0].enemies[0].alive);
         // Try damaging dead enemy 1 again
         let killed_again = orch.combat.damage_enemy(1, 10.0);
-        assert!(!killed_again, "Dead enemy should not be found by damage_enemy");
+        assert!(
+            !killed_again,
+            "Dead enemy should not be found by damage_enemy"
+        );
     }
 }
 
@@ -3849,8 +4014,8 @@ mod combat_targeting_tests {
 // Module 30 — Boundary & guard mutations
 // ════════════════════════════════════════════════════════════════════════════
 mod boundary_guard_tests {
-    use veilweaver_slice_runtime::walkthrough::{SliceOrchestrator, WalkthroughBeat};
     use veilweaver_slice_runtime::player_state::PlayerState;
+    use veilweaver_slice_runtime::walkthrough::{SliceOrchestrator, WalkthroughBeat};
 
     #[test]
     fn is_full_health_exact_boundary() {
@@ -3861,10 +4026,16 @@ mod boundary_guard_tests {
         assert!(ps.is_full_health());
         // Take tiny damage that puts hp just below max
         ps.take_damage(0.001);
-        assert!(!ps.is_full_health(), "After any damage, should not be full health");
+        assert!(
+            !ps.is_full_health(),
+            "After any damage, should not be full health"
+        );
         // Heal back fully
         ps.heal(1000.0);
-        assert!(ps.is_full_health(), "After full heal, should be full health");
+        assert!(
+            ps.is_full_health(),
+            "After full heal, should be full health"
+        );
     }
 
     #[test]
@@ -3886,7 +4057,8 @@ mod boundary_guard_tests {
             orch.telemetry().damage_taken
         );
         assert_eq!(
-            orch.telemetry().damage_taken, 0.0,
+            orch.telemetry().damage_taken,
+            0.0,
             "NaN damage should not record any damage_taken"
         );
     }
@@ -3915,11 +4087,27 @@ mod boundary_guard_tests {
         let mut orch = SliceOrchestrator::new();
         let hp_before = orch.player().hp;
         orch.damage_player(0.0);
-        assert_eq!(orch.player().hp, hp_before, "Zero damage should not change HP");
-        assert_eq!(orch.telemetry().damage_taken, 0.0, "Zero damage should not record telemetry");
+        assert_eq!(
+            orch.player().hp,
+            hp_before,
+            "Zero damage should not change HP"
+        );
+        assert_eq!(
+            orch.telemetry().damage_taken,
+            0.0,
+            "Zero damage should not record telemetry"
+        );
         orch.damage_player(-5.0);
-        assert_eq!(orch.player().hp, hp_before, "Negative damage should not change HP");
-        assert_eq!(orch.telemetry().damage_taken, 0.0, "Negative damage should not record telemetry");
+        assert_eq!(
+            orch.player().hp,
+            hp_before,
+            "Negative damage should not change HP"
+        );
+        assert_eq!(
+            orch.telemetry().damage_taken,
+            0.0,
+            "Negative damage should not record telemetry"
+        );
     }
 
     #[test]
@@ -4040,15 +4228,21 @@ mod beat_hud_sync_pipeline {
         orch.tick(0.016);
 
         // Now trigger zone entry with "boss" to advance StormDecisionMade → BossArenaEntry
-        orch.game_loop.zone_registry.register("boss_arena", GridCoord::new(104, 0, 0));
-        orch.game_loop.register_trigger_action("enter_boss", "zone.transition:boss_arena");
-        orch.game_loop.notify_trigger_enter(vec!["enter_boss".to_string()]);
+        orch.game_loop
+            .zone_registry
+            .register("boss_arena", GridCoord::new(104, 0, 0));
+        orch.game_loop
+            .register_trigger_action("enter_boss", "zone.transition:boss_arena");
+        orch.game_loop
+            .notify_trigger_enter(vec!["enter_boss".to_string()]);
         orch.tick(0.016); // BeatAdvanced pushed DURING tick → sync handler processes it
 
         assert_eq!(orch.beat(), WalkthroughBeat::BossArenaEntry);
         // sync_hud_from_walkthrough_events should've called enter_boss_encounter()
-        assert!(orch.vfx_audio.in_boss_encounter(),
-            "Natural BossArenaEntry progression should activate boss encounter VFX");
+        assert!(
+            orch.vfx_audio.in_boss_encounter(),
+            "Natural BossArenaEntry progression should activate boss encounter VFX"
+        );
     }
 
     #[test]
@@ -4059,7 +4253,10 @@ mod beat_hud_sync_pipeline {
         orch.tick(0.016);
         orch.advance_to_debrief();
         orch.tick(0.016);
-        assert!(orch.recap().is_finalized(), "Complete should finalize recap");
+        assert!(
+            orch.recap().is_finalized(),
+            "Complete should finalize recap"
+        );
     }
 
     #[test]
@@ -4071,8 +4268,10 @@ mod beat_hud_sync_pipeline {
         assert!(orch.vfx_audio.in_boss_encounter());
         orch.force_beat(WalkthroughBeat::BossDefeated);
         orch.tick(0.016);
-        assert!(!orch.vfx_audio.in_boss_encounter(),
-            "BossDefeated should clear boss encounter VFX");
+        assert!(
+            !orch.vfx_audio.in_boss_encounter(),
+            "BossDefeated should clear boss encounter VFX"
+        );
     }
 }
 
@@ -4080,10 +4279,10 @@ mod beat_hud_sync_pipeline {
 // Module 33: and_or_discriminators — kill && → || mutations
 // ══════════════════════════════════════════════════════════════════════
 mod and_or_discriminators {
-    use veilweaver_slice_runtime::zone_transitions::TriggerAction;
+    use astraweave_dialogue::toml_loader::load_dialogue_from_toml;
     use veilweaver_slice_runtime::game_loop::*;
     use veilweaver_slice_runtime::storm_choice::*;
-    use astraweave_dialogue::toml_loader::load_dialogue_from_toml;
+    use veilweaver_slice_runtime::zone_transitions::TriggerAction;
 
     // ── zone_transitions.rs:84 — is_decision: && → || ──────────────
 
@@ -4196,7 +4395,12 @@ end = true
         let mut tl = Timeline::new("long_cine", 5.0);
         tl.add_camera_track(vec![
             CameraKey::new(Time::from_secs(0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 60.0),
-            CameraKey::new(Time::from_secs(5.0), (10.0, 0.0, 0.0), (10.0, 0.0, 1.0), 60.0),
+            CameraKey::new(
+                Time::from_secs(5.0),
+                (10.0, 0.0, 0.0),
+                (10.0, 0.0, 1.0),
+                60.0,
+            ),
         ]);
         gl.cinematics.load("long_cine", tl);
         gl.cinematics.play("long_cine").unwrap();
@@ -4204,10 +4408,13 @@ end = true
 
         // Tick with small dt — cinematic still in progress.
         let events = gl.tick(0.5);
-        assert!(gl.is_cinematic_playing(), "Cinematic should still be playing mid-way");
-        let has_finished = events.iter().any(|e| {
-            matches!(e, GameLoopEvent::CinematicFinished { .. })
-        });
+        assert!(
+            gl.is_cinematic_playing(),
+            "Cinematic should still be playing mid-way"
+        );
+        let has_finished = events
+            .iter()
+            .any(|e| matches!(e, GameLoopEvent::CinematicFinished { .. }));
         assert!(
             !has_finished,
             "CinematicFinished must NOT be emitted while cinematic is still playing"

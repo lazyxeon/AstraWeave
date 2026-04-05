@@ -1,13 +1,13 @@
 //! Professional-grade plan visualization CLI tool
-//! 
+//!
 //! This tool provides production-quality plan visualization with comprehensive
 //! error handling, multiple output formats, and extensive configuration options.
 
+use anyhow::{bail, Context, Result};
 use astraweave_behavior::goap::*;
-use std::path::PathBuf;
-use std::fs;
-use anyhow::{Result, Context, bail};
 use clap::{Parser, ValueEnum};
+use std::fs;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "visualize-plan")]
@@ -105,9 +105,10 @@ fn main() -> Result<()> {
         Ok(output) => {
             // Write output to file or stdout
             if let Some(ref output_path) = cli.output {
-                fs::write(output_path, &output)
-                    .with_context(|| format!("Failed to write output to '{}'", output_path.display()))?;
-                
+                fs::write(output_path, &output).with_context(|| {
+                    format!("Failed to write output to '{}'", output_path.display())
+                })?;
+
                 if cli.verbose {
                     eprintln!("✓ Visualization written to '{}'", output_path.display());
                 }
@@ -119,7 +120,10 @@ fn main() -> Result<()> {
         Err(e) => {
             eprintln!("✗ Visualization failed: {}", e);
             eprintln!("\nTroubleshooting:");
-            eprintln!("  1. Verify goal file is valid: cargo run --bin validate-goals -- {}", cli.goal_file.display());
+            eprintln!(
+                "  1. Verify goal file is valid: cargo run --bin validate-goals -- {}",
+                cli.goal_file.display()
+            );
             eprintln!("  2. Check that goal is achievable from the current state");
             eprintln!("  3. Try reducing complexity or adding intermediate goals");
             eprintln!("  4. Use --verbose flag for detailed planning information");
@@ -143,10 +147,10 @@ fn run_visualization(cli: &Cli) -> Result<String> {
         if cli.verbose {
             eprintln!("Validating goal...");
         }
-        
+
         let validator = GoalValidator::new();
         let result = validator.validate(&goal_def);
-        
+
         if !result.is_valid() {
             eprintln!("⚠ Goal validation found errors:");
             for error in &result.errors {
@@ -154,7 +158,7 @@ fn run_visualization(cli: &Cli) -> Result<String> {
             }
             bail!("Goal validation failed. Fix errors or use --no-validate to skip validation.");
         }
-        
+
         if cli.verbose && !result.warnings.is_empty() {
             eprintln!("⚠ Warnings:");
             for warning in &result.warnings {
@@ -186,19 +190,28 @@ fn run_visualization(cli: &Cli) -> Result<String> {
     };
 
     if cli.verbose {
-        eprintln!("✓ World state ready ({} variables)", world_state.iter().count());
+        eprintln!(
+            "✓ World state ready ({} variables)",
+            world_state.iter().count()
+        );
     }
 
     // Step 3: Load action history if provided
     let history = if let Some(ref history_path) = cli.history {
         if cli.verbose {
-            eprintln!("Loading action history from '{}'...", history_path.display());
+            eprintln!(
+                "Loading action history from '{}'...",
+                history_path.display()
+            );
         }
-        
+
         match HistoryPersistence::load(history_path, PersistenceFormat::Json) {
             Ok(h) => {
                 if cli.verbose {
-                    eprintln!("✓ History loaded ({} actions tracked)", h.action_names().len());
+                    eprintln!(
+                        "✓ History loaded ({} actions tracked)",
+                        h.action_names().len()
+                    );
                 }
                 h
             }
@@ -222,7 +235,10 @@ fn run_visualization(cli: &Cli) -> Result<String> {
     register_all_actions(&mut planner);
 
     if cli.verbose {
-        eprintln!("✓ Planner ready ({} actions available)", planner.action_count());
+        eprintln!(
+            "✓ Planner ready ({} actions available)",
+            planner.action_count()
+        );
     }
 
     // Step 5: Generate plan
@@ -230,8 +246,8 @@ fn run_visualization(cli: &Cli) -> Result<String> {
         eprintln!("Planning...");
     }
 
-    let plan = planner.plan(&world_state, &goal)
-        .ok_or_else(|| anyhow::anyhow!(
+    let plan = planner.plan(&world_state, &goal).ok_or_else(|| {
+        anyhow::anyhow!(
             "No plan found.\n\
              Possible reasons:\n\
              - Goal is unreachable from current state\n\
@@ -239,7 +255,8 @@ fn run_visualization(cli: &Cli) -> Result<String> {
              - Planning exceeded iteration limit ({})\n\
              - Preconditions are never satisfied",
             cli.max_iterations
-        ))?;
+        )
+    })?;
 
     if cli.verbose {
         eprintln!("✓ Plan generated ({} actions)", plan.len());
@@ -266,12 +283,7 @@ fn run_visualization(cli: &Cli) -> Result<String> {
         .with_risks(cli.show_risks)
         .with_state_changes(cli.show_state_changes);
 
-    let output = visualizer.visualize_plan(
-        &plan,
-        planner.get_actions(),
-        &history,
-        &world_state,
-    );
+    let output = visualizer.visualize_plan(&plan, planner.get_actions(), &history, &world_state);
 
     if cli.verbose {
         eprintln!("✓ Visualization complete");
@@ -285,8 +297,8 @@ fn load_world_state(path: &PathBuf) -> Result<WorldState> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read state file '{}'", path.display()))?;
 
-    let json: serde_json::Value = serde_json::from_str(&content)
-        .with_context(|| "Failed to parse state file as JSON")?;
+    let json: serde_json::Value =
+        serde_json::from_str(&content).with_context(|| "Failed to parse state file as JSON")?;
 
     let mut world_state = WorldState::new();
 
@@ -423,4 +435,3 @@ mod tests {
         assert_eq!(world.get("in_combat"), Some(&StateValue::Bool(false)));
     }
 }
-

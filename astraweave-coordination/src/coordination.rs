@@ -1860,10 +1860,7 @@ mod tests {
             metrics.resource_utilization, 0.0,
             "Should be 0.0 with no agents"
         );
-        assert!(
-            !metrics.resource_utilization.is_nan(),
-            "Must not be NaN"
-        );
+        assert!(!metrics.resource_utilization.is_nan(), "Must not be NaN");
     }
 
     #[tokio::test]

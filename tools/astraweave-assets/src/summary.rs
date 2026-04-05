@@ -188,7 +188,7 @@ mod tests {
         let mut summary = FetchSummary::new();
         let mut paths = HashMap::new();
         paths.insert("diffuse".to_string(), PathBuf::from("/tmp/diffuse.png"));
-        
+
         let entry = LockEntry {
             handle: "brick_wall".to_string(),
             id: "brick_wall_001".to_string(),
@@ -199,9 +199,9 @@ mod tests {
             hashes: HashMap::new(),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
         };
-        
+
         summary.add_downloaded(&entry);
-        
+
         assert_eq!(summary.total_assets, 1);
         assert_eq!(summary.downloaded, 1);
         assert_eq!(summary.cached, 0);
@@ -213,14 +213,14 @@ mod tests {
     #[test]
     fn test_add_cached() {
         let mut summary = FetchSummary::new();
-        
+
         summary.add_cached(
             "stone_floor".to_string(),
             "stone_floor_001".to_string(),
             "texture".to_string(),
             "4k".to_string(),
         );
-        
+
         assert_eq!(summary.total_assets, 1);
         assert_eq!(summary.downloaded, 0);
         assert_eq!(summary.cached, 1);
@@ -232,14 +232,14 @@ mod tests {
     #[test]
     fn test_add_failed() {
         let mut summary = FetchSummary::new();
-        
+
         summary.add_failed(
             "missing_asset".to_string(),
             "missing_001".to_string(),
             "hdri".to_string(),
             "404 Not Found".to_string(),
         );
-        
+
         assert_eq!(summary.total_assets, 1);
         assert_eq!(summary.downloaded, 0);
         assert_eq!(summary.cached, 0);
@@ -251,7 +251,7 @@ mod tests {
     #[test]
     fn test_mixed_operations() {
         let mut summary = FetchSummary::new();
-        
+
         // Add one of each
         let mut paths = HashMap::new();
         paths.insert("diffuse".to_string(), PathBuf::from("/tmp/diffuse.png"));
@@ -265,11 +265,21 @@ mod tests {
             hashes: HashMap::new(),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
         };
-        
+
         summary.add_downloaded(&entry);
-        summary.add_cached("cached_asset".to_string(), "asset_002".to_string(), "hdri".to_string(), "1k".to_string());
-        summary.add_failed("failed_asset".to_string(), "asset_003".to_string(), "model".to_string(), "Network error".to_string());
-        
+        summary.add_cached(
+            "cached_asset".to_string(),
+            "asset_002".to_string(),
+            "hdri".to_string(),
+            "1k".to_string(),
+        );
+        summary.add_failed(
+            "failed_asset".to_string(),
+            "asset_003".to_string(),
+            "model".to_string(),
+            "Network error".to_string(),
+        );
+
         assert_eq!(summary.total_assets, 3);
         assert_eq!(summary.downloaded, 1);
         assert_eq!(summary.cached, 1);
@@ -296,8 +306,13 @@ mod tests {
     #[test]
     fn test_fetch_summary_clone() {
         let mut summary = FetchSummary::new();
-        summary.add_cached("test".to_string(), "id".to_string(), "type".to_string(), "1k".to_string());
-        
+        summary.add_cached(
+            "test".to_string(),
+            "id".to_string(),
+            "type".to_string(),
+            "1k".to_string(),
+        );
+
         let cloned = summary.clone();
         assert_eq!(summary.total_assets, cloned.total_assets);
         assert_eq!(summary.assets.len(), cloned.assets.len());
@@ -347,7 +362,7 @@ mod tests {
         let mut paths = HashMap::new();
         paths.insert("diffuse".to_string(), PathBuf::from("/assets/diffuse.png"));
         paths.insert("normal".to_string(), PathBuf::from("/assets/normal.png"));
-        
+
         let asset = AssetSummary {
             handle: "multi_map".to_string(),
             id: "mm_001".to_string(),
@@ -366,9 +381,19 @@ mod tests {
     fn test_print_table() {
         // Just verify it doesn't panic
         let mut summary = FetchSummary::new();
-        summary.add_cached("test".to_string(), "id".to_string(), "texture".to_string(), "1k".to_string());
-        summary.add_failed("fail".to_string(), "fail_id".to_string(), "hdri".to_string(), "error".to_string());
-        
+        summary.add_cached(
+            "test".to_string(),
+            "id".to_string(),
+            "texture".to_string(),
+            "1k".to_string(),
+        );
+        summary.add_failed(
+            "fail".to_string(),
+            "fail_id".to_string(),
+            "hdri".to_string(),
+            "error".to_string(),
+        );
+
         // print_table writes to stdout, just ensure it doesn't panic
         summary.print_table();
     }

@@ -445,8 +445,7 @@ impl BiomePack {
         let rock_slots = rocks.len().min(8); // Up to 8 rocks
         let billboard_slots = billboards.len().min(4); // Up to 4 billboards
         let prop_slots = props.len().min(4); // Up to 4 props
-        let veg_slots =
-            MAX_VEG_TYPES.saturating_sub(rock_slots + billboard_slots + prop_slots);
+        let veg_slots = MAX_VEG_TYPES.saturating_sub(rock_slots + billboard_slots + prop_slots);
 
         let mut vegetation_types: Vec<VegetationType> = Vec::with_capacity(MAX_VEG_TYPES);
         vegetation_types.extend(rocks.into_iter().take(rock_slots));

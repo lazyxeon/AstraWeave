@@ -4,8 +4,8 @@
 
 #![allow(clippy::bool_assert_comparison, clippy::manual_range_contains)]
 
-use astraweave_dialogue::{DialogueGraph, DialogueNode, DialogueResponse};
 use astraweave_dialogue::runner::{DialogueRunner, RunnerState};
+use astraweave_dialogue::{DialogueGraph, DialogueNode, DialogueResponse};
 
 // ============================= DialogueNode Construction =============================
 
@@ -1304,10 +1304,16 @@ fn is_waiting_reflects_runner_state() {
     assert!(!runner.is_waiting(), "idle runner should not be waiting");
     // After start on a choice node, SHOULD be waiting
     runner.start("start").unwrap();
-    assert!(runner.is_waiting(), "runner at choice node should be waiting");
+    assert!(
+        runner.is_waiting(),
+        "runner at choice node should be waiting"
+    );
     // After choosing and reaching terminal, should NOT be waiting
     runner.choose(1).unwrap(); // → end (terminal)
-    assert!(!runner.is_waiting(), "finished runner should not be waiting");
+    assert!(
+        !runner.is_waiting(),
+        "finished runner should not be waiting"
+    );
 }
 
 /// Kill: peek_events → Vec::leak(Vec::new()) (empty)
@@ -1316,5 +1322,8 @@ fn peek_events_shows_pending_events() {
     let mut runner = DialogueRunner::new(make_runner_graph());
     runner.start("start").unwrap();
     let events = runner.peek_events();
-    assert!(!events.is_empty(), "should have NodeEntered event after start");
+    assert!(
+        !events.is_empty(),
+        "should have NodeEntered event after start"
+    );
 }

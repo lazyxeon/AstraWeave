@@ -548,15 +548,13 @@ mod tests {
             force_fallback_adapter: false,
         }))
         .ok()?;
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("test device"),
-                required_features: wgpu::Features::FLOAT32_FILTERABLE,
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            },
-        ))
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("test device"),
+            required_features: wgpu::Features::FLOAT32_FILTERABLE,
+            required_limits: wgpu::Limits::default(),
+            memory_hints: wgpu::MemoryHints::default(),
+            trace: wgpu::Trace::Off,
+        }))
         .ok()?;
         Some((device, queue))
     }
@@ -772,7 +770,11 @@ mod tests {
         }
         let h = gpu.sample_column_height(&grid, 0, 0).unwrap();
         // Should return topmost (y=3): base=3.0 + 0.3*1.0 = 3.3
-        assert!((h - 3.3).abs() < 1e-5, "expected topmost water ~3.3, got {}", h);
+        assert!(
+            (h - 3.3).abs() < 1e-5,
+            "expected topmost water ~3.3, got {}",
+            h
+        );
     }
 
     #[test]
@@ -819,7 +821,10 @@ mod tests {
         }
         let (verts, indices) = gpu.generate_surface_mesh(&grid);
         assert!(!verts.is_empty(), "grid with water should produce vertices");
-        assert!(!indices.is_empty(), "grid with water should produce indices");
+        assert!(
+            !indices.is_empty(),
+            "grid with water should produce indices"
+        );
         // Each quad = 4 vertices, 6 indices
         assert_eq!(indices.len() % 6, 0, "indices should be multiple of 6");
         assert_eq!(verts.len() % 4, 0, "vertices should be multiple of 4");
@@ -846,7 +851,10 @@ mod tests {
         assert!(!verts.is_empty());
         // Check that x positions use cell_size.x (2.0)
         let has_nonzero_x = verts.iter().any(|v| v.position[0] > 0.5);
-        assert!(has_nonzero_x, "vertex x positions should reflect cell_size.x=2.0");
+        assert!(
+            has_nonzero_x,
+            "vertex x positions should reflect cell_size.x=2.0"
+        );
     }
 
     #[test]
@@ -869,8 +877,16 @@ mod tests {
         assert!(!verts.is_empty());
         // All positions should be offset by origin
         for v in &verts {
-            assert!(v.position[0] >= 100.0, "x should be >= origin.x=100, got {}", v.position[0]);
-            assert!(v.position[2] >= 300.0, "z should be >= origin.z=300, got {}", v.position[2]);
+            assert!(
+                v.position[0] >= 100.0,
+                "x should be >= origin.x=100, got {}",
+                v.position[0]
+            );
+            assert!(
+                v.position[2] >= 300.0,
+                "z should be >= origin.z=300, got {}",
+                v.position[2]
+            );
         }
     }
 
@@ -891,8 +907,16 @@ mod tests {
         let (verts, _indices) = gpu.generate_surface_mesh(&grid);
         // UV coords should be in [0, 1] range (x/dim_x, z/dim_z)
         for v in &verts {
-            assert!(v.uv[0] >= 0.0 && v.uv[0] <= 1.0, "u should be in [0,1], got {}", v.uv[0]);
-            assert!(v.uv[1] >= 0.0 && v.uv[1] <= 1.0, "v should be in [0,1], got {}", v.uv[1]);
+            assert!(
+                v.uv[0] >= 0.0 && v.uv[0] <= 1.0,
+                "u should be in [0,1], got {}",
+                v.uv[0]
+            );
+            assert!(
+                v.uv[1] >= 0.0 && v.uv[1] <= 1.0,
+                "v should be in [0,1], got {}",
+                v.uv[1]
+            );
         }
     }
 
@@ -912,7 +936,12 @@ mod tests {
         }
         let (verts, indices) = gpu.generate_surface_mesh(&grid);
         for &idx in &indices {
-            assert!((idx as usize) < verts.len(), "index {} out of range for {} vertices", idx, verts.len());
+            assert!(
+                (idx as usize) < verts.len(),
+                "index {} out of range for {} vertices",
+                idx,
+                verts.len()
+            );
         }
     }
 
@@ -958,9 +987,21 @@ mod tests {
         }
         let n = gpu.calculate_surface_normal(&grid, 3, 3);
         // Flat surface should have normal pointing up (0, 1, 0)
-        assert!((n.y - 1.0).abs() < 0.01, "flat surface normal.y should be ~1.0, got {}", n.y);
-        assert!(n.x.abs() < 0.01, "flat surface normal.x should be ~0, got {}", n.x);
-        assert!(n.z.abs() < 0.01, "flat surface normal.z should be ~0, got {}", n.z);
+        assert!(
+            (n.y - 1.0).abs() < 0.01,
+            "flat surface normal.y should be ~1.0, got {}",
+            n.y
+        );
+        assert!(
+            n.x.abs() < 0.01,
+            "flat surface normal.x should be ~0, got {}",
+            n.x
+        );
+        assert!(
+            n.z.abs() < 0.01,
+            "flat surface normal.z should be ~0, got {}",
+            n.z
+        );
     }
 
     #[test]
@@ -980,7 +1021,11 @@ mod tests {
         }
         let n = gpu.calculate_surface_normal(&grid, 3, 3);
         // Normal should tilt away from the higher side (negative x)
-        assert!(n.x < 0.0, "normal should tilt away from higher x, got n.x={}", n.x);
+        assert!(
+            n.x < 0.0,
+            "normal should tilt away from higher x, got n.x={}",
+            n.x
+        );
     }
 
     #[test]
@@ -1052,7 +1097,10 @@ mod tests {
         // With mutation x+1→x-1, the quad at (0,0) would sample h10=sample(0-1=-1)
         // which returns None, then all four would be None → skip. But correctly
         // it samples h10=sample(1,0) which has water → produces a quad.
-        assert!(!verts.is_empty(), "should produce vertices when adjacent column has water");
+        assert!(
+            !verts.is_empty(),
+            "should produce vertices when adjacent column has water"
+        );
         // More specifically: quad at (x=0,z=0) samples corner (1,0), (0,1), (1,1)
         // Only (1,0,1) yields water. With correct code, the quad at (x=0,z=0) has
         // h10=Some(...) so it won't be skipped.
@@ -1074,7 +1122,10 @@ mod tests {
         let (verts, _indices) = gpu.generate_surface_mesh(&grid);
         // With && → ||: h00 is Some → condition becomes true → skip (WRONG)
         // With correct &&: h00 is Some, so not all are None → don't skip (CORRECT)
-        assert!(!verts.is_empty(), "single corner with water should still produce a quad");
+        assert!(
+            !verts.is_empty(),
+            "single corner with water should still produce a quad"
+        );
     }
 
     /// Tests UV division: `x / dim` should produce fractional UVs.
@@ -1099,19 +1150,22 @@ mod tests {
         // Vertices for quad 4 start at index 16
         let v00 = &verts[16]; // uv00 = (1/4, 1/4) = (0.25, 0.25)
         let v10 = &verts[17]; // uv10 = (2/4, 1/4) = (0.5, 0.25)
-        // With / → %: 1.0 % 4.0 = 1.0 (ok for x=1, but 2.0 % 4.0 = 2.0 for uv10!)
-        // With / → *: 1.0 * 4.0 = 4.0 (way off)
+                              // With / → %: 1.0 % 4.0 = 1.0 (ok for x=1, but 2.0 % 4.0 = 2.0 for uv10!)
+                              // With / → *: 1.0 * 4.0 = 4.0 (way off)
         assert!(
             (v00.uv[0] - 0.25).abs() < 1e-5,
-            "u should be 0.25, got {}", v00.uv[0]
+            "u should be 0.25, got {}",
+            v00.uv[0]
         );
         assert!(
             (v00.uv[1] - 0.25).abs() < 1e-5,
-            "v should be 0.25, got {}", v00.uv[1]
+            "v should be 0.25, got {}",
+            v00.uv[1]
         );
         assert!(
             (v10.uv[0] - 0.5).abs() < 1e-5,
-            "u10 should be 0.5, got {}", v10.uv[0]
+            "u10 should be 0.5, got {}",
+            v10.uv[0]
         );
     }
 
@@ -1143,21 +1197,25 @@ mod tests {
         // uv10.u = 1/4 = 0.25; uv00.u = 0/4 = 0.0
         assert!(
             (uv10[0] - 0.25).abs() < 1e-5,
-            "u10 should be 0.25, got {}", uv10[0]
+            "u10 should be 0.25, got {}",
+            uv10[0]
         );
         assert!(
             (uv00[0] - 0.0).abs() < 1e-5,
-            "u00 should be 0.0, got {}", uv00[0]
+            "u00 should be 0.0, got {}",
+            uv00[0]
         );
         // uv01.v = 1/4 = 0.25; uv00.v = 0.0
         assert!(
             (uv01[1] - 0.25).abs() < 1e-5,
-            "v01 should be 0.25, got {}", uv01[1]
+            "v01 should be 0.25, got {}",
+            uv01[1]
         );
         // uv11 should have both 0.25
         assert!(
             (uv11[0] - 0.25).abs() < 1e-5 && (uv11[1] - 0.25).abs() < 1e-5,
-            "uv11 should be (0.25, 0.25), got {:?}", uv11
+            "uv11 should be (0.25, 0.25), got {:?}",
+            uv11
         );
     }
 
@@ -1185,13 +1243,15 @@ mod tests {
         assert!(
             y_without_water < y_with_water,
             "fallback height ({}) should be below water height ({})",
-            y_without_water, y_with_water
+            y_without_water,
+            y_with_water
         );
         // More precisely, the difference should be about 0.1
         let diff = y_with_water - y_without_water;
         assert!(
             (diff - 0.1).abs() < 0.01,
-            "fallback offset should be ~0.1, got {}", diff
+            "fallback offset should be ~0.1, got {}",
+            diff
         );
     }
 
@@ -1275,13 +1335,15 @@ mod tests {
         let y_fallback = verts[2].position[1];
         assert!(
             (y_fallback - 0.4).abs() < 0.05,
-            "fallback y should be avg(0.5)-0.1=0.4, got {}", y_fallback
+            "fallback y should be avg(0.5)-0.1=0.4, got {}",
+            y_fallback
         );
         // v[0] = p00 (corner WITH water) should have y = 0.4
         let y_water = verts[0].position[1];
         assert!(
             (y_water - 0.4).abs() < 0.05,
-            "water height should be 0.4, got {}", y_water
+            "water height should be 0.4, got {}",
+            y_water
         );
     }
 
@@ -1309,11 +1371,13 @@ mod tests {
         assert!(
             y00 < y10,
             "y00 fallback ({}) should be below y10 ({}) since y00 uses avg-0.1",
-            y00, y10
+            y00,
+            y10
         );
         assert!(
             (y10 - y00 - 0.1).abs() < 0.01,
-            "difference should be ~0.1, got {}", y10 - y00
+            "difference should be ~0.1, got {}",
+            y10 - y00
         );
     }
 
@@ -1341,11 +1405,13 @@ mod tests {
         assert!(
             y01 < y00,
             "y01 fallback ({}) should be below y00 ({}) since h01 is None",
-            y01, y00
+            y01,
+            y00
         );
         assert!(
             (y00 - y01 - 0.1).abs() < 0.01,
-            "difference should be ~0.1, got {}", y00 - y01
+            "difference should be ~0.1, got {}",
+            y00 - y01
         );
     }
 
@@ -1371,7 +1437,8 @@ mod tests {
         // expected: base=2*1 + 0.8*1 = 2.8
         assert!(
             (y01 - 2.8).abs() < 0.1,
-            "y01 should reflect water at (0,2,1), got {}", y01
+            "y01 should reflect water at (0,2,1), got {}",
+            y01
         );
     }
 
@@ -1398,7 +1465,8 @@ mod tests {
         // expected: base=2*1 + 0.7*1 = 2.7
         assert!(
             (y11 - 2.7).abs() < 0.1,
-            "y11 should reflect water at (1,2,1), got {}", y11
+            "y11 should reflect water at (1,2,1), got {}",
+            y11
         );
     }
 
@@ -1459,13 +1527,15 @@ mod tests {
         // p00.x = 2*2.0 = 4.0 (not 2/2.0 = 1.0)
         assert!(
             (verts[8].position[0] - 4.0).abs() < 1e-4,
-            "p00.x at x=2 should be 2*2.0=4.0, got {}", verts[8].position[0]
+            "p00.x at x=2 should be 2*2.0=4.0, got {}",
+            verts[8].position[0]
         );
         // Quad at (x=0, z=2) is the 7th quad (z=2: quads 6,7,8). Vertices at index 24-27.
         // p00.z = 2*3.0 = 6.0 (not 2/3.0 = 0.667)
         assert!(
             (verts[24].position[2] - 6.0).abs() < 1e-4,
-            "p00.z at z=2 should be 2*3.0=6.0, got {}", verts[24].position[2]
+            "p00.z at z=2 should be 2*3.0=6.0, got {}",
+            verts[24].position[2]
         );
     }
 
@@ -1493,11 +1563,13 @@ mod tests {
         assert!(
             y11 < y00,
             "y11 ({}) should be below y00 ({}) when h11=None (using avg-0.1)",
-            y11, y00
+            y11,
+            y00
         );
         assert!(
             (y00 - y11 - 0.1).abs() < 0.02,
-            "y11 should be avg-0.1, diff should be ~0.1, got {}", y00 - y11
+            "y11 should be avg-0.1, diff should be ~0.1, got {}",
+            y00 - y11
         );
     }
 
@@ -1537,11 +1609,13 @@ mod tests {
         let y_p01 = verts[2].position[1];
         assert!(
             (y_p00 - 0.3).abs() < 0.05,
-            "p00.y should be ~0.3 from water at z=0, got {}", y_p00
+            "p00.y should be ~0.3 from water at z=0, got {}",
+            y_p00
         );
         assert!(
             (y_p01 - 2.9).abs() < 0.05,
-            "p01.y should be ~2.9 from water at z=1 (not fallback), got {}", y_p01
+            "p01.y should be ~2.9 from water at z=1 (not fallback), got {}",
+            y_p01
         );
         // Key assertion: difference should be large (2.6), not small (~0.1 fallback)
         assert!(
@@ -1587,14 +1661,16 @@ mod tests {
         let y_p11 = verts[3].position[1];
         assert!(
             (y_p11 - 2.8).abs() < 0.1,
-            "p11.y should be ~2.8 from column (1,1) at y=2, got {}", y_p11
+            "p11.y should be ~2.8 from column (1,1) at y=2, got {}",
+            y_p11
         );
         // Must be significantly higher than fallback (which would be ~avg-0.1)
         let y_p00 = verts[0].position[1];
         assert!(
             y_p11 > y_p00 + 1.0,
             "p11.y ({}) should be much higher than p00.y ({}) — not using fallback",
-            y_p11, y_p00
+            y_p11,
+            y_p00
         );
     }
 }

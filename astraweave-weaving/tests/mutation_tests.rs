@@ -21,7 +21,10 @@ min_priority = 0.7
 aid_event = 100
 "#;
         let config = WeaveConfig::from_toml(toml).unwrap();
-        assert_eq!(config.budget_per_tick, 42, "budget_per_tick must match TOML input");
+        assert_eq!(
+            config.budget_per_tick, 42,
+            "budget_per_tick must match TOML input"
+        );
         assert!(
             (config.min_priority - 0.7).abs() < 1e-6,
             "min_priority must match TOML input"
@@ -44,7 +47,10 @@ aid_event = 100
 
         let adj = WeaveAdjudicator::with_config(custom);
         let cfg = adj.config();
-        assert_eq!(cfg.budget_per_tick, 999, "config() must return the custom config");
+        assert_eq!(
+            cfg.budget_per_tick, 999,
+            "config() must return the custom config"
+        );
         assert!(
             (cfg.min_priority - 0.99).abs() < 1e-6,
             "config() min_priority must match custom"
@@ -106,14 +112,14 @@ mod anchor_tests {
     #[test]
     fn test_is_in_proximity_exact_inside() {
         let anchor = Anchor::new(1.0, 5, None); // radius=3.0
-        // Player at (1,0,0), anchor at (0,0,0) → distance=1.0, radius=3.0 → inside
+                                                // Player at (1,0,0), anchor at (0,0,0) → distance=1.0, radius=3.0 → inside
         assert!(anchor.is_in_proximity((1.0, 0.0, 0.0), (0.0, 0.0, 0.0)));
     }
 
     #[test]
     fn test_is_in_proximity_exact_outside() {
         let anchor = Anchor::new(1.0, 5, None); // radius=3.0
-        // Player at (4,0,0), anchor at (0,0,0) → distance=4.0 > 3.0 → outside
+                                                // Player at (4,0,0), anchor at (0,0,0) → distance=4.0 > 3.0 → outside
         assert!(!anchor.is_in_proximity((4.0, 0.0, 0.0), (0.0, 0.0, 0.0)));
     }
 
@@ -121,7 +127,7 @@ mod anchor_tests {
     #[test]
     fn test_is_in_proximity_y_axis() {
         let anchor = Anchor::new(1.0, 5, None); // radius=3.0
-        // Player at (0,4,0), anchor at (0,0,0) → distance=4.0 > 3.0 → outside
+                                                // Player at (0,4,0), anchor at (0,0,0) → distance=4.0 > 3.0 → outside
         assert!(!anchor.is_in_proximity((0.0, 4.0, 0.0), (0.0, 0.0, 0.0)));
         // Player at (0,2,0), anchor at (0,0,0) → distance=2.0 < 3.0 → inside
         assert!(anchor.is_in_proximity((0.0, 2.0, 0.0), (0.0, 0.0, 0.0)));
@@ -131,7 +137,7 @@ mod anchor_tests {
     #[test]
     fn test_is_in_proximity_z_axis() {
         let anchor = Anchor::new(1.0, 5, None); // radius=3.0
-        // Player at (0,0,4), anchor at (0,0,0) → distance=4.0 > 3.0 → outside
+                                                // Player at (0,0,4), anchor at (0,0,0) → distance=4.0 > 3.0 → outside
         assert!(!anchor.is_in_proximity((0.0, 0.0, 4.0), (0.0, 0.0, 0.0)));
     }
 
@@ -164,7 +170,7 @@ mod anchor_tests {
     #[test]
     fn test_is_in_proximity_boundary() {
         let anchor = Anchor::new(1.0, 5, None); // radius=3.0
-        // Player at (3,0,0), anchor at (0,0,0) → distance=3.0 = radius → inside (<=)
+                                                // Player at (3,0,0), anchor at (0,0,0) → distance=3.0 = radius → inside (<=)
         assert!(
             anchor.is_in_proximity((3.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
             "at exact radius should be in proximity (<=)"
@@ -175,7 +181,7 @@ mod anchor_tests {
     #[test]
     fn test_is_in_proximity_diagonal() {
         let anchor = Anchor::new(1.0, 5, None); // radius=3.0
-        // Player at (2,2,1), anchor at (0,0,0) → dist²=4+4+1=9 → dist=3.0 → boundary, inside
+                                                // Player at (2,2,1), anchor at (0,0,0) → dist²=4+4+1=9 → dist=3.0 → boundary, inside
         assert!(
             anchor.is_in_proximity((2.0, 2.0, 1.0), (0.0, 0.0, 0.0)),
             "diagonal at exact boundary should be in proximity"
@@ -760,8 +766,7 @@ mod enemy_types_tests {
         // With deleted negative: dot < 0.5 → 0.3 < 0.5 → true (WRONG)
         // Original: dot < -0.5 → 0.3 < -0.5 → false (CORRECT)
         rs.position = Vec3::new(3.0, 0.0, 9.5); // mostly to side
-        let dot = player_forward
-            .dot((rs.position - player_pos).normalize_or_zero());
+        let dot = player_forward.dot((rs.position - player_pos).normalize_or_zero());
         // dot should be positive and < 0.5
         if dot > 0.0 && dot < 0.5 {
             assert!(
@@ -1169,7 +1174,11 @@ mod intents_tests {
         let mut patterns3 = BTreeMap::new();
         patterns3.insert("faction_conflict_elf".to_string(), 0.8);
         let intents3 = proposer.propose(&patterns3, 0);
-        assert_eq!(intents3.len(), 1, "matching conflict should propose mediator");
+        assert_eq!(
+            intents3.len(),
+            1,
+            "matching conflict should propose mediator"
+        );
         assert_eq!(intents3[0].kind, "spawn_mediator");
     }
 }
@@ -1390,8 +1399,16 @@ mod level_tests {
         let dir = camera.view_direction();
 
         // Should point roughly toward (0, -5, 10) normalized
-        assert!(dir.z > 0.0, "view should point in +z (toward target), got z={}", dir.z);
-        assert!(dir.y < 0.0, "view should point downward (toward target), got y={}", dir.y);
+        assert!(
+            dir.z > 0.0,
+            "view should point in +z (toward target), got z={}",
+            dir.z
+        );
+        assert!(
+            dir.y < 0.0,
+            "view should point downward (toward target), got y={}",
+            dir.y
+        );
 
         // Should be normalized (length ≈ 1.0)
         let len = dir.length();
@@ -1421,11 +1438,7 @@ mod level_tests {
             dir.x
         );
         // Main distinction: y should be negative (looking down), not positive
-        assert!(
-            dir.y < 0.0,
-            "view should look down (y<0), got y={}",
-            dir.y
-        );
+        assert!(dir.y < 0.0, "view should look down (y<0), got y={}", dir.y);
     }
 
     // --- VeilweaverLevel ---
@@ -1509,7 +1522,7 @@ mod level_tests {
         // Give player enough echo currency (anchors cost 10 each)
         level.player.echo_currency = 10;
 
-        // Anchor 0 starts at 0.5 stability (below 0.8 threshold)  
+        // Anchor 0 starts at 0.5 stability (below 0.8 threshold)
         let initial_stability = level.anchors[0].stability();
         assert!(initial_stability < 0.8, "anchor 0 should start below 0.8");
 
@@ -1565,7 +1578,11 @@ mod level_tests {
 
         level.kill_enemy(0);
         // The remaining position should be the second enemy
-        assert_eq!(level.enemy_positions.len(), 1, "positions list should shrink too");
+        assert_eq!(
+            level.enemy_positions.len(),
+            1,
+            "positions list should shrink too"
+        );
         assert!(
             (level.enemy_positions[0].x - 2.0).abs() < 0.01,
             "remaining position should be from second enemy"
@@ -1637,7 +1654,10 @@ mod level_tests {
         // After completion, try_activate_next_quest should activate "clear_corruption"
         let active = level.quest_manager.active_quest();
         if let Some(q) = active {
-            assert_eq!(q.id, "clear_corruption", "next quest should be clear_corruption");
+            assert_eq!(
+                q.id, "clear_corruption",
+                "next quest should be clear_corruption"
+            );
         }
         assert!(
             level.quest_manager.is_completed("stabilize_anchors"),
@@ -1697,8 +1717,10 @@ mod level_tests {
         // With == mutation: echo == cost is true → returns false (wrong)
         // Note: result depends on whether anchor crosses 0.8 threshold
         // Player's echo should decrease regardless (repair happened)
-        assert_eq!(level.player.echo_currency, 0,
-            "Echo should be spent when cost equals balance");
+        assert_eq!(
+            level.player.echo_currency, 0,
+            "Echo should be spent when cost equals balance"
+        );
     }
 
     /// Catches: level.rs:347 — && with || in repair_anchor
@@ -1719,9 +1741,14 @@ mod level_tests {
         // was_below_threshold=false, now_above=true
         // With &&: false && true = false → not counted → return false
         // With ||: false || true = true → counted (WRONG)
-        assert!(!result, "Re-repairing above-threshold anchor should return false");
-        assert_eq!(level.anchors_repaired, initial_repaired,
-            "anchors_repaired should not increase for above-threshold repair");
+        assert!(
+            !result,
+            "Re-repairing above-threshold anchor should return false"
+        );
+        assert_eq!(
+            level.anchors_repaired, initial_repaired,
+            "anchors_repaired should not increase for above-threshold repair"
+        );
     }
 }
 
@@ -1800,7 +1827,10 @@ mod quest_tests {
         let mut npc = EscortNPC::new("Villager", Vec3::ZERO, Vec3::new(10.0, 0.0, 0.0), 100.0);
         // reached_destination=false, health=100 → should be false (with ||, health>0 alone → true)
         let obj = ObjectiveType::Escort { npc: npc.clone() };
-        assert!(!obj.is_complete(), "Escort NOT complete when destination not reached (catches && → ||)");
+        assert!(
+            !obj.is_complete(),
+            "Escort NOT complete when destination not reached (catches && → ||)"
+        );
 
         // reached_destination=true, health=0 → should be false
         npc.reached_destination = true;
@@ -1818,7 +1848,10 @@ mod quest_tests {
         npc.reached_destination = true;
         npc.health = 50.0; // positive, not zero → catches > → == (50 == 0 → false)
         let obj = ObjectiveType::Escort { npc };
-        assert!(obj.is_complete(), "Escort complete when destination reached and health > 0 (catches > → ==)");
+        assert!(
+            obj.is_complete(),
+            "Escort complete when destination reached and health > 0 (catches > → ==)"
+        );
     }
 
     /// Catches > → >= : need health=0.0 case where > gives false but >= gives true
@@ -1829,7 +1862,10 @@ mod quest_tests {
         npc.reached_destination = true;
         npc.health = 0.0;
         let obj = ObjectiveType::Escort { npc };
-        assert!(!obj.is_complete(), "Escort NOT complete when health == 0.0 (catches > → >=)");
+        assert!(
+            !obj.is_complete(),
+            "Escort NOT complete when health == 0.0 (catches > → >=)"
+        );
     }
 
     // ── Defend is_complete mutations (line 90) ──
@@ -1846,7 +1882,10 @@ mod quest_tests {
             objective: defend,
             required_waves: 3,
         };
-        assert!(obj.is_complete(), "Defend complete when waves_survived == required_waves (catches >= → <)");
+        assert!(
+            obj.is_complete(),
+            "Defend complete when waves_survived == required_waves (catches >= → <)"
+        );
     }
 
     /// Catches: quest.rs:90:90 — replace > with </==/>= in health check
@@ -1862,7 +1901,10 @@ mod quest_tests {
             objective: defend,
             required_waves: 3,
         };
-        assert!(obj.is_complete(), "Defend complete with positive health (catches > → ==)");
+        assert!(
+            obj.is_complete(),
+            "Defend complete with positive health (catches > → ==)"
+        );
     }
 
     // ── TimeTrial is_complete (line 91) ──
@@ -1878,7 +1920,10 @@ mod quest_tests {
         let trial = TimeTrialObjective::new(60.0, 30.0);
         // elapsed=0.0 < 60.0, not expired → should be complete
         let obj = ObjectiveType::TimeTrial { objective: trial };
-        assert!(obj.is_complete(), "TimeTrial complete when not expired (catches delete !)");
+        assert!(
+            obj.is_complete(),
+            "TimeTrial complete when not expired (catches delete !)"
+        );
     }
 
     /// TimeTrial: expired → NOT complete
@@ -1902,7 +1947,10 @@ mod quest_tests {
             current: 3,
         };
         let p = obj.progress();
-        assert!((p - 0.3).abs() < 0.01, "Kill progress should be 3/10 = 0.3, got {p}");
+        assert!(
+            (p - 0.3).abs() < 0.01,
+            "Kill progress should be 3/10 = 0.3, got {p}"
+        );
     }
 
     /// Catches: quest.rs:128 — arithmetic mutations in Defend progress
@@ -1916,7 +1964,10 @@ mod quest_tests {
             required_waves: 4,
         };
         let p = obj.progress();
-        assert!((p - 0.5).abs() < 0.01, "Defend progress should be 2/4 = 0.5, got {p}");
+        assert!(
+            (p - 0.5).abs() < 0.01,
+            "Defend progress should be 2/4 = 0.5, got {p}"
+        );
     }
 
     /// Catches: quest.rs:130 — arithmetic mutations in TimeTrial progress
@@ -1928,7 +1979,10 @@ mod quest_tests {
         let obj = ObjectiveType::TimeTrial { objective: trial };
         let p = obj.progress();
         // 1.0 - (25/100).min(1.0) = 1.0 - 0.25 = 0.75
-        assert!((p - 0.75).abs() < 0.01, "TimeTrial progress should be 0.75, got {p}");
+        assert!(
+            (p - 0.75).abs() < 0.01,
+            "TimeTrial progress should be 0.75, got {p}"
+        );
     }
 
     /// Catches: quest.rs:133 — / → % or * in Boss progress
@@ -1940,10 +1994,13 @@ mod quest_tests {
         let obj = ObjectiveType::Boss { objective: boss };
         let p = obj.progress();
         // 1.0 - (150/300).max(0.0) = 1.0 - 0.5 = 0.5
-        assert!((p - 0.5).abs() < 0.01, "Boss progress should be 0.5, got {p}");
+        assert!(
+            (p - 0.5).abs() < 0.01,
+            "Boss progress should be 0.5, got {p}"
+        );
     }
 
-    /// Catches: quest.rs:126 — / → % or * in Fetch progress 
+    /// Catches: quest.rs:126 — / → % or * in Fetch progress
     #[test]
     fn test_objective_progress_fetch() {
         let obj = ObjectiveType::Fetch {
@@ -1953,7 +2010,10 @@ mod quest_tests {
             delivery_location: Vec3::ZERO,
         };
         let p = obj.progress();
-        assert!((p - 0.5).abs() < 0.01, "Fetch progress should be 2/4 = 0.5, got {p}");
+        assert!(
+            (p - 0.5).abs() < 0.01,
+            "Fetch progress should be 2/4 = 0.5, got {p}"
+        );
     }
 
     /// Quest progress averages objective progress values
@@ -1973,7 +2033,10 @@ mod quest_tests {
             });
         // Kill: 5/10 = 0.5, Explore: discovered = 1.0 → avg = 0.75
         let p = quest.progress();
-        assert!((p - 0.75).abs() < 0.01, "Quest progress should be average 0.75, got {p}");
+        assert!(
+            (p - 0.75).abs() < 0.01,
+            "Quest progress should be average 0.75, got {p}"
+        );
     }
 
     /// Quest progress with no objectives returns 0
@@ -1986,8 +2049,7 @@ mod quest_tests {
     /// Quest::with_prerequisite adds to prerequisites list
     #[test]
     fn test_quest_with_prerequisite() {
-        let quest = Quest::new("q2", "Sequel", "After q1")
-            .with_prerequisite("q1");
+        let quest = Quest::new("q2", "Sequel", "After q1").with_prerequisite("q1");
         assert_eq!(quest.prerequisites.len(), 1);
         assert_eq!(quest.prerequisites[0], "q1");
     }
@@ -2015,17 +2077,26 @@ mod quest_types_tests {
         let mut boss = BossObjective::new("Dragon", 300.0, Vec3::ZERO, Vec3::ZERO, 20.0);
         // Full health: 300/300 = 1.0
         let hp = boss.health_percentage();
-        assert!((hp - 1.0).abs() < 0.01, "Full health should be 1.0, got {hp}");
+        assert!(
+            (hp - 1.0).abs() < 0.01,
+            "Full health should be 1.0, got {hp}"
+        );
 
         boss.take_damage(150.0);
         // 150/300 = 0.5
         let hp = boss.health_percentage();
-        assert!((hp - 0.5).abs() < 0.01, "Half health should be 0.5, got {hp}");
+        assert!(
+            (hp - 0.5).abs() < 0.01,
+            "Half health should be 0.5, got {hp}"
+        );
 
         boss.take_damage(75.0);
         // 75/300 = 0.25
         let hp = boss.health_percentage();
-        assert!((hp - 0.25).abs() < 0.01, "Quarter health should be 0.25, got {hp}");
+        assert!(
+            (hp - 0.25).abs() < 0.01,
+            "Quarter health should be 0.25, got {hp}"
+        );
     }
 }
 
@@ -2068,7 +2139,8 @@ mod spawner_tests {
         assert!(!requests.is_empty(), "First wave should spawn enemies");
         // With base=4 and multiplier=1.0, should be exactly 4
         assert_eq!(
-            requests.len(), 4,
+            requests.len(),
+            4,
             "Wave 1 should spawn 4 enemies (base=4, mult=1.0)"
         );
     }
@@ -2119,7 +2191,8 @@ mod spawner_tests {
         // wave_size = (4 + 0) * 1.5 = 6.0 → round → 6
         // If /: (4 + 0) / 1.5 = 2.67 → round → 3
         assert_eq!(
-            requests.len(), 6,
+            requests.len(),
+            6,
             "Wave with broken anchor should spawn 6 (difficulty=1.5)"
         );
     }
@@ -2136,21 +2209,51 @@ mod anchor_audio_tests {
     /// Catches: anchor_audio.rs:52 — delete match arm 0 in volume_for_state
     #[test]
     fn test_volume_for_all_states() {
-        assert!((AnchorAudioState::volume_for_state(0) - 0.0).abs() < 0.01, "Perfect=0.0");
-        assert!((AnchorAudioState::volume_for_state(1) - 0.2).abs() < 0.01, "Stable=0.2");
-        assert!((AnchorAudioState::volume_for_state(2) - 0.5).abs() < 0.01, "Unstable=0.5");
-        assert!((AnchorAudioState::volume_for_state(3) - 0.8).abs() < 0.01, "Critical=0.8");
-        assert!((AnchorAudioState::volume_for_state(4) - 0.0).abs() < 0.01, "Broken=0.0");
+        assert!(
+            (AnchorAudioState::volume_for_state(0) - 0.0).abs() < 0.01,
+            "Perfect=0.0"
+        );
+        assert!(
+            (AnchorAudioState::volume_for_state(1) - 0.2).abs() < 0.01,
+            "Stable=0.2"
+        );
+        assert!(
+            (AnchorAudioState::volume_for_state(2) - 0.5).abs() < 0.01,
+            "Unstable=0.5"
+        );
+        assert!(
+            (AnchorAudioState::volume_for_state(3) - 0.8).abs() < 0.01,
+            "Critical=0.8"
+        );
+        assert!(
+            (AnchorAudioState::volume_for_state(4) - 0.0).abs() < 0.01,
+            "Broken=0.0"
+        );
     }
 
     /// Catches: anchor_audio.rs:64/68 — delete match arm 0 or 4 in audio_file_for_state
     #[test]
     fn test_audio_file_for_all_states() {
-        assert!(AnchorAudioState::audio_file_for_state(0).is_empty(), "Perfect=silent");
-        assert!(AnchorAudioState::audio_file_for_state(1).contains("stable"), "Stable file");
-        assert!(AnchorAudioState::audio_file_for_state(2).contains("unstable"), "Unstable file");
-        assert!(AnchorAudioState::audio_file_for_state(3).contains("critical"), "Critical file");
-        assert!(AnchorAudioState::audio_file_for_state(4).is_empty(), "Broken=silent");
+        assert!(
+            AnchorAudioState::audio_file_for_state(0).is_empty(),
+            "Perfect=silent"
+        );
+        assert!(
+            AnchorAudioState::audio_file_for_state(1).contains("stable"),
+            "Stable file"
+        );
+        assert!(
+            AnchorAudioState::audio_file_for_state(2).contains("unstable"),
+            "Unstable file"
+        );
+        assert!(
+            AnchorAudioState::audio_file_for_state(3).contains("critical"),
+            "Critical file"
+        );
+        assert!(
+            AnchorAudioState::audio_file_for_state(4).is_empty(),
+            "Broken=silent"
+        );
     }
 
     /// Catches: crossfade_duration mutations (== → !=, || → &&)
@@ -2159,7 +2262,10 @@ mod anchor_audio_tests {
     fn test_crossfade_duration_perfect() {
         let state = AnchorAudioState::new(0, 0, Vec3::ZERO);
         let d = state.crossfade_duration();
-        assert!((d - 1.0).abs() < 0.01, "Perfect crossfade should be 1.0s, got {d}");
+        assert!(
+            (d - 1.0).abs() < 0.01,
+            "Perfect crossfade should be 1.0s, got {d}"
+        );
     }
 
     /// From Perfect: previous=0 → 1.0s
@@ -2168,7 +2274,10 @@ mod anchor_audio_tests {
         let mut state = AnchorAudioState::new(0, 0, Vec3::ZERO);
         state.vfx_state = 2;
         state.previous_vfx_state = 0;
-        assert!((state.crossfade_duration() - 1.0).abs() < 0.01, "From Perfect=1.0s");
+        assert!(
+            (state.crossfade_duration() - 1.0).abs() < 0.01,
+            "From Perfect=1.0s"
+        );
     }
 
     /// Broken transition → 2.0s
@@ -2177,7 +2286,10 @@ mod anchor_audio_tests {
         let mut state = AnchorAudioState::new(0, 3, Vec3::ZERO);
         state.vfx_state = 4;
         state.previous_vfx_state = 3;
-        assert!((state.crossfade_duration() - 2.0).abs() < 0.01, "To Broken=2.0s");
+        assert!(
+            (state.crossfade_duration() - 2.0).abs() < 0.01,
+            "To Broken=2.0s"
+        );
     }
 
     /// From Broken → 2.0s
@@ -2186,7 +2298,10 @@ mod anchor_audio_tests {
         let mut state = AnchorAudioState::new(0, 4, Vec3::ZERO);
         state.vfx_state = 2;
         state.previous_vfx_state = 4;
-        assert!((state.crossfade_duration() - 2.0).abs() < 0.01, "From Broken=2.0s");
+        assert!(
+            (state.crossfade_duration() - 2.0).abs() < 0.01,
+            "From Broken=2.0s"
+        );
     }
 
     /// Normal transition (non-0, non-4) → 0.5s
@@ -2195,7 +2310,10 @@ mod anchor_audio_tests {
         let mut state = AnchorAudioState::new(0, 1, Vec3::ZERO);
         state.vfx_state = 2;
         state.previous_vfx_state = 1;
-        assert!((state.crossfade_duration() - 0.5).abs() < 0.01, "Normal=0.5s");
+        assert!(
+            (state.crossfade_duration() - 0.5).abs() < 0.01,
+            "Normal=0.5s"
+        );
     }
 }
 
@@ -2211,47 +2329,71 @@ mod particle_tests {
     #[test]
     fn test_color_spark() {
         let c = ParticleType::Spark.color();
-        assert!((c.x - 0.2).abs() < 1e-5 && (c.y - 0.6).abs() < 1e-5 && (c.z - 1.0).abs() < 1e-5,
-            "Spark color must be (0.2, 0.6, 1.0), got {:?}", c);
+        assert!(
+            (c.x - 0.2).abs() < 1e-5 && (c.y - 0.6).abs() < 1e-5 && (c.z - 1.0).abs() < 1e-5,
+            "Spark color must be (0.2, 0.6, 1.0), got {:?}",
+            c
+        );
     }
 
     #[test]
     fn test_color_glitch() {
         let c = ParticleType::Glitch.color();
-        assert!((c.x - 0.9).abs() < 1e-5 && (c.y - 0.7).abs() < 1e-5 && (c.z - 0.2).abs() < 1e-5,
-            "Glitch color must be (0.9, 0.7, 0.2), got {:?}", c);
+        assert!(
+            (c.x - 0.9).abs() < 1e-5 && (c.y - 0.7).abs() < 1e-5 && (c.z - 0.2).abs() < 1e-5,
+            "Glitch color must be (0.9, 0.7, 0.2), got {:?}",
+            c
+        );
     }
 
     #[test]
     fn test_color_tear() {
         let c = ParticleType::Tear.color();
-        assert!((c.x - 1.0).abs() < 1e-5 && (c.y - 0.2).abs() < 1e-5 && (c.z - 0.1).abs() < 1e-5,
-            "Tear color must be (1.0, 0.2, 0.1), got {:?}", c);
+        assert!(
+            (c.x - 1.0).abs() < 1e-5 && (c.y - 0.2).abs() < 1e-5 && (c.z - 0.1).abs() < 1e-5,
+            "Tear color must be (1.0, 0.2, 0.1), got {:?}",
+            c
+        );
     }
 
     #[test]
     fn test_color_void() {
         let c = ParticleType::Void.color();
-        assert!((c.x - 0.1).abs() < 1e-5 && (c.y - 0.0).abs() < 1e-5 && (c.z - 0.2).abs() < 1e-5,
-            "Void color must be (0.1, 0.0, 0.2), got {:?}", c);
+        assert!(
+            (c.x - 0.1).abs() < 1e-5 && (c.y - 0.0).abs() < 1e-5 && (c.z - 0.2).abs() < 1e-5,
+            "Void color must be (0.1, 0.0, 0.2), got {:?}",
+            c
+        );
     }
 
     #[test]
     fn test_color_restoration() {
         let c = ParticleType::Restoration.color();
-        assert!((c.x - 0.3).abs() < 1e-5 && (c.y - 0.8).abs() < 1e-5 && (c.z - 1.0).abs() < 1e-5,
-            "Restoration color must be (0.3, 0.8, 1.0), got {:?}", c);
+        assert!(
+            (c.x - 0.3).abs() < 1e-5 && (c.y - 0.8).abs() < 1e-5 && (c.z - 1.0).abs() < 1e-5,
+            "Restoration color must be (0.3, 0.8, 1.0), got {:?}",
+            c
+        );
     }
 
     // ---- ParticleType::size — exact values (kills → 1.0) ----
 
     #[test]
     fn test_size_all_variants() {
-        assert!((ParticleType::Spark.size() - 0.05).abs() < 1e-5, "Spark size");
-        assert!((ParticleType::Glitch.size() - 0.1).abs() < 1e-5, "Glitch size");
+        assert!(
+            (ParticleType::Spark.size() - 0.05).abs() < 1e-5,
+            "Spark size"
+        );
+        assert!(
+            (ParticleType::Glitch.size() - 0.1).abs() < 1e-5,
+            "Glitch size"
+        );
         assert!((ParticleType::Tear.size() - 0.2).abs() < 1e-5, "Tear size");
         assert!((ParticleType::Void.size() - 0.15).abs() < 1e-5, "Void size");
-        assert!((ParticleType::Restoration.size() - 0.08).abs() < 1e-5, "Restoration size");
+        assert!(
+            (ParticleType::Restoration.size() - 0.08).abs() < 1e-5,
+            "Restoration size"
+        );
     }
 
     // ---- Particle::update line 118: position += velocity * delta_time ----
@@ -2271,15 +2413,34 @@ mod particle_tests {
         let ex = 5.0 + 2.0 * dt;
         let ey = 5.0 + 3.0 * dt;
         let ez = 5.0 + (-1.0) * dt;
-        assert!((p.position.x - ex).abs() < 1e-4, "pos.x: {} != {}", p.position.x, ex);
-        assert!((p.position.y - ey).abs() < 1e-4, "pos.y: {} != {}", p.position.y, ey);
-        assert!((p.position.z - ez).abs() < 1e-4, "pos.z: {} != {}", p.position.z, ez);
+        assert!(
+            (p.position.x - ex).abs() < 1e-4,
+            "pos.x: {} != {}",
+            p.position.x,
+            ex
+        );
+        assert!(
+            (p.position.y - ey).abs() < 1e-4,
+            "pos.y: {} != {}",
+            p.position.y,
+            ey
+        );
+        assert!(
+            (p.position.z - ez).abs() < 1e-4,
+            "pos.z: {} != {}",
+            p.position.z,
+            ez
+        );
     }
 
     /// Catches += → -= (position should increase for positive velocity)
     #[test]
     fn test_position_increases_for_positive_velocity() {
-        let mut p = Particle::new(ParticleType::Restoration, Vec3::ZERO, Vec3::new(10.0, 10.0, 10.0));
+        let mut p = Particle::new(
+            ParticleType::Restoration,
+            Vec3::ZERO,
+            Vec3::new(10.0, 10.0, 10.0),
+        );
         p.update(0.1);
         assert!(p.position.x > 0.0, "x should increase");
         assert!(p.position.y > 0.0, "y should increase");
@@ -2289,12 +2450,20 @@ mod particle_tests {
     /// Catches * → + in velocity * delta_time (would give vel + dt instead of vel * dt)
     #[test]
     fn test_position_vel_times_dt_not_plus() {
-        let mut p = Particle::new(ParticleType::Restoration, Vec3::ZERO, Vec3::new(100.0, 0.0, 0.0));
+        let mut p = Particle::new(
+            ParticleType::Restoration,
+            Vec3::ZERO,
+            Vec3::new(100.0, 0.0, 0.0),
+        );
         let dt = 0.01;
         p.update(dt);
         // Correct: 100 * 0.01 = 1.0
         // If +  : 100 + 0.01 = 100.01
-        assert!((p.position.x - 1.0).abs() < 1e-3, "pos.x must be ~1.0, got {}", p.position.x);
+        assert!(
+            (p.position.x - 1.0).abs() < 1e-3,
+            "pos.x must be ~1.0, got {}",
+            p.position.x
+        );
     }
 
     // ---- Spark: line 124 alpha = 1.0 - (age / lifetime) ----
@@ -2311,9 +2480,13 @@ mod particle_tests {
     fn test_spark_alpha_division_not_mul_or_mod() {
         let mut p = Particle::new(ParticleType::Spark, Vec3::ZERO, Vec3::ZERO);
         p.update(0.1); // age=0.1, lifetime=0.5 → correct: 1.0 - 0.2 = 0.8
-        // If *: 1.0 - (0.1*0.5) = 0.95      ← wrong
-        // If %: 1.0 - (0.1%0.5) = 0.9        ← wrong
-        assert!((p.alpha - 0.8).abs() < 1e-4, "alpha should be 0.8, got {}", p.alpha);
+                       // If *: 1.0 - (0.1*0.5) = 0.95      ← wrong
+                       // If %: 1.0 - (0.1%0.5) = 0.9        ← wrong
+        assert!(
+            (p.alpha - 0.8).abs() < 1e-4,
+            "alpha should be 0.8, got {}",
+            p.alpha
+        );
     }
 
     /// Catches velocity *= 0.95 direction — velocity should decrease
@@ -2321,7 +2494,11 @@ mod particle_tests {
     fn test_spark_deceleration() {
         let mut p = Particle::new(ParticleType::Spark, Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0));
         p.update(0.01);
-        assert!((p.velocity.x - 0.95).abs() < 1e-4, "vel.x should be 0.95, got {}", p.velocity.x);
+        assert!(
+            (p.velocity.x - 0.95).abs() < 1e-4,
+            "vel.x should be 0.95, got {}",
+            p.velocity.x
+        );
     }
 
     // ---- Glitch: lines 129-132 ----
@@ -2337,10 +2514,18 @@ mod particle_tests {
         let expected_vx = osc * dt;
         let expected_vy = osc * 0.7 * dt;
 
-        assert!((p.velocity.x - expected_vx).abs() < 1e-4,
-            "vx: {} != {}", p.velocity.x, expected_vx);
-        assert!((p.velocity.y - expected_vy).abs() < 1e-4,
-            "vy: {} != {}", p.velocity.y, expected_vy);
+        assert!(
+            (p.velocity.x - expected_vx).abs() < 1e-4,
+            "vx: {} != {}",
+            p.velocity.x,
+            expected_vx
+        );
+        assert!(
+            (p.velocity.y - expected_vy).abs() < 1e-4,
+            "vy: {} != {}",
+            p.velocity.y,
+            expected_vy
+        );
     }
 
     /// Catches * → + in (age * 10.0) — sin(age+10) gives different result
@@ -2357,8 +2542,11 @@ mod particle_tests {
 
         // Confirm values actually differ
         assert!((correct_vx - wrong_vx).abs() > 0.001);
-        assert!((p.velocity.x - correct_vx).abs() < 1e-4,
-            "vx must use *, got {}", p.velocity.x);
+        assert!(
+            (p.velocity.x - correct_vx).abs() < 1e-4,
+            "vx must use *, got {}",
+            p.velocity.x
+        );
     }
 
     /// Catches sin() * 0.5 → sin() + 0.5 or sin() / 0.5
@@ -2392,8 +2580,14 @@ mod particle_tests {
         assert!(osc > 0.0, "oscillation must be positive for this test");
 
         // += should increase from initial
-        assert!((p.velocity.x - (5.0 + osc * dt)).abs() < 1e-4, "vx += check");
-        assert!((p.velocity.y - (5.0 + osc * 0.7 * dt)).abs() < 1e-4, "vy += check");
+        assert!(
+            (p.velocity.x - (5.0 + osc * dt)).abs() < 1e-4,
+            "vx += check"
+        );
+        assert!(
+            (p.velocity.y - (5.0 + osc * 0.7 * dt)).abs() < 1e-4,
+            "vy += check"
+        );
     }
 
     /// Catches * → + or / in oscillation * delta_time (line 130)
@@ -2407,8 +2601,12 @@ mod particle_tests {
         // Correct: osc * 0.05
         // If +: osc + 0.05 ← much larger
         let correct = osc * dt;
-        assert!((p.velocity.x - correct).abs() < 1e-4,
-            "vx: {} != correct {}", p.velocity.x, correct);
+        assert!(
+            (p.velocity.x - correct).abs() < 1e-4,
+            "vx: {} != correct {}",
+            p.velocity.x,
+            correct
+        );
     }
 
     /// Catches * → + or / in oscillation * 0.7 * delta_time (line 131)
@@ -2420,8 +2618,12 @@ mod particle_tests {
 
         let osc = (0.1_f32 * 10.0).sin() * 0.5;
         let correct_vy = osc * 0.7 * dt;
-        assert!((p.velocity.y - correct_vy).abs() < 1e-4,
-            "vy should be osc*0.7*dt = {}, got {}", correct_vy, p.velocity.y);
+        assert!(
+            (p.velocity.y - correct_vy).abs() < 1e-4,
+            "vy should be osc*0.7*dt = {}, got {}",
+            correct_vy,
+            p.velocity.y
+        );
     }
 
     /// Catches - → + or / in glitch alpha = 1.0 - (age/lifetime)^2 (line 132)
@@ -2430,7 +2632,11 @@ mod particle_tests {
         let mut p = Particle::new(ParticleType::Glitch, Vec3::ZERO, Vec3::ZERO);
         p.update(0.5); // lifetime=1.0 → alpha = 1.0 - (0.5)^2 = 0.75
         assert!(p.alpha < 1.0, "alpha must be < 1.0, got {}", p.alpha);
-        assert!((p.alpha - 0.75).abs() < 1e-3, "alpha should be ~0.75, got {}", p.alpha);
+        assert!(
+            (p.alpha - 0.75).abs() < 1e-3,
+            "alpha should be ~0.75, got {}",
+            p.alpha
+        );
     }
 
     // ---- Tear: lines 136-138 ----
@@ -2439,7 +2645,7 @@ mod particle_tests {
     fn test_tear_exact_size_and_alpha() {
         let mut p = Particle::new(ParticleType::Tear, Vec3::ZERO, Vec3::ZERO);
         p.update(1.0); // lifetime=2.0, progress=0.5
-        // size = 0.2 * (1.0 + 0.5 * 2.0) = 0.2 * 2.0 = 0.4
+                       // size = 0.2 * (1.0 + 0.5 * 2.0) = 0.2 * 2.0 = 0.4
         assert!((p.size - 0.4).abs() < 1e-4, "size={}", p.size);
         // alpha = 1.0 - 0.5 = 0.5
         assert!((p.alpha - 0.5).abs() < 1e-4, "alpha={}", p.alpha);
@@ -2450,12 +2656,20 @@ mod particle_tests {
     fn test_tear_progress_division() {
         let mut p = Particle::new(ParticleType::Tear, Vec3::ZERO, Vec3::ZERO);
         p.update(0.5); // age=0.5, lifetime=2.0
-        // Correct: progress = 0.5/2.0 = 0.25 → size = 0.2*(1+0.25*2) = 0.2*1.5 = 0.3
-        // If *: progress = 0.5*2.0 = 1.0 → size = 0.2*(1+2) = 0.6
-        // If %: progress = 0.5%2.0 = 0.5 → size = 0.2*(1+1) = 0.4
-        assert!((p.size - 0.3).abs() < 1e-4, "size should be 0.3, got {}", p.size);
+                       // Correct: progress = 0.5/2.0 = 0.25 → size = 0.2*(1+0.25*2) = 0.2*1.5 = 0.3
+                       // If *: progress = 0.5*2.0 = 1.0 → size = 0.2*(1+2) = 0.6
+                       // If %: progress = 0.5%2.0 = 0.5 → size = 0.2*(1+1) = 0.4
+        assert!(
+            (p.size - 0.3).abs() < 1e-4,
+            "size should be 0.3, got {}",
+            p.size
+        );
         // alpha = 1.0 - 0.25 = 0.75
-        assert!((p.alpha - 0.75).abs() < 1e-4, "alpha should be 0.75, got {}", p.alpha);
+        assert!(
+            (p.alpha - 0.75).abs() < 1e-4,
+            "alpha should be 0.75, got {}",
+            p.alpha
+        );
     }
 
     /// Catches * → + in type.size() * (...) (line 137, col 55)
@@ -2463,7 +2677,7 @@ mod particle_tests {
     fn test_tear_size_multiplies_base_by_factor() {
         let mut p = Particle::new(ParticleType::Tear, Vec3::ZERO, Vec3::ZERO);
         p.update(1.0); // progress=0.5
-        // Correct: 0.2 * 2.0 = 0.4.   If +: 0.2 + 2.0 = 2.2
+                       // Correct: 0.2 * 2.0 = 0.4.   If +: 0.2 + 2.0 = 2.2
         assert!(p.size < 1.0, "size must be < 1.0");
         assert!((p.size - 0.4).abs() < 1e-4);
     }
@@ -2473,10 +2687,14 @@ mod particle_tests {
     fn test_tear_progress_times_two() {
         let mut p = Particle::new(ParticleType::Tear, Vec3::ZERO, Vec3::ZERO);
         p.update(0.5); // progress=0.25
-        // Correct: 1.0 + 0.25*2.0 = 1.5 → 0.2*1.5 = 0.3
-        // If +: 1.0 + (0.25+2.0) = 3.25 → 0.2*3.25 = 0.65
-        // If /: 1.0 + (0.25/2.0) = 1.125 → 0.2*1.125 = 0.225
-        assert!((p.size - 0.3).abs() < 1e-4, "size should be 0.3, got {}", p.size);
+                       // Correct: 1.0 + 0.25*2.0 = 1.5 → 0.2*1.5 = 0.3
+                       // If +: 1.0 + (0.25+2.0) = 3.25 → 0.2*3.25 = 0.65
+                       // If /: 1.0 + (0.25/2.0) = 1.125 → 0.2*1.125 = 0.225
+        assert!(
+            (p.size - 0.3).abs() < 1e-4,
+            "size should be 0.3, got {}",
+            p.size
+        );
     }
 
     /// Catches - → + or / in alpha = 1.0 - progress (line 138)
@@ -2484,9 +2702,13 @@ mod particle_tests {
     fn test_tear_alpha_subtracts_progress() {
         let mut p = Particle::new(ParticleType::Tear, Vec3::ZERO, Vec3::ZERO);
         p.update(1.0); // progress=0.5
-        // Correct: 1.0 - 0.5 = 0.5
-        // If +: 1.5    If /: 2.0
-        assert!(p.alpha <= 1.0 && p.alpha >= 0.0, "alpha in [0,1], got {}", p.alpha);
+                       // Correct: 1.0 - 0.5 = 0.5
+                       // If +: 1.5    If /: 2.0
+        assert!(
+            p.alpha <= 1.0 && p.alpha >= 0.0,
+            "alpha in [0,1], got {}",
+            p.alpha
+        );
         assert!((p.alpha - 0.5).abs() < 1e-4, "alpha={}", p.alpha);
     }
 
@@ -2504,7 +2726,11 @@ mod particle_tests {
     fn test_restoration_alpha_fade() {
         let mut p = Particle::new(ParticleType::Restoration, Vec3::ZERO, Vec3::ZERO);
         p.update(0.75); // lifetime=1.5, alpha = 1.0 - 0.75/1.5 = 0.5
-        assert!((p.alpha - 0.5).abs() < 1e-3, "alpha should be 0.5, got {}", p.alpha);
+        assert!(
+            (p.alpha - 0.5).abs() < 1e-3,
+            "alpha should be 0.5, got {}",
+            p.alpha
+        );
     }
 
     // ---- color_with_alpha ----
@@ -2530,24 +2756,28 @@ mod particle_tests {
     ///         line 145 (/ → * gives 0.05*0.2=0.01 or / → % gives 0.05%0.2=0.05)
     #[test]
     fn test_void_fade_in_alpha() {
-        let mut p = Particle::new(ParticleType::Void,
-            Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
+        let mut p = Particle::new(ParticleType::Void, Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
         // lifetime=3.0, dt=0.15 → age=0.15, progress=0.05
         p.update(0.15);
         // alpha = 0.05 / 0.2 = 0.25
-        assert!((p.alpha - 0.25).abs() < 1e-3,
-            "void fade-in alpha should be 0.25, got {}", p.alpha);
+        assert!(
+            (p.alpha - 0.25).abs() < 1e-3,
+            "void fade-in alpha should be 0.25, got {}",
+            p.alpha
+        );
     }
 
     /// Void hold: progress=0.5 → alpha = 1.0
     /// Catches line 142 (/ → * gives progress=4.5 → fade-out → negative alpha)
     #[test]
     fn test_void_hold_alpha() {
-        let mut p = Particle::new(ParticleType::Void,
-            Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
+        let mut p = Particle::new(ParticleType::Void, Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
         p.update(1.5); // progress = 1.5/3.0 = 0.5
-        assert!((p.alpha - 1.0).abs() < 1e-3,
-            "void hold alpha should be 1.0, got {}", p.alpha);
+        assert!(
+            (p.alpha - 1.0).abs() < 1e-3,
+            "void hold alpha should be 1.0, got {}",
+            p.alpha
+        );
     }
 
     /// Void fade-out: progress=0.9 → alpha = (1.0-0.9)/0.2 = 0.5
@@ -2556,27 +2786,32 @@ mod particle_tests {
     ///                   / → * gives 0.1*0.2=0.02, / → % gives 0.1%0.2=0.1)
     #[test]
     fn test_void_fade_out_alpha() {
-        let mut p = Particle::new(ParticleType::Void,
-            Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
+        let mut p = Particle::new(ParticleType::Void, Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
         p.update(2.7); // progress = 2.7/3.0 = 0.9
-        assert!((p.alpha - 0.5).abs() < 1e-3,
-            "void fade-out alpha should be 0.5, got {}", p.alpha);
+        assert!(
+            (p.alpha - 0.5).abs() < 1e-3,
+            "void fade-out alpha should be 0.5, got {}",
+            p.alpha
+        );
     }
 
     /// Void gravity: velocity += -pos.normalize() * 0.5 * dt (line 152)
     /// Catches += → -= (opposite sign), += → *= (multiplies instead of adds)
     #[test]
     fn test_void_gravity_pull() {
-        let mut p = Particle::new(ParticleType::Void,
-            Vec3::new(4.0, 0.0, 0.0), Vec3::ZERO);
+        let mut p = Particle::new(ParticleType::Void, Vec3::new(4.0, 0.0, 0.0), Vec3::ZERO);
         let dt = 0.1;
         p.update(dt);
         // velocity += -normalize(4,0,0) * 0.5 * 0.1
         //          += -(1,0,0) * 0.05
         //          += (-0.05, 0, 0)
         let expected_vx = -0.5 * dt; // -0.05
-        assert!((p.velocity.x - expected_vx).abs() < 1e-4,
-            "vx should be {}, got {}", expected_vx, p.velocity.x);
+        assert!(
+            (p.velocity.x - expected_vx).abs() < 1e-4,
+            "vx should be {}, got {}",
+            expected_vx,
+            p.velocity.x
+        );
         // Must be negative (pulled toward center)
         assert!(p.velocity.x < 0.0, "gravity should pull toward center");
     }
@@ -2585,25 +2820,30 @@ mod particle_tests {
     /// progress=0.15 → alpha = 0.15/0.2 = 0.75
     #[test]
     fn test_void_fade_in_three_quarters() {
-        let mut p = Particle::new(ParticleType::Void,
-            Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
+        let mut p = Particle::new(ParticleType::Void, Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
         // progress=0.15 → age = 0.15 * 3.0 = 0.45
         p.update(0.45);
-        assert!((p.alpha - 0.75).abs() < 1e-3,
-            "void fade-in at progress=0.15, alpha should be 0.75, got {}", p.alpha);
+        assert!(
+            (p.alpha - 0.75).abs() < 1e-3,
+            "void fade-in at progress=0.15, alpha should be 0.75, got {}",
+            p.alpha
+        );
     }
 
     /// Void at boundary progress=0.85 (just past fade-out threshold)
     /// alpha = (1.0-0.85)/0.2 = 0.75
     #[test]
     fn test_void_fade_out_boundary() {
-        let mut p = Particle::new(ParticleType::Void,
-            Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
+        let mut p = Particle::new(ParticleType::Void, Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
         // progress = 0.85 → age = 0.85 * 3.0 = 2.55
         p.update(2.55);
         let expected = (1.0 - 0.85) / 0.2; // 0.75
-        assert!((p.alpha - expected).abs() < 1e-3,
-            "alpha should be {}, got {}", expected, p.alpha);
+        assert!(
+            (p.alpha - expected).abs() < 1e-3,
+            "alpha should be {}, got {}",
+            expected,
+            p.alpha
+        );
     }
 
     // ---- Emitter particle type correctness ----
@@ -2617,8 +2857,11 @@ mod particle_tests {
         assert!(emitter.particle_count() > 0);
         // All particles should be Glitch type
         for p in emitter.particles() {
-            assert_eq!(p.particle_type, ParticleType::Glitch,
-                "Unstable emitter should produce Glitch particles");
+            assert_eq!(
+                p.particle_type,
+                ParticleType::Glitch,
+                "Unstable emitter should produce Glitch particles"
+            );
         }
     }
 
@@ -2629,8 +2872,11 @@ mod particle_tests {
         emitter.update(0.5); // don't exceed Tear lifetime (2.0s)
         assert!(emitter.particle_count() > 0);
         for p in emitter.particles() {
-            assert_eq!(p.particle_type, ParticleType::Tear,
-                "Critical emitter should produce Tear particles");
+            assert_eq!(
+                p.particle_type,
+                ParticleType::Tear,
+                "Critical emitter should produce Tear particles"
+            );
         }
     }
 
@@ -2641,8 +2887,11 @@ mod particle_tests {
         emitter.update(0.5);
         assert!(emitter.particle_count() > 0);
         for p in emitter.particles() {
-            assert_eq!(p.particle_type, ParticleType::Void,
-                "Broken emitter should produce Void particles");
+            assert_eq!(
+                p.particle_type,
+                ParticleType::Void,
+                "Broken emitter should produce Void particles"
+            );
         }
     }
 
@@ -2674,11 +2923,11 @@ mod particle_tests {
 // System Tests — proximity, decay, interaction systems
 // ============================================================================
 mod system_tests {
-    use astraweave_weaving::systems::anchor_proximity_system::{
-        PlayerPosition, AnchorEntity, ProximityEventType, anchor_proximity_system,
-    };
-    use astraweave_weaving::systems::anchor_interaction_system::InputState;
     use astraweave_weaving::anchor::Anchor;
+    use astraweave_weaving::systems::anchor_interaction_system::InputState;
+    use astraweave_weaving::systems::anchor_proximity_system::{
+        anchor_proximity_system, AnchorEntity, PlayerPosition, ProximityEventType,
+    };
 
     // ---- PlayerPosition::distance_to (lines 28-29 - → +) ----
 
@@ -2719,8 +2968,12 @@ mod system_tests {
 
         let events = anchor_proximity_system(&entities, player, &mut prev);
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].event_type, ProximityEventType::InRange,
-            "Same anchor should produce InRange, not {:?}", events[0].event_type);
+        assert_eq!(
+            events[0].event_type,
+            ProximityEventType::InRange,
+            "Same anchor should produce InRange, not {:?}",
+            events[0].event_type
+        );
     }
 
     /// Switching from anchor 1 to anchor 2 → Exited(1) + Entered(2)
@@ -2730,18 +2983,34 @@ mod system_tests {
         let anchor1 = Anchor::new(0.5, 10, None);
         let anchor2 = Anchor::new(0.5, 10, None);
         let entities = vec![
-            AnchorEntity { id: 1, anchor: anchor1, position: (10.0, 0.0, 0.0) },
-            AnchorEntity { id: 2, anchor: anchor2, position: (0.0, 0.0, 0.0) },
+            AnchorEntity {
+                id: 1,
+                anchor: anchor1,
+                position: (10.0, 0.0, 0.0),
+            },
+            AnchorEntity {
+                id: 2,
+                anchor: anchor2,
+                position: (0.0, 0.0, 0.0),
+            },
         ];
         let player = PlayerPosition::new(0.0, 0.0, 0.0); // Near anchor 2
         let mut prev = Some(1usize); // Was near anchor 1
 
         let events = anchor_proximity_system(&entities, player, &mut prev);
         assert!(events.len() >= 2, "Should have Exited + Entered events");
-        assert!(events.iter().any(|e| e.event_type == ProximityEventType::Exited),
-            "Should have Exited event");
-        assert!(events.iter().any(|e| e.event_type == ProximityEventType::Entered),
-            "Should have Entered event");
+        assert!(
+            events
+                .iter()
+                .any(|e| e.event_type == ProximityEventType::Exited),
+            "Should have Exited event"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| e.event_type == ProximityEventType::Entered),
+            "Should have Entered event"
+        );
     }
 
     /// Entering range of anchor → Entered event
@@ -2794,7 +3063,10 @@ mod system_tests {
 
         input.release_e();
         assert!(!input.e_pressed, "e_pressed should be false after release");
-        assert!(!input.e_just_pressed, "e_just_pressed should be false after release");
+        assert!(
+            !input.e_just_pressed,
+            "e_just_pressed should be false after release"
+        );
     }
 }
 
@@ -2816,8 +3088,11 @@ mod notification_tests {
 
         // Update 0.5s — should transition to Hold
         n.update(0.5);
-        assert_eq!(n.state, NotificationState::Hold,
-            "Should transition to Hold at t=0.5");
+        assert_eq!(
+            n.state,
+            NotificationState::Hold,
+            "Should transition to Hold at t=0.5"
+        );
     }
 
     /// Catches: line 76 (>= → <) — Hold → SlideOut transition at t≥3.5
@@ -2832,8 +3107,11 @@ mod notification_tests {
 
         // Advance to 3.5s total — should transition to SlideOut
         n.update(3.0);
-        assert_eq!(n.state, NotificationState::SlideOut,
-            "Should transition to SlideOut at t=3.5");
+        assert_eq!(
+            n.state,
+            NotificationState::SlideOut,
+            "Should transition to SlideOut at t=3.5"
+        );
     }
 
     /// Catches: line 106 (/ → % or *) — progress = animation_time / 0.5
@@ -2848,10 +3126,16 @@ mod notification_tests {
         // position_y = 1.0 - 0.5 = 0.5
         // alpha = 0.5
         n.update(0.25);
-        assert!((n.position_y - 0.5).abs() < 1e-3,
-            "position_y should be 0.5 at t=0.25, got {}", n.position_y);
-        assert!((n.alpha - 0.5).abs() < 1e-3,
-            "alpha should be 0.5 at t=0.25, got {}", n.alpha);
+        assert!(
+            (n.position_y - 0.5).abs() < 1e-3,
+            "position_y should be 0.5 at t=0.25, got {}",
+            n.position_y
+        );
+        assert!(
+            (n.alpha - 0.5).abs() < 1e-3,
+            "alpha should be 0.5 at t=0.25, got {}",
+            n.alpha
+        );
     }
 
     /// Slide-out position + alpha
@@ -2859,19 +3143,28 @@ mod notification_tests {
     fn test_slide_out_position_and_alpha() {
         let mut n = AbilityUnlockNotification::new();
         n.show(AbilityType::EchoDash);
-        n.update(0.5);  // → Hold
-        n.update(3.0);  // → SlideOut (t=3.5)
+        n.update(0.5); // → Hold
+        n.update(3.0); // → SlideOut (t=3.5)
 
         // At start of slide-out, position should be 0.0, alpha 1.0
-        assert!((n.position_y).abs() < 1e-3, "position at start of slide-out");
+        assert!(
+            (n.position_y).abs() < 1e-3,
+            "position at start of slide-out"
+        );
         assert!((n.alpha - 1.0).abs() < 1e-3, "alpha at start of slide-out");
 
         // Update 0.25s more → t=3.75, progress = 0.25/0.5 = 0.5
         n.update(0.25);
-        assert!((n.position_y - 0.5).abs() < 1e-3,
-            "position_y should be 0.5 at slide-out midpoint, got {}", n.position_y);
-        assert!((n.alpha - 0.5).abs() < 1e-3,
-            "alpha should be 0.5 at slide-out midpoint, got {}", n.alpha);
+        assert!(
+            (n.position_y - 0.5).abs() < 1e-3,
+            "position_y should be 0.5 at slide-out midpoint, got {}",
+            n.position_y
+        );
+        assert!(
+            (n.alpha - 0.5).abs() < 1e-3,
+            "alpha should be 0.5 at slide-out midpoint, got {}",
+            n.alpha
+        );
     }
 
     /// Full cycle: show → slide-in → hold → slide-out → hidden
@@ -2880,11 +3173,11 @@ mod notification_tests {
         let mut n = AbilityUnlockNotification::new();
         n.show(AbilityType::BarricadeDeploy);
 
-        n.update(0.5);  // SlideIn → Hold
+        n.update(0.5); // SlideIn → Hold
         assert_eq!(n.state, NotificationState::Hold);
-        n.update(3.0);  // Hold → SlideOut
+        n.update(3.0); // Hold → SlideOut
         assert_eq!(n.state, NotificationState::SlideOut);
-        n.update(0.5);  // SlideOut → Hidden
+        n.update(0.5); // SlideOut → Hidden
         assert_eq!(n.state, NotificationState::Hidden);
         assert!(!n.is_visible());
     }
@@ -2905,9 +3198,16 @@ mod inspection_modal_tests {
         let desc = modal.ability_description();
         assert!(desc.is_some(), "EchoDash should have description");
         let text = desc.unwrap();
-        assert!(text.contains("dash") || text.contains("Teleport"),
-            "EchoDash desc should mention dash/teleport, got '{}'", text);
-        assert!(text.len() > 5, "description should be meaningful, got '{}'", text);
+        assert!(
+            text.contains("dash") || text.contains("Teleport"),
+            "EchoDash desc should mention dash/teleport, got '{}'",
+            text
+        );
+        assert!(
+            text.len() > 5,
+            "description should be meaningful, got '{}'",
+            text
+        );
     }
 
     #[test]
@@ -2917,15 +3217,20 @@ mod inspection_modal_tests {
         let desc = modal.ability_description();
         assert!(desc.is_some(), "BarricadeDeploy should have description");
         let text = desc.unwrap();
-        assert!(text.contains("barricade") || text.contains("Barricade"),
-            "BarricadeDeploy desc should mention barricade, got '{}'", text);
+        assert!(
+            text.contains("barricade") || text.contains("Barricade"),
+            "BarricadeDeploy desc should mention barricade, got '{}'",
+            text
+        );
     }
 
     #[test]
     fn test_ability_description_none() {
         let modal = AnchorInspectionModal::new();
-        assert!(modal.ability_description().is_none(),
-            "No ability should give None");
+        assert!(
+            modal.ability_description().is_none(),
+            "No ability should give None"
+        );
     }
 }
 
@@ -2933,8 +3238,8 @@ mod inspection_modal_tests {
 // UI — EchoHud / EchoFeedbackFloat tests
 // ============================================================================
 mod echo_hud_tests {
-    use astraweave_weaving::ui::echo_hud::{EchoFeedbackFloat, EchoHud};
     use astraweave_weaving::echo_currency::{EchoCurrency, TransactionReason};
+    use astraweave_weaving::ui::echo_hud::{EchoFeedbackFloat, EchoHud};
 
     /// Catches: line 52 (* → + or /) in alpha calculation
     /// alpha = progress * 2.0 at t=0.5 → progress=0.25 → alpha=0.5
@@ -2942,10 +3247,13 @@ mod echo_hud_tests {
     fn test_feedback_float_alpha_progression() {
         let mut f = EchoFeedbackFloat::new(10);
         f.update(0.5); // progress = 0.5/2.0 = 0.25
-        // alpha = 0.25 * 2.0 = 0.5
-        // If +: 0.25 + 2.0 = 2.25   If /: 0.25 / 2.0 = 0.125
-        assert!((f.alpha - 0.5).abs() < 1e-3,
-            "alpha should be 0.5 at t=0.5, got {}", f.alpha);
+                       // alpha = 0.25 * 2.0 = 0.5
+                       // If +: 0.25 + 2.0 = 2.25   If /: 0.25 / 2.0 = 0.125
+        assert!(
+            (f.alpha - 0.5).abs() < 1e-3,
+            "alpha should be 0.5 at t=0.5, got {}",
+            f.alpha
+        );
     }
 
     /// Catches: float_count → 0 or 1
@@ -2961,7 +3269,11 @@ mod echo_hud_tests {
         // Change balance: +5 → spawns 1 float
         currency.add(5, TransactionReason::QuestReward("q1".into()));
         hud.update(&currency, 0.016);
-        assert_eq!(hud.float_count(), 1, "Should have 1 float after first change");
+        assert_eq!(
+            hud.float_count(),
+            1,
+            "Should have 1 float after first change"
+        );
 
         // Change again: +3 → spawns 2nd float
         currency.add(3, TransactionReason::QuestReward("q2".into()));
@@ -3058,7 +3370,10 @@ mod anchor_audio_system_tests {
         system.add_anchor(42, 3, Vec3::new(1.0, 2.0, 3.0)); // Critical state
 
         let state = system.get_state(42);
-        assert!(state.is_some(), "get_state should return Some for existing anchor");
+        assert!(
+            state.is_some(),
+            "get_state should return Some for existing anchor"
+        );
 
         let state = state.unwrap();
         assert_eq!(state.anchor_id, 42);
@@ -3226,7 +3541,7 @@ mod enemy_timer_tests {
 // ============================================================================
 mod gap_filling_tests {
     use astraweave_weaving::level::Camera;
-    use astraweave_weaving::quest::{Quest, QuestManager, ObjectiveType};
+    use astraweave_weaving::quest::{ObjectiveType, Quest, QuestManager};
     use astraweave_weaving::quest_types::EscortNPC;
     use glam::Vec3;
 
@@ -3387,7 +3702,7 @@ mod remaining_miss_tests {
     /// Catches: level.rs:428 — && → || in try_activate_next_quest
     /// After completing both stabilize_anchors AND clear_corruption,
     /// try_activate_next_quest should activate restore_beacon.
-    /// With && → ||: `has_stabilize || !has_clear` = `true || false` = true → 
+    /// With && → ||: `has_stabilize || !has_clear` = `true || false` = true →
     ///   enters first branch, tries to activate clear_corruption (already done), fails.
     /// With correct &&: `has_stabilize && !has_clear` = `true && false` = false →
     ///   falls through to `else if has_clear` → activates restore_beacon. ✓
@@ -3400,27 +3715,33 @@ mod remaining_miss_tests {
         // Anchor 0 (0.5): 1 repair → 0.8 (crosses threshold)
         // Anchor 1 (0.3): 2 repairs → 0.6 → 0.9 (second crosses threshold)
         // Anchor 2 (0.3): 2 repairs → 0.6 → 0.9 (second crosses threshold)
-        assert!(level.repair_anchor(0, 0));    // 0.5→0.8 ✓
-        assert!(!level.repair_anchor(1, 0));   // 0.3→0.6 (not yet)
-        assert!(level.repair_anchor(1, 0));    // 0.6→0.9 ✓
-        assert!(!level.repair_anchor(2, 0));   // 0.3→0.6 (not yet)
-        assert!(level.repair_anchor(2, 0));    // 0.6→0.9 ✓
+        assert!(level.repair_anchor(0, 0)); // 0.5→0.8 ✓
+        assert!(!level.repair_anchor(1, 0)); // 0.3→0.6 (not yet)
+        assert!(level.repair_anchor(1, 0)); // 0.6→0.9 ✓
+        assert!(!level.repair_anchor(2, 0)); // 0.3→0.6 (not yet)
+        assert!(level.repair_anchor(2, 0)); // 0.6→0.9 ✓
 
         // update() calls check_active_quest → completes stabilize_anchors → try_activate_next_quest
         level.update(0.016);
 
         // Verify: clear_corruption should now be active
         let active = level.quest_manager.active_quest();
-        assert!(active.is_some(), "clear_corruption should be active after stabilize completes");
+        assert!(
+            active.is_some(),
+            "clear_corruption should be active after stabilize completes"
+        );
         assert_eq!(
-            active.unwrap().id, "clear_corruption",
+            active.unwrap().id,
+            "clear_corruption",
             "second quest should be clear_corruption"
         );
 
         // Step 2: Complete clear_corruption by killing 10 enemies
         // Add 10 dummy enemies and kill them
         for _ in 0..10 {
-            level.enemies.push(Enemy::new(Vec3::new(10.0, 0.0, 10.0), 5.0));
+            level
+                .enemies
+                .push(Enemy::new(Vec3::new(10.0, 0.0, 10.0), 5.0));
             level.enemy_positions.push(Vec3::new(10.0, 0.0, 10.0));
         }
         for _ in 0..10 {
@@ -3437,7 +3758,8 @@ mod remaining_miss_tests {
             "restore_beacon should be active after clear_corruption completes"
         );
         assert_eq!(
-            active.unwrap().id, "restore_beacon",
+            active.unwrap().id,
+            "restore_beacon",
             "third quest should be restore_beacon, not a re-activation of clear_corruption"
         );
     }

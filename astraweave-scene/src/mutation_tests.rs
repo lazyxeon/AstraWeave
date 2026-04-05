@@ -980,17 +980,11 @@ mod behavioral_correctness_tests {
     fn mutation_is_uniform_scale_and_vs_or() {
         // x == y but y != z
         let t = Transform::from_scale_vec(Vec3::new(2.0, 2.0, 999.0));
-        assert!(
-            !t.is_uniform_scale(),
-            "x==y but y!=z must NOT be uniform"
-        );
+        assert!(!t.is_uniform_scale(), "x==y but y!=z must NOT be uniform");
 
         // Reverse asymmetry: x != y but y == z
         let t2 = Transform::from_scale_vec(Vec3::new(999.0, 2.0, 2.0));
-        assert!(
-            !t2.is_uniform_scale(),
-            "x!=y but y==z must NOT be uniform"
-        );
+        assert!(!t2.is_uniform_scale(), "x!=y but y==z must NOT be uniform");
     }
 
     /// Catches `< → <=` on line 114: `(x - y).abs() < EPSILON`
@@ -1092,10 +1086,7 @@ mod world_partition_mutation_tests {
         let a = AABB::new(Vec3::new(0.0, 0.0, 0.0), Vec3::new(5.0, 10.0, 10.0));
         let b = AABB::new(Vec3::new(10.0, 0.0, 0.0), Vec3::new(20.0, 10.0, 10.0));
         // Separate on X (a.max.x=5 < b.min.x=10), overlap on Y and Z.
-        assert!(
-            !a.intersects(&b),
-            "Boxes separated on X must not intersect"
-        );
+        assert!(!a.intersects(&b), "Boxes separated on X must not intersect");
         assert!(
             !b.intersects(&a),
             "Boxes separated on X (reversed) must not intersect"
@@ -1108,10 +1099,7 @@ mod world_partition_mutation_tests {
         let a = AABB::new(Vec3::new(0.0, 0.0, 0.0), Vec3::new(10.0, 5.0, 10.0));
         let b = AABB::new(Vec3::new(0.0, 10.0, 0.0), Vec3::new(10.0, 20.0, 10.0));
         // Separate on Y only.
-        assert!(
-            !a.intersects(&b),
-            "Boxes separated on Y must not intersect"
-        );
+        assert!(!a.intersects(&b), "Boxes separated on Y must not intersect");
     }
 
     /// Boxes overlap on X and Y but NOT on Z. Tests `&&` for z-conditions.
@@ -1120,10 +1108,7 @@ mod world_partition_mutation_tests {
         let a = AABB::new(Vec3::new(0.0, 0.0, 0.0), Vec3::new(10.0, 10.0, 5.0));
         let b = AABB::new(Vec3::new(0.0, 0.0, 10.0), Vec3::new(10.0, 10.0, 20.0));
         // Separate on Z only.
-        assert!(
-            !a.intersects(&b),
-            "Boxes separated on Z must not intersect"
-        );
+        assert!(!a.intersects(&b), "Boxes separated on Z must not intersect");
     }
 
     /// Catches `<= → <` in intersects by testing touching boundaries per axis.
@@ -1159,12 +1144,30 @@ mod world_partition_mutation_tests {
         let aabb = AABB::new(Vec3::new(0.0, 0.0, 0.0), Vec3::new(10.0, 10.0, 10.0));
 
         // Each axis boundary — catches >= → > and <= → <
-        assert!(aabb.contains_point(Vec3::new(0.0, 5.0, 5.0)), "min.x boundary");
-        assert!(aabb.contains_point(Vec3::new(10.0, 5.0, 5.0)), "max.x boundary");
-        assert!(aabb.contains_point(Vec3::new(5.0, 0.0, 5.0)), "min.y boundary");
-        assert!(aabb.contains_point(Vec3::new(5.0, 10.0, 5.0)), "max.y boundary");
-        assert!(aabb.contains_point(Vec3::new(5.0, 5.0, 0.0)), "min.z boundary");
-        assert!(aabb.contains_point(Vec3::new(5.0, 5.0, 10.0)), "max.z boundary");
+        assert!(
+            aabb.contains_point(Vec3::new(0.0, 5.0, 5.0)),
+            "min.x boundary"
+        );
+        assert!(
+            aabb.contains_point(Vec3::new(10.0, 5.0, 5.0)),
+            "max.x boundary"
+        );
+        assert!(
+            aabb.contains_point(Vec3::new(5.0, 0.0, 5.0)),
+            "min.y boundary"
+        );
+        assert!(
+            aabb.contains_point(Vec3::new(5.0, 10.0, 5.0)),
+            "max.y boundary"
+        );
+        assert!(
+            aabb.contains_point(Vec3::new(5.0, 5.0, 0.0)),
+            "min.z boundary"
+        );
+        assert!(
+            aabb.contains_point(Vec3::new(5.0, 5.0, 10.0)),
+            "max.z boundary"
+        );
     }
 
     // ── Frustum plane extraction: catches `+ → -` and `- → +` in from_view_projection ──
@@ -1178,28 +1181,43 @@ mod world_partition_mutation_tests {
         let proj = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 0.1, 100.0);
         let frustum = Frustum::from_view_projection(proj);
 
-        // Inside near center 
-        let inside_center = AABB::from_center_half_extents(Vec3::new(0.0, 0.0, -50.0), Vec3::splat(1.0));
+        // Inside near center
+        let inside_center =
+            AABB::from_center_half_extents(Vec3::new(0.0, 0.0, -50.0), Vec3::splat(1.0));
         assert!(frustum.intersects_aabb(&inside_center), "center of frustum");
 
         // Outside left plane (x < -10)
-        let outside_left = AABB::from_center_half_extents(Vec3::new(-20.0, 0.0, -50.0), Vec3::splat(1.0));
-        assert!(!frustum.intersects_aabb(&outside_left), "outside left plane");
+        let outside_left =
+            AABB::from_center_half_extents(Vec3::new(-20.0, 0.0, -50.0), Vec3::splat(1.0));
+        assert!(
+            !frustum.intersects_aabb(&outside_left),
+            "outside left plane"
+        );
 
         // Outside right plane (x > 10)
-        let outside_right = AABB::from_center_half_extents(Vec3::new(20.0, 0.0, -50.0), Vec3::splat(1.0));
-        assert!(!frustum.intersects_aabb(&outside_right), "outside right plane");
+        let outside_right =
+            AABB::from_center_half_extents(Vec3::new(20.0, 0.0, -50.0), Vec3::splat(1.0));
+        assert!(
+            !frustum.intersects_aabb(&outside_right),
+            "outside right plane"
+        );
 
         // Outside bottom plane (y < -10)
-        let outside_bottom = AABB::from_center_half_extents(Vec3::new(0.0, -20.0, -50.0), Vec3::splat(1.0));
-        assert!(!frustum.intersects_aabb(&outside_bottom), "outside bottom plane");
+        let outside_bottom =
+            AABB::from_center_half_extents(Vec3::new(0.0, -20.0, -50.0), Vec3::splat(1.0));
+        assert!(
+            !frustum.intersects_aabb(&outside_bottom),
+            "outside bottom plane"
+        );
 
         // Outside top plane (y > 10)
-        let outside_top = AABB::from_center_half_extents(Vec3::new(0.0, 20.0, -50.0), Vec3::splat(1.0));
+        let outside_top =
+            AABB::from_center_half_extents(Vec3::new(0.0, 20.0, -50.0), Vec3::splat(1.0));
         assert!(!frustum.intersects_aabb(&outside_top), "outside top plane");
 
         // Outside far plane (z < -100 means further than far)
-        let outside_far = AABB::from_center_half_extents(Vec3::new(0.0, 0.0, -200.0), Vec3::splat(1.0));
+        let outside_far =
+            AABB::from_center_half_extents(Vec3::new(0.0, 0.0, -200.0), Vec3::splat(1.0));
         assert!(!frustum.intersects_aabb(&outside_far), "outside far plane");
         // Note: near plane not tested here — the Gribb-Hartmann extraction formula
         // assumes OpenGL [-1,1] z range but glam::orthographic_rh uses [0,1] (wgpu).
@@ -1220,12 +1238,20 @@ mod world_partition_mutation_tests {
         assert!(frustum.intersects_aabb(&ahead), "ahead in perspective");
 
         // Object far to the left should be outside
-        let far_left = AABB::from_center_half_extents(Vec3::new(-500.0, 0.0, -50.0), Vec3::splat(1.0));
-        assert!(!frustum.intersects_aabb(&far_left), "far left in perspective");
+        let far_left =
+            AABB::from_center_half_extents(Vec3::new(-500.0, 0.0, -50.0), Vec3::splat(1.0));
+        assert!(
+            !frustum.intersects_aabb(&far_left),
+            "far left in perspective"
+        );
 
         // Object far to the right should be outside
-        let far_right = AABB::from_center_half_extents(Vec3::new(500.0, 0.0, -50.0), Vec3::splat(1.0));
-        assert!(!frustum.intersects_aabb(&far_right), "far right in perspective");
+        let far_right =
+            AABB::from_center_half_extents(Vec3::new(500.0, 0.0, -50.0), Vec3::splat(1.0));
+        assert!(
+            !frustum.intersects_aabb(&far_right),
+            "far right in perspective"
+        );
 
         // Object far above should be outside
         let far_up = AABB::from_center_half_extents(Vec3::new(0.0, 500.0, -50.0), Vec3::splat(1.0));
@@ -1233,7 +1259,10 @@ mod world_partition_mutation_tests {
 
         // Object behind camera should be outside (z > 0)
         let behind = AABB::from_center_half_extents(Vec3::new(0.0, 0.0, 50.0), Vec3::splat(1.0));
-        assert!(!frustum.intersects_aabb(&behind), "behind camera in perspective");
+        assert!(
+            !frustum.intersects_aabb(&behind),
+            "behind camera in perspective"
+        );
     }
 
     /// Catches `>= → <` in intersects_aabb positive vertex selection.
@@ -1356,8 +1385,14 @@ mod world_partition_mutation_tests {
         cache.touch(GridCoord::new(4, 0, 0)); // Should evict 1
 
         // Oldest (1) should be evicted, newest (4) should remain
-        assert!(!cache.contains(GridCoord::new(1, 0, 0)), "oldest must be evicted");
-        assert!(cache.contains(GridCoord::new(4, 0, 0)), "newest must remain");
+        assert!(
+            !cache.contains(GridCoord::new(1, 0, 0)),
+            "oldest must be evicted"
+        );
+        assert!(
+            cache.contains(GridCoord::new(4, 0, 0)),
+            "newest must remain"
+        );
 
         // LRU should be 2 (the oldest remaining)
         assert_eq!(cache.lru(), Some(GridCoord::new(2, 0, 0)));
@@ -1442,7 +1477,11 @@ mod world_partition_mutation_tests {
 
         let coord = GridCoord::from_world_pos(pos, config.cell_size);
         let cell = partition.get_cell(coord).unwrap();
-        assert_eq!(cell.entities.len(), 1, "duplicate entity should not be added");
+        assert_eq!(
+            cell.entities.len(),
+            1,
+            "duplicate entity should not be added"
+        );
     }
 
     #[test]
@@ -1469,7 +1508,10 @@ mod world_partition_mutation_tests {
             .values()
             .filter(|c| c.entities.contains(&42))
             .count();
-        assert_eq!(cell_count_after, 0, "entity should be removed from all cells");
+        assert_eq!(
+            cell_count_after, 0,
+            "entity should be removed from all cells"
+        );
     }
 
     // ── memory_usage_estimate: catches sizeof accumulation ──
@@ -1541,13 +1583,13 @@ mod world_partition_mutation_tests {
     fn mutation_frustum_rotated_camera_planes() {
         // Non-trivial camera: offset and looking at an angle
         let view = Mat4::look_at_rh(
-            Vec3::new(10.0, 5.0, 3.0),  // eye
-            Vec3::ZERO,                   // target
-            Vec3::Y,                      // up
+            Vec3::new(10.0, 5.0, 3.0), // eye
+            Vec3::ZERO,                // target
+            Vec3::Y,                   // up
         );
         let proj = Mat4::perspective_rh(
             std::f32::consts::FRAC_PI_3, // 60° FOV
-            1.5,                          // non-unit aspect ratio
+            1.5,                         // non-unit aspect ratio
             0.1,
             100.0,
         );
@@ -1574,50 +1616,39 @@ mod world_partition_mutation_tests {
         // Far left of the view (perpendicular to view direction)
         // View direction: (0,0,0)-(10,5,3) = (-10,-5,-3) normalized
         // Left is perpendicular — use a point far to the "left" of the frustum
-        let far_left = AABB::from_center_half_extents(
-            Vec3::new(-100.0, 0.0, 100.0),
-            Vec3::splat(0.5),
-        );
+        let far_left =
+            AABB::from_center_half_extents(Vec3::new(-100.0, 0.0, 100.0), Vec3::splat(0.5));
         assert!(
             !frustum.intersects_aabb(&far_left),
             "far left must be outside"
         );
 
         // Far right
-        let far_right = AABB::from_center_half_extents(
-            Vec3::new(100.0, 0.0, -100.0),
-            Vec3::splat(0.5),
-        );
+        let far_right =
+            AABB::from_center_half_extents(Vec3::new(100.0, 0.0, -100.0), Vec3::splat(0.5));
         assert!(
             !frustum.intersects_aabb(&far_right),
             "far right must be outside"
         );
 
         // Far above
-        let far_up = AABB::from_center_half_extents(
-            Vec3::new(5.0, 200.0, 0.0),
-            Vec3::splat(0.5),
-        );
+        let far_up = AABB::from_center_half_extents(Vec3::new(5.0, 200.0, 0.0), Vec3::splat(0.5));
         assert!(
             !frustum.intersects_aabb(&far_up),
             "far above must be outside"
         );
 
         // Far below
-        let far_down = AABB::from_center_half_extents(
-            Vec3::new(5.0, -200.0, 0.0),
-            Vec3::splat(0.5),
-        );
+        let far_down =
+            AABB::from_center_half_extents(Vec3::new(5.0, -200.0, 0.0), Vec3::splat(0.5));
         assert!(
             !frustum.intersects_aabb(&far_down),
             "far below must be outside"
         );
 
         // Very far along view direction (beyond far plane)
-        let beyond_far = AABB::from_center_half_extents(
-            Vec3::new(-500.0, -250.0, -150.0),
-            Vec3::splat(0.5),
-        );
+        let beyond_far =
+            AABB::from_center_half_extents(Vec3::new(-500.0, -250.0, -150.0), Vec3::splat(0.5));
         assert!(
             !frustum.intersects_aabb(&beyond_far),
             "beyond far plane must be outside"
@@ -1628,17 +1659,8 @@ mod world_partition_mutation_tests {
     /// Each plane's normal should point roughly inward (toward the frustum interior).
     #[test]
     fn mutation_frustum_plane_normals_sign_check() {
-        let view = Mat4::look_at_rh(
-            Vec3::new(10.0, 5.0, 3.0),
-            Vec3::ZERO,
-            Vec3::Y,
-        );
-        let proj = Mat4::perspective_rh(
-            std::f32::consts::FRAC_PI_3,
-            1.5,
-            0.1,
-            100.0,
-        );
+        let view = Mat4::look_at_rh(Vec3::new(10.0, 5.0, 3.0), Vec3::ZERO, Vec3::Y);
+        let proj = Mat4::perspective_rh(std::f32::consts::FRAC_PI_3, 1.5, 0.1, 100.0);
         let vp = proj * view;
         let frustum = Frustum::from_view_projection(vp);
 
@@ -1651,7 +1673,8 @@ mod world_partition_mutation_tests {
             assert!(
                 dist > -0.5, // slightly generous for rounding
                 "plane {} must have positive signed distance to frustum center, got {}",
-                i, dist
+                i,
+                dist
             );
         }
     }
@@ -1665,35 +1688,50 @@ mod world_partition_mutation_tests {
         let frustum = Frustum::from_view_projection(proj);
 
         // Center of the visible region: x∈[-5,15] → cx=5, y∈[-3,12] → cy=4.5, z∈[-0.1,-80] → cz=-40
-        let center = AABB::from_center_half_extents(
-            Vec3::new(5.0, 4.5, -40.0),
-            Vec3::splat(0.5),
+        let center = AABB::from_center_half_extents(Vec3::new(5.0, 4.5, -40.0), Vec3::splat(0.5));
+        assert!(
+            frustum.intersects_aabb(&center),
+            "center of asymmetric ortho"
         );
-        assert!(frustum.intersects_aabb(&center), "center of asymmetric ortho");
 
         // Outside left (x < -5)
         let left = AABB::from_center_half_extents(Vec3::new(-20.0, 4.5, -40.0), Vec3::splat(0.5));
-        assert!(!frustum.intersects_aabb(&left), "outside left of asymmetric ortho");
+        assert!(
+            !frustum.intersects_aabb(&left),
+            "outside left of asymmetric ortho"
+        );
 
         // Outside right (x > 15)
         let right = AABB::from_center_half_extents(Vec3::new(30.0, 4.5, -40.0), Vec3::splat(0.5));
-        assert!(!frustum.intersects_aabb(&right), "outside right of asymmetric ortho");
+        assert!(
+            !frustum.intersects_aabb(&right),
+            "outside right of asymmetric ortho"
+        );
 
         // Outside bottom (y < -3)
         let bottom = AABB::from_center_half_extents(Vec3::new(5.0, -15.0, -40.0), Vec3::splat(0.5));
-        assert!(!frustum.intersects_aabb(&bottom), "outside bottom of asymmetric ortho");
+        assert!(
+            !frustum.intersects_aabb(&bottom),
+            "outside bottom of asymmetric ortho"
+        );
 
         // Outside top (y > 12)
         let top = AABB::from_center_half_extents(Vec3::new(5.0, 25.0, -40.0), Vec3::splat(0.5));
-        assert!(!frustum.intersects_aabb(&top), "outside top of asymmetric ortho");
+        assert!(
+            !frustum.intersects_aabb(&top),
+            "outside top of asymmetric ortho"
+        );
 
         // Outside far (z < -80)
         let far = AABB::from_center_half_extents(Vec3::new(5.0, 4.5, -150.0), Vec3::splat(0.5));
-        assert!(!frustum.intersects_aabb(&far), "outside far of asymmetric ortho");
+        assert!(
+            !frustum.intersects_aabb(&far),
+            "outside far of asymmetric ortho"
+        );
     }
 
     /// Tilted camera test: non-Y up vector makes right.y ≠ 0, ensuring ALL view-projection
-    /// matrix entries are non-zero. Verifies plane coefficients DIRECTLY by computing 
+    /// matrix entries are non-zero. Verifies plane coefficients DIRECTLY by computing
     /// expected values from the VP matrix and comparing with Frustum output.
     /// This catches ALL from_view_projection arithmetic mutations.
     #[test]
@@ -1704,12 +1742,7 @@ mod world_partition_mutation_tests {
             Vec3::new(-3.0, 1.0, -10.0),
             Vec3::new(0.1, 0.95, 0.3),
         );
-        let proj = Mat4::perspective_rh(
-            std::f32::consts::FRAC_PI_4,
-            1.33,
-            0.5,
-            200.0,
-        );
+        let proj = Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, 1.33, 0.5, 200.0);
         let vp = proj * view;
         let frustum = Frustum::from_view_projection(vp);
 
@@ -1781,22 +1814,30 @@ mod world_partition_mutation_tests {
             assert!(
                 (actual.x - expected_normalized.x).abs() < 0.001,
                 "plane {} x mismatch: expected {}, got {}",
-                name, expected_normalized.x, actual.x
+                name,
+                expected_normalized.x,
+                actual.x
             );
             assert!(
                 (actual.y - expected_normalized.y).abs() < 0.001,
                 "plane {} y mismatch: expected {}, got {}",
-                name, expected_normalized.y, actual.y
+                name,
+                expected_normalized.y,
+                actual.y
             );
             assert!(
                 (actual.z - expected_normalized.z).abs() < 0.001,
                 "plane {} z mismatch: expected {}, got {}",
-                name, expected_normalized.z, actual.z
+                name,
+                expected_normalized.z,
+                actual.z
             );
             assert!(
                 (actual.w - expected_normalized.w).abs() < 0.001,
                 "plane {} w mismatch: expected {}, got {}",
-                name, expected_normalized.w, actual.w
+                name,
+                expected_normalized.w,
+                actual.w
             );
         }
     }
@@ -1817,10 +1858,7 @@ mod world_partition_mutation_tests {
         //   positive vertex = (max.x, ...) = (-10, 1, -48)
         //   dot = 1*(-10) + 0*(1) + 0*(-48) = -10
         //   -10 + 10 = 0 → exactly on the boundary
-        let on_boundary = AABB::new(
-            Vec3::new(-11.0, -1.0, -50.0),
-            Vec3::new(-10.0, 1.0, -48.0),
-        );
+        let on_boundary = AABB::new(Vec3::new(-11.0, -1.0, -50.0), Vec3::new(-10.0, 1.0, -48.0));
         // With `<`: 0 < 0 is false → NOT culled → intersects = true
         // With `<=`: 0 <= 0 is true → culled → intersects = false
         assert!(
@@ -1849,12 +1887,30 @@ mod world_partition_mutation_tests {
         );
 
         // Asymmetric checks: (6,3,7) is different from (4,3,7) if + → -
-        assert!(cells.contains(&GridCoord::new(6, 3, 7)), "cell +x must be present");
-        assert!(cells.contains(&GridCoord::new(4, 3, 7)), "cell -x must be present");
-        assert!(cells.contains(&GridCoord::new(5, 4, 7)), "cell +y must be present");
-        assert!(cells.contains(&GridCoord::new(5, 2, 7)), "cell -y must be present");
-        assert!(cells.contains(&GridCoord::new(5, 3, 8)), "cell +z must be present");
-        assert!(cells.contains(&GridCoord::new(5, 3, 6)), "cell -z must be present");
+        assert!(
+            cells.contains(&GridCoord::new(6, 3, 7)),
+            "cell +x must be present"
+        );
+        assert!(
+            cells.contains(&GridCoord::new(4, 3, 7)),
+            "cell -x must be present"
+        );
+        assert!(
+            cells.contains(&GridCoord::new(5, 4, 7)),
+            "cell +y must be present"
+        );
+        assert!(
+            cells.contains(&GridCoord::new(5, 2, 7)),
+            "cell -y must be present"
+        );
+        assert!(
+            cells.contains(&GridCoord::new(5, 3, 8)),
+            "cell +z must be present"
+        );
+        assert!(
+            cells.contains(&GridCoord::new(5, 3, 6)),
+            "cell -z must be present"
+        );
 
         // Cell far away should NOT be present (catches radius / → %)
         assert!(
@@ -2051,35 +2107,28 @@ mod world_partition_mutation_tests {
             position: [1.0, 0.0, 0.0],
             rotation: [0.0, 0.0, 0.0, 1.0],
             scale: [1.0, 1.0, 1.0],
-            components: vec![
-                CellComponentData {
-                    component_type: "MeshRenderer".to_string(),
-                    data: "{}".to_string(),
-                },
-            ],
+            components: vec![CellComponentData {
+                component_type: "MeshRenderer".to_string(),
+                data: "{}".to_string(),
+            }],
         });
 
         // Filter for "MeshRenderer" — should find 2
         let mesh_renderers: Vec<_> = cell.components_of_type("MeshRenderer").collect();
         assert_eq!(
-            mesh_renderers.len(), 2,
+            mesh_renderers.len(),
+            2,
             "should find 2 MeshRenderer components, got {}",
             mesh_renderers.len()
         );
 
         // Filter for "Collider" — should find 1
         let colliders: Vec<_> = cell.components_of_type("Collider").collect();
-        assert_eq!(
-            colliders.len(), 1,
-            "should find 1 Collider component"
-        );
+        assert_eq!(colliders.len(), 1, "should find 1 Collider component");
 
         // Filter for nonexistent type — should find 0
         let scripts: Vec<_> = cell.components_of_type("Script").collect();
-        assert_eq!(
-            scripts.len(), 0,
-            "should find 0 Script components"
-        );
+        assert_eq!(scripts.len(), 0, "should find 0 Script components");
     }
 }
 
@@ -2120,7 +2169,10 @@ mod partitioned_scene_mutation_tests {
         assert_eq!(extracted_x, coord.x as i32, "x must be encoded at bits 40+");
 
         let extracted_y = ((e0 >> 20) & 0xFFFFF) as i32;
-        assert_eq!(extracted_y, coord.y as i32, "y must be encoded at bits 20-39");
+        assert_eq!(
+            extracted_y, coord.y as i32,
+            "y must be encoded at bits 20-39"
+        );
     }
 
     /// Different cells must produce different entity IDs even for the same index.
@@ -2141,7 +2193,10 @@ mod partitioned_scene_mutation_tests {
 
         let ea = ps.query_entities_in_cell(coord_a).unwrap();
         let eb = ps.query_entities_in_cell(coord_b).unwrap();
-        assert_ne!(ea[0], eb[0], "different cells must produce different entity IDs");
+        assert_ne!(
+            ea[0], eb[0],
+            "different cells must produce different entity IDs"
+        );
     }
 
     // ── move_entity_to_cell: catches old_cell removal and new_cell addition ──
@@ -2181,12 +2236,21 @@ mod partitioned_scene_mutation_tests {
         ps.on_cell_loaded(coord, data);
 
         let entity_id = ps.query_entities_in_cell(coord).unwrap()[0];
-        assert!(ps.get_entity_cell(entity_id).is_some(), "entity should be tracked");
+        assert!(
+            ps.get_entity_cell(entity_id).is_some(),
+            "entity should be tracked"
+        );
 
         ps.on_cell_unloaded(coord);
 
-        assert!(ps.get_entity_cell(entity_id).is_none(), "entity should be cleaned up");
-        assert!(ps.query_entities_in_cell(coord).is_none(), "cell entities should be removed");
+        assert!(
+            ps.get_entity_cell(entity_id).is_none(),
+            "entity should be cleaned up"
+        );
+        assert!(
+            ps.query_entities_in_cell(coord).is_none(),
+            "cell entities should be removed"
+        );
     }
 
     // ── drain_events returns and clears ──
@@ -2204,11 +2268,15 @@ mod partitioned_scene_mutation_tests {
         // Should have: EntitySpawned + CellLoaded = 2 events
         assert_eq!(events.len(), 2);
         assert!(
-            events.iter().any(|e| matches!(e, SceneEvent::CellLoaded(_))),
+            events
+                .iter()
+                .any(|e| matches!(e, SceneEvent::CellLoaded(_))),
             "must have CellLoaded event"
         );
         assert!(
-            events.iter().any(|e| matches!(e, SceneEvent::EntitySpawned(_, _))),
+            events
+                .iter()
+                .any(|e| matches!(e, SceneEvent::EntitySpawned(_, _))),
             "must have EntitySpawned event"
         );
 
@@ -2242,11 +2310,15 @@ mod ecs_system_mutation_tests {
         SceneGraph::attach(&mut world, child, parent);
 
         // Child must have CParent pointing to parent
-        let p = world.get::<CParent>(child).expect("child must have CParent");
+        let p = world
+            .get::<CParent>(child)
+            .expect("child must have CParent");
         assert_eq!(p.0, parent, "CParent must point to parent entity");
 
         // Parent must have CChildren containing child
-        let c = world.get::<CChildren>(parent).expect("parent must have CChildren");
+        let c = world
+            .get::<CChildren>(parent)
+            .expect("parent must have CChildren");
         assert!(c.0.contains(&child), "CChildren must contain child");
 
         // Child must be marked dirty
@@ -2293,7 +2365,10 @@ mod ecs_system_mutation_tests {
 
         // Parent's CChildren should not contain child
         if let Some(c) = world.get::<CChildren>(parent) {
-            assert!(!c.0.contains(&child), "CChildren must not contain detached child");
+            assert!(
+                !c.0.contains(&child),
+                "CChildren must not contain detached child"
+            );
         }
 
         // Child should be dirty
@@ -2414,10 +2489,7 @@ mod ecs_system_mutation_tests {
         let child = world.spawn();
 
         world.insert(parent, CTransformLocal(Transform::from_scale(2.0)));
-        world.insert(
-            child,
-            CTransformLocal(Transform::from_scale(3.0)),
-        );
+        world.insert(child, CTransformLocal(Transform::from_scale(3.0)));
 
         SceneGraph::attach(&mut world, child, parent);
         update_world_transforms(&mut world);
@@ -2445,7 +2517,11 @@ mod ecs_system_mutation_tests {
         world.insert(e1, CVisible(true));
 
         let instances = sync_scene_to_renderer(&mut world);
-        assert_eq!(instances.len(), 1, "visible entity with mesh+material must appear");
+        assert_eq!(
+            instances.len(),
+            1,
+            "visible entity with mesh+material must appear"
+        );
         assert_eq!(instances[0].mesh_handle, 1);
         assert_eq!(instances[0].material_index, 0);
     }
@@ -2461,7 +2537,10 @@ mod ecs_system_mutation_tests {
         world.insert(e1, CVisible(false));
 
         let instances = sync_scene_to_renderer(&mut world);
-        assert!(instances.is_empty(), "invisible entity must not be rendered");
+        assert!(
+            instances.is_empty(),
+            "invisible entity must not be rendered"
+        );
     }
 
     #[test]
@@ -2487,7 +2566,10 @@ mod ecs_system_mutation_tests {
         // No CMaterial
 
         let instances = sync_scene_to_renderer(&mut world);
-        assert!(instances.is_empty(), "entity without material must be skipped");
+        assert!(
+            instances.is_empty(),
+            "entity without material must be skipped"
+        );
     }
 
     #[test]
@@ -2501,7 +2583,11 @@ mod ecs_system_mutation_tests {
         // No CVisible — should default to visible
 
         let instances = sync_scene_to_renderer(&mut world);
-        assert_eq!(instances.len(), 1, "entity without CVisible defaults to visible");
+        assert_eq!(
+            instances.len(),
+            1,
+            "entity without CVisible defaults to visible"
+        );
     }
 
     // ── update_animations ──
@@ -2580,7 +2666,11 @@ mod ecs_system_mutation_tests {
             "looping animation must wrap: expected 0.5, got {}",
             anim.time
         );
-        assert_eq!(anim.state, PlaybackState::Playing, "should still be playing");
+        assert_eq!(
+            anim.state,
+            PlaybackState::Playing,
+            "should still be playing"
+        );
     }
 
     #[test]
@@ -2860,7 +2950,10 @@ mod ecs_system_mutation_tests {
     fn mutation_animator_display_no_looping() {
         let anim = CAnimator::new(0).with_looping(false);
         let display = format!("{}", anim);
-        assert!(!display.contains("looping"), "must not show looping when false");
+        assert!(
+            !display.contains("looping"),
+            "must not show looping when false"
+        );
     }
 
     // ── CJointMatrices default ──
@@ -2951,7 +3044,10 @@ mod ecs_system_mutation_tests {
         world.insert(
             skel_entity,
             CJointMatrices {
-                matrices: vec![Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0)), Mat4::IDENTITY],
+                matrices: vec![
+                    Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0)),
+                    Mat4::IDENTITY,
+                ],
                 dirty: false,
             },
         );
@@ -2975,7 +3071,7 @@ mod ecs_system_mutation_tests {
 
     #[test]
     fn mutation_sync_bone_attachments_with_parent_local_transform() {
-        // Tests L952: `parent_inv * joint_world_matrix` — multiply vs add  
+        // Tests L952: `parent_inv * joint_world_matrix` — multiply vs add
         // Entity has a CParent, so the local transform recomputation path is exercised.
         let mut world = EcsWorld::new();
 
@@ -3029,12 +3125,14 @@ mod ecs_system_mutation_tests {
         assert!(
             (got_t - exp_t).length() < 0.01,
             "local translation mismatch: expected {:?}, got {:?}",
-            exp_t, got_t
+            exp_t,
+            got_t
         );
         assert!(
             (got_r - exp_r).length() < 0.01 || (got_r + exp_r).length() < 0.01,
             "local rotation mismatch: expected {:?}, got {:?}",
-            exp_r, got_r
+            exp_r,
+            got_r
         );
     }
 }

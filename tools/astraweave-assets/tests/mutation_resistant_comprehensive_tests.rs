@@ -3,9 +3,7 @@
 //! Targets: AssetType, LicenseInfo, ProviderConfig, ProviderRegistry,
 //! FetchSummary, config structs — exact values, boundary conditions.
 
-use astraweave_assets::{
-    AssetType, FetchSummary, LicenseInfo, ProviderConfig, ProviderRegistry,
-};
+use astraweave_assets::{AssetType, FetchSummary, LicenseInfo, ProviderConfig, ProviderRegistry};
 
 // =========================================================================
 // AssetType — enum variants
@@ -263,7 +261,11 @@ fn license_attribution_no_author_returns_none() {
 #[test]
 fn license_cc0_license_url() {
     let lic = LicenseInfo::cc0(None, None);
-    assert!(lic.license_url.contains("creativecommons.org"), "url={}", lic.license_url);
+    assert!(
+        lic.license_url.contains("creativecommons.org"),
+        "url={}",
+        lic.license_url
+    );
     assert!(lic.license_url.contains("zero"), "url={}", lic.license_url);
 }
 
@@ -405,7 +407,10 @@ fn fetch_summary_to_json() {
     let mut s = FetchSummary::new();
     s.add_cached("h".into(), "i".into(), "t".into(), "r".into());
     let json = s.to_json().unwrap();
-    assert!(json.contains("\"total_assets\""), "json should have total_assets");
+    assert!(
+        json.contains("\"total_assets\""),
+        "json should have total_assets"
+    );
     assert!(json.contains("\"cached\""), "json should have cached");
 }
 

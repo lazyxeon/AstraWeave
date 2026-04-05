@@ -177,7 +177,10 @@ fn tutorial_event_emitters(world: &mut World) {
                 if team > 1 {
                     return None;
                 }
-                Some((legacy_id, [pose.pos.x as f32, pose.height, pose.pos.y as f32]))
+                Some((
+                    legacy_id,
+                    [pose.pos.x as f32, pose.height, pose.pos.y as f32],
+                ))
             })
             .collect()
     };

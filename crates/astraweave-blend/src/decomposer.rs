@@ -320,10 +320,7 @@ impl SceneDecomposer {
             .await
             .map_err(BlendError::IoError)?;
 
-        debug!(
-            "Decomposition script written to: {}",
-            script_path.display()
-        );
+        debug!("Decomposition script written to: {}", script_path.display());
 
         // Run Blender
         self.progress.set_stage(ConversionStage::LoadingBlendFile);
@@ -354,8 +351,14 @@ impl SceneDecomposer {
                 raw.export_errors.len()
             );
             for err in &raw.export_errors {
-                let name = err.get("name").and_then(|n| n.as_str()).unwrap_or("<unknown>");
-                let msg = err.get("error").and_then(|e| e.as_str()).unwrap_or("<no message>");
+                let name = err
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("<unknown>");
+                let msg = err
+                    .get("error")
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("<no message>");
                 warn!("  Export failed: '{name}': {msg}");
             }
         }
@@ -367,7 +370,10 @@ impl SceneDecomposer {
             match serde_json::from_value::<DecomposedAsset>(v.clone()) {
                 Ok(a) => assets.push(a),
                 Err(e) => {
-                    let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("<unknown>");
+                    let name = v
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("<unknown>");
                     warn!(
                         "Asset {i} '{name}' failed to deserialize: {e}. JSON: {}",
                         serde_json::to_string(&v).unwrap_or_default()
@@ -406,13 +412,16 @@ impl SceneDecomposer {
             None
         };
 
-        let textures_dir = raw.textures_dir.map(PathBuf::from).and_then(|p| {
-            if p.exists() {
-                Some(p)
-            } else {
-                None
-            }
-        });
+        let textures_dir =
+            raw.textures_dir.map(PathBuf::from).and_then(
+                |p| {
+                    if p.exists() {
+                        Some(p)
+                    } else {
+                        None
+                    }
+                },
+            );
 
         info!(
             "Decomposition complete: {} assets, {} HDRIs in {:?}",
@@ -469,12 +478,12 @@ impl SceneDecomposer {
             self.installation.executable_path, script_path
         );
 
-        let mut child =
-            cmd.spawn()
-                .map_err(|e| BlendError::BlenderExecutionFailed {
-                    path: self.installation.executable_path.clone(),
-                    reason: format!("Failed to spawn Blender: {}", e),
-                })?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| BlendError::BlenderExecutionFailed {
+                path: self.installation.executable_path.clone(),
+                reason: format!("Failed to spawn Blender: {}", e),
+            })?;
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();

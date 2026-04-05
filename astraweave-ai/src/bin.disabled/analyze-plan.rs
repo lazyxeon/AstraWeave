@@ -1,13 +1,13 @@
 //! Professional-grade plan analysis CLI tool
-//! 
+//!
 //! This tool provides production-quality plan analysis with comprehensive
 //! quality metrics, bottleneck identification, and optimization suggestions.
 
+use anyhow::{bail, Context, Result};
 use astraweave_behavior::goap::*;
-use std::path::PathBuf;
-use std::fs;
-use anyhow::{Result, Context, bail};
 use clap::{Parser, ValueEnum};
+use std::fs;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "analyze-plan")]
@@ -106,7 +106,10 @@ fn main() -> Result<()> {
 
     if let Some(ref compare_file) = cli.compare {
         if !compare_file.exists() {
-            bail!("Comparison goal file '{}' does not exist.", compare_file.display());
+            bail!(
+                "Comparison goal file '{}' does not exist.",
+                compare_file.display()
+            );
         }
     }
 
@@ -115,9 +118,10 @@ fn main() -> Result<()> {
         Ok(output) => {
             // Write output
             if let Some(ref output_path) = cli.output {
-                fs::write(output_path, &output)
-                    .with_context(|| format!("Failed to write output to '{}'", output_path.display()))?;
-                
+                fs::write(output_path, &output).with_context(|| {
+                    format!("Failed to write output to '{}'", output_path.display())
+                })?;
+
                 if cli.verbose {
                     eprintln!("✓ Analysis written to '{}'", output_path.display());
                 }
@@ -129,9 +133,15 @@ fn main() -> Result<()> {
         Err(e) => {
             eprintln!("✗ Analysis failed: {}", e);
             eprintln!("\nTroubleshooting:");
-            eprintln!("  1. Verify goal file: cargo run --bin validate-goals -- {}", cli.goal_file.display());
+            eprintln!(
+                "  1. Verify goal file: cargo run --bin validate-goals -- {}",
+                cli.goal_file.display()
+            );
             eprintln!("  2. Check that goal is achievable from the current state");
-            eprintln!("  3. Try visualizing first: cargo run --bin visualize-plan -- {}", cli.goal_file.display());
+            eprintln!(
+                "  3. Try visualizing first: cargo run --bin visualize-plan -- {}",
+                cli.goal_file.display()
+            );
             eprintln!("  4. Use --verbose for detailed information");
             std::process::exit(1);
         }
@@ -150,8 +160,12 @@ fn run_analysis(cli: &Cli) -> Result<String> {
     let goal = goal_def.to_goal();
 
     if cli.verbose {
-        eprintln!("✓ Goal loaded: '{}' (priority: {}, sub-goals: {})",
-                 goal.name, goal.priority, goal.sub_goals.len());
+        eprintln!(
+            "✓ Goal loaded: '{}' (priority: {}, sub-goals: {})",
+            goal.name,
+            goal.priority,
+            goal.sub_goals.len()
+        );
     }
 
     // Step 2: Load or create world state
@@ -161,7 +175,13 @@ fn run_analysis(cli: &Cli) -> Result<String> {
     let history = load_action_history(&cli.history, cli.verbose)?;
 
     // Step 4: Create planner and plan
-    let (planner, plan) = create_and_plan(&world_state, &goal, &history, cli.max_iterations, cli.verbose)?;
+    let (planner, plan) = create_and_plan(
+        &world_state,
+        &goal,
+        &history,
+        cli.max_iterations,
+        cli.verbose,
+    )?;
 
     if cli.verbose {
         eprintln!("✓ Plan generated ({} actions)", plan.len());
@@ -178,24 +198,40 @@ fn run_analysis(cli: &Cli) -> Result<String> {
         eprintln!("✓ Analysis complete");
         eprintln!("  Total cost: {:.2}", metrics.total_cost);
         eprintln!("  Total risk: {:.2}", metrics.total_risk);
-        eprintln!("  Success probability: {:.1}%", metrics.success_probability * 100.0);
+        eprintln!(
+            "  Success probability: {:.1}%",
+            metrics.success_probability * 100.0
+        );
         eprintln!("  Bottlenecks found: {}", metrics.bottlenecks.len());
     }
 
     // Step 6: Check against thresholds
     if let Some(min_success) = cli.min_success_rate {
         if metrics.success_probability < min_success {
-            eprintln!("⚠ WARNING: Plan success probability ({:.1}%) is below threshold ({:.1}%)",
-                     metrics.success_probability * 100.0, min_success * 100.0);
+            eprintln!(
+                "⚠ WARNING: Plan success probability ({:.1}%) is below threshold ({:.1}%)",
+                metrics.success_probability * 100.0,
+                min_success * 100.0
+            );
         }
     }
 
     // Step 7: Compare with alternative if requested
     let comparison = if let Some(ref compare_path) = cli.compare {
         if cli.verbose {
-            eprintln!("Comparing with alternative goal from '{}'...", compare_path.display());
+            eprintln!(
+                "Comparing with alternative goal from '{}'...",
+                compare_path.display()
+            );
         }
-        Some(compare_plans(compare_path, &world_state, &history, &planner, &metrics, cli.verbose)?)
+        Some(compare_plans(
+            compare_path,
+            &world_state,
+            &history,
+            &planner,
+            &metrics,
+            cli.verbose,
+        )?)
     } else {
         None
     };
@@ -219,10 +255,10 @@ fn load_and_validate_goal(path: &PathBuf, validate: bool, verbose: bool) -> Resu
         if verbose {
             eprintln!("Validating goal...");
         }
-        
+
         let validator = GoalValidator::new();
         let result = validator.validate(&goal_def);
-        
+
         if !result.is_valid() {
             eprintln!("⚠ Goal validation found errors:");
             for error in &result.errors {
@@ -230,7 +266,7 @@ fn load_and_validate_goal(path: &PathBuf, validate: bool, verbose: bool) -> Resu
             }
             bail!("Goal validation failed. Fix errors or use --no-validate to skip validation.");
         }
-        
+
         if verbose && !result.warnings.is_empty() {
             eprintln!("⚠ Warnings:");
             for warning in &result.warnings {
@@ -263,11 +299,14 @@ fn load_action_history(history_path: &Option<PathBuf>, verbose: bool) -> Result<
         if verbose {
             eprintln!("Loading action history from '{}'...", path.display());
         }
-        
+
         match HistoryPersistence::load(path, PersistenceFormat::Json) {
             Ok(h) => {
                 if verbose {
-                    eprintln!("✓ History loaded ({} actions tracked)", h.action_names().len());
+                    eprintln!(
+                        "✓ History loaded ({} actions tracked)",
+                        h.action_names().len()
+                    );
                 }
                 Ok(h)
             }
@@ -299,19 +338,23 @@ fn create_and_plan(
     register_all_actions(&mut planner);
 
     if verbose {
-        eprintln!("✓ Planner ready ({} actions available)", planner.action_count());
+        eprintln!(
+            "✓ Planner ready ({} actions available)",
+            planner.action_count()
+        );
         eprintln!("Planning...");
     }
 
-    let plan = planner.plan(world_state, goal)
-        .ok_or_else(|| anyhow::anyhow!(
+    let plan = planner.plan(world_state, goal).ok_or_else(|| {
+        anyhow::anyhow!(
             "No plan found.\n\
              Possible reasons:\n\
              - Goal is unreachable from current state\n\
              - Required actions are not available\n\
              - Planning exceeded iteration limit ({})",
             max_iterations
-        ))?;
+        )
+    })?;
 
     Ok((planner, plan))
 }
@@ -327,10 +370,11 @@ fn compare_plans(
 ) -> Result<ComparisonReport> {
     let compare_goal_def = GoalDefinition::load(compare_path)?;
     let compare_goal = compare_goal_def.to_goal();
-    
-    let compare_plan = original_planner.plan(world_state, &compare_goal)
+
+    let compare_plan = original_planner
+        .plan(world_state, &compare_goal)
         .ok_or_else(|| anyhow::anyhow!("Could not generate plan for comparison goal"))?;
-    
+
     let compare_metrics = PlanAnalyzer::analyze(
         &compare_plan,
         original_planner.get_actions(),
@@ -346,7 +390,11 @@ fn compare_plans(
 }
 
 /// Generate text report
-fn generate_text_report(metrics: &PlanMetrics, comparison: Option<ComparisonReport>, cli: &Cli) -> String {
+fn generate_text_report(
+    metrics: &PlanMetrics,
+    comparison: Option<ComparisonReport>,
+    cli: &Cli,
+) -> String {
     let mut output = String::new();
 
     output.push_str("=== Plan Quality Analysis ===\n\n");
@@ -356,8 +404,14 @@ fn generate_text_report(metrics: &PlanMetrics, comparison: Option<ComparisonRepo
     output.push_str(&format!("  Actions: {}\n", metrics.action_count));
     output.push_str(&format!("  Total Cost: {:.2}\n", metrics.total_cost));
     output.push_str(&format!("  Total Risk: {:.2}\n", metrics.total_risk));
-    output.push_str(&format!("  Estimated Duration: {:.1}s\n", metrics.estimated_duration));
-    output.push_str(&format!("  Success Probability: {:.1}%\n\n", metrics.success_probability * 100.0));
+    output.push_str(&format!(
+        "  Estimated Duration: {:.1}s\n",
+        metrics.estimated_duration
+    ));
+    output.push_str(&format!(
+        "  Success Probability: {:.1}%\n\n",
+        metrics.success_probability * 100.0
+    ));
 
     // Quality assessment
     let quality = assess_quality(metrics);
@@ -367,8 +421,13 @@ fn generate_text_report(metrics: &PlanMetrics, comparison: Option<ComparisonRepo
     if cli.show_bottlenecks && !metrics.bottlenecks.is_empty() {
         output.push_str("Bottlenecks Identified:\n");
         for (i, bottleneck) in metrics.bottlenecks.iter().enumerate().take(5) {
-            output.push_str(&format!("  {}. {} - {:?} (severity: {:.0}%)\n",
-                i + 1, bottleneck.action_name, bottleneck.reason, bottleneck.severity * 100.0));
+            output.push_str(&format!(
+                "  {}. {} - {:?} (severity: {:.0}%)\n",
+                i + 1,
+                bottleneck.action_name,
+                bottleneck.reason,
+                bottleneck.severity * 100.0
+            ));
         }
         output.push_str("\n");
     }
@@ -377,8 +436,13 @@ fn generate_text_report(metrics: &PlanMetrics, comparison: Option<ComparisonRepo
     if cli.show_breakdown {
         output.push_str("Action Breakdown:\n");
         for (action_name, action_metrics) in &metrics.action_breakdown {
-            output.push_str(&format!("  {} - cost: {:.1}, risk: {:.2}, success: {:.0}%\n",
-                action_name, action_metrics.cost, action_metrics.risk, action_metrics.success_rate * 100.0));
+            output.push_str(&format!(
+                "  {} - cost: {:.1}, risk: {:.2}, success: {:.0}%\n",
+                action_name,
+                action_metrics.cost,
+                action_metrics.risk,
+                action_metrics.success_rate * 100.0
+            ));
         }
         output.push_str("\n");
     }
@@ -389,7 +453,12 @@ fn generate_text_report(metrics: &PlanMetrics, comparison: Option<ComparisonRepo
         if !suggestions.is_empty() {
             output.push_str("Optimization Suggestions:\n");
             for (i, suggestion) in suggestions.iter().enumerate().take(10) {
-                output.push_str(&format!("  {}. [{:?}] {}\n", i + 1, suggestion.priority, suggestion.message));
+                output.push_str(&format!(
+                    "  {}. [{:?}] {}\n",
+                    i + 1,
+                    suggestion.priority,
+                    suggestion.message
+                ));
                 if let Some(improvement) = suggestion.estimated_improvement {
                     output.push_str(&format!("     Estimated improvement: {:.1}\n", improvement));
                 }
@@ -402,15 +471,27 @@ fn generate_text_report(metrics: &PlanMetrics, comparison: Option<ComparisonRepo
         output.push_str("\n=== Plan Comparison ===\n\n");
         output.push_str(&format!("Cost Difference: {:+.2}\n", comp.cost_diff));
         output.push_str(&format!("Risk Difference: {:+.2}\n", comp.risk_diff));
-        output.push_str(&format!("Duration Difference: {:+.1}s\n", comp.duration_diff));
-        output.push_str(&format!("Success Prob Difference: {:+.1}%\n\n", comp.success_prob_diff * 100.0));
-        
+        output.push_str(&format!(
+            "Duration Difference: {:+.1}s\n",
+            comp.duration_diff
+        ));
+        output.push_str(&format!(
+            "Success Prob Difference: {:+.1}%\n\n",
+            comp.success_prob_diff * 100.0
+        ));
+
         match comp.better_plan {
-            PlanComparison::Plan1Better => output.push_str("Recommendation: Original plan is better\n"),
-            PlanComparison::Plan2Better => output.push_str("Recommendation: Alternative plan is better\n"),
-            PlanComparison::Similar => output.push_str("Recommendation: Plans are similar in quality\n"),
+            PlanComparison::Plan1Better => {
+                output.push_str("Recommendation: Original plan is better\n")
+            }
+            PlanComparison::Plan2Better => {
+                output.push_str("Recommendation: Alternative plan is better\n")
+            }
+            PlanComparison::Similar => {
+                output.push_str("Recommendation: Plans are similar in quality\n")
+            }
         }
-        
+
         if !comp.recommendations.is_empty() {
             output.push_str("\nDetailed Recommendations:\n");
             for rec in &comp.recommendations {
@@ -423,7 +504,11 @@ fn generate_text_report(metrics: &PlanMetrics, comparison: Option<ComparisonRepo
 }
 
 /// Generate markdown report
-fn generate_markdown_report(metrics: &PlanMetrics, comparison: Option<ComparisonReport>, cli: &Cli) -> String {
+fn generate_markdown_report(
+    metrics: &PlanMetrics,
+    comparison: Option<ComparisonReport>,
+    cli: &Cli,
+) -> String {
     let mut output = String::new();
 
     output.push_str("# Plan Quality Analysis\n\n");
@@ -433,8 +518,14 @@ fn generate_markdown_report(metrics: &PlanMetrics, comparison: Option<Comparison
     output.push_str(&format!("- **Actions**: {}\n", metrics.action_count));
     output.push_str(&format!("- **Total Cost**: {:.2}\n", metrics.total_cost));
     output.push_str(&format!("- **Total Risk**: {:.2}\n", metrics.total_risk));
-    output.push_str(&format!("- **Estimated Duration**: {:.1}s\n", metrics.estimated_duration));
-    output.push_str(&format!("- **Success Probability**: {:.1}%\n\n", metrics.success_probability * 100.0));
+    output.push_str(&format!(
+        "- **Estimated Duration**: {:.1}s\n",
+        metrics.estimated_duration
+    ));
+    output.push_str(&format!(
+        "- **Success Probability**: {:.1}%\n\n",
+        metrics.success_probability * 100.0
+    ));
 
     let quality = assess_quality(metrics);
     output.push_str(&format!("**Overall Quality**: {}\n\n", quality));
@@ -443,8 +534,13 @@ fn generate_markdown_report(metrics: &PlanMetrics, comparison: Option<Comparison
     if cli.show_bottlenecks && !metrics.bottlenecks.is_empty() {
         output.push_str("## Bottlenecks\n\n");
         for (i, bottleneck) in metrics.bottlenecks.iter().enumerate().take(5) {
-            output.push_str(&format!("{}. **{}** - {:?} (severity: {:.0}%)\n",
-                i + 1, bottleneck.action_name, bottleneck.reason, bottleneck.severity * 100.0));
+            output.push_str(&format!(
+                "{}. **{}** - {:?} (severity: {:.0}%)\n",
+                i + 1,
+                bottleneck.action_name,
+                bottleneck.reason,
+                bottleneck.severity * 100.0
+            ));
         }
         output.push_str("\n");
     }
@@ -455,8 +551,13 @@ fn generate_markdown_report(metrics: &PlanMetrics, comparison: Option<Comparison
         output.push_str("| Action | Cost | Risk | Success Rate |\n");
         output.push_str("|--------|------|------|-------------|\n");
         for (action_name, action_metrics) in &metrics.action_breakdown {
-            output.push_str(&format!("| {} | {:.1} | {:.2} | {:.0}% |\n",
-                action_name, action_metrics.cost, action_metrics.risk, action_metrics.success_rate * 100.0));
+            output.push_str(&format!(
+                "| {} | {:.1} | {:.2} | {:.0}% |\n",
+                action_name,
+                action_metrics.cost,
+                action_metrics.risk,
+                action_metrics.success_rate * 100.0
+            ));
         }
         output.push_str("\n");
     }
@@ -467,9 +568,17 @@ fn generate_markdown_report(metrics: &PlanMetrics, comparison: Option<Comparison
         if !suggestions.is_empty() {
             output.push_str("## Optimization Suggestions\n\n");
             for (i, suggestion) in suggestions.iter().enumerate().take(10) {
-                output.push_str(&format!("{}. **[{:?}]** {}\n", i + 1, suggestion.priority, suggestion.message));
+                output.push_str(&format!(
+                    "{}. **[{:?}]** {}\n",
+                    i + 1,
+                    suggestion.priority,
+                    suggestion.message
+                ));
                 if let Some(improvement) = suggestion.estimated_improvement {
-                    output.push_str(&format!("   - *Estimated improvement: {:.1}*\n", improvement));
+                    output.push_str(&format!(
+                        "   - *Estimated improvement: {:.1}*\n",
+                        improvement
+                    ));
                 }
             }
         }
@@ -483,12 +592,21 @@ fn generate_markdown_report(metrics: &PlanMetrics, comparison: Option<Comparison
         output.push_str(&format!("| Cost | {:+.2} |\n", comp.cost_diff));
         output.push_str(&format!("| Risk | {:+.2} |\n", comp.risk_diff));
         output.push_str(&format!("| Duration | {:+.1}s |\n", comp.duration_diff));
-        output.push_str(&format!("| Success Probability | {:+.1}% |\n\n", comp.success_prob_diff * 100.0));
-        
+        output.push_str(&format!(
+            "| Success Probability | {:+.1}% |\n\n",
+            comp.success_prob_diff * 100.0
+        ));
+
         match comp.better_plan {
-            PlanComparison::Plan1Better => output.push_str("**Recommendation**: Original plan is better\n\n"),
-            PlanComparison::Plan2Better => output.push_str("**Recommendation**: Alternative plan is better\n\n"),
-            PlanComparison::Similar => output.push_str("**Recommendation**: Plans are similar in quality\n\n"),
+            PlanComparison::Plan1Better => {
+                output.push_str("**Recommendation**: Original plan is better\n\n")
+            }
+            PlanComparison::Plan2Better => {
+                output.push_str("**Recommendation**: Alternative plan is better\n\n")
+            }
+            PlanComparison::Similar => {
+                output.push_str("**Recommendation**: Plans are similar in quality\n\n")
+            }
         }
     }
 
@@ -496,7 +614,10 @@ fn generate_markdown_report(metrics: &PlanMetrics, comparison: Option<Comparison
 }
 
 /// Generate JSON report
-fn generate_json_report(metrics: &PlanMetrics, comparison: Option<ComparisonReport>) -> Result<String> {
+fn generate_json_report(
+    metrics: &PlanMetrics,
+    comparison: Option<ComparisonReport>,
+) -> Result<String> {
     let json = serde_json::json!({
         "overview": {
             "action_count": metrics.action_count,
@@ -546,8 +667,9 @@ fn generate_json_report(metrics: &PlanMetrics, comparison: Option<ComparisonRepo
 
 /// Assess overall quality
 fn assess_quality(metrics: &PlanMetrics) -> &'static str {
-    let score = metrics.success_probability * 10.0 - metrics.total_risk * 0.5 - metrics.total_cost * 0.1;
-    
+    let score =
+        metrics.success_probability * 10.0 - metrics.total_risk * 0.5 - metrics.total_cost * 0.1;
+
     if score >= 8.0 {
         "✓ Excellent"
     } else if score >= 6.0 {
@@ -566,8 +688,8 @@ fn load_world_state(path: &PathBuf) -> Result<WorldState> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read state file '{}'", path.display()))?;
 
-    let json: serde_json::Value = serde_json::from_str(&content)
-        .with_context(|| "Failed to parse state file as JSON")?;
+    let json: serde_json::Value =
+        serde_json::from_str(&content).with_context(|| "Failed to parse state file as JSON")?;
 
     let mut world_state = WorldState::new();
 
@@ -628,4 +750,3 @@ fn create_default_world_state() -> WorldState {
     world.set("allies_visible", StateValue::Int(0));
     world
 }
-

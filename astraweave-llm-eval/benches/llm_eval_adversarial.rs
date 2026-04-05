@@ -18,9 +18,7 @@
     clippy::unwrap_or_default
 )]
 
-use criterion::{
-    criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::collections::HashMap;
 use std::hint::black_box as std_black_box;
 use std::time::{Duration, Instant};
@@ -383,10 +381,8 @@ impl MockEvaluator {
         };
 
         if let Some(expected) = &prompt.expected_response {
-            score.accuracy = SimilarityCalculator::jaccard_similarity(
-                &response.response_text,
-                expected,
-            );
+            score.accuracy =
+                SimilarityCalculator::jaccard_similarity(&response.response_text, expected);
         } else {
             score.accuracy = 0.7;
         }
@@ -691,7 +687,14 @@ fn bench_metric_aggregation(c: &mut Criterion) {
 
     // Multi-metric aggregation
     group.bench_function("multi_metric_1000_samples", |b| {
-        let metrics = ["relevance", "coherence", "accuracy", "creativity", "safety", "overall"];
+        let metrics = [
+            "relevance",
+            "coherence",
+            "accuracy",
+            "creativity",
+            "safety",
+            "overall",
+        ];
         let sample_count = 1000;
 
         b.iter(|| {
@@ -840,12 +843,8 @@ fn bench_evaluation_edge_cases(c: &mut Criterion) {
         let long_content = "x".repeat(10000);
         let prompts: Vec<EvalPrompt> = (0..10)
             .map(|i| {
-                EvalPrompt::new(
-                    &format!("long_{}", i),
-                    &long_content,
-                    &long_content,
-                )
-                .with_expected(&long_content)
+                EvalPrompt::new(&format!("long_{}", i), &long_content, &long_content)
+                    .with_expected(&long_content)
             })
             .collect();
 

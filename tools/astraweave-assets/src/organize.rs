@@ -427,7 +427,11 @@ mod tests {
 
         let dest_path = output_dir.join("my_handle").join("my_handle_albedo.png");
         assert!(dest_path.exists());
-        assert!(entry.paths.get("albedo").unwrap().ends_with("my_handle_albedo.png"));
+        assert!(entry
+            .paths
+            .get("albedo")
+            .unwrap()
+            .ends_with("my_handle_albedo.png"));
 
         // Lockfile exists
         let lockfile = Lockfile::load(&cache_dir.join("polyhaven.lock")).unwrap();
@@ -502,9 +506,10 @@ mod tests {
             timestamp: "t".to_string(),
             resolved_res: "2k".to_string(),
         };
-        entry
-            .paths
-            .insert("albedo".to_string(), output_dir.join("h").join("missing.png"));
+        entry.paths.insert(
+            "albedo".to_string(),
+            output_dir.join("h").join("missing.png"),
+        );
 
         let mut lockfile = Lockfile {
             version: 1,
@@ -524,16 +529,17 @@ mod tests {
         let cache_dir = temp.path().join("cache");
         let organizer = AssetOrganizer::new(output_dir.clone(), cache_dir);
 
-        tokio::fs::create_dir_all(output_dir.join("keep")).await.unwrap();
-        tokio::fs::create_dir_all(output_dir.join("junk")).await.unwrap();
+        tokio::fs::create_dir_all(output_dir.join("keep"))
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(output_dir.join("junk"))
+            .await
+            .unwrap();
         tokio::fs::write(output_dir.join("junk").join("x.txt"), b"x")
             .await
             .unwrap();
 
-        let pruned = organizer
-            .prune(&["keep".to_string()])
-            .await
-            .unwrap();
+        let pruned = organizer.prune(&["keep".to_string()]).await.unwrap();
 
         assert!(output_dir.join("keep").exists());
         assert!(!output_dir.join("junk").exists());

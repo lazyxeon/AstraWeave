@@ -5,18 +5,17 @@
 //! across this crate. All tests use only public API.
 
 use astraweave_memory::episode::{
-    ActionResult, CompanionResponse, Episode, EpisodeCategory, EpisodeOutcome,
-    Observation, PlayerAction,
+    ActionResult, CompanionResponse, Episode, EpisodeCategory, EpisodeOutcome, Observation,
+    PlayerAction,
 };
 use astraweave_memory::{
     AdaptiveWeightManager, AssociationType, BehaviorNodeType, BehaviorValidator, ClusterType,
     CompanionActionPreference, CompressionConfig, CompressionEngine, ConsolidationConfig,
-    ConsolidationEngine, EpisodeRecorder, ForgettingConfig, ForgettingEngine,
-    GameEpisode, Memory, MemoryCluster, MemoryManager,
-    MemoryStorage, MemoryType, NodeWeight, PatternDetector, PlaystylePattern, PreferenceProfile,
-    ProfileBuilder, RetrievalConfig, RetrievalContext, RetrievalEngine,
-    SafetyRule, SensoryData, ShareRequest, SharingConfig, SharingEngine, SharingType,
-    PrivacyLevel, TimeWindow, ValidationResult,
+    ConsolidationEngine, EpisodeRecorder, ForgettingConfig, ForgettingEngine, GameEpisode, Memory,
+    MemoryCluster, MemoryManager, MemoryStorage, MemoryType, NodeWeight, PatternDetector,
+    PlaystylePattern, PreferenceProfile, PrivacyLevel, ProfileBuilder, RetrievalConfig,
+    RetrievalContext, RetrievalEngine, SafetyRule, SensoryData, ShareRequest, SharingConfig,
+    SharingEngine, SharingType, TimeWindow, ValidationResult,
 };
 use chrono::{Duration, Utc};
 use std::collections::HashMap;
@@ -886,15 +885,21 @@ fn mutation_episode_to_memory_emotional_mapping() {
 fn mutation_episode_average_player_health() {
     let mut ep = Episode::new("health".to_string(), EpisodeCategory::Combat);
     ep.add_observation(Observation::new(
-        0, None, None,
+        0,
+        None,
+        None,
         serde_json::json!({"player_health": 1.0}),
     ));
     ep.add_observation(Observation::new(
-        1000, None, None,
+        1000,
+        None,
+        None,
         serde_json::json!({"player_health": 0.5}),
     ));
     ep.add_observation(Observation::new(
-        2000, None, None,
+        2000,
+        None,
+        None,
         serde_json::json!({"player_health": 0.0}),
     ));
 
@@ -933,7 +938,12 @@ fn mutation_episode_action_diversity() {
 #[test]
 fn mutation_episode_count_actions() {
     let mut ep = Episode::new("count_act".to_string(), EpisodeCategory::Combat);
-    for action in ["melee_attack", "ranged_attack", "melee_attack", "cast_spell"] {
+    for action in [
+        "melee_attack",
+        "ranged_attack",
+        "melee_attack",
+        "cast_spell",
+    ] {
         ep.add_observation(Observation::new(
             0,
             Some(PlayerAction {
@@ -1297,7 +1307,10 @@ fn mutation_sharing_metadata_allows_metadata_blocks_full() {
         conditions: vec![],
     };
     let result = engine.share_memory(&request, &mem, "owner").unwrap();
-    assert!(result.success, "Metadata type should allow Metadata request");
+    assert!(
+        result.success,
+        "Metadata type should allow Metadata request"
+    );
 
     // Full request → blocked
     let mut engine2 = SharingEngine::new(SharingConfig {
@@ -1352,7 +1365,9 @@ fn mutation_sharing_summary_blocks_full_allows_summary() {
         reason: "test".to_string(),
         conditions: vec![],
     };
-    let result2 = engine2.share_memory(&summary_request, &mem, "owner").unwrap();
+    let result2 = engine2
+        .share_memory(&summary_request, &mem, "owner")
+        .unwrap();
     assert!(result2.success, "Summary type should allow Summary request");
 }
 
@@ -1545,11 +1560,7 @@ fn mutation_pattern_social_unconditional() {
     let detector = PatternDetector::new();
     let ep = Episode::new("social".to_string(), EpisodeCategory::Dialogue);
     let conf = detector.calculate_pattern_confidence(PlaystylePattern::Social, &[ep]);
-    assert!(
-        conf > 0.0,
-        "Dialogue always produces Social, got {}",
-        conf
-    );
+    assert!(conf > 0.0, "Dialogue always produces Social, got {}", conf);
 }
 
 #[test]
@@ -1559,7 +1570,12 @@ fn mutation_pattern_analytical_observation_threshold() {
     // 5 observations → NOT analytical (strict >5)
     let mut ep5 = Episode::new("anal5".to_string(), EpisodeCategory::Dialogue);
     for i in 0..5 {
-        ep5.add_observation(Observation::new(i * 1000, None, None, serde_json::json!({})));
+        ep5.add_observation(Observation::new(
+            i * 1000,
+            None,
+            None,
+            serde_json::json!({}),
+        ));
     }
     let conf5 = detector.calculate_pattern_confidence(PlaystylePattern::Analytical, &[ep5]);
     assert!(
@@ -1571,7 +1587,12 @@ fn mutation_pattern_analytical_observation_threshold() {
     // 6 observations → Analytical
     let mut ep6 = Episode::new("anal6".to_string(), EpisodeCategory::Dialogue);
     for i in 0..6 {
-        ep6.add_observation(Observation::new(i * 1000, None, None, serde_json::json!({})));
+        ep6.add_observation(Observation::new(
+            i * 1000,
+            None,
+            None,
+            serde_json::json!({}),
+        ));
     }
     let conf6 = detector.calculate_pattern_confidence(PlaystylePattern::Analytical, &[ep6]);
     assert!(
@@ -1676,8 +1697,7 @@ fn mutation_pattern_confidence_weights() {
         .map(|i| make_combat_episode(&format!("ep{}", i), 400.0, 100.0, 50.0, 0.5, 20000))
         .collect();
 
-    let confidence =
-        detector.calculate_pattern_confidence(PlaystylePattern::Aggressive, &episodes);
+    let confidence = detector.calculate_pattern_confidence(PlaystylePattern::Aggressive, &episodes);
     // confidence = frequency*0.6 + avg_quality*0.4
     // frequency = 10/10 = 1.0
     assert!(
@@ -1690,8 +1710,7 @@ fn mutation_pattern_confidence_weights() {
 #[test]
 fn mutation_pattern_confidence_empty() {
     let detector = PatternDetector::new();
-    let confidence =
-        detector.calculate_pattern_confidence(PlaystylePattern::Aggressive, &[]);
+    let confidence = detector.calculate_pattern_confidence(PlaystylePattern::Aggressive, &[]);
     assert!(
         confidence.abs() < 0.001,
         "Empty episodes should give 0.0, got {}",
@@ -1707,8 +1726,7 @@ fn mutation_pattern_confidence_no_matches() {
         .map(|i| Episode::new(format!("exp{}", i), EpisodeCategory::Exploration))
         .collect();
 
-    let confidence =
-        detector.calculate_pattern_confidence(PlaystylePattern::Aggressive, &episodes);
+    let confidence = detector.calculate_pattern_confidence(PlaystylePattern::Aggressive, &episodes);
     assert!(
         confidence.abs() < 0.001,
         "No matches should give 0.0, got {}",
@@ -1842,7 +1860,11 @@ fn mutation_node_weight_calculate_sum_and_clamp() {
     w2.pattern_bonus = -0.5;
     w2.effectiveness_bonus = -0.5;
     let clamped_low = w2.calculate();
-    assert!(clamped_low >= 0.0, "Should clamp to 0.0, got {}", clamped_low);
+    assert!(
+        clamped_low >= 0.0,
+        "Should clamp to 0.0, got {}",
+        clamped_low
+    );
 }
 
 #[test]
@@ -1978,8 +2000,7 @@ fn mutation_validation_result_constructors() {
     assert!((valid.predicted_satisfaction - 0.9).abs() < 0.01);
     assert!(valid.alternatives.is_empty());
 
-    let invalid =
-        astraweave_memory::ValidationResult::invalid("bad", vec!["alt1".to_string()]);
+    let invalid = astraweave_memory::ValidationResult::invalid("bad", vec!["alt1".to_string()]);
     assert!(!invalid.valid);
     assert!((invalid.confidence - 0.9).abs() < 0.01);
     assert!((invalid.predicted_satisfaction - 0.0).abs() < 0.01);
@@ -2004,11 +2025,7 @@ fn mutation_forgetting_permanent_not_forgotten() {
 
     let mut memories = vec![mem];
     let result = engine.apply_forgetting(&mut memories).unwrap();
-    assert_eq!(
-        memories.len(),
-        1,
-        "Permanent memory should not be removed"
-    );
+    assert_eq!(memories.len(), 1, "Permanent memory should not be removed");
     assert_eq!(result.memories_forgotten, 0);
 }
 
@@ -2286,8 +2303,16 @@ fn mutation_to_memory_participants_include_enemies() {
 
     let mem = ep.to_memory().unwrap();
     assert!(mem.content.context.participants.len() >= 5);
-    assert!(mem.content.context.participants.contains(&"enemy_0".to_string()));
-    assert!(mem.content.context.participants.contains(&"enemy_2".to_string()));
+    assert!(mem
+        .content
+        .context
+        .participants
+        .contains(&"enemy_0".to_string()));
+    assert!(mem
+        .content
+        .context
+        .participants
+        .contains(&"enemy_2".to_string()));
 }
 
 #[test]
@@ -2404,13 +2429,16 @@ fn mutation_access_boost_exactly_one_day_boundary() {
     assert!(
         s_fresh > s_1day,
         "Fresh should have boost but exactly-1-day should NOT: fresh={}, 1day={}",
-        s_fresh, s_1day
+        s_fresh,
+        s_1day
     );
     // The difference should be exactly the 0.2 boost
     assert!(
         (s_fresh - s_1day - 0.2).abs() < 0.01,
         "Difference should be ~0.2 (the access boost): fresh={}, 1day={}, diff={}",
-        s_fresh, s_1day, s_fresh - s_1day
+        s_fresh,
+        s_1day,
+        s_fresh - s_1day
     );
 }
 
@@ -2488,13 +2516,21 @@ fn mutation_forgetting_decay_reduces_strength() {
     let engine = ForgettingEngine::new(ForgettingConfig::default());
 
     // Working memory: half_life = 1.0 day
-    let mut old_mem = { let mut m = Memory::sensory("old memory".to_string(), None); m.memory_type = MemoryType::Working; m };
+    let mut old_mem = {
+        let mut m = Memory::sensory("old memory".to_string(), None);
+        m.memory_type = MemoryType::Working;
+        m
+    };
     old_mem.metadata.created_at = Utc::now() - Duration::days(5);
     old_mem.metadata.strength = 1.0;
     old_mem.metadata.importance = 0.5; // neutral
     old_mem.metadata.access_count = 0;
 
-    let mut fresh_mem = { let mut m = Memory::sensory("fresh memory".to_string(), None); m.memory_type = MemoryType::Working; m };
+    let mut fresh_mem = {
+        let mut m = Memory::sensory("fresh memory".to_string(), None);
+        m.memory_type = MemoryType::Working;
+        m
+    };
     fresh_mem.metadata.strength = 1.0;
     fresh_mem.metadata.importance = 0.5;
     fresh_mem.metadata.access_count = 0;
@@ -2522,13 +2558,21 @@ fn mutation_forgetting_importance_modifier() {
     let engine = ForgettingEngine::new(ForgettingConfig::default());
 
     // Two memories same age but different importance
-    let mut high_imp = { let mut m = Memory::sensory("important".to_string(), None); m.memory_type = MemoryType::Episodic; m };
+    let mut high_imp = {
+        let mut m = Memory::sensory("important".to_string(), None);
+        m.memory_type = MemoryType::Episodic;
+        m
+    };
     high_imp.metadata.created_at = Utc::now() - Duration::days(7);
     high_imp.metadata.strength = 1.0;
     high_imp.metadata.importance = 1.0; // modifier = 1.0 + (1.0-0.5)*0.5 = 1.25
     high_imp.metadata.access_count = 0;
 
-    let mut low_imp = { let mut m = Memory::sensory("unimportant".to_string(), None); m.memory_type = MemoryType::Episodic; m };
+    let mut low_imp = {
+        let mut m = Memory::sensory("unimportant".to_string(), None);
+        m.memory_type = MemoryType::Episodic;
+        m
+    };
     low_imp.metadata.created_at = Utc::now() - Duration::days(7);
     low_imp.metadata.strength = 1.0;
     low_imp.metadata.importance = 0.0; // modifier = 1.0 + (0.0-0.5)*0.5 = 0.75
@@ -2538,7 +2582,10 @@ fn mutation_forgetting_importance_modifier() {
     let _ = engine.apply_forgetting(&mut memories);
 
     // Both should still exist (episodic half_life=14 days, 7 days is within)
-    assert!(memories.len() >= 2, "Both memories should survive 7 days with episodic half_life=14");
+    assert!(
+        memories.len() >= 2,
+        "Both memories should survive 7 days with episodic half_life=14"
+    );
     assert!(
         memories[0].metadata.strength > memories[1].metadata.strength,
         "High importance should have higher strength: high={}, low={}",
@@ -2553,13 +2600,21 @@ fn mutation_forgetting_importance_modifier() {
 fn mutation_forgetting_access_modifier() {
     let engine = ForgettingEngine::new(ForgettingConfig::default());
 
-    let mut accessed = { let mut m = Memory::sensory("accessed".to_string(), None); m.memory_type = MemoryType::Episodic; m };
+    let mut accessed = {
+        let mut m = Memory::sensory("accessed".to_string(), None);
+        m.memory_type = MemoryType::Episodic;
+        m
+    };
     accessed.metadata.created_at = Utc::now() - Duration::days(7);
     accessed.metadata.strength = 1.0;
     accessed.metadata.importance = 0.5;
     accessed.metadata.access_count = 10; // access_frequency = 10/7 ≈ 1.43, modifier = 1+1.43*0.3=1.43
 
-    let mut not_accessed = { let mut m = Memory::sensory("not_accessed".to_string(), None); m.memory_type = MemoryType::Episodic; m };
+    let mut not_accessed = {
+        let mut m = Memory::sensory("not_accessed".to_string(), None);
+        m.memory_type = MemoryType::Episodic;
+        m
+    };
     not_accessed.metadata.created_at = Utc::now() - Duration::days(7);
     not_accessed.metadata.strength = 1.0;
     not_accessed.metadata.importance = 0.5;
@@ -2583,7 +2638,11 @@ fn mutation_forgetting_access_modifier() {
 fn mutation_forgetting_total_strength_lost() {
     let engine = ForgettingEngine::new(ForgettingConfig::default());
 
-    let mut mem = { let mut m = Memory::sensory("track_loss".to_string(), None); m.memory_type = MemoryType::Episodic; m };
+    let mut mem = {
+        let mut m = Memory::sensory("track_loss".to_string(), None);
+        m.memory_type = MemoryType::Episodic;
+        m
+    };
     mem.metadata.created_at = Utc::now() - Duration::days(7);
     mem.metadata.strength = 1.0;
     mem.metadata.importance = 0.5;
@@ -2593,7 +2652,10 @@ fn mutation_forgetting_total_strength_lost() {
     let mut memories = vec![mem];
     let result = engine.apply_forgetting(&mut memories).unwrap();
 
-    assert!(result.total_strength_lost > 0.0, "Some strength should be lost after 7 days");
+    assert!(
+        result.total_strength_lost > 0.0,
+        "Some strength should be lost after 7 days"
+    );
     assert_eq!(result.memories_processed, 1, "Should process 1 memory");
 
     // Verify the loss matches: old - new = total_lost
@@ -2617,7 +2679,11 @@ fn mutation_forgetting_should_forget_weak_memory() {
     // Working memory: half_life=1 day, at 5 days → exp(-0.693*5) ≈ 0.031
     // retention_threshold for Working = 0.2
     // 0.031 < 0.2 → should be forgotten
-    let mut mem = { let mut m = Memory::sensory("weak".to_string(), None); m.memory_type = MemoryType::Working; m };
+    let mut mem = {
+        let mut m = Memory::sensory("weak".to_string(), None);
+        m.memory_type = MemoryType::Working;
+        m
+    };
     mem.metadata.created_at = Utc::now() - Duration::days(5);
     mem.metadata.strength = 1.0;
     mem.metadata.importance = 0.5;
@@ -2626,7 +2692,10 @@ fn mutation_forgetting_should_forget_weak_memory() {
     let mut memories = vec![mem];
     let result = engine.apply_forgetting(&mut memories).unwrap();
 
-    assert_eq!(result.memories_forgotten, 1, "Very weak working memory should be forgotten");
+    assert_eq!(
+        result.memories_forgotten, 1,
+        "Very weak working memory should be forgotten"
+    );
     assert!(memories.is_empty(), "Forgotten memory should be removed");
 }
 
@@ -2647,7 +2716,11 @@ fn mutation_forgetting_spaced_repetition_bonus() {
     });
 
     let make_mem = || {
-        let mut m = { let mut m = Memory::sensory("sr_test".to_string(), None); m.memory_type = MemoryType::Episodic; m };
+        let mut m = {
+            let mut m = Memory::sensory("sr_test".to_string(), None);
+            m.memory_type = MemoryType::Episodic;
+            m
+        };
         m.metadata.created_at = Utc::now() - Duration::days(7);
         m.metadata.strength = 1.0;
         m.metadata.importance = 0.5;
@@ -2662,8 +2735,10 @@ fn mutation_forgetting_spaced_repetition_bonus() {
     let _ = engine_no_sr.apply_forgetting(&mut mems_without);
 
     // Both should survive
-    assert!(!mems_with.is_empty() && !mems_without.is_empty(),
-        "Both memories should survive with 5 accesses");
+    assert!(
+        !mems_with.is_empty() && !mems_without.is_empty(),
+        "Both memories should survive with 5 accesses"
+    );
 
     // With spaced repetition should be stronger
     assert!(
@@ -3474,7 +3549,12 @@ fn mutation_recorder_with_flush_interval_not_default() {
 // ════════════════════════════════════════════════════════════════════════════
 
 /// Helper: create an episodic memory at a specific timestamp with optional location and participants
-fn make_timed_memory(text: &str, when: chrono::DateTime<Utc>, location: Option<&str>, participants: Vec<&str>) -> Memory {
+fn make_timed_memory(
+    text: &str,
+    when: chrono::DateTime<Utc>,
+    location: Option<&str>,
+    participants: Vec<&str>,
+) -> Memory {
     let mut m = Memory::episodic(
         text.to_string(),
         participants.iter().map(|s| s.to_string()).collect(),
@@ -3566,7 +3646,12 @@ fn mutation_consolidation_spatial_same_location_v2() {
     let now = Utc::now();
     let mut memories = vec![
         make_timed_memory("event at forest", now, Some("forest"), vec![]),
-        make_timed_memory("another at forest", now - Duration::days(30), Some("forest"), vec![]),
+        make_timed_memory(
+            "another at forest",
+            now - Duration::days(30),
+            Some("forest"),
+            vec![],
+        ),
     ];
     let result = engine.consolidate(&mut memories).unwrap();
     assert!(
@@ -3583,7 +3668,12 @@ fn mutation_consolidation_spatial_different_location() {
     let now = Utc::now();
     let mut memories = vec![
         make_timed_memory("event at forest", now, Some("forest"), vec![]),
-        make_timed_memory("event at cave", now - Duration::days(30), Some("cave"), vec![]),
+        make_timed_memory(
+            "event at cave",
+            now - Duration::days(30),
+            Some("cave"),
+            vec![],
+        ),
     ];
     let result = engine.consolidate(&mut memories).unwrap();
     assert_eq!(
@@ -3600,7 +3690,12 @@ fn mutation_consolidation_spatial_strength_is_high() {
     let now = Utc::now();
     let mut memories = vec![
         make_timed_memory("event A at castle", now, Some("castle"), vec![]),
-        make_timed_memory("event B at castle", now - Duration::days(30), Some("castle"), vec![]),
+        make_timed_memory(
+            "event B at castle",
+            now - Duration::days(30),
+            Some("castle"),
+            vec![],
+        ),
     ];
     engine.consolidate(&mut memories).unwrap();
     let spatial_assoc = memories[0]
@@ -3626,8 +3721,18 @@ fn mutation_consolidation_conceptual_high_overlap() {
     let engine = ConsolidationEngine::new(config);
     let now = Utc::now();
     let mut memories = vec![
-        make_timed_memory("the brave knight fought the dragon in the castle", now, None, vec!["knight"]),
-        make_timed_memory("the brave knight fought the dragon in the castle", now - Duration::days(30), None, vec!["knight"]),
+        make_timed_memory(
+            "the brave knight fought the dragon in the castle",
+            now,
+            None,
+            vec!["knight"],
+        ),
+        make_timed_memory(
+            "the brave knight fought the dragon in the castle",
+            now - Duration::days(30),
+            None,
+            vec!["knight"],
+        ),
     ];
     let result = engine.consolidate(&mut memories).unwrap();
     assert!(
@@ -3662,9 +3767,7 @@ fn mutation_consolidation_updates_strength() {
     };
     let engine = ConsolidationEngine::new(config);
     let now = Utc::now();
-    let mut memories = vec![
-        make_timed_memory("event one", now, None, vec![]),
-    ];
+    let mut memories = vec![make_timed_memory("event one", now, None, vec![])];
     memories[0].metadata.strength = 0.5;
     let old_strength = memories[0].metadata.strength;
     engine.consolidate(&mut memories).unwrap();
@@ -3683,9 +3786,7 @@ fn mutation_consolidation_strength_capped_at_one() {
     };
     let engine = ConsolidationEngine::new(config);
     let now = Utc::now();
-    let mut memories = vec![
-        make_timed_memory("event max", now, None, vec![]),
-    ];
+    let mut memories = vec![make_timed_memory("event max", now, None, vec![])];
     memories[0].metadata.strength = 0.9;
     engine.consolidate(&mut memories).unwrap();
     assert!(
@@ -3704,8 +3805,18 @@ fn mutation_consolidation_result_total() {
     let engine = ConsolidationEngine::new(config);
     let now = Utc::now();
     let mut memories = vec![
-        make_timed_memory("battle at forest clearing", now, Some("forest"), vec!["hero"]),
-        make_timed_memory("battle at forest clearing", now - Duration::hours(1), Some("forest"), vec!["hero"]),
+        make_timed_memory(
+            "battle at forest clearing",
+            now,
+            Some("forest"),
+            vec!["hero"],
+        ),
+        make_timed_memory(
+            "battle at forest clearing",
+            now - Duration::hours(1),
+            Some("forest"),
+            vec!["hero"],
+        ),
     ];
     let result = engine.consolidate(&mut memories).unwrap();
     assert_eq!(
@@ -3727,8 +3838,18 @@ fn mutation_consolidation_respects_max_associations() {
     let now = Utc::now();
     let mut memories = vec![
         make_timed_memory("event A", now, Some("castle"), vec![]),
-        make_timed_memory("event B", now - Duration::minutes(30), Some("castle"), vec![]),
-        make_timed_memory("event C", now - Duration::minutes(60), Some("castle"), vec![]),
+        make_timed_memory(
+            "event B",
+            now - Duration::minutes(30),
+            Some("castle"),
+            vec![],
+        ),
+        make_timed_memory(
+            "event C",
+            now - Duration::minutes(60),
+            Some("castle"),
+            vec![],
+        ),
     ];
     engine.consolidate(&mut memories).unwrap();
     assert!(
@@ -3769,7 +3890,10 @@ fn mutation_compression_eligible_memory_compressed() {
 fn mutation_compression_permanent_not_compressed() {
     let config = CompressionConfig::default();
     let engine = CompressionEngine::new(config);
-    let mut memory = Memory::semantic("important fact about the world".to_string(), "fact".to_string());
+    let mut memory = Memory::semantic(
+        "important fact about the world".to_string(),
+        "fact".to_string(),
+    );
     memory.metadata.created_at = Utc::now() - Duration::days(365);
     memory.metadata.permanent = true;
     memory.metadata.importance = 0.01;
@@ -3818,7 +3942,8 @@ fn mutation_compression_stats_count() {
     };
     let engine = CompressionEngine::new(config);
     let mut old_memory = Memory::sensory(
-        "old compressible memory with many words that should be compressed down to smaller text".to_string(),
+        "old compressible memory with many words that should be compressed down to smaller text"
+            .to_string(),
         None,
     );
     old_memory.metadata.created_at = Utc::now() - Duration::days(60);
@@ -3864,7 +3989,11 @@ fn mutation_compression_size_reduction_positive() {
 fn mutation_retrieval_matching_query_retrieved() {
     let engine = RetrievalEngine::new(RetrievalConfig::default());
     let memories = vec![
-        Memory::episodic("dragon attacked the village at dawn".to_string(), vec!["hero".to_string()], Some("village".to_string())),
+        Memory::episodic(
+            "dragon attacked the village at dawn".to_string(),
+            vec!["hero".to_string()],
+            Some("village".to_string()),
+        ),
         Memory::semantic("the sun is a star".to_string(), "astronomy".to_string()),
     ];
     let context = RetrievalContext {
@@ -4041,7 +4170,8 @@ fn mutation_forgetting_adaptive_half_life_access_count_v2() {
     assert!(
         half_life_high > half_life_low,
         "Higher access count should give longer half life: {} vs {}",
-        half_life_high, half_life_low
+        half_life_high,
+        half_life_low
     );
 }
 
@@ -4058,7 +4188,8 @@ fn mutation_forgetting_adaptive_half_life_importance_v2() {
     assert!(
         half_life_high > half_life_low,
         "Higher importance should give longer half life: {} vs {}",
-        half_life_high, half_life_low
+        half_life_high,
+        half_life_low
     );
 }
 
@@ -4085,11 +4216,7 @@ fn mutation_forgetting_type_statistics() {
 fn make_populated_storage(episodes: Vec<Episode>) -> MemoryStorage {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for episode in episodes {
-        let mut memory = Memory::episodic(
-            format!("Episode: {:?}", episode.category),
-            vec![],
-            None,
-        );
+        let mut memory = Memory::episodic(format!("Episode: {:?}", episode.category), vec![], None);
         memory.content.data = serde_json::to_value(&episode).unwrap_or_default();
         storage.store_memory(&memory).unwrap();
     }
@@ -4139,9 +4266,7 @@ fn make_test_episode(category: EpisodeCategory, quality_score: f32) -> Episode {
 #[test]
 fn mutation_pattern_detector_insufficient_episodes() {
     let detector = PatternDetector::with_thresholds(5, 0.6);
-    let storage = make_populated_storage(vec![
-        make_test_episode(EpisodeCategory::Combat, 0.8),
-    ]);
+    let storage = make_populated_storage(vec![make_test_episode(EpisodeCategory::Combat, 0.8)]);
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
     assert!(patterns.is_empty());
 }
@@ -4188,7 +4313,11 @@ fn mutation_dynamic_weighting_reset() {
     manager.set_base_weight(BehaviorNodeType::Combat, 0.9);
     manager.reset_weights();
     let weight = manager.get_weight(BehaviorNodeType::Combat);
-    assert!((weight - 0.9).abs() < 0.01, "After set_base_weight(0.9) + reset, weight should be ~0.9, got {}", weight);
+    assert!(
+        (weight - 0.9).abs() < 0.01,
+        "After set_base_weight(0.9) + reset, weight should be ~0.9, got {}",
+        weight
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4250,7 +4379,9 @@ fn mutation_validator_custom_thresholds() {
 fn mutation_validator_validate_insufficient_data() {
     let mut validator = BehaviorValidator::new();
     let storage = MemoryStorage::in_memory().unwrap();
-    let result = validator.validate_action("attack", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("attack", "combat", &storage)
+        .unwrap();
     assert!(!result.valid);
     assert!(result.confidence < 0.5);
 }
@@ -4259,8 +4390,12 @@ fn mutation_validator_validate_insufficient_data() {
 fn mutation_validator_cache_works() {
     let mut validator = BehaviorValidator::new();
     let storage = MemoryStorage::in_memory().unwrap();
-    let result1 = validator.validate_action("heal", "support", &storage).unwrap();
-    let result2 = validator.validate_action("heal", "support", &storage).unwrap();
+    let result1 = validator
+        .validate_action("heal", "support", &storage)
+        .unwrap();
+    let result2 = validator
+        .validate_action("heal", "support", &storage)
+        .unwrap();
     assert_eq!(result1.confidence, result2.confidence);
     assert_eq!(validator.get_stats().cache_size, 1);
 }
@@ -4269,7 +4404,9 @@ fn mutation_validator_cache_works() {
 fn mutation_validator_clear_cache() {
     let mut validator = BehaviorValidator::new();
     let storage = MemoryStorage::in_memory().unwrap();
-    validator.validate_action("attack", "combat", &storage).unwrap();
+    validator
+        .validate_action("attack", "combat", &storage)
+        .unwrap();
     assert_eq!(validator.get_stats().cache_size, 1);
     validator.clear_cache();
     assert_eq!(validator.get_stats().cache_size, 0);
@@ -4345,7 +4482,8 @@ fn mutation_sharing_summary_generation() {
     let memory = Memory::episodic(
         "this is a long memory text with many words that should be summarized \
          when shared using the summary sharing type to reduce information exposure \
-         while still providing meaningful content to the requesting entity".to_string(),
+         while still providing meaningful content to the requesting entity"
+            .to_string(),
         vec!["hero".to_string()],
         None,
     );
@@ -4388,8 +4526,12 @@ fn mutation_sharing_full_vs_summary_length() {
         reason: "test".to_string(),
         conditions: vec![],
     };
-    let full_result = engine.share_memory(&full_request, &memory, "owner").unwrap();
-    let summary_result = engine.share_memory(&summary_request, &memory, "owner").unwrap();
+    let full_result = engine
+        .share_memory(&full_request, &memory, "owner")
+        .unwrap();
+    let summary_result = engine
+        .share_memory(&summary_request, &memory, "owner")
+        .unwrap();
     assert!(full_result.success && summary_result.success);
     let full_len = full_result.shared_content.unwrap().content.len();
     let summary_len = summary_result.shared_content.unwrap().content.len();
@@ -4451,8 +4593,16 @@ fn mutation_consol_temporal_exact_strength() {
     let strength = memories[0].associations.first().unwrap().strength;
     // Strength formula: 0.5 + (1.0 - 3/24) = 1.375, clamped to 1.0
     // If + mutated to *, would be 0.5 * 0.875 = 0.4375
-    assert!(strength >= 0.9, "Temporal strength should be >= 0.9 for close memories (got {})", strength);
-    assert!((strength - 1.0).abs() < 0.01, "Temporal strength should be clamped to 1.0 (got {})", strength);
+    assert!(
+        strength >= 0.9,
+        "Temporal strength should be >= 0.9 for close memories (got {})",
+        strength
+    );
+    assert!(
+        (strength - 1.0).abs() < 0.01,
+        "Temporal strength should be clamped to 1.0 (got {})",
+        strength
+    );
 }
 
 #[test]
@@ -4468,7 +4618,10 @@ fn mutation_consol_no_duplicate_assoc() {
     let count1 = memories[0].associations.len();
     engine.consolidate(&mut memories).unwrap();
     let count2 = memories[0].associations.len();
-    assert_eq!(count1, count2, "Duplicate associations should not be created");
+    assert_eq!(
+        count1, count2,
+        "Duplicate associations should not be created"
+    );
 }
 
 #[test]
@@ -4478,13 +4631,26 @@ fn mutation_consol_spatial_exact_strength() {
     let now = Utc::now();
     let mut memories = vec![
         make_timed_memory("event at forest", now, Some("forest"), vec![]),
-        make_timed_memory("another at forest", now - Duration::days(30), Some("forest"), vec![]),
+        make_timed_memory(
+            "another at forest",
+            now - Duration::days(30),
+            Some("forest"),
+            vec![],
+        ),
     ];
     engine.consolidate(&mut memories).unwrap();
-    let spatial = memories[0].associations.iter()
+    let spatial = memories[0]
+        .associations
+        .iter()
         .find(|a| matches!(a.association_type, AssociationType::Spatial));
-    assert!(spatial.is_some(), "Spatial association should exist for same location");
-    assert!((spatial.unwrap().strength - 0.8).abs() < 0.01, "Spatial strength should be 0.8");
+    assert!(
+        spatial.is_some(),
+        "Spatial association should exist for same location"
+    );
+    assert!(
+        (spatial.unwrap().strength - 0.8).abs() < 0.01,
+        "Spatial strength should be 0.8"
+    );
 }
 
 #[test]
@@ -4498,12 +4664,22 @@ fn mutation_consol_conceptual_similarity_word_overlap() {
     let now = Utc::now();
     let mut memories = vec![
         make_timed_memory("the brave warrior fought", now, None, vec![]),
-        make_timed_memory("the brave warrior rested", now - Duration::days(60), None, vec![]),
+        make_timed_memory(
+            "the brave warrior rested",
+            now - Duration::days(60),
+            None,
+            vec![],
+        ),
     ];
     engine.consolidate(&mut memories).unwrap();
-    let conceptual = memories[0].associations.iter()
+    let conceptual = memories[0]
+        .associations
+        .iter()
         .find(|a| matches!(a.association_type, AssociationType::Conceptual));
-    assert!(conceptual.is_some(), "Should find conceptual association for overlapping words");
+    assert!(
+        conceptual.is_some(),
+        "Should find conceptual association for overlapping words"
+    );
     let s = conceptual.unwrap().strength;
     // Same type (0.3) + 3/4 words common * 0.5 = 0.3 + 0.375 = 0.675
     assert!(s > 0.5, "Conceptual similarity should be > 0.5 (got {})", s);
@@ -4521,14 +4697,24 @@ fn mutation_consol_conceptual_with_participants() {
     let now = Utc::now();
     let mut memories = vec![
         make_timed_memory("event one", now, None, vec!["alice", "bob"]),
-        make_timed_memory("event two", now - Duration::days(60), None, vec!["alice", "charlie"]),
+        make_timed_memory(
+            "event two",
+            now - Duration::days(60),
+            None,
+            vec!["alice", "charlie"],
+        ),
     ];
     engine.consolidate(&mut memories).unwrap();
     // Same type (0.3) + no word overlap (0.0) + participant overlap: 1 common/(3 union) * 0.2 ≈ 0.067
     // Total ≈ 0.367
-    let has_conceptual = memories[0].associations.iter()
+    let has_conceptual = memories[0]
+        .associations
+        .iter()
         .any(|a| matches!(a.association_type, AssociationType::Conceptual));
-    assert!(has_conceptual, "Should form conceptual association with participant overlap");
+    assert!(
+        has_conceptual,
+        "Should form conceptual association with participant overlap"
+    );
 }
 
 #[test]
@@ -4546,7 +4732,11 @@ fn mutation_consol_state_boost_exact() {
     engine.consolidate(&mut memories).unwrap();
     let new_strength = memories[0].metadata.strength;
     // += 0.2: 0.5 + 0.2 = 0.7. *= 0.2: 0.5 * 0.2 = 0.1
-    assert!((new_strength - 0.7).abs() < 0.01, "Strength should be 0.7 (0.5 + 0.2 boost), got {}", new_strength);
+    assert!(
+        (new_strength - 0.7).abs() < 0.01,
+        "Strength should be 0.7 (0.5 + 0.2 boost), got {}",
+        new_strength
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4566,8 +4756,16 @@ fn mutation_compression_exact_size_estimation() {
     let m = Memory::sensory("hello world test".to_string(), None); // 16 chars
     let stats = engine.get_compression_stats(&[m]);
     // estimate_memory_size = text.len() (16) + nothing else = 16
-    assert!(stats.average_size_bytes >= 16, "Estimated size should be >= 16 bytes (got {})", stats.average_size_bytes);
-    assert!(stats.average_size_bytes < 200, "Estimated size should be < 200 bytes (got {})", stats.average_size_bytes);
+    assert!(
+        stats.average_size_bytes >= 16,
+        "Estimated size should be >= 16 bytes (got {})",
+        stats.average_size_bytes
+    );
+    assert!(
+        stats.average_size_bytes < 200,
+        "Estimated size should be < 200 bytes (got {})",
+        stats.average_size_bytes
+    );
 }
 
 #[test]
@@ -4580,13 +4778,16 @@ fn mutation_compression_stats_division() {
         preserve_emotional_context: false,
     };
     let engine = CompressionEngine::new(config);
-    let m1 = Memory::sensory("twelve chars".to_string(), None);  // 12 bytes text
-    let m2 = Memory::sensory("twelve chars".to_string(), None);  // 12 bytes text
+    let m1 = Memory::sensory("twelve chars".to_string(), None); // 12 bytes text
+    let m2 = Memory::sensory("twelve chars".to_string(), None); // 12 bytes text
     let stats = engine.get_compression_stats(&[m1, m2]);
     // Each memory has identical content, so avg should equal individual
     assert_eq!(stats.total_memories, 2);
     assert!(stats.average_size_bytes > 0, "Average size should be > 0");
-    assert!(stats.average_size_bytes < 1000, "Average size should be reasonable");
+    assert!(
+        stats.average_size_bytes < 1000,
+        "Average size should be reasonable"
+    );
 }
 
 #[test]
@@ -4600,7 +4801,10 @@ fn mutation_compression_text_division() {
         preserve_emotional_context: false,
     };
     let engine = CompressionEngine::new(config);
-    let long_text = (0..60).map(|i| format!("word{}", i)).collect::<Vec<_>>().join(" ");
+    let long_text = (0..60)
+        .map(|i| format!("word{}", i))
+        .collect::<Vec<_>>()
+        .join(" ");
     let mut m = Memory::sensory(long_text.clone(), None);
     m.metadata.created_at = Utc::now() - Duration::days(10);
     m.metadata.importance = 0.1;
@@ -4609,9 +4813,18 @@ fn mutation_compression_text_division() {
     let result = engine.compress_memories(&mut memories).unwrap();
     if result.memories_compressed > 0 {
         let compressed_words = memories[0].content.text.split_whitespace().count();
-        assert!(compressed_words < original_len, "Compressed text should have fewer words");
-        assert!(compressed_words >= 10, "Should have at least 10 words after compression");
-        assert!(memories[0].content.text.contains("[...]"), "Should contain [...] marker");
+        assert!(
+            compressed_words < original_len,
+            "Compressed text should have fewer words"
+        );
+        assert!(
+            compressed_words >= 10,
+            "Should have at least 10 words after compression"
+        );
+        assert!(
+            memories[0].content.text.contains("[...]"),
+            "Should contain [...] marker"
+        );
     }
 }
 
@@ -4625,7 +4838,12 @@ fn mutation_compression_size_with_tags() {
     m2.metadata.tags.push("important_tag_value".to_string());
     let stats1 = engine.get_compression_stats(&[m1]);
     let stats2 = engine.get_compression_stats(&[m2]);
-    assert!(stats2.average_size_bytes > stats1.average_size_bytes, "Memory with tags should be larger ({} vs {})", stats2.average_size_bytes, stats1.average_size_bytes);
+    assert!(
+        stats2.average_size_bytes > stats1.average_size_bytes,
+        "Memory with tags should be larger ({} vs {})",
+        stats2.average_size_bytes,
+        stats1.average_size_bytes
+    );
 }
 
 #[test]
@@ -4638,9 +4856,18 @@ fn mutation_compression_size_with_associations() {
     m.add_association("other_id".to_string(), AssociationType::Temporal, 0.5);
     let stats_after = engine.get_compression_stats(&[m]);
     // Should increase by ~64 (per association estimate)
-    assert!(stats_after.average_size_bytes > stats_before.average_size_bytes, "Associations should increase size ({} vs {})", stats_after.average_size_bytes, stats_before.average_size_bytes);
+    assert!(
+        stats_after.average_size_bytes > stats_before.average_size_bytes,
+        "Associations should increase size ({} vs {})",
+        stats_after.average_size_bytes,
+        stats_before.average_size_bytes
+    );
     let diff = stats_after.average_size_bytes - stats_before.average_size_bytes;
-    assert!(diff >= 50, "Association should add ~64 bytes, only added {}", diff);
+    assert!(
+        diff >= 50,
+        "Association should add ~64 bytes, only added {}",
+        diff
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4677,11 +4904,23 @@ fn mutation_retrieval_exact_relevance_score() {
     // total = 1.0*0.6 + 0.5*0.2 + 0.0*0.2 + 0.8*0.2 + recency*0.1
     // = 0.6 + 0.1 + 0.0 + 0.16 + recency*0.1
     // ≈ 0.86 + small recency
-    assert!(score > 0.7, "Relevance score should be > 0.7 for good match (got {})", score);
+    assert!(
+        score > 0.7,
+        "Relevance score should be > 0.7 for good match (got {})",
+        score
+    );
     assert!(score < 1.0, "Score should be < 1.0 (got {})", score);
     // Check score breakdown
-    assert!(results[0].score_breakdown.semantic_score > 0.9, "Semantic should be ~1.0 (got {})", results[0].score_breakdown.semantic_score);
-    assert!((results[0].score_breakdown.temporal_score - 0.5).abs() < 0.01, "Temporal should be 0.5 without time_window (got {})", results[0].score_breakdown.temporal_score);
+    assert!(
+        results[0].score_breakdown.semantic_score > 0.9,
+        "Semantic should be ~1.0 (got {})",
+        results[0].score_breakdown.semantic_score
+    );
+    assert!(
+        (results[0].score_breakdown.temporal_score - 0.5).abs() < 0.01,
+        "Temporal should be 0.5 without time_window (got {})",
+        results[0].score_breakdown.temporal_score
+    );
 }
 
 #[test]
@@ -4705,8 +4944,11 @@ fn mutation_retrieval_temporal_within_window() {
     };
     let results = engine.retrieve(&context, &[m]).unwrap();
     assert!(!results.is_empty());
-    assert!((results[0].score_breakdown.temporal_score - 1.0).abs() < 0.01,
-        "Temporal score within window should be 1.0 (got {})", results[0].score_breakdown.temporal_score);
+    assert!(
+        (results[0].score_breakdown.temporal_score - 1.0).abs() < 0.01,
+        "Temporal score within window should be 1.0 (got {})",
+        results[0].score_breakdown.temporal_score
+    );
 }
 
 #[test]
@@ -4732,8 +4974,16 @@ fn mutation_retrieval_temporal_decay_outside_window() {
     if !results.is_empty() {
         let temporal = results[0].score_breakdown.temporal_score;
         // Distance from window start = ~13 days, exp(-13/7) ≈ 0.156
-        assert!(temporal > 0.05, "Temporal decay should be > 0.05 (got {})", temporal);
-        assert!(temporal < 0.5, "Temporal decay should be < 0.5 (got {})", temporal);
+        assert!(
+            temporal > 0.05,
+            "Temporal decay should be > 0.05 (got {})",
+            temporal
+        );
+        assert!(
+            temporal < 0.5,
+            "Temporal decay should be < 0.5 (got {})",
+            temporal
+        );
     }
 }
 
@@ -4759,10 +5009,29 @@ fn mutation_retrieval_recency_score_range() {
     };
     let results = engine.retrieve(&context, &[recent, old]).unwrap();
     assert!(results.len() >= 2, "Should retrieve both memories");
-    let recent_score = results.iter().find(|r| r.memory.content.text.contains("recent")).unwrap().score_breakdown.recency_score;
-    let old_score = results.iter().find(|r| r.memory.content.text.contains("old")).unwrap().score_breakdown.recency_score;
-    assert!(recent_score > old_score, "Recent memory should have higher recency score ({} vs {})", recent_score, old_score);
-    assert!(recent_score > 0.5, "Recent memory recency should be > 0.5 (got {})", recent_score);
+    let recent_score = results
+        .iter()
+        .find(|r| r.memory.content.text.contains("recent"))
+        .unwrap()
+        .score_breakdown
+        .recency_score;
+    let old_score = results
+        .iter()
+        .find(|r| r.memory.content.text.contains("old"))
+        .unwrap()
+        .score_breakdown
+        .recency_score;
+    assert!(
+        recent_score > old_score,
+        "Recent memory should have higher recency score ({} vs {})",
+        recent_score,
+        old_score
+    );
+    assert!(
+        recent_score > 0.5,
+        "Recent memory recency should be > 0.5 (got {})",
+        recent_score
+    );
 }
 
 #[test]
@@ -4787,7 +5056,11 @@ fn mutation_retrieval_associated_memories_returned() {
     };
     let results = engine.retrieve(&context, &[m1, m2]).unwrap();
     // Should find both: m1 directly, m2 through association
-    assert!(results.len() >= 2, "Should retrieve both direct and associated memory (got {})", results.len());
+    assert!(
+        results.len() >= 2,
+        "Should retrieve both direct and associated memory (got {})",
+        results.len()
+    );
 }
 
 #[test]
@@ -4798,7 +5071,11 @@ fn mutation_retrieval_similarity_calculation() {
     let m2 = Memory::sensory("the quick brown fox".to_string(), None);
     let results = engine.find_similar(&m1, &[m2]).unwrap();
     assert!(!results.is_empty(), "Should find similar memory");
-    assert!(results[0].relevance_score > 0.5, "Similar memory should have high score (got {})", results[0].relevance_score);
+    assert!(
+        results[0].relevance_score > 0.5,
+        "Similar memory should have high score (got {})",
+        results[0].relevance_score
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4815,11 +5092,20 @@ fn mutation_forgetting_strength_decay_formula() {
     m.metadata.created_at = Utc::now() - Duration::days(10);
     let mut memories = vec![m];
     engine.apply_forgetting(&mut memories).unwrap();
-    assert!(!memories.is_empty(), "10-day episodic memory should not be forgotten");
-    assert!(memories[0].metadata.strength < 0.9,
-        "Strength should decrease after 10-day decay (got {})", memories[0].metadata.strength);
-    assert!(memories[0].metadata.strength > 0.3,
-        "Strength should remain reasonable (got {})", memories[0].metadata.strength);
+    assert!(
+        !memories.is_empty(),
+        "10-day episodic memory should not be forgotten"
+    );
+    assert!(
+        memories[0].metadata.strength < 0.9,
+        "Strength should decrease after 10-day decay (got {})",
+        memories[0].metadata.strength
+    );
+    assert!(
+        memories[0].metadata.strength > 0.3,
+        "Strength should remain reasonable (got {})",
+        memories[0].metadata.strength
+    );
 }
 
 #[test]
@@ -4839,10 +5125,20 @@ fn mutation_forgetting_importance_modifier_v2() {
     let mut high_memories = vec![m_high];
     engine.apply_forgetting(&mut low_memories).unwrap();
     engine.apply_forgetting(&mut high_memories).unwrap();
-    assert!(!low_memories.is_empty(), "Low importance 7-day episodic should persist");
-    assert!(!high_memories.is_empty(), "High importance 7-day episodic should persist");
-    assert!(high_memories[0].metadata.strength > low_memories[0].metadata.strength,
-        "High importance should retain more: high={}, low={}", high_memories[0].metadata.strength, low_memories[0].metadata.strength);
+    assert!(
+        !low_memories.is_empty(),
+        "Low importance 7-day episodic should persist"
+    );
+    assert!(
+        !high_memories.is_empty(),
+        "High importance 7-day episodic should persist"
+    );
+    assert!(
+        high_memories[0].metadata.strength > low_memories[0].metadata.strength,
+        "High importance should retain more: high={}, low={}",
+        high_memories[0].metadata.strength,
+        low_memories[0].metadata.strength
+    );
 }
 
 #[test]
@@ -4858,8 +5154,10 @@ fn mutation_forgetting_should_forget_threshold() {
     let mut memories = vec![m];
     let initial_count = memories.len();
     let result = engine.apply_forgetting(&mut memories).unwrap();
-    assert!(result.memories_forgotten > 0 || memories.len() < initial_count,
-        "Very weak old memory should be forgotten");
+    assert!(
+        result.memories_forgotten > 0 || memories.len() < initial_count,
+        "Very weak old memory should be forgotten"
+    );
 }
 
 #[test]
@@ -4877,15 +5175,27 @@ fn mutation_forgetting_half_life_exact_values() {
     // importance_modifier = 0.5 + 0.8 = 1.3
     // result = 7.0 * 2.1513 * 1.3 ≈ 19.577
     // 14.0 * 2.1513 * 1.3 = 39.15
-    assert!(half_life > 35.0, "Half life should be > 35.0 (got {})", half_life);
-    assert!(half_life < 45.0, "Half life should be < 45.0 (got {})", half_life);
+    assert!(
+        half_life > 35.0,
+        "Half life should be > 35.0 (got {})",
+        half_life
+    );
+    assert!(
+        half_life < 45.0,
+        "Half life should be < 45.0 (got {})",
+        half_life
+    );
     // Zero access: access_modifier = 1.0
     let mut m2 = Memory::episodic("test2".to_string(), vec![], None);
     m2.metadata.access_count = 0;
     m2.metadata.importance = 0.5;
     let half_life2 = engine.calculate_adaptive_half_life(&m2);
     // 14.0 * 1.0 * (0.5 + 0.5) = 14.0
-    assert!((half_life2 - 14.0).abs() < 1.0, "Zero-access episodic half life should be ~14.0 (got {})", half_life2);
+    assert!(
+        (half_life2 - 14.0).abs() < 1.0,
+        "Zero-access episodic half life should be ~14.0 (got {})",
+        half_life2
+    );
 }
 
 #[test]
@@ -4899,8 +5209,16 @@ fn mutation_forgetting_type_stats_boundary() {
     m2.metadata.strength = 0.01;
     let stats = engine.get_type_statistics(&MemoryType::Episodic, &[m1.clone(), m2]);
     assert_eq!(stats.total_memories, 2);
-    assert!(stats.average_strength > 0.4, "Average should be > 0.4 (got {})", stats.average_strength);
-    assert!(stats.average_strength < 0.6, "Average should be < 0.6 (got {})", stats.average_strength);
+    assert!(
+        stats.average_strength > 0.4,
+        "Average should be > 0.4 (got {})",
+        stats.average_strength
+    );
+    assert!(
+        stats.average_strength < 0.6,
+        "Average should be < 0.6 (got {})",
+        stats.average_strength
+    );
 }
 
 #[test]
@@ -4919,8 +5237,12 @@ fn mutation_forgetting_access_modifier_effect() {
     let mut not_memories = vec![m_not];
     engine.apply_forgetting(&mut accessed_memories).unwrap();
     engine.apply_forgetting(&mut not_memories).unwrap();
-    assert!(accessed_memories[0].metadata.strength > not_memories[0].metadata.strength,
-        "Frequently accessed should retain more: accessed={}, not={}", accessed_memories[0].metadata.strength, not_memories[0].metadata.strength);
+    assert!(
+        accessed_memories[0].metadata.strength > not_memories[0].metadata.strength,
+        "Frequently accessed should retain more: accessed={}, not={}",
+        accessed_memories[0].metadata.strength,
+        not_memories[0].metadata.strength
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4943,12 +5265,27 @@ fn mutation_pattern_exact_frequency_scores() {
         .collect();
     let storage = make_populated_storage(episodes);
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    assert!(!patterns.is_empty(), "Should detect patterns from 10 combat episodes");
+    assert!(
+        !patterns.is_empty(),
+        "Should detect patterns from 10 combat episodes"
+    );
     // Check that confidence values are reasonable (count/total)
     for p in &patterns {
-        assert!(p.confidence > 0.0, "Confidence should be positive (got {})", p.confidence);
-        assert!(p.confidence <= 1.0, "Confidence should be <= 1.0 (got {})", p.confidence);
-        assert!(p.avg_quality > 0.0, "Average quality should be positive (got {})", p.avg_quality);
+        assert!(
+            p.confidence > 0.0,
+            "Confidence should be positive (got {})",
+            p.confidence
+        );
+        assert!(
+            p.confidence <= 1.0,
+            "Confidence should be <= 1.0 (got {})",
+            p.confidence
+        );
+        assert!(
+            p.avg_quality > 0.0,
+            "Average quality should be positive (got {})",
+            p.avg_quality
+        );
     }
 }
 
@@ -4963,8 +5300,13 @@ fn mutation_pattern_aggressive_detection() {
     }
     let storage = make_populated_storage(vec![ep]);
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_aggressive = patterns.iter().any(|p| p.pattern == PlaystylePattern::Aggressive);
-    assert!(has_aggressive, "High damage dealt + taken should detect Aggressive");
+    let has_aggressive = patterns
+        .iter()
+        .any(|p| p.pattern == PlaystylePattern::Aggressive);
+    assert!(
+        has_aggressive,
+        "High damage dealt + taken should detect Aggressive"
+    );
 }
 
 #[test]
@@ -4979,7 +5321,9 @@ fn mutation_pattern_cautious_detection() {
     }
     let storage = make_populated_storage(vec![ep]);
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_cautious = patterns.iter().any(|p| p.pattern == PlaystylePattern::Cautious);
+    let has_cautious = patterns
+        .iter()
+        .any(|p| p.pattern == PlaystylePattern::Cautious);
     assert!(has_cautious, "Low damage/resources should detect Cautious");
 }
 
@@ -4994,8 +5338,13 @@ fn mutation_pattern_efficient_detection() {
     }
     let storage = make_populated_storage(vec![ep]);
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_efficient = patterns.iter().any(|p| p.pattern == PlaystylePattern::Efficient);
-    assert!(has_efficient, "High success + short duration should detect Efficient");
+    let has_efficient = patterns
+        .iter()
+        .any(|p| p.pattern == PlaystylePattern::Efficient);
+    assert!(
+        has_efficient,
+        "High success + short duration should detect Efficient"
+    );
 }
 
 #[test]
@@ -5008,8 +5357,13 @@ fn mutation_pattern_quest_efficient() {
     }
     let storage = make_populated_storage(vec![ep]);
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_efficient = patterns.iter().any(|p| p.pattern == PlaystylePattern::Efficient);
-    assert!(has_efficient, "Quest with short duration should detect Efficient");
+    let has_efficient = patterns
+        .iter()
+        .any(|p| p.pattern == PlaystylePattern::Efficient);
+    assert!(
+        has_efficient,
+        "Quest with short duration should detect Efficient"
+    );
 }
 
 #[test]
@@ -5026,9 +5380,21 @@ fn mutation_pattern_action_sequence_frequency() {
     // With repeated similar episodes, should find some action sequences
     if !patterns.is_empty() {
         for p in &patterns {
-            assert!(p.frequency >= 2, "Sequence frequency should be >= 2 (got {})", p.frequency);
-            assert!(p.avg_effectiveness > 0.0, "Avg effectiveness should be > 0 (got {})", p.avg_effectiveness);
-            assert!(p.avg_effectiveness <= 1.0, "Avg effectiveness should be <= 1 (got {})", p.avg_effectiveness);
+            assert!(
+                p.frequency >= 2,
+                "Sequence frequency should be >= 2 (got {})",
+                p.frequency
+            );
+            assert!(
+                p.avg_effectiveness > 0.0,
+                "Avg effectiveness should be > 0 (got {})",
+                p.avg_effectiveness
+            );
+            assert!(
+                p.avg_effectiveness <= 1.0,
+                "Avg effectiveness should be <= 1 (got {})",
+                p.avg_effectiveness
+            );
         }
     }
 }
@@ -5065,9 +5431,17 @@ fn mutation_preference_category_pref_arithmetic() {
     }
     let profile = builder.build_profile(&storage).unwrap();
     assert!(profile.episode_count >= 10);
-    if let Some(pref) = profile.preferred_categories.get(&EpisodeCategory::Combat).copied() {
+    if let Some(pref) = profile
+        .preferred_categories
+        .get(&EpisodeCategory::Combat)
+        .copied()
+    {
         assert!(pref > 0.0, "Combat preference should be > 0 (got {})", pref);
-        assert!(pref <= 1.0, "Combat preference should be <= 1 (got {})", pref);
+        assert!(
+            pref <= 1.0,
+            "Combat preference should be <= 1 (got {})",
+            pref
+        );
     }
 }
 
@@ -5083,10 +5457,22 @@ fn mutation_preference_learning_confidence_formula() {
         storage.store_memory(&memory).unwrap();
     }
     let profile = builder.build_profile(&storage).unwrap();
-    assert!(profile.learning_confidence > 0.0, "Learning confidence should be > 0 (got {})", profile.learning_confidence);
-    assert!(profile.learning_confidence <= 1.0, "Learning confidence should be <= 1 (got {})", profile.learning_confidence);
+    assert!(
+        profile.learning_confidence > 0.0,
+        "Learning confidence should be > 0 (got {})",
+        profile.learning_confidence
+    );
+    assert!(
+        profile.learning_confidence <= 1.0,
+        "Learning confidence should be <= 1 (got {})",
+        profile.learning_confidence
+    );
     // With 20 episodes, confidence should be moderate
-    assert!(profile.learning_confidence > 0.2, "With 20 episodes, confidence should be > 0.2 (got {})", profile.learning_confidence);
+    assert!(
+        profile.learning_confidence > 0.2,
+        "With 20 episodes, confidence should be > 0.2 (got {})",
+        profile.learning_confidence
+    );
 }
 
 #[test]
@@ -5111,7 +5497,10 @@ fn mutation_preference_convergence_true_path() {
     let is_converged = builder.is_converged(&profile);
     // With 50 diverse episodes and high quality, should be converged
     // Note: is_converged just returns profile.converged
-    assert_eq!(is_converged, profile.converged, "is_converged should match profile.converged");
+    assert_eq!(
+        is_converged, profile.converged,
+        "is_converged should match profile.converged"
+    );
 }
 
 #[test]
@@ -5128,9 +5517,21 @@ fn mutation_preference_optimal_response_boundary() {
     let profile = builder.build_profile(&storage).unwrap();
     // Optimal responses should have action types that appeared >= 3 times
     for (_, pref) in &profile.optimal_responses {
-        assert!(pref.sample_count >= 3, "Should only include actions with >= 3 samples (got {})", pref.sample_count);
-        assert!(pref.avg_effectiveness > 0.0, "Effectiveness should be > 0 (got {})", pref.avg_effectiveness);
-        assert!(pref.positive_response_rate >= 0.0, "Response rate >= 0 (got {})", pref.positive_response_rate);
+        assert!(
+            pref.sample_count >= 3,
+            "Should only include actions with >= 3 samples (got {})",
+            pref.sample_count
+        );
+        assert!(
+            pref.avg_effectiveness > 0.0,
+            "Effectiveness should be > 0 (got {})",
+            pref.avg_effectiveness
+        );
+        assert!(
+            pref.positive_response_rate >= 0.0,
+            "Response rate >= 0 (got {})",
+            pref.positive_response_rate
+        );
     }
 }
 
@@ -5148,8 +5549,16 @@ fn mutation_preference_predict_satisfaction() {
     let profile = builder.build_profile(&storage).unwrap();
     // Predict for a known action type
     let satisfaction = builder.predict_satisfaction(&profile, "support");
-    assert!(satisfaction >= 0.0, "Satisfaction should be >= 0 (got {})", satisfaction);
-    assert!(satisfaction <= 1.0, "Satisfaction should be <= 1 (got {})", satisfaction);
+    assert!(
+        satisfaction >= 0.0,
+        "Satisfaction should be >= 0 (got {})",
+        satisfaction
+    );
+    assert!(
+        satisfaction <= 1.0,
+        "Satisfaction should be <= 1 (got {})",
+        satisfaction
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -5167,10 +5576,20 @@ fn mutation_validator_validate_with_sufficient_data() {
         memory.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&memory).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // With enough data, should get a definitive result (not uncertain)
-    assert!(result.confidence > 0.0, "Confidence should be > 0 (got {})", result.confidence);
-    assert!(result.confidence <= 1.0, "Confidence should be <= 1 (got {})", result.confidence);
+    assert!(
+        result.confidence > 0.0,
+        "Confidence should be > 0 (got {})",
+        result.confidence
+    );
+    assert!(
+        result.confidence <= 1.0,
+        "Confidence should be <= 1 (got {})",
+        result.confidence
+    );
 }
 
 #[test]
@@ -5184,7 +5603,9 @@ fn mutation_validator_confidence_violation_penalty() {
         memory.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&memory).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // With very high threshold and low quality data, should be invalid or have warnings
     // The exact behavior depends on violations but confidence should be affected
     assert!(result.confidence <= 1.0);
@@ -5201,7 +5622,9 @@ fn mutation_validator_suggest_alternatives_content() {
         memory.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&memory).unwrap();
     }
-    let result = validator.validate_action("unknown_action", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("unknown_action", "combat", &storage)
+        .unwrap();
     // If invalid, alternatives should be from optimal_responses with decent scores
     if !result.valid {
         for alt in &result.alternatives {
@@ -5226,8 +5649,14 @@ fn mutation_validator_stats_arithmetic() {
     let _ = validator.validate_action("support", "combat", &storage);
     let _ = validator.validate_action("attack", "combat", &storage);
     let stats = validator.get_stats();
-    assert_eq!(stats.total_validations, stats.valid_count + stats.invalid_count,
-        "total should equal valid + invalid: {} != {} + {}", stats.total_validations, stats.valid_count, stats.invalid_count);
+    assert_eq!(
+        stats.total_validations,
+        stats.valid_count + stats.invalid_count,
+        "total should equal valid + invalid: {} != {} + {}",
+        stats.total_validations,
+        stats.valid_count,
+        stats.invalid_count
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -5239,10 +5668,21 @@ fn mutation_dynamic_get_all_weights_not_empty() {
     // get_all_weights returns actual weights, not empty (catches L246 → HashMap::new())
     let manager = AdaptiveWeightManager::new();
     let weights = manager.get_all_weights();
-    assert!(!weights.is_empty(), "get_all_weights should return non-empty map");
-    assert!(weights.len() >= 4, "Should have at least 4 node types (got {})", weights.len());
+    assert!(
+        !weights.is_empty(),
+        "get_all_weights should return non-empty map"
+    );
+    assert!(
+        weights.len() >= 4,
+        "Should have at least 4 node types (got {})",
+        weights.len()
+    );
     for (_, w) in &weights {
-        assert!((*w - 0.5).abs() < 0.01, "Default weight should be 0.5 (got {})", w);
+        assert!(
+            (*w - 0.5).abs() < 0.01,
+            "Default weight should be 0.5 (got {})",
+            w
+        );
     }
 }
 
@@ -5277,7 +5717,7 @@ fn mutation_dynamic_pattern_bonus_arithmetic() {
     }
 
     let _ = manager.update_from_profile(&storage); // May fail if no patterns but that's ok
-    // After update, weights should change if patterns were detected
+                                                   // After update, weights should change if patterns were detected
     let after = manager.get_weight(BehaviorNodeType::Combat);
     // Weight should at least not be negative or > 1.0
     assert!(after >= 0.0, "Weight should be >= 0 (got {})", after);
@@ -5300,10 +5740,18 @@ fn mutation_dynamic_effectiveness_bonus() {
     let _ = manager.update_from_profile(&storage);
     let after = manager.get_weight(BehaviorNodeType::Combat);
     // Weight should be reasonable
-    assert!(after >= 0.0 && after <= 1.0, "Weight should be in [0,1] (got {})", after);
+    assert!(
+        after >= 0.0 && after <= 1.0,
+        "Weight should be in [0,1] (got {})",
+        after
+    );
     // Details should show non-negative bonuses
     if let Some(details) = manager.get_weight_details(BehaviorNodeType::Combat) {
-        assert!(details.effectiveness_bonus >= 0.0, "Effectiveness bonus should be >= 0 (got {})", details.effectiveness_bonus);
+        assert!(
+            details.effectiveness_bonus >= 0.0,
+            "Effectiveness bonus should be >= 0 (got {})",
+            details.effectiveness_bonus
+        );
     }
 }
 
@@ -5327,7 +5775,11 @@ fn mutation_storage_prune_returns_count() {
     // Prune memories older than 50 days — should delete 2
     let before_ts = (Utc::now() - Duration::days(50)).timestamp();
     let deleted = storage.prune_old(before_ts).unwrap();
-    assert_eq!(deleted, 2, "Should delete exactly 2 old memories (got {})", deleted);
+    assert_eq!(
+        deleted, 2,
+        "Should delete exactly 2 old memories (got {})",
+        deleted
+    );
 }
 
 #[test]
@@ -5335,24 +5787,52 @@ fn mutation_storage_parse_all_memory_types() {
     // Store and retrieve each memory type (catches L339-345 match arm deletions)
     let mut storage = MemoryStorage::in_memory().unwrap();
     let types_and_memories = vec![
-        (MemoryType::Sensory, Memory::sensory("sensory test".to_string(), None)),
-        (MemoryType::Working, Memory::working("working test".to_string())),
-        (MemoryType::Episodic, Memory::episodic("episodic test".to_string(), vec![], None)),
-        (MemoryType::Semantic, Memory::semantic("semantic test".to_string(), "concept".to_string())),
-        (MemoryType::Procedural, Memory::procedural("procedural test".to_string(), "skill".to_string())),
-        (MemoryType::Emotional, Memory::emotional("emotional test".to_string(), "happy".to_string(), 0.8)),
-        (MemoryType::Social, Memory::social("social test".to_string(), vec!["alice".to_string()])),
+        (
+            MemoryType::Sensory,
+            Memory::sensory("sensory test".to_string(), None),
+        ),
+        (
+            MemoryType::Working,
+            Memory::working("working test".to_string()),
+        ),
+        (
+            MemoryType::Episodic,
+            Memory::episodic("episodic test".to_string(), vec![], None),
+        ),
+        (
+            MemoryType::Semantic,
+            Memory::semantic("semantic test".to_string(), "concept".to_string()),
+        ),
+        (
+            MemoryType::Procedural,
+            Memory::procedural("procedural test".to_string(), "skill".to_string()),
+        ),
+        (
+            MemoryType::Emotional,
+            Memory::emotional("emotional test".to_string(), "happy".to_string(), 0.8),
+        ),
+        (
+            MemoryType::Social,
+            Memory::social("social test".to_string(), vec!["alice".to_string()]),
+        ),
     ];
     for (expected_type, memory) in &types_and_memories {
         storage.store_memory(memory).unwrap();
         let retrieved = storage.get_memory(&memory.id).unwrap().unwrap();
-        assert_eq!(&retrieved.memory_type, expected_type,
-            "Retrieved type {:?} should match stored type {:?}", retrieved.memory_type, expected_type);
+        assert_eq!(
+            &retrieved.memory_type, expected_type,
+            "Retrieved type {:?} should match stored type {:?}",
+            retrieved.memory_type, expected_type
+        );
     }
     // Verify count for each type
     for (mt, _) in &types_and_memories {
         let count = storage.count_by_type(mt.clone()).unwrap();
-        assert_eq!(count, 1, "Should have exactly 1 {:?} memory (got {})", mt, count);
+        assert_eq!(
+            count, 1,
+            "Should have exactly 1 {:?} memory (got {})",
+            mt, count
+        );
     }
 }
 
@@ -5360,7 +5840,9 @@ fn mutation_storage_parse_all_memory_types() {
 fn mutation_storage_optimize_runs() {
     // Optimize should actually run SQL, not just Ok(()) (catches L352 → Ok(()))
     let mut storage = MemoryStorage::in_memory().unwrap();
-    storage.store_memory(&Memory::sensory("test".to_string(), None)).unwrap();
+    storage
+        .store_memory(&Memory::sensory("test".to_string(), None))
+        .unwrap();
     // Optimize should succeed and DB should still be queryable
     storage.optimize().unwrap();
     let count = storage.count_memories().unwrap();
@@ -5380,7 +5862,10 @@ fn mutation_sharing_summary_length_ratio() {
         ..SharingConfig::default()
     };
     let mut engine = SharingEngine::new(config);
-    let long_text = (0..90).map(|i| format!("word{}", i)).collect::<Vec<_>>().join(" ");
+    let long_text = (0..90)
+        .map(|i| format!("word{}", i))
+        .collect::<Vec<_>>()
+        .join(" ");
     let m = Memory::sensory(long_text, None);
     let request = ShareRequest {
         memory_id: m.id.clone(),
@@ -5390,16 +5875,32 @@ fn mutation_sharing_summary_length_ratio() {
         conditions: vec![],
     };
     let result = engine.share_memory(&request, &m, "requester").unwrap();
-    assert!(result.success, "Sharing should succeed: {:?}", result.error_message);
-    let sc = result.shared_content.expect("Should have shared content when success=true");
+    assert!(
+        result.success,
+        "Sharing should succeed: {:?}",
+        result.error_message
+    );
+    let sc = result
+        .shared_content
+        .expect("Should have shared content when success=true");
     let summary_words = sc.content.split_whitespace().count();
     // Summary length = (words/3).max(10) = 90/3 = 30, +1 for "[...]" = 31
-    assert!(summary_words >= 15, "Summary should have >= 15 words (got {}): {}", summary_words, sc.content);
-    assert!(summary_words <= 60, "Summary should have <= 60 words (got {}): {}", summary_words, sc.content);
+    assert!(
+        summary_words >= 15,
+        "Summary should have >= 15 words (got {}): {}",
+        summary_words,
+        sc.content
+    );
+    assert!(
+        summary_words <= 60,
+        "Summary should have <= 60 words (got {}): {}",
+        summary_words,
+        sc.content
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SECTION 46: Round 3 — Stub-catching tests  
+// SECTION 46: Round 3 — Stub-catching tests
 // These target mutations that replace entire function bodies with stubs
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -5418,7 +5919,10 @@ fn mutation_is_converged_returns_false_when_insufficient() {
     }
     let profile = builder.build_profile(&storage).unwrap();
     // With only 2 episodes, should NOT be converged
-    assert!(!profile.converged, "Profile with only 2 episodes should not be converged");
+    assert!(
+        !profile.converged,
+        "Profile with only 2 episodes should not be converged"
+    );
 }
 
 #[test]
@@ -5433,9 +5937,15 @@ fn mutation_confidence_not_always_one() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // Confidence should not be 1.0 when there are violations and low quality data
-    assert!(result.confidence < 0.99, "Confidence should be < 1.0 with violations (got {})", result.confidence);
+    assert!(
+        result.confidence < 0.99,
+        "Confidence should be < 1.0 with violations (got {})",
+        result.confidence
+    );
 }
 
 #[test]
@@ -5458,10 +5968,15 @@ fn mutation_suggest_alternatives_not_empty() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("totally_unknown_action_xyz", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("totally_unknown_action_xyz", "combat", &storage)
+        .unwrap();
     // With strict profile_alignment rule violated, should be invalid with alternatives
     if !result.valid {
-        assert!(!result.alternatives.is_empty(), "Should suggest alternatives when action is invalid and good alternatives exist");
+        assert!(
+            !result.alternatives.is_empty(),
+            "Should suggest alternatives when action is invalid and good alternatives exist"
+        );
     }
 }
 
@@ -5493,7 +6008,11 @@ fn mutation_associated_memories_not_empty() {
     let results = engine.retrieve(&context, &[m1, m2]).unwrap();
     // Should return both m1 (direct match) and m2 (through association)
     let has_m2 = results.iter().any(|r| r.memory.id == m2_id);
-    assert!(results.len() >= 2, "Should retrieve associated memory too (got {} results)", results.len());
+    assert!(
+        results.len() >= 2,
+        "Should retrieve associated memory too (got {} results)",
+        results.len()
+    );
     assert!(has_m2, "Associated memory m2 should be in results");
 }
 
@@ -5505,7 +6024,11 @@ fn mutation_effectiveness_bonuses_change_weights() {
     // Create a diverse profile with strong preferences
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..30 {
-        let cat = if i % 3 == 0 { EpisodeCategory::Combat } else { EpisodeCategory::Exploration };
+        let cat = if i % 3 == 0 {
+            EpisodeCategory::Combat
+        } else {
+            EpisodeCategory::Exploration
+        };
         let ep = make_test_episode(cat, if i % 3 == 0 { 0.95 } else { 0.2 });
         let mut m = Memory::episodic(format!("eff_bonus_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -5518,9 +6041,13 @@ fn mutation_effectiveness_bonuses_change_weights() {
     let combat_after = manager.get_weight(BehaviorNodeType::Combat);
     let explore_after = manager.get_weight(BehaviorNodeType::Exploration);
     // At least one weight should change
-    let any_changed = (combat_after - combat_before).abs() > 0.001 || (explore_after - explore_before).abs() > 0.001;
-    assert!(any_changed, "Weights should change after update_from_profile: combat {}->{}, explore {}->{}",
-        combat_before, combat_after, explore_before, explore_after);
+    let any_changed = (combat_after - combat_before).abs() > 0.001
+        || (explore_after - explore_before).abs() > 0.001;
+    assert!(
+        any_changed,
+        "Weights should change after update_from_profile: combat {}->{}, explore {}->{}",
+        combat_before, combat_after, explore_before, explore_after
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -5575,8 +6102,11 @@ fn mutation_temporal_score_negative_exponent() {
         // With correct formula, temporal score should be exp(-29/7) ≈ 0.016, very low
         // With deleted negative, exp(29/7) ≈ 62.8, very high
         // Final relevance should be low for distant memories
-        assert!(results[0].relevance_score < 0.5,
-            "Far-from-window memory should have low relevance (got {})", results[0].relevance_score);
+        assert!(
+            results[0].relevance_score < 0.5,
+            "Far-from-window memory should have low relevance (got {})",
+            results[0].relevance_score
+        );
     }
 }
 
@@ -5593,21 +6123,30 @@ fn mutation_validator_delete_not_has_optimal() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // "support" SHOULD be found in optimal_responses if episodes have it
     // With ! deleted, having it in optimal would CAUSE a violation (wrong)
     // The test should check that a known action doesn't cause profile_alignment violations
     if result.valid {
-        assert!(result.confidence > 0.2, "Valid result should have reasonable confidence");
+        assert!(
+            result.confidence > 0.2,
+            "Valid result should have reasonable confidence"
+        );
     }
     // Also test an unknown action — should NOT be valid (profile_alignment violation)
-    let result2 = validator.validate_action("xyzzy_nonexistent", "combat", &storage).unwrap();
-    assert!(!result2.reasons.is_empty() || result2.valid,
-        "Unknown action should trigger warnings or profile alignment check");
+    let result2 = validator
+        .validate_action("xyzzy_nonexistent", "combat", &storage)
+        .unwrap();
+    assert!(
+        !result2.reasons.is_empty() || result2.valid,
+        "Unknown action should trigger warnings or profile alignment check"
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SECTION 48: Round 3 — Arithmetic precision tests  
+// SECTION 48: Round 3 — Arithmetic precision tests
 // ════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -5622,8 +6161,16 @@ fn mutation_compression_estimate_size_exact() {
     let stats = engine.get_compression_stats(&[m.clone()]);
     // Each += adds to size; if -= subtracts, size would be negative or much smaller
     // If *= multiplies, result depends on previous size
-    assert!(stats.average_size_bytes >= 11, "Size should be >= 11 (text 5 + tag 6), got {}", stats.average_size_bytes);
-    assert!(stats.average_size_bytes < 200, "Size should be < 200, got {}", stats.average_size_bytes);
+    assert!(
+        stats.average_size_bytes >= 11,
+        "Size should be >= 11 (text 5 + tag 6), got {}",
+        stats.average_size_bytes
+    );
+    assert!(
+        stats.average_size_bytes < 200,
+        "Size should be < 200, got {}",
+        stats.average_size_bytes
+    );
 }
 
 #[test]
@@ -5633,14 +6180,22 @@ fn mutation_compression_size_with_two_tags() {
     let engine = CompressionEngine::new(config);
     let mut m1 = Memory::sensory("test".to_string(), None);
     let mut m2 = Memory::sensory("test".to_string(), None);
-    m2.metadata.tags.push("tag_alpha".to_string());  // 9 bytes
-    m2.metadata.tags.push("tag_bravo".to_string());  // 9 bytes
+    m2.metadata.tags.push("tag_alpha".to_string()); // 9 bytes
+    m2.metadata.tags.push("tag_bravo".to_string()); // 9 bytes
     let stats1 = engine.get_compression_stats(&[m1]);
     let stats2 = engine.get_compression_stats(&[m2]);
     // m2 should be 18 bytes larger than m1 (two tags)
     let diff = stats2.average_size_bytes as i64 - stats1.average_size_bytes as i64;
-    assert!(diff > 10, "Two tags should add ~18 bytes, got diff {}", diff);
-    assert!(diff < 50, "Tags shouldn't add more than ~50 bytes, got diff {}", diff);
+    assert!(
+        diff > 10,
+        "Two tags should add ~18 bytes, got diff {}",
+        diff
+    );
+    assert!(
+        diff < 50,
+        "Tags shouldn't add more than ~50 bytes, got diff {}",
+        diff
+    );
 }
 
 #[test]
@@ -5654,7 +6209,11 @@ fn mutation_compression_size_associations_multiply() {
     m.add_association("id2".to_string(), AssociationType::Temporal, 0.5);
     let stats = engine.get_compression_stats(&[m]);
     // 2 associations * 64 = 128 bytes + text (4) = 132
-    assert!(stats.average_size_bytes >= 100, "With 2 associations, size should be >= 100 (got {})", stats.average_size_bytes);
+    assert!(
+        stats.average_size_bytes >= 100,
+        "With 2 associations, size should be >= 100 (got {})",
+        stats.average_size_bytes
+    );
 }
 
 #[test]
@@ -5670,7 +6229,11 @@ fn mutation_compression_stats_division_exact() {
     assert_eq!(stats.total_memories, 3);
     // avg = total_size / 3
     // If / → *, avg = total_size * 3 (massive number)
-    assert!(stats.average_size_bytes < 100, "Avg size of tiny memories should be < 100 (got {})", stats.average_size_bytes);
+    assert!(
+        stats.average_size_bytes < 100,
+        "Avg size of tiny memories should be < 100 (got {})",
+        stats.average_size_bytes
+    );
 }
 
 #[test]
@@ -5680,11 +6243,14 @@ fn mutation_compression_text_word_division() {
     let config = CompressionConfig {
         min_age_days: 0.0,
         importance_threshold: 1.0,
-        max_compression_ratio: 0.3, // 30% 
+        max_compression_ratio: 0.3, // 30%
         preserve_emotional_context: false,
     };
     let engine = CompressionEngine::new(config);
-    let text = (0..30).map(|i| format!("word{}", i)).collect::<Vec<_>>().join(" ");
+    let text = (0..30)
+        .map(|i| format!("word{}", i))
+        .collect::<Vec<_>>()
+        .join(" ");
     let mut m = Memory::sensory(text, None);
     m.metadata.created_at = Utc::now() - Duration::days(10);
     m.metadata.importance = 0.1;
@@ -5693,9 +6259,20 @@ fn mutation_compression_text_word_division() {
     let words = memories[0].content.text.split_whitespace().count();
     // With /: first_part=10, last_part=10-10=0, so ~11 words (10 + "[...]")
     // With %: first_part=30%3=0, last_part=10-0=10, very different structure!
-    assert!(words >= 5, "Compressed should have >= 5 words (got {})", words);
-    assert!(words <= 20, "Compressed should have <= 20 words (got {})", words);
-    assert!(memories[0].content.text.contains("[...]"), "Should contain [...] marker");
+    assert!(
+        words >= 5,
+        "Compressed should have >= 5 words (got {})",
+        words
+    );
+    assert!(
+        words <= 20,
+        "Compressed should have <= 20 words (got {})",
+        words
+    );
+    assert!(
+        memories[0].content.text.contains("[...]"),
+        "Should contain [...] marker"
+    );
 }
 
 #[test]
@@ -5719,14 +6296,21 @@ fn mutation_retrieval_relevance_score_additive() {
         location: None,
         recent_memory_ids: vec![],
         preferred_types: vec![],
-        time_window: Some(TimeWindow { start: now - Duration::days(1), end: now + Duration::days(1) }),
+        time_window: Some(TimeWindow {
+            start: now - Duration::days(1),
+            end: now + Duration::days(1),
+        }),
         limit: 10,
     };
     let results = engine.retrieve(&context, &[m]).unwrap();
     assert!(!results.is_empty(), "Should retrieve the matching memory");
     // With correct addition: relevance = semantic*0.4 + temporal*0.3 + ... should be high
     // With subtraction: relevance would be negative or very low
-    assert!(results[0].relevance_score > 0.3, "Relevance should be > 0.3 with perfect match (got {})", results[0].relevance_score);
+    assert!(
+        results[0].relevance_score > 0.3,
+        "Relevance should be > 0.3 with perfect match (got {})",
+        results[0].relevance_score
+    );
 }
 
 #[test]
@@ -5743,14 +6327,21 @@ fn mutation_retrieval_temporal_within_window_score() {
         location: None,
         recent_memory_ids: vec![],
         preferred_types: vec![],
-        time_window: Some(TimeWindow { start: now - Duration::days(1), end: now }),
+        time_window: Some(TimeWindow {
+            start: now - Duration::days(1),
+            end: now,
+        }),
         limit: 10,
     };
     let results = engine.retrieve(&context, &[m]).unwrap();
     assert!(!results.is_empty(), "Should find memory within window");
     // If >= becomes < or <= becomes >, memory won't be detected as within window
     // and will get a much lower temporal score
-    assert!(results[0].relevance_score > 0.3, "Within-window memory should have decent score (got {})", results[0].relevance_score);
+    assert!(
+        results[0].relevance_score > 0.3,
+        "Within-window memory should have decent score (got {})",
+        results[0].relevance_score
+    );
 }
 
 #[test]
@@ -5763,7 +6354,10 @@ fn mutation_retrieval_recency_score_division() {
     // Score = (1.0 + 1.0) / 2.0 = 1.0
     // If / → *: (2.0) * 2.0 = 4.0 (way over 1.0, but might be clamped)
     // If / → %: 2.0 % 2.0 = 0.0
-    let engine = RetrievalEngine::new(RetrievalConfig { recency_boost: true, ..RetrievalConfig::default() });
+    let engine = RetrievalEngine::new(RetrievalConfig {
+        recency_boost: true,
+        ..RetrievalConfig::default()
+    });
     let now = Utc::now();
     let mut m = Memory::sensory("fresh memory".to_string(), None);
     m.metadata.created_at = now;
@@ -5780,7 +6374,11 @@ fn mutation_retrieval_recency_score_division() {
     let results = engine.retrieve(&context, &[m]).unwrap();
     assert!(!results.is_empty(), "Should find fresh memory");
     // Fresh memory should have maximum recency contribution
-    assert!(results[0].relevance_score > 0.3, "Brand-new memory should have high relevance (got {})", results[0].relevance_score);
+    assert!(
+        results[0].relevance_score > 0.3,
+        "Brand-new memory should have high relevance (got {})",
+        results[0].relevance_score
+    );
 }
 
 #[test]
@@ -5821,13 +6419,20 @@ fn mutation_forgetting_importance_modifier_formula() {
     let mut mems_high = vec![m_high];
     engine.apply_forgetting(&mut mems_low).unwrap();
     engine.apply_forgetting(&mut mems_high).unwrap();
-    assert!(!mems_low.is_empty() && !mems_high.is_empty(), "Both should survive 7-day decay");
+    assert!(
+        !mems_low.is_empty() && !mems_high.is_empty(),
+        "Both should survive 7-day decay"
+    );
     let ratio = mems_high[0].metadata.strength / mems_low[0].metadata.strength;
     // High importance should have ~1.5x the strength of low importance
     // Low: modifier = 1.0 + (0.1-0.5)*0.5 = 0.8
     // High: modifier = 1.0 + (0.9-0.5)*0.5 = 1.2
     // Ratio: 1.2/0.8 = 1.5
-    assert!(ratio > 1.1, "High importance should have > 1.1x strength (ratio {})", ratio);
+    assert!(
+        ratio > 1.1,
+        "High importance should have > 1.1x strength (ratio {})",
+        ratio
+    );
     assert!(ratio < 3.0, "Ratio should be < 3.0 (got {})", ratio);
 }
 
@@ -5862,13 +6467,19 @@ fn mutation_forgetting_access_count_boundary_one() {
     // With count=2, access modifier > 1.0
     assert!(!mems0.is_empty() && !mems1.is_empty() && !mems2.is_empty());
     // Count 0 and 1 should have similar/identical strength (neither triggers modifier)
-    assert!((mems0[0].metadata.strength - mems1[0].metadata.strength).abs() < 0.15,
+    assert!(
+        (mems0[0].metadata.strength - mems1[0].metadata.strength).abs() < 0.15,
         "Count 0 ({}) and 1 ({}) should have similar strength",
-        mems0[0].metadata.strength, mems1[0].metadata.strength);
+        mems0[0].metadata.strength,
+        mems1[0].metadata.strength
+    );
     // Count 2 should have higher strength than count 0 (spaced repetition kicks in)
-    assert!(mems2[0].metadata.strength > mems0[0].metadata.strength,
+    assert!(
+        mems2[0].metadata.strength > mems0[0].metadata.strength,
         "Count 2 ({}) should be stronger than count 0 ({})",
-        mems2[0].metadata.strength, mems0[0].metadata.strength);
+        mems2[0].metadata.strength,
+        mems0[0].metadata.strength
+    );
 }
 
 #[test]
@@ -5888,8 +6499,17 @@ fn mutation_forgetting_half_life_access_count_one() {
     // With >= 1: would activate at count=1 too
     // Base: 14.0 * 1.0 * (0.5+0.5) = 14.0 for count <= 1
     // At count=2: 14.0 * (1 + ln(2)*0.5) * 1.0 = 14.0 * 1.347 = 18.85
-    assert!((hl1 - 14.0).abs() < 1.0, "Half life with access_count=1 should be ~14.0 (got {})", hl1);
-    assert!(hl2 > hl1, "Half life with access_count=2 ({}) should be > with count=1 ({})", hl2, hl1);
+    assert!(
+        (hl1 - 14.0).abs() < 1.0,
+        "Half life with access_count=1 should be ~14.0 (got {})",
+        hl1
+    );
+    assert!(
+        hl2 > hl1,
+        "Half life with access_count=2 ({}) should be > with count=1 ({})",
+        hl2,
+        hl1
+    );
 }
 
 #[test]
@@ -5938,17 +6558,32 @@ fn mutation_consolidation_conceptual_similarity_division() {
     // "a b c d e" and "a b c x y" → 3 common out of 5 total = 0.6 overlap
     let mut memories = vec![
         make_timed_memory("alpha bravo charlie delta echo", now, None, vec![]),
-        make_timed_memory("alpha bravo charlie xray yankee", now - Duration::days(60), None, vec![]),
+        make_timed_memory(
+            "alpha bravo charlie xray yankee",
+            now - Duration::days(60),
+            None,
+            vec![],
+        ),
     ];
     engine.consolidate(&mut memories).unwrap();
     // Check for conceptual association
-    let conceptual = memories[0].associations.iter()
+    let conceptual = memories[0]
+        .associations
+        .iter()
         .find(|a| matches!(a.association_type, AssociationType::Conceptual));
     // With correct / : similarity = 3/5 * weight + type_match + base = reasonable (0.3-0.9)
     // With * instead of / : similarity = 3*5 * weight = 15 * weight = way too high
     if let Some(assoc) = conceptual {
-        assert!(assoc.strength < 1.5, "Conceptual strength should be < 1.5 (got {})", assoc.strength);
-        assert!(assoc.strength > 0.1, "Conceptual strength should be > 0.1 (got {})", assoc.strength);
+        assert!(
+            assoc.strength < 1.5,
+            "Conceptual strength should be < 1.5 (got {})",
+            assoc.strength
+        );
+        assert!(
+            assoc.strength > 0.1,
+            "Conceptual strength should be > 0.1 (got {})",
+            assoc.strength
+        );
     }
 }
 
@@ -5976,15 +6611,23 @@ fn mutation_dynamic_weighting_pattern_division() {
     // After pattern application, weights should be reasonable (0-1 range)
     // If / → *, bonus would be astronomical, but clamped by min()
     for (node_type, weight) in manager.get_all_weights() {
-        assert!(weight >= 0.0 && weight <= 1.0,
-            "Weight for {:?} should be in [0,1] (got {})", node_type, weight);
+        assert!(
+            weight >= 0.0 && weight <= 1.0,
+            "Weight for {:?} should be in [0,1] (got {})",
+            node_type,
+            weight
+        );
     }
     // Check that pattern_bonus is not zero (pattern was detected and applied)
     if let Some(details) = manager.get_weight_details(BehaviorNodeType::Combat) {
         // With / → %: if confidence * max_bonus < len, result would be the full value
         // Both * and % produce different results than /, but they're clamped
         // The key is that SOME bonus was applied
-        assert!(details.pattern_bonus >= 0.0, "Pattern bonus should be >= 0 (got {})", details.pattern_bonus);
+        assert!(
+            details.pattern_bonus >= 0.0,
+            "Pattern bonus should be >= 0 (got {})",
+            details.pattern_bonus
+        );
     }
 }
 
@@ -5997,7 +6640,11 @@ fn mutation_dynamic_effectiveness_division() {
     let mut manager = AdaptiveWeightManager::new();
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..20 {
-        let cat = if i < 15 { EpisodeCategory::Combat } else { EpisodeCategory::Exploration };
+        let cat = if i < 15 {
+            EpisodeCategory::Combat
+        } else {
+            EpisodeCategory::Exploration
+        };
         let ep = make_test_episode(cat, 0.8);
         let mut m = Memory::episodic(format!("eff_div_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -6013,7 +6660,10 @@ fn mutation_dynamic_effectiveness_division() {
     assert!(!all_weights.is_empty(), "Should have weights");
     // At least one weight should differ from default (0.5)
     let any_non_default = all_weights.values().any(|w| (*w - 0.5).abs() > 0.01);
-    assert!(any_non_default, "At least one weight should differ from default 0.5 after effectiveness update");
+    assert!(
+        any_non_default,
+        "At least one weight should differ from default 0.5 after effectiveness update"
+    );
 }
 
 #[test]
@@ -6041,9 +6691,12 @@ fn mutation_dynamic_effectiveness_subtraction() {
     if let (Some(cd), Some(ed)) = (combat_details, explore_details) {
         // Combat should have HIGHER effectiveness bonus than exploration
         // (since combat is strongly preferred)
-        assert!(cd.effectiveness_bonus >= ed.effectiveness_bonus,
+        assert!(
+            cd.effectiveness_bonus >= ed.effectiveness_bonus,
             "Combat effectiveness ({}) should >= Exploration effectiveness ({})",
-            cd.effectiveness_bonus, ed.effectiveness_bonus);
+            cd.effectiveness_bonus,
+            ed.effectiveness_bonus
+        );
     }
 }
 
@@ -6068,10 +6721,25 @@ fn mutation_preference_category_count_accumulation() {
     // preference = 1.0*0.6 + 0.8*0.4 = 0.6 + 0.32 = 0.92
     // With += → *=: count would be 1*1*1... = 1, quality would multiply
     // With += → -=: count would go negative
-    assert!(!profile.preferred_categories.is_empty(), "Should have preferred categories");
-    if let Some(pref) = profile.preferred_categories.get(&EpisodeCategory::Combat).copied() {
-        assert!(pref > 0.5, "Combat preference should be > 0.5 (got {})", pref);
-        assert!(pref <= 1.0, "Combat preference should be <= 1.0 (got {})", pref);
+    assert!(
+        !profile.preferred_categories.is_empty(),
+        "Should have preferred categories"
+    );
+    if let Some(pref) = profile
+        .preferred_categories
+        .get(&EpisodeCategory::Combat)
+        .copied()
+    {
+        assert!(
+            pref > 0.5,
+            "Combat preference should be > 0.5 (got {})",
+            pref
+        );
+        assert!(
+            pref <= 1.0,
+            "Combat preference should be <= 1.0 (got {})",
+            pref
+        );
     }
 }
 
@@ -6083,7 +6751,11 @@ fn mutation_preference_frequency_division() {
     let builder = ProfileBuilder::new();
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..20 {
-        let cat = if i < 15 { EpisodeCategory::Combat } else { EpisodeCategory::Exploration };
+        let cat = if i < 15 {
+            EpisodeCategory::Combat
+        } else {
+            EpisodeCategory::Exploration
+        };
         let ep = make_test_episode(cat, 0.7);
         let mut m = Memory::episodic(format!("freq_div_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -6094,19 +6766,35 @@ fn mutation_preference_frequency_division() {
     // With %: combat freq = 15%20 = 15 (abnormal), explore = 5%20 = 5
     // preference values should be in [0, 1]
     for (cat, pref) in &profile.preferred_categories {
-        assert!(*pref >= 0.0 && *pref <= 1.0,
-            "Preference for {} should be in [0,1] (got {})", cat, pref);
+        assert!(
+            *pref >= 0.0 && *pref <= 1.0,
+            "Preference for {} should be in [0,1] (got {})",
+            cat,
+            pref
+        );
     }
     // Combat preference should be higher than exploration
-    let combat_pref = profile.preferred_categories.get(&EpisodeCategory::Combat).copied().unwrap_or(0.0);
-    let explore_pref = profile.preferred_categories.get(&EpisodeCategory::Exploration).copied().unwrap_or(0.0);
-    assert!(combat_pref > explore_pref,
-        "Combat pref ({}) should be > Exploration pref ({})", combat_pref, explore_pref);
+    let combat_pref = profile
+        .preferred_categories
+        .get(&EpisodeCategory::Combat)
+        .copied()
+        .unwrap_or(0.0);
+    let explore_pref = profile
+        .preferred_categories
+        .get(&EpisodeCategory::Exploration)
+        .copied()
+        .unwrap_or(0.0);
+    assert!(
+        combat_pref > explore_pref,
+        "Combat pref ({}) should be > Exploration pref ({})",
+        combat_pref,
+        explore_pref
+    );
 }
 
 #[test]
 fn mutation_preference_weighted_formula() {
-    // catches preference_profile.rs:145 * → / and + → - and * → + 
+    // catches preference_profile.rs:145 * → / and + → - and * → +
     // preference = (frequency * 0.6 + avg_quality * 0.4).clamp(0,1)
     // With * → /: frequency / 0.6 + avg_quality / 0.4 = much larger
     // With + → -: frequency * 0.6 - avg_quality * 0.4 = could be negative (clamped to 0)
@@ -6122,8 +6810,16 @@ fn mutation_preference_weighted_formula() {
     // Expected: (1.0 * 0.6 + 0.9 * 0.4) = 0.6 + 0.36 = 0.96
     // With + → -: 0.6 - 0.36 = 0.24 (much lower!)
     // With * → /: 1.0/0.6 + 0.9/0.4 = 1.67 + 2.25 = 3.92 → clamped to 1.0
-    let combat_pref = profile.preferred_categories.get(&EpisodeCategory::Combat).copied().unwrap_or(0.0);
-    assert!(combat_pref > 0.7, "Combat preference with 100%% combat and quality 0.9 should be > 0.7 (got {})", combat_pref);
+    let combat_pref = profile
+        .preferred_categories
+        .get(&EpisodeCategory::Combat)
+        .copied()
+        .unwrap_or(0.0);
+    assert!(
+        combat_pref > 0.7,
+        "Combat preference with 100%% combat and quality 0.9 should be > 0.7 (got {})",
+        combat_pref
+    );
 }
 
 #[test]
@@ -6140,11 +6836,17 @@ fn mutation_preference_learning_confidence_division() {
     }
     let profile = builder.build_profile(&storage).unwrap();
     // learning_confidence should be in [0, 1]
-    assert!(profile.learning_confidence >= 0.0 && profile.learning_confidence <= 1.0,
-        "Learning confidence should be in [0,1] (got {})", profile.learning_confidence);
+    assert!(
+        profile.learning_confidence >= 0.0 && profile.learning_confidence <= 1.0,
+        "Learning confidence should be in [0,1] (got {})",
+        profile.learning_confidence
+    );
     // With sufficient episodes (15), confidence should be moderate to high
-    assert!(profile.learning_confidence > 0.2,
-        "With 15 episodes, confidence should be > 0.2 (got {})", profile.learning_confidence);
+    assert!(
+        profile.learning_confidence > 0.2,
+        "With 15 episodes, confidence should be > 0.2 (got {})",
+        profile.learning_confidence
+    );
 }
 
 #[test]
@@ -6162,9 +6864,12 @@ fn mutation_preference_delete_not_converged() {
     let profile = builder.build_profile(&storage).unwrap();
     // With only 3 episodes, should NOT converge
     // With delete !, the negation would be removed in the confidence check
-    assert!(!profile.converged || profile.episode_count < 5,
+    assert!(
+        !profile.converged || profile.episode_count < 5,
         "Profile with 3 episodes should not be converged (got converged={}, count={})",
-        profile.converged, profile.episode_count);
+        profile.converged,
+        profile.episode_count
+    );
 }
 
 #[test]
@@ -6179,7 +6884,9 @@ fn mutation_validator_satisfaction_threshold_boundary() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // The result should be deterministic and either valid or not
     // The key is that boundary <= vs < changes the outcome
     assert!(result.confidence >= 0.0 && result.confidence <= 1.0);
@@ -6203,7 +6910,9 @@ fn mutation_validator_strict_violation_check() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // With strict rule violated, should definitely produce violation result
     if !result.valid {
         // Strict violation → alternatives should be provided
@@ -6224,12 +6933,18 @@ fn mutation_validator_confidence_arithmetic() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // With 40 high-quality episodes, confidence should be high (>0.5)
     // With -= instead of +=: convergence bonus would be subtracted
     // With /= instead of -=: violation penalty would divide
     assert!(result.valid, "High-quality action should be valid");
-    assert!(result.confidence > 0.5, "Confidence should be > 0.5 with 40 quality episodes (got {})", result.confidence);
+    assert!(
+        result.confidence > 0.5,
+        "Confidence should be > 0.5 with 40 quality episodes (got {})",
+        result.confidence
+    );
 }
 
 #[test]
@@ -6252,7 +6967,9 @@ fn mutation_validator_alternatives_filter_threshold() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("totally_nonexistent", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("totally_nonexistent", "combat", &storage)
+        .unwrap();
     // With correct > 0.6 filter: only alternatives with positive_response_rate > 0.6 AND effectiveness > 0.6
     // With > → <: would return alternatives with POOR stats
     // With > → ==: would only return alternatives at exactly 0.6
@@ -6282,9 +6999,14 @@ fn mutation_consolidation_spatial_equality_check() {
         make_timed_memory("event b", now - Duration::days(30), Some("cave"), vec![]),
     ];
     engine.consolidate(&mut diff_memories).unwrap();
-    let spatial_diff = diff_memories[0].associations.iter()
+    let spatial_diff = diff_memories[0]
+        .associations
+        .iter()
         .any(|a| matches!(a.association_type, AssociationType::Spatial));
-    assert!(!spatial_diff, "Different locations should NOT form spatial associations");
+    assert!(
+        !spatial_diff,
+        "Different locations should NOT form spatial associations"
+    );
 }
 
 #[test]
@@ -6298,19 +7020,32 @@ fn mutation_consolidation_conceptual_equality_check() {
     let now = Utc::now();
     let mut memories = vec![
         make_timed_memory("test memorization data", now, None, vec![]),
-        make_timed_memory("test memorization data", now - Duration::days(30), None, vec![]),
+        make_timed_memory(
+            "test memorization data",
+            now - Duration::days(30),
+            None,
+            vec![],
+        ),
     ];
     // Run consolidation twice
     engine.consolidate(&mut memories).unwrap();
-    let count1 = memories[0].associations.iter()
+    let count1 = memories[0]
+        .associations
+        .iter()
         .filter(|a| matches!(a.association_type, AssociationType::Conceptual))
         .count();
     engine.consolidate(&mut memories).unwrap();
-    let count2 = memories[0].associations.iter()
+    let count2 = memories[0]
+        .associations
+        .iter()
         .filter(|a| matches!(a.association_type, AssociationType::Conceptual))
         .count();
     // Duplicates should NOT be created (already_associated check with ==)
-    assert_eq!(count1, count2, "Conceptual associations should not duplicate: {} vs {}", count1, count2);
+    assert_eq!(
+        count1, count2,
+        "Conceptual associations should not duplicate: {} vs {}",
+        count1, count2
+    );
 }
 
 #[test]
@@ -6322,13 +7057,20 @@ fn mutation_consolidation_state_update_additive() {
     let mut m = Memory::sensory("state test".to_string(), None);
     m.metadata.strength = 0.3; // Low initial strength
     let initial_strength = m.metadata.strength;
-    let mut memories = vec![m, make_timed_memory("other", now - Duration::hours(1), None, vec![])];
+    let mut memories = vec![
+        m,
+        make_timed_memory("other", now - Duration::hours(1), None, vec![]),
+    ];
     engine.consolidate(&mut memories).unwrap();
     // += boost: strength should be > initial (0.3 + boost)
     // *= boost: strength = 0.3 * boost (if boost is small, result is even smaller)
     if memories[0].metadata.strength != initial_strength {
-        assert!(memories[0].metadata.strength > initial_strength,
-            "State update should ADD strength: {} > {} expected", memories[0].metadata.strength, initial_strength);
+        assert!(
+            memories[0].metadata.strength > initial_strength,
+            "State update should ADD strength: {} > {} expected",
+            memories[0].metadata.strength,
+            initial_strength
+        );
     }
 }
 
@@ -6338,7 +7080,11 @@ fn mutation_pattern_frequency_division_exact() {
     let detector = PatternDetector::with_thresholds(3, 0.05);
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..20 {
-        let cat = if i < 15 { EpisodeCategory::Combat } else { EpisodeCategory::Exploration };
+        let cat = if i < 15 {
+            EpisodeCategory::Combat
+        } else {
+            EpisodeCategory::Exploration
+        };
         let mut ep = make_test_episode(cat, 0.8);
         if let Some(ref mut outcome) = ep.outcome {
             outcome.damage_dealt = 200.0;
@@ -6349,10 +7095,16 @@ fn mutation_pattern_frequency_division_exact() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    assert!(!patterns.is_empty(), "Should detect at least one pattern from 20 episodes");
+    assert!(
+        !patterns.is_empty(),
+        "Should detect at least one pattern from 20 episodes"
+    );
     for p in &patterns {
-        assert!(p.confidence > 0.0 && p.confidence <= 1.0,
-            "Pattern confidence should be in (0,1] (got {})", p.confidence);
+        assert!(
+            p.confidence > 0.0 && p.confidence <= 1.0,
+            "Pattern confidence should be in (0,1] (got {})",
+            p.confidence
+        );
     }
 }
 
@@ -6438,12 +7190,18 @@ fn mutation_storage_optimize_does_something() {
     assert!(result.is_ok(), "Optimize should succeed");
     // After optimize, DB should still be fully functional
     let count = storage.count_memories().unwrap();
-    assert_eq!(count, 50, "All 50 memories should still exist after optimize");
+    assert_eq!(
+        count, 50,
+        "All 50 memories should still exist after optimize"
+    );
     // Store one more to verify DB is healthy
     let m = Memory::sensory("post_optimize".to_string(), None);
     storage.store_memory(&m).unwrap();
     let count2 = storage.count_memories().unwrap();
-    assert_eq!(count2, 51, "Should be 51 after storing post-optimize memory");
+    assert_eq!(
+        count2, 51,
+        "Should be 51 after storing post-optimize memory"
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -6456,7 +7214,11 @@ fn mutation_pattern_sequence_detection() {
     let detector = PatternDetector::with_thresholds(3, 0.1);
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..12 {
-        let cat = if i % 2 == 0 { EpisodeCategory::Combat } else { EpisodeCategory::Social };
+        let cat = if i % 2 == 0 {
+            EpisodeCategory::Combat
+        } else {
+            EpisodeCategory::Social
+        };
         let ep = make_test_episode(cat, 0.75);
         let mut m = Memory::episodic(format!("pat_seq_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -6464,8 +7226,10 @@ fn mutation_pattern_sequence_detection() {
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
     for p in &patterns {
-        assert!(p.confidence >= 0.0 && p.confidence <= 1.0,
-            "Pattern confidence should be in [0,1]");
+        assert!(
+            p.confidence >= 0.0 && p.confidence <= 1.0,
+            "Pattern confidence should be in [0,1]"
+        );
     }
 }
 
@@ -6498,12 +7262,24 @@ fn mutation_pattern_quality_thresholds_exact() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage_above.store_memory(&m).unwrap();
     }
-    let patterns_above = detector_above.detect_playstyle_patterns(&storage_above).unwrap();
+    let patterns_above = detector_above
+        .detect_playstyle_patterns(&storage_above)
+        .unwrap();
     if !patterns_above.is_empty() {
-        let max_conf_above = patterns_above.iter().map(|p| p.confidence).fold(0.0f32, f32::max);
-        let max_conf_at = patterns_at.iter().map(|p| p.confidence).fold(0.0f32, f32::max);
-        assert!(max_conf_above >= max_conf_at * 0.8,
-            "Higher quality should produce higher confidence: above={}, at={}", max_conf_above, max_conf_at);
+        let max_conf_above = patterns_above
+            .iter()
+            .map(|p| p.confidence)
+            .fold(0.0f32, f32::max);
+        let max_conf_at = patterns_at
+            .iter()
+            .map(|p| p.confidence)
+            .fold(0.0f32, f32::max);
+        assert!(
+            max_conf_above >= max_conf_at * 0.8,
+            "Higher quality should produce higher confidence: above={}, at={}",
+            max_conf_above,
+            max_conf_at
+        );
     }
 }
 
@@ -6546,7 +7322,11 @@ fn mutation_forgetting_access_frequency_formula() {
     // half_life = 14.0 * 1.805 * 1.0 = 25.27
     // With * → +: ln(5) + 0.5 = 1.1 + 0.5 = 1.6, modifier = 2.6, hl = 36.4
     // With * → /: ln(5) / 0.5 = 3.22, modifier = 4.22, hl = 59.1
-    assert!((hl5 - 25.3).abs() < 3.0, "Half-life with access_count=5 should be ~25.3 (got {})", hl5);
+    assert!(
+        (hl5 - 25.3).abs() < 3.0,
+        "Half-life with access_count=5 should be ~25.3 (got {})",
+        hl5
+    );
 }
 
 #[test]
@@ -6565,9 +7345,24 @@ fn mutation_forgetting_sensory_vs_working_half_life() {
     let hl_sem = engine.calculate_adaptive_half_life(&m_sem);
     // Expected hierarchy: sensory < working < episodic < semantic
     // Base values: 0.25d, 1.0d, 14.0d, 180.0d
-    assert!(hl_sens < hl_work, "Sensory ({}) < Working ({})", hl_sens, hl_work);
-    assert!(hl_work < hl_epi, "Working ({}) < Episodic ({})", hl_work, hl_epi);
-    assert!(hl_epi < hl_sem, "Episodic ({}) < Semantic ({})", hl_epi, hl_sem);
+    assert!(
+        hl_sens < hl_work,
+        "Sensory ({}) < Working ({})",
+        hl_sens,
+        hl_work
+    );
+    assert!(
+        hl_work < hl_epi,
+        "Working ({}) < Episodic ({})",
+        hl_work,
+        hl_epi
+    );
+    assert!(
+        hl_epi < hl_sem,
+        "Episodic ({}) < Semantic ({})",
+        hl_epi,
+        hl_sem
+    );
 }
 
 #[test]
@@ -6585,7 +7380,11 @@ fn mutation_forgetting_decay_with_high_access() {
     // half_life = 14.0 * (1+ln(10)*0.5) * (1+(0.9-0.5)*0.5) = 14.0 * 2.15 * 1.2 = 36.1
     // strength = exp(-0.693 * 7 / 36.1) = exp(-0.134) = 0.875
     assert!(!memories.is_empty());
-    assert!(memories[0].metadata.strength > 0.7, "Highly accessed memory should have strength > 0.7 (got {})", memories[0].metadata.strength);
+    assert!(
+        memories[0].metadata.strength > 0.7,
+        "Highly accessed memory should have strength > 0.7 (got {})",
+        memories[0].metadata.strength
+    );
 }
 
 #[test]
@@ -6603,7 +7402,10 @@ fn mutation_compression_ratio_boundary_values() {
     // Hmm, min is 10 words. Let's use more words.
     // 30 words, ratio=0.5: target = 15, compressed_length = max(15, 10) = 15
     // first_part = 30/3 = 10, last_part = 15-10 = 5
-    let text = (0..30).map(|i| format!("w{}", i)).collect::<Vec<_>>().join(" ");
+    let text = (0..30)
+        .map(|i| format!("w{}", i))
+        .collect::<Vec<_>>()
+        .join(" ");
     let mut m = Memory::sensory(text, None);
     m.metadata.created_at = Utc::now() - Duration::days(10);
     m.metadata.importance = 0.1;
@@ -6611,10 +7413,15 @@ fn mutation_compression_ratio_boundary_values() {
     engine.compress_memories(&mut memories).unwrap();
     let result_text = &memories[0].content.text;
     // Should contain "..." marker indicating compression happened
-    assert!(result_text.contains("[...]") || result_text.split_whitespace().count() <= 15,
-        "30-word memory should be compressed to ~15 words");
+    assert!(
+        result_text.contains("[...]") || result_text.split_whitespace().count() <= 15,
+        "30-word memory should be compressed to ~15 words"
+    );
     // Verify first_part comes from beginning of text
-    assert!(result_text.starts_with("w0"), "Compressed text should start with first word");
+    assert!(
+        result_text.starts_with("w0"),
+        "Compressed text should start with first word"
+    );
 }
 
 #[test]
@@ -6644,11 +7451,21 @@ fn mutation_retrieval_association_boost_arithmetic() {
         limit: 50,
     };
     let results = engine.retrieve(&context, &[m1, m2]).unwrap();
-    let m2_result = results.iter().find(|r| r.memory.content.text.contains("completely unrelated"));
+    let m2_result = results
+        .iter()
+        .find(|r| r.memory.content.text.contains("completely unrelated"));
     if let Some(r) = m2_result {
         // Association boost = 1.0 * 0.3 = 0.3 (added to base which is near 0)
-        assert!(r.relevance_score > 0.05, "Associated memory should have some relevance (got {})", r.relevance_score);
-        assert!(r.relevance_score < 2.0, "Relevance should be < 2.0 (got {})", r.relevance_score);
+        assert!(
+            r.relevance_score > 0.05,
+            "Associated memory should have some relevance (got {})",
+            r.relevance_score
+        );
+        assert!(
+            r.relevance_score < 2.0,
+            "Relevance should be < 2.0 (got {})",
+            r.relevance_score
+        );
     }
 }
 
@@ -6664,7 +7481,7 @@ fn mutation_retrieval_temporal_decay_rate() {
     // Memory exactly 7 days before window start
     let mut m7 = Memory::sensory("seven days away".to_string(), None);
     m7.metadata.created_at = now - Duration::days(14);
-    // Memory exactly 1 day before window start  
+    // Memory exactly 1 day before window start
     let mut m1 = Memory::sensory("one day away".to_string(), None);
     m1.metadata.created_at = now - Duration::days(2);
     let context = RetrievalContext {
@@ -6673,17 +7490,26 @@ fn mutation_retrieval_temporal_decay_rate() {
         location: None,
         recent_memory_ids: vec![],
         preferred_types: vec![],
-        time_window: Some(TimeWindow { start: now - Duration::days(1), end: now }),
+        time_window: Some(TimeWindow {
+            start: now - Duration::days(1),
+            end: now,
+        }),
         limit: 10,
     };
-    let results = engine.retrieve(&context, &[m7.clone(), m1.clone()]).unwrap();
+    let results = engine
+        .retrieve(&context, &[m7.clone(), m1.clone()])
+        .unwrap();
     if results.len() >= 2 {
         let r7 = results.iter().find(|r| r.memory.id == m7.id);
         let r1 = results.iter().find(|r| r.memory.id == m1.id);
         if let (Some(r7), Some(r1)) = (r7, r1) {
             // The closer memory should have higher relevance
-            assert!(r1.relevance_score >= r7.relevance_score * 0.8,
-                "Closer memory should have >= farther: close={}, far={}", r1.relevance_score, r7.relevance_score);
+            assert!(
+                r1.relevance_score >= r7.relevance_score * 0.8,
+                "Closer memory should have >= farther: close={}, far={}",
+                r1.relevance_score,
+                r7.relevance_score
+            );
         }
     }
 }
@@ -6699,15 +7525,26 @@ fn mutation_consolidation_similarity_boolean_operators() {
     // Two completely different memories — should have NO conceptual association
     let mut memories = vec![
         make_timed_memory("unique word alpha", now, None, vec!["tag1"]),
-        make_timed_memory("different phrase beta", now - Duration::days(30), None, vec!["tag2"]),
+        make_timed_memory(
+            "different phrase beta",
+            now - Duration::days(30),
+            None,
+            vec!["tag2"],
+        ),
     ];
     engine.consolidate(&mut memories).unwrap();
-    let conceptual = memories[0].associations.iter()
+    let conceptual = memories[0]
+        .associations
+        .iter()
         .find(|a| matches!(a.association_type, AssociationType::Conceptual));
     // No common words → no conceptual similarity
     // With && → ||: might form association based on partial conditions
     if let Some(assoc) = conceptual {
-        assert!(assoc.strength < 0.5, "Non-overlapping memories should have low conceptual strength (got {})", assoc.strength);
+        assert!(
+            assoc.strength < 0.5,
+            "Non-overlapping memories should have low conceptual strength (got {})",
+            assoc.strength
+        );
     }
 }
 
@@ -6732,7 +7569,10 @@ fn mutation_forgetting_retention_threshold_exact() {
     engine.apply_forgetting(&mut memories).unwrap();
     // The old low-importance memory should be forgotten (removed)
     // The fresh memory should remain
-    let surviving = memories.iter().filter(|m| m.content.text == "above_ret").count();
+    let surviving = memories
+        .iter()
+        .filter(|m| m.content.text == "above_ret")
+        .count();
     assert!(surviving == 1, "Above-threshold memory should survive");
 }
 
@@ -6752,11 +7592,16 @@ fn mutation_validator_episode_count_exactly_five() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // With < 5: 5 episodes is NOT uncertain (5 < 5 is false)
     // With <= 5: 5 episodes IS uncertain
     // The result should have reasonable confidence (not auto-uncertain)
-    assert!(result.confidence > 0.0, "5 episodes should produce non-zero confidence");
+    assert!(
+        result.confidence > 0.0,
+        "5 episodes should produce non-zero confidence"
+    );
 }
 
 #[test]
@@ -6771,7 +7616,9 @@ fn mutation_validator_effectiveness_threshold_boundary() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // With < 0.6: effectiveness 0.6 does NOT fail (0.6 < 0.6 is false)
     // With <= 0.6: effectiveness 0.6 DOES fail
     assert!(result.confidence > 0.0);
@@ -6784,14 +7631,22 @@ fn mutation_weighting_get_set_weights() {
     // Set a non-default weight
     manager.set_base_weight(BehaviorNodeType::Combat, 0.8);
     let w = manager.get_weight(BehaviorNodeType::Combat);
-    assert!((w - 0.8).abs() < 0.001, "Get should return set value: expected 0.8, got {}", w);
+    assert!(
+        (w - 0.8).abs() < 0.001,
+        "Get should return set value: expected 0.8, got {}",
+        w
+    );
     // Set another
     manager.set_base_weight(BehaviorNodeType::Exploration, 0.2);
     let w2 = manager.get_weight(BehaviorNodeType::Exploration);
     assert!((w2 - 0.2).abs() < 0.001, "Expected 0.2, got {}", w2);
     // Original should still be 0.8
     let w1 = manager.get_weight(BehaviorNodeType::Combat);
-    assert!((w1 - 0.8).abs() < 0.001, "Combat should still be 0.8, got {}", w1);
+    assert!(
+        (w1 - 0.8).abs() < 0.001,
+        "Combat should still be 0.8, got {}",
+        w1
+    );
 }
 
 #[test]
@@ -6817,12 +7672,22 @@ fn mutation_consolidation_same_location_spatial() {
     // SAME location — should form spatial associations
     let mut memories = vec![
         make_timed_memory("event in forest", now, Some("forest"), vec![]),
-        make_timed_memory("another event in forest", now - Duration::days(30), Some("forest"), vec![]),
+        make_timed_memory(
+            "another event in forest",
+            now - Duration::days(30),
+            Some("forest"),
+            vec![],
+        ),
     ];
     engine.consolidate(&mut memories).unwrap();
-    let spatial = memories[0].associations.iter()
+    let spatial = memories[0]
+        .associations
+        .iter()
         .any(|a| matches!(a.association_type, AssociationType::Spatial));
-    assert!(spatial, "Same-location memories should form spatial associations");
+    assert!(
+        spatial,
+        "Same-location memories should form spatial associations"
+    );
 }
 
 #[test]
@@ -6843,7 +7708,10 @@ fn mutation_sharing_default_restricted_privacy() {
     // With default restricted privacy, sharing should fail or return limited content
     // The key is ensuring the privacy check happens
     if !result.success {
-        assert!(result.error_message.is_some(), "Failed share should have error message");
+        assert!(
+            result.error_message.is_some(),
+            "Failed share should have error message"
+        );
     }
 }
 
@@ -6867,8 +7735,14 @@ fn mutation_sharing_full_public_succeeds() {
     let result = engine.share_memory(&request, &m, "requester").unwrap();
     assert!(result.success, "Full+Public sharing should succeed");
     let content = result.shared_content.unwrap();
-    assert!(!content.content.is_empty(), "Shared content should not be empty");
-    assert!(content.content.contains("shared data"), "Content should contain original text");
+    assert!(
+        !content.content.is_empty(),
+        "Shared content should not be empty"
+    );
+    assert!(
+        content.content.contains("shared data"),
+        "Content should contain original text"
+    );
 }
 
 #[test]
@@ -6878,7 +7752,10 @@ fn mutation_compression_empty_memories_stats() {
     let engine = CompressionEngine::new(config);
     let stats = engine.get_compression_stats(&[]);
     assert_eq!(stats.total_memories, 0);
-    assert_eq!(stats.average_size_bytes, 0, "Average size of 0 memories should be 0");
+    assert_eq!(
+        stats.average_size_bytes, 0,
+        "Average size of 0 memories should be 0"
+    );
 }
 
 #[test]
@@ -6893,7 +7770,10 @@ fn mutation_compression_single_memory_stats() {
     let stats = engine.get_compression_stats(&[m]);
     assert_eq!(stats.total_memories, 1);
     // With 1 memory: avg = total / 1 = total
-    assert!(stats.average_size_bytes > 0, "Single memory should have non-zero size");
+    assert!(
+        stats.average_size_bytes > 0,
+        "Single memory should have non-zero size"
+    );
 }
 
 #[test]
@@ -6903,17 +7783,27 @@ fn mutation_retrieval_find_similar_type_match() {
     // Same type, same words → high similarity
     let m1 = Memory::sensory("alpha beta gamma".to_string(), None);
     let m2 = Memory::sensory("alpha beta gamma".to_string(), None);
-    // Different type, same words → lower similarity  
+    // Different type, same words → lower similarity
     let m3 = Memory::episodic("alpha beta gamma".to_string(), vec![], None);
     let results_same = engine.find_similar(&m1, &[m2]).unwrap();
     let results_diff = engine.find_similar(&m1, &[m3]).unwrap();
-    assert!(!results_same.is_empty(), "Same-type-same-words should match");
-    assert!(!results_diff.is_empty(), "Diff-type-same-words should also match");
+    assert!(
+        !results_same.is_empty(),
+        "Same-type-same-words should match"
+    );
+    assert!(
+        !results_diff.is_empty(),
+        "Diff-type-same-words should also match"
+    );
     let sim_same = results_same[0].relevance_score;
     let sim_diff = results_diff[0].relevance_score;
     // Same type should have HIGHER or EQUAL similarity due to type_similarity bonus
-    assert!(sim_same >= sim_diff,
-        "Same type ({}) should have >= similarity than diff type ({})", sim_same, sim_diff);
+    assert!(
+        sim_same >= sim_diff,
+        "Same type ({}) should have >= similarity than diff type ({})",
+        sim_same,
+        sim_diff
+    );
 }
 
 #[test]
@@ -6928,16 +7818,26 @@ fn mutation_retrieval_find_similar_word_overlap_gradient() {
     let m_high = Memory::sensory("apple banana cherry date fig".to_string(), None);
     let results_low = engine.find_similar(&m1, &[m_low]).unwrap();
     let results_high = engine.find_similar(&m1, &[m_high]).unwrap();
-    let sim_low = results_low.first().map(|r| r.relevance_score).unwrap_or(0.0);
-    let sim_high = results_high.first().map(|r| r.relevance_score).unwrap_or(0.0);
+    let sim_low = results_low
+        .first()
+        .map(|r| r.relevance_score)
+        .unwrap_or(0.0);
+    let sim_high = results_high
+        .first()
+        .map(|r| r.relevance_score)
+        .unwrap_or(0.0);
     // More overlap should mean higher similarity
-    assert!(sim_high > sim_low,
-        "Higher word overlap should give higher similarity: high={}, low={}", sim_high, sim_low);
+    assert!(
+        sim_high > sim_low,
+        "Higher word overlap should give higher similarity: high={}, low={}",
+        sim_high,
+        sim_low
+    );
 }
 
 #[test]
 fn mutation_consolidation_both_directions() {
-    // catches consolidation.rs:155 && → || 
+    // catches consolidation.rs:155 && → ||
     // Both memories should get associations after consolidation (bidirectional)
     let engine = ConsolidationEngine::new(ConsolidationConfig {
         association_threshold: 0.01,
@@ -6946,13 +7846,21 @@ fn mutation_consolidation_both_directions() {
     let now = Utc::now();
     let mut memories = vec![
         make_timed_memory("shared concept idea", now, None, vec![]),
-        make_timed_memory("shared concept idea", now - Duration::days(30), None, vec![]),
+        make_timed_memory(
+            "shared concept idea",
+            now - Duration::days(30),
+            None,
+            vec![],
+        ),
     ];
     engine.consolidate(&mut memories).unwrap();
     let first_assoc = memories[0].associations.len();
     let second_assoc = memories[1].associations.len();
     // Bidirectional: both should have associations
-    assert!(first_assoc > 0 || second_assoc > 0, "At least one should have associations");
+    assert!(
+        first_assoc > 0 || second_assoc > 0,
+        "At least one should have associations"
+    );
 }
 
 #[test]
@@ -6984,7 +7892,11 @@ fn mutation_forgetting_very_old_semantic_survives() {
     engine.apply_forgetting(&mut memories).unwrap();
     // Half-life for semantic = 180 days. At 90 days: exp(-0.693*90/180) = exp(-0.3465) ≈ 0.707
     assert!(!memories.is_empty(), "90-day semantic should survive");
-    assert!(memories[0].metadata.strength > 0.5, "Semantic at half-life should be strong (got {})", memories[0].metadata.strength);
+    assert!(
+        memories[0].metadata.strength > 0.5,
+        "Semantic at half-life should be strong (got {})",
+        memories[0].metadata.strength
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -7003,8 +7915,16 @@ fn make_combat_episode_exact(
     let mut ep = Episode::new("boundary_ep".to_string(), EpisodeCategory::Combat);
     ep.observations.push(Observation::new(
         0,
-        Some(PlayerAction { action_type: "attack".to_string(), target: None, parameters: serde_json::Value::Null }),
-        Some(CompanionResponse { action_type: "support".to_string(), effectiveness: success_rating, result: ActionResult::Success }),
+        Some(PlayerAction {
+            action_type: "attack".to_string(),
+            target: None,
+            parameters: serde_json::Value::Null,
+        }),
+        Some(CompanionResponse {
+            action_type: "support".to_string(),
+            effectiveness: success_rating,
+            result: ActionResult::Success,
+        }),
         serde_json::json!({}),
     ));
     ep.end_time = Some(now.into());
@@ -7026,8 +7946,16 @@ fn make_puzzle_episode_exact(success_rating: f32, duration_ms: u64) -> Episode {
     let mut ep = Episode::new("puzzle_ep".to_string(), EpisodeCategory::Puzzle);
     ep.observations.push(Observation::new(
         0,
-        Some(PlayerAction { action_type: "analyze".to_string(), target: None, parameters: serde_json::Value::Null }),
-        Some(CompanionResponse { action_type: "support".to_string(), effectiveness: success_rating, result: ActionResult::Success }),
+        Some(PlayerAction {
+            action_type: "analyze".to_string(),
+            target: None,
+            parameters: serde_json::Value::Null,
+        }),
+        Some(CompanionResponse {
+            action_type: "support".to_string(),
+            effectiveness: success_rating,
+            result: ActionResult::Success,
+        }),
         serde_json::json!({}),
     ));
     ep.end_time = Some(now.into());
@@ -7056,9 +7984,17 @@ fn mutation_pattern_aggressive_damage_dealt_boundary() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_aggressive = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Aggressive));
-    assert!(!has_aggressive, "300.0 should NOT trigger >300 (strict >), got {:?}",
-        patterns.iter().map(|p| format!("{:?}", p.pattern)).collect::<Vec<_>>());
+    let has_aggressive = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Aggressive));
+    assert!(
+        !has_aggressive,
+        "300.0 should NOT trigger >300 (strict >), got {:?}",
+        patterns
+            .iter()
+            .map(|p| format!("{:?}", p.pattern))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -7073,7 +8009,9 @@ fn mutation_pattern_aggressive_damage_taken_boundary() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_aggressive = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Aggressive));
+    let has_aggressive = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Aggressive));
     assert!(!has_aggressive, "50.0 should NOT trigger >50 (strict >)");
 }
 
@@ -7092,8 +8030,13 @@ fn mutation_pattern_aggressive_and_to_or() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_aggressive = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Aggressive));
-    assert!(!has_aggressive, "Only one condition met should NOT trigger with && (catches && → ||)");
+    let has_aggressive = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Aggressive));
+    assert!(
+        !has_aggressive,
+        "Only one condition met should NOT trigger with && (catches && → ||)"
+    );
 }
 
 #[test]
@@ -7108,7 +8051,9 @@ fn mutation_pattern_cautious_damage_taken_boundary() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_cautious = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Cautious));
+    let has_cautious = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Cautious));
     assert!(!has_cautious, "30.0 should NOT trigger <30 (strict <)");
 }
 
@@ -7124,7 +8069,9 @@ fn mutation_pattern_cautious_resources_boundary() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_cautious = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Cautious));
+    let has_cautious = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Cautious));
     assert!(!has_cautious, "100.0 should NOT trigger <100 (strict <)");
 }
 
@@ -7141,8 +8088,13 @@ fn mutation_pattern_cautious_and_to_or() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_cautious = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Cautious));
-    assert!(!has_cautious, "Only one cautious condition met should NOT trigger with &&");
+    let has_cautious = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Cautious));
+    assert!(
+        !has_cautious,
+        "Only one cautious condition met should NOT trigger with &&"
+    );
 }
 
 #[test]
@@ -7157,7 +8109,9 @@ fn mutation_pattern_efficient_success_boundary() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_efficient = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
+    let has_efficient = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
     assert!(!has_efficient, "0.8 should NOT trigger >0.8 (strict >)");
 }
 
@@ -7173,7 +8127,9 @@ fn mutation_pattern_efficient_duration_boundary() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_efficient = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
+    let has_efficient = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
     assert!(!has_efficient, "10000 should NOT trigger <10000 (strict <)");
 }
 
@@ -7190,8 +8146,13 @@ fn mutation_pattern_efficient_and_to_or() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_efficient = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
-    assert!(!has_efficient, "Only one efficient condition met should NOT trigger with &&");
+    let has_efficient = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
+    assert!(
+        !has_efficient,
+        "Only one efficient condition met should NOT trigger with &&"
+    );
 }
 
 #[test]
@@ -7207,7 +8168,9 @@ fn mutation_pattern_puzzle_duration_boundary() {
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
     // Puzzle always adds Analytical, but Efficient requires duration < 30000
-    let has_efficient = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
+    let has_efficient = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
     assert!(!has_efficient, "30000 should NOT trigger <30000 (strict <)");
 }
 
@@ -7223,8 +8186,13 @@ fn mutation_pattern_puzzle_success_boundary() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_efficient = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
-    assert!(!has_efficient, "0.8 should NOT trigger >0.8 (strict >) for puzzle");
+    let has_efficient = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
+    assert!(
+        !has_efficient,
+        "0.8 should NOT trigger >0.8 (strict >) for puzzle"
+    );
 }
 
 #[test]
@@ -7240,8 +8208,13 @@ fn mutation_pattern_puzzle_and_to_or() {
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let has_efficient = patterns.iter().any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
-    assert!(!has_efficient, "Only one puzzle condition met should NOT trigger Efficient with &&");
+    let has_efficient = patterns
+        .iter()
+        .any(|p| matches!(p.pattern, PlaystylePattern::Efficient));
+    assert!(
+        !has_efficient,
+        "Only one puzzle condition met should NOT trigger Efficient with &&"
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -7263,7 +8236,10 @@ fn mutation_is_converged_direct_call() {
     let profile = builder.build_profile(&storage).unwrap();
     // Call is_converged DIRECTLY
     let converged = builder.is_converged(&profile);
-    assert!(!converged, "is_converged should return false with only 2 episodes (catches → true)");
+    assert!(
+        !converged,
+        "is_converged should return false with only 2 episodes (catches → true)"
+    );
 }
 
 #[test]
@@ -7290,9 +8266,11 @@ fn mutation_build_profile_convergence_and_vs_or() {
     // learning_confidence (~0.7) < threshold (0.99) → FALSE
     // With &&: TRUE && FALSE = FALSE → NOT converged
     // With ||: TRUE || FALSE = TRUE → converged
-    assert!(!profile.converged,
+    assert!(
+        !profile.converged,
         "Confidence {} < threshold 0.99 should NOT be converged with && (catches && → ||)",
-        profile.learning_confidence);
+        profile.learning_confidence
+    );
 }
 
 #[test]
@@ -7323,9 +8301,9 @@ fn mutation_effectiveness_bonus_direct_check() {
         // If pattern_bonus alone accounts for all weight change, test can't distinguish
         // BUT if effectiveness_bonus is separate, test CAN distinguish
         assert!(eff.abs() >= 0.0); // Baseline check
-        // Also check: with strong combat preference, pattern detection should find Aggressive
-        // BUT default episodes have damage_dealt=50, damage_taken=10 — won't trigger Aggressive!
-        // So pattern_bonus may be 0 for combat, meaning effectiveness_bonus IS the differentiator
+                                   // Also check: with strong combat preference, pattern detection should find Aggressive
+                                   // BUT default episodes have damage_dealt=50, damage_taken=10 — won't trigger Aggressive!
+                                   // So pattern_bonus may be 0 for combat, meaning effectiveness_bonus IS the differentiator
     }
     // Actually, let me check total weight differs from base
     let total = manager.get_weight(BehaviorNodeType::Combat);
@@ -7334,8 +8312,10 @@ fn mutation_effectiveness_bonus_direct_check() {
     // So weight = base (0.5) + pattern_bonus (0.0) + effectiveness_bonus (0.0 if stubbed)
     // vs weight = base (0.5) + 0 + effectiveness_bonus (>0 if correct)
     // For this to catch the mutation, weight must differ from 0.5
-    assert!(total != 0.5 || manager.total_updates() > 0,
-        "After update_from_profile, weight should change or updates should be > 0");
+    assert!(
+        total != 0.5 || manager.total_updates() > 0,
+        "After update_from_profile, weight should change or updates should be > 0"
+    );
 }
 
 #[test]
@@ -7388,9 +8368,11 @@ fn mutation_effectiveness_subtraction_direction() {
     // With +: ALL categories get bonus (pref + avg always > 0)
     // Check that exploration effectiveness bonus is 0 (only combat should have bonus)
     if let Some(explore_details) = manager.get_weight_details(BehaviorNodeType::Exploration) {
-        assert!(explore_details.effectiveness_bonus <= 0.001,
+        assert!(
+            explore_details.effectiveness_bonus <= 0.001,
             "Non-preferred category should have ~0 effectiveness bonus (got {}; catches - → +)",
-            explore_details.effectiveness_bonus);
+            explore_details.effectiveness_bonus
+        );
     }
 }
 
@@ -7410,10 +8392,16 @@ fn mutation_effectiveness_multiplication_formula() {
     let _ = manager.update_from_profile(&storage);
     if let Some(combat_details) = manager.get_weight_details(BehaviorNodeType::Combat) {
         // effectiveness_bonus should be reasonable (not negative, not huge)
-        assert!(combat_details.effectiveness_bonus >= 0.0,
-            "Effectiveness bonus should be >= 0 (got {})", combat_details.effectiveness_bonus);
-        assert!(combat_details.effectiveness_bonus <= 0.5,
-            "Effectiveness bonus should be <= 0.5 (got {})", combat_details.effectiveness_bonus);
+        assert!(
+            combat_details.effectiveness_bonus >= 0.0,
+            "Effectiveness bonus should be >= 0 (got {})",
+            combat_details.effectiveness_bonus
+        );
+        assert!(
+            combat_details.effectiveness_bonus <= 0.5,
+            "Effectiveness bonus should be <= 0.5 (got {})",
+            combat_details.effectiveness_bonus
+        );
     }
 }
 
@@ -7441,8 +8429,11 @@ fn mutation_pattern_bonus_multiplication() {
         // pattern_bonus = confidence * max_pattern_bonus / preferred_nodes.len()
         // With * → +: confidence + max_bonus / len (different arithmetic)
         // With * → /: confidence / max_bonus / len (small number)
-        assert!(combat_details.pattern_bonus >= 0.0,
-            "Pattern bonus should be >= 0 (got {})", combat_details.pattern_bonus);
+        assert!(
+            combat_details.pattern_bonus >= 0.0,
+            "Pattern bonus should be >= 0 (got {})",
+            combat_details.pattern_bonus
+        );
     }
 }
 
@@ -7468,8 +8459,11 @@ fn mutation_pattern_bonus_division() {
     // But NodeWeight.calculate() uses clamp, so final weight still in [0,1]
     // Check pattern_bonus is reasonable
     if let Some(combat_details) = manager.get_weight_details(BehaviorNodeType::Combat) {
-        assert!(combat_details.pattern_bonus <= 0.3,
-            "Pattern bonus should be <= 0.3 (got {}; catches / → *)", combat_details.pattern_bonus);
+        assert!(
+            combat_details.pattern_bonus <= 0.3,
+            "Pattern bonus should be <= 0.3 (got {}; catches / → *)",
+            combat_details.pattern_bonus
+        );
     }
 }
 
@@ -7489,7 +8483,9 @@ fn mutation_validator_episode_count_exactly_5() {
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // With < 5: 5 < 5 = false -> full validation -> confidence from calculate_confidence
     // With <= 5: 5 <= 5 = true -> uncertain -> confidence = 0.3
     assert!(result.confidence != 0.3 || result.valid,
@@ -7546,13 +8542,20 @@ fn mutation_pattern_confidence_lte_one_r5() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..10 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8, companion_effectiveness: 0.8,
-            duration_ms: 5000, damage_dealt: 500.0, damage_taken: 100.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
+            companion_effectiveness: 0.8,
+            duration_ms: 5000,
+            damage_dealt: 500.0,
+            damage_taken: 100.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
         let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3,
-            vec!["attack", "attack", "attack"], outcome,
+            EpisodeCategory::Combat,
+            3,
+            vec!["attack", "attack", "attack"],
+            outcome,
         );
         let mut m = Memory::episodic(format!("conf_r5_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -7560,11 +8563,17 @@ fn mutation_pattern_confidence_lte_one_r5() {
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
     for p in &patterns {
-        assert!(p.confidence <= 1.0,
+        assert!(
+            p.confidence <= 1.0,
             "Pattern {:?} confidence must be <= 1.0 (got {}; catches L139 / → *)",
-            p.pattern, p.confidence);
+            p.pattern,
+            p.confidence
+        );
     }
-    assert!(!patterns.is_empty(), "Should detect Aggressive pattern with 10 episodes");
+    assert!(
+        !patterns.is_empty(),
+        "Should detect Aggressive pattern with 10 episodes"
+    );
 }
 
 #[test]
@@ -7576,13 +8585,20 @@ fn mutation_pattern_avg_quality_lte_one_r5() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..10 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.7, player_satisfaction: 0.7, companion_effectiveness: 0.7,
-            duration_ms: 5000, damage_dealt: 400.0, damage_taken: 80.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.7,
+            player_satisfaction: 0.7,
+            companion_effectiveness: 0.7,
+            duration_ms: 5000,
+            damage_dealt: 400.0,
+            damage_taken: 80.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
         let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3,
-            vec!["attack", "slash", "strike"], outcome,
+            EpisodeCategory::Combat,
+            3,
+            vec!["attack", "slash", "strike"],
+            outcome,
         );
         let mut m = Memory::episodic(format!("aq_r5_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -7590,13 +8606,23 @@ fn mutation_pattern_avg_quality_lte_one_r5() {
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
     for p in &patterns {
-        assert!(p.avg_quality <= 1.0,
+        assert!(
+            p.avg_quality <= 1.0,
             "Pattern {:?} avg_quality must be <= 1.0 (got {}; catches L140 / → * and / → %)",
-            p.pattern, p.avg_quality);
-        assert!(p.avg_quality >= 0.0,
-            "Pattern {:?} avg_quality must be >= 0.0 (got {})", p.pattern, p.avg_quality);
+            p.pattern,
+            p.avg_quality
+        );
+        assert!(
+            p.avg_quality >= 0.0,
+            "Pattern {:?} avg_quality must be >= 0.0 (got {})",
+            p.pattern,
+            p.avg_quality
+        );
     }
-    assert!(!patterns.is_empty(), "Should detect patterns with 10 episodes");
+    assert!(
+        !patterns.is_empty(),
+        "Should detect patterns with 10 episodes"
+    );
 }
 
 #[test]
@@ -7609,37 +8635,50 @@ fn mutation_pattern_confidence_exact_fraction_r5() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..6 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8, companion_effectiveness: 0.8,
-            duration_ms: 5000, damage_dealt: 500.0, damage_taken: 100.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
+            companion_effectiveness: 0.8,
+            duration_ms: 5000,
+            damage_dealt: 500.0,
+            damage_taken: 100.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["attack"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["attack"], outcome);
         let mut m = Memory::episodic(format!("cfr_agg_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     for i in 0..4 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8, companion_effectiveness: 0.8,
-            duration_ms: 5000, damage_dealt: 10.0, damage_taken: 5.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
+            companion_effectiveness: 0.8,
+            duration_ms: 5000,
+            damage_dealt: 10.0,
+            damage_taken: 5.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["defend"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["defend"], outcome);
         let mut m = Memory::episodic(format!("cfr_non_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let aggressive = patterns.iter().find(|p| p.pattern == PlaystylePattern::Aggressive);
-    assert!(aggressive.is_some(), "Should detect Aggressive pattern (6 of 10 episodes)");
+    let aggressive = patterns
+        .iter()
+        .find(|p| p.pattern == PlaystylePattern::Aggressive);
+    assert!(
+        aggressive.is_some(),
+        "Should detect Aggressive pattern (6 of 10 episodes)"
+    );
     let agg = aggressive.unwrap();
-    assert!((agg.confidence - 0.6).abs() < 0.05,
+    assert!(
+        (agg.confidence - 0.6).abs() < 0.05,
         "Aggressive confidence should be ~0.6 (= 6/10), got {}. Catches L139 / → *",
-        agg.confidence);
+        agg.confidence
+    );
 }
 
 #[test]
@@ -7650,27 +8689,41 @@ fn mutation_pattern_avg_quality_exact_value_r5() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..6 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.7, player_satisfaction: 0.7, companion_effectiveness: 0.7,
-            duration_ms: 5000, damage_dealt: 400.0, damage_taken: 80.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.7,
+            player_satisfaction: 0.7,
+            companion_effectiveness: 0.7,
+            duration_ms: 5000,
+            damage_dealt: 400.0,
+            damage_taken: 80.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["attack"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["attack"], outcome);
         let mut m = Memory::episodic(format!("aqe_r5_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     let patterns = detector.detect_playstyle_patterns(&storage).unwrap();
-    let aggressive = patterns.iter().find(|p| p.pattern == PlaystylePattern::Aggressive);
+    let aggressive = patterns
+        .iter()
+        .find(|p| p.pattern == PlaystylePattern::Aggressive);
     assert!(aggressive.is_some(), "Should detect Aggressive pattern");
     let agg = aggressive.unwrap();
-    assert!(agg.avg_quality <= 1.0,
-        "avg_quality must be <= 1.0 (got {}; catches L140 / → *)", agg.avg_quality);
-    assert!(agg.avg_quality > 0.5,
-        "avg_quality should be > 0.5 (got {})", agg.avg_quality);
-    assert!(agg.avg_quality < 0.95,
-        "avg_quality should be < 0.95 (got {})", agg.avg_quality);
+    assert!(
+        agg.avg_quality <= 1.0,
+        "avg_quality must be <= 1.0 (got {}; catches L140 / → *)",
+        agg.avg_quality
+    );
+    assert!(
+        agg.avg_quality > 0.5,
+        "avg_quality should be > 0.5 (got {})",
+        agg.avg_quality
+    );
+    assert!(
+        agg.avg_quality < 0.95,
+        "avg_quality should be < 0.95 (got {})",
+        agg.avg_quality
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -7687,27 +8740,39 @@ fn mutation_extract_sequences_exactly_2_actions_r5() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..5 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8, companion_effectiveness: 0.8,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
+            companion_effectiveness: 0.8,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
         let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 2,
-            vec!["slash", "block"], outcome,
+            EpisodeCategory::Combat,
+            2,
+            vec!["slash", "block"],
+            outcome,
         );
         let mut m = Memory::episodic(format!("seq2_r5_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     let action_patterns = detector.detect_action_sequences(&storage, 2).unwrap();
-    assert!(!action_patterns.is_empty(),
+    assert!(
+        !action_patterns.is_empty(),
         "Should find action sequences from episodes with exactly 2 actions; \
-         catches L282 < → <= (2 <= 2 = true → early return)");
-    let has_slash_block = action_patterns.iter().any(|p| {
-        p.sequence == vec!["slash".to_string(), "block".to_string()]
-    });
-    assert!(has_slash_block,
-        "Should find [slash, block] sequence (got {:?})", action_patterns);
+         catches L282 < → <= (2 <= 2 = true → early return)"
+    );
+    let has_slash_block = action_patterns
+        .iter()
+        .any(|p| p.sequence == vec!["slash".to_string(), "block".to_string()]);
+    assert!(
+        has_slash_block,
+        "Should find [slash, block] sequence (got {:?})",
+        action_patterns
+    );
 }
 
 #[test]
@@ -7717,21 +8782,25 @@ fn mutation_extract_sequences_exactly_1_action_returns_empty_r5() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..5 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8, companion_effectiveness: 0.8,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
+            companion_effectiveness: 0.8,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 1,
-            vec!["slash"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 1, vec!["slash"], outcome);
         let mut m = Memory::episodic(format!("seq1_r5_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     let action_patterns = detector.detect_action_sequences(&storage, 2).unwrap();
-    assert!(action_patterns.is_empty(),
-        "Should NOT find sequences from episodes with only 1 action");
+    assert!(
+        action_patterns.is_empty(),
+        "Should NOT find sequences from episodes with only 1 action"
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -7759,28 +8828,34 @@ fn mutation_learning_confidence_pattern_factor_division_r5() {
             resources_used: 5.0,
             failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["attack"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["attack"], outcome);
         let mut m = Memory::episodic(format!("pf_r5_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     let profile = builder.build_profile(&storage).unwrap();
     // Should detect Aggressive+Efficient+Cautious patterns (all matching)
-    assert!(profile.dominant_patterns.len() >= 2,
+    assert!(
+        profile.dominant_patterns.len() >= 2,
         "Should detect >= 2 patterns, got {}: {:?}",
         profile.dominant_patterns.len(),
-        profile.dominant_patterns.iter().map(|p| format!("{:?}", p.pattern)).collect::<Vec<_>>());
+        profile
+            .dominant_patterns
+            .iter()
+            .map(|p| format!("{:?}", p.pattern))
+            .collect::<Vec<_>>()
+    );
     // count_factor(15) ~0.777, pattern_factor=1.0 (both conf=1.0, avg=1.0)
     // category=1/6=0.167. correct: 0.777*0.4+1.0*0.4+0.167*0.2 = 0.744
     // mutated(*): 0.777*0.4+n*0.4+0.167*0.2 where n>1 → clamps to 1.0
     assert!(profile.learning_confidence < 0.95,
         "learning_confidence should be < 0.95 with 15 single-cat episodes (got {}; catches L232 / → *)",
         profile.learning_confidence);
-    assert!(profile.learning_confidence > 0.5,
+    assert!(
+        profile.learning_confidence > 0.5,
         "learning_confidence should be > 0.5 with 15 episodes and 2+ patterns (got {})",
-        profile.learning_confidence);
+        profile.learning_confidence
+    );
 }
 
 #[test]
@@ -7791,15 +8866,22 @@ fn mutation_learning_confidence_category_not_empty_check_r5() {
     let builder = ProfileBuilder::with_thresholds(0.99, 100);
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..5 {
-        for cat in &[EpisodeCategory::Combat, EpisodeCategory::Exploration, EpisodeCategory::Social] {
+        for cat in &[
+            EpisodeCategory::Combat,
+            EpisodeCategory::Exploration,
+            EpisodeCategory::Social,
+        ] {
             let outcome = EpisodeOutcome {
-                success_rating: 0.8, player_satisfaction: 0.8, companion_effectiveness: 0.8,
-                duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
+                success_rating: 0.8,
+                player_satisfaction: 0.8,
+                companion_effectiveness: 0.8,
+                duration_ms: 5000,
+                damage_dealt: 50.0,
+                damage_taken: 10.0,
+                resources_used: 5.0,
+                failure_count: 0,
             };
-            let ep = make_episode_with_n_actions(
-                cat.clone(), 3, vec!["action"], outcome,
-            );
+            let ep = make_episode_with_n_actions(cat.clone(), 3, vec!["action"], outcome);
             let mut m = Memory::episodic(format!("cat3_r5_{}_{:?}", i, cat), vec![], None);
             m.content.data = serde_json::to_value(&ep).unwrap_or_default();
             storage.store_memory(&m).unwrap();
@@ -7811,10 +8893,12 @@ fn mutation_learning_confidence_category_not_empty_check_r5() {
     // mutation gives 0.0*0.2=0.0 (no category contribution)
     // Actual computed: ~0.611 (correct) vs ~0.511 (mutation)
     // Assert > 0.56 catches the mutation (0.511 < 0.56 < 0.611)
-    assert!(profile.learning_confidence > 0.56,
+    assert!(
+        profile.learning_confidence > 0.56,
         "learning_confidence should be > 0.56 with 3 categories contributing \
          (got {}; catches L239 delete ! which zeroes category_factor)",
-        profile.learning_confidence);
+        profile.learning_confidence
+    );
 }
 
 #[test]
@@ -7825,26 +8909,33 @@ fn mutation_learning_confidence_category_diversity_division_r5() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..8 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8, companion_effectiveness: 0.8,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
+            companion_effectiveness: 0.8,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["fight"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["fight"], outcome);
         let mut m = Memory::episodic(format!("div_c_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     for i in 0..7 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8, companion_effectiveness: 0.8,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
+            companion_effectiveness: 0.8,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Exploration, 3, vec!["explore"], outcome,
-        );
+        let ep =
+            make_episode_with_n_actions(EpisodeCategory::Exploration, 3, vec!["explore"], outcome);
         let mut m = Memory::episodic(format!("div_e_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
@@ -7853,13 +8944,17 @@ fn mutation_learning_confidence_category_diversity_division_r5() {
     // 2 categories, 15 episodes
     // category_factor correct = 2/6 = 0.333, mutated = 1.0
     // correct confidence: ~0.678, mutated: ~0.811
-    assert!(profile.learning_confidence < 0.78,
+    assert!(
+        profile.learning_confidence < 0.78,
         "learning_confidence with 2 categories should be < 0.78 \
          (got {}; catches L240 / → * which inflates category_factor to 1.0)",
-        profile.learning_confidence);
-    assert!(profile.learning_confidence > 0.55,
+        profile.learning_confidence
+    );
+    assert!(
+        profile.learning_confidence > 0.55,
         "learning_confidence should be > 0.55 with 15 episodes (got {})",
-        profile.learning_confidence);
+        profile.learning_confidence
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -7889,9 +8984,7 @@ fn mutation_pattern_bonus_with_multi_node_pattern_r5() {
             resources_used: 5.0,
             failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["shoot"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["shoot"], outcome);
         let mut m = Memory::episodic(format!("mpb_r5_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
@@ -7899,15 +8992,19 @@ fn mutation_pattern_bonus_with_multi_node_pattern_r5() {
     let _ = manager.update_from_profile(&storage);
     // Combat gets 0.1 from Efficient only (Cautious → [Defensive, Support])
     if let Some(combat) = manager.get_weight_details(BehaviorNodeType::Combat) {
-        assert!((combat.pattern_bonus - 0.1).abs() < 0.05,
+        assert!(
+            (combat.pattern_bonus - 0.1).abs() < 0.05,
             "Combat pattern_bonus should be ~0.1 (= 1.0*0.3/3), got {}. \
              Catches L198 * → + and L199 / → *",
-            combat.pattern_bonus);
+            combat.pattern_bonus
+        );
     }
     if let Some(analytical) = manager.get_weight_details(BehaviorNodeType::Analytical) {
-        assert!((analytical.pattern_bonus - 0.1).abs() < 0.05,
+        assert!(
+            (analytical.pattern_bonus - 0.1).abs() < 0.05,
             "Analytical pattern_bonus should be ~0.1 (= 1.0*0.3/3), got {}",
-            analytical.pattern_bonus);
+            analytical.pattern_bonus
+        );
     }
 }
 
@@ -7925,28 +9022,35 @@ fn mutation_effectiveness_single_category_no_bonus_r5() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..20 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8, companion_effectiveness: 0.8,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
+            companion_effectiveness: 0.8,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["attack"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["attack"], outcome);
         let mut m = Memory::episodic(format!("eff1_r5_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     let _ = manager.update_from_profile(&storage);
     if let Some(combat) = manager.get_weight_details(BehaviorNodeType::Combat) {
-        assert!(combat.effectiveness_bonus.abs() < 0.001,
+        assert!(
+            combat.effectiveness_bonus.abs() < 0.001,
             "Single category: effectiveness_bonus should be 0 (avg==pref→relative=0). \
              Got {}. Catches L213 delete !",
-            combat.effectiveness_bonus);
+            combat.effectiveness_bonus
+        );
     }
     if let Some(support) = manager.get_weight_details(BehaviorNodeType::Support) {
-        assert!(support.effectiveness_bonus.abs() < 0.001,
+        assert!(
+            support.effectiveness_bonus.abs() < 0.001,
             "Support effectiveness_bonus with single category should be 0, got {}",
-            support.effectiveness_bonus);
+            support.effectiveness_bonus
+        );
     }
 }
 
@@ -7957,35 +9061,44 @@ fn mutation_effectiveness_multi_category_has_bonus_r5() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     for i in 0..15 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.9, player_satisfaction: 0.9, companion_effectiveness: 0.9,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.9,
+            player_satisfaction: 0.9,
+            companion_effectiveness: 0.9,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["attack"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["attack"], outcome);
         let mut m = Memory::episodic(format!("effm_c_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     for i in 0..5 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.3, player_satisfaction: 0.3, companion_effectiveness: 0.3,
-            duration_ms: 5000, damage_dealt: 10.0, damage_taken: 50.0,
-            resources_used: 5.0, failure_count: 2,
+            success_rating: 0.3,
+            player_satisfaction: 0.3,
+            companion_effectiveness: 0.3,
+            duration_ms: 5000,
+            damage_dealt: 10.0,
+            damage_taken: 50.0,
+            resources_used: 5.0,
+            failure_count: 2,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Exploration, 3, vec!["explore"], outcome,
-        );
+        let ep =
+            make_episode_with_n_actions(EpisodeCategory::Exploration, 3, vec!["explore"], outcome);
         let mut m = Memory::episodic(format!("effm_e_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     let _ = manager.update_from_profile(&storage);
     if let Some(combat) = manager.get_weight_details(BehaviorNodeType::Combat) {
-        assert!(combat.effectiveness_bonus > 0.01,
+        assert!(
+            combat.effectiveness_bonus > 0.01,
             "Combat should have positive effectiveness_bonus (higher than avg), got {}",
-            combat.effectiveness_bonus);
+            combat.effectiveness_bonus
+        );
     }
 }
 // ════════════════════════════════════════════════════════════════════════════
@@ -8001,16 +9114,26 @@ fn mutation_consolidation_spatial_same_location_r6() {
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
     let mut memories = vec![
-        Memory::episodic("Event A at park".to_string(), vec![], Some("park".to_string())),
-        Memory::episodic("Event B at park".to_string(), vec![], Some("park".to_string())),
+        Memory::episodic(
+            "Event A at park".to_string(),
+            vec![],
+            Some("park".to_string()),
+        ),
+        Memory::episodic(
+            "Event B at park".to_string(),
+            vec![],
+            Some("park".to_string()),
+        ),
     ];
     // Set creation times far apart to avoid temporal association stealing the slot
     memories[0].metadata.created_at = chrono::Utc::now() - chrono::Duration::days(30);
     memories[1].metadata.created_at = chrono::Utc::now();
     let result = engine.consolidate(&mut memories).unwrap();
-    assert!(result.spatial_associations > 0,
+    assert!(
+        result.spatial_associations > 0,
         "Same location should form spatial association (got {}; catches L120 ==→!=)",
-        result.spatial_associations);
+        result.spatial_associations
+    );
 }
 
 #[test]
@@ -8020,15 +9143,25 @@ fn mutation_consolidation_spatial_different_location_r6() {
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
     let mut memories = vec![
-        Memory::episodic("Event A at park".to_string(), vec![], Some("park".to_string())),
-        Memory::episodic("Event B at cave".to_string(), vec![], Some("cave".to_string())),
+        Memory::episodic(
+            "Event A at park".to_string(),
+            vec![],
+            Some("park".to_string()),
+        ),
+        Memory::episodic(
+            "Event B at cave".to_string(),
+            vec![],
+            Some("cave".to_string()),
+        ),
     ];
     memories[0].metadata.created_at = chrono::Utc::now() - chrono::Duration::days(30);
     memories[1].metadata.created_at = chrono::Utc::now();
     let result = engine.consolidate(&mut memories).unwrap();
-    assert_eq!(result.spatial_associations, 0,
+    assert_eq!(
+        result.spatial_associations, 0,
         "Different locations should NOT form spatial association (got {}; catches L120 ==→!=)",
-        result.spatial_associations);
+        result.spatial_associations
+    );
 }
 
 #[test]
@@ -8051,13 +9184,15 @@ fn mutation_consolidation_conceptual_at_threshold_r6() {
     // Same type = 0.3, text overlap = 2/3 words = 0.667 * 0.5 = 0.333
     // Total = 0.633, above 0.3 threshold
     let result = engine.consolidate(&mut memories).unwrap();
-    assert!(result.conceptual_associations > 0,
-        "Memories above threshold should form conceptual association; catches L155 <→<=");
+    assert!(
+        result.conceptual_associations > 0,
+        "Memories above threshold should form conceptual association; catches L155 <→<="
+    );
 }
 
 #[test]
 fn mutation_consolidation_conceptual_similarity_text_r6() {
-    // L186: !words1.is_empty() && !words2.is_empty() → || 
+    // L186: !words1.is_empty() && !words2.is_empty() → ||
     // Need one empty, one non-empty: correct skips, mutation enters
     // L200: common / min_len → * or %
     // L201: similarity += text_similarity * 0.5 → -= or /
@@ -8080,15 +9215,20 @@ fn mutation_consolidation_conceptual_similarity_text_r6() {
     // L201 /: total += 0.667/0.5 = 1.334 → very high
     let result = engine.consolidate(&mut memories).unwrap();
     // Should form association. Check association strength to catch formula mutations
-    assert!(result.conceptual_associations > 0,
-        "Memories with word overlap should form conceptual association");
+    assert!(
+        result.conceptual_associations > 0,
+        "Memories with word overlap should form conceptual association"
+    );
     // Check the association strength is in a reasonable range
     let assoc = &memories[0].associations;
     assert!(!assoc.is_empty(), "Should have at least one association");
     let strength = assoc[0].strength;
-    assert!(strength > 0.3 && strength < 0.95,
+    assert!(
+        strength > 0.3 && strength < 0.95,
         "Conceptual similarity should be in [0.3, 0.95] range, got {}; \
-         catches L200 /→* and L201 +=→-=", strength);
+         catches L200 /→* and L201 +=→-=",
+        strength
+    );
 }
 
 #[test]
@@ -8119,16 +9259,18 @@ fn mutation_consolidation_strength_boost_r6() {
     // mutation *=: 1.0 * 0.2 = 0.2
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
-    let mut memories = vec![
-        Memory::episodic("Test memory".to_string(), vec![], None),
-    ];
+    let mut memories = vec![Memory::episodic("Test memory".to_string(), vec![], None)];
     let original_strength = memories[0].metadata.strength;
     engine.consolidate(&mut memories).unwrap();
     // With +=: strength goes up (or stays clamped at 1.0)
     // With *=: strength = original * 0.2 (much lower)
-    assert!(memories[0].metadata.strength >= original_strength,
+    assert!(
+        memories[0].metadata.strength >= original_strength,
         "Consolidation should increase or maintain strength, got {} from {}; \
-         catches L214 +=→*=", memories[0].metadata.strength, original_strength);
+         catches L214 +=→*=",
+        memories[0].metadata.strength,
+        original_strength
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -8162,7 +9304,10 @@ fn mutation_forgetting_importance_modifier_r6() {
     // The strength should be reduced but not dramatically
     // Key: importance modifier should be ~1.2, not ~1.45 or ~1.9
     let s = memories[0].metadata.strength;
-    assert!(s > 0.0, "Memory should still have some strength after 1 day");
+    assert!(
+        s > 0.0,
+        "Memory should still have some strength after 1 day"
+    );
     // Create another with low importance for comparison
     let mut mem_low = Memory::episodic("Low importance".to_string(), vec![], None);
     mem_low.metadata.importance = 0.1;
@@ -8172,9 +9317,13 @@ fn mutation_forgetting_importance_modifier_r6() {
     engine.apply_forgetting(&mut mems_low).unwrap();
     let s_low = mems_low[0].metadata.strength;
     // High importance should have higher strength
-    assert!(s > s_low,
+    assert!(
+        s > s_low,
         "High importance ({}) should retain more strength than low importance ({}); \
-         catches L190 >→>= and L193 mutations", s, s_low);
+         catches L190 >→>= and L193 mutations",
+        s,
+        s_low
+    );
 }
 
 #[test]
@@ -8206,9 +9355,13 @@ fn mutation_forgetting_access_count_modifier_r6() {
     let s_zero = mems_z[0].metadata.strength;
 
     // Accessed memory should have HIGHER strength
-    assert!(s_accessed > s_zero,
+    assert!(
+        s_accessed > s_zero,
         "Accessed memory ({}) should retain more than unaccessed ({}); \
-         catches L201 >→== and L210/L212 mutations", s_accessed, s_zero);
+         catches L201 >→== and L210/L212 mutations",
+        s_accessed,
+        s_zero
+    );
 }
 
 #[test]
@@ -8233,9 +9386,11 @@ fn mutation_forgetting_should_forget_threshold_r6() {
     let mut memories = vec![mem_above.clone(), mem_proc.clone()];
     let result = engine.apply_forgetting(&mut memories).unwrap();
     // Both are above their respective thresholds, should NOT be forgotten
-    assert_eq!(result.memories_forgotten, 0,
+    assert_eq!(
+        result.memories_forgotten, 0,
         "Memories above threshold should not be forgotten (got {}; catches L242/L246 <→<=)",
-        result.memories_forgotten);
+        result.memories_forgotten
+    );
     assert_eq!(memories.len(), 2, "Both memories should survive");
 
     // Memory very old (365 days) so decay drops strength below threshold
@@ -8248,8 +9403,10 @@ fn mutation_forgetting_should_forget_threshold_r6() {
     let r = engine.apply_forgetting(&mut mems_b).unwrap();
     // After 365 days decay with half_life=14 (Episodic): exp(-0.693*365/14) ≈ 0
     // Memory should definitely be below retention threshold 0.15
-    assert_eq!(r.memories_forgotten, 1,
-        "Very old memory should be forgotten; catches L246 <→> and <→==");
+    assert_eq!(
+        r.memories_forgotten, 1,
+        "Very old memory should be forgotten; catches L246 <→> and <→=="
+    );
     assert!(mems_b.is_empty(), "Forgotten memory should be removed");
 }
 
@@ -8275,11 +9432,18 @@ fn mutation_forgetting_adaptive_half_life_r6() {
     let hl0 = engine.calculate_adaptive_half_life(&mem0);
 
     // 2 accesses should give longer half-life than 0 or 1
-    assert!(hl2 > hl1,
+    assert!(
+        hl2 > hl1,
         "More accesses should increase half-life: hl2={} > hl1={}; catches L258",
-        hl2, hl1);
-    assert!(hl2 > hl0,
-        "2 accesses should have longer half-life than 0: hl2={} > hl0={}", hl2, hl0);
+        hl2,
+        hl1
+    );
+    assert!(
+        hl2 > hl0,
+        "2 accesses should have longer half-life than 0: hl2={} > hl0={}",
+        hl2,
+        hl0
+    );
 }
 
 #[test]
@@ -8305,9 +9469,11 @@ fn mutation_forgetting_type_statistics_threshold_r6() {
     // Below 0.10: < 0.15 = true, weak
     // Above 0.50: not weak
     // With <= : 0.15 <= 0.15 = true, so at_threshold counts as weak
-    assert_eq!(stats.weak_memories, 1,
+    assert_eq!(
+        stats.weak_memories, 1,
         "Only memory below threshold should be weak (got {}; catches L297 <→<=)",
-        stats.weak_memories);
+        stats.weak_memories
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -8327,7 +9493,7 @@ fn mutation_compression_compress_text_formula_r6() {
     });
     let long_text = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu";
     let compressed = engine.compress_memories(&mut vec![]).unwrap(); // just test the engine exists
-    // Actually compress_text is private, test via compress_memories
+                                                                     // Actually compress_text is private, test via compress_memories
     let mut mem = Memory::episodic(long_text.to_string(), vec![], None);
     mem.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(60);
     mem.metadata.importance = 0.1;
@@ -8336,10 +9502,16 @@ fn mutation_compression_compress_text_formula_r6() {
     engine.compress_memories(&mut mems).unwrap();
     let compressed_len = mems[0].content.text.split_whitespace().count();
     // Should be shorter than original but contain [...]
-    assert!(compressed_len < original_len,
-        "Compressed text should be shorter: {} < {}; catches L151", compressed_len, original_len);
-    assert!(mems[0].content.text.contains("[...]"),
-        "Compressed text should contain [...] marker");
+    assert!(
+        compressed_len < original_len,
+        "Compressed text should be shorter: {} < {}; catches L151",
+        compressed_len,
+        original_len
+    );
+    assert!(
+        mems[0].content.text.contains("[...]"),
+        "Compressed text should contain [...] marker"
+    );
 }
 
 #[test]
@@ -8370,16 +9542,24 @@ fn mutation_compression_should_compress_checks_r6() {
 
     let mut mems = vec![mem_eligible, mem_young, mem_important];
     let result = engine.compress_memories(&mut mems).unwrap();
-    assert_eq!(result.memories_compressed, 1,
+    assert_eq!(
+        result.memories_compressed, 1,
         "Only 1 memory should be compressed (got {}; catches L156 boundary mutations)",
-        result.memories_compressed);
+        result.memories_compressed
+    );
     // Verify the compressed one is the eligible one (first)
-    assert!(mems[0].metadata.tags.contains(&"compressed".to_string()),
-        "First memory (eligible) should be compressed");
-    assert!(!mems[1].metadata.tags.contains(&"compressed".to_string()),
-        "Second memory (young) should NOT be compressed");
-    assert!(!mems[2].metadata.tags.contains(&"compressed".to_string()),
-        "Third memory (important) should NOT be compressed");
+    assert!(
+        mems[0].metadata.tags.contains(&"compressed".to_string()),
+        "First memory (eligible) should be compressed"
+    );
+    assert!(
+        !mems[1].metadata.tags.contains(&"compressed".to_string()),
+        "Second memory (young) should NOT be compressed"
+    );
+    assert!(
+        !mems[2].metadata.tags.contains(&"compressed".to_string()),
+        "Third memory (important) should NOT be compressed"
+    );
 }
 
 #[test]
@@ -8396,27 +9576,40 @@ fn mutation_compression_estimate_size_r6() {
     mem.metadata.tags.push("important".to_string());
     mem.metadata.tags.push("combat".to_string());
     // Add related events
-    mem.content.context.related_events.push("event_one".to_string());
-    mem.content.context.related_events.push("event_two".to_string());
+    mem.content
+        .context
+        .related_events
+        .push("event_one".to_string());
+    mem.content
+        .context
+        .related_events
+        .push("event_two".to_string());
 
     let memories = vec![mem];
     let stats = engine.get_compression_stats(&memories);
     // Size should be positive and reasonable
-    assert!(stats.total_size_bytes > 0,
-        "Memory size should be > 0 (got {}; catches L177-L184 +=→-=)", stats.total_size_bytes);
+    assert!(
+        stats.total_size_bytes > 0,
+        "Memory size should be > 0 (got {}; catches L177-L184 +=→-=)",
+        stats.total_size_bytes
+    );
     // Minimum: text(46) + location(6) + participants(8) + events(18) + tags(16) = ~94
-    assert!(stats.total_size_bytes >= 50,
+    assert!(
+        stats.total_size_bytes >= 50,
         "Memory size should be at least 50 bytes (got {}; catches +=→*= mutations)",
-        stats.total_size_bytes);
-    assert!(stats.average_size_bytes == stats.total_size_bytes,
-        "With 1 memory, avg should equal total");
+        stats.total_size_bytes
+    );
+    assert!(
+        stats.average_size_bytes == stats.total_size_bytes,
+        "With 1 memory, avg should equal total"
+    );
 }
 
 #[test]
 fn mutation_compression_stats_ratio_r6() {
     // L229: compression_ratio = compressed / total → * instead of /
     let engine = CompressionEngine::new(CompressionConfig {
-        min_age_days: 0.0, // Compress immediately
+        min_age_days: 0.0,         // Compress immediately
         importance_threshold: 1.0, // Compress everything
         max_compression_ratio: 0.5,
         preserve_emotional_context: true,
@@ -8433,11 +9626,16 @@ fn mutation_compression_stats_ratio_r6() {
     let stats = engine.get_compression_stats(&mems);
     // With / : ratio = compressed/total <= 1.0
     // With * : ratio = compressed*total which could be > 1
-    assert!(stats.compression_ratio <= 1.0,
+    assert!(
+        stats.compression_ratio <= 1.0,
         "Compression ratio should be <= 1.0 (got {}; catches L229 /→*)",
-        stats.compression_ratio);
-    assert!(stats.compression_ratio >= 0.0,
-        "Compression ratio should be >= 0.0 (got {})", stats.compression_ratio);
+        stats.compression_ratio
+    );
+    assert!(
+        stats.compression_ratio >= 0.0,
+        "Compression ratio should be >= 0.0 (got {})",
+        stats.compression_ratio
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -8459,9 +9657,7 @@ fn mutation_retrieval_relevance_scoring_r6() {
         follow_associations: false,
         max_results: 10,
     });
-    let mem = Memory::episodic(
-        "combat battle fight attack".to_string(), vec![], None,
-    );
+    let mem = Memory::episodic("combat battle fight attack".to_string(), vec![], None);
     let ctx = RetrievalContext {
         query: "combat battle fight attack".to_string(),
         emotional_state: None,
@@ -8472,12 +9668,18 @@ fn mutation_retrieval_relevance_scoring_r6() {
         limit: 10,
     };
     let results = engine.retrieve(&ctx, &[mem]).unwrap();
-    assert!(!results.is_empty(), "Should retrieve memory with matching query");
+    assert!(
+        !results.is_empty(),
+        "Should retrieve memory with matching query"
+    );
     let score = results[0].relevance_score;
     // Semantic score should be high (exact match)
-    assert!(score > 0.3,
+    assert!(
+        score > 0.3,
         "Relevance score should be > 0.3 for exact word match (got {}; \
-         catches L146 +=→-= and L147 mutations)", score);
+         catches L146 +=→-= and L147 mutations)",
+        score
+    );
 }
 
 #[test]
@@ -8509,11 +9711,17 @@ fn mutation_retrieval_temporal_score_in_window_r6() {
         limit: 10,
     };
     let results = engine.retrieve(&ctx, &[mem]).unwrap();
-    assert!(!results.is_empty(), "Memory within time window should be retrieved");
+    assert!(
+        !results.is_empty(),
+        "Memory within time window should be retrieved"
+    );
     let temporal = results[0].score_breakdown.temporal_score;
-    assert!((temporal - 1.0).abs() < 0.01,
+    assert!(
+        (temporal - 1.0).abs() < 0.01,
         "Temporal score should be 1.0 for memory within window (got {}; \
-         catches L202 >=→< and L203 &&→||, <=→>)", temporal);
+         catches L202 >=→< and L203 &&→||, <=→>)",
+        temporal
+    );
 }
 
 #[test]
@@ -8551,11 +9759,17 @@ fn mutation_retrieval_temporal_decay_formula_r6() {
         // delete -: exp(14/7) = exp(2) = 7.389 (huge)
         // /→*: exp(-14*7) = ~0
         // /→%: exp(-(14%7)) = exp(0) = 1.0
-        assert!(temporal < 0.5,
+        assert!(
+            temporal < 0.5,
             "Temporal score for memory 14 days outside window should be < 0.5 \
-             (got {}; catches L218 delete - and /→* /→%)", temporal);
-        assert!(temporal > 0.0 && temporal < 1.0,
-            "Temporal score must be between 0 and 1 (got {})", temporal);
+             (got {}; catches L218 delete - and /→* /→%)",
+            temporal
+        );
+        assert!(
+            temporal > 0.0 && temporal < 1.0,
+            "Temporal score must be between 0 and 1 (got {})",
+            temporal
+        );
     }
 }
 
@@ -8587,17 +9801,23 @@ fn mutation_retrieval_recency_score_formula_r6() {
     assert!(results.len() >= 1, "Should retrieve at least 1 memory");
     // Recent memory's recency score should be higher than old's
     if results.len() >= 2 {
-        let recent_recency = results.iter()
+        let recent_recency = results
+            .iter()
             .find(|r| r.memory.content.text == "recent")
             .map(|r| r.score_breakdown.recency_score)
             .unwrap_or(0.0);
-        let old_recency = results.iter()
+        let old_recency = results
+            .iter()
             .find(|r| r.memory.content.text == "old")
             .map(|r| r.score_breakdown.recency_score)
             .unwrap_or(0.0);
-        assert!(recent_recency > old_recency,
+        assert!(
+            recent_recency > old_recency,
             "Recent memory should have higher recency score: {} > {}; \
-             catches L248/L249 /→* and /→%", recent_recency, old_recency);
+             catches L248/L249 /→* and /→%",
+            recent_recency,
+            old_recency
+        );
     }
 }
 
@@ -8614,15 +9834,11 @@ fn mutation_retrieval_associated_memories_r6() {
     config.semantic_weight = 0.6;
     let engine = RetrievalEngine::new(config);
 
-    let mut mem1 = Memory::episodic(
-        "alpha beta gamma delta".to_string(), vec![], None,
-    );
-    let mut mem2 = Memory::episodic(
-        "epsilon zeta eta theta".to_string(), vec![], None,
-    );
+    let mut mem1 = Memory::episodic("alpha beta gamma delta".to_string(), vec![], None);
+    let mut mem2 = Memory::episodic("epsilon zeta eta theta".to_string(), vec![], None);
     let mem2_id = mem2.id.clone();
     // Add association from mem1 to mem2
-    mem1.add_association(mem2_id. clone(), AssociationType::Conceptual, 0.8);
+    mem1.add_association(mem2_id.clone(), AssociationType::Conceptual, 0.8);
 
     let ctx = RetrievalContext {
         query: "alpha beta gamma delta".to_string(),
@@ -8638,13 +9854,18 @@ fn mutation_retrieval_associated_memories_r6() {
     // With correct code: mem1 matches directly, mem2 found via association
     // With L261 Ok(vec![]): no associated results
     // With L278 !=: wrong association matching
-    assert!(results.len() >= 2,
+    assert!(
+        results.len() >= 2,
         "Should find both direct and associated memories (got {}; \
-         catches L261 body replacement and L278 ==→!=)", results.len());
+         catches L261 body replacement and L278 ==→!=)",
+        results.len()
+    );
     // Check that the associated memory was found via associative path
     let assoc_result = results.iter().find(|r| r.memory.id == mem2_id);
-    assert!(assoc_result.is_some(),
-        "Associated memory should be in results; catches L285 >=→<");
+    assert!(
+        assoc_result.is_some(),
+        "Associated memory should be in results; catches L285 >=→<"
+    );
 }
 
 #[test]
@@ -8670,8 +9891,11 @@ fn mutation_retrieval_memory_similarity_r6() {
     // correct: text_sim*0.5 + 0.2(type) + 0.1(loc) + (1/2)*0.2 = text*0.5+0.4
     // L383 *: (1*2)*0.2 = 0.4 vs correct (1/2)*0.2 = 0.1
     // L384 +: (0.5 + 0.2) = 0.7 vs correct 0.5*0.2 = 0.1
-    assert!(sim > 0.0 && sim <= 1.0,
-        "Similarity should be in (0,1] range, got {}; catches L383/L384", sim);
+    assert!(
+        sim > 0.0 && sim <= 1.0,
+        "Similarity should be in (0,1] range, got {}; catches L383/L384",
+        sim
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -8706,20 +9930,29 @@ fn mutation_validator_satisfaction_threshold_r6() {
             ));
         }
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
             companion_effectiveness: 0.6,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         });
         let mut m = Memory::episodic(format!("validator_r6_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("heal", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("heal", "combat", &storage)
+        .unwrap();
     // This exercises the satisfaction threshold check
     // The validate_with_profile path is tested
-    assert!(result.confidence >= 0.0 && result.confidence <= 1.0,
-        "Confidence should be in [0,1] range (got {})", result.confidence);
+    assert!(
+        result.confidence >= 0.0 && result.confidence <= 1.0,
+        "Confidence should be in [0,1] range (got {})",
+        result.confidence
+    );
 }
 
 #[test]
@@ -8746,25 +9979,35 @@ fn mutation_validator_has_optimal_response_r6() {
             ));
         }
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.9, player_satisfaction: 0.9,
+            success_rating: 0.9,
+            player_satisfaction: 0.9,
             companion_effectiveness: 0.9,
-            duration_ms: 3000, damage_dealt: 200.0, damage_taken: 5.0,
-            resources_used: 3.0, failure_count: 0,
+            duration_ms: 3000,
+            damage_dealt: 200.0,
+            damage_taken: 5.0,
+            resources_used: 3.0,
+            failure_count: 0,
         });
         let mut m = Memory::episodic(format!("opt_r6_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     // Validate a known action (shield_bash appears in optimal_responses)
-    let result_known = validator.validate_action("shield_bash", "combat", &storage).unwrap();
+    let result_known = validator
+        .validate_action("shield_bash", "combat", &storage)
+        .unwrap();
     // Validate unknown action
     validator.clear_cache();
-    let result_unknown = validator.validate_action("unknown_action", "combat", &storage).unwrap();
+    let result_unknown = validator
+        .validate_action("unknown_action", "combat", &storage)
+        .unwrap();
     // Known action should be valid with high confidence
     // Unknown action: !has_optimal_response → adds profile_alignment violation
     // With delete !: known action would get violation, unknown wouldn't
-    assert!(result_known.valid,
-        "Known optimal action should be valid; catches L207 delete !");
+    assert!(
+        result_known.valid,
+        "Known optimal action should be valid; catches L207 delete !"
+    );
     // Unknown action's validity depends on strictness of profile_alignment rule
     // (it's non-strict by default), so it may still be valid but with lower confidence
 }
@@ -8794,24 +10037,32 @@ fn mutation_validator_effectiveness_check_r6() {
             ));
         }
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.3, player_satisfaction: 0.2,
+            success_rating: 0.3,
+            player_satisfaction: 0.2,
             companion_effectiveness: 0.2,
-            duration_ms: 8000, damage_dealt: 20.0, damage_taken: 80.0,
-            resources_used: 15.0, failure_count: 2,
+            duration_ms: 8000,
+            damage_dealt: 20.0,
+            damage_taken: 80.0,
+            resources_used: 15.0,
+            failure_count: 2,
         });
         let mut m = Memory::episodic(format!("eff_r6_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("weak_heal", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("weak_heal", "combat", &storage)
+        .unwrap();
     // avg_effectiveness = 0.2 < 0.6: should add historical_effectiveness violation
     // L217 <→>: 0.2 > 0.6 = false, skips violation (wrong)
     // L217 <→==: 0.2 == 0.6 = false, skips violation (wrong)
     // L217 <→<=: 0.2 <= 0.6 = true, adds violation (same as correct)
     // The historical_effectiveness rule is non-strict, so it adds a reason but may still be valid
-    assert!(result.reasons.len() > 0 || !result.valid,
+    assert!(
+        result.reasons.len() > 0 || !result.valid,
         "Low effectiveness action should have violations or be invalid; \
-         catches L217 <→> and <→==");
+         catches L217 <→> and <→=="
+    );
 }
 
 #[test]
@@ -8836,22 +10087,30 @@ fn mutation_validator_strict_violation_check_r6() {
             serde_json::json!({}),
         ));
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.1, player_satisfaction: 0.1,
+            success_rating: 0.1,
+            player_satisfaction: 0.1,
             companion_effectiveness: 0.1,
-            duration_ms: 10000, damage_dealt: 5.0, damage_taken: 90.0,
-            resources_used: 50.0, failure_count: 3,
+            duration_ms: 10000,
+            damage_dealt: 5.0,
+            damage_taken: 90.0,
+            resources_used: 50.0,
+            failure_count: 3,
         });
         let mut m = Memory::episodic(format!("strict_r6_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("bad_action", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("bad_action", "combat", &storage)
+        .unwrap();
     // min_satisfaction is strict rule. Predicted satisfaction should be very low.
     // With && → ||: any rule match would count as strict, changing behavior
     // With == → !=: no rule would match its own ID, nothing strict
-    assert!(!result.valid,
+    assert!(
+        !result.valid,
         "Action with very low effectiveness should fail strict validation; \
-         catches L230 ==→!= and &&→||");
+         catches L230 ==→!= and &&→||"
+    );
 }
 
 #[test]
@@ -8882,27 +10141,40 @@ fn mutation_validator_calculate_confidence_r6() {
             ));
         }
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.9, player_satisfaction: 0.9,
+            success_rating: 0.9,
+            player_satisfaction: 0.9,
             companion_effectiveness: 0.9,
-            duration_ms: 3000, damage_dealt: 100.0, damage_taken: 5.0,
-            resources_used: 3.0, failure_count: 0,
+            duration_ms: 3000,
+            damage_dealt: 100.0,
+            damage_taken: 5.0,
+            resources_used: 3.0,
+            failure_count: 0,
         });
         let mut m = Memory::episodic(format!("conf_r6_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
-    let result = validator.validate_action("good_heal", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("good_heal", "combat", &storage)
+        .unwrap();
     // With 20 episodes and good data, confidence should be moderate to high
     // L263 → 1.0: always returns 1.0 regardless of profile
     // L267 -= → +=: penalty adds instead of subtracts
     // L271 += → -=: convergence bonus subtracts
-    assert!(result.valid, "Good action with good history should be valid");
-    assert!(result.confidence > 0.0 && result.confidence < 1.0,
+    assert!(
+        result.valid,
+        "Good action with good history should be valid"
+    );
+    assert!(
+        result.confidence > 0.0 && result.confidence < 1.0,
         "Confidence should be between 0 and 1 exclusive (got {}; catches L263 →1.0)",
-        result.confidence);
+        result.confidence
+    );
     // Also validate that confidence changes with violations
     validator.clear_cache();
-    let result_unknown = validator.validate_action("nonexistent_action", "combat", &storage).unwrap();
+    let result_unknown = validator
+        .validate_action("nonexistent_action", "combat", &storage)
+        .unwrap();
     // Unknown action should have different confidence (violations reduce it)
     // This won't necessarily fail but exercises the paths
 }
@@ -8946,27 +10218,38 @@ fn mutation_validator_suggest_alternatives_r6() {
             serde_json::json!({}),
         ));
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.5, player_satisfaction: 0.5,
+            success_rating: 0.5,
+            player_satisfaction: 0.5,
             companion_effectiveness: 0.5,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 30.0,
-            resources_used: 10.0, failure_count: 0,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 30.0,
+            resources_used: 10.0,
+            failure_count: 0,
         });
         let mut m = Memory::episodic(format!("alt_r6_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     // Validate the weak action — should fail and suggest alternatives
-    let result = validator.validate_action("weak_buff", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("weak_buff", "combat", &storage)
+        .unwrap();
     // Power_heal has high effectiveness + positive rate, should be in alternatives
     // With &&→||: weak_buff (0.3 eff) could also appear (0.3 > 0.6 is false, but || passes)
     // With >→>=: actions at exactly 0.6 boundary included
     if !result.valid {
         // Check alternatives include the good action
-        assert!(result.alternatives.iter().any(|a| a == "power_heal"),
+        assert!(
+            result.alternatives.iter().any(|a| a == "power_heal"),
             "Alternatives should include power_heal (got {:?}; catches L282 &&→|| and >→>=)",
-            result.alternatives);
-        assert!(!result.alternatives.iter().any(|a| a == "weak_buff"),
-            "Alternatives should NOT include weak_buff (got {:?})", result.alternatives);
+            result.alternatives
+        );
+        assert!(
+            !result.alternatives.iter().any(|a| a == "weak_buff"),
+            "Alternatives should NOT include weak_buff (got {:?})",
+            result.alternatives
+        );
     }
 }
 
@@ -8986,14 +10269,16 @@ fn mutation_category_preference_formula_r6() {
     // 10 Combat episodes with known quality
     for i in 0..10 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.7,
+            success_rating: 0.8,
+            player_satisfaction: 0.7,
             companion_effectiveness: 0.6,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["attack"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["attack"], outcome);
         let mut m = Memory::episodic(format!("catpref_r6_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
@@ -9006,10 +10291,16 @@ fn mutation_category_preference_formula_r6() {
     // preference = 1.0*0.6 + 0.742*0.4 = 0.6 + 0.297 = 0.897
     // With * → /: 1.0/0.6 + 0.742/0.4 = 1.667+1.855 = 3.52 → clamped to 1.0
     let combat_pref = profile.preferred_categories.get(&EpisodeCategory::Combat);
-    assert!(combat_pref.is_some(), "Combat category should have a preference");
+    assert!(
+        combat_pref.is_some(),
+        "Combat category should have a preference"
+    );
     let pref = *combat_pref.unwrap();
-    assert!(pref > 0.7 && pref < 1.0,
-        "Combat preference should be ~0.9 (got {}; catches L145 *→/)", pref);
+    assert!(
+        pref > 0.7 && pref < 1.0,
+        "Combat preference should be ~0.9 (got {}; catches L145 *→/)",
+        pref
+    );
 }
 
 #[test]
@@ -9038,10 +10329,14 @@ fn mutation_optimal_response_threshold_r6() {
             ));
         }
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.7,
+            success_rating: 0.8,
+            player_satisfaction: 0.7,
             companion_effectiveness: 0.6,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         });
         let mut m = Memory::episodic(format!("optresp_r6_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -9052,9 +10347,12 @@ fn mutation_optimal_response_threshold_r6() {
     // With >= 0.6: effectiveness = 0.6 >= 0.6, so positive_count = 18
     // positive_response_rate: correct = 0/18 = 0.0; mutation >= = 18/18 = 1.0
     if let Some(pref) = profile.optimal_responses.get("heal") {
-        assert_eq!(pref.positive_response_rate, 0.0,
+        assert_eq!(
+            pref.positive_response_rate, 0.0,
             "At exactly 0.6 effectiveness, positive_response_rate should be 0.0 \
-             (got {}; catches L174 >→>=)", pref.positive_response_rate);
+             (got {}; catches L174 >→>=)",
+            pref.positive_response_rate
+        );
     }
 }
 
@@ -9082,10 +10380,14 @@ fn mutation_optimal_response_avg_effectiveness_r6() {
             ));
         }
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
             companion_effectiveness: 0.7,
-            duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         });
         let mut m = Memory::episodic(format!("avgeff_r6_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -9096,11 +10398,16 @@ fn mutation_optimal_response_avg_effectiveness_r6() {
     // avg_effectiveness = (12*0.7) / 12 = 0.7
     // With /→*: (12*0.7) * 12 = 100.8
     if let Some(pref) = profile.optimal_responses.get("buff") {
-        assert!(pref.avg_effectiveness <= 1.0,
+        assert!(
+            pref.avg_effectiveness <= 1.0,
             "avg_effectiveness should be <= 1.0 (got {}; catches L196 /→*)",
-            pref.avg_effectiveness);
-        assert!((pref.avg_effectiveness - 0.7).abs() < 0.01,
-            "avg_effectiveness should be ~0.7 (got {})", pref.avg_effectiveness);
+            pref.avg_effectiveness
+        );
+        assert!(
+            (pref.avg_effectiveness - 0.7).abs() < 0.01,
+            "avg_effectiveness should be ~0.7 (got {})",
+            pref.avg_effectiveness
+        );
     } else {
         panic!("buff action should be in optimal_responses (>=3 occurrences)")
     }
@@ -9118,14 +10425,16 @@ fn mutation_effectiveness_bonus_formula_r6() {
     // High quality Combat (10 episodes)
     for i in 0..10 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.95, player_satisfaction: 0.95,
+            success_rating: 0.95,
+            player_satisfaction: 0.95,
             companion_effectiveness: 0.95,
-            duration_ms: 3000, damage_dealt: 200.0, damage_taken: 5.0,
-            resources_used: 3.0, failure_count: 0,
+            duration_ms: 3000,
+            damage_dealt: 200.0,
+            damage_taken: 5.0,
+            resources_used: 3.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["attack"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["attack"], outcome);
         let mut m = Memory::episodic(format!("eff_c_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
@@ -9133,14 +10442,17 @@ fn mutation_effectiveness_bonus_formula_r6() {
     // Low quality Exploration (10 episodes)
     for i in 0..10 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.3, player_satisfaction: 0.3,
+            success_rating: 0.3,
+            player_satisfaction: 0.3,
             companion_effectiveness: 0.3,
-            duration_ms: 15000, damage_dealt: 0.0, damage_taken: 0.0,
-            resources_used: 20.0, failure_count: 2,
+            duration_ms: 15000,
+            damage_dealt: 0.0,
+            damage_taken: 0.0,
+            resources_used: 20.0,
+            failure_count: 2,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Exploration, 3, vec!["explore"], outcome,
-        );
+        let ep =
+            make_episode_with_n_actions(EpisodeCategory::Exploration, 3, vec!["explore"], outcome);
         let mut m = Memory::episodic(format!("eff_e_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
@@ -9152,17 +10464,24 @@ fn mutation_effectiveness_bonus_formula_r6() {
     let combat_details = manager.get_weight_details(BehaviorNodeType::Combat);
     let explore_details = manager.get_weight_details(BehaviorNodeType::Exploration);
     if let Some(combat) = combat_details {
-        assert!(combat.effectiveness_bonus >= 0.0,
+        assert!(
+            combat.effectiveness_bonus >= 0.0,
             "Combat effectiveness_bonus should be >= 0 (got {}; catches L228 *→/)",
-            combat.effectiveness_bonus);
-        assert!(combat.effectiveness_bonus <= 0.2, // max_effectiveness_bonus = 0.2
-            "Combat effectiveness_bonus should be <= 0.2 (got {})", combat.effectiveness_bonus);
+            combat.effectiveness_bonus
+        );
+        assert!(
+            combat.effectiveness_bonus <= 0.2, // max_effectiveness_bonus = 0.2
+            "Combat effectiveness_bonus should be <= 0.2 (got {})",
+            combat.effectiveness_bonus
+        );
     }
     if let Some(explore) = explore_details {
         // Exploration is below average, so effectiveness_bonus = 0
-        assert!(explore.effectiveness_bonus == 0.0 || explore.effectiveness_bonus < 0.05,
+        assert!(
+            explore.effectiveness_bonus == 0.0 || explore.effectiveness_bonus < 0.05,
             "Exploration bonus should be ~0 (below avg preference), got {}",
-            explore.effectiveness_bonus);
+            explore.effectiveness_bonus
+        );
     }
 }
 
@@ -9186,10 +10505,14 @@ fn mutation_learning_confidence_diversity_tighter_r6() {
     for i in 0..3 {
         for cat in &categories {
             let outcome = EpisodeOutcome {
-                success_rating: 0.8, player_satisfaction: 0.8,
+                success_rating: 0.8,
+                player_satisfaction: 0.8,
                 companion_effectiveness: 0.8,
-                duration_ms: 5000, damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
+                duration_ms: 5000,
+                damage_dealt: 50.0,
+                damage_taken: 10.0,
+                resources_used: 5.0,
+                failure_count: 0,
             };
             let ep = make_episode_with_n_actions(cat.clone(), 3, vec!["act"], outcome);
             let mut m = Memory::episodic(format!("div5_{}_{}_{:?}", i, 0, cat), vec![], None);
@@ -9208,8 +10531,11 @@ fn mutation_learning_confidence_diversity_tighter_r6() {
     // Difference = (1.0-0.833)*0.2 = 0.033
     // This is very small so we need exact value comparison
     // Actually with 5 cats, the test mainly confirms the formula direction
-    assert!(profile.preferred_categories.len() == 5,
-        "Should have 5 categories (got {})", profile.preferred_categories.len());
+    assert!(
+        profile.preferred_categories.len() == 5,
+        "Should have 5 categories (got {})",
+        profile.preferred_categories.len()
+    );
 }
 
 // ============================================================================
@@ -9221,22 +10547,22 @@ fn mutation_learning_confidence_diversity_tighter_r6() {
 fn test_compression_estimate_size_exact_via_stats_s68() {
     // Build a Memory with KNOWN sizes for every component
     let mut m = Memory::episodic(
-        "abcdefghij".to_string(),  // 10 bytes text
-        vec!["Alice".to_string(), "Bob".to_string()],  // 5+3 = 8 bytes participants
-        Some("Forest".to_string()),  // 6 bytes location
+        "abcdefghij".to_string(),                     // 10 bytes text
+        vec!["Alice".to_string(), "Bob".to_string()], // 5+3 = 8 bytes participants
+        Some("Forest".to_string()),                   // 6 bytes location
     );
     m.content.sensory_data = Some(SensoryData {
-        visual: Some("vis_data".to_string()),   // 8 bytes
-        auditory: Some("aud_".to_string()),     // 4 bytes
-        tactile: Some("tac".to_string()),       // 3 bytes
-        environmental: Some("en".to_string()),  // 2 bytes
+        visual: Some("vis_data".to_string()),  // 8 bytes
+        auditory: Some("aud_".to_string()),    // 4 bytes
+        tactile: Some("tac".to_string()),      // 3 bytes
+        environmental: Some("en".to_string()), // 2 bytes
     });
     m.content.context.time_period = Some("morning".to_string()); // 7 bytes
     m.content.context.related_events = vec!["ev1".to_string(), "ev22".to_string()]; // 3+4=7 bytes
     m.metadata.tags = vec!["tag1".to_string(), "tag2x".to_string()]; // 4+5=9 bytes
-    // associations: 0 (none added) → 0 * 64 = 0
-    // embedding: None → 0
-    // Expected total = 10 + 8+4+3+2 + 6+7 + 8 + 7 + 9 + 0 + 0 = 64
+                                                                     // associations: 0 (none added) → 0 * 64 = 0
+                                                                     // embedding: None → 0
+                                                                     // Expected total = 10 + 8+4+3+2 + 6+7 + 8 + 7 + 9 + 0 + 0 = 64
 
     let engine = CompressionEngine::new(CompressionConfig::default());
     let stats = engine.get_compression_stats(&[m]);
@@ -9254,12 +10580,15 @@ fn test_compression_estimate_size_with_associations_and_embedding_s68() {
     m.add_association("other_id".to_string(), AssociationType::Spatial, 0.9);
     m.add_association("other_id2".to_string(), AssociationType::Temporal, 0.5);
     m.embedding = Some(vec![1.0, 2.0, 3.0]); // 3 * 4 = 12 bytes
-    // Expected: text=2 + associations=2*64=128 + embedding=12 = 142
+                                             // Expected: text=2 + associations=2*64=128 + embedding=12 = 142
 
     let engine = CompressionEngine::new(CompressionConfig::default());
     let stats = engine.get_compression_stats(&[m]);
-    assert_eq!(stats.total_size_bytes, 149,
-        "Should be text(2)+period(7)+assoc(128)+embed(12) = 149, got {}", stats.total_size_bytes);
+    assert_eq!(
+        stats.total_size_bytes, 149,
+        "Should be text(2)+period(7)+assoc(128)+embed(12) = 149, got {}",
+        stats.total_size_bytes
+    );
 }
 
 #[test]
@@ -9275,8 +10604,11 @@ fn test_compression_stats_avg_division_not_multiply_s68() {
     let engine = CompressionEngine::new(CompressionConfig::default());
     let stats = engine.get_compression_stats(&[m1, m2]);
     assert_eq!(stats.total_size_bytes, 30);
-    assert_eq!(stats.average_size_bytes, 15,
-        "avg should be total/count = 15, got {}", stats.average_size_bytes);
+    assert_eq!(
+        stats.average_size_bytes, 15,
+        "avg should be total/count = 15, got {}",
+        stats.average_size_bytes
+    );
 }
 // ============================================================================
 // SECTION 69 — Compression: compress_text + should_compress (Round 7)
@@ -9298,13 +10630,18 @@ fn test_compression_compress_memories_long_text_s69() {
     let engine = CompressionEngine::new(CompressionConfig::default());
     let mut memories = vec![m];
     let result = engine.compress_memories(&mut memories).unwrap();
-    assert_eq!(result.memories_compressed, 1,
+    assert_eq!(
+        result.memories_compressed, 1,
         "Should compress (importance={}, age=60d). Processed={}",
-        memories[0].metadata.importance, result.memories_processed);
+        memories[0].metadata.importance, result.memories_processed
+    );
 
     // After compression, text should contain "[...]" marker
-    assert!(memories[0].content.text.contains("[...]"),
-        "Compressed text should have [...] marker, got: {}", memories[0].content.text);
+    assert!(
+        memories[0].content.text.contains("[...]"),
+        "Compressed text should have [...] marker, got: {}",
+        memories[0].content.text
+    );
 }
 
 #[test]
@@ -9396,8 +10733,11 @@ fn test_forgetting_strength_exact_episodic_s70() {
 
     let strength = memories[0].metadata.strength;
     // Expected: ~0.7778
-    assert!((strength - 0.7778).abs() < 0.01,
-        "Episodic 7-day strength should be ~0.778, got {}", strength);
+    assert!(
+        (strength - 0.7778).abs() < 0.01,
+        "Episodic 7-day strength should be ~0.778, got {}",
+        strength
+    );
     // Key: if L193 *→+, decay = exp(-0.693 + 7 / 14) = exp(-0.193) = 0.824 (different!)
     // If L193 *→/, decay = exp(-0.693 / 7 / 14) = exp(-0.0071) = 0.993 (different!)
     // If L193 delete -, decay = exp(0.693 * 7 / 14) = exp(0.3465) = 1.414. final = clamp = 1.0
@@ -9426,14 +10766,17 @@ fn test_forgetting_strength_with_access_s70() {
     let s = memories[0].metadata.strength;
     // Key mutation catches:
     // L201 >→<: access_count(3) < 0 is false → access_modifier=1.0 (different!)
-    // L201 >→==: 3==0 false → same as >→< 
+    // L201 >→==: 3==0 false → same as >→<
     // L201 >→>=: 3>=0 true → same as original (this is the tricky one)
     // L210 >→>=: 3>=1 true → same as >1 (equivalent for 3)
     // We need access_count=1 for L201 and access_count=2 for L210
 
     // For this test, check that with access_count=3, strength > 0.85
-    assert!(s > 0.85 && s < 0.95,
-        "Episodic 7-day with 3 accesses should be ~0.886, got {}", s);
+    assert!(
+        s > 0.85 && s < 0.95,
+        "Episodic 7-day with 3 accesses should be ~0.886, got {}",
+        s
+    );
     // If L212 *→+: ln(3) + 0.1 = 1.199, spaced_rep = 2.199, final clamped differently
     // If L212 *→/: ln(3) / 0.1 = 10.986, spaced_rep = 11.986, way different
 }
@@ -9449,7 +10792,7 @@ fn test_forgetting_access_count_zero_boundary_s70() {
     // access_frequency = 0/age = 0, so modifier = 1.0 + 0 = 1.0 → SAME result!
     // So >= mutation is equivalent here. We need access_count = 1 for L201.
     // With access_count = 1:
-    //   > 0: true → modifier = 1.0 + (1/age * 0.3) 
+    //   > 0: true → modifier = 1.0 + (1/age * 0.3)
     //   == 0: false → modifier = 1.0 (DIFFERENT!)
     //   < 0: false → modifier = 1.0 (DIFFERENT!)
     //   >= 0: true → same as > (same result)
@@ -9471,8 +10814,11 @@ fn test_forgetting_access_count_zero_boundary_s70() {
     // decay = exp(-0.693*14/14) = exp(-0.693) = 0.5
     // importance_modifier = 1.0
     // strength = 1.0 * 0.5 * 1.0 * 1.0214 * 1.0 = 0.5107
-    assert!((s - 0.5107).abs() < 0.02,
-        "With access_count=1, strength should be ~0.511, got {}", s);
+    assert!(
+        (s - 0.5107).abs() < 0.02,
+        "With access_count=1, strength should be ~0.511, got {}",
+        s
+    );
     // If L201 ==0: modifier=1.0 → strength=0.5 (different by ~0.01)
 }
 
@@ -9506,8 +10852,11 @@ fn test_forgetting_spaced_rep_boundary_access_two_s70() {
     // spaced: ln(2)*0.1 = 0.0693, modifier = 1.0693
     // decay = exp(-0.693*14/14) = exp(-0.693) = 0.5
     // strength = 1.0 * 0.5 * 1.0 * 1.0429 * 1.0693 = 0.5573
-    assert!(s > 0.5 && s < 0.62,
-        "With access_count=2 at 14 days, strength should be ~0.557, got {}", s);
+    assert!(
+        s > 0.5 && s < 0.62,
+        "With access_count=2 at 14 days, strength should be ~0.557, got {}",
+        s
+    );
 
     // Also test calculate_adaptive_half_life (L258: > → >=)
     let half_life = engine.calculate_adaptive_half_life(&m);
@@ -9515,8 +10864,11 @@ fn test_forgetting_spaced_rep_boundary_access_two_s70() {
     // access_factor = ln(2) = 0.693, modifier = 1.0 + 0.693*0.5 = 1.3466
     // importance_modifier = 0.5 + 0.5 = 1.0
     // result = 14 * 1.3466 * 1.0 = 18.85
-    assert!((half_life - 18.85).abs() < 0.5,
-        "Adaptive half-life should be ~18.85, got {}", half_life);
+    assert!(
+        (half_life - 18.85).abs() < 0.5,
+        "Adaptive half-life should be ~18.85, got {}",
+        half_life
+    );
 }
 
 #[test]
@@ -9543,7 +10895,10 @@ fn test_forgetting_should_forget_strength_at_threshold_s70() {
     engine.apply_forgetting(&mut memories).unwrap();
     // With 365 days, decay = exp(-0.693*365/14) = exp(-18.07) ≈ 0.0
     // Should be forgotten
-    assert!(memories.is_empty(), "365-day old episodic memory should be forgotten");
+    assert!(
+        memories.is_empty(),
+        "365-day old episodic memory should be forgotten"
+    );
 }
 
 #[test]
@@ -9566,7 +10921,8 @@ fn test_forgetting_type_stats_weak_count_s70() {
     // Use 0.15 exactly:
     let mut m3 = Memory::episodic("at_threshold".to_string(), vec![], None);
     m3.metadata.strength = 0.15; // Exactly at threshold
-    let mut m1b = m1.clone(); let stats2 = engine.get_type_statistics(&MemoryType::Episodic, &[m1b, m3]);
+    let mut m1b = m1.clone();
+    let stats2 = engine.get_type_statistics(&MemoryType::Episodic, &[m1b, m3]);
     // With < 0.15: 0.15 is NOT < 0.15, so NOT weak → weak_count = 0
     // With <= 0.15: 0.15 IS <= 0.15, so IS weak → weak_count = 1
     // This catches L242 for type-specific threshold
@@ -9593,8 +10949,10 @@ fn test_forgetting_default_threshold_boundary_s70() {
     // Episodic retention_threshold = 0.15
     // L242: strength(0.15) < threshold(0.15) → false → NOT weak
     // If <=: 0.15 <= 0.15 → true → 1 weak (DIFFERENT!)
-    assert_eq!(stats.weak_memories, 0,
-        "Strength exactly at threshold should NOT be counted as weak (< not <=)");
+    assert_eq!(
+        stats.weak_memories, 0,
+        "Strength exactly at threshold should NOT be counted as weak (< not <=)"
+    );
 }
 // ============================================================================
 // SECTION 71 — Retrieval: exact scoring + association tests (Round 7)
@@ -9616,9 +10974,7 @@ fn test_retrieval_relevance_score_components_s71() {
     });
 
     // Create a memory with matching text
-    let mut m = Memory::episodic(
-        "the quick brown fox jumps".to_string(), vec![], None,
-    );
+    let mut m = Memory::episodic("the quick brown fox jumps".to_string(), vec![], None);
     m.metadata.importance = 0.8;
 
     let context = RetrievalContext {
@@ -9643,14 +10999,28 @@ fn test_retrieval_relevance_score_components_s71() {
     // So total = 0.86 + recency*0.1
     // L147: if +=→-= for temporal: total would subtract temporal contribution
     // If *→/ for temporal: total += 0.5/0.2 = 2.5 (way different)
-    assert!(r.relevance_score > 0.5, "Relevance should be > 0.5, got {}", r.relevance_score);
-    assert!(r.relevance_score < 1.0, "Relevance should be < 1.0, got {}", r.relevance_score);
+    assert!(
+        r.relevance_score > 0.5,
+        "Relevance should be > 0.5, got {}",
+        r.relevance_score
+    );
+    assert!(
+        r.relevance_score < 1.0,
+        "Relevance should be < 1.0, got {}",
+        r.relevance_score
+    );
 
     // Check breakdown
-    assert!((r.score_breakdown.semantic_score - 1.0).abs() < 0.01,
-        "Semantic score for exact match should be ~1.0, got {}", r.score_breakdown.semantic_score);
-    assert!((r.score_breakdown.temporal_score - 0.5).abs() < 0.01,
-        "Temporal score without window should be 0.5, got {}", r.score_breakdown.temporal_score);
+    assert!(
+        (r.score_breakdown.semantic_score - 1.0).abs() < 0.01,
+        "Semantic score for exact match should be ~1.0, got {}",
+        r.score_breakdown.semantic_score
+    );
+    assert!(
+        (r.score_breakdown.temporal_score - 0.5).abs() < 0.01,
+        "Temporal score without window should be 0.5, got {}",
+        r.score_breakdown.temporal_score
+    );
 }
 
 #[test]
@@ -9683,9 +11053,11 @@ fn test_retrieval_temporal_in_window_s71() {
     let results = engine.retrieve(&context, &[m]).unwrap();
     assert!(!results.is_empty(), "Memory in window should be found");
     // Temporal score should be 1.0 (inside window)
-    assert!((results[0].score_breakdown.temporal_score - 1.0).abs() < 0.01,
+    assert!(
+        (results[0].score_breakdown.temporal_score - 1.0).abs() < 0.01,
         "Memory inside time window should have temporal score 1.0, got {}",
-        results[0].score_breakdown.temporal_score);
+        results[0].score_breakdown.temporal_score
+    );
 }
 
 #[test]
@@ -9717,10 +11089,15 @@ fn test_retrieval_temporal_at_window_start_s71() {
     };
 
     let results = engine.retrieve(&context, &[m]).unwrap();
-    assert!(!results.is_empty(), "Memory at window start should be found");
-    assert!((results[0].score_breakdown.temporal_score - 1.0).abs() < 0.01,
+    assert!(
+        !results.is_empty(),
+        "Memory at window start should be found"
+    );
+    assert!(
+        (results[0].score_breakdown.temporal_score - 1.0).abs() < 0.01,
         "Memory at exact window start should have temporal score 1.0, got {}",
-        results[0].score_breakdown.temporal_score);
+        results[0].score_breakdown.temporal_score
+    );
 }
 
 #[test]
@@ -9770,7 +11147,10 @@ fn test_retrieval_temporal_decay_outside_window_s71() {
     // matches_context DOES filter. So temporal_decay outside window is unreachable via retrieve!
     // These L218 mutations might be false misses (dead code path).
     // Skip this test.
-    assert!(results.is_empty() || !results.is_empty(), "This is a structural test");
+    assert!(
+        results.is_empty() || !results.is_empty(),
+        "This is a structural test"
+    );
 }
 
 #[test]
@@ -9810,8 +11190,11 @@ fn test_retrieval_recency_score_exact_s71() {
     assert!(!results.is_empty(), "Should find memory");
     let recency = results[0].score_breakdown.recency_score;
     // Expected ≈ 0.368
-    assert!((recency - 0.368).abs() < 0.05,
-        "Recency score for 30d/7d memory should be ~0.368, got {}", recency);
+    assert!(
+        (recency - 0.368).abs() < 0.05,
+        "Recency score for 30d/7d memory should be ~0.368, got {}",
+        recency
+    );
 }
 
 #[test]
@@ -9844,8 +11227,11 @@ fn test_retrieval_associated_memories_returned_s71() {
     let results = engine.retrieve(&context, &[m1, m2]).unwrap();
     // Should have at least 2 results: direct match + associated
     // If L261 mutated (→Ok(vec![])), only 1 result (direct match)
-    assert!(results.len() >= 2,
-        "Should have direct + associated results, got {}", results.len());
+    assert!(
+        results.len() >= 2,
+        "Should have direct + associated results, got {}",
+        results.len()
+    );
     // Also catches L278 (==→!=) and L282-285 (scoring)
 }
 
@@ -9864,9 +11250,9 @@ fn test_retrieval_find_similar_participant_overlap_s71() {
         Some("office".to_string()),
     );
     let m2 = Memory::episodic(
-        "meeting with team".to_string(), // Same text
+        "meeting with team".to_string(),                  // Same text
         vec!["Alice".to_string(), "Charlie".to_string()], // 1 of 2 participants match
-        Some("office".to_string()), // Same location
+        Some("office".to_string()),                       // Same location
     );
 
     let results = engine.find_similar(&m1, &[m2]).unwrap();
@@ -9880,8 +11266,11 @@ fn test_retrieval_find_similar_participant_overlap_s71() {
     // If L383 /→*: 1*2 = 2.0, contribution: 2.0*0.2 = 0.4, total = 1.0 (clamped)
     // If L384 *→+: 0.5+0.2 = 0.7, total = 0.5+0.2+0.1+0.7 = 1.0 (clamped)
     // If L384 *→/: 0.5/0.2 = 2.5, total = 0.5+0.2+0.1+2.5 = 1.0 (clamped, different!)
-    assert!((sim - 0.9).abs() < 0.05,
-        "Similarity should be ~0.9, got {}", sim);
+    assert!(
+        (sim - 0.9).abs() < 0.05,
+        "Similarity should be ~0.9, got {}",
+        sim
+    );
 }
 // ============================================================================
 // SECTION 72 — Validator + Consolidation + Dynamic Weighting (Round 7)
@@ -9895,33 +11284,48 @@ fn test_validator_satisfaction_exact_boundary_s72() {
     // L197: predicted_satisfaction < min_satisfaction → <=
     // Build profile with all satisfaction at 0.5
     let storage = make_populated_storage(
-        (0..10).map(|_| {
-            let mut ep = make_test_episode(EpisodeCategory::Combat, 0.5);
-            ep
-        }).collect()
+        (0..10)
+            .map(|_| {
+                let mut ep = make_test_episode(EpisodeCategory::Combat, 0.5);
+                ep
+            })
+            .collect(),
     );
     let mut validator = BehaviorValidator::with_thresholds(0.5, 0.5);
-    let result = validator.validate_action("support", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // With satisfaction at boundary, test exercises L197
-    assert!(result.confidence >= 0.0, "Confidence should be non-negative");
+    assert!(
+        result.confidence >= 0.0,
+        "Confidence should be non-negative"
+    );
 }
 
 #[test]
 fn test_validator_missing_action_triggers_profile_alignment_s72() {
     // L207: if !has_optimal_response → delete !
     let storage = make_populated_storage(
-        (0..10).map(|_| make_test_episode(EpisodeCategory::Combat, 0.9)).collect()
+        (0..10)
+            .map(|_| make_test_episode(EpisodeCategory::Combat, 0.9))
+            .collect(),
     );
     let mut validator = BehaviorValidator::with_thresholds(0.3, 0.3);
 
     // Validate "support" (exists in profile from make_test_episode)
-    let result_known = validator.validate_action("support", "combat", &storage).unwrap();
+    let result_known = validator
+        .validate_action("support", "combat", &storage)
+        .unwrap();
     // Validate "unknown_action" (NOT in profile) - triggers L207
-    let result_unknown = validator.validate_action("unknown_action", "combat", &storage).unwrap();
+    let result_unknown = validator
+        .validate_action("unknown_action", "combat", &storage)
+        .unwrap();
     // Known action should pass, unknown should have violation
     // If L207 delete !: known action would ALSO get profile_alignment violation
-    assert!(result_known.valid,
-        "Known action with high satisfaction should be valid");
+    assert!(
+        result_known.valid,
+        "Known action with high satisfaction should be valid"
+    );
 }
 
 #[test]
@@ -9929,40 +11333,50 @@ fn test_validator_effectiveness_at_0_6_boundary_s72() {
     // L217: pref.avg_effectiveness < 0.6 → <=,==,>
     // Need episodes where companion_response effectiveness = 0.6 exactly
     let storage = make_populated_storage(
-        (0..10).map(|_| {
-            let mut ep = Episode::new("eff_bnd".to_string(), EpisodeCategory::Combat);
-            for j in 0..3 {
-                ep.observations.push(Observation::new(
-                    j * 1000,
-                    Some(PlayerAction {
-                        action_type: "engage".to_string(),
-                        target: None,
-                        parameters: serde_json::Value::Null,
-                    }),
-                    Some(CompanionResponse {
-                        action_type: "precise_strike".to_string(),
-                        effectiveness: 0.6, // Exactly at boundary
-                        result: ActionResult::Success,
-                    }),
-                    serde_json::json!({"hp": 100}),
-                ));
-            }
-            ep.outcome = Some(EpisodeOutcome {
-                success_rating: 0.8, player_satisfaction: 0.8,
-                companion_effectiveness: 0.6, duration_ms: 5000,
-                damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
-            });
-            ep
-        }).collect()
+        (0..10)
+            .map(|_| {
+                let mut ep = Episode::new("eff_bnd".to_string(), EpisodeCategory::Combat);
+                for j in 0..3 {
+                    ep.observations.push(Observation::new(
+                        j * 1000,
+                        Some(PlayerAction {
+                            action_type: "engage".to_string(),
+                            target: None,
+                            parameters: serde_json::Value::Null,
+                        }),
+                        Some(CompanionResponse {
+                            action_type: "precise_strike".to_string(),
+                            effectiveness: 0.6, // Exactly at boundary
+                            result: ActionResult::Success,
+                        }),
+                        serde_json::json!({"hp": 100}),
+                    ));
+                }
+                ep.outcome = Some(EpisodeOutcome {
+                    success_rating: 0.8,
+                    player_satisfaction: 0.8,
+                    companion_effectiveness: 0.6,
+                    duration_ms: 5000,
+                    damage_dealt: 50.0,
+                    damage_taken: 10.0,
+                    resources_used: 5.0,
+                    failure_count: 0,
+                });
+                ep
+            })
+            .collect(),
     );
 
     let mut validator = BehaviorValidator::with_thresholds(0.1, 0.1);
-    let result = validator.validate_action("precise_strike", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("precise_strike", "combat", &storage)
+        .unwrap();
     // avg_effectiveness = 0.6
     // < 0.6: false (no violation). <= 0.6: true (violation)
-    assert!(result.valid,
-        "Action with effectiveness exactly 0.6 should be valid (< 0.6 is false)");
+    assert!(
+        result.valid,
+        "Action with effectiveness exactly 0.6 should be valid (< 0.6 is false)"
+    );
 }
 
 #[test]
@@ -9973,8 +11387,16 @@ fn test_consolidation_spatial_same_location_exact_s72() {
     let engine = ConsolidationEngine::new(ConsolidationConfig::default());
 
     // Same location test
-    let mut m1 = Memory::episodic("event at park".to_string(), vec![], Some("central_park".to_string()));
-    let mut m2 = Memory::episodic("another event at park".to_string(), vec![], Some("central_park".to_string()));
+    let mut m1 = Memory::episodic(
+        "event at park".to_string(),
+        vec![],
+        Some("central_park".to_string()),
+    );
+    let mut m2 = Memory::episodic(
+        "another event at park".to_string(),
+        vec![],
+        Some("central_park".to_string()),
+    );
     // Set creation times far apart to prevent temporal association
     m1.metadata.created_at = Utc::now() - Duration::days(60);
     m2.metadata.created_at = Utc::now() - Duration::days(1);
@@ -9984,8 +11406,10 @@ fn test_consolidation_spatial_same_location_exact_s72() {
 
     // With ==: same location → association formed
     // With !=: same location → NO association (different!)
-    assert!(result.spatial_associations > 0 || memories.iter().any(|m| !m.associations.is_empty()),
-        "Same-location memories should form spatial association");
+    assert!(
+        result.spatial_associations > 0 || memories.iter().any(|m| !m.associations.is_empty()),
+        "Same-location memories should form spatial association"
+    );
 }
 
 #[test]
@@ -9994,7 +11418,7 @@ fn test_consolidation_conceptual_similarity_exact_s72() {
     // L186,198,200,201: calculate_conceptual_similarity internals
     // Create two memories with KNOWN overlap for exact similarity calculation
     let engine = ConsolidationEngine::new(ConsolidationConfig {
-        association_threshold: 0.5, // Lower threshold for easier testing
+        association_threshold: 0.5,   // Lower threshold for easier testing
         temporal_window_hours: 0.001, // Disable temporal (very narrow window)
         ..Default::default()
     });
@@ -10013,8 +11437,10 @@ fn test_consolidation_conceptual_similarity_exact_s72() {
     // If L200 /→*: text_sim = 3*3 = 9.0, much higher
     // If L201 +=→-=: similarity would decrease instead of increase
     // If L201 *→/: text_similarity / 0.5 = doubled
-    assert!(result.conceptual_associations > 0,
-        "Memories with high text overlap should form conceptual associations");
+    assert!(
+        result.conceptual_associations > 0,
+        "Memories with high text overlap should form conceptual associations"
+    );
 }
 
 #[test]
@@ -10041,8 +11467,11 @@ fn test_consolidation_strength_boost_addition_s72() {
     // Original: 0.7 + 0.2 = 0.9
     // Mutated: 0.7 * 0.2 = 0.14
     let s = memories[0].metadata.strength;
-    assert!(s > 0.85,
-        "Strength after consolidation boost should be ~0.9, got {}", s);
+    assert!(
+        s > 0.85,
+        "Strength after consolidation boost should be ~0.9, got {}",
+        s
+    );
 }
 
 #[test]
@@ -10052,8 +11481,11 @@ fn test_dynamic_weighting_base_weights_exist_s72() {
     let manager = AdaptiveWeightManager::new();
     // base_weight = 0.5 for all node types
     let w = manager.get_weight(BehaviorNodeType::Combat);
-    assert!((w - 0.5).abs() < 0.01,
-        "Default patrol weight should be 0.5, got {}", w);
+    assert!(
+        (w - 0.5).abs() < 0.01,
+        "Default patrol weight should be 0.5, got {}",
+        w
+    );
 }
 // ============================================================================
 // SECTION 73 — Round 8: Compression compress_text exact output assertions
@@ -10087,9 +11519,13 @@ fn test_compress_text_exact_output_r8() {
     let cwords: Vec<&str> = compressed.split_whitespace().collect();
 
     // Should have: 10 (first) + 1 ([...]) + 5 (last) = 16 tokens
-    assert_eq!(cwords.len(), 16,
+    assert_eq!(
+        cwords.len(),
+        16,
         "Compressed 30 words should give 16 tokens (10+[...]+5), got {}: {}",
-        cwords.len(), compressed);
+        cwords.len(),
+        compressed
+    );
 
     // First word should be w1, 10th should be w10
     assert_eq!(cwords[0], "w1", "First word should be w1");
@@ -10097,8 +11533,16 @@ fn test_compress_text_exact_output_r8() {
     assert_eq!(cwords[10], "[...]", "11th token should be [...]");
 
     // Last 5 words: w26..w30
-    assert_eq!(cwords[11], "w26", "12th token (first of tail) should be w26, got {}", cwords[11]);
-    assert_eq!(cwords[15], "w30", "Last token should be w30, got {}", cwords[15]);
+    assert_eq!(
+        cwords[11], "w26",
+        "12th token (first of tail) should be w26, got {}",
+        cwords[11]
+    );
+    assert_eq!(
+        cwords[15], "w30",
+        "Last token should be w30, got {}",
+        cwords[15]
+    );
 }
 
 #[test]
@@ -10121,11 +11565,24 @@ fn test_compress_text_20_words_exact_r8() {
 
     let compressed = &mems[0].content.text;
     let cwords: Vec<&str> = compressed.split_whitespace().collect();
-    assert_eq!(cwords.len(), 11,
-        "20 words compressed: 6+1+4=11 tokens, got {}: {}", cwords.len(), compressed);
+    assert_eq!(
+        cwords.len(),
+        11,
+        "20 words compressed: 6+1+4=11 tokens, got {}: {}",
+        cwords.len(),
+        compressed
+    );
     assert_eq!(cwords[6], "[...]");
-    assert_eq!(cwords[7], "x17", "First tail word should be x17 (20-4+1), got {}", cwords[7]);
-    assert_eq!(cwords[10], "x20", "Last tail word should be x20, got {}", cwords[10]);
+    assert_eq!(
+        cwords[7], "x17",
+        "First tail word should be x17 (20-4+1), got {}",
+        cwords[7]
+    );
+    assert_eq!(
+        cwords[10], "x20",
+        "Last tail word should be x20, got {}",
+        cwords[10]
+    );
 }
 
 // ============================================================================
@@ -10147,26 +11604,37 @@ fn test_validator_satisfaction_at_exact_threshold_r8() {
     // With < 0.5: 0.5 is NOT < 0.5 → no violation
     // With <= 0.5: 0.5 IS <= 0.5 → violation added
     let storage = make_populated_storage(
-        (0..10).map(|i| {
-            let mut ep = Episode::new(format!("sat_bnd_{}", i), EpisodeCategory::Combat);
-            ep.outcome = Some(EpisodeOutcome {
-                success_rating: 0.8, player_satisfaction: 0.8,
-                companion_effectiveness: 0.8, duration_ms: 5000,
-                damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
-            });
-            ep
-        }).collect()
+        (0..10)
+            .map(|i| {
+                let mut ep = Episode::new(format!("sat_bnd_{}", i), EpisodeCategory::Combat);
+                ep.outcome = Some(EpisodeOutcome {
+                    success_rating: 0.8,
+                    player_satisfaction: 0.8,
+                    companion_effectiveness: 0.8,
+                    duration_ms: 5000,
+                    damage_dealt: 50.0,
+                    damage_taken: 10.0,
+                    resources_used: 5.0,
+                    failure_count: 0,
+                });
+                ep
+            })
+            .collect(),
     );
     // Action "nonexistent" → predict_satisfaction returns 0.5 (default)
     // min_satisfaction = 0.5 → at boundary
     let mut validator = BehaviorValidator::with_thresholds(0.3, 0.5);
-    let result = validator.validate_action("nonexistent", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("nonexistent", "combat", &storage)
+        .unwrap();
     // With original (<): NOT violated → valid = true (no strict violation)
     // With mutation (<=): violated → "min_satisfaction" rule triggered (strict!) → INVALID
-    assert!(result.valid,
+    assert!(
+        result.valid,
         "Action at exact satisfaction boundary (0.5 == min 0.5) should be valid with < (not <=). \
-         Got valid={}, reasons={:?}", result.valid, result.reasons);
+         Got valid={}, reasons={:?}",
+        result.valid, result.reasons
+    );
 }
 
 #[test]
@@ -10175,46 +11643,59 @@ fn test_validator_known_action_no_profile_alignment_violation_r8() {
     // With delete !: triggers profile_alignment even when action IS in responses
     // Need episodes with companion_response actions that create optimal_responses
     let storage = make_populated_storage(
-        (0..10).map(|i| {
-            let mut ep = Episode::new(format!("known_{}", i), EpisodeCategory::Combat);
-            for j in 0..4 {
-                ep.observations.push(Observation::new(
-                    j * 1000,
-                    Some(PlayerAction {
-                        action_type: "attack".to_string(),
-                        target: None,
-                        parameters: serde_json::Value::Null,
-                    }),
-                    Some(CompanionResponse {
-                        action_type: "heal_spell".to_string(),
-                        effectiveness: 0.9,
-                        result: ActionResult::Success,
-                    }),
-                    serde_json::json!({"hp": 90}),
-                ));
-            }
-            ep.outcome = Some(EpisodeOutcome {
-                success_rating: 0.9, player_satisfaction: 0.9,
-                companion_effectiveness: 0.9, duration_ms: 5000,
-                damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
-            });
-            ep
-        }).collect()
+        (0..10)
+            .map(|i| {
+                let mut ep = Episode::new(format!("known_{}", i), EpisodeCategory::Combat);
+                for j in 0..4 {
+                    ep.observations.push(Observation::new(
+                        j * 1000,
+                        Some(PlayerAction {
+                            action_type: "attack".to_string(),
+                            target: None,
+                            parameters: serde_json::Value::Null,
+                        }),
+                        Some(CompanionResponse {
+                            action_type: "heal_spell".to_string(),
+                            effectiveness: 0.9,
+                            result: ActionResult::Success,
+                        }),
+                        serde_json::json!({"hp": 90}),
+                    ));
+                }
+                ep.outcome = Some(EpisodeOutcome {
+                    success_rating: 0.9,
+                    player_satisfaction: 0.9,
+                    companion_effectiveness: 0.9,
+                    duration_ms: 5000,
+                    damage_dealt: 50.0,
+                    damage_taken: 10.0,
+                    resources_used: 5.0,
+                    failure_count: 0,
+                });
+                ep
+            })
+            .collect(),
     );
 
     // "heal_spell" is in optimal_responses (10 eps * 4 obs = 40 occurrences, > 3 min)
     let mut validator = BehaviorValidator::with_thresholds(0.1, 0.1);
-    let result = validator.validate_action("heal_spell", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("heal_spell", "combat", &storage)
+        .unwrap();
     // With original: has_optimal_response = true → !true = false → no violation
     // With delete !: has_optimal_response = true → true → violation added
     // profile_alignment is NOT strict, so result.valid stays true
     // BUT result.reasons should NOT contain "not found in optimal responses"
-    let has_alignment_violation = result.reasons.iter()
+    let has_alignment_violation = result
+        .reasons
+        .iter()
         .any(|r| r.contains("not found in optimal responses"));
-    assert!(!has_alignment_violation,
+    assert!(
+        !has_alignment_violation,
         "Known action 'heal_spell' should not trigger profile_alignment violation. \
-         reasons={:?}", result.reasons);
+         reasons={:?}",
+        result.reasons
+    );
 }
 
 #[test]
@@ -10223,42 +11704,55 @@ fn test_validator_effectiveness_exactly_0_6_no_violation_r8() {
     // With effectiveness exactly 0.6: < is false (no violation)
     // With <=: true (violation), with ==: true (violation), with >: false (same)
     let storage = make_populated_storage(
-        (0..10).map(|i| {
-            let mut ep = Episode::new(format!("eff06_{}", i), EpisodeCategory::Combat);
-            for j in 0..4 {
-                ep.observations.push(Observation::new(
-                    j * 1000,
-                    Some(PlayerAction {
-                        action_type: "strike".to_string(),
-                        target: None,
-                        parameters: serde_json::Value::Null,
-                    }),
-                    Some(CompanionResponse {
-                        action_type: "buff_spell".to_string(),
-                        effectiveness: 0.6, // Exactly at boundary
-                        result: ActionResult::Success,
-                    }),
-                    serde_json::json!({"hp": 100}),
-                ));
-            }
-            ep.outcome = Some(EpisodeOutcome {
-                success_rating: 0.9, player_satisfaction: 0.9,
-                companion_effectiveness: 0.6, duration_ms: 5000,
-                damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
-            });
-            ep
-        }).collect()
+        (0..10)
+            .map(|i| {
+                let mut ep = Episode::new(format!("eff06_{}", i), EpisodeCategory::Combat);
+                for j in 0..4 {
+                    ep.observations.push(Observation::new(
+                        j * 1000,
+                        Some(PlayerAction {
+                            action_type: "strike".to_string(),
+                            target: None,
+                            parameters: serde_json::Value::Null,
+                        }),
+                        Some(CompanionResponse {
+                            action_type: "buff_spell".to_string(),
+                            effectiveness: 0.6, // Exactly at boundary
+                            result: ActionResult::Success,
+                        }),
+                        serde_json::json!({"hp": 100}),
+                    ));
+                }
+                ep.outcome = Some(EpisodeOutcome {
+                    success_rating: 0.9,
+                    player_satisfaction: 0.9,
+                    companion_effectiveness: 0.6,
+                    duration_ms: 5000,
+                    damage_dealt: 50.0,
+                    damage_taken: 10.0,
+                    resources_used: 5.0,
+                    failure_count: 0,
+                });
+                ep
+            })
+            .collect(),
     );
 
     let mut validator = BehaviorValidator::with_thresholds(0.1, 0.1);
-    let result = validator.validate_action("buff_spell", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("buff_spell", "combat", &storage)
+        .unwrap();
     // avg_effectiveness = 0.6 → < 0.6 is FALSE → no violation
     // <→<=: 0.6<=0.6 TRUE → violation, <→==: TRUE → violation
-    let has_effectiveness_violation = result.reasons.iter()
+    let has_effectiveness_violation = result
+        .reasons
+        .iter()
         .any(|r| r.contains("effectiveness") && r.contains("below"));
-    assert!(!has_effectiveness_violation,
-        "Effectiveness exactly 0.6 should NOT trigger violation. reasons={:?}", result.reasons);
+    assert!(
+        !has_effectiveness_violation,
+        "Effectiveness exactly 0.6 should NOT trigger violation. reasons={:?}",
+        result.reasons
+    );
 }
 
 #[test]
@@ -10281,43 +11775,55 @@ fn test_validator_strict_rule_matching_r8() {
     // Test: unknown action triggers ONLY profile_alignment (non-strict)
     // With high satisfaction so min_satisfaction doesn't trigger
     let storage = make_populated_storage(
-        (0..10).map(|i| {
-            let mut ep = Episode::new(format!("strict_{}", i), EpisodeCategory::Combat);
-            for j in 0..4 {
-                ep.observations.push(Observation::new(
-                    j * 1000,
-                    Some(PlayerAction {
-                        action_type: "attack".to_string(),
-                        target: None, parameters: serde_json::Value::Null,
-                    }),
-                    Some(CompanionResponse {
-                        action_type: "known_heal".to_string(),
-                        effectiveness: 0.9,
-                        result: ActionResult::Success,
-                    }),
-                    serde_json::json!({}),
-                ));
-            }
-            ep.outcome = Some(EpisodeOutcome {
-                success_rating: 0.9, player_satisfaction: 0.9,
-                companion_effectiveness: 0.9, duration_ms: 5000,
-                damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
-            });
-            ep
-        }).collect()
+        (0..10)
+            .map(|i| {
+                let mut ep = Episode::new(format!("strict_{}", i), EpisodeCategory::Combat);
+                for j in 0..4 {
+                    ep.observations.push(Observation::new(
+                        j * 1000,
+                        Some(PlayerAction {
+                            action_type: "attack".to_string(),
+                            target: None,
+                            parameters: serde_json::Value::Null,
+                        }),
+                        Some(CompanionResponse {
+                            action_type: "known_heal".to_string(),
+                            effectiveness: 0.9,
+                            result: ActionResult::Success,
+                        }),
+                        serde_json::json!({}),
+                    ));
+                }
+                ep.outcome = Some(EpisodeOutcome {
+                    success_rating: 0.9,
+                    player_satisfaction: 0.9,
+                    companion_effectiveness: 0.9,
+                    duration_ms: 5000,
+                    damage_dealt: 50.0,
+                    damage_taken: 10.0,
+                    resources_used: 5.0,
+                    failure_count: 0,
+                });
+                ep
+            })
+            .collect(),
     );
 
     // "some_unknown_action" not in optimal_responses → profile_alignment violation
     // predict_satisfaction("some_unknown_action") = 0.5 (default, not in responses)
     // min_satisfaction = 0.1 → 0.5 > 0.1 → no min_satisfaction violation
     let mut validator = BehaviorValidator::with_thresholds(0.1, 0.1);
-    let result = validator.validate_action("some_unknown_action", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("some_unknown_action", "combat", &storage)
+        .unwrap();
     // profile_alignment is NON-strict → result should be VALID (with warnings)
     // If &&→||: profile_alignment treated as strict → INVALID
-    assert!(result.valid,
+    assert!(
+        result.valid,
         "Non-strict profile_alignment violation should NOT invalidate. \
-         valid={}, reasons={:?}", result.valid, result.reasons);
+         valid={}, reasons={:?}",
+        result.valid, result.reasons
+    );
 }
 
 #[test]
@@ -10327,37 +11833,46 @@ fn test_validator_confidence_calculation_exact_r8() {
     // L271: confidence += 0.1 (converged bonus) → -=
     // Create a converged profile with exactly 1 violation
     let storage = make_populated_storage(
-        (0..20).map(|i| {
-            let mut ep = Episode::new(format!("conf_{}", i), EpisodeCategory::Combat);
-            for j in 0..4 {
-                ep.observations.push(Observation::new(
-                    j * 1000,
-                    Some(PlayerAction {
-                        action_type: "attack".to_string(),
-                        target: None, parameters: serde_json::Value::Null,
-                    }),
-                    Some(CompanionResponse {
-                        action_type: "shield".to_string(),
-                        effectiveness: 0.9,
-                        result: ActionResult::Success,
-                    }),
-                    serde_json::json!({}),
-                ));
-            }
-            ep.outcome = Some(EpisodeOutcome {
-                success_rating: 0.9, player_satisfaction: 0.9,
-                companion_effectiveness: 0.9, duration_ms: 5000,
-                damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
-            });
-            ep
-        }).collect()
+        (0..20)
+            .map(|i| {
+                let mut ep = Episode::new(format!("conf_{}", i), EpisodeCategory::Combat);
+                for j in 0..4 {
+                    ep.observations.push(Observation::new(
+                        j * 1000,
+                        Some(PlayerAction {
+                            action_type: "attack".to_string(),
+                            target: None,
+                            parameters: serde_json::Value::Null,
+                        }),
+                        Some(CompanionResponse {
+                            action_type: "shield".to_string(),
+                            effectiveness: 0.9,
+                            result: ActionResult::Success,
+                        }),
+                        serde_json::json!({}),
+                    ));
+                }
+                ep.outcome = Some(EpisodeOutcome {
+                    success_rating: 0.9,
+                    player_satisfaction: 0.9,
+                    companion_effectiveness: 0.9,
+                    duration_ms: 5000,
+                    damage_dealt: 50.0,
+                    damage_taken: 10.0,
+                    resources_used: 5.0,
+                    failure_count: 0,
+                });
+                ep
+            })
+            .collect(),
     );
 
     // "unknown_for_conf" triggers profile_alignment violation (1 violation)
     // With >= 15 episodes, profile should converge
     let mut validator = BehaviorValidator::with_thresholds(0.3, 0.1);
-    let result = validator.validate_action("unknown_for_conf", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("unknown_for_conf", "combat", &storage)
+        .unwrap();
 
     // learning_confidence from build_profile should be > 0 (many episodes)
     // penalty = 1 * 0.1 = 0.1 (L266)
@@ -10373,8 +11888,11 @@ fn test_validator_confidence_calculation_exact_r8() {
     // Profile with 20 episodes should have learning_confidence > 0.5
     // Correct: conf ≈ learning_confidence (penalty and bonus cancel)
     // L266 *→+: conf ≈ 0.0 (clamped), L267 +=: conf ≈ lc+0.2, L271 -=: conf ≈ lc-0.2
-    assert!(conf > 0.3 && conf < 0.95,
-        "Confidence with 1 violation + convergence should be moderate, got {}", conf);
+    assert!(
+        conf > 0.3 && conf < 0.95,
+        "Confidence with 1 violation + convergence should be moderate, got {}",
+        conf
+    );
 }
 
 #[test]
@@ -10383,33 +11901,40 @@ fn test_validator_suggest_alternatives_filter_r8() {
     // Mutations: &&→||, >→>= (both positions)
     // Create profile with action at boundary: rate=0.6, effectiveness=0.6
     let storage = make_populated_storage(
-        (0..10).map(|i| {
-            let mut ep = Episode::new(format!("alt_{}", i), EpisodeCategory::Combat);
-            // 5 positive (eff=0.7), 5 negative (eff=0.5) → rate=5/10=0.5, avg_eff=0.6
-            for j in 0..10 {
-                let eff = if j < 5 { 0.7 } else { 0.5 };
-                ep.observations.push(Observation::new(
-                    j * 1000,
-                    Some(PlayerAction {
-                        action_type: "attack".to_string(),
-                        target: None, parameters: serde_json::Value::Null,
-                    }),
-                    Some(CompanionResponse {
-                        action_type: "alt_action".to_string(),
-                        effectiveness: eff,
-                        result: ActionResult::Success,
-                    }),
-                    serde_json::json!({}),
-                ));
-            }
-            ep.outcome = Some(EpisodeOutcome {
-                success_rating: 0.5, player_satisfaction: 0.4,
-                companion_effectiveness: 0.6, duration_ms: 5000,
-                damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
-            });
-            ep
-        }).collect()
+        (0..10)
+            .map(|i| {
+                let mut ep = Episode::new(format!("alt_{}", i), EpisodeCategory::Combat);
+                // 5 positive (eff=0.7), 5 negative (eff=0.5) → rate=5/10=0.5, avg_eff=0.6
+                for j in 0..10 {
+                    let eff = if j < 5 { 0.7 } else { 0.5 };
+                    ep.observations.push(Observation::new(
+                        j * 1000,
+                        Some(PlayerAction {
+                            action_type: "attack".to_string(),
+                            target: None,
+                            parameters: serde_json::Value::Null,
+                        }),
+                        Some(CompanionResponse {
+                            action_type: "alt_action".to_string(),
+                            effectiveness: eff,
+                            result: ActionResult::Success,
+                        }),
+                        serde_json::json!({}),
+                    ));
+                }
+                ep.outcome = Some(EpisodeOutcome {
+                    success_rating: 0.5,
+                    player_satisfaction: 0.4,
+                    companion_effectiveness: 0.6,
+                    duration_ms: 5000,
+                    damage_dealt: 50.0,
+                    damage_taken: 10.0,
+                    resources_used: 5.0,
+                    failure_count: 0,
+                });
+                ep
+            })
+            .collect(),
     );
 
     // "alt_action": positive (eff>0.6) = 5 of 10 occurrences per ep,
@@ -10424,7 +11949,9 @@ fn test_validator_suggest_alternatives_filter_r8() {
     // But I want to trigger InvalidResult to see alternatives.
     // Use min_satisfaction=0.99 with low-satisfaction action to force invalid
     let mut validator = BehaviorValidator::with_thresholds(0.1, 0.99);
-    let result = validator.validate_action("some_bad_action", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("some_bad_action", "combat", &storage)
+        .unwrap();
     // "some_bad_action" → predict returns 0.5 < 0.99 → strict violation → invalid
     // suggest_alternatives filters from optimal_responses
     // alt_action: rate=0.5, eff=0.6 → both NOT > 0.6 → not suggested
@@ -10432,9 +11959,12 @@ fn test_validator_suggest_alternatives_filter_r8() {
     assert!(!result.valid, "Should be invalid (satisfaction 0.5 < 0.99)");
     // alt_action should NOT be in alternatives (rate 0.5 not > 0.6)
     let has_alt = result.alternatives.iter().any(|a| a == "alt_action");
-    assert!(!has_alt,
+    assert!(
+        !has_alt,
         "alt_action with rate=0.5, eff=0.6 should NOT be suggested (neither > 0.6). \
-         alternatives={:?}", result.alternatives);
+         alternatives={:?}",
+        result.alternatives
+    );
 }
 
 // ============================================================================
@@ -10472,18 +12002,29 @@ fn test_retrieval_association_chain_exact_r8() {
         limit: 10,
     };
 
-    let results = engine.retrieve(&context, &[m1.clone(), m2.clone()]).unwrap();
+    let results = engine
+        .retrieve(&context, &[m1.clone(), m2.clone()])
+        .unwrap();
     // m1 matches directly (semantic=1.0). m2 should come via association.
     // L261 mutation: returns Ok(vec![]) → only 1 result (m1)
     // L278 (==→!=): finds memories where id != association.memory_id → wrong memory
     // L285 (>=→<): relevance threshold inverted → filters out qualifying memories
-    assert!(results.len() >= 2,
-        "Should return direct match + associated memory. Got {} results", results.len());
+    assert!(
+        results.len() >= 2,
+        "Should return direct match + associated memory. Got {} results",
+        results.len()
+    );
 
     // Verify m2 is in results
     let has_m2 = results.iter().any(|r| r.memory.id == m2.id);
-    assert!(has_m2, "Associated memory m2 should be in results. IDs: {:?}",
-        results.iter().map(|r| r.memory.id.clone()).collect::<Vec<_>>());
+    assert!(
+        has_m2,
+        "Associated memory m2 should be in results. IDs: {:?}",
+        results
+            .iter()
+            .map(|r| r.memory.id.clone())
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -10503,8 +12044,10 @@ fn test_retrieval_temporal_exactly_at_window_end_r8() {
 
     let context = RetrievalContext {
         query: "end boundary test".to_string(),
-        emotional_state: None, location: None,
-        recent_memory_ids: vec![], preferred_types: vec![],
+        emotional_state: None,
+        location: None,
+        recent_memory_ids: vec![],
+        preferred_types: vec![],
         time_window: Some(TimeWindow {
             start: now - Duration::days(1),
             end: window_end,
@@ -10513,10 +12056,15 @@ fn test_retrieval_temporal_exactly_at_window_end_r8() {
     };
 
     let results = engine.retrieve(&context, &[m]).unwrap();
-    assert!(!results.is_empty(), "Memory at exact window end should be found");
-    assert!((results[0].score_breakdown.temporal_score - 1.0).abs() < 0.01,
+    assert!(
+        !results.is_empty(),
+        "Memory at exact window end should be found"
+    );
+    assert!(
+        (results[0].score_breakdown.temporal_score - 1.0).abs() < 0.01,
         "Temporal score at window end should be 1.0, got {}",
-        results[0].score_breakdown.temporal_score);
+        results[0].score_breakdown.temporal_score
+    );
 }
 
 #[test]
@@ -10526,8 +12074,8 @@ fn test_retrieval_relevance_total_includes_temporal_r8() {
     // Mutation *→/: temporal_score / temporal_weight (much larger)
     let engine = RetrievalEngine::new(RetrievalConfig {
         relevance_threshold: 0.0,
-        semantic_weight: 0.0,  // Zero out semantic
-        temporal_weight: 0.5,  // High temporal weight
+        semantic_weight: 0.0, // Zero out semantic
+        temporal_weight: 0.5, // High temporal weight
         associative_weight: 0.0,
         recency_boost: false,
         follow_associations: false,
@@ -10541,8 +12089,10 @@ fn test_retrieval_relevance_total_includes_temporal_r8() {
 
     let context = RetrievalContext {
         query: "xxx".to_string(), // Won't match semantically
-        emotional_state: None, location: None,
-        recent_memory_ids: vec![], preferred_types: vec![],
+        emotional_state: None,
+        location: None,
+        recent_memory_ids: vec![],
+        preferred_types: vec![],
         time_window: Some(TimeWindow {
             start: now - Duration::days(1),
             end: now,
@@ -10557,9 +12107,11 @@ fn test_retrieval_relevance_total_includes_temporal_r8() {
     // total = 0*0 + 1.0*0.5 + 0*0 + 0*0.2 = 0.5
     // If +=→-=: total = 0 - 1.0*0.5 + 0 = -0.5 → min(0, 1.0) but might clamp to 0
     // If *→/: total = 0 + 1.0/0.5 + 0 = 2.0 → min(2.0, 1.0) = 1.0
-    assert!((score - 0.5).abs() < 0.1,
+    assert!(
+        (score - 0.5).abs() < 0.1,
         "With only temporal contribution (weight=0.5, score=1.0), total should be ~0.5, got {}",
-        score);
+        score
+    );
 }
 
 // ============================================================================
@@ -10580,28 +12132,33 @@ fn test_dynamic_weighting_effectiveness_exact_r8() {
     // This should make Combat preference > average
     for i in 0..10 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.9, player_satisfaction: 0.9,
-            companion_effectiveness: 0.9, duration_ms: 5000,
-            damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.9,
+            player_satisfaction: 0.9,
+            companion_effectiveness: 0.9,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Combat, 3, vec!["fight"], outcome,
-        );
+        let ep = make_episode_with_n_actions(EpisodeCategory::Combat, 3, vec!["fight"], outcome);
         let mut m = Memory::episodic(format!("ew_c_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
     }
     for i in 0..5 {
         let outcome = EpisodeOutcome {
-            success_rating: 0.4, player_satisfaction: 0.4,
-            companion_effectiveness: 0.4, duration_ms: 15000,
-            damage_dealt: 10.0, damage_taken: 50.0,
-            resources_used: 30.0, failure_count: 2,
+            success_rating: 0.4,
+            player_satisfaction: 0.4,
+            companion_effectiveness: 0.4,
+            duration_ms: 15000,
+            damage_dealt: 10.0,
+            damage_taken: 50.0,
+            resources_used: 30.0,
+            failure_count: 2,
         };
-        let ep = make_episode_with_n_actions(
-            EpisodeCategory::Exploration, 3, vec!["explore"], outcome,
-        );
+        let ep =
+            make_episode_with_n_actions(EpisodeCategory::Exploration, 3, vec!["explore"], outcome);
         let mut m = Memory::episodic(format!("ew_e_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
         storage.store_memory(&m).unwrap();
@@ -10619,12 +12176,19 @@ fn test_dynamic_weighting_effectiveness_exact_r8() {
     // If L228:42 *→/: relative / 0.2 * 2.0 → much larger
     // If L228:73 *→/: relative * 0.2 / 2.0 → much smaller
     // Just check it's within reasonable bounds
-    assert!(cd.effectiveness_bonus >= 0.0,
-        "Effectiveness bonus should be non-negative, got {}", cd.effectiveness_bonus);
+    assert!(
+        cd.effectiveness_bonus >= 0.0,
+        "Effectiveness bonus should be non-negative, got {}",
+        cd.effectiveness_bonus
+    );
     // With high combat preference: bonus should be > 0
-    assert!(cd.effectiveness_bonus > 0.0 || cd.pattern_bonus > 0.0,
+    assert!(
+        cd.effectiveness_bonus > 0.0 || cd.pattern_bonus > 0.0,
         "Combat should have positive bonus from high-quality episodes. \
-         eff_bonus={}, pattern_bonus={}", cd.effectiveness_bonus, cd.pattern_bonus);
+         eff_bonus={}, pattern_bonus={}",
+        cd.effectiveness_bonus,
+        cd.pattern_bonus
+    );
 }
 
 #[test]
@@ -10647,7 +12211,8 @@ fn test_preference_profile_optimal_response_rate_r8() {
                 j * 1000,
                 Some(PlayerAction {
                     action_type: "attack".to_string(),
-                    target: None, parameters: serde_json::Value::Null,
+                    target: None,
+                    parameters: serde_json::Value::Null,
                 }),
                 Some(CompanionResponse {
                     action_type: "rate_test_action".to_string(),
@@ -10658,10 +12223,14 @@ fn test_preference_profile_optimal_response_rate_r8() {
             ));
         }
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.8, player_satisfaction: 0.8,
-            companion_effectiveness: 0.8, duration_ms: 5000,
-            damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: 0,
+            success_rating: 0.8,
+            player_satisfaction: 0.8,
+            companion_effectiveness: 0.8,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: 0,
         });
         let mut m = Memory::episodic(format!("rate_{}", i), vec![], None);
         m.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -10670,14 +12239,23 @@ fn test_preference_profile_optimal_response_rate_r8() {
 
     let profile = builder.build_profile(&storage).unwrap();
     let pref = profile.optimal_responses.get("rate_test_action");
-    assert!(pref.is_some(), "rate_test_action should be in optimal_responses");
+    assert!(
+        pref.is_some(),
+        "rate_test_action should be in optimal_responses"
+    );
     let p = pref.unwrap();
     // positive_response_rate should be 0.8 (80/100)
-    assert!((p.positive_response_rate - 0.8).abs() < 0.05,
-        "positive_response_rate should be ~0.8, got {}", p.positive_response_rate);
+    assert!(
+        (p.positive_response_rate - 0.8).abs() < 0.05,
+        "positive_response_rate should be ~0.8, got {}",
+        p.positive_response_rate
+    );
     // avg_effectiveness = (0.8*80 + 0.3*20)/100 = (64+6)/100 = 0.7
-    assert!((p.avg_effectiveness - 0.7).abs() < 0.05,
-        "avg_effectiveness should be ~0.7, got {}", p.avg_effectiveness);
+    assert!(
+        (p.avg_effectiveness - 0.7).abs() < 0.05,
+        "avg_effectiveness should be ~0.7, got {}",
+        p.avg_effectiveness
+    );
 }
 
 // ============================================================================
@@ -10692,7 +12270,7 @@ fn test_consolidation_spatial_location_equality_r8() {
     // Same location: association formed. Different location: not formed.
     let engine = ConsolidationEngine::new(ConsolidationConfig {
         temporal_window_hours: 0.001, // Effectively disable temporal
-        association_threshold: 0.99, // High threshold to prevent conceptual
+        association_threshold: 0.99,  // High threshold to prevent conceptual
         ..Default::default()
     });
     let mut m1 = Memory::episodic("event one".to_string(), vec![], Some("castle".to_string()));
@@ -10704,9 +12282,11 @@ fn test_consolidation_spatial_location_equality_r8() {
     let result = engine.consolidate(&mut memories).unwrap();
     // Same location "castle" → spatial association should form
     // If ==→!=: "castle" != "castle" is false → no association
-    assert!(result.spatial_associations > 0,
+    assert!(
+        result.spatial_associations > 0,
         "Same-location memories should form spatial association, got {}",
-        result.spatial_associations);
+        result.spatial_associations
+    );
 }
 
 #[test]
@@ -10725,8 +12305,10 @@ fn test_consolidation_spatial_different_location_r8() {
     let mut memories = vec![m1, m2];
     let result = engine.consolidate(&mut memories).unwrap();
     // Different locations → no spatial association
-    assert_eq!(result.spatial_associations, 0,
-        "Different-location memories should NOT form spatial association");
+    assert_eq!(
+        result.spatial_associations, 0,
+        "Different-location memories should NOT form spatial association"
+    );
 }
 
 #[test]
@@ -10757,9 +12339,12 @@ fn test_consolidation_conceptual_text_overlap_exact_r8() {
     let mut memories = vec![m1, m2];
     let result = engine.consolidate(&mut memories).unwrap();
     // Should form conceptual association (0.55 >= 0.3)
-    assert!(result.conceptual_associations > 0,
+    assert!(
+        result.conceptual_associations > 0,
         "Memories with 2/4 word overlap should form conceptual association (sim=0.55>0.3). \
-         Got {} conceptual associations", result.conceptual_associations);
+         Got {} conceptual associations",
+        result.conceptual_associations
+    );
 }
 
 #[test]
@@ -10785,8 +12370,11 @@ fn test_consolidation_strength_boost_exact_r8() {
     // After temporal association + consolidation boost:
     // strength = 0.5 + 0.2 = 0.7 (correct) vs 0.5 * 0.2 = 0.1 (mutated)
     let s0 = memories[0].metadata.strength;
-    assert!(s0 > 0.6,
-        "After consolidation boost, strength should be ~0.7 (0.5+0.2), got {}", s0);
+    assert!(
+        s0 > 0.6,
+        "After consolidation boost, strength should be ~0.7 (0.5+0.2), got {}",
+        s0
+    );
 }
 
 // ============================================================================
@@ -10810,10 +12398,7 @@ fn test_forgetting_type_stats_at_exact_threshold_r8() {
     let mut m_above = Memory::episodic("above_r8".to_string(), vec![], None);
     m_above.metadata.strength = 0.16; // Above threshold
 
-    let stats = engine.get_type_statistics(
-        &MemoryType::Episodic,
-        &[m_at, m_below, m_above],
-    );
+    let stats = engine.get_type_statistics(&MemoryType::Episodic, &[m_at, m_below, m_above]);
 
     assert_eq!(stats.total_memories, 3);
     // m_at (0.15) < 0.15 → false → NOT weak
@@ -10821,9 +12406,11 @@ fn test_forgetting_type_stats_at_exact_threshold_r8() {
     // m_above (0.16) < 0.15 → false → NOT weak
     // Total weak = 1
     // If <→<=: m_at (0.15) <= 0.15 → true → weak. Total weak = 2 (DIFFERENT)
-    assert_eq!(stats.weak_memories, 1,
+    assert_eq!(
+        stats.weak_memories, 1,
         "Only strength 0.14 should be weak (< 0.15). Got weak_memories={}",
-        stats.weak_memories);
+        stats.weak_memories
+    );
 }
 
 // ============================================================================
@@ -10882,15 +12469,20 @@ fn test_retrieval_associated_mem_outside_window_r9() {
 
     // Assertion 1: mem2 must appear (via association chain)
     // Catches L261 (body → Ok(vec![])) and L285 (>= → <)
-    assert!(results.len() >= 2,
+    assert!(
+        results.len() >= 2,
         "Should find both direct (mem1) and associated (mem2), got {}; \
-         catches L261 body→Ok(vec![]), L285 >=→<", results.len());
+         catches L261 body→Ok(vec![]), L285 >=→<",
+        results.len()
+    );
 
     // Assertion 2: specifically mem2 by ID
     // Catches L278 (== → !=: would find wrong memory)
     let assoc = results.iter().find(|r| r.memory.id == mem2_id);
-    assert!(assoc.is_some(),
-        "Associated memory mem2 must be in results by ID; catches L278 ==→!=");
+    assert!(
+        assoc.is_some(),
+        "Associated memory mem2 must be in results by ID; catches L278 ==→!="
+    );
 
     let assoc = assoc.unwrap();
 
@@ -10900,19 +12492,25 @@ fn test_retrieval_associated_mem_outside_window_r9() {
     // min_distance = 6, decay = exp(-6/7) ≈ 0.4245
     let expected_temporal = (-6.0_f32 / 7.0).exp();
     let temporal = assoc.score_breakdown.temporal_score;
-    assert!((temporal - expected_temporal).abs() < 0.05,
+    assert!(
+        (temporal - expected_temporal).abs() < 0.05,
         "Associated memory temporal_score should be ~{:.4} (exp decay), got {:.4}; \
          catches L218(delete-,/→*,/→%), L202(>=→<), L203(&&→||)",
-        expected_temporal, temporal);
+        expected_temporal,
+        temporal
+    );
 
     // Assertion 4: relevance_score should reflect base + association boost
     // base ≈ 0.5*0.6 + 0.4245*0.2 + 0.0*0.2 + 0.2*0.2 = 0.4249
     // boost = 0.5 * 0.3 = 0.15
     // final = min(0.4249 + 0.15, 1.0) ≈ 0.575
     let rel = assoc.relevance_score;
-    assert!(rel > 0.3 && rel < 0.85,
+    assert!(
+        rel > 0.3 && rel < 0.85,
         "Associated memory relevance_score should be ~0.575, got {:.4}; \
-         catches L282(*→+,*→/), L283(+→-,+→*)", rel);
+         catches L282(*→+,*→/), L283(+→-,+→*)",
+        rel
+    );
 }
 
 // ============================================================================
@@ -10957,11 +12555,17 @@ fn test_retrieval_direct_mid_window_temporal_one_r9() {
     };
 
     let results = engine.retrieve(&ctx, &[mem]).unwrap();
-    assert!(!results.is_empty(), "Memory inside window should be retrieved");
+    assert!(
+        !results.is_empty(),
+        "Memory inside window should be retrieved"
+    );
     let ts = results[0].score_breakdown.temporal_score;
-    assert!((ts - 1.0).abs() < 0.001,
+    assert!(
+        (ts - 1.0).abs() < 0.001,
         "Memory at mid-window should have temporal_score = 1.0, got {:.4}; \
-         catches L203 <=→>", ts);
+         catches L203 <=→>",
+        ts
+    );
 }
 
 // ============================================================================
@@ -11010,20 +12614,26 @@ fn test_retrieval_importance_increases_score_r9() {
     let results = engine.retrieve(&ctx, &[mem_low, mem_high]).unwrap();
     assert!(results.len() == 2, "Both memories should match");
 
-    let score_low = results.iter()
+    let score_low = results
+        .iter()
         .find(|r| (r.score_breakdown.importance_score - 0.1).abs() < 0.01)
         .map(|r| r.relevance_score)
         .expect("Should find low-importance result");
-    let score_high = results.iter()
+    let score_high = results
+        .iter()
         .find(|r| (r.score_breakdown.importance_score - 1.0).abs() < 0.01)
         .map(|r| r.relevance_score)
         .expect("Should find high-importance result");
 
     // importance contribution: importance * 0.2
     // Difference: (1.0 - 0.1) * 0.2 = 0.18
-    assert!(score_high > score_low + 0.1,
+    assert!(
+        score_high > score_low + 0.1,
         "Higher importance ({:.4}) should score > lower importance ({:.4}) + 0.1; \
-         catches L147 +=→-=", score_high, score_low);
+         catches L147 +=→-=",
+        score_high,
+        score_low
+    );
 }
 
 // ============================================================================
@@ -11036,8 +12646,10 @@ fn test_consolidation_access_count_increments_r9() {
     // Memory with access_count=0. After consolidation, access_count should be 1.
     // With L214 (+=→*=): 0 *= 1 = 0, stays at 0 → CAUGHT
     let mut mem = Memory::episodic("consolidation test".to_string(), vec![], None);
-    assert_eq!(mem.metadata.access_count, 0,
-        "Fresh memory should have access_count=0");
+    assert_eq!(
+        mem.metadata.access_count, 0,
+        "Fresh memory should have access_count=0"
+    );
 
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
@@ -11045,11 +12657,12 @@ fn test_consolidation_access_count_increments_r9() {
     let mut memories = vec![mem];
     let result = engine.consolidate(&mut memories).unwrap();
 
-    assert_eq!(result.memories_processed, 1,
-        "Should process 1 memory");
-    assert_eq!(memories[0].metadata.access_count, 1,
+    assert_eq!(result.memories_processed, 1, "Should process 1 memory");
+    assert_eq!(
+        memories[0].metadata.access_count, 1,
         "access_count should be 1 after consolidation (+=1), not 0 (*=1); \
-         catches L214 +=→*=");
+         catches L214 +=→*="
+    );
 }
 
 // ============================================================================
@@ -11100,7 +12713,9 @@ fn test_validator_convergence_boosts_confidence_r9() {
     // "shield_bash" is in optimal_responses (25*4=100 occurrences, all eff=0.9 > 0.6)
     // No violations → confidence = learning_confidence + 0.1 (converged bonus)
     let mut validator = BehaviorValidator::with_thresholds(0.1, 0.1);
-    let result = validator.validate_action("shield_bash", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("shield_bash", "combat", &storage)
+        .unwrap();
 
     // With 25 episodes: count_factor ≈ 0.918, patterns detected → pattern_factor ≈ 1.0
     // category factor = 1/6 ≈ 0.167
@@ -11108,10 +12723,16 @@ fn test_validator_convergence_boosts_confidence_r9() {
     // Normal: confidence = 0.800 + 0.1 = 0.900
     // Mutation: confidence = 0.800 - 0.1 = 0.700
     // Even with worst case (no patterns): lc ≈ 0.60, normal=0.70, mutation=0.50
-    assert!(result.valid, "Action in optimal_responses with high effectiveness should be valid");
-    assert!(result.confidence > 0.60,
+    assert!(
+        result.valid,
+        "Action in optimal_responses with high effectiveness should be valid"
+    );
+    assert!(
+        result.confidence > 0.60,
         "Confidence with converged profile should be > 0.60, got {:.4}; \
-         catches L271 +=→-=", result.confidence);
+         catches L271 +=→-=",
+        result.confidence
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -11134,8 +12755,18 @@ fn mutation_spatial_same_location_must_match_r10() {
     };
     let engine = ConsolidationEngine::new(config);
     let now = Utc::now();
-    let mut mem_a = make_timed_memory("event alpha", now - Duration::hours(100), Some("castle_gate"), vec![]);
-    let mem_b = make_timed_memory("event beta", now - Duration::hours(200), Some("castle_gate"), vec![]);
+    let mut mem_a = make_timed_memory(
+        "event alpha",
+        now - Duration::hours(100),
+        Some("castle_gate"),
+        vec![],
+    );
+    let mem_b = make_timed_memory(
+        "event beta",
+        now - Duration::hours(200),
+        Some("castle_gate"),
+        vec![],
+    );
     // Pre-add a spatial association from A to B
     mem_a.add_association(mem_b.id.clone(), AssociationType::Spatial, 0.8);
     let initial_assoc_count = mem_a.associations.len(); // 1
@@ -11144,10 +12775,16 @@ fn mutation_spatial_same_location_must_match_r10() {
     // Original: already_associated check finds matching id → skip → no new spatial
     // Mutation (!=): already_associated = false (assoc.memory_id != mem_b.id is false,
     //   .any returns false) → adds duplicate spatial association
-    assert_eq!(result.spatial_associations, 0,
-        "Pre-existing spatial association should prevent duplicate; catches L120 == → !=");
-    assert_eq!(memories[0].associations.len(), initial_assoc_count,
-        "Association count should not increase; got {}", memories[0].associations.len());
+    assert_eq!(
+        result.spatial_associations, 0,
+        "Pre-existing spatial association should prevent duplicate; catches L120 == → !="
+    );
+    assert_eq!(
+        memories[0].associations.len(),
+        initial_assoc_count,
+        "Association count should not increase; got {}",
+        memories[0].associations.len()
+    );
 }
 
 #[test]
@@ -11161,12 +12798,24 @@ fn mutation_spatial_different_location_no_association_r10() {
     let engine = ConsolidationEngine::new(config);
     let now = Utc::now();
     let mut memories = vec![
-        make_timed_memory("event at castle", now - Duration::hours(100), Some("castle"), vec![]),
-        make_timed_memory("event at forest", now - Duration::hours(200), Some("forest"), vec![]),
+        make_timed_memory(
+            "event at castle",
+            now - Duration::hours(100),
+            Some("castle"),
+            vec![],
+        ),
+        make_timed_memory(
+            "event at forest",
+            now - Duration::hours(200),
+            Some("forest"),
+            vec![],
+        ),
     ];
     let result = engine.consolidate(&mut memories).unwrap();
-    assert_eq!(result.spatial_associations, 0,
-        "Different-location memories should NOT form spatial association");
+    assert_eq!(
+        result.spatial_associations, 0,
+        "Different-location memories should NOT form spatial association"
+    );
 }
 
 // --- consolidation.rs:155 < → <= in form_conceptual_associations ---
@@ -11190,8 +12839,11 @@ fn mutation_consolidation_max_associations_boundary_r10() {
     let _result = engine.consolidate(&mut memories).unwrap();
     // Memory A (index 0) should still have exactly 1 association — the pre-existing one
     // With mutation (<=), 1 <= 1 = true, so it would add more
-    assert_eq!(memories[0].associations.len(), 1,
-        "Memory at max_associations should not gain more; catches L155 < → <=");
+    assert_eq!(
+        memories[0].associations.len(),
+        1,
+        "Memory at max_associations should not gain more; catches L155 < → <="
+    );
 }
 
 // --- consolidation.rs:186 && → || in calculate_conceptual_similarity ---
@@ -11209,13 +12861,20 @@ fn mutation_consolidation_empty_text_no_nan_v10() {
     let now = Utc::now();
     // Memory A: empty text, Memory B: non-empty. Same type (Episodic from make_timed_memory).
     let mem_a = make_timed_memory("", now - Duration::hours(100), None, vec![]);
-    let mem_b = make_timed_memory("hello world combat battle", now - Duration::hours(200), None, vec![]);
+    let mem_b = make_timed_memory(
+        "hello world combat battle",
+        now - Duration::hours(200),
+        None,
+        vec![],
+    );
     let mut memories = vec![mem_a, mem_b];
     let result = engine.consolidate(&mut memories).unwrap();
     // similarity = 0.3 (type) + 0 (no text contrib due to empty) = 0.3 < 0.31 → no assoc
     // With mutation: 0.3 + NaN = NaN → min(1.0) = 1.0 ≥ 0.31 → association formed
-    assert_eq!(result.conceptual_associations, 0,
-        "Empty text should not contribute word similarity; catches L186 && → ||");
+    assert_eq!(
+        result.conceptual_associations, 0,
+        "Empty text should not contribute word similarity; catches L186 && → ||"
+    );
 }
 
 // --- consolidation.rs:200 / → % and / → * (participant similarity) ---
@@ -11249,12 +12908,24 @@ fn mutation_consolidation_participant_similarity_arithmetic_r10() {
     };
     let engine_a = ConsolidationEngine::new(config_a);
     let now = Utc::now();
-    let mem1 = make_timed_memory("xyzzy details", now - Duration::hours(100), None, vec!["alice", "bob"]);
-    let mem2 = make_timed_memory("plugh info", now - Duration::hours(200), None, vec!["alice", "carol"]);
+    let mem1 = make_timed_memory(
+        "xyzzy details",
+        now - Duration::hours(100),
+        None,
+        vec!["alice", "bob"],
+    );
+    let mem2 = make_timed_memory(
+        "plugh info",
+        now - Duration::hours(200),
+        None,
+        vec!["alice", "carol"],
+    );
     let mut memories_a = vec![mem1, mem2];
     let result_a = engine_a.consolidate(&mut memories_a).unwrap();
-    assert!(result_a.conceptual_associations > 0,
-        "Participant overlap with type match should push past 0.35 threshold; catches L201 += → -=");
+    assert!(
+        result_a.conceptual_associations > 0,
+        "Participant overlap with type match should push past 0.35 threshold; catches L201 += → -="
+    );
 }
 
 #[test]
@@ -11269,8 +12940,18 @@ fn mutation_consolidation_participant_division_not_mult_r10() {
     };
     let engine_b = ConsolidationEngine::new(config_b);
     let now = Utc::now();
-    let mem1 = make_timed_memory("xyzzy details", now - Duration::hours(100), None, vec!["alice", "bob"]);
-    let mem2 = make_timed_memory("plugh info", now - Duration::hours(200), None, vec!["alice", "carol"]);
+    let mem1 = make_timed_memory(
+        "xyzzy details",
+        now - Duration::hours(100),
+        None,
+        vec!["alice", "bob"],
+    );
+    let mem2 = make_timed_memory(
+        "plugh info",
+        now - Duration::hours(200),
+        None,
+        vec!["alice", "carol"],
+    );
     let mut memories_b = vec![mem1, mem2];
     let result_b = engine_b.consolidate(&mut memories_b).unwrap();
     assert_eq!(result_b.conceptual_associations, 0,
@@ -11285,7 +12966,7 @@ fn mutation_retrieval_importance_adds_positively_r10() {
     let config = RetrievalConfig {
         max_results: 10,
         relevance_threshold: 0.1,
-        semantic_weight: 0.0,    // zero out
+        semantic_weight: 0.0, // zero out
         temporal_weight: 0.0,
         associative_weight: 0.5, // Non-zero to make associative contribution matter
         recency_boost: false,
@@ -11297,21 +12978,28 @@ fn mutation_retrieval_importance_adds_positively_r10() {
         emotional_state: None,
         location: None,
         recent_memory_ids: vec!["ref_memory_123".to_string()], // Must match an association
-        preferred_types: vec![], // no filter
+        preferred_types: vec![],                               // no filter
         time_window: None,
         limit: 10,
     };
     // Memory with association to "ref_memory_123" (strength 0.9)
     let mut mem = Memory::episodic("zzzz unique text".to_string(), vec![], None);
     mem.metadata.importance = 0.0; // zero importance to isolate associative effect
-    mem.add_association("ref_memory_123".to_string(), AssociationType::Conceptual, 0.9);
+    mem.add_association(
+        "ref_memory_123".to_string(),
+        AssociationType::Conceptual,
+        0.9,
+    );
     let memories = vec![mem];
     let results = engine.retrieve(&context, &memories).unwrap();
     // total = 0 + 0 + 0.9*0.5 + 0.0*0.2 = 0.45 ≥ 0.1 → included
     // With mutation (-=): 0 + 0 - 0.9*0.5 + 0.0*0.2 = -0.45 < 0.1 → excluded
-    assert!(!results.is_empty(),
+    assert!(
+        !results.is_empty(),
         "Memory with strong association should be retrieved when associative weight is active; \
-         catches retrieval.rs:147 += → -=. Got {} results", results.len());
+         catches retrieval.rs:147 += → -=. Got {} results",
+        results.len()
+    );
 }
 
 // --- learned_behavior_validator.rs:217:39 < → == and < → <= ---
@@ -11321,44 +13009,60 @@ fn mutation_validator_effectiveness_at_060_no_reasons_r10() {
     // The "historical_effectiveness" rule is non-strict, so result is still valid
     // but reasons will contain the violation message. Check reasons are EMPTY.
     let storage = make_populated_storage(
-        (0..15).map(|i| {
-            let mut ep = Episode::new(format!("eff060_{}", i), EpisodeCategory::Combat);
-            for j in 0..4 {
-                ep.observations.push(Observation::new(
-                    j * 1000,
-                    Some(PlayerAction {
-                        action_type: "strike".to_string(),
-                        target: None,
-                        parameters: serde_json::Value::Null,
-                    }),
-                    Some(CompanionResponse {
-                        action_type: "power_attack".to_string(),
-                        effectiveness: 0.6, // Exactly at boundary
-                        result: ActionResult::Success,
-                    }),
-                    serde_json::json!({"hp": 100}),
-                ));
-            }
-            ep.outcome = Some(EpisodeOutcome {
-                success_rating: 0.9, player_satisfaction: 0.9,
-                companion_effectiveness: 0.6, duration_ms: 5000,
-                damage_dealt: 50.0, damage_taken: 10.0,
-                resources_used: 5.0, failure_count: 0,
-            });
-            ep
-        }).collect()
+        (0..15)
+            .map(|i| {
+                let mut ep = Episode::new(format!("eff060_{}", i), EpisodeCategory::Combat);
+                for j in 0..4 {
+                    ep.observations.push(Observation::new(
+                        j * 1000,
+                        Some(PlayerAction {
+                            action_type: "strike".to_string(),
+                            target: None,
+                            parameters: serde_json::Value::Null,
+                        }),
+                        Some(CompanionResponse {
+                            action_type: "power_attack".to_string(),
+                            effectiveness: 0.6, // Exactly at boundary
+                            result: ActionResult::Success,
+                        }),
+                        serde_json::json!({"hp": 100}),
+                    ));
+                }
+                ep.outcome = Some(EpisodeOutcome {
+                    success_rating: 0.9,
+                    player_satisfaction: 0.9,
+                    companion_effectiveness: 0.6,
+                    duration_ms: 5000,
+                    damage_dealt: 50.0,
+                    damage_taken: 10.0,
+                    resources_used: 5.0,
+                    failure_count: 0,
+                });
+                ep
+            })
+            .collect(),
     );
 
     let mut validator = BehaviorValidator::with_thresholds(0.1, 0.1);
-    let result = validator.validate_action("power_attack", "combat", &storage).unwrap();
-    assert!(result.valid, "Action with effectiveness=0.6 should be valid");
+    let result = validator
+        .validate_action("power_attack", "combat", &storage)
+        .unwrap();
+    assert!(
+        result.valid,
+        "Action with effectiveness=0.6 should be valid"
+    );
     // With mutation (< → == or <=), "historical_effectiveness" violation occurs
     // which adds a reason. Check that no such reason exists.
-    let has_effectiveness_reason = result.reasons.iter()
+    let has_effectiveness_reason = result
+        .reasons
+        .iter()
         .any(|r| r.to_lowercase().contains("effectiveness"));
-    assert!(!has_effectiveness_reason,
+    assert!(
+        !has_effectiveness_reason,
         "Effectiveness exactly 0.6 should NOT trigger historical_effectiveness violation; \
-         catches L217 < → == and < → <=. Reasons: {:?}", result.reasons);
+         catches L217 < → == and < → <=. Reasons: {:?}",
+        result.reasons
+    );
 }
 
 // --- learned_behavior_validator.rs:271:24 += → -= in calculate_confidence ---
@@ -11368,45 +13072,55 @@ fn mutation_validator_converged_bonus_direction_r10() {
     // Need converged profile and check confidence is HIGHER than base
     // Profile is converged when episode_count exceeds threshold
     let storage = make_populated_storage(
-        (0..30).map(|i| {
-            let mut ep = Episode::new(format!("conv_dir_{}", i), EpisodeCategory::Combat);
-            for j in 0..4 {
-                ep.observations.push(Observation::new(
-                    j * 1000,
-                    Some(PlayerAction {
-                        action_type: "strike".to_string(),
-                        target: None,
-                        parameters: serde_json::Value::Null,
-                    }),
-                    Some(CompanionResponse {
-                        action_type: "heavy_strike".to_string(),
-                        effectiveness: 0.95,
-                        result: ActionResult::Success,
-                    }),
-                    serde_json::json!({"hp": 100}),
-                ));
-            }
-            ep.outcome = Some(EpisodeOutcome {
-                success_rating: 0.95, player_satisfaction: 0.95,
-                companion_effectiveness: 0.95, duration_ms: 5000,
-                damage_dealt: 500.0, damage_taken: 50.0,
-                resources_used: 10.0, failure_count: 0,
-            });
-            ep
-        }).collect()
+        (0..30)
+            .map(|i| {
+                let mut ep = Episode::new(format!("conv_dir_{}", i), EpisodeCategory::Combat);
+                for j in 0..4 {
+                    ep.observations.push(Observation::new(
+                        j * 1000,
+                        Some(PlayerAction {
+                            action_type: "strike".to_string(),
+                            target: None,
+                            parameters: serde_json::Value::Null,
+                        }),
+                        Some(CompanionResponse {
+                            action_type: "heavy_strike".to_string(),
+                            effectiveness: 0.95,
+                            result: ActionResult::Success,
+                        }),
+                        serde_json::json!({"hp": 100}),
+                    ));
+                }
+                ep.outcome = Some(EpisodeOutcome {
+                    success_rating: 0.95,
+                    player_satisfaction: 0.95,
+                    companion_effectiveness: 0.95,
+                    duration_ms: 5000,
+                    damage_dealt: 500.0,
+                    damage_taken: 50.0,
+                    resources_used: 10.0,
+                    failure_count: 0,
+                });
+                ep
+            })
+            .collect(),
     );
 
     let mut validator = BehaviorValidator::with_thresholds(0.1, 0.1);
-    let result = validator.validate_action("heavy_strike", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("heavy_strike", "combat", &storage)
+        .unwrap();
     assert!(result.valid, "High-effectiveness action should be valid");
     // With 30 episodes, high confidence, converged profile:
     // Normal: confidence = base + 0.1 (converged)
     // Mutation: confidence = base - 0.1
     // With base around 0.75-0.90, normal ≈ 0.85-1.0, mutation ≈ 0.65-0.80
     // Check confidence > 0.80 to distinguish
-    assert!(result.confidence > 0.80,
+    assert!(
+        result.confidence > 0.80,
         "Converged profile should give high confidence; catches L271 += → -=. Got {:.4}",
-        result.confidence);
+        result.confidence
+    );
 }
 
 // --- learned_behavior_validator.rs:282 > → >= in suggest_alternatives ---
@@ -11421,7 +13135,11 @@ fn mutation_validator_suggest_alternatives_boundary_r10() {
     // and positive_response_rate = 0.6 (6 successes, 4 failures)
     for i in 0..10 {
         let mut ep = Episode::new(format!("alt_{}", i), EpisodeCategory::Combat);
-        let action_result = if i < 6 { ActionResult::Success } else { ActionResult::Failure };
+        let action_result = if i < 6 {
+            ActionResult::Success
+        } else {
+            ActionResult::Failure
+        };
         for j in 0..3 {
             ep.observations.push(Observation::new(
                 j * 1000,
@@ -11439,10 +13157,14 @@ fn mutation_validator_suggest_alternatives_boundary_r10() {
             ));
         }
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.7, player_satisfaction: 0.7,
-            companion_effectiveness: 0.6, duration_ms: 5000,
-            damage_dealt: 50.0, damage_taken: 10.0,
-            resources_used: 5.0, failure_count: if i >= 6 { 1 } else { 0 },
+            success_rating: 0.7,
+            player_satisfaction: 0.7,
+            companion_effectiveness: 0.6,
+            duration_ms: 5000,
+            damage_dealt: 50.0,
+            damage_taken: 10.0,
+            resources_used: 5.0,
+            failure_count: if i >= 6 { 1 } else { 0 },
         });
         let mut memory = Memory::episodic(format!("alt ep {}", i), vec![], None);
         memory.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -11469,10 +13191,14 @@ fn mutation_validator_suggest_alternatives_boundary_r10() {
             ));
         }
         ep.outcome = Some(EpisodeOutcome {
-            success_rating: 0.95, player_satisfaction: 0.95,
-            companion_effectiveness: 0.95, duration_ms: 5000,
-            damage_dealt: 100.0, damage_taken: 5.0,
-            resources_used: 3.0, failure_count: 0,
+            success_rating: 0.95,
+            player_satisfaction: 0.95,
+            companion_effectiveness: 0.95,
+            duration_ms: 5000,
+            damage_dealt: 100.0,
+            damage_taken: 5.0,
+            resources_used: 3.0,
+            failure_count: 0,
         });
         let mut memory = Memory::episodic(format!("good ep {}", i), vec![], None);
         memory.content.data = serde_json::to_value(&ep).unwrap_or_default();
@@ -11483,18 +13209,26 @@ fn mutation_validator_suggest_alternatives_boundary_r10() {
     let mut validator = BehaviorValidator::new();
     // Add a strict rule that will fire for the action we're testing
     validator.add_safety_rule(SafetyRule::new(
-        "profile_alignment", "Must be in optimal responses", 0.5, true
+        "profile_alignment",
+        "Must be in optimal responses",
+        0.5,
+        true,
     ));
-    let result = validator.validate_action("unknown_action", "combat", &storage).unwrap();
+    let result = validator
+        .validate_action("unknown_action", "combat", &storage)
+        .unwrap();
     // The result should be invalid (strict violation) and have alternatives
     if !result.valid {
         // "boundary_action" has positive_response_rate ≈ 0.6 and avg_effectiveness = 0.6
         // With > 0.6: not included. With >= 0.6: included.
         // "great_action" has high rates: should be included.
         let has_boundary = result.alternatives.iter().any(|a| a == "boundary_action");
-        assert!(!has_boundary,
+        assert!(
+            !has_boundary,
             "Action with exactly 0.6 rates should NOT be in alternatives; \
-             catches L282 > → >=. Alternatives: {:?}", result.alternatives);
+             catches L282 > → >=. Alternatives: {:?}",
+            result.alternatives
+        );
     }
 }
 
@@ -11526,16 +13260,21 @@ fn mutation_dynamic_effectiveness_formula_precision_r10() {
     // After update, check that Combat weight is reasonable (not wildly inflated/deflated)
     if let Some(combat_detail) = manager.get_weight_details(BehaviorNodeType::Combat) {
         // effectiveness_bonus should be between 0 and max_eff_bonus (0.2)
-        assert!(combat_detail.effectiveness_bonus >= 0.0 &&
-                combat_detail.effectiveness_bonus <= 0.2,
+        assert!(
+            combat_detail.effectiveness_bonus >= 0.0 && combat_detail.effectiveness_bonus <= 0.2,
             "Effectiveness bonus should be in [0, 0.2], got {:.4}; \
-             catches L228 * → /", combat_detail.effectiveness_bonus);
+             catches L228 * → /",
+            combat_detail.effectiveness_bonus
+        );
     }
     // Exploration weight should be lower than combat weight
     let combat_w = manager.get_weight(BehaviorNodeType::Combat);
     let explore_w = manager.get_weight(BehaviorNodeType::Exploration);
-    assert!(combat_w >= explore_w,
+    assert!(
+        combat_w >= explore_w,
         "Combat should be weighted ≥ exploration after 20:2 ratio; \
-         combat={:.4}, explore={:.4}", combat_w, explore_w);
+         combat={:.4}, explore={:.4}",
+        combat_w,
+        explore_w
+    );
 }
-

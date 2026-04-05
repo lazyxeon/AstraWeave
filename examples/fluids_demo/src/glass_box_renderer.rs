@@ -1,5 +1,5 @@
-use wgpu::util::DeviceExt;
 use glam::Mat4;
+use wgpu::util::DeviceExt;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -48,30 +48,30 @@ impl GlassBoxRenderer {
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
         // Create cube mesh (120.0 x 60.0 x 60.0 tank)
         let (vertices, indices) = Self::create_cube_mesh(120.0, 60.0, 60.0);
-        
+
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Glass Box Vertex Buffer"),
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        
+
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Glass Box Index Buffer"),
             contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-        
+
         // Create uniform buffer
         let uniforms = Uniforms {
             view_proj: Mat4::IDENTITY.to_cols_array_2d(),
         };
-        
+
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Glass Box Uniform Buffer"),
             contents: bytemuck::cast_slice(&[uniforms]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        
+
         // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Glass Box Bind Group Layout"),
@@ -104,20 +104,20 @@ impl GlassBoxRenderer {
                 },
             ],
         });
-        
+
         // Load shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Glass Box Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("glass.wgsl").into()),
         });
-        
+
         // Create pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Glass Box Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
-        
+
         // Create render pipeline
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Glass Box Pipeline"),
@@ -162,7 +162,7 @@ impl GlassBoxRenderer {
             multiview: None,
             cache: None,
         });
-        
+
         Self {
             pipeline,
             vertex_buffer,
@@ -172,68 +172,130 @@ impl GlassBoxRenderer {
             bind_group_layout,
         }
     }
-    
+
     fn create_cube_mesh(width: f32, height: f32, depth: f32) -> (Vec<Vertex>, Vec<u32>) {
         let hw = width / 2.0;
         let h = height;
         let hd = depth / 2.0;
-        
+
         let vertices = vec![
             // Front face (Z+)
-            Vertex { position: [-hw, 0.0,  hd], normal: [0.0, 0.0, 1.0] },
-            Vertex { position: [ hw, 0.0,  hd], normal: [0.0, 0.0, 1.0] },
-            Vertex { position: [ hw,  h,  hd], normal: [0.0, 0.0, 1.0] },
-            Vertex { position: [-hw,  h,  hd], normal: [0.0, 0.0, 1.0] },
-            
+            Vertex {
+                position: [-hw, 0.0, hd],
+                normal: [0.0, 0.0, 1.0],
+            },
+            Vertex {
+                position: [hw, 0.0, hd],
+                normal: [0.0, 0.0, 1.0],
+            },
+            Vertex {
+                position: [hw, h, hd],
+                normal: [0.0, 0.0, 1.0],
+            },
+            Vertex {
+                position: [-hw, h, hd],
+                normal: [0.0, 0.0, 1.0],
+            },
             // Back face (Z-)
-            Vertex { position: [ hw, 0.0, -hd], normal: [0.0, 0.0, -1.0] },
-            Vertex { position: [-hw, 0.0, -hd], normal: [0.0, 0.0, -1.0] },
-            Vertex { position: [-hw,  h, -hd], normal: [0.0, 0.0, -1.0] },
-            Vertex { position: [ hw,  h, -hd], normal: [0.0, 0.0, -1.0] },
-            
+            Vertex {
+                position: [hw, 0.0, -hd],
+                normal: [0.0, 0.0, -1.0],
+            },
+            Vertex {
+                position: [-hw, 0.0, -hd],
+                normal: [0.0, 0.0, -1.0],
+            },
+            Vertex {
+                position: [-hw, h, -hd],
+                normal: [0.0, 0.0, -1.0],
+            },
+            Vertex {
+                position: [hw, h, -hd],
+                normal: [0.0, 0.0, -1.0],
+            },
             // Right face (X+)
-            Vertex { position: [ hw, 0.0,  hd], normal: [1.0, 0.0, 0.0] },
-            Vertex { position: [ hw, 0.0, -hd], normal: [1.0, 0.0, 0.0] },
-            Vertex { position: [ hw,  h, -hd], normal: [1.0, 0.0, 0.0] },
-            Vertex { position: [ hw,  h,  hd], normal: [1.0, 0.0, 0.0] },
-            
+            Vertex {
+                position: [hw, 0.0, hd],
+                normal: [1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [hw, 0.0, -hd],
+                normal: [1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [hw, h, -hd],
+                normal: [1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [hw, h, hd],
+                normal: [1.0, 0.0, 0.0],
+            },
             // Left face (X-)
-            Vertex { position: [-hw, 0.0, -hd], normal: [-1.0, 0.0, 0.0] },
-            Vertex { position: [-hw, 0.0,  hd], normal: [-1.0, 0.0, 0.0] },
-            Vertex { position: [-hw,  h,  hd], normal: [-1.0, 0.0, 0.0] },
-            Vertex { position: [-hw,  h, -hd], normal: [-1.0, 0.0, 0.0] },
-            
+            Vertex {
+                position: [-hw, 0.0, -hd],
+                normal: [-1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [-hw, 0.0, hd],
+                normal: [-1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [-hw, h, hd],
+                normal: [-1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [-hw, h, -hd],
+                normal: [-1.0, 0.0, 0.0],
+            },
             // Top face (Y+)
-            Vertex { position: [-hw,  h,  hd], normal: [0.0, 1.0, 0.0] },
-            Vertex { position: [ hw,  h,  hd], normal: [0.0, 1.0, 0.0] },
-            Vertex { position: [ hw,  h, -hd], normal: [0.0, 1.0, 0.0] },
-            Vertex { position: [-hw,  h, -hd], normal: [0.0, 1.0, 0.0] },
-            
+            Vertex {
+                position: [-hw, h, hd],
+                normal: [0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [hw, h, hd],
+                normal: [0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [hw, h, -hd],
+                normal: [0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [-hw, h, -hd],
+                normal: [0.0, 1.0, 0.0],
+            },
             // Bottom face (Y-)
-            Vertex { position: [-hw, 0.0, -hd], normal: [0.0, -1.0, 0.0] },
-            Vertex { position: [ hw, 0.0, -hd], normal: [0.0, -1.0, 0.0] },
-            Vertex { position: [ hw, 0.0,  hd], normal: [0.0, -1.0, 0.0] },
-            Vertex { position: [-hw, 0.0,  hd], normal: [0.0, -1.0, 0.0] },
+            Vertex {
+                position: [-hw, 0.0, -hd],
+                normal: [0.0, -1.0, 0.0],
+            },
+            Vertex {
+                position: [hw, 0.0, -hd],
+                normal: [0.0, -1.0, 0.0],
+            },
+            Vertex {
+                position: [hw, 0.0, hd],
+                normal: [0.0, -1.0, 0.0],
+            },
+            Vertex {
+                position: [-hw, 0.0, hd],
+                normal: [0.0, -1.0, 0.0],
+            },
         ];
-        
+
         let indices = vec![
             // Front
-            0, 1, 2,  2, 3, 0,
-            // Back
-            4, 5, 6,  6, 7, 4,
-            // Right
-            8, 9, 10,  10, 11, 8,
-            // Left
-            12, 13, 14,  14, 15, 12,
-            // Top
-            16, 17, 18,  18, 19, 16,
-            // Bottom
-            20, 21, 22,  22, 23, 20,
+            0, 1, 2, 2, 3, 0, // Back
+            4, 5, 6, 6, 7, 4, // Right
+            8, 9, 10, 10, 11, 8, // Left
+            12, 13, 14, 14, 15, 12, // Top
+            16, 17, 18, 18, 19, 16, // Bottom
+            20, 21, 22, 22, 23, 20,
         ];
-        
+
         (vertices, indices)
     }
-    
+
     pub fn render(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -248,9 +310,9 @@ impl GlassBoxRenderer {
         let uniforms = Uniforms {
             view_proj: view_proj.to_cols_array_2d(),
         };
-        
+
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
-        
+
         // Create sampler
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::Repeat,
@@ -261,7 +323,7 @@ impl GlassBoxRenderer {
             mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        
+
         // Create bind group
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Glass Box Bind Group"),
@@ -281,7 +343,7 @@ impl GlassBoxRenderer {
                 },
             ],
         });
-        
+
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Glass Box Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -303,7 +365,7 @@ impl GlassBoxRenderer {
             timestamp_writes: None,
             occlusion_query_set: None,
         });
-        
+
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));

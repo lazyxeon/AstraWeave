@@ -76,7 +76,10 @@ impl GamepadButton {
     /// Returns true if this is a D-pad button.
     #[inline]
     pub fn is_dpad(&self) -> bool {
-        matches!(self, Self::DPadUp | Self::DPadDown | Self::DPadLeft | Self::DPadRight)
+        matches!(
+            self,
+            Self::DPadUp | Self::DPadDown | Self::DPadLeft | Self::DPadRight
+        )
     }
 
     /// Returns true if this is a stick click.
@@ -103,16 +106,33 @@ impl GamepadButton {
 
     /// Returns all D-pad buttons.
     pub fn dpad_buttons() -> [GamepadButton; 4] {
-        [Self::DPadUp, Self::DPadDown, Self::DPadLeft, Self::DPadRight]
+        [
+            Self::DPadUp,
+            Self::DPadDown,
+            Self::DPadLeft,
+            Self::DPadRight,
+        ]
     }
 
     /// Returns all buttons.
     pub fn all() -> [GamepadButton; 16] {
         [
-            Self::South, Self::East, Self::West, Self::North,
-            Self::L1, Self::R1, Self::L2, Self::R2,
-            Self::Select, Self::Start, Self::LStick, Self::RStick,
-            Self::DPadUp, Self::DPadDown, Self::DPadLeft, Self::DPadRight,
+            Self::South,
+            Self::East,
+            Self::West,
+            Self::North,
+            Self::L1,
+            Self::R1,
+            Self::L2,
+            Self::R2,
+            Self::Select,
+            Self::Start,
+            Self::LStick,
+            Self::RStick,
+            Self::DPadUp,
+            Self::DPadDown,
+            Self::DPadLeft,
+            Self::DPadRight,
         ]
     }
 }
@@ -206,7 +226,14 @@ impl AxisKind {
 
     /// Returns all axis kinds.
     pub fn all() -> [AxisKind; 6] {
-        [Self::LeftX, Self::LeftY, Self::RightX, Self::RightY, Self::LT, Self::RT]
+        [
+            Self::LeftX,
+            Self::LeftY,
+            Self::RightX,
+            Self::RightY,
+            Self::LT,
+            Self::RT,
+        ]
     }
 }
 
@@ -231,17 +258,29 @@ impl Binding {
 
     /// Creates a binding with a keyboard key.
     pub fn with_key(key: KeyCode) -> Self {
-        Self { key: Some(key), mouse: None, gamepad: None }
+        Self {
+            key: Some(key),
+            mouse: None,
+            gamepad: None,
+        }
     }
 
     /// Creates a binding with a mouse button.
     pub fn with_mouse(button: MouseButton) -> Self {
-        Self { key: None, mouse: Some(button), gamepad: None }
+        Self {
+            key: None,
+            mouse: Some(button),
+            gamepad: None,
+        }
     }
 
     /// Creates a binding with a gamepad button.
     pub fn with_gamepad(button: GamepadButton) -> Self {
-        Self { key: None, mouse: None, gamepad: Some(button) }
+        Self {
+            key: None,
+            mouse: None,
+            gamepad: Some(button),
+        }
     }
 
     /// Returns true if no input is bound.
@@ -271,9 +310,15 @@ impl Binding {
     /// Returns the number of inputs bound.
     pub fn binding_count(&self) -> usize {
         let mut count = 0;
-        if self.key.is_some() { count += 1; }
-        if self.mouse.is_some() { count += 1; }
-        if self.gamepad.is_some() { count += 1; }
+        if self.key.is_some() {
+            count += 1;
+        }
+        if self.mouse.is_some() {
+            count += 1;
+        }
+        if self.gamepad.is_some() {
+            count += 1;
+        }
         count
     }
 }
@@ -308,17 +353,29 @@ pub struct AxisBinding {
 impl AxisBinding {
     /// Creates a new axis binding with default deadzone.
     pub fn new(axis: AxisKind) -> Self {
-        Self { axis, invert: false, deadzone: 0.15 }
+        Self {
+            axis,
+            invert: false,
+            deadzone: 0.15,
+        }
     }
 
     /// Creates a new axis binding with the specified deadzone.
     pub fn with_deadzone(axis: AxisKind, deadzone: f32) -> Self {
-        Self { axis, invert: false, deadzone }
+        Self {
+            axis,
+            invert: false,
+            deadzone,
+        }
     }
 
     /// Creates an inverted axis binding.
     pub fn inverted(axis: AxisKind) -> Self {
-        Self { axis, invert: true, deadzone: 0.15 }
+        Self {
+            axis,
+            invert: true,
+            deadzone: 0.15,
+        }
     }
 
     /// Returns true if the axis is inverted.
@@ -335,7 +392,11 @@ impl AxisBinding {
         }
         let normalized = (abs_value - self.deadzone) / (1.0 - self.deadzone);
         let result = normalized * value.signum();
-        if self.invert { -result } else { result }
+        if self.invert {
+            -result
+        } else {
+            result
+        }
     }
 }
 
@@ -412,12 +473,15 @@ impl BindingSet {
 
 impl std::fmt::Display for BindingSet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BindingSet({} actions, move={}/{}, look={}/{})", 
+        write!(
+            f,
+            "BindingSet({} actions, move={}/{}, look={}/{})",
             self.actions.len(),
             self.move_axes.0.axis,
             self.move_axes.1.axis,
             self.look_axes.0.axis,
-            self.look_axes.1.axis)
+            self.look_axes.1.axis
+        )
     }
 }
 
@@ -612,7 +676,7 @@ mod tests {
     use super::*;
 
     // ========== GamepadButton Tests ==========
-    
+
     #[test]
     fn test_gamepad_button_name() {
         assert_eq!(GamepadButton::South.name(), "South");
@@ -1017,7 +1081,11 @@ mod tests {
     fn non_empty_binding_count_default_is_not_one() {
         let set = BindingSet::default();
         let count = set.non_empty_binding_count();
-        assert!(count > 1, "default set should have >1 non-empty bindings, got {}", count);
+        assert!(
+            count > 1,
+            "default set should have >1 non-empty bindings, got {}",
+            count
+        );
     }
 
     /// Kills `bindings.rs:409` `delete !` in non_empty_binding_count filter

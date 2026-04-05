@@ -8,10 +8,7 @@
 //! - Return value mutations (replacing with default/empty)
 //! - String replacement mutations (swapping literals)
 
-#![allow(
-    clippy::field_reassign_with_default,
-    clippy::approx_constant
-)]
+#![allow(clippy::field_reassign_with_default, clippy::approx_constant)]
 
 // =============================================================================
 // lib.rs — CacheConfig EXACT VALUE TESTS
@@ -2930,7 +2927,11 @@ mod context_mutation_remediation {
             ContextValue::Number(3.0),
         ]);
         let s = format!("{}", arr);
-        assert!(s.contains(", "), "Multi-element array should have ', ' separators: got {}", s);
+        assert!(
+            s.contains(", "),
+            "Multi-element array should have ', ' separators: got {}",
+            s
+        );
         assert_eq!(s, "[1, 2, 3]");
     }
 
@@ -2939,7 +2940,11 @@ mod context_mutation_remediation {
         // Mutant: `i > 0` → `i >= 0` would emit separator before first element
         let arr = ContextValue::Array(vec![ContextValue::Number(42.0)]);
         let s = format!("{}", arr);
-        assert!(!s.starts_with("[,"), "Single-element array should not start with comma: got {}", s);
+        assert!(
+            !s.starts_with("[,"),
+            "Single-element array should not start with comma: got {}",
+            s
+        );
         assert_eq!(s, "[42]");
     }
 
@@ -2951,7 +2956,11 @@ mod context_mutation_remediation {
         map.insert("b".to_string(), ContextValue::Number(2.0));
         let obj = ContextValue::Object(map);
         let s = format!("{}", obj);
-        assert!(s.contains(", "), "Multi-key object should have ', ' separators: got {}", s);
+        assert!(
+            s.contains(", "),
+            "Multi-key object should have ', ' separators: got {}",
+            s
+        );
     }
 
     #[test]
@@ -2961,8 +2970,9 @@ mod context_mutation_remediation {
         val.insert_path(&["key"], ContextValue::Number(42.0));
         if let ContextValue::Object(map) = &val {
             match map.get("key") {
-                Some(ContextValue::Number(n)) => assert!((*n - 42.0).abs() < 0.01,
-                    "Should be 42.0, got {}", n),
+                Some(ContextValue::Number(n)) => {
+                    assert!((*n - 42.0).abs() < 0.01, "Should be 42.0, got {}", n)
+                }
                 other => panic!("Expected Number(42.0) at 'key', got {:?}", other),
             }
         } else {
@@ -2998,13 +3008,17 @@ mod context_mutation_remediation {
         if let ContextValue::Object(outer) = &val {
             if let Some(ContextValue::Object(inner)) = outer.get("a") {
                 match inner.get("b") {
-                    Some(ContextValue::Number(n)) => assert!((*n - 1.0).abs() < 0.01,
-                        "Existing 'b' should be preserved, got {}", n),
+                    Some(ContextValue::Number(n)) => assert!(
+                        (*n - 1.0).abs() < 0.01,
+                        "Existing 'b' should be preserved, got {}",
+                        n
+                    ),
                     other => panic!("Expected Number(1.0) at 'b', got {:?}", other),
                 }
                 match inner.get("c") {
-                    Some(ContextValue::Number(n)) => assert!((*n - 2.0).abs() < 0.01,
-                        "'c' should be 2.0, got {}", n),
+                    Some(ContextValue::Number(n)) => {
+                        assert!((*n - 2.0).abs() < 0.01, "'c' should be 2.0, got {}", n)
+                    }
                     other => panic!("Expected Number(2.0) at 'c', got {:?}", other),
                 }
             } else {
@@ -3020,7 +3034,7 @@ mod context_mutation_remediation {
         val.insert_path(&["x"], ContextValue::Boolean(true));
         if let ContextValue::Object(map) = &val {
             match map.get("x") {
-                Some(ContextValue::Boolean(true)) => {},
+                Some(ContextValue::Boolean(true)) => {}
                 other => panic!("Expected Boolean(true) at 'x', got {:?}", other),
             }
         } else {

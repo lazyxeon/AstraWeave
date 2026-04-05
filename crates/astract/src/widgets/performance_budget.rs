@@ -56,7 +56,6 @@ impl Default for FrameBudget {
 }
 
 impl FrameBudget {
-
     /// Total time used (excluding headroom)
     pub fn total_used(&self) -> f32 {
         self.ecs + self.physics + self.rendering + self.ai + self.audio + self.ui
@@ -171,7 +170,7 @@ impl PerformanceBudgetWidget {
     pub fn show(&mut self, ui: &mut egui::Ui) {
         // Use smoothed average over last 30 frames to reduce strobe effect
         let display_budget = self.average(30);
-        
+
         ui.horizontal(|ui| {
             // Compact view (always visible)
             let percent = display_budget.percent_used();

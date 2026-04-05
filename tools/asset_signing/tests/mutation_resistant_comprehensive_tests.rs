@@ -13,8 +13,8 @@ fn make_ed25519_keypair() -> ([u8; 32], [u8; 32]) {
     use ed25519_dalek::SigningKey;
     // Deterministic seed for reproducible tests
     let seed: [u8; 32] = [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+        26, 27, 28, 29, 30, 31, 32,
     ];
     let signing = SigningKey::from_bytes(&seed);
     let verifying = signing.verifying_key();
@@ -127,8 +127,8 @@ fn verify_wrong_public_key_fails() {
 
     // Different key pair
     let other_seed: [u8; 32] = [
-        99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84,
-        83, 82, 81, 80, 79, 78, 77, 76, 75, 74, 73, 72, 71, 70, 69, 68,
+        99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84, 83, 82, 81, 80, 79, 78, 77,
+        76, 75, 74, 73, 72, 71, 70, 69, 68,
     ];
     let other_signing = ed25519_dalek::SigningKey::from_bytes(&other_seed);
     let other_pub = other_signing.verifying_key().to_bytes();
@@ -146,7 +146,10 @@ fn sign_deterministic() {
     let (private_key, _) = make_ed25519_keypair();
     let sig1 = sign_asset(path.to_str().unwrap(), &private_key).unwrap();
     let sig2 = sign_asset(path.to_str().unwrap(), &private_key).unwrap();
-    assert_eq!(sig1, sig2, "same file + same key → same signature (Ed25519 is deterministic)");
+    assert_eq!(
+        sig1, sig2,
+        "same file + same key → same signature (Ed25519 is deterministic)"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

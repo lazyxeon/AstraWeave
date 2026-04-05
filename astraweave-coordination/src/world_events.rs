@@ -886,7 +886,6 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             (
                 "active_storylines".to_string(),
                 serde_json::to_value(Vec::<String>::new())?,
-
             ),
         ]);
 

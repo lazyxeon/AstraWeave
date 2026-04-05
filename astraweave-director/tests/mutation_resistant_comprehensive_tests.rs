@@ -1285,10 +1285,7 @@ fn analyze_snapshot_multiple_enemies_non_origin_avg_distance() {
     // avg > 10.0 → preferred_range increases
     let snap = make_snapshot(
         IVec2 { x: 5, y: 0 },
-        vec![
-            (IVec2 { x: 12, y: 3 }, 50),
-            (IVec2 { x: 15, y: 2 }, 50),
-        ],
+        vec![(IVec2 { x: 12, y: 3 }, 50), (IVec2 { x: 15, y: 2 }, 50)],
     );
     m.analyze_snapshot(&snap);
 
@@ -1324,7 +1321,9 @@ fn boss_plan_non_origin_distance_spawn_not_fortify() {
     let plan = d.plan(&snap, &budget(5, 5, 5));
     // dist = 6, should spawn not fortify
     assert!(
-        plan.ops.iter().any(|op| matches!(op, DirectorOp::SpawnWave { .. })),
+        plan.ops
+            .iter()
+            .any(|op| matches!(op, DirectorOp::SpawnWave { .. })),
         "should spawn at dist=6, got {:?}",
         plan.ops
     );

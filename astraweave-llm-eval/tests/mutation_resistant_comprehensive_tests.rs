@@ -121,7 +121,11 @@ fn scoring_weights_default_coherence() {
 fn scoring_weights_default_sum_to_one() {
     let w = ScoringWeights::default();
     let total = w.validity + w.goal_achievement + w.safety + w.coherence;
-    assert!((total - 1.0).abs() < 1e-10, "Weights must sum to 1.0, got {}", total);
+    assert!(
+        (total - 1.0).abs() < 1e-10,
+        "Weights must sum to 1.0, got {}",
+        total
+    );
 }
 
 #[test]
@@ -258,10 +262,31 @@ fn evaluation_suite_default_scenario_ids() {
 fn evaluation_suite_default_scenario_types() {
     let suite = EvaluationSuite::default();
     let types: Vec<ScenarioType> = suite.scenarios.iter().map(|s| s.scenario_type).collect();
-    assert_eq!(types.iter().filter(|t| **t == ScenarioType::Combat).count(), 2);
-    assert_eq!(types.iter().filter(|t| **t == ScenarioType::Exploration).count(), 1);
-    assert_eq!(types.iter().filter(|t| **t == ScenarioType::Stealth).count(), 1);
-    assert_eq!(types.iter().filter(|t| **t == ScenarioType::Support).count(), 1);
+    assert_eq!(
+        types.iter().filter(|t| **t == ScenarioType::Combat).count(),
+        2
+    );
+    assert_eq!(
+        types
+            .iter()
+            .filter(|t| **t == ScenarioType::Exploration)
+            .count(),
+        1
+    );
+    assert_eq!(
+        types
+            .iter()
+            .filter(|t| **t == ScenarioType::Stealth)
+            .count(),
+        1
+    );
+    assert_eq!(
+        types
+            .iter()
+            .filter(|t| **t == ScenarioType::Support)
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -297,7 +322,11 @@ fn evaluation_suite_new_empty() {
 #[test]
 fn default_combat_basic_expected_actions() {
     let suite = EvaluationSuite::default();
-    let combat = suite.scenarios.iter().find(|s| s.id == "combat_basic").unwrap();
+    let combat = suite
+        .scenarios
+        .iter()
+        .find(|s| s.id == "combat_basic")
+        .unwrap();
     assert!(combat.expected_actions.contains(&"MoveTo".to_string()));
     assert!(combat.expected_actions.contains(&"CoverFire".to_string()));
     assert!(combat.forbidden_actions.is_empty());
@@ -306,7 +335,11 @@ fn default_combat_basic_expected_actions() {
 #[test]
 fn default_combat_grenade_expected_actions() {
     let suite = EvaluationSuite::default();
-    let grenade = suite.scenarios.iter().find(|s| s.id == "combat_grenade").unwrap();
+    let grenade = suite
+        .scenarios
+        .iter()
+        .find(|s| s.id == "combat_grenade")
+        .unwrap();
     assert!(grenade.expected_actions.contains(&"Throw".to_string()));
     assert!(grenade.forbidden_actions.is_empty());
 }
@@ -314,7 +347,11 @@ fn default_combat_grenade_expected_actions() {
 #[test]
 fn default_exploration_forbidden_actions() {
     let suite = EvaluationSuite::default();
-    let explore = suite.scenarios.iter().find(|s| s.id == "exploration").unwrap();
+    let explore = suite
+        .scenarios
+        .iter()
+        .find(|s| s.id == "exploration")
+        .unwrap();
     assert!(explore.expected_actions.contains(&"MoveTo".to_string()));
     assert!(explore.forbidden_actions.contains(&"CoverFire".to_string()));
 }
@@ -628,12 +665,19 @@ mod mutation_kill_tests {
         let r = &results.scenario_results[0];
         assert!((r.validity_score - 1.0).abs() < 0.01, "validity");
         assert!((r.safety_score - 1.0).abs() < 0.01, "safety");
-        assert!((r.coherence_score - 0.5).abs() < 0.01,
-            "coherence should be 0.5, got {}", r.coherence_score);
+        assert!(
+            (r.coherence_score - 0.5).abs() < 0.01,
+            "coherence should be 0.5, got {}",
+            r.coherence_score
+        );
 
         let expected_overall = 1.0 * 0.4 + 0.0 * 0.3 + 1.0 * 0.15 + 0.5 * 0.15;
-        assert!((r.overall_score - expected_overall).abs() < 0.01,
-            "overall should be {}, got {}", expected_overall, r.overall_score);
+        assert!(
+            (r.overall_score - expected_overall).abs() < 0.01,
+            "overall should be {}, got {}",
+            expected_overall,
+            r.overall_score
+        );
 
         // 0.625 < threshold 0.70, so failed=1, passed=0
         assert_eq!(results.passed, 0);
@@ -654,12 +698,17 @@ mod mutation_kill_tests {
         // Both scenarios produce same scores → averages = individual scores
         assert!((results.avg_validity - 1.0).abs() < 0.01);
         assert!((results.avg_safety - 1.0).abs() < 0.01);
-        assert!((results.avg_coherence - 0.5).abs() < 0.01,
-            "avg_coherence should be 0.5, got {}", results.avg_coherence);
+        assert!(
+            (results.avg_coherence - 0.5).abs() < 0.01,
+            "avg_coherence should be 0.5, got {}",
+            results.avg_coherence
+        );
 
         // results_by_type should have entries for Combat and Exploration
         assert!(results.results_by_type.contains_key(&ScenarioType::Combat));
-        assert!(results.results_by_type.contains_key(&ScenarioType::Exploration));
+        assert!(results
+            .results_by_type
+            .contains_key(&ScenarioType::Exploration));
         assert!(!results.results_by_type.contains_key(&ScenarioType::Stealth));
     }
 
@@ -671,7 +720,10 @@ mod mutation_kill_tests {
         let suite = EvaluationSuite::new(vec![make_scenario("g1", ScenarioType::Combat)]);
         let results = suite.evaluate(Arc::new(SmokePlanMock)).await;
         let r = &results.scenario_results[0];
-        assert!((r.goal_score - 0.0).abs() < 0.01,
-            "goal should be 0.0, got {}", r.goal_score);
+        assert!(
+            (r.goal_score - 0.0).abs() < 0.01,
+            "goal should be 0.0, got {}",
+            r.goal_score
+        );
     }
 }

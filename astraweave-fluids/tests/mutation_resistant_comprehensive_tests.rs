@@ -68,12 +68,12 @@ fn timing_stats_breakdown_values_are_percentages() {
     // breakdown() returns percentages: (field_us / total_step_us.max(1)) * 100.0
     let mut s = FluidTimingStats::default();
     s.total_step_us = 1000;
-    s.sdf_gen_us = 100;   // 10%
-    s.predict_us = 200;    // 20%
+    s.sdf_gen_us = 100; // 10%
+    s.predict_us = 200; // 20%
     s.grid_build_us = 300; // 30%
     s.constraint_solve_us = 100; // 10%
-    s.integrate_us = 150;  // 15%
-    s.secondary_us = 100;  // 10%
+    s.integrate_us = 150; // 15%
+    s.secondary_us = 100; // 10%
     s.heat_diffuse_us = 50; // 5%
     let b = s.breakdown();
     assert!((b["sdf_gen"] - 10.0).abs() < 1e-3);
@@ -259,7 +259,9 @@ fn foam_config_calm_differs_from_default() {
     let calm = FoamConfig::calm();
     let def = FoamConfig::default();
     // calm should be gentler
-    assert!(calm.whitecap_threshold > def.whitecap_threshold || calm.spread_rate != def.spread_rate);
+    assert!(
+        calm.whitecap_threshold > def.whitecap_threshold || calm.spread_rate != def.spread_rate
+    );
 }
 
 #[test]
@@ -734,8 +736,7 @@ fn water_volume_grid_dimensions() {
 fn water_volume_grid_with_config() {
     let mut config = WaterSimConfig::default();
     config.gravity = 20.0;
-    let grid = WaterVolumeGrid::new(UVec3::new(2, 2, 2), 1.0, Vec3::ZERO)
-        .with_config(config);
+    let grid = WaterVolumeGrid::new(UVec3::new(2, 2, 2), 1.0, Vec3::ZERO).with_config(config);
     // Grid should still function
     let stats = grid.stats();
     assert_eq!(stats.total_cells, 8);

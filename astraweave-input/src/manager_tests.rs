@@ -1092,7 +1092,7 @@ mod save_tests {
         let bindings = create_test_bindings();
         let temp_dir = std::env::temp_dir().join("astraweave_input_test_multi");
         let _ = fs::create_dir_all(&temp_dir);
-        
+
         let file1 = temp_dir.join("file1.json");
         let file2 = temp_dir.join("file2.json");
         let file3 = temp_dir.join("file3.json");

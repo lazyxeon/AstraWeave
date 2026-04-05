@@ -21,10 +21,10 @@
 //! - **Space**: Toggle MegaLights demo (spawn 10k lights)
 //! - **ESC**: Exit
 
-mod procedural_textures;
-mod gltf_loader;
-mod texture_loader;
 mod atlas_packer;
+mod gltf_loader;
+mod procedural_textures;
+mod texture_loader;
 
 use glam::{Mat4, Vec2, Vec3};
 use image::DynamicImage;
@@ -55,11 +55,11 @@ fn generate_mipmap_chain(base_image: &[u8], width: u32, height: u32) -> Vec<Vec<
     let mut mipmaps = vec![base_image.to_vec()];
     let mut current_width = width;
     let mut current_height = height;
-    
+
     while current_width > 1 || current_height > 1 {
         let next_width = (current_width / 2).max(1);
         let next_height = (current_height / 2).max(1);
-        
+
         let downsampled = downsample_image(
             &mipmaps.last().unwrap(),
             current_width,
@@ -67,43 +67,37 @@ fn generate_mipmap_chain(base_image: &[u8], width: u32, height: u32) -> Vec<Vec<
             next_width,
             next_height,
         );
-        
+
         mipmaps.push(downsampled);
         current_width = next_width;
         current_height = next_height;
     }
-    
+
     mipmaps
 }
 
 /// Downsample an image using 2x2 box filter (bilinear)
-fn downsample_image(
-    src: &[u8],
-    src_w: u32,
-    src_h: u32,
-    dst_w: u32,
-    dst_h: u32,
-) -> Vec<u8> {
+fn downsample_image(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> Vec<u8> {
     let mut dst = vec![0u8; (dst_w * dst_h * 4) as usize];
-    
+
     for y in 0..dst_h {
         for x in 0..dst_w {
             let src_x = x * 2;
             let src_y = y * 2;
-            
+
             // Average 2x2 block
             let mut r = 0u32;
             let mut g = 0u32;
             let mut b = 0u32;
             let mut a = 0u32;
             let mut count = 0u32;
-            
+
             for dy in 0..2 {
                 for dx in 0..2 {
                     let sx = (src_x + dx).min(src_w - 1);
                     let sy = (src_y + dy).min(src_h - 1);
                     let idx = ((sy * src_w + sx) * 4) as usize;
-                    
+
                     if idx + 3 < src.len() {
                         r += src[idx] as u32;
                         g += src[idx + 1] as u32;
@@ -113,7 +107,7 @@ fn downsample_image(
                     }
                 }
             }
-            
+
             let dst_idx = ((y * dst_w + x) * 4) as usize;
             if count > 0 {
                 dst[dst_idx] = (r / count) as u8;
@@ -123,7 +117,7 @@ fn downsample_image(
             }
         }
     }
-    
+
     dst
 }
 
@@ -388,30 +382,34 @@ fn sample_terrain_height(x: f32, z: f32, island_size: f32) -> f32 {
     // MUST match create_island_terrain() heightmap formula exactly!
     let half_size = island_size / 2.0;
     let dist_from_center = ((x / half_size).powi(2) + (z / half_size).powi(2)).sqrt();
-    
+
     // Base island shape (raised center)
     let island_shape = if dist_from_center < 1.0 {
         (1.0 - dist_from_center).powi(2) * 12.0 // Higher peak (12m)
     } else {
         0.0
     };
-    
+
     // Multiple hills using different frequencies (SAME as terrain generation)
     let hill1 = ((x * 0.05).sin() * (z * 0.05).cos() * 8.0).max(0.0);
     let hill2 = ((x * 0.08 + 10.0).cos() * (z * 0.08 + 5.0).sin() * 6.0).max(0.0);
     let hill3 = ((x * 0.03).sin() * (z * 0.03).sin() * 5.0).max(0.0);
-    
+
     // Medium frequency variation (valleys and ridges)
     let medium_detail = (x * 0.15).sin() * (z * 0.15).cos() * 2.5;
-    
+
     // Fine detail (rocky texture)
     let fine_detail = ((x * 0.5).sin() * (z * 0.5).cos() * 0.8)
         + ((x * 0.8 + 3.0).cos() * (z * 0.7 + 2.0).sin() * 0.5);
-    
+
     // Combine all layers with distance falloff
     let falloff = (1.0 - dist_from_center.min(1.0)).powi(1); // Gentler falloff
-    let height = (island_shape + (hill1 + hill2 + hill3) * falloff * 0.5 + medium_detail * falloff + fine_detail * falloff).max(0.0);
-    
+    let height = (island_shape
+        + (hill1 + hill2 + hill3) * falloff * 0.5
+        + medium_detail * falloff
+        + fine_detail * falloff)
+        .max(0.0);
+
     height
 }
 
@@ -696,7 +694,7 @@ fn create_island_terrain(size: f32, subdivisions: usize) -> (Vec<Vertex>, Vec<u3
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
     let half_size = size / 2.0;
-    
+
     // Generate realistic heightmap-based terrain with multiple hills
     for z in 0..=subdivisions {
         for x in 0..=subdivisions {
@@ -705,39 +703,45 @@ fn create_island_terrain(size: f32, subdivisions: usize) -> (Vec<Vertex>, Vec<u3
 
             let world_x = (u - 0.5) * size;
             let world_z = (v - 0.5) * size;
-            
+
             // Multiple frequency noise for natural terrain
-            let dist_from_center = ((world_x / half_size).powi(2) + (world_z / half_size).powi(2)).sqrt();
-            
+            let dist_from_center =
+                ((world_x / half_size).powi(2) + (world_z / half_size).powi(2)).sqrt();
+
             // Base island shape (raised center)
             let island_shape = if dist_from_center < 1.0 {
                 (1.0 - dist_from_center).powi(2) * 12.0 // Higher peak (12m)
             } else {
                 0.0
             };
-            
+
             // Multiple hills using different frequencies
             let hill1 = ((world_x * 0.05).sin() * (world_z * 0.05).cos() * 8.0).max(0.0);
-            let hill2 = ((world_x * 0.08 + 10.0).cos() * (world_z * 0.08 + 5.0).sin() * 6.0).max(0.0);
+            let hill2 =
+                ((world_x * 0.08 + 10.0).cos() * (world_z * 0.08 + 5.0).sin() * 6.0).max(0.0);
             let hill3 = ((world_x * 0.03).sin() * (world_z * 0.03).sin() * 5.0).max(0.0);
-            
+
             // Medium frequency variation (valleys and ridges)
             let medium_detail = (world_x * 0.15).sin() * (world_z * 0.15).cos() * 2.5;
-            
+
             // Fine detail (rocky texture)
             let fine_detail = ((world_x * 0.5).sin() * (world_z * 0.5).cos() * 0.8)
                 + ((world_x * 0.8 + 3.0).cos() * (world_z * 0.7 + 2.0).sin() * 0.5);
-            
+
             // Combine all layers with distance falloff
             let falloff = (1.0 - dist_from_center.min(1.0)).powi(1); // Gentler falloff
-            let height = (island_shape + (hill1 + hill2 + hill3) * falloff * 0.5 + medium_detail * falloff + fine_detail * falloff).max(0.0);
-            
+            let height = (island_shape
+                + (hill1 + hill2 + hill3) * falloff * 0.5
+                + medium_detail * falloff
+                + fine_detail * falloff)
+                .max(0.0);
+
             // Calculate material blend weights based on height
             // Height ranges: 0-2m grass, 2-6m dirt, 6-12m stone
             let blend_grass = smoothstep(0.0, 2.0, 2.0 - height).max(0.0);
             let blend_dirt = smoothstep(0.0, 2.0, height) * smoothstep(8.0, 6.0, height);
             let blend_stone = smoothstep(4.0, 6.0, height).max(0.0);
-            
+
             // Normalize weights to sum to 1.0
             let total = blend_grass + blend_dirt + blend_stone + 0.001; // Avoid div by zero
             let material_blend = [
@@ -746,11 +750,11 @@ fn create_island_terrain(size: f32, subdivisions: usize) -> (Vec<Vertex>, Vec<u3
                 blend_stone / total,
                 0.0, // unused
             ];
-            
+
             vertices.push(Vertex {
                 position: [world_x, height, world_z],
-                normal: [0.0, 1.0, 0.0],  // Will be recalculated
-                uv: [u * 2.5, v * 2.5], // Tile UVs 2.5x2.5 for smoother textures
+                normal: [0.0, 1.0, 0.0], // Will be recalculated
+                uv: [u * 2.5, v * 2.5],  // Tile UVs 2.5x2.5 for smoother textures
                 material_blend,
                 material_id: 0, // Terrain uses blending, not atlas (material_id unused for terrain)
             });
@@ -772,7 +776,7 @@ fn create_island_terrain(size: f32, subdivisions: usize) -> (Vec<Vertex>, Vec<u3
 
     // Recalculate normals (smooth shading for terrain)
     let mut normals_accum: Vec<Vec3> = vec![Vec3::ZERO; vertices.len()];
-    
+
     // Accumulate face normals weighted by face area
     for i in (0..indices.len()).step_by(3) {
         let i0 = indices[i] as usize;
@@ -792,7 +796,7 @@ fn create_island_terrain(size: f32, subdivisions: usize) -> (Vec<Vertex>, Vec<u3
         normals_accum[i1] += face_normal;
         normals_accum[i2] += face_normal;
     }
-    
+
     // Normalize accumulated normals for smooth shading
     for i in 0..vertices.len() {
         vertices[i].normal = normals_accum[i].normalize_or_zero().to_array();
@@ -864,19 +868,19 @@ struct ShowcaseApp {
 
     // Rendering resources
     render_pipeline: Option<wgpu::RenderPipeline>,
-    transparent_pipeline: Option<wgpu::RenderPipeline>,  // PHASE 4.3: Alpha-tested pipeline for foliage
+    transparent_pipeline: Option<wgpu::RenderPipeline>, // PHASE 4.3: Alpha-tested pipeline for foliage
     uniform_buffer: Option<wgpu::Buffer>,
     uniform_bind_group: Option<wgpu::BindGroup>,
-    material_bind_groups: Vec<wgpu::BindGroup>,  // DEPRECATED: Will be replaced by atlas_bind_group
-    atlas_texture: Option<wgpu::Texture>,         // PHASE 3.2.1: Material atlas texture
-    atlas_normal_texture: Option<wgpu::Texture>,  // PHASE 4.1: Normal map atlas
-    atlas_mra_texture: Option<wgpu::Texture>,     // PHASE 4.1: MRA (Metallic-Roughness-AO) atlas
-    atlas_bind_group: Option<wgpu::BindGroup>,    // PHASE 3.2.1: Single atlas bind group (group 1)
+    material_bind_groups: Vec<wgpu::BindGroup>, // DEPRECATED: Will be replaced by atlas_bind_group
+    atlas_texture: Option<wgpu::Texture>,       // PHASE 3.2.1: Material atlas texture
+    atlas_normal_texture: Option<wgpu::Texture>, // PHASE 4.1: Normal map atlas
+    atlas_mra_texture: Option<wgpu::Texture>,   // PHASE 4.1: MRA (Metallic-Roughness-AO) atlas
+    atlas_bind_group: Option<wgpu::BindGroup>,  // PHASE 3.2.1: Single atlas bind group (group 1)
     terrain_bind_group: Option<wgpu::BindGroup>,
-    atlas_regions_uniform_buffer: Option<wgpu::Buffer>,  // PHASE 3.2.1: Atlas regions uniform (group 3)
-    atlas_regions_bind_group: Option<wgpu::BindGroup>,   // PHASE 3.2.1: Atlas regions bind group
+    atlas_regions_uniform_buffer: Option<wgpu::Buffer>, // PHASE 3.2.1: Atlas regions uniform (group 3)
+    atlas_regions_bind_group: Option<wgpu::BindGroup>,  // PHASE 3.2.1: Atlas regions bind group
     depth_texture: Option<wgpu::TextureView>,
-    
+
     // Skybox resources
     skybox_pipeline: Option<wgpu::RenderPipeline>,
     skybox_cubemap: Option<wgpu::TextureView>,
@@ -924,20 +928,20 @@ impl Default for ShowcaseApp {
                 Material {
                     name: "Grass".to_string(),
                     albedo_path: "assets/textures/texture-d.png".to_string(),
-                    normal_path: "assets/grass_n.png".to_string(),  // FIX: Correct path
-                    mra_path: "assets/grass_mra.png".to_string(),    // FIX: Correct path
+                    normal_path: "assets/grass_n.png".to_string(), // FIX: Correct path
+                    mra_path: "assets/grass_mra.png".to_string(),  // FIX: Correct path
                 },
                 Material {
                     name: "Dirt".to_string(),
                     albedo_path: "assets/textures/texture-f.png".to_string(),
-                    normal_path: "assets/dirt_n.png".to_string(),    // FIX: Correct path
-                    mra_path: "assets/dirt_mra.png".to_string(),     // FIX: Correct path
+                    normal_path: "assets/dirt_n.png".to_string(), // FIX: Correct path
+                    mra_path: "assets/dirt_mra.png".to_string(),  // FIX: Correct path
                 },
                 Material {
                     name: "Stone".to_string(),
                     albedo_path: "assets/textures/cobblestone.png".to_string(),
-                    normal_path: "assets/stone_n.png".to_string(),   // FIX: Correct path
-                    mra_path: "assets/stone_mra.png".to_string(),    // FIX: Correct path
+                    normal_path: "assets/stone_n.png".to_string(), // FIX: Correct path
+                    mra_path: "assets/stone_mra.png".to_string(),  // FIX: Correct path
                 },
                 Material {
                     name: "Wood".to_string(),
@@ -981,17 +985,17 @@ impl Default for ShowcaseApp {
             ],
             current_hdri: 0,
             render_pipeline: None,
-            transparent_pipeline: None,  // PHASE 4.3
+            transparent_pipeline: None, // PHASE 4.3
             uniform_buffer: None,
             uniform_bind_group: None,
             material_bind_groups: Vec::new(),
-            atlas_texture: None,           // PHASE 3.2.1
-            atlas_normal_texture: None,    // PHASE 4.1
-            atlas_mra_texture: None,       // PHASE 4.1
-            atlas_bind_group: None,        // PHASE 3.2.1
+            atlas_texture: None,        // PHASE 3.2.1
+            atlas_normal_texture: None, // PHASE 4.1
+            atlas_mra_texture: None,    // PHASE 4.1
+            atlas_bind_group: None,     // PHASE 3.2.1
             terrain_bind_group: None,
-            atlas_regions_uniform_buffer: None,  // PHASE 3.2.1
-            atlas_regions_bind_group: None,      // PHASE 3.2.1
+            atlas_regions_uniform_buffer: None, // PHASE 3.2.1
+            atlas_regions_bind_group: None,     // PHASE 3.2.1
             depth_texture: None,
             skybox_pipeline: None,
             skybox_cubemap: None,
@@ -1048,7 +1052,7 @@ impl ShowcaseApp {
 
         Ok(texture)
     }
-    
+
     /// Load texture or generate procedural texture if path ends with "_proc"
     fn load_or_generate_texture(
         device: &wgpu::Device,
@@ -1076,14 +1080,14 @@ impl ShowcaseApp {
                     }
                 }
             };
-            
+
             let dimensions = rgba.dimensions();
             let size = wgpu::Extent3d {
                 width: dimensions.0,
                 height: dimensions.1,
                 depth_or_array_layers: 1,
             };
-            
+
             let texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(path),
                 size,
@@ -1094,7 +1098,7 @@ impl ShowcaseApp {
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
-            
+
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &texture,
@@ -1110,14 +1114,14 @@ impl ShowcaseApp {
                 },
                 size,
             );
-            
+
             Ok(texture)
         } else {
             // Load from file
             Self::load_texture(device, queue, path)
         }
     }
-    
+
     /// Load HDRI and convert to cubemap
     fn load_hdri_cubemap(
         device: &wgpu::Device,
@@ -1126,12 +1130,12 @@ impl ShowcaseApp {
     ) -> Result<wgpu::Texture, Box<dyn std::error::Error>> {
         #[allow(unused_imports)]
         use image::GenericImageView;
-        
+
         // Load HDR image
         let img = image::open(path)?;
         let rgba_img = img.to_rgba32f();
         let (width, height) = rgba_img.dimensions();
-        
+
         // Create cubemap texture (6 faces, 512x512 each)
         let cubemap_size = 512u32;
         let cubemap_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -1148,46 +1152,46 @@ impl ShowcaseApp {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        
+
         // Convert equirectangular to cubemap (simplified - sample each face)
         for face in 0..6 {
             let mut face_data = vec![0f32; (cubemap_size * cubemap_size * 4) as usize];
-            
+
             for y in 0..cubemap_size {
                 for x in 0..cubemap_size {
                     // Map cubemap texel to 3D direction
                     let u = (x as f32 + 0.5) / cubemap_size as f32;
                     let v = (y as f32 + 0.5) / cubemap_size as f32;
-                    
+
                     // Convert to [-1, 1] range
                     let uc = 2.0 * u - 1.0;
                     let vc = 2.0 * v - 1.0;
-                    
+
                     // Get direction vector based on cubemap face
                     let dir = match face {
-                        0 => Vec3::new(1.0, -vc, -uc),   // +X (right)
-                        1 => Vec3::new(-1.0, -vc, uc),   // -X (left)
-                        2 => Vec3::new(uc, 1.0, vc),     // +Y (top)
-                        3 => Vec3::new(uc, -1.0, -vc),   // -Y (bottom)
-                        4 => Vec3::new(uc, -vc, 1.0),    // +Z (front)
-                        5 => Vec3::new(-uc, -vc, -1.0),  // -Z (back)
+                        0 => Vec3::new(1.0, -vc, -uc),  // +X (right)
+                        1 => Vec3::new(-1.0, -vc, uc),  // -X (left)
+                        2 => Vec3::new(uc, 1.0, vc),    // +Y (top)
+                        3 => Vec3::new(uc, -1.0, -vc),  // -Y (bottom)
+                        4 => Vec3::new(uc, -vc, 1.0),   // +Z (front)
+                        5 => Vec3::new(-uc, -vc, -1.0), // -Z (back)
                         _ => Vec3::ZERO,
                     };
-                    
+
                     let dir_norm = dir.normalize();
-                    
+
                     // Convert direction to equirectangular UV
                     let theta = dir_norm.y.asin();
                     let phi = dir_norm.z.atan2(dir_norm.x);
-                    
+
                     let eq_u = (phi / std::f32::consts::TAU + 0.5).clamp(0.0, 1.0);
                     // FIX: Invert V to correct upside-down HDRI
                     let eq_v = 1.0 - (theta / std::f32::consts::PI + 0.5).clamp(0.0, 1.0);
-                    
+
                     // Sample from equirectangular image
                     let px = ((eq_u * width as f32) as u32).min(width - 1);
                     let py = ((eq_v * height as f32) as u32).min(height - 1);
-                    
+
                     let pixel = rgba_img.get_pixel(px, py);
                     let idx = ((y * cubemap_size + x) * 4) as usize;
                     face_data[idx] = pixel[0];
@@ -1196,23 +1200,31 @@ impl ShowcaseApp {
                     face_data[idx + 3] = pixel[3];
                 }
             }
-            
+
             // Convert f32 to f16 for Rgba16Float
-            let face_data_f16: Vec<u8> = face_data.chunks(4)
+            let face_data_f16: Vec<u8> = face_data
+                .chunks(4)
                 .flat_map(|rgba| {
                     let r = half::f16::from_f32(rgba[0]);
                     let g = half::f16::from_f32(rgba[1]);
                     let b = half::f16::from_f32(rgba[2]);
                     let a = half::f16::from_f32(rgba[3]);
-                    [r, g, b, a].iter().flat_map(|h| h.to_le_bytes()).collect::<Vec<u8>>()
+                    [r, g, b, a]
+                        .iter()
+                        .flat_map(|h| h.to_le_bytes())
+                        .collect::<Vec<u8>>()
                 })
                 .collect();
-            
+
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &cubemap_texture,
                     mip_level: 0,
-                    origin: wgpu::Origin3d { x: 0, y: 0, z: face },
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: face,
+                    },
                     aspect: wgpu::TextureAspect::All,
                 },
                 &face_data_f16,
@@ -1228,10 +1240,10 @@ impl ShowcaseApp {
                 },
             );
         }
-        
+
         Ok(cubemap_texture)
     }
-    
+
     /// Create render pipeline and resources
     fn create_render_pipeline(&mut self) {
         let device = self.device.as_ref().unwrap();
@@ -1349,129 +1361,125 @@ impl ShowcaseApp {
         // Kenney textures are 64x64 pixel art - linear filtering causes blur
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("PBR Sampler (Nearest for Pixel Art, Clamp for Atlas)"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,  // CRITICAL: Prevent wrapping across atlas slots!
-            address_mode_v: wgpu::AddressMode::ClampToEdge,  // CRITICAL: Prevent wrapping across atlas slots!
+            address_mode_u: wgpu::AddressMode::ClampToEdge, // CRITICAL: Prevent wrapping across atlas slots!
+            address_mode_v: wgpu::AddressMode::ClampToEdge, // CRITICAL: Prevent wrapping across atlas slots!
             address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,  // CRITICAL: Nearest for pixel art!
-            min_filter: wgpu::FilterMode::Nearest,  // Prevents blur when zoomed out
-            mipmap_filter: wgpu::FilterMode::Nearest,  // Sharp mipmaps
-            anisotropy_clamp: 1,  // Disable anisotropic filtering (causes blur on pixel art)
+            mag_filter: wgpu::FilterMode::Nearest, // CRITICAL: Nearest for pixel art!
+            min_filter: wgpu::FilterMode::Nearest, // Prevents blur when zoomed out
+            mipmap_filter: wgpu::FilterMode::Nearest, // Sharp mipmaps
+            anisotropy_clamp: 1, // Disable anisotropic filtering (causes blur on pixel art)
             ..Default::default()
         });
-        
+
         // FIX: Create dedicated terrain sampler with Repeat mode for tiling
         // Terrain textures need to tile seamlessly (UVs are multiplied by 10.0 in shader)
         let terrain_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Terrain Sampler (Linear + Repeat for Tiling)"),
-            address_mode_u: wgpu::AddressMode::Repeat,  // FIX: Tiles textures
-            address_mode_v: wgpu::AddressMode::Repeat,  // FIX: Tiles textures
+            address_mode_u: wgpu::AddressMode::Repeat, // FIX: Tiles textures
+            address_mode_v: wgpu::AddressMode::Repeat, // FIX: Tiles textures
             address_mode_w: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Linear,       // Smooth filtering for terrain
-            min_filter: wgpu::FilterMode::Linear,       // Smooth filtering for terrain
-            mipmap_filter: wgpu::FilterMode::Linear,    // Smooth mipmap transitions
-            anisotropy_clamp: 16,                       // High quality at angles
+            mag_filter: wgpu::FilterMode::Linear, // Smooth filtering for terrain
+            min_filter: wgpu::FilterMode::Linear, // Smooth filtering for terrain
+            mipmap_filter: wgpu::FilterMode::Linear, // Smooth mipmap transitions
+            anisotropy_clamp: 16,                 // High quality at angles
             ..Default::default()
         });
 
         // PHASE 3.2: Material Atlas Generation
         // Pack all material albedo textures into a single 4K atlas
         println!("📦 Creating material atlas (7 materials)...");
-        
+
         let atlas_config = atlas_packer::AtlasConfig::default();
         let mut atlas_builder = atlas_packer::AtlasBuilder::new(atlas_config);
         let mut atlas_regions = Vec::new();
-        
+
         // Load each material's albedo into atlas
         for (i, material) in self.materials.iter().enumerate() {
             println!("  📌 Loading material {} albedo: {}", i, material.name);
             println!("     Path: {}", material.albedo_path);
-            
+
             // Load albedo texture data
-            let albedo_img = image::open(&material.albedo_path)
-                .unwrap_or_else(|e| {
-                    println!("    ⚠️  Failed to load {}: {}", material.albedo_path, e);
-                    println!("    Using fallback color for material {}", i);
-                    // Create 256x256 colored fallback
-                    let color = match i {
-                        0 => image::Rgba([51, 153, 51, 255]),   // Grass: green
-                        1 => image::Rgba([128, 77, 51, 255]),   // Dirt: brown
-                        2 => image::Rgba([153, 153, 153, 255]), // Stone: gray
-                        3 => image::Rgba([139, 90, 43, 255]),   // Wood: brown
-                        4 => image::Rgba([34, 139, 34, 255]),   // Leaves: green
-                        5 => image::Rgba([184, 134, 11, 255]),  // Roof: yellow-brown
-                        _ => image::Rgba([200, 180, 160, 255]), // Building: beige
-                    };
-                    DynamicImage::ImageRgba8(
-                        image::ImageBuffer::from_fn(256, 256, |_, _| color)
-                    )
-                });
-            
+            let albedo_img = image::open(&material.albedo_path).unwrap_or_else(|e| {
+                println!("    ⚠️  Failed to load {}: {}", material.albedo_path, e);
+                println!("    Using fallback color for material {}", i);
+                // Create 256x256 colored fallback
+                let color = match i {
+                    0 => image::Rgba([51, 153, 51, 255]),   // Grass: green
+                    1 => image::Rgba([128, 77, 51, 255]),   // Dirt: brown
+                    2 => image::Rgba([153, 153, 153, 255]), // Stone: gray
+                    3 => image::Rgba([139, 90, 43, 255]),   // Wood: brown
+                    4 => image::Rgba([34, 139, 34, 255]),   // Leaves: green
+                    5 => image::Rgba([184, 134, 11, 255]),  // Roof: yellow-brown
+                    _ => image::Rgba([200, 180, 160, 255]), // Building: beige
+                };
+                DynamicImage::ImageRgba8(image::ImageBuffer::from_fn(256, 256, |_, _| color))
+            });
+
             let rgba = albedo_img.to_rgba8();
             let (width, height) = rgba.dimensions();
             println!("     Loaded: {}×{}", width, height);
-            
+
             // Add to atlas
-            let region = atlas_builder.add_material(
-                i as u32,
-                &rgba.into_raw(),
-                width,
-                height
-            );
+            let region = atlas_builder.add_material(i as u32, &rgba.into_raw(), width, height);
             atlas_regions.push(region);
         }
-        
+
         // Build final atlas texture
-        let (atlas_texture, atlas_regions_final) = atlas_builder.build(
-            device,
-            queue,
-            "Material Albedo Atlas"
-        );
-        
+        let (atlas_texture, atlas_regions_final) =
+            atlas_builder.build(device, queue, "Material Albedo Atlas");
+
         // Store atlas texture and regions in app state
         self.atlas_texture = Some(atlas_texture);
         self.atlas_regions = atlas_regions_final;
-        
-        println!("✅ Material atlas created ({}×{} with {} materials)",
-            atlas_config.atlas_size, atlas_config.atlas_size, self.atlas_regions.len());
-        
+
+        println!(
+            "✅ Material atlas created ({}×{} with {} materials)",
+            atlas_config.atlas_size,
+            atlas_config.atlas_size,
+            self.atlas_regions.len()
+        );
+
         // PHASE 3.2.1: Create atlas regions uniform buffer and bind group (group 3)
         println!("📦 Creating atlas regions uniform buffer...");
-        
+
         // Convert atlas regions to GPU-friendly format (vec2 offset + vec2 scale = 16 bytes per region)
         let mut atlas_regions_data: Vec<f32> = Vec::new();
         for (i, region) in self.atlas_regions.iter().enumerate() {
-            println!("   Material {}: offset=({:.3}, {:.3}), scale=({:.3}, {:.3})",
-                i, region.uv_offset[0], region.uv_offset[1], 
-                region.uv_scale[0], region.uv_scale[1]);
+            println!(
+                "   Material {}: offset=({:.3}, {:.3}), scale=({:.3}, {:.3})",
+                i, region.uv_offset[0], region.uv_offset[1], region.uv_scale[0], region.uv_scale[1]
+            );
             atlas_regions_data.push(region.uv_offset[0]);
             atlas_regions_data.push(region.uv_offset[1]);
             atlas_regions_data.push(region.uv_scale[0]);
             atlas_regions_data.push(region.uv_scale[1]);
         }
-        
+
         let atlas_regions_bytes = bytemuck::cast_slice(&atlas_regions_data);
-        
-        let atlas_regions_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Atlas Regions Uniform Buffer"),
-            contents: atlas_regions_bytes,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-        
+
+        let atlas_regions_uniform_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Atlas Regions Uniform Buffer"),
+                contents: atlas_regions_bytes,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+
         // Create bind group layout for atlas regions (group 3)
-        let atlas_regions_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Atlas Regions Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        
+        let atlas_regions_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Atlas Regions Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
         // Create bind group for atlas regions
         let atlas_regions_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Atlas Regions Bind Group"),
@@ -1481,86 +1489,85 @@ impl ShowcaseApp {
                 resource: atlas_regions_uniform_buffer.as_entire_binding(),
             }],
         });
-        
+
         self.atlas_regions_uniform_buffer = Some(atlas_regions_uniform_buffer);
         self.atlas_regions_bind_group = Some(atlas_regions_bind_group);
-        
-        println!("✅ Atlas regions uniform buffer created ({} regions, {} bytes)",
-            self.atlas_regions.len(), atlas_regions_bytes.len());
-        
+
+        println!(
+            "✅ Atlas regions uniform buffer created ({} regions, {} bytes)",
+            self.atlas_regions.len(),
+            atlas_regions_bytes.len()
+        );
+
         // PHASE 4.1: Create normal map atlas (same as albedo)
         println!("📦 Creating normal map atlas (7 materials)...");
-        
+
         let mut normal_atlas_builder = atlas_packer::AtlasBuilder::new(atlas_config);
-        
+
         for (i, material) in self.materials.iter().enumerate() {
             println!("  📌 Loading material {} normal: {}", i, material.name);
             println!("     Path: {}", material.normal_path);
-            
-            let normal_img = image::open(&material.normal_path)
-                .unwrap_or_else(|e| {
-                    println!("    ⚠️  Failed to load {}: {}", material.normal_path, e);
-                    println!("    Using fallback flat normal for material {}", i);
-                    // Create 256x256 flat normal map (128, 128, 255 = pointing up in tangent space)
-                    DynamicImage::ImageRgba8(
-                        image::ImageBuffer::from_fn(256, 256, |_, _| image::Rgba([128, 128, 255, 255]))
-                    )
-                });
-            
+
+            let normal_img = image::open(&material.normal_path).unwrap_or_else(|e| {
+                println!("    ⚠️  Failed to load {}: {}", material.normal_path, e);
+                println!("    Using fallback flat normal for material {}", i);
+                // Create 256x256 flat normal map (128, 128, 255 = pointing up in tangent space)
+                DynamicImage::ImageRgba8(image::ImageBuffer::from_fn(256, 256, |_, _| {
+                    image::Rgba([128, 128, 255, 255])
+                }))
+            });
+
             let rgba = normal_img.to_rgba8();
             let (width, height) = rgba.dimensions();
             println!("     Loaded: {}×{}", width, height);
-            
+
             normal_atlas_builder.add_material(i as u32, &rgba.into_raw(), width, height);
         }
-        
-        let (normal_atlas_texture, _) = normal_atlas_builder.build(
-            device,
-            queue,
-            "Material Normal Atlas"
-        );
-        
+
+        let (normal_atlas_texture, _) =
+            normal_atlas_builder.build(device, queue, "Material Normal Atlas");
+
         self.atlas_normal_texture = Some(normal_atlas_texture);
-        println!("✅ Normal map atlas created ({}×{})", atlas_config.atlas_size, atlas_config.atlas_size);
-        
+        println!(
+            "✅ Normal map atlas created ({}×{})",
+            atlas_config.atlas_size, atlas_config.atlas_size
+        );
+
         // PHASE 4.1: Create MRA atlas (Metallic-Roughness-AO)
         println!("📦 Creating MRA atlas (7 materials)...");
-        
+
         let mut mra_atlas_builder = atlas_packer::AtlasBuilder::new(atlas_config);
-        
+
         for (i, material) in self.materials.iter().enumerate() {
             println!("  📌 Loading material {} MRA: {}", i, material.name);
             println!("     Path: {}", material.mra_path);
-            
-            let mra_img = image::open(&material.mra_path)
-                .unwrap_or_else(|e| {
-                    println!("    ⚠️  Failed to load {}: {}", material.mra_path, e);
-                    println!("    Using fallback MRA for material {}", i);
-                    // Create 256x256 MRA: default to non-metallic (0), medium roughness (128), full AO (255)
-                    DynamicImage::ImageRgba8(
-                        image::ImageBuffer::from_fn(256, 256, |_, _| image::Rgba([0, 128, 255, 255]))
-                    )
-                });
-            
+
+            let mra_img = image::open(&material.mra_path).unwrap_or_else(|e| {
+                println!("    ⚠️  Failed to load {}: {}", material.mra_path, e);
+                println!("    Using fallback MRA for material {}", i);
+                // Create 256x256 MRA: default to non-metallic (0), medium roughness (128), full AO (255)
+                DynamicImage::ImageRgba8(image::ImageBuffer::from_fn(256, 256, |_, _| {
+                    image::Rgba([0, 128, 255, 255])
+                }))
+            });
+
             let rgba = mra_img.to_rgba8();
             let (width, height) = rgba.dimensions();
             println!("     Loaded: {}×{}", width, height);
-            
+
             mra_atlas_builder.add_material(i as u32, &rgba.into_raw(), width, height);
         }
-        
-        let (mra_atlas_texture, _) = mra_atlas_builder.build(
-            device,
-            queue,
-            "Material MRA Atlas"
-        );
-        
+
+        let (mra_atlas_texture, _) = mra_atlas_builder.build(device, queue, "Material MRA Atlas");
+
         self.atlas_mra_texture = Some(mra_atlas_texture);
-        println!("✅ MRA atlas created ({}×{})", atlas_config.atlas_size, atlas_config.atlas_size);
-        
+        println!(
+            "✅ MRA atlas created ({}×{})",
+            atlas_config.atlas_size, atlas_config.atlas_size
+        );
+
         // PHASE 4.1: Create single atlas bind group with all three atlases
         println!("📦 Creating single atlas bind group with albedo/normal/MRA atlases...");
-
 
         // PHASE 4.1: Create single atlas bind group with all three atlases
         println!("📦 Creating single atlas bind group with albedo/normal/MRA atlases...");
@@ -1573,7 +1580,11 @@ impl ShowcaseApp {
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.atlas_texture.as_ref().unwrap().create_view(&wgpu::TextureViewDescriptor::default()),
+                        &self
+                            .atlas_texture
+                            .as_ref()
+                            .unwrap()
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
                 },
                 wgpu::BindGroupEntry {
@@ -1583,34 +1594,46 @@ impl ShowcaseApp {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.atlas_normal_texture.as_ref().unwrap().create_view(&wgpu::TextureViewDescriptor::default()),
+                        &self
+                            .atlas_normal_texture
+                            .as_ref()
+                            .unwrap()
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.atlas_mra_texture.as_ref().unwrap().create_view(&wgpu::TextureViewDescriptor::default()),
+                        &self
+                            .atlas_mra_texture
+                            .as_ref()
+                            .unwrap()
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
                 },
             ],
         });
 
         self.atlas_bind_group = Some(atlas_bind_group);
-        
+
         // Keep old material_bind_groups for backward compatibility (empty for now)
         let material_bind_groups = Vec::new();
-        
+
         println!("✅ Single atlas bind group created with albedo/normal/MRA atlases");
-        println!("   Materials: 7 → Atlas regions: {} → Bind groups: 1", self.atlas_regions.len());
+        println!(
+            "   Materials: 7 → Atlas regions: {} → Bind groups: 1",
+            self.atlas_regions.len()
+        );
         println!("   Bind group switching: 7→1 (85.7% reduction)");
         println!("   Texture slots: albedo atlas + normal atlas + MRA atlas = 3 textures for all 7 materials");
 
         // Helper function to create terrain material texture arrays with fallbacks
         let create_terrain_material_array = |device: &wgpu::Device,
-                                              queue: &wgpu::Queue,
-                                              usage: texture_loader::TextureUsage,
-                                              fallback_colors: &[[f32; 4]; 3],
-                                              label: &str| -> (wgpu::Texture, wgpu::TextureView) {
+                                             queue: &wgpu::Queue,
+                                             usage: texture_loader::TextureUsage,
+                                             fallback_colors: &[[f32; 4]; 3],
+                                             label: &str|
+         -> (wgpu::Texture, wgpu::TextureView) {
             // Try to load terrain textures, use fallbacks if missing
             let textures: Vec<wgpu::Texture> = fallback_colors
                 .iter()
@@ -1620,10 +1643,10 @@ impl ShowcaseApp {
                     // In future, replace with actual texture loading
                     let (width, height) = (64, 64);
                     let format = usage.format();
-                    
+
                     // Calculate mip levels for 64x64 texture (should be 7: 64→32→16→8→4→2→1)
                     let mip_count = calculate_mip_levels(width);
-                    
+
                     let data: Vec<u8> = match usage {
                         texture_loader::TextureUsage::Normal => {
                             // Flat normal pointing up (RGB: 128, 128, 255)
@@ -1645,7 +1668,7 @@ impl ShowcaseApp {
                                 .repeat((width * height) as usize)
                         }
                     };
-                    
+
                     let texture = device.create_texture(&wgpu::TextureDescriptor {
                         label: Some(&format!("{} Layer {}", label, idx)),
                         size: wgpu::Extent3d {
@@ -1653,7 +1676,7 @@ impl ShowcaseApp {
                             height,
                             depth_or_array_layers: 1,
                         },
-                        mip_level_count: mip_count,  // FIX: Was 1, now supports mipmaps
+                        mip_level_count: mip_count, // FIX: Was 1, now supports mipmaps
                         sample_count: 1,
                         dimension: wgpu::TextureDimension::D2,
                         format,
@@ -1662,14 +1685,14 @@ impl ShowcaseApp {
                             | wgpu::TextureUsages::COPY_SRC,
                         view_formats: &[],
                     });
-                    
+
                     // Generate mipmap chain
                     let mipmaps = generate_mipmap_chain(&data, width, height);
-                    
+
                     // Upload all mip levels
                     for (mip_level, mip_data) in mipmaps.iter().enumerate() {
                         let mip_size = width >> mip_level;
-                        
+
                         queue.write_texture(
                             wgpu::TexelCopyTextureInfo {
                                 texture: &texture,
@@ -1690,11 +1713,11 @@ impl ShowcaseApp {
                             },
                         );
                     }
-                    
+
                     texture
                 })
                 .collect();
-            
+
             texture_loader::create_texture_array(device, queue, &textures, label)
         };
 
@@ -1749,13 +1772,14 @@ impl ShowcaseApp {
 
         // Load terrain textures (using existing assets if available, or generate fallbacks)
         println!("🗻 Loading terrain textures...");
-        
+
         let terrain_grass_texture = texture_loader::load_texture_with_usage(
             device,
             queue,
-            "assets/textures/texture-d.png",  // FIX: Correct grass albedo path
-            texture_loader::TextureUsage::Albedo
-        ).unwrap_or_else(|e| {
+            "assets/textures/texture-d.png", // FIX: Correct grass albedo path
+            texture_loader::TextureUsage::Albedo,
+        )
+        .unwrap_or_else(|e| {
             println!("⚠️  Failed to load grass texture: {}", e);
             println!("⚠️  Using fallback");
             texture_loader::generate_fallback_texture(device, queue, [0.2, 0.6, 0.2, 1.0])
@@ -1764,9 +1788,10 @@ impl ShowcaseApp {
         let terrain_dirt_texture = texture_loader::load_texture_with_usage(
             device,
             queue,
-            "assets/textures/texture-f.png",  // FIX: Correct dirt albedo path
-            texture_loader::TextureUsage::Albedo
-        ).unwrap_or_else(|e| {
+            "assets/textures/texture-f.png", // FIX: Correct dirt albedo path
+            texture_loader::TextureUsage::Albedo,
+        )
+        .unwrap_or_else(|e| {
             println!("⚠️  Failed to load dirt texture: {}", e);
             println!("⚠️  Using fallback");
             texture_loader::generate_fallback_texture(device, queue, [0.5, 0.3, 0.2, 1.0])
@@ -1775,9 +1800,10 @@ impl ShowcaseApp {
         let terrain_stone_texture = texture_loader::load_texture_with_usage(
             device,
             queue,
-            "assets/textures/cobblestone.png",  // FIX: Correct stone albedo path
-            texture_loader::TextureUsage::Albedo
-        ).unwrap_or_else(|e| {
+            "assets/textures/cobblestone.png", // FIX: Correct stone albedo path
+            texture_loader::TextureUsage::Albedo,
+        )
+        .unwrap_or_else(|e| {
             println!("⚠️  Failed to load stone texture: {}", e);
             println!("⚠️  Using fallback");
             texture_loader::generate_fallback_texture(device, queue, [0.6, 0.6, 0.6, 1.0])
@@ -1788,7 +1814,11 @@ impl ShowcaseApp {
         let (terrain_array_texture, terrain_array_view) = texture_loader::create_texture_array(
             device,
             queue,
-            &[terrain_grass_texture, terrain_dirt_texture, terrain_stone_texture],
+            &[
+                terrain_grass_texture,
+                terrain_dirt_texture,
+                terrain_stone_texture,
+            ],
             "Terrain Albedo Array",
         );
 
@@ -1837,7 +1867,7 @@ impl ShowcaseApp {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&terrain_sampler),  // FIX: Use terrain sampler with Repeat mode
+                    resource: wgpu::BindingResource::Sampler(&terrain_sampler), // FIX: Use terrain sampler with Repeat mode
                 },
                 // TASK 2.3: Add terrain normal array
                 wgpu::BindGroupEntry {
@@ -1888,7 +1918,7 @@ impl ShowcaseApp {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),  // FIX: Enable back-face culling for ~40% performance gain
+                cull_mode: Some(wgpu::Face::Back), // FIX: Enable back-face culling for ~40% performance gain
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
@@ -1910,10 +1940,10 @@ impl ShowcaseApp {
         });
 
         self.render_pipeline = Some(render_pipeline);
-        
+
         // PHASE 4.3: Create transparent pipeline for foliage/glass (alpha-tested)
         println!("📦 Creating transparent pipeline (alpha-tested)...");
-        
+
         let transparent_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Transparent Pipeline (Alpha-Tested)"),
             layout: Some(&pipeline_layout),
@@ -1925,10 +1955,10 @@ impl ShowcaseApp {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: Some("fs_main_transparent"),  // Uses alpha cutoff shader variant
+                entry_point: Some("fs_main_transparent"), // Uses alpha cutoff shader variant
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),  // Enable alpha blending
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING), // Enable alpha blending
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: Default::default(),
@@ -1937,30 +1967,30 @@ impl ShowcaseApp {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,  // Disable culling for transparent geometry (render both sides)
+                cull_mode: None, // Disable culling for transparent geometry (render both sides)
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: false,  // Don't write depth for transparent objects
-                depth_compare: wgpu::CompareFunction::Less,  // But still depth test
+                depth_write_enabled: false, // Don't write depth for transparent objects
+                depth_compare: wgpu::CompareFunction::Less, // But still depth test
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
-                alpha_to_coverage_enabled: true,  // Better alpha-tested edges
+                alpha_to_coverage_enabled: true, // Better alpha-tested edges
             },
             multiview: None,
             cache: None,
         });
-        
+
         self.transparent_pipeline = Some(transparent_pipeline);
         println!("✅ Transparent pipeline created (alpha cutoff = 0.5)");
-        
+
         self.uniform_buffer = Some(uniform_buffer);
         self.uniform_bind_group = Some(uniform_bind_group);
         self.material_bind_groups = material_bind_groups;
@@ -1971,17 +2001,17 @@ impl ShowcaseApp {
             self.materials.len()
         );
     }
-    
+
     /// Create skybox rendering pipeline
     fn create_skybox_pipeline(&mut self) {
         let device = self.device.as_ref().unwrap();
         let queue = self.queue.as_ref().unwrap();
         let config = self.surface_config.as_ref().unwrap();
-        
+
         // Load current HDRI
         let hdri = &self.hdris[self.current_hdri];
         println!("🌌 Loading skybox HDRI: {}", hdri.name);
-        
+
         let cubemap_texture = match Self::load_hdri_cubemap(device, queue, &hdri.path) {
             Ok(tex) => tex,
             Err(e) => {
@@ -1989,13 +2019,13 @@ impl ShowcaseApp {
                 return;
             }
         };
-        
+
         let cubemap_view = cubemap_texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Skybox Cubemap View"),
             dimension: Some(wgpu::TextureViewDimension::Cube),
             ..Default::default()
         });
-        
+
         // Create sampler for cubemap
         let skybox_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Skybox Sampler"),
@@ -2006,7 +2036,7 @@ impl ShowcaseApp {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        
+
         // Create skybox uniform buffer (view_proj + inv_view_proj)
         let skybox_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Skybox Uniform Buffer"),
@@ -2014,44 +2044,46 @@ impl ShowcaseApp {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        
+
         // Create bind group layouts
-        let skybox_uniform_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Skybox Uniform Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        
-        let skybox_texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Skybox Texture Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+        let skybox_uniform_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Skybox Uniform Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::Cube,
-                        multisampled: false,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
                     count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-        
+                }],
+            });
+
+        let skybox_texture_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Skybox Texture Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         // Create bind groups
         let skybox_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Skybox Uniform Bind Group"),
@@ -2061,7 +2093,7 @@ impl ShowcaseApp {
                 resource: skybox_uniform_buffer.as_entire_binding(),
             }],
         });
-        
+
         let skybox_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Skybox Texture Bind Group"),
             layout: &skybox_texture_layout,
@@ -2076,20 +2108,20 @@ impl ShowcaseApp {
                 },
             ],
         });
-        
+
         // Load shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Skybox Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("skybox_shader.wgsl").into()),
         });
-        
+
         // Create pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Skybox Pipeline Layout"),
             bind_group_layouts: &[&skybox_uniform_layout, &skybox_texture_layout],
             push_constant_ranges: &[],
         });
-        
+
         // Create pipeline
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Skybox Pipeline"),
@@ -2127,25 +2159,25 @@ impl ShowcaseApp {
             multiview: None,
             cache: None,
         });
-        
+
         self.skybox_pipeline = Some(pipeline);
         self.skybox_cubemap = Some(cubemap_view);
         self.skybox_bind_group = Some(skybox_bind_group);
         self.skybox_uniform_buffer = Some(skybox_uniform_buffer);
         self.skybox_uniform_bind_group = Some(skybox_uniform_bind_group);
-        
+
         println!("✅ Skybox pipeline created");
     }
-    
+
     // PHASE 4.2: Rebuild skybox cubemap when HDRI changes (F1-F3 keys)
     fn rebuild_skybox_cubemap(&mut self) {
         let device = self.device.as_ref().unwrap();
         let queue = self.queue.as_ref().unwrap();
-        
+
         // Load current HDRI
         let hdri = &self.hdris[self.current_hdri];
         println!("🔄 Rebuilding skybox cubemap with HDRI: {}", hdri.name);
-        
+
         let cubemap_texture = match Self::load_hdri_cubemap(device, queue, &hdri.path) {
             Ok(tex) => tex,
             Err(e) => {
@@ -2153,13 +2185,13 @@ impl ShowcaseApp {
                 return;
             }
         };
-        
+
         let cubemap_view = cubemap_texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Skybox Cubemap View"),
             dimension: Some(wgpu::TextureViewDimension::Cube),
             ..Default::default()
         });
-        
+
         // Create sampler for cubemap
         let skybox_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Skybox Sampler"),
@@ -2170,31 +2202,32 @@ impl ShowcaseApp {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        
+
         // Get existing bind group layout from pipeline
         // We need to recreate the bind group with new cubemap texture
-        let skybox_texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Skybox Texture Layout (Rebuild)"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::Cube,
-                        multisampled: false,
+        let skybox_texture_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Skybox Texture Layout (Rebuild)"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-        
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         // Create new bind group with updated cubemap
         let skybox_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Skybox Texture Bind Group (Rebuild)"),
@@ -2210,33 +2243,37 @@ impl ShowcaseApp {
                 },
             ],
         });
-        
+
         // Update stored resources
         self.skybox_cubemap = Some(cubemap_view);
         self.skybox_bind_group = Some(skybox_bind_group);
-        
+
         println!("✅ Skybox cubemap rebuilt successfully");
     }
-    
+
     fn setup_scene(&mut self) {
         let device = self.device.as_ref().unwrap();
-        
+
         // Create island terrain (150x150m - good balance between spacious and visible)
         let (ground_vertices, ground_indices) = create_island_terrain(150.0, 80);
         self.ground_index_count = ground_indices.len() as u32;
-        
-        self.ground_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Island Terrain Vertex Buffer"),
-            contents: bytemuck::cast_slice(&ground_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        }));
-        
-        self.ground_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Island Terrain Index Buffer"),
-            contents: bytemuck::cast_slice(&ground_indices),
-            usage: wgpu::BufferUsages::INDEX,
-        }));
-        
+
+        self.ground_vertex_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Island Terrain Vertex Buffer"),
+                contents: bytemuck::cast_slice(&ground_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        ));
+
+        self.ground_index_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Island Terrain Index Buffer"),
+                contents: bytemuck::cast_slice(&ground_indices),
+                usage: wgpu::BufferUsages::INDEX,
+            },
+        ));
+
         // Load real Kenney tree models
         let tree_paths = vec![
             "assets/models/tree_default.glb",
@@ -2244,18 +2281,22 @@ impl ShowcaseApp {
             "assets/models/tree_simple.glb",
             "assets/models/tree_detailed.glb",
         ];
-        
+
         let (tree_template_vertices, tree_template_indices) = {
             let mut loaded = false;
             let mut vertices = Vec::new();
             let mut indices = Vec::new();
-            
+
             for path in &tree_paths {
                 match gltf_loader::load_gltf(path) {
                     Ok(loaded_mesh) => {
-                        println!("✅ Loaded tree model '{}': {} vertices, {} triangles", 
-                            loaded_mesh.name, loaded_mesh.vertices.len(), loaded_mesh.indices.len() / 3);
-                        
+                        println!(
+                            "✅ Loaded tree model '{}': {} vertices, {} triangles",
+                            loaded_mesh.name,
+                            loaded_mesh.vertices.len(),
+                            loaded_mesh.indices.len() / 3
+                        );
+
                         // Smart material assignment for trees:
                         // - Trunk/bark: Lower Y position (< 60% of max height), darker/brownish
                         // - Foliage/leaves: Upper Y position (>= 60% of max height), lighter/greenish
@@ -2267,65 +2308,87 @@ impl ShowcaseApp {
                         }
                         let height = max_y - min_y;
                         let trunk_threshold = min_y + (height * 0.4); // Bottom 40% is trunk
-                        
-                        println!("   🌲 Tree height range: Y={:.2} to {:.2} (height={:.2})", min_y, max_y, height);
-                        println!("   📏 Trunk threshold: Y < {:.2} = Wood, Y >= {:.2} = Leaves", trunk_threshold, trunk_threshold);
-                        
+
+                        println!(
+                            "   🌲 Tree height range: Y={:.2} to {:.2} (height={:.2})",
+                            min_y, max_y, height
+                        );
+                        println!(
+                            "   📏 Trunk threshold: Y < {:.2} = Wood, Y >= {:.2} = Leaves",
+                            trunk_threshold, trunk_threshold
+                        );
+
                         let mut trunk_verts = 0;
                         let mut leaf_verts = 0;
-                        
-                        vertices = loaded_mesh.vertices.iter().map(|v| {
-                            // Determine material based on Y position (height)
-                            let is_trunk = v.position[1] < trunk_threshold;
-                            let material_id = if is_trunk { 
-                                trunk_verts += 1;
-                                3 // Wood/bark 
-                            } else { 
-                                leaf_verts += 1;
-                                4 // Leaves
-                            };
-                            
-                            Vertex {
-                                position: v.position,
-                                normal: v.normal,
-                                uv: v.uv,
-                                material_blend: DEFAULT_MATERIAL_BLEND,
-                                material_id,
-                            }
-                        }).collect();
-                        
+
+                        vertices = loaded_mesh
+                            .vertices
+                            .iter()
+                            .map(|v| {
+                                // Determine material based on Y position (height)
+                                let is_trunk = v.position[1] < trunk_threshold;
+                                let material_id = if is_trunk {
+                                    trunk_verts += 1;
+                                    3 // Wood/bark
+                                } else {
+                                    leaf_verts += 1;
+                                    4 // Leaves
+                                };
+
+                                Vertex {
+                                    position: v.position,
+                                    normal: v.normal,
+                                    uv: v.uv,
+                                    material_blend: DEFAULT_MATERIAL_BLEND,
+                                    material_id,
+                                }
+                            })
+                            .collect();
+
                         println!("   ✅ Assigned materials: {} trunk vertices (Wood), {} leaf vertices (Leaves)", trunk_verts, leaf_verts);
-                        
+
                         indices = loaded_mesh.indices;
                         loaded = true;
                         break;
                     }
                     Err(err) => {
-                        println!(
-                            "⚠️  Failed to load tree model from {}: {err:?}",
-                            *path
-                        );
+                        println!("⚠️  Failed to load tree model from {}: {err:?}", *path);
                         continue;
                     }
                 }
             }
-            
+
             if !loaded {
                 println!("⚠️  No tree models found, using procedural");
-                (create_tree(8.0, 0.6, 10.0, 4.0).0, create_tree(8.0, 0.6, 10.0, 4.0).1)
+                (
+                    create_tree(8.0, 0.6, 10.0, 4.0).0,
+                    create_tree(8.0, 0.6, 10.0, 4.0).1,
+                )
             } else {
                 (vertices, indices)
             }
         };
-        
+
         // Generate tree instances across 150m terrain - spread them out more
         let tree_positions = vec![
-            Vec3::new(-30.0, 0.0, -40.0), Vec3::new(-20.0, 0.0, -35.0), Vec3::new(-10.0, 0.0, -30.0),
-            Vec3::new(25.0, 0.0, -38.0), Vec3::new(35.0, 0.0, -32.0), Vec3::new(-40.0, 0.0, 15.0),
-            Vec3::new(-25.0, 0.0, 20.0), Vec3::new(30.0, 0.0, 18.0), Vec3::new(40.0, 0.0, 25.0),
-            Vec3::new(0.0, 0.0, -25.0), Vec3::new(-8.0, 0.0, -20.0), Vec3::new(8.0, 0.0, -18.0),
-            Vec3::new(-15.0, 0.0, 5.0), Vec3::new(15.0, 0.0, 8.0), Vec3::new(-5.0, 0.0, 30.0),
-            Vec3::new(20.0, 0.0, -10.0), Vec3::new(-35.0, 0.0, -15.0), Vec3::new(10.0, 0.0, 35.0),
+            Vec3::new(-30.0, 0.0, -40.0),
+            Vec3::new(-20.0, 0.0, -35.0),
+            Vec3::new(-10.0, 0.0, -30.0),
+            Vec3::new(25.0, 0.0, -38.0),
+            Vec3::new(35.0, 0.0, -32.0),
+            Vec3::new(-40.0, 0.0, 15.0),
+            Vec3::new(-25.0, 0.0, 20.0),
+            Vec3::new(30.0, 0.0, 18.0),
+            Vec3::new(40.0, 0.0, 25.0),
+            Vec3::new(0.0, 0.0, -25.0),
+            Vec3::new(-8.0, 0.0, -20.0),
+            Vec3::new(8.0, 0.0, -18.0),
+            Vec3::new(-15.0, 0.0, 5.0),
+            Vec3::new(15.0, 0.0, 8.0),
+            Vec3::new(-5.0, 0.0, 30.0),
+            Vec3::new(20.0, 0.0, -10.0),
+            Vec3::new(-35.0, 0.0, -15.0),
+            Vec3::new(10.0, 0.0, 35.0),
         ];
 
         let mut all_tree_vertices = Vec::new();
@@ -2353,54 +2416,66 @@ impl ShowcaseApp {
         }
 
         self.tree_index_count = all_tree_indices.len() as u32;
-        
-        self.tree_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Tree Vertex Buffer"),
-            contents: bytemuck::cast_slice(&all_tree_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        }));
-        
-        self.tree_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Tree Index Buffer"),
-            contents: bytemuck::cast_slice(&all_tree_indices),
-            usage: wgpu::BufferUsages::INDEX,
-        }));
-        
+
+        self.tree_vertex_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Tree Vertex Buffer"),
+                contents: bytemuck::cast_slice(&all_tree_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        ));
+
+        self.tree_index_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Tree Index Buffer"),
+                contents: bytemuck::cast_slice(&all_tree_indices),
+                usage: wgpu::BufferUsages::INDEX,
+            },
+        ));
+
         // Load rock/stone models as buildings (these actually load successfully!)
         // Note: Many Kenney medieval models fail to load due to GLTF compatibility issues
         // Using nature kit rocks/stones as architectural elements instead
         let building_paths = vec![
-            "assets/models/rock_largeA.glb",     // Large rock (WORKS!)
-            "assets/models/rock_largeB.glb",     // Large rock variant B
-            "assets/models/rock_largeC.glb",     // Large rock variant C
-            "assets/models/stone_largeA.glb",    // Large stone
-            "assets/models/stone_largeB.glb",    // Large stone variant B
+            "assets/models/rock_largeA.glb",  // Large rock (WORKS!)
+            "assets/models/rock_largeB.glb",  // Large rock variant B
+            "assets/models/rock_largeC.glb",  // Large rock variant C
+            "assets/models/stone_largeA.glb", // Large stone
+            "assets/models/stone_largeB.glb", // Large stone variant B
         ];
-        
+
         let (building_template_vertices, building_template_indices) = {
             let mut loaded = false;
             let mut vertices = Vec::new();
             let mut indices = Vec::new();
-            
+
             println!("🏰 Loading rock/stone models as architectural elements...");
             for path in &building_paths {
                 match gltf_loader::load_gltf(path) {
                     Ok(loaded_mesh) => {
-                        println!("✅ Loaded building/rock model '{}': {} vertices, {} triangles", 
-                            path, loaded_mesh.vertices.len(), loaded_mesh.indices.len() / 3);
-                        
+                        println!(
+                            "✅ Loaded building/rock model '{}': {} vertices, {} triangles",
+                            path,
+                            loaded_mesh.vertices.len(),
+                            loaded_mesh.indices.len() / 3
+                        );
+
                         // Scale up rocks to building size and assign stone material
-                        vertices = loaded_mesh.vertices.iter().map(|v| Vertex {
-                            position: [
-                                v.position[0] * 3.0,  // 3x scale for building-like proportions
-                                v.position[1] * 3.0,
-                                v.position[2] * 3.0,
-                            ],
-                            normal: v.normal,
-                            uv: v.uv,
-                            material_blend: DEFAULT_MATERIAL_BLEND,
-                            material_id: 2, // Stone material (index 2) - more appropriate than plaster
-                        }).collect();
+                        vertices = loaded_mesh
+                            .vertices
+                            .iter()
+                            .map(|v| Vertex {
+                                position: [
+                                    v.position[0] * 3.0, // 3x scale for building-like proportions
+                                    v.position[1] * 3.0,
+                                    v.position[2] * 3.0,
+                                ],
+                                normal: v.normal,
+                                uv: v.uv,
+                                material_blend: DEFAULT_MATERIAL_BLEND,
+                                material_id: 2, // Stone material (index 2) - more appropriate than plaster
+                            })
+                            .collect();
                         indices = loaded_mesh.indices;
                         loaded = true;
                         break;
@@ -2411,22 +2486,27 @@ impl ShowcaseApp {
                     }
                 }
             }
-            
+
             if !loaded {
-                println!("⚠️  No rock models found, falling back to procedural cube with stone material");
+                println!(
+                    "⚠️  No rock models found, falling back to procedural cube with stone material"
+                );
                 let (verts, inds) = create_building(10.0, 8.0, 10.0);
-                vertices = verts.iter().map(|v| Vertex {
-                    position: v.position,
-                    normal: v.normal,
-                    uv: v.uv,
-                    material_blend: DEFAULT_MATERIAL_BLEND,
-                    material_id: 2, // Stone material
-                }).collect();
+                vertices = verts
+                    .iter()
+                    .map(|v| Vertex {
+                        position: v.position,
+                        normal: v.normal,
+                        uv: v.uv,
+                        material_blend: DEFAULT_MATERIAL_BLEND,
+                        material_id: 2, // Stone material
+                    })
+                    .collect();
                 indices = inds;
             }
             (vertices, indices)
         };
-        
+
         // Spread buildings across 150m terrain
         let building_positions = vec![
             Vec3::new(-45.0, 0.0, 10.0),
@@ -2461,58 +2541,66 @@ impl ShowcaseApp {
         }
 
         self.building_index_count = all_building_indices.len() as u32;
-        
-        self.building_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Building Vertex Buffer"),
-            contents: bytemuck::cast_slice(&all_building_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        }));
-        
-        self.building_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Building Index Buffer"),
-            contents: bytemuck::cast_slice(&all_building_indices),
-            usage: wgpu::BufferUsages::INDEX,
-        }));
-        
+
+        self.building_vertex_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Building Vertex Buffer"),
+                contents: bytemuck::cast_slice(&all_building_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        ));
+
+        self.building_index_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Building Index Buffer"),
+                contents: bytemuck::cast_slice(&all_building_indices),
+                usage: wgpu::BufferUsages::INDEX,
+            },
+        ));
+
         // Load real Kenney character models for NPCs
         let npc_paths = vec![
             "assets/models/character-a.glb",
             "assets/models/character-b.glb",
             "assets/models/character-c.glb",
         ];
-        
+
         let (npc_template_vertices, npc_template_indices) = {
             let mut loaded = false;
             let mut vertices = Vec::new();
             let mut indices = Vec::new();
-            
+
             for path in &npc_paths {
                 match gltf_loader::load_gltf(path) {
                     Ok(loaded_mesh) => {
-                        println!("✅ Loaded NPC model '{}': {} vertices", 
-                            loaded_mesh.name, loaded_mesh.vertices.len());
-                        
-                        vertices = loaded_mesh.vertices.iter().map(|v| Vertex {
-                            position: v.position,
-                            normal: v.normal,
-                            uv: v.uv,
-                            material_blend: DEFAULT_MATERIAL_BLEND,
-                            material_id: 3, // Wood material placeholder for NPCs (index 3)
-                        }).collect();
+                        println!(
+                            "✅ Loaded NPC model '{}': {} vertices",
+                            loaded_mesh.name,
+                            loaded_mesh.vertices.len()
+                        );
+
+                        vertices = loaded_mesh
+                            .vertices
+                            .iter()
+                            .map(|v| Vertex {
+                                position: v.position,
+                                normal: v.normal,
+                                uv: v.uv,
+                                material_blend: DEFAULT_MATERIAL_BLEND,
+                                material_id: 3, // Wood material placeholder for NPCs (index 3)
+                            })
+                            .collect();
                         indices = loaded_mesh.indices;
                         loaded = true;
                         break;
                     }
                     Err(err) => {
-                        println!(
-                            "⚠️  Failed to load NPC model from {}: {err:?}",
-                            *path
-                        );
+                        println!("⚠️  Failed to load NPC model from {}: {err:?}", *path);
                         continue;
                     }
                 }
             }
-            
+
             if !loaded {
                 println!("⚠️  No NPC models found, using procedural");
                 create_humanoid(5.0)
@@ -2520,17 +2608,17 @@ impl ShowcaseApp {
                 (vertices, indices)
             }
         };
-        
+
         // Spread NPCs across 150m terrain - VISIBLE positions near buildings
         let npc_positions = vec![
-            Vec3::new(-42.0, 0.0, 12.0),   // Near building 1
-            Vec3::new(38.0, 0.0, -6.0),    // Near building 2
-            Vec3::new(2.0, 0.0, 23.0),     // Near building 3
-            Vec3::new(-18.0, 0.0, -18.0),  // Near building 4
-            Vec3::new(27.0, 0.0, 17.0),    // Near building 5
-            Vec3::new(0.0, 0.0, 0.0),      // Center (companion)
-            Vec3::new(-10.0, 0.0, 5.0),    // Extra NPC 1
-            Vec3::new(15.0, 0.0, -5.0),    // Extra NPC 2
+            Vec3::new(-42.0, 0.0, 12.0),  // Near building 1
+            Vec3::new(38.0, 0.0, -6.0),   // Near building 2
+            Vec3::new(2.0, 0.0, 23.0),    // Near building 3
+            Vec3::new(-18.0, 0.0, -18.0), // Near building 4
+            Vec3::new(27.0, 0.0, 17.0),   // Near building 5
+            Vec3::new(0.0, 0.0, 0.0),     // Center (companion)
+            Vec3::new(-10.0, 0.0, 5.0),   // Extra NPC 1
+            Vec3::new(15.0, 0.0, -5.0),   // Extra NPC 2
         ];
 
         let mut all_npc_vertices = Vec::new();
@@ -2558,58 +2646,66 @@ impl ShowcaseApp {
         }
 
         self.npc_index_count = all_npc_indices.len() as u32;
-        
-        self.npc_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("NPC Vertex Buffer"),
-            contents: bytemuck::cast_slice(&all_npc_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        }));
-        
-        self.npc_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("NPC Index Buffer"),
-            contents: bytemuck::cast_slice(&all_npc_indices),
-            usage: wgpu::BufferUsages::INDEX,
-        }));
-        
+
+        self.npc_vertex_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("NPC Vertex Buffer"),
+                contents: bytemuck::cast_slice(&all_npc_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        ));
+
+        self.npc_index_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("NPC Index Buffer"),
+                contents: bytemuck::cast_slice(&all_npc_indices),
+                usage: wgpu::BufferUsages::INDEX,
+            },
+        ));
+
         // Load real Kenney animal/rock models (using rocks as placeholders)
         let animal_paths = vec![
             "assets/models/rock_largeA.glb",
             "assets/models/rock_largeB.glb",
             "assets/models/plant_bush.glb",
         ];
-        
+
         let (animal_template_vertices, animal_template_indices) = {
             let mut loaded = false;
             let mut vertices = Vec::new();
             let mut indices = Vec::new();
-            
+
             for path in &animal_paths {
                 match gltf_loader::load_gltf(path) {
                     Ok(loaded_mesh) => {
-                        println!("✅ Loaded animal model '{}': {} vertices", 
-                            loaded_mesh.name, loaded_mesh.vertices.len());
-                        
-                        vertices = loaded_mesh.vertices.iter().map(|v| Vertex {
-                            position: v.position,
-                            normal: v.normal,
-                            uv: v.uv,
-                            material_blend: DEFAULT_MATERIAL_BLEND,
-                            material_id: 1, // Dirt material placeholder for animals (index 1)
-                        }).collect();
+                        println!(
+                            "✅ Loaded animal model '{}': {} vertices",
+                            loaded_mesh.name,
+                            loaded_mesh.vertices.len()
+                        );
+
+                        vertices = loaded_mesh
+                            .vertices
+                            .iter()
+                            .map(|v| Vertex {
+                                position: v.position,
+                                normal: v.normal,
+                                uv: v.uv,
+                                material_blend: DEFAULT_MATERIAL_BLEND,
+                                material_id: 1, // Dirt material placeholder for animals (index 1)
+                            })
+                            .collect();
                         indices = loaded_mesh.indices;
                         loaded = true;
                         break;
                     }
                     Err(err) => {
-                        println!(
-                            "⚠️  Failed to load animal model from {}: {err:?}",
-                            *path
-                        );
+                        println!("⚠️  Failed to load animal model from {}: {err:?}", *path);
                         continue;
                     }
                 }
             }
-            
+
             if !loaded {
                 println!("⚠️  No animal models found, using procedural");
                 create_animal(1.5, 1.2)
@@ -2617,7 +2713,7 @@ impl ShowcaseApp {
                 (vertices, indices)
             }
         };
-        
+
         // Spread animals across 150m terrain
         let animal_positions = vec![
             Vec3::new(-25.0, 0.0, -15.0),
@@ -2652,23 +2748,27 @@ impl ShowcaseApp {
         }
 
         self.animal_index_count = all_animal_indices.len() as u32;
-        
-        self.animal_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Animal Vertex Buffer"),
-            contents: bytemuck::cast_slice(&all_animal_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        }));
-        
-        self.animal_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Animal Index Buffer"),
-            contents: bytemuck::cast_slice(&all_animal_indices),
-            usage: wgpu::BufferUsages::INDEX,
-        }));
-        
+
+        self.animal_vertex_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Animal Vertex Buffer"),
+                contents: bytemuck::cast_slice(&all_animal_vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        ));
+
+        self.animal_index_buffer = Some(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Animal Index Buffer"),
+                contents: bytemuck::cast_slice(&all_animal_indices),
+                usage: wgpu::BufferUsages::INDEX,
+            },
+        ));
+
         // Adjust camera start position for 150m island (good overview)
         self.camera.position = Vec3::new(0.0, 35.0, 70.0); // Higher and farther for better view
         self.camera.pitch = -0.45; // Looking down to see island
-        
+
         println!("🏝️  Veilweaver Starter Island loaded:");
         println!(
             "   Terrain: {} vertices, {} indices",
@@ -2704,7 +2804,7 @@ impl ShowcaseApp {
     fn update(&mut self) {
         let dt = self.last_frame.elapsed().as_secs_f32();
         self.last_frame = Instant::now();
-        
+
         let move_speed = 30.0; // 30 m/s (faster for larger 150m terrain)
         let mouse_sensitivity = 0.003;
         let zoom_speed = 2.0;
@@ -2824,29 +2924,33 @@ impl ShowcaseApp {
 
             queue.write_buffer(uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
         }
-        
+
         // Update skybox uniforms
         if let Some(skybox_uniform_buffer) = &self.skybox_uniform_buffer {
             let view_matrix = self.camera.view_matrix();
             let proj_matrix = self.camera.projection_matrix();
             let view_proj = proj_matrix * view_matrix;
             let inv_view_proj = view_proj.inverse();
-            
+
             #[repr(C)]
             #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
             struct SkyboxUniforms {
                 view_proj: [[f32; 4]; 4],
                 inv_view_proj: [[f32; 4]; 4],
             }
-            
+
             let skybox_uniforms = SkyboxUniforms {
                 view_proj: view_proj.to_cols_array_2d(),
                 inv_view_proj: inv_view_proj.to_cols_array_2d(),
             };
-            
-            queue.write_buffer(skybox_uniform_buffer, 0, bytemuck::bytes_of(&skybox_uniforms));
+
+            queue.write_buffer(
+                skybox_uniform_buffer,
+                0,
+                bytemuck::bytes_of(&skybox_uniforms),
+            );
         }
-        
+
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Main Render Pass"),
@@ -2876,19 +2980,23 @@ impl ShowcaseApp {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            
-            if let (Some(pipeline), Some(uniform_bg)) = (&self.render_pipeline, &self.uniform_bind_group) {
+
+            if let (Some(pipeline), Some(uniform_bg)) =
+                (&self.render_pipeline, &self.uniform_bind_group)
+            {
                 // Render skybox FIRST (fills background)
-                if let (Some(skybox_pipeline), Some(skybox_uniform_bg), Some(skybox_texture_bg)) = 
-                    (&self.skybox_pipeline, &self.skybox_uniform_bind_group, &self.skybox_bind_group) 
-                {
+                if let (Some(skybox_pipeline), Some(skybox_uniform_bg), Some(skybox_texture_bg)) = (
+                    &self.skybox_pipeline,
+                    &self.skybox_uniform_bind_group,
+                    &self.skybox_bind_group,
+                ) {
                     render_pass.set_pipeline(skybox_pipeline);
                     render_pass.set_bind_group(0, skybox_uniform_bg, &[]);
                     render_pass.set_bind_group(1, skybox_texture_bg, &[]);
                     // Draw full-screen triangle (no vertex buffer needed - generated in shader)
                     render_pass.draw(0..3, 0..1);
                 }
-                
+
                 // Render scene objects
                 render_pass.set_pipeline(pipeline);
                 render_pass.set_bind_group(0, uniform_bg, &[]);
@@ -2982,7 +3090,7 @@ impl ShowcaseApp {
                 surface.configure(device, config);
 
                 self.camera.aspect = new_size.width as f32 / new_size.height as f32;
-                
+
                 // FIX: Recreate depth texture to match new surface dimensions
                 // This prevents WebGPU validation errors and rendering failures
                 let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -2996,14 +3104,13 @@ impl ShowcaseApp {
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format: wgpu::TextureFormat::Depth32Float,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT 
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                         | wgpu::TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
                 });
-                
-                self.depth_texture = Some(
-                    depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
-                );
+
+                self.depth_texture =
+                    Some(depth_texture.create_view(&wgpu::TextureViewDescriptor::default()));
             }
         }
     }
@@ -3045,7 +3152,7 @@ impl ApplicationHandler for ShowcaseApp {
         .unwrap();
 
         let size = window.inner_size();
-        
+
         // FIX: Prefer sRGB surface format for correct color space
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -3054,15 +3161,22 @@ impl ApplicationHandler for ShowcaseApp {
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or_else(|| {
-                log::warn!("No sRGB format available, using linear: {:?}", surface_caps.formats[0]);
+                log::warn!(
+                    "No sRGB format available, using linear: {:?}",
+                    surface_caps.formats[0]
+                );
                 surface_caps.formats[0]
             });
-        
-        println!("   Surface format: {:?} (sRGB: {})", surface_format, surface_format.is_srgb());
-        
+
+        println!(
+            "   Surface format: {:?} (sRGB: {})",
+            surface_format,
+            surface_format.is_srgb()
+        );
+
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,  // FIX: Use selected sRGB format
+            format: surface_format, // FIX: Use selected sRGB format
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
@@ -3090,7 +3204,7 @@ impl ApplicationHandler for ShowcaseApp {
 
         // Create render pipeline and load textures
         self.create_render_pipeline();
-        
+
         // Create skybox pipeline
         self.create_skybox_pipeline();
     }

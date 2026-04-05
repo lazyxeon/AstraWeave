@@ -9,11 +9,7 @@
 //!
 //! Run with: `cargo bench -p astraweave-persistence-player`
 
-#![allow(
-    unused_imports,
-    unused_mut,
-    clippy::field_reassign_with_default
-)]
+#![allow(unused_imports, unused_mut, clippy::field_reassign_with_default)]
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::collections::HashMap;
@@ -32,8 +28,7 @@ fn assert_profile_valid(profile: &PlayerProfile) {
     assert!(profile.version > 0, "Profile version should be positive");
     assert!(!profile.name.is_empty(), "Profile name should not be empty");
     assert!(
-        profile.settings.audio.master_volume >= 0.0
-            && profile.settings.audio.master_volume <= 1.0,
+        profile.settings.audio.master_volume >= 0.0 && profile.settings.audio.master_volume <= 1.0,
         "Master volume should be in valid range"
     );
 }
@@ -69,7 +64,10 @@ fn create_profile_with_stats(playtime: u64, enemies: u32, deaths: u32) -> Player
 fn create_profile_with_achievements(achievement_count: usize) -> PlayerProfile {
     let mut profile = PlayerProfile::default();
     for i in 0..achievement_count {
-        profile.stats.achievements.push(format!("achievement_{}", i));
+        profile
+            .stats
+            .achievements
+            .push(format!("achievement_{}", i));
     }
     profile
 }
@@ -109,7 +107,10 @@ fn create_complex_profile() -> PlayerProfile {
 
     // Add many achievements
     for i in 0..100 {
-        profile.stats.achievements.push(format!("achievement_{}", i));
+        profile
+            .stats
+            .achievements
+            .push(format!("achievement_{}", i));
     }
 
     // Add many unlocks
@@ -155,9 +156,7 @@ fn bench_profile_construction(c: &mut Criterion) {
     group.bench_function("construct_settings_default", |b| {
         b.iter(|| {
             let settings = GameSettings::default();
-            assert!(
-                settings.audio.master_volume >= 0.0 && settings.audio.master_volume <= 1.0
-            );
+            assert!(settings.audio.master_volume >= 0.0 && settings.audio.master_volume <= 1.0);
             black_box(settings)
         })
     });
@@ -455,7 +454,10 @@ fn bench_stats_operations(c: &mut Criterion) {
     group.bench_function("achievement_add", |b| {
         b.iter(|| {
             let mut profile = profile_mut.clone();
-            profile.stats.achievements.push(black_box("new_achievement".to_string()));
+            profile
+                .stats
+                .achievements
+                .push(black_box("new_achievement".to_string()));
             black_box(profile)
         })
     });
@@ -522,7 +524,10 @@ fn bench_unlocks_operations(c: &mut Criterion) {
     group.bench_function("ability_add", |b| {
         b.iter(|| {
             let mut profile = profile_mut.clone();
-            profile.unlocks.abilities.push(black_box("new_ability".to_string()));
+            profile
+                .unlocks
+                .abilities
+                .push(black_box("new_ability".to_string()));
             black_box(profile)
         })
     });
@@ -613,8 +618,7 @@ fn bench_batch_operations(c: &mut Criterion) {
 
     // Batch serialization
     for count in [10, 50, 100] {
-        let profiles: Vec<PlayerProfile> =
-            (0..count).map(|_| PlayerProfile::default()).collect();
+        let profiles: Vec<PlayerProfile> = (0..count).map(|_| PlayerProfile::default()).collect();
         group.throughput(Throughput::Elements(count as u64));
         group.bench_with_input(
             BenchmarkId::new("batch_serialize_profiles", count),
@@ -634,8 +638,7 @@ fn bench_batch_operations(c: &mut Criterion) {
 
     // Batch deserialization
     for count in [10, 50, 100] {
-        let profiles: Vec<PlayerProfile> =
-            (0..count).map(|_| PlayerProfile::default()).collect();
+        let profiles: Vec<PlayerProfile> = (0..count).map(|_| PlayerProfile::default()).collect();
         let toml_strings: Vec<String> = profiles
             .iter()
             .map(|p| toml::to_string(p).unwrap())

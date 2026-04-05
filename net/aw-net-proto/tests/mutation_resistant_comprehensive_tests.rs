@@ -24,7 +24,10 @@ fn session_key_random_is_32_bytes() {
 #[test]
 fn session_key_random_not_all_zeros() {
     let key = SessionKey::random();
-    assert!(key.0.iter().any(|&b| b != 0), "random key should not be all zeros");
+    assert!(
+        key.0.iter().any(|&b| b != 0),
+        "random key should not be all zeros"
+    );
 }
 
 #[test]
@@ -62,7 +65,9 @@ fn session_key_json_roundtrip() {
 
 #[test]
 fn client_hello_protocol_field() {
-    let msg = ClientToServer::Hello { protocol: PROTOCOL_VERSION };
+    let msg = ClientToServer::Hello {
+        protocol: PROTOCOL_VERSION,
+    };
     if let ClientToServer::Hello { protocol } = msg {
         assert_eq!(protocol, 1);
     } else {
@@ -77,7 +82,12 @@ fn client_find_or_create_fields() {
         game_mode: "deathmatch".into(),
         party_size: 4,
     };
-    if let ClientToServer::FindOrCreate { region, game_mode, party_size } = msg {
+    if let ClientToServer::FindOrCreate {
+        region,
+        game_mode,
+        party_size,
+    } = msg
+    {
         assert_eq!(region, "us-east");
         assert_eq!(game_mode, "deathmatch");
         assert_eq!(party_size, 4);
@@ -92,7 +102,11 @@ fn client_join_room_fields() {
         room_id: "ABC12345".into(),
         display_name: "Player1".into(),
     };
-    if let ClientToServer::JoinRoom { room_id, display_name } = msg {
+    if let ClientToServer::JoinRoom {
+        room_id,
+        display_name,
+    } = msg
+    {
         assert_eq!(room_id, "ABC12345");
         assert_eq!(display_name, "Player1");
     } else {
@@ -109,7 +123,13 @@ fn client_input_frame_fields() {
         input_blob: vec![1, 2, 3],
         sig,
     };
-    if let ClientToServer::InputFrame { seq, tick_ms, input_blob, sig: s } = msg {
+    if let ClientToServer::InputFrame {
+        seq,
+        tick_ms,
+        input_blob,
+        sig: s,
+    } = msg
+    {
         assert_eq!(seq, 42);
         assert_eq!(tick_ms, 16667);
         assert_eq!(input_blob, vec![1, 2, 3]);
@@ -131,7 +151,9 @@ fn client_ping_nano() {
 
 #[test]
 fn client_ack_last_snapshot_id() {
-    let msg = ClientToServer::Ack { last_snapshot_id: 99 };
+    let msg = ClientToServer::Ack {
+        last_snapshot_id: 99,
+    };
     if let ClientToServer::Ack { last_snapshot_id } = msg {
         assert_eq!(last_snapshot_id, 99);
     } else {
@@ -170,7 +192,13 @@ fn client_to_server_json_roundtrip_input_frame() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ClientToServer = serde_json::from_str(&json).unwrap();
-    if let ClientToServer::InputFrame { seq, tick_ms, input_blob, sig } = back {
+    if let ClientToServer::InputFrame {
+        seq,
+        tick_ms,
+        input_blob,
+        sig,
+    } = back
+    {
         assert_eq!(seq, 10);
         assert_eq!(tick_ms, 5000);
         assert_eq!(input_blob, vec![4, 5, 6]);
@@ -200,7 +228,11 @@ fn server_match_result_fields() {
         room_id: "ROOM42".into(),
         session_key_hint: [9u8; 8],
     };
-    if let ServerToClient::MatchResult { room_id, session_key_hint } = msg {
+    if let ServerToClient::MatchResult {
+        room_id,
+        session_key_hint,
+    } = msg
+    {
         assert_eq!(room_id, "ROOM42");
         assert_eq!(session_key_hint, [9u8; 8]);
     } else {
@@ -216,7 +248,13 @@ fn server_join_accepted_fields() {
         session_key_hint: [0u8; 8],
         tick_hz: 60,
     };
-    if let ServerToClient::JoinAccepted { room_id, player_id, session_key_hint, tick_hz } = msg {
+    if let ServerToClient::JoinAccepted {
+        room_id,
+        player_id,
+        session_key_hint,
+        tick_hz,
+    } = msg
+    {
         assert_eq!(room_id, "R1");
         assert_eq!(player_id, "P1");
         assert_eq!(session_key_hint, [0u8; 8]);
@@ -235,7 +273,14 @@ fn server_snapshot_fields() {
         compressed: true,
         payload: vec![10, 20, 30],
     };
-    if let ServerToClient::Snapshot { id, server_tick, base_id, compressed, payload } = msg {
+    if let ServerToClient::Snapshot {
+        id,
+        server_tick,
+        base_id,
+        compressed,
+        payload,
+    } = msg
+    {
         assert_eq!(id, 5);
         assert_eq!(server_tick, 1000);
         assert_eq!(base_id, Some(4));
@@ -255,7 +300,13 @@ fn server_snapshot_no_base() {
         compressed: false,
         payload: vec![],
     };
-    if let ServerToClient::Snapshot { base_id, compressed, payload, .. } = msg {
+    if let ServerToClient::Snapshot {
+        base_id,
+        compressed,
+        payload,
+        ..
+    } = msg
+    {
         assert!(base_id.is_none());
         assert!(!compressed);
         assert!(payload.is_empty());
@@ -268,7 +319,11 @@ fn server_reconcile_fields() {
         input_seq_ack: 42,
         corrected_state_hash: 999,
     };
-    if let ServerToClient::Reconcile { input_seq_ack, corrected_state_hash } = msg {
+    if let ServerToClient::Reconcile {
+        input_seq_ack,
+        corrected_state_hash,
+    } = msg
+    {
         assert_eq!(input_seq_ack, 42);
         assert_eq!(corrected_state_hash, 999);
     } else {
@@ -294,7 +349,9 @@ fn server_rate_limited_is_unit() {
 
 #[test]
 fn server_protocol_error_msg() {
-    let msg = ServerToClient::ProtocolError { msg: "bad frame".into() };
+    let msg = ServerToClient::ProtocolError {
+        msg: "bad frame".into(),
+    };
     if let ServerToClient::ProtocolError { msg } = msg {
         assert_eq!(msg, "bad frame");
     } else {
@@ -319,7 +376,10 @@ fn server_to_client_json_roundtrip() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToClient = serde_json::from_str(&json).unwrap();
-    if let ServerToClient::JoinAccepted { room_id, tick_hz, .. } = back {
+    if let ServerToClient::JoinAccepted {
+        room_id, tick_hz, ..
+    } = back
+    {
         assert_eq!(room_id, "R");
         assert_eq!(tick_hz, 30);
     } else {
@@ -333,7 +393,10 @@ fn server_to_client_json_roundtrip() {
 
 #[test]
 fn wire_error_protocol_mismatch_display() {
-    let err = WireError::ProtocolMismatch { client: 1, server: 2 };
+    let err = WireError::ProtocolMismatch {
+        client: 1,
+        server: 2,
+    };
     let msg = format!("{err}");
     assert!(msg.contains("protocol mismatch"), "got: {msg}");
     assert!(msg.contains("1"), "should contain client version");
@@ -350,7 +413,10 @@ fn wire_error_decode_display() {
 
 #[test]
 fn wire_error_debug() {
-    let err = WireError::ProtocolMismatch { client: 3, server: 5 };
+    let err = WireError::ProtocolMismatch {
+        client: 3,
+        server: 5,
+    };
     let dbg = format!("{err:?}");
     assert!(dbg.contains("ProtocolMismatch"));
 }
@@ -414,7 +480,14 @@ fn encode_decode_postcard_server_snapshot() {
     };
     let bytes = encode_msg(Codec::PostcardLz4, &msg);
     let back: ServerToClient = decode_msg(Codec::PostcardLz4, &bytes).unwrap();
-    if let ServerToClient::Snapshot { id, server_tick, base_id, compressed, payload } = back {
+    if let ServerToClient::Snapshot {
+        id,
+        server_tick,
+        base_id,
+        compressed,
+        payload,
+    } = back
+    {
         assert_eq!(id, 10);
         assert_eq!(server_tick, 500);
         assert_eq!(base_id, Some(9));
@@ -433,7 +506,11 @@ fn encode_decode_bincode_server_reconcile() {
     };
     let bytes = encode_msg(Codec::Bincode, &msg);
     let back: ServerToClient = decode_msg(Codec::Bincode, &bytes).unwrap();
-    if let ServerToClient::Reconcile { input_seq_ack, corrected_state_hash } = back {
+    if let ServerToClient::Reconcile {
+        input_seq_ack,
+        corrected_state_hash,
+    } = back
+    {
         assert_eq!(input_seq_ack, 100);
         assert_eq!(corrected_state_hash, 0xDEADBEEF);
     }
@@ -522,7 +599,10 @@ fn sign16_empty_input() {
 #[test]
 fn sign16_not_all_zeros() {
     let sig = sign16(b"test data for signing", &[5u8; 8]);
-    assert!(sig.iter().any(|&b| b != 0), "signature should not be all zeros");
+    assert!(
+        sig.iter().any(|&b| b != 0),
+        "signature should not be all zeros"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -538,7 +618,10 @@ fn new_room_id_length_8() {
 #[test]
 fn new_room_id_alphanumeric() {
     let id = new_room_id();
-    assert!(id.chars().all(|c| c.is_ascii_alphanumeric()), "room id must be alphanumeric: {id}");
+    assert!(
+        id.chars().all(|c| c.is_ascii_alphanumeric()),
+        "room id must be alphanumeric: {id}"
+    );
 }
 
 #[test]
@@ -563,7 +646,13 @@ fn client_input_frame_large_blob() {
     };
     let bytes = encode_msg(Codec::PostcardLz4, &msg);
     let back: ClientToServer = decode_msg(Codec::PostcardLz4, &bytes).unwrap();
-    if let ClientToServer::InputFrame { seq, tick_ms, input_blob, sig } = back {
+    if let ClientToServer::InputFrame {
+        seq,
+        tick_ms,
+        input_blob,
+        sig,
+    } = back
+    {
         assert_eq!(seq, u32::MAX);
         assert_eq!(tick_ms, u64::MAX);
         assert_eq!(input_blob.len(), 10000);
@@ -583,7 +672,13 @@ fn server_snapshot_large_payload() {
     };
     let bytes = encode_msg(Codec::Bincode, &msg);
     let back: ServerToClient = decode_msg(Codec::Bincode, &bytes).unwrap();
-    if let ServerToClient::Snapshot { id, server_tick, payload: p, .. } = back {
+    if let ServerToClient::Snapshot {
+        id,
+        server_tick,
+        payload: p,
+        ..
+    } = back
+    {
         assert_eq!(id, u32::MAX);
         assert_eq!(server_tick, u64::MAX);
         assert_eq!(p.len(), 50000);
@@ -594,11 +689,25 @@ fn server_snapshot_large_payload() {
 fn roundtrip_all_client_variants() {
     let variants: Vec<ClientToServer> = vec![
         ClientToServer::Hello { protocol: 1 },
-        ClientToServer::FindOrCreate { region: "r".into(), game_mode: "m".into(), party_size: 1 },
-        ClientToServer::JoinRoom { room_id: "id".into(), display_name: "n".into() },
-        ClientToServer::InputFrame { seq: 0, tick_ms: 0, input_blob: vec![], sig: [0; 16] },
+        ClientToServer::FindOrCreate {
+            region: "r".into(),
+            game_mode: "m".into(),
+            party_size: 1,
+        },
+        ClientToServer::JoinRoom {
+            room_id: "id".into(),
+            display_name: "n".into(),
+        },
+        ClientToServer::InputFrame {
+            seq: 0,
+            tick_ms: 0,
+            input_blob: vec![],
+            sig: [0; 16],
+        },
         ClientToServer::Ping { nano: 0 },
-        ClientToServer::Ack { last_snapshot_id: 0 },
+        ClientToServer::Ack {
+            last_snapshot_id: 0,
+        },
     ];
     for v in &variants {
         let bytes = encode_msg(Codec::PostcardLz4, v);
@@ -611,10 +720,27 @@ fn roundtrip_all_client_variants() {
 fn roundtrip_all_server_variants() {
     let variants: Vec<ServerToClient> = vec![
         ServerToClient::HelloAck { protocol: 1 },
-        ServerToClient::MatchResult { room_id: "r".into(), session_key_hint: [0; 8] },
-        ServerToClient::JoinAccepted { room_id: "r".into(), player_id: "p".into(), session_key_hint: [0; 8], tick_hz: 60 },
-        ServerToClient::Snapshot { id: 0, server_tick: 0, base_id: None, compressed: false, payload: vec![] },
-        ServerToClient::Reconcile { input_seq_ack: 0, corrected_state_hash: 0 },
+        ServerToClient::MatchResult {
+            room_id: "r".into(),
+            session_key_hint: [0; 8],
+        },
+        ServerToClient::JoinAccepted {
+            room_id: "r".into(),
+            player_id: "p".into(),
+            session_key_hint: [0; 8],
+            tick_hz: 60,
+        },
+        ServerToClient::Snapshot {
+            id: 0,
+            server_tick: 0,
+            base_id: None,
+            compressed: false,
+            payload: vec![],
+        },
+        ServerToClient::Reconcile {
+            input_seq_ack: 0,
+            corrected_state_hash: 0,
+        },
         ServerToClient::Pong { nano: 0 },
         ServerToClient::RateLimited,
         ServerToClient::ProtocolError { msg: "".into() },

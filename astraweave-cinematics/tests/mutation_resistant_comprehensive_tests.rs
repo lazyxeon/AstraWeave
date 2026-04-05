@@ -1749,7 +1749,12 @@ mod mutation_kill_tests {
     #[test]
     fn sequencer_camera_no_duplicate_at_boundary() {
         let mut tl = Timeline::new("test", 2.0);
-        tl.add_camera_track(vec![CameraKey::new(Time(0.5), (0.0, 0.0, 0.0), (0.0, 0.0, -1.0), 60.0)]);
+        tl.add_camera_track(vec![CameraKey::new(
+            Time(0.5),
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, -1.0),
+            60.0,
+        )]);
         let mut seq = Sequencer::new();
         // Step from 0.0 to 0.5 — event at 0.5 is in (0.0, 0.5], should emit
         let evs1 = seq.step(0.5, &tl).unwrap();

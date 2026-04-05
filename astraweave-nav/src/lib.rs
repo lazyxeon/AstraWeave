@@ -488,7 +488,10 @@ impl NavMesh {
     }
 
     pub fn find_path(&self, start: Vec3, goal: Vec3) -> Vec<Vec3> {
-        let (s, g) = match (closest_tri(&self.tris, start), closest_tri(&self.tris, goal)) {
+        let (s, g) = match (
+            closest_tri(&self.tris, start),
+            closest_tri(&self.tris, goal),
+        ) {
             (Some(s), Some(g)) => (s, g),
             _ => return vec![],
         };
@@ -2177,10 +2180,17 @@ mod tests {
             ),
         ];
         let nav = NavMesh::bake(&tris, 0.4, 60.0);
-        assert_eq!(nav.tris.len(), 2, "Both triangles should be accepted by bake");
+        assert_eq!(
+            nav.tris.len(),
+            2,
+            "Both triangles should be accepted by bake"
+        );
         let ec = nav.edge_count();
         // 2 triangles sharing 1 edge → exactly 1 internal edge
-        assert_eq!(ec, 1, "Two triangles sharing one edge should have edge_count=1");
+        assert_eq!(
+            ec, 1,
+            "Two triangles sharing one edge should have edge_count=1"
+        );
     }
 
     #[test]
@@ -2281,21 +2291,13 @@ mod tests {
         // cross = (0*2 - 0*0, 0*0 - 2*2, 2*0 - 0*0) = (0, -4, 0)
         // If mutation b+a: (6,6,2), c-a: (0,0,2) → cross = (12,-12,0) ← DIFFERENT
         // If mutation c+a: b-a: (2,0,0), (4,6,4) → cross = (0*4-0*6, 0*4-2*4, 2*6-0*4) = (0,-8,12) ← DIFFERENT
-        assert!(
-            (n.x).abs() < 1e-6,
-            "Normal X should be 0, got {}",
-            n.x
-        );
+        assert!((n.x).abs() < 1e-6, "Normal X should be 0, got {}", n.x);
         assert!(
             (n.y - (-4.0)).abs() < 1e-6,
             "Normal Y should be -4, got {}",
             n.y
         );
-        assert!(
-            (n.z).abs() < 1e-6,
-            "Normal Z should be 0, got {}",
-            n.z
-        );
+        assert!((n.z).abs() < 1e-6, "Normal Z should be 0, got {}", n.z);
     }
 
     #[test]
@@ -2332,7 +2334,7 @@ mod tests {
         // With < → ==: -1 == 0 is false → triangle NOT filtered → WRONG
         let tri = Triangle::new(
             Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(2.0, 0.0, 0.0),  // CW in XZ
+            Vec3::new(2.0, 0.0, 0.0), // CW in XZ
             Vec3::new(0.0, 0.0, 2.0),
         );
         // Normal: (2,0,0) × (0,0,2) = (0,-4,0), normalized = (0,-1,0). dot(Y) = -1.
@@ -2620,13 +2622,11 @@ mod tests {
     fn mutation_partial_rebake_comparison_correctness() {
         // Targets: lib.rs:603 replace > with ==/</>=/<= in `affected_count > 0`
         // Verify that when affected > 0, a rebake actually happens (rebake_count increases)
-        let tris = vec![
-            Triangle::new(
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(0.0, 0.0, 2.0),
-                Vec3::new(2.0, 0.0, 0.0),
-            ),
-        ];
+        let tris = vec![Triangle::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 2.0),
+            Vec3::new(2.0, 0.0, 0.0),
+        )];
         let mut nav = NavMesh::bake(&tris, 0.4, 60.0);
         let before = nav.rebake_count();
         nav.invalidate_region(Aabb {
@@ -2639,7 +2639,8 @@ mod tests {
         assert!(
             after > before,
             "Rebake count should increase when affected > 0, before={}, after={}",
-            before, after
+            before,
+            after
         );
         // Dirty regions should be cleared after successful rebake
         assert!(

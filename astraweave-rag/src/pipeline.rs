@@ -747,12 +747,18 @@ impl RagPipeline {
     fn order_results(&self, memories: &mut [RetrievedMemory]) {
         match self.config.injection.ordering_strategy {
             crate::OrderingStrategy::SimilarityDesc => {
-                memories
-                    .sort_by(|a, b| b.similarity_score.partial_cmp(&a.similarity_score).unwrap_or(std::cmp::Ordering::Equal));
+                memories.sort_by(|a, b| {
+                    b.similarity_score
+                        .partial_cmp(&a.similarity_score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
             }
             crate::OrderingStrategy::SimilarityAsc => {
-                memories
-                    .sort_by(|a, b| a.similarity_score.partial_cmp(&b.similarity_score).unwrap_or(std::cmp::Ordering::Equal));
+                memories.sort_by(|a, b| {
+                    a.similarity_score
+                        .partial_cmp(&b.similarity_score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
             }
             crate::OrderingStrategy::RecencyDesc => {
                 memories.sort_by(|a, b| b.memory.timestamp.cmp(&a.memory.timestamp));

@@ -107,16 +107,16 @@ mod tests {
 
         // BindingSet should roundtrip correctly - compare action counts
         assert_eq!(original.actions.len(), loaded.actions.len());
-        
+
         // Verify all action keys are present
         for key in original.actions.keys() {
             assert!(loaded.actions.contains_key(key), "Missing action: {}", key);
         }
-        
+
         // Verify move_axes (tuple comparison)
         assert_eq!(original.move_axes.0.axis, loaded.move_axes.0.axis);
         assert_eq!(original.move_axes.1.axis, loaded.move_axes.1.axis);
-        
+
         // Verify look_axes (tuple comparison)
         assert_eq!(original.look_axes.0.axis, loaded.look_axes.0.axis);
         assert_eq!(original.look_axes.1.axis, loaded.look_axes.1.axis);

@@ -6,7 +6,9 @@ mod goap_comparison_tests {
     use astraweave_ai::goap::orchestrator::GOAPOrchestrator;
     use astraweave_ai::goap::shadow_mode::ShadowModeRunner;
     use astraweave_ai::orchestrator::RuleOrchestrator;
-    use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot};
+    use astraweave_core::{
+        CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot,
+    };
     use std::collections::BTreeMap;
 
     fn make_test_snapshot(player_hp: i32, ammo: i32, enemies: Vec<EnemyState>) -> WorldSnapshot {

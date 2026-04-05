@@ -66,7 +66,7 @@ impl WeavingApp {
             ..Default::default()
         };
         let terr_renderer = RenderTerrainRenderer::new(terr_cfg.clone());
-        
+
         let budget = WeaveBudget {
             terrain_edits: 3,
             weather_ops: 2,
@@ -103,25 +103,31 @@ impl ApplicationHandler for WeavingApp {
             let mut renderer = pollster::block_on(Renderer::new(window.clone())).unwrap();
             renderer.time_of_day_mut().current_time = 10.0;
             renderer.time_of_day_mut().time_scale = 0.0;
-            
+
             // Generate chunk and mesh
             let center_chunk_id = ChunkId::new(0, 0);
-            let chunk = self.terr_renderer
+            let chunk = self
+                .terr_renderer
                 .world_generator_mut()
                 .generate_chunk(center_chunk_id)
                 .unwrap();
-            
+
             let (_terrain_mesh, terrain_gpu_init) =
                 build_and_upload_terrain_mesh(&mut self.terr_renderer, &chunk, &renderer).unwrap();
             renderer.set_external_mesh(terrain_gpu_init);
-            
+
             self.current_chunk = Some(chunk);
             self.renderer = Some(renderer);
             self.last_time = Instant::now();
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
         let renderer = match self.renderer.as_mut() {
             Some(r) => r,
             None => return,
@@ -306,7 +312,8 @@ impl ApplicationHandler for WeavingApp {
             WindowEvent::MouseInput { state, button, .. } => {
                 if button == MouseButton::Right {
                     let pressed = state == ElementState::Pressed;
-                    self.cam_ctl.process_mouse_button(MouseButton::Right, pressed);
+                    self.cam_ctl
+                        .process_mouse_button(MouseButton::Right, pressed);
                     if pressed {
                         let _ = _window.set_cursor_grab(winit::window::CursorGrabMode::Confined);
                         _window.set_cursor_visible(false);
@@ -319,9 +326,7 @@ impl ApplicationHandler for WeavingApp {
             WindowEvent::MouseWheel { delta, .. } => {
                 let scroll = match delta {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y,
-                    winit::event::MouseScrollDelta::PixelDelta(p) => {
-                        p.y as f32 / 120.0
-                    }
+                    winit::event::MouseScrollDelta::PixelDelta(p) => p.y as f32 / 120.0,
                 };
                 self.cam_ctl.process_scroll(&mut self.camera, scroll);
             }
@@ -337,12 +342,15 @@ impl ApplicationHandler for WeavingApp {
         }
     }
 
-    fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: winit::event::DeviceId, event: winit::event::DeviceEvent) {
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
         if let winit::event::DeviceEvent::MouseMotion { delta } = event {
-            self.cam_ctl.process_mouse_delta(
-                &mut self.camera,
-                Vec2::new(delta.0 as f32, delta.1 as f32),
-            );
+            self.cam_ctl
+                .process_mouse_delta(&mut self.camera, Vec2::new(delta.0 as f32, delta.1 as f32));
         }
     }
 

@@ -10,7 +10,9 @@
 //! 4. **Performance**: Full pipeline completes within frame budget
 
 use astraweave_ai::core_loop::{dispatch_planner, CAiController, PlannerMode};
-use astraweave_core::{ActionStep, CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot};
+use astraweave_core::{
+    ActionStep, CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot,
+};
 use astraweave_ecs::{Entity, World};
 use astraweave_nav::{NavMesh, Triangle};
 use glam::Vec3;

@@ -1,7 +1,7 @@
 //! Mutation-resistant comprehensive tests for astraweave-secrets.
 
-use astraweave_secrets::*;
 use anyhow::Result;
+use astraweave_secrets::*;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
@@ -286,8 +286,12 @@ fn manager_long_key_name() {
     let backend = std::sync::Arc::new(TestBackend::new());
     let mgr = SecretManager::with_backend(backend);
     let long_key = "a".repeat(1000);
-    mgr.set(&long_key, SecretValue::from_str("long_key_value")).unwrap();
-    assert_eq!(mgr.get(&long_key).unwrap().as_str().unwrap(), "long_key_value");
+    mgr.set(&long_key, SecretValue::from_str("long_key_value"))
+        .unwrap();
+    assert_eq!(
+        mgr.get(&long_key).unwrap().as_str().unwrap(),
+        "long_key_value"
+    );
 }
 
 #[test]

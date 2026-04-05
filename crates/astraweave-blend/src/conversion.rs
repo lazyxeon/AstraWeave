@@ -652,20 +652,16 @@ impl Default for ConversionJobBuilder {
 async fn validate_glb(path: &Path) -> BlendResult<()> {
     use tokio::io::AsyncReadExt;
 
-    let mut file = tokio::fs::File::open(path).await.map_err(|e| {
-        BlendError::ConversionFailed {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|e| BlendError::ConversionFailed {
             message: format!("Cannot open GLB output for validation: {e}"),
             exit_code: None,
             stderr: String::new(),
             blender_output: None,
-        }
-    })?;
+        })?;
 
-    let file_size = file
-        .metadata()
-        .await
-        .map_err(BlendError::IoError)?
-        .len();
+    let file_size = file.metadata().await.map_err(BlendError::IoError)?.len();
 
     if file_size < 12 {
         return Err(BlendError::ConversionFailed {
@@ -678,7 +674,9 @@ async fn validate_glb(path: &Path) -> BlendResult<()> {
 
     // Read the 12-byte GLB header
     let mut header = [0u8; 12];
-    file.read_exact(&mut header).await.map_err(BlendError::IoError)?;
+    file.read_exact(&mut header)
+        .await
+        .map_err(BlendError::IoError)?;
 
     // Check magic bytes: 0x46546C67 = "glTF" in little-endian
     let magic = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
@@ -789,18 +787,10 @@ async fn validate_glb(path: &Path) -> BlendResult<()> {
             .await
             .map_err(BlendError::IoError)?;
 
-        let bin_chunk_length = u32::from_le_bytes([
-            bin_header[0],
-            bin_header[1],
-            bin_header[2],
-            bin_header[3],
-        ]);
-        let bin_chunk_type = u32::from_le_bytes([
-            bin_header[4],
-            bin_header[5],
-            bin_header[6],
-            bin_header[7],
-        ]);
+        let bin_chunk_length =
+            u32::from_le_bytes([bin_header[0], bin_header[1], bin_header[2], bin_header[3]]);
+        let bin_chunk_type =
+            u32::from_le_bytes([bin_header[4], bin_header[5], bin_header[6], bin_header[7]]);
 
         // Binary chunk type must be 0x004E4942 = "BIN\0" in little-endian
         if bin_chunk_type != 0x004E4942 {

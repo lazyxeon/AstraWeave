@@ -4,11 +4,9 @@
 //! BatchValidationReport, and AstcBlockSize — all pure logic, no GPU/I/O.
 
 use astraweave_asset_pipeline::mesh::Mesh;
-use astraweave_asset_pipeline::texture::{AstcBlockSize, CompressionStats};
-use astraweave_asset_pipeline::validator::{
-    AssetValidator, ValidationMetrics, ValidationReport,
-};
 use astraweave_asset_pipeline::optimize_mesh;
+use astraweave_asset_pipeline::texture::{AstcBlockSize, CompressionStats};
+use astraweave_asset_pipeline::validator::{AssetValidator, ValidationMetrics, ValidationReport};
 use std::path::Path;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -27,7 +25,8 @@ fn mesh_new_single_triangle() {
     let m = Mesh::new(
         vec![0.0; 9], // 3 vertices × 3 floats
         vec![0, 1, 2],
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(m.vertex_count(), 3);
     assert_eq!(m.triangle_count(), 1);
 }
@@ -88,12 +87,7 @@ fn mesh_debug() {
 #[test]
 fn optimize_mesh_basic() {
     // Simple quad: 4 vertices, 2 triangles
-    let positions = vec![
-        0.0, 0.0, 0.0,
-        1.0, 0.0, 0.0,
-        1.0, 1.0, 0.0,
-        0.0, 1.0, 0.0,
-    ];
+    let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
     let indices = vec![0, 1, 2, 0, 2, 3];
     let mesh = Mesh::new(positions, indices).unwrap();
     let (opt, stats) = optimize_mesh(mesh).unwrap();
@@ -108,7 +102,10 @@ fn optimize_mesh_stats_time_recorded() {
     let mesh = Mesh::new(vec![0.0; 9], vec![0, 1, 2]).unwrap();
     let (_opt, stats) = optimize_mesh(mesh).unwrap();
     // time_ms can be 0 for fast operations, but should be valid
-    assert!(stats.time_ms < 60_000, "optimization shouldn't take a minute");
+    assert!(
+        stats.time_ms < 60_000,
+        "optimization shouldn't take a minute"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -134,7 +131,11 @@ fn compression_stats_ratio() {
 fn compression_stats_reduction_percent() {
     let cs = CompressionStats::new(1000, 250, 0);
     // reduction = 100 * (1 - 250/1000) = 75%
-    assert!((cs.reduction_percent - 75.0).abs() < 0.01, "reduction: {}", cs.reduction_percent);
+    assert!(
+        (cs.reduction_percent - 75.0).abs() < 0.01,
+        "reduction: {}",
+        cs.reduction_percent
+    );
 }
 
 #[test]
@@ -350,12 +351,16 @@ fn asset_validator_validate_texture_small_passes() {
 fn asset_validator_validate_texture_oversized_fails() {
     let v = AssetValidator::new();
     let huge_size = 100 * 1024 * 1024; // 100 MB
-    // compressed_size must exceed max_size (50 MB) to trigger error
+                                       // compressed_size must exceed max_size (50 MB) to trigger error
     let report = v.validate_texture(Path::new("huge.png"), huge_size, huge_size);
-    assert!(!report.is_valid(),
-        "compressed_size > max_size should fail validation");
-    assert!(!report.errors.is_empty(),
-        "oversized compressed texture should have error");
+    assert!(
+        !report.is_valid(),
+        "compressed_size > max_size should fail validation"
+    );
+    assert!(
+        !report.errors.is_empty(),
+        "oversized compressed texture should have error"
+    );
 }
 
 #[test]
@@ -370,7 +375,10 @@ fn asset_validator_validate_mesh_bad_acmr_warns() {
     let v = AssetValidator::new();
     let report = v.validate_mesh(Path::new("bad.glb"), 1000, 2.0);
     // ACMR > 1.5 should generate a warning
-    assert!(!report.warnings.is_empty(), "high ACMR should produce warning");
+    assert!(
+        !report.warnings.is_empty(),
+        "high ACMR should produce warning"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -683,10 +683,18 @@ mod mutation_kill_tests {
         let mut sink = TestSink::new();
         mgr.update(1.0 / 60.0, &mut sink, &views);
 
-        assert_eq!(sink.moves.len(), 1, "guard should move away from close player");
+        assert_eq!(
+            sink.moves.len(),
+            1,
+            "guard should move away from close player"
+        );
         let dir = sink.moves[0].1;
         // dir = normalize(self_pos - player_pos) = normalize(-1.5, 0, 0) = (-1, 0, 0)
-        assert!(dir.x < -0.9, "guard should move in negative x, got {}", dir.x);
+        assert!(
+            dir.x < -0.9,
+            "guard should move in negative x, got {}",
+            dir.x
+        );
         assert!(dir.z.abs() < 0.01, "z should be ~0");
         assert!((sink.moves[0].2 - 0.6).abs() < 0.01, "speed should be 0.6");
     }
@@ -708,7 +716,10 @@ mod mutation_kill_tests {
         let mut sink = TestSink::new();
         mgr.update(1.0 / 60.0, &mut sink, &views);
 
-        assert!(sink.moves.is_empty(), "guard should NOT move when player_dist == 2.0");
+        assert!(
+            sink.moves.is_empty(),
+            "guard should NOT move when player_dist == 2.0"
+        );
     }
 
     /// Kills: runtime.rs:124 (== → != confirmation — merchant should NOT patrol)
@@ -757,8 +768,16 @@ mod mutation_kill_tests {
         let dir = sink.moves[0].1;
         assert!(dir.x.is_finite(), "dir.x should be finite, got {}", dir.x);
         assert!(dir.z.is_finite(), "dir.z should be finite, got {}", dir.z);
-        assert!((dir.x - 10.0).abs() < 0.01, "dir.x should be 10.0, got {}", dir.x);
-        assert!((dir.z - 5.0).abs() < 0.01, "dir.z should be 5.0, got {}", dir.z);
+        assert!(
+            (dir.x - 10.0).abs() < 0.01,
+            "dir.x should be 10.0, got {}",
+            dir.x
+        );
+        assert!(
+            (dir.z - 5.0).abs() < 0.01,
+            "dir.z should be 5.0, got {}",
+            dir.z
+        );
     }
 
     /// Kills: runtime.rs:83 (spawn_from_profile → Default::default() returns 0)
@@ -769,6 +788,10 @@ mod mutation_kill_tests {
         let mut phys = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let prof = make_profile(Role::Civilian, "Npc1");
         let id = mgr.spawn_from_profile(&mut phys, prof);
-        assert!(id > 0, "spawn_from_profile should return non-zero NpcId, got {}", id);
+        assert!(
+            id > 0,
+            "spawn_from_profile should return non-zero NpcId, got {}",
+            id
+        );
     }
 }

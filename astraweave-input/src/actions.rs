@@ -130,7 +130,11 @@ impl Action {
     pub fn is_ui_toggle(&self) -> bool {
         matches!(
             self,
-            Self::OpenInventory | Self::OpenMap | Self::OpenQuests | Self::OpenCrafting | Self::OpenMenu
+            Self::OpenInventory
+                | Self::OpenMap
+                | Self::OpenQuests
+                | Self::OpenCrafting
+                | Self::OpenMenu
         )
     }
 
@@ -139,7 +143,12 @@ impl Action {
     pub fn is_ui_nav(&self) -> bool {
         matches!(
             self,
-            Self::UiAccept | Self::UiBack | Self::UiUp | Self::UiDown | Self::UiLeft | Self::UiRight
+            Self::UiAccept
+                | Self::UiBack
+                | Self::UiUp
+                | Self::UiDown
+                | Self::UiLeft
+                | Self::UiRight
         )
     }
 
@@ -161,7 +170,12 @@ impl Action {
 
     /// Returns all movement actions.
     pub fn movement_actions() -> [Action; 4] {
-        [Self::MoveForward, Self::MoveBackward, Self::MoveLeft, Self::MoveRight]
+        [
+            Self::MoveForward,
+            Self::MoveBackward,
+            Self::MoveLeft,
+            Self::MoveRight,
+        ]
     }
 
     /// Returns all attack actions.
@@ -171,17 +185,42 @@ impl Action {
 
     /// Returns all UI navigation actions.
     pub fn ui_nav_actions() -> [Action; 6] {
-        [Self::UiAccept, Self::UiBack, Self::UiUp, Self::UiDown, Self::UiLeft, Self::UiRight]
+        [
+            Self::UiAccept,
+            Self::UiBack,
+            Self::UiUp,
+            Self::UiDown,
+            Self::UiLeft,
+            Self::UiRight,
+        ]
     }
 
     /// Returns all actions.
     pub fn all() -> [Action; 23] {
         [
-            Self::MoveForward, Self::MoveBackward, Self::MoveLeft, Self::MoveRight,
-            Self::Jump, Self::Crouch, Self::Sprint, Self::Interact,
-            Self::AttackLight, Self::AttackHeavy, Self::Ability1, Self::Ability2,
-            Self::OpenInventory, Self::OpenMap, Self::OpenQuests, Self::OpenCrafting, Self::OpenMenu,
-            Self::UiAccept, Self::UiBack, Self::UiUp, Self::UiDown, Self::UiLeft, Self::UiRight,
+            Self::MoveForward,
+            Self::MoveBackward,
+            Self::MoveLeft,
+            Self::MoveRight,
+            Self::Jump,
+            Self::Crouch,
+            Self::Sprint,
+            Self::Interact,
+            Self::AttackLight,
+            Self::AttackHeavy,
+            Self::Ability1,
+            Self::Ability2,
+            Self::OpenInventory,
+            Self::OpenMap,
+            Self::OpenQuests,
+            Self::OpenCrafting,
+            Self::OpenMenu,
+            Self::UiAccept,
+            Self::UiBack,
+            Self::UiUp,
+            Self::UiDown,
+            Self::UiLeft,
+            Self::UiRight,
         ]
     }
 }
@@ -239,7 +278,10 @@ impl Axis2 {
     pub fn normalized(&self) -> Self {
         let len = self.length();
         if len > 1e-6 {
-            Self { x: self.x / len, y: self.y / len }
+            Self {
+                x: self.x / len,
+                y: self.y / len,
+            }
         } else {
             Self::zero()
         }
@@ -250,7 +292,10 @@ impl Axis2 {
         let len = self.length();
         if len > max_length {
             let scale = max_length / len;
-            Self { x: self.x * scale, y: self.y * scale }
+            Self {
+                x: self.x * scale,
+                y: self.y * scale,
+            }
         } else {
             self.clone()
         }
@@ -462,7 +507,7 @@ mod tests {
     fn test_axis2_is_zero() {
         let zero = Axis2::zero();
         assert!(zero.is_zero());
-        
+
         let nonzero = Axis2::new(0.1, 0.0);
         assert!(!nonzero.is_zero());
     }
@@ -474,7 +519,7 @@ mod tests {
         assert!((norm.length() - 1.0).abs() < 0.001);
         assert!((norm.x - 0.6).abs() < 0.001);
         assert!((norm.y - 0.8).abs() < 0.001);
-        
+
         let zero = Axis2::zero();
         let zero_norm = zero.normalized();
         assert!(zero_norm.is_zero());
@@ -485,7 +530,7 @@ mod tests {
         let axis = Axis2::new(3.0, 4.0); // length 5
         let clamped = axis.clamped(2.0);
         assert!((clamped.length() - 2.0).abs() < 0.001);
-        
+
         let short = Axis2::new(0.5, 0.0);
         let not_clamped = short.clamped(2.0);
         assert!((not_clamped.x - 0.5).abs() < 0.001);
@@ -496,7 +541,7 @@ mod tests {
         let axis = Axis2::new(0.05, 0.05);
         let with_dz = axis.with_deadzone(0.1);
         assert!(with_dz.is_zero());
-        
+
         let outside = Axis2::new(0.5, 0.0);
         let no_change = outside.with_deadzone(0.1);
         assert!((no_change.x - 0.5).abs() < 0.001);
@@ -506,7 +551,7 @@ mod tests {
     fn test_axis2_angle() {
         let right = Axis2::new(1.0, 0.0);
         assert!(right.angle().abs() < 0.001);
-        
+
         let up = Axis2::new(0.0, 1.0);
         assert!((up.angle() - std::f32::consts::FRAC_PI_2).abs() < 0.001);
     }

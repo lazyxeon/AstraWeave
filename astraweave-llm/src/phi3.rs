@@ -150,10 +150,10 @@ impl Phi3Medium {
                 // For candle 0.8, we use the standard Phi-3 model loading
                 // Note: This is a placeholder - actual GGUF loading requires
                 // additional setup from candle_quantized crate
-                
+
                 // Load model config
                 let config = phi3_model::Config::v3_mini();
-                
+
                 // For now, return error prompting user to provide safetensors
                 anyhow::bail!(
                     "Phi-3 Q4 GGUF loading requires additional setup.\n\

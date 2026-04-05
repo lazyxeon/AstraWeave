@@ -241,8 +241,7 @@ fn globwalk(root: &str, pat: &str) -> Result<Vec<PathBuf>> {
                 let p = e.into_path();
                 // Create pattern relative to root for matching
                 let relative_path = p.strip_prefix(root).unwrap_or(&p);
-                if glob::Pattern::new(&pattern_str)?.matches_path(relative_path)
-                    && !v.contains(&p)
+                if glob::Pattern::new(&pattern_str)?.matches_path(relative_path) && !v.contains(&p)
                 {
                     v.push(p);
                 }

@@ -1,5 +1,5 @@
-use glam::{Mat4, Vec3};
 use bytemuck::{Pod, Zeroable};
+use glam::{Mat4, Vec3};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -145,7 +145,12 @@ impl TextureMeshRenderer {
         }
     }
 
-    pub fn load_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &str) -> usize {
+    pub fn load_texture(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        path: &str,
+    ) -> usize {
         let img = image::open(path).expect(&format!("Failed to load texture: {}", path));
         let rgba = img.to_rgba8();
         let dimensions = rgba.dimensions();
@@ -232,7 +237,13 @@ impl TextureMeshRenderer {
         });
 
         let index_count = mesh.indices.len() as u32;
-        self.meshes.push((texture_idx, vertex_buffer, index_buffer, index_count, mesh.transform));
+        self.meshes.push((
+            texture_idx,
+            vertex_buffer,
+            index_buffer,
+            index_count,
+            mesh.transform,
+        ));
     }
 
     pub fn render(
@@ -291,10 +302,22 @@ pub fn create_plane_mesh(width: f32, depth: f32) -> Mesh {
     let hd = depth / 2.0;
 
     let vertices = vec![
-        Vertex { position: [-hw, 0.0, -hd], uv: [0.0, 0.0] },
-        Vertex { position: [hw, 0.0, -hd], uv: [width / 10.0, 0.0] },
-        Vertex { position: [hw, 0.0, hd], uv: [width / 10.0, depth / 10.0] },
-        Vertex { position: [-hw, 0.0, hd], uv: [0.0, depth / 10.0] },
+        Vertex {
+            position: [-hw, 0.0, -hd],
+            uv: [0.0, 0.0],
+        },
+        Vertex {
+            position: [hw, 0.0, -hd],
+            uv: [width / 10.0, 0.0],
+        },
+        Vertex {
+            position: [hw, 0.0, hd],
+            uv: [width / 10.0, depth / 10.0],
+        },
+        Vertex {
+            position: [-hw, 0.0, hd],
+            uv: [0.0, depth / 10.0],
+        },
     ];
 
     let indices = vec![0, 1, 2, 0, 2, 3];
@@ -311,35 +334,107 @@ pub fn create_cube_mesh(size: f32) -> Mesh {
 
     let vertices = vec![
         // Front face
-        Vertex { position: [-s, -s, s], uv: [0.0, 1.0] },
-        Vertex { position: [s, -s, s], uv: [1.0, 1.0] },
-        Vertex { position: [s, s, s], uv: [1.0, 0.0] },
-        Vertex { position: [-s, s, s], uv: [0.0, 0.0] },
+        Vertex {
+            position: [-s, -s, s],
+            uv: [0.0, 1.0],
+        },
+        Vertex {
+            position: [s, -s, s],
+            uv: [1.0, 1.0],
+        },
+        Vertex {
+            position: [s, s, s],
+            uv: [1.0, 0.0],
+        },
+        Vertex {
+            position: [-s, s, s],
+            uv: [0.0, 0.0],
+        },
         // Back face
-        Vertex { position: [s, -s, -s], uv: [0.0, 1.0] },
-        Vertex { position: [-s, -s, -s], uv: [1.0, 1.0] },
-        Vertex { position: [-s, s, -s], uv: [1.0, 0.0] },
-        Vertex { position: [s, s, -s], uv: [0.0, 0.0] },
+        Vertex {
+            position: [s, -s, -s],
+            uv: [0.0, 1.0],
+        },
+        Vertex {
+            position: [-s, -s, -s],
+            uv: [1.0, 1.0],
+        },
+        Vertex {
+            position: [-s, s, -s],
+            uv: [1.0, 0.0],
+        },
+        Vertex {
+            position: [s, s, -s],
+            uv: [0.0, 0.0],
+        },
         // Top face
-        Vertex { position: [-s, s, s], uv: [0.0, 1.0] },
-        Vertex { position: [s, s, s], uv: [1.0, 1.0] },
-        Vertex { position: [s, s, -s], uv: [1.0, 0.0] },
-        Vertex { position: [-s, s, -s], uv: [0.0, 0.0] },
+        Vertex {
+            position: [-s, s, s],
+            uv: [0.0, 1.0],
+        },
+        Vertex {
+            position: [s, s, s],
+            uv: [1.0, 1.0],
+        },
+        Vertex {
+            position: [s, s, -s],
+            uv: [1.0, 0.0],
+        },
+        Vertex {
+            position: [-s, s, -s],
+            uv: [0.0, 0.0],
+        },
         // Bottom face
-        Vertex { position: [-s, -s, -s], uv: [0.0, 1.0] },
-        Vertex { position: [s, -s, -s], uv: [1.0, 1.0] },
-        Vertex { position: [s, -s, s], uv: [1.0, 0.0] },
-        Vertex { position: [-s, -s, s], uv: [0.0, 0.0] },
+        Vertex {
+            position: [-s, -s, -s],
+            uv: [0.0, 1.0],
+        },
+        Vertex {
+            position: [s, -s, -s],
+            uv: [1.0, 1.0],
+        },
+        Vertex {
+            position: [s, -s, s],
+            uv: [1.0, 0.0],
+        },
+        Vertex {
+            position: [-s, -s, s],
+            uv: [0.0, 0.0],
+        },
         // Right face
-        Vertex { position: [s, -s, s], uv: [0.0, 1.0] },
-        Vertex { position: [s, -s, -s], uv: [1.0, 1.0] },
-        Vertex { position: [s, s, -s], uv: [1.0, 0.0] },
-        Vertex { position: [s, s, s], uv: [0.0, 0.0] },
+        Vertex {
+            position: [s, -s, s],
+            uv: [0.0, 1.0],
+        },
+        Vertex {
+            position: [s, -s, -s],
+            uv: [1.0, 1.0],
+        },
+        Vertex {
+            position: [s, s, -s],
+            uv: [1.0, 0.0],
+        },
+        Vertex {
+            position: [s, s, s],
+            uv: [0.0, 0.0],
+        },
         // Left face
-        Vertex { position: [-s, -s, -s], uv: [0.0, 1.0] },
-        Vertex { position: [-s, -s, s], uv: [1.0, 1.0] },
-        Vertex { position: [-s, s, s], uv: [1.0, 0.0] },
-        Vertex { position: [-s, s, -s], uv: [0.0, 0.0] },
+        Vertex {
+            position: [-s, -s, -s],
+            uv: [0.0, 1.0],
+        },
+        Vertex {
+            position: [-s, -s, s],
+            uv: [1.0, 1.0],
+        },
+        Vertex {
+            position: [-s, s, s],
+            uv: [1.0, 0.0],
+        },
+        Vertex {
+            position: [-s, s, -s],
+            uv: [0.0, 0.0],
+        },
     ];
 
     let indices = vec![

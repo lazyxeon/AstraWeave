@@ -35,7 +35,11 @@ fn perf_hud_frame_updates_fps() {
         hud.frame();
     }
     // After several frames, fps should be > 0
-    assert!(hud.fps > 0.0, "fps after 10 frames should be > 0: {}", hud.fps);
+    assert!(
+        hud.fps > 0.0,
+        "fps after 10 frames should be > 0: {}",
+        hud.fps
+    );
 }
 
 #[test]
@@ -61,10 +65,7 @@ fn perf_hud_entity_count_settable() {
 #[test]
 fn perf_hud_systems_snapshot_settable() {
     let mut hud = PerfHud::new();
-    hud.systems_snapshot = vec![
-        ("physics".into(), 2.5),
-        ("render".into(), 8.0),
-    ];
+    hud.systems_snapshot = vec![("physics".into(), 2.5), ("render".into(), 8.0)];
     assert_eq!(hud.systems_snapshot.len(), 2);
     assert_eq!(hud.systems_snapshot[0].0, "physics");
     assert!((hud.systems_snapshot[0].1 - 2.5).abs() < f32::EPSILON);
@@ -120,7 +121,7 @@ fn event_log_fifo_eviction() {
     log.add("b", "second");
     log.add("c", "third");
     log.add("d", "fourth"); // should evict "first"
-    // No panic — FIFO eviction working
+                            // No panic — FIFO eviction working
 }
 
 #[test]
@@ -130,7 +131,10 @@ fn event_log_zero_capacity_panics_on_add() {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         log.add("x", "test");
     }));
-    assert!(result.is_err(), "adding to zero-capacity EventLog should panic");
+    assert!(
+        result.is_err(),
+        "adding to zero-capacity EventLog should panic"
+    );
 }
 
 #[test]
@@ -155,5 +159,8 @@ fn watch_scripts_on_temp_dir() {
 fn watch_reload_signal_on_temp_dir() {
     let dir = tempfile::tempdir().unwrap();
     let result = watch_reload_signal(dir.path().to_path_buf(), || {});
-    assert!(result.is_ok(), "watch_reload_signal should succeed on valid dir");
+    assert!(
+        result.is_ok(),
+        "watch_reload_signal should succeed on valid dir"
+    );
 }

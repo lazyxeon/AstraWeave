@@ -1278,35 +1278,50 @@ mod tests {
     fn test_permissive_config_escapes_html_false() {
         // Remediation: kills "replace escapes_html -> bool with true"
         let config = SanitizationConfig::permissive();
-        assert!(!config.escapes_html(), "permissive config should not escape HTML");
+        assert!(
+            !config.escapes_html(),
+            "permissive config should not escape HTML"
+        );
     }
 
     #[test]
     fn test_permissive_config_blocks_injection_false() {
         // Remediation: kills "replace blocks_injection -> bool with true"
         let config = SanitizationConfig::permissive();
-        assert!(!config.blocks_injection(), "permissive config should not block injection");
+        assert!(
+            !config.blocks_injection(),
+            "permissive config should not block injection"
+        );
     }
 
     #[test]
     fn test_permissive_config_allows_control_chars_true() {
         // Remediation: kills "replace allows_control_chars -> bool with false"
         let config = SanitizationConfig::permissive();
-        assert!(config.allows_control_chars(), "permissive config should allow control chars");
+        assert!(
+            config.allows_control_chars(),
+            "permissive config should allow control chars"
+        );
     }
 
     #[test]
     fn test_default_config_does_not_allow_control_chars() {
         // Ensures default differs from permissive for control_chars
         let config = SanitizationConfig::default();
-        assert!(!config.allows_control_chars(), "default config should not allow control chars");
+        assert!(
+            !config.allows_control_chars(),
+            "default config should not allow control chars"
+        );
     }
 
     #[test]
     fn test_strict_config_disallows_unicode() {
         // Remediation: kills "replace allows_unicode -> bool with true"
         let config = SanitizationConfig::strict();
-        assert!(!config.allows_unicode(), "strict config should not allow unicode");
+        assert!(
+            !config.allows_unicode(),
+            "strict config should not allow unicode"
+        );
     }
 
     // ── Mutation-resistant truncate + getter tests (v3.3 shard 6 remediation) ──
@@ -1369,7 +1384,8 @@ mod tests {
         };
         let sanitizer = PromptSanitizer::new(config);
         assert_eq!(
-            sanitizer.config().max_user_input_length, 42,
+            sanitizer.config().max_user_input_length,
+            42,
             "config() must return the config passed to new(), not a leaked default"
         );
     }
@@ -1389,7 +1405,13 @@ mod tests {
         let long = sanitizer.truncate("this is a longer input that must be truncated");
         assert!(!long.is_empty(), "truncate must not return empty string");
         assert_ne!(long, "xyzzy", "truncate must not return a dummy value");
-        assert!(long.ends_with("..."), "truncated output should end with ...");
-        assert!(long.len() <= 13, "truncated output must be bounded by max_length + 3");
+        assert!(
+            long.ends_with("..."),
+            "truncated output should end with ..."
+        );
+        assert!(
+            long.len() <= 13,
+            "truncated output must be bounded by max_length + 3"
+        );
     }
 }

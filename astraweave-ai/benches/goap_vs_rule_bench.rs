@@ -7,7 +7,9 @@ use criterion::{criterion_group, criterion_main};
 use std::hint::black_box;
 
 #[cfg(feature = "planner_advanced")]
-use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot};
+use astraweave_core::{
+    CompanionState, CoverType, EnemyState, IVec2, PlayerState, Stance, WorldSnapshot,
+};
 #[cfg(feature = "planner_advanced")]
 use criterion::{BenchmarkId, Criterion};
 #[cfg(feature = "planner_advanced")]

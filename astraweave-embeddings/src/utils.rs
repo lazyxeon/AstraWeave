@@ -209,11 +209,18 @@ impl MemoryUtils {
         }
 
         if memories.len() == 1 {
-            return memories.into_iter().next().expect("memories must not be empty");
+            return memories
+                .into_iter()
+                .next()
+                .expect("memories must not be empty");
         }
 
         // Sort by importance (highest first)
-        memories.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+        memories.sort_by(|a, b| {
+            b.importance
+                .partial_cmp(&a.importance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let primary = &memories[0];
         let mut merged_text = primary.text.clone();
@@ -475,7 +482,7 @@ mod tests {
     fn test_extract_keyphrases() {
         let text = "The quick brown fox jumps over the lazy dog";
         let keyphrases = TextPreprocessor::extract_keyphrases(text);
-        
+
         // Should filter words <= 3 chars
         assert!(!keyphrases.contains(&"the".to_string()));
         assert!(keyphrases.contains(&"quick".to_string()));
@@ -587,12 +594,8 @@ mod tests {
 
     #[test]
     fn test_create_combat_memory_draw() {
-        let memory = MemoryUtils::create_combat_memory(
-            "Draw".to_string(),
-            vec![],
-            0.5,
-            CombatOutcome::Draw,
-        );
+        let memory =
+            MemoryUtils::create_combat_memory("Draw".to_string(), vec![], 0.5, CombatOutcome::Draw);
         assert_eq!(memory.valence, 0.0);
     }
 

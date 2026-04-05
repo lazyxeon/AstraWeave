@@ -802,7 +802,10 @@ mod tests {
             min_length: 0,
             ..Default::default()
         };
-        assert!(PromptValidator::validate(&prompt, &rules).is_ok(), "prompt at exact max_length should pass");
+        assert!(
+            PromptValidator::validate(&prompt, &rules).is_ok(),
+            "prompt at exact max_length should pass"
+        );
     }
 
     #[test]
@@ -814,7 +817,10 @@ mod tests {
             min_length: 10,
             ..Default::default()
         };
-        assert!(PromptValidator::validate(&prompt, &rules).is_ok(), "prompt at exact min_length should pass");
+        assert!(
+            PromptValidator::validate(&prompt, &rules).is_ok(),
+            "prompt at exact min_length should pass"
+        );
     }
 
     #[test]
@@ -824,7 +830,12 @@ mod tests {
         let nested = "outer { inner { deep } end }";
         let score_flat = PromptAnalyzer::calculate_complexity(no_braces);
         let score_nested = PromptAnalyzer::calculate_complexity(nested);
-        assert!(score_nested > score_flat, "nested braces should increase complexity: nested={} flat={}", score_nested, score_flat);
+        assert!(
+            score_nested > score_flat,
+            "nested braces should increase complexity: nested={} flat={}",
+            score_nested,
+            score_flat
+        );
     }
 
     #[test]
@@ -834,17 +845,30 @@ mod tests {
         let long = "x".repeat(500);
         let score_short = PromptAnalyzer::calculate_complexity(short);
         let score_long = PromptAnalyzer::calculate_complexity(&long);
-        assert!(score_long > score_short, "longer prompts should have higher complexity: long={} short={}", score_long, score_short);
+        assert!(
+            score_long > score_short,
+            "longer prompts should have higher complexity: long={} short={}",
+            score_long,
+            score_short
+        );
     }
 
     #[test]
     fn test_calculate_complexity_line_count_factor() {
         // Remediation: kills "replace += with -= / *→/" in line_count factor
         let one_line = "a single line prompt";
-        let many_lines = (0..50).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n");
+        let many_lines = (0..50)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         let score_one = PromptAnalyzer::calculate_complexity(one_line);
         let score_many = PromptAnalyzer::calculate_complexity(&many_lines);
-        assert!(score_many > score_one, "more lines should increase complexity: many={} one={}", score_many, score_one);
+        assert!(
+            score_many > score_one,
+            "more lines should increase complexity: many={} one={}",
+            score_many,
+            score_one
+        );
     }
 
     #[test]
@@ -854,7 +878,11 @@ mod tests {
         let short_sentences = "Hello world. This is nice. Good day.";
         let score = PromptAnalyzer::calculate_readability(short_sentences);
         // ~3 sentences, ~7 words → avg ~2.3 words/sentence → score = 90 - 4 = 86
-        assert!(score > 60, "short sentences should have high readability, got {}", score);
+        assert!(
+            score > 60,
+            "short sentences should have high readability, got {}",
+            score
+        );
     }
 
     #[test]
@@ -864,7 +892,12 @@ mod tests {
         let score_long = PromptAnalyzer::calculate_readability(&long_sentence);
         let short_sentence = "Short sentence.";
         let score_short = PromptAnalyzer::calculate_readability(short_sentence);
-        assert!(score_short > score_long, "short sentences should score higher than long: short={} long={}", score_short, score_long);
+        assert!(
+            score_short > score_long,
+            "short sentences should score higher than long: short={} long={}",
+            score_short,
+            score_long
+        );
     }
 
     #[test]
@@ -873,7 +906,11 @@ mod tests {
         let very_long = (0..40).map(|_| "word").collect::<Vec<_>>().join(" ") + ".";
         let score = PromptAnalyzer::calculate_readability(&very_long);
         // 40 words/1 sentence → 40 avg → score = 40 - ((40-25)*1.5) = 40-22 = 18
-        assert!(score < 50, "very long sentences should score low, got {}", score);
+        assert!(
+            score < 50,
+            "very long sentences should score low, got {}",
+            score
+        );
         assert!(score > 0, "score should be positive, got {}", score);
     }
 
@@ -901,10 +938,7 @@ mod tests {
         // Second assertion: a prompt with NO braces has zero nesting contribution.
         // This pins the nesting factor independently.
         let flat_score = PromptAnalyzer::calculate_complexity("hello world");
-        assert_eq!(
-            flat_score, 0,
-            "short flat prompt must have complexity 0"
-        );
+        assert_eq!(flat_score, 0, "short flat prompt must have complexity 0");
     }
 
     #[test]

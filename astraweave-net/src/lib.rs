@@ -256,9 +256,9 @@ fn subset_hash(ents: &[EntityState]) -> u64 {
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod mutation_tests;
+#[cfg(test)]
+mod tests;
 
 fn world_to_entities(w: &World) -> Vec<EntityState> {
     // Stable by sorting by id
@@ -660,7 +660,8 @@ impl GameServer {
                                 snap: filtered.clone(),
                             };
                             println!("Forcing full snapshot to viewer {}", vid);
-                            #[allow(clippy::unwrap_used)] // Msg implements Serialize; serialization is infallible for known enum variants
+                            #[allow(clippy::unwrap_used)]
+                            // Msg implements Serialize; serialization is infallible for known enum variants
                             let _ = tx
                                 .send(Message::Text(serde_json::to_string(&msg).unwrap().into()))
                                 .await;

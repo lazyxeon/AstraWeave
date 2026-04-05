@@ -509,9 +509,7 @@ mod tests {
 
         let mut desired = BTreeMap::new();
         desired.insert("x".to_string(), StateValue::Bool(true));
-        scheduler
-            .active_goals
-            .push_back(Goal::new("g", desired));
+        scheduler.active_goals.push_back(Goal::new("g", desired));
 
         // At time 4.9: 4.9 - 0 = 4.9 < 5.0 → no replan
         assert!(!scheduler.should_replan(4.9, &WorldState::new()));

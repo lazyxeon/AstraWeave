@@ -3,9 +3,9 @@
 //! Converts HDR/EXR textures to engine-friendly PNG format, generates
 //! thumbnails for the asset browser, and normalizes PBR channel naming.
 
-use crate::decomposer::{DecomposedAsset, DecompositionResult, ExtractedHdri};
 #[cfg(test)]
 use crate::decomposer::AssetTexture;
+use crate::decomposer::{DecomposedAsset, DecompositionResult, ExtractedHdri};
 use anyhow::{Context, Result};
 use image::{DynamicImage, ImageFormat, RgbaImage};
 use std::path::{Path, PathBuf};
@@ -91,22 +91,13 @@ pub fn process_decomposition_textures(
     // 1. Convert HDR/EXR textures in the textures/ directory
     if config.convert_hdr_to_png {
         if let Some(textures_dir) = &result.textures_dir {
-            convert_hdr_textures_in_dir(
-                textures_dir,
-                config,
-                &mut processing_result,
-            )?;
+            convert_hdr_textures_in_dir(textures_dir, config, &mut processing_result)?;
         }
 
         // 2. Convert HDRI environment maps
         let hdri_dir = result.output_dir.join("hdri");
         if hdri_dir.exists() {
-            convert_hdri_files(
-                &hdri_dir,
-                &result.hdris,
-                config,
-                &mut processing_result,
-            )?;
+            convert_hdri_files(&hdri_dir, &result.hdris, config, &mut processing_result)?;
         }
     }
 
@@ -118,12 +109,7 @@ pub fn process_decomposition_textures(
     // 4. Generate thumbnails
     if config.generate_thumbnails {
         let thumbnails_dir = result.output_dir.join("thumbnails");
-        generate_asset_thumbnails(
-            result,
-            &thumbnails_dir,
-            config,
-            &mut processing_result,
-        )?;
+        generate_asset_thumbnails(result, &thumbnails_dir, config, &mut processing_result)?;
     }
 
     info!(
@@ -168,7 +154,11 @@ fn convert_hdr_textures_in_dir(
             match convert_hdr_file(&path, config) {
                 Ok(output_path) => {
                     result.hdr_conversions += 1;
-                    debug!("Converted HDR texture: {} → {}", path.display(), output_path.display());
+                    debug!(
+                        "Converted HDR texture: {} → {}",
+                        path.display(),
+                        output_path.display()
+                    );
 
                     if !config.keep_originals {
                         if let Err(e) = std::fs::remove_file(&path) {
@@ -207,7 +197,12 @@ fn convert_hdr_file(path: &Path, config: &TextureProcessingConfig) -> Result<Pat
     let output_path = path.with_extension(ext);
     tonemapped
         .save_with_format(&output_path, format)
-        .with_context(|| format!("Failed to save converted texture: {}", output_path.display()))?;
+        .with_context(|| {
+            format!(
+                "Failed to save converted texture: {}",
+                output_path.display()
+            )
+        })?;
 
     Ok(output_path)
 }
@@ -242,9 +237,10 @@ fn convert_hdri_files(
                     debug!("Converted HDRI: {}", hdri.original_name);
                 }
                 Err(e) => {
-                    result
-                        .warnings
-                        .push(format!("Failed to convert HDRI {}: {e}", hdri.original_name));
+                    result.warnings.push(format!(
+                        "Failed to convert HDRI {}: {e}",
+                        hdri.original_name
+                    ));
                 }
             }
         }
@@ -323,19 +319,20 @@ fn generate_asset_thumbnails(
     config: &TextureProcessingConfig,
     result: &mut TextureProcessingResult,
 ) -> Result<()> {
-    std::fs::create_dir_all(thumbnails_dir)
-        .with_context(|| format!("Failed to create thumbnails directory: {}", thumbnails_dir.display()))?;
+    std::fs::create_dir_all(thumbnails_dir).with_context(|| {
+        format!(
+            "Failed to create thumbnails directory: {}",
+            thumbnails_dir.display()
+        )
+    })?;
 
     let size = config.thumbnail_size;
 
     for asset in &decomp_result.assets {
         // Try to find the asset's diffuse/albedo texture for the thumbnail
-        if let Some(thumb_path) = generate_thumbnail_for_asset(
-            asset,
-            &decomp_result.output_dir,
-            thumbnails_dir,
-            size,
-        ) {
+        if let Some(thumb_path) =
+            generate_thumbnail_for_asset(asset, &decomp_result.output_dir, thumbnails_dir, size)
+        {
             result.thumbnail_paths.push(thumb_path);
             result.thumbnails_generated += 1;
         }
@@ -363,9 +360,10 @@ fn generate_asset_thumbnails(
                 result.thumbnails_generated += 1;
             }
             Err(e) => {
-                result
-                    .warnings
-                    .push(format!("HDRI thumbnail failed for {}: {e}", hdri.original_name));
+                result.warnings.push(format!(
+                    "HDRI thumbnail failed for {}: {e}",
+                    hdri.original_name
+                ));
             }
         }
     }
@@ -385,9 +383,10 @@ fn generate_thumbnail_for_asset(
 ) -> Option<PathBuf> {
     // Try to use the diffuse texture as the thumbnail source
     let textures_dir = output_dir.join("textures");
-    let diffuse_texture = asset.textures.iter().find(|t| {
-        matches!(t.channel.as_str(), "diffuse" | "albedo" | "base_color")
-    });
+    let diffuse_texture = asset
+        .textures
+        .iter()
+        .find(|t| matches!(t.channel.as_str(), "diffuse" | "albedo" | "base_color"));
 
     if let Some(tex) = diffuse_texture {
         let tex_path = textures_dir.join(&tex.filename);
@@ -438,12 +437,12 @@ fn generate_thumbnail(
 /// Generate a colored placeholder thumbnail based on asset category.
 fn generate_category_placeholder(category: &str, size: u32) -> DynamicImage {
     let (r, g, b) = match category {
-        "vegetation" => (34, 139, 34),   // Forest green
-        "rock" => (139, 137, 137),       // Gray
-        "terrain" => (160, 120, 60),     // Earth brown
-        "billboard" => (100, 149, 237),  // Cornflower blue
-        "prop" => (218, 165, 32),        // Goldenrod
-        _ => (128, 128, 128),            // Neutral gray
+        "vegetation" => (34, 139, 34),  // Forest green
+        "rock" => (139, 137, 137),      // Gray
+        "terrain" => (160, 120, 60),    // Earth brown
+        "billboard" => (100, 149, 237), // Cornflower blue
+        "prop" => (218, 165, 32),       // Goldenrod
+        _ => (128, 128, 128),           // Neutral gray
     };
 
     let mut img = RgbaImage::new(size, size);
@@ -515,7 +514,13 @@ fn tonemap_reinhard(img: &DynamicImage) -> DynamicImage {
 /// Sanitize a filename by replacing non-alphanumeric chars.
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -618,9 +623,9 @@ mod tests {
         // Check center pixel is green-ish
         let rgba = img.to_rgba8();
         let pixel = rgba.get_pixel(32, 32);
-        assert_eq!(pixel[0], 34);  // R
+        assert_eq!(pixel[0], 34); // R
         assert_eq!(pixel[1], 139); // G
-        assert_eq!(pixel[2], 34);  // B
+        assert_eq!(pixel[2], 34); // B
     }
 
     #[test]
@@ -629,7 +634,7 @@ mod tests {
         let mut rgb = image::Rgb32FImage::new(2, 2);
         rgb.put_pixel(0, 0, image::Rgb([1.0, 1.0, 1.0]));
         rgb.put_pixel(1, 0, image::Rgb([10.0, 0.0, 0.0])); // Bright red
-        rgb.put_pixel(0, 1, image::Rgb([0.0, 0.0, 0.0]));   // Black
+        rgb.put_pixel(0, 1, image::Rgb([0.0, 0.0, 0.0])); // Black
         rgb.put_pixel(1, 1, image::Rgb([0.5, 0.5, 0.5]));
 
         let hdr = DynamicImage::ImageRgb32F(rgb);
@@ -649,7 +654,11 @@ mod tests {
 
         // Bright red should be tonemapped (not clipped to 255)
         let red = rgba.get_pixel(1, 0);
-        assert!(red[0] > 200, "Tonemapped red should be bright but not clipped: {}", red[0]);
+        assert!(
+            red[0] > 200,
+            "Tonemapped red should be bright but not clipped: {}",
+            red[0]
+        );
         assert!(red[1] < 10, "Green channel of bright red should be near 0");
     }
 

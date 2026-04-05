@@ -1358,14 +1358,19 @@ mod tests {
         };
 
         // Very close → strong pull
-        let g_close = shape.get_gravity(Vec3::new(1.0, 0.0, 0.0), Vec3::ZERO).unwrap();
+        let g_close = shape
+            .get_gravity(Vec3::new(1.0, 0.0, 0.0), Vec3::ZERO)
+            .unwrap();
         // Far away but still inside → weak pull
-        let g_far = shape.get_gravity(Vec3::new(9.0, 0.0, 0.0), Vec3::ZERO).unwrap();
+        let g_far = shape
+            .get_gravity(Vec3::new(9.0, 0.0, 0.0), Vec3::ZERO)
+            .unwrap();
 
         assert!(
             g_close.length() > g_far.length(),
             "Closer point should have stronger gravity: close={}, far={}",
-            g_close.length(), g_far.length()
+            g_close.length(),
+            g_far.length()
         );
 
         // Direction should be toward center (negative x)

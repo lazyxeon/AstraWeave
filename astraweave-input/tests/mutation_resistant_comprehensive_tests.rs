@@ -3,8 +3,8 @@
 //! negation swaps, and operator mutations for 90%+ kill rate.
 
 use astraweave_input::*;
-use winit::keyboard::KeyCode;
 use winit::event::MouseButton;
+use winit::keyboard::KeyCode;
 
 // ========================================================================
 // INPUT CONTEXT
@@ -281,7 +281,10 @@ fn axis2_is_zero_above_threshold() {
 fn axis2_is_in_deadzone_strict_less_than() {
     // is_in_deadzone uses strict < : length < deadzone
     let a = Axis2::new(0.15, 0.0); // length = 0.15, deadzone = 0.15
-    assert!(!a.is_in_deadzone(0.15), "exactly at deadzone is NOT in deadzone (strict <)");
+    assert!(
+        !a.is_in_deadzone(0.15),
+        "exactly at deadzone is NOT in deadzone (strict <)"
+    );
 }
 
 #[test]
@@ -370,7 +373,10 @@ fn axis2_display_format() {
     let a = Axis2::new(1.5, -2.5);
     let s = format!("{}", a);
     assert!(s.contains("1.5"), "display should contain x");
-    assert!(s.contains("-2.5") || s.contains("2.5"), "display should contain y");
+    assert!(
+        s.contains("-2.5") || s.contains("2.5"),
+        "display should contain y"
+    );
 }
 
 // ========================================================================
@@ -690,7 +696,10 @@ fn axis_binding_with_deadzone() {
 fn axis_binding_inverted() {
     let ab = AxisBinding::inverted(AxisKind::LeftY);
     assert!(ab.is_inverted());
-    assert!((ab.deadzone - 0.15).abs() < 1e-6, "inverted still uses 0.15 deadzone");
+    assert!(
+        (ab.deadzone - 0.15).abs() < 1e-6,
+        "inverted still uses 0.15 deadzone"
+    );
 }
 
 #[test]
@@ -708,21 +717,30 @@ fn axis_binding_apply_exactly_at_deadzone_passes() {
     let result = ab.apply(0.15);
     assert!(result >= 0.0, "exactly at deadzone should pass (strict <)");
     // The remapped value: (0.15 - 0.15) / (1.0 - 0.15) = 0.0
-    assert!((result - 0.0).abs() < 1e-6, "output at deadzone boundary is ~0");
+    assert!(
+        (result - 0.0).abs() < 1e-6,
+        "output at deadzone boundary is ~0"
+    );
 }
 
 #[test]
 fn axis_binding_apply_above_deadzone_positive() {
     let ab = AxisBinding::new(AxisKind::LeftX);
     let result = ab.apply(0.5);
-    assert!(result > 0.0, "above deadzone should produce positive output");
+    assert!(
+        result > 0.0,
+        "above deadzone should produce positive output"
+    );
 }
 
 #[test]
 fn axis_binding_apply_full_positive() {
     let ab = AxisBinding::new(AxisKind::LeftX);
     let result = ab.apply(1.0);
-    assert!((result - 1.0).abs() < 1e-5, "full input should produce ~1.0 output");
+    assert!(
+        (result - 1.0).abs() < 1e-5,
+        "full input should produce ~1.0 output"
+    );
 }
 
 #[test]
@@ -731,7 +749,10 @@ fn axis_binding_apply_inverted_negates() {
     let normal = AxisBinding::new(AxisKind::LeftY);
     let result_inv = ab.apply(0.8);
     let result_norm = normal.apply(0.8);
-    assert!((result_inv + result_norm).abs() < 1e-5, "inverted should negate");
+    assert!(
+        (result_inv + result_norm).abs() < 1e-5,
+        "inverted should negate"
+    );
 }
 
 #[test]
@@ -789,10 +810,22 @@ fn binding_set_default_attack_mouse() {
 #[test]
 fn binding_set_default_ui_nav() {
     let bs = BindingSet::default();
-    assert_eq!(bs.get_binding(&Action::UiAccept).unwrap().key, Some(KeyCode::Enter));
-    assert_eq!(bs.get_binding(&Action::UiBack).unwrap().key, Some(KeyCode::Escape));
-    assert_eq!(bs.get_binding(&Action::UiUp).unwrap().key, Some(KeyCode::ArrowUp));
-    assert_eq!(bs.get_binding(&Action::UiDown).unwrap().key, Some(KeyCode::ArrowDown));
+    assert_eq!(
+        bs.get_binding(&Action::UiAccept).unwrap().key,
+        Some(KeyCode::Enter)
+    );
+    assert_eq!(
+        bs.get_binding(&Action::UiBack).unwrap().key,
+        Some(KeyCode::Escape)
+    );
+    assert_eq!(
+        bs.get_binding(&Action::UiUp).unwrap().key,
+        Some(KeyCode::ArrowUp)
+    );
+    assert_eq!(
+        bs.get_binding(&Action::UiDown).unwrap().key,
+        Some(KeyCode::ArrowDown)
+    );
 }
 
 #[test]
@@ -824,7 +857,10 @@ fn binding_set_set_and_get() {
     bs.set_binding(Action::Jump, Binding::with_key(KeyCode::Space));
     assert!(bs.has_binding(&Action::Jump));
     assert_eq!(bs.action_count(), 1);
-    assert_eq!(bs.get_binding(&Action::Jump).unwrap().key, Some(KeyCode::Space));
+    assert_eq!(
+        bs.get_binding(&Action::Jump).unwrap().key,
+        Some(KeyCode::Space)
+    );
 }
 
 #[test]
@@ -857,7 +893,11 @@ fn binding_set_non_empty_binding_count() {
     let mut bs = BindingSet::new();
     bs.set_binding(Action::Jump, Binding::with_key(KeyCode::Space));
     bs.set_binding(Action::Crouch, Binding::new()); // empty binding
-    assert_eq!(bs.non_empty_binding_count(), 1, "empty bindings not counted");
+    assert_eq!(
+        bs.non_empty_binding_count(),
+        1,
+        "empty bindings not counted"
+    );
 }
 
 #[test]
@@ -875,7 +915,10 @@ fn binding_set_serde_roundtrip() {
 #[test]
 fn input_manager_default_look_sensitivity() {
     let im = InputManager::new(InputContext::Gameplay, BindingSet::default());
-    assert!((im.look_sensitivity - 0.12).abs() < 1e-6, "default sensitivity = 0.12");
+    assert!(
+        (im.look_sensitivity - 0.12).abs() < 1e-6,
+        "default sensitivity = 0.12"
+    );
 }
 
 #[test]
@@ -945,7 +988,10 @@ fn every_action_classified() {
             a.is_ui_nav(),
         ];
         let in_cat = cats.iter().filter(|&&c| c).count();
-        let is_misc = matches!(a, Action::Jump | Action::Crouch | Action::Sprint | Action::Interact);
+        let is_misc = matches!(
+            a,
+            Action::Jump | Action::Crouch | Action::Sprint | Action::Interact
+        );
         if !is_misc {
             assert!(in_cat >= 1, "{:?} should be in at least one category", a);
         }

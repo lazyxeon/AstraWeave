@@ -627,15 +627,20 @@ mod tests {
     fn insert_path_preserves_existing_keys_in_object() {
         // Mutant: delete Object(map) match arm → falls to _ arm which creates new Object, losing "existing"
         let mut map = HashMap::new();
-        map.insert("existing".to_string(), ContextValue::String("keep_me".to_string()));
+        map.insert(
+            "existing".to_string(),
+            ContextValue::String("keep_me".to_string()),
+        );
         let mut value = ContextValue::Object(map);
 
         value.insert_path(&["new_key"], ContextValue::Number(42.0));
 
         if let ContextValue::Object(m) = &value {
             assert!(m.contains_key("existing"), "Existing key must be preserved");
-            assert!(matches!(m.get("existing"), Some(ContextValue::String(s)) if s == "keep_me"),
-                "Existing value must be unchanged");
+            assert!(
+                matches!(m.get("existing"), Some(ContextValue::String(s)) if s == "keep_me"),
+                "Existing value must be unchanged"
+            );
             assert!(m.contains_key("new_key"), "New key must be inserted");
         } else {
             panic!("Expected Object variant");
@@ -649,8 +654,10 @@ mod tests {
         value.insert_path(&["direct"], ContextValue::String("value".to_string()));
 
         if let ContextValue::Object(m) = &value {
-            assert!(matches!(m.get("direct"), Some(ContextValue::String(s)) if s == "value"),
-                "Single-depth insert must place value directly");
+            assert!(
+                matches!(m.get("direct"), Some(ContextValue::String(s)) if s == "value"),
+                "Single-depth insert must place value directly"
+            );
         } else {
             panic!("Expected Object");
         }
@@ -665,8 +672,10 @@ mod tests {
         // "a" should be an Object containing "b" → true
         if let ContextValue::Object(outer) = &value {
             if let Some(ContextValue::Object(inner)) = outer.get("a") {
-                assert!(matches!(inner.get("b"), Some(ContextValue::Boolean(true))),
-                    "Nested path must create nested Object structure");
+                assert!(
+                    matches!(inner.get("b"), Some(ContextValue::Boolean(true))),
+                    "Nested path must create nested Object structure"
+                );
             } else {
                 panic!("'a' must be Object, got {:?}", outer.get("a"));
             }
@@ -696,7 +705,9 @@ mod tests {
 
         if let ContextValue::Object(outer) = &value {
             if let Some(ContextValue::Object(inner)) = outer.get("x") {
-                assert!(matches!(inner.get("y"), Some(ContextValue::Number(n)) if (*n - 7.0).abs() < 0.001));
+                assert!(
+                    matches!(inner.get("y"), Some(ContextValue::Number(n)) if (*n - 7.0).abs() < 0.001)
+                );
             } else {
                 panic!("'x' must be Object");
             }
@@ -718,9 +729,15 @@ mod tests {
             ContextValue::String("c".to_string()),
         ]);
         let display = format!("{}", arr);
-        assert_eq!(display, "[a, b, c]",
-            "Array Display must have commas only between elements, got: {}", display);
-        assert!(!display.starts_with("[, "), "Must not start with comma-space");
+        assert_eq!(
+            display, "[a, b, c]",
+            "Array Display must have commas only between elements, got: {}",
+            display
+        );
+        assert!(
+            !display.starts_with("[, "),
+            "Must not start with comma-space"
+        );
     }
 
     #[test]
@@ -731,17 +748,20 @@ mod tests {
         map.insert("key".to_string(), ContextValue::Number(42.0));
         let obj = ContextValue::Object(map);
         let display = format!("{}", obj);
-        assert_eq!(display, "{key: 42}",
-            "Single-entry object must not have leading comma, got: {}", display);
-        assert!(!display.starts_with("{, "), "Must not start with comma-space after brace");
+        assert_eq!(
+            display, "{key: 42}",
+            "Single-entry object must not have leading comma, got: {}",
+            display
+        );
+        assert!(
+            !display.starts_with("{, "),
+            "Must not start with comma-space after brace"
+        );
     }
 
     #[test]
     fn display_array_two_elements() {
-        let arr = ContextValue::Array(vec![
-            ContextValue::Number(1.0),
-            ContextValue::Number(2.0),
-        ]);
+        let arr = ContextValue::Array(vec![ContextValue::Number(1.0), ContextValue::Number(2.0)]);
         let display = format!("{}", arr);
         assert_eq!(display, "[1, 2]");
     }

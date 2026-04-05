@@ -24,10 +24,7 @@ fn test_save_10000_entities() {
         world.insert(
             e,
             CPos {
-                pos: IVec2 {
-                    x: i,
-                    y: (i * 2),
-                },
+                pos: IVec2 { x: i, y: (i * 2) },
             },
         );
         world.insert(e, CHealth { hp: 100 });
@@ -77,18 +74,10 @@ fn test_load_10000_entities_under_5_seconds() {
         world.insert(
             e,
             CPos {
-                pos: IVec2 {
-                    x: i,
-                    y: i,
-                },
+                pos: IVec2 { x: i, y: i },
             },
         );
-        world.insert(
-            e,
-            CHealth {
-                hp: 50 + (i % 100),
-            },
-        );
+        world.insert(e, CHealth { hp: 50 + (i % 100) });
         world.insert(e, CTeam { id: (i % 8) as u8 });
     }
 
@@ -135,10 +124,7 @@ fn test_save_100000_components() {
         world.insert(
             e,
             CPos {
-                pos: IVec2 {
-                    x: i,
-                    y: i,
-                },
+                pos: IVec2 { x: i, y: i },
             },
         );
         world.insert(e, CHealth { hp: 100 });
@@ -207,10 +193,7 @@ fn test_memory_usage_reasonable() {
         world.insert(
             e,
             CPos {
-                pos: IVec2 {
-                    x: i,
-                    y: i,
-                },
+                pos: IVec2 { x: i, y: i },
             },
         );
         world.insert(e, CHealth { hp: 100 });
@@ -251,10 +234,7 @@ fn test_large_world_hash_performance() {
         world.insert(
             e,
             CPos {
-                pos: IVec2 {
-                    x: i,
-                    y: i,
-                },
+                pos: IVec2 { x: i, y: i },
             },
         );
         world.insert(e, CHealth { hp: 100 });
@@ -307,12 +287,7 @@ fn test_roundtrip_50000_entities() {
                 },
             },
         );
-        world.insert(
-            e,
-            CHealth {
-                hp: 50 + (i % 100),
-            },
-        );
+        world.insert(e, CHealth { hp: 50 + (i % 100) });
 
         if i % 5 == 0 {
             world.insert(e, CTeam { id: (i % 10) as u8 });
@@ -355,10 +330,7 @@ fn test_blob_size_scaling() {
             world.insert(
                 e,
                 CPos {
-                    pos: IVec2 {
-                        x: i,
-                        y: i,
-                    },
+                    pos: IVec2 { x: i, y: i },
                 },
             );
             world.insert(e, CHealth { hp: 100 });
@@ -405,10 +377,7 @@ fn test_serialize_deserialize_throughput() {
         world.insert(
             e,
             CPos {
-                pos: IVec2 {
-                    x: i,
-                    y: i,
-                },
+                pos: IVec2 { x: i, y: i },
             },
         );
         world.insert(e, CHealth { hp: 100 });

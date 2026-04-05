@@ -66,7 +66,10 @@ impl SnapshotAdapter {
             state.set("enemy_hp", StateValue::Int(first_enemy.hp));
             state.set("enemy_x", StateValue::Int(first_enemy.pos.x));
             state.set("enemy_y", StateValue::Int(first_enemy.pos.y));
-            state.set("enemy_cover", StateValue::String(first_enemy.cover.to_string()));
+            state.set(
+                "enemy_cover",
+                StateValue::String(first_enemy.cover.to_string()),
+            );
 
             // Calculate distance to closest enemy
             let dist_x = (snap.me.pos.x - first_enemy.pos.x).abs();
@@ -343,14 +346,8 @@ mod tests {
         );
 
         // Active cooldown flags
-        assert_eq!(
-            s.get("attack_on_cooldown"),
-            Some(&StateValue::Bool(true))
-        );
-        assert_eq!(
-            s.get("dodge_on_cooldown"),
-            Some(&StateValue::Bool(false))
-        );
+        assert_eq!(s.get("attack_on_cooldown"), Some(&StateValue::Bool(true)));
+        assert_eq!(s.get("dodge_on_cooldown"), Some(&StateValue::Bool(false)));
     }
 
     #[test]

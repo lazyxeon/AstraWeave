@@ -52,7 +52,9 @@ pub async fn ws_client_roundtrip(addr: &str, snapshot: &WorldSnapshot) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::schema::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance};
+    use astraweave_core::schema::{
+        CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance,
+    };
     use std::collections::BTreeMap;
 
     fn create_test_snapshot() -> WorldSnapshot {

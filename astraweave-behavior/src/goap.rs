@@ -595,15 +595,13 @@ mod tests {
         // With g+h: "useful" (f=1+0=1) beats distracts (f=0.1+5=5.1) -> found in ~2 iters
         // With g-h: distracts (f=0.1-5=-4.9) beat "useful" (f=1-0=1) -> exponential
         //           distraction blowup exhausts max_iterations before useful is popped
-        let mut actions = vec![
-            GoapAction::new("useful")
-                .with_cost(1.0)
-                .with_effect("g1", true)
-                .with_effect("g2", true)
-                .with_effect("g3", true)
-                .with_effect("g4", true)
-                .with_effect("g5", true),
-        ];
+        let mut actions = vec![GoapAction::new("useful")
+            .with_cost(1.0)
+            .with_effect("g1", true)
+            .with_effect("g2", true)
+            .with_effect("g3", true)
+            .with_effect("g4", true)
+            .with_effect("g5", true)];
 
         // 6 distraction actions -- set irrelevant facts, h stays 5
         for i in 0..6 {

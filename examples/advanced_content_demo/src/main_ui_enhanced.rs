@@ -149,7 +149,7 @@ fn demo_scenario_2_defend_quest_with_ui() {
         100.0,
         100.0, // Health
         180.0, // 3 minutes
-        3, // Total waves
+        3,     // Total waves
     );
 
     let mut quest = Quest::new(
@@ -174,7 +174,7 @@ fn demo_scenario_2_defend_quest_with_ui() {
 
     // === WAVE 1: Standard enemies ===
     println!("\n📺 Wave 1: Standard Enemies (15 enemies)");
-    
+
     // Use force_spawn_wave to simulate wave spawn
     let anchor = Anchor::new(1.0, 100, None);
     let anchors = vec![(0, &anchor)];
@@ -219,7 +219,7 @@ fn demo_scenario_2_defend_quest_with_ui() {
 
     // === WAVE 2: Riftstalkers appear ===
     println!("\n📺 Wave 2: Riftstalkers Appear! (Wave 6)");
-    
+
     let archetype = crate::enemy_types::EnemyArchetype::Riftstalker;
     println!("⚠️  Advanced enemy type: {:?}", archetype);
 
@@ -237,7 +237,11 @@ fn demo_scenario_2_defend_quest_with_ui() {
     // === WAVE 3: Victory! ===
     println!("\n📺 Wave 3 Complete: Defense Successful!");
 
-    if let ObjectiveType::Defend { objective: ref mut anchor, .. } = quest.objectives[0] {
+    if let ObjectiveType::Defend {
+        objective: ref mut anchor,
+        ..
+    } = quest.objectives[0]
+    {
         anchor.current_health = 75.0; // Took some damage
         anchor.elapsed_seconds = 180.0; // Timer expired (success)
         println!("🏰 Village Health: {} / 100.0", anchor.current_health);
@@ -278,7 +282,9 @@ fn demo_scenario_3_boss_fight_with_ui() {
         "Shatter the Void",
         "Defeat the Void Boss to restore reality.",
     )
-    .with_objective(ObjectiveType::Boss { objective: void_boss })
+    .with_objective(ObjectiveType::Boss {
+        objective: void_boss,
+    })
     .with_reward(QuestReward::EchoCurrency(250));
 
     quest.state = QuestState::Active;
@@ -340,7 +346,10 @@ fn demo_scenario_3_boss_fight_with_ui() {
     }
 
     // Damage to boss (simulated)
-    if let ObjectiveType::Boss { objective: ref mut boss } = quest.objectives[0] {
+    if let ObjectiveType::Boss {
+        objective: ref mut boss,
+    } = quest.objectives[0]
+    {
         boss.boss_health -= 300.0;
         println!("\n⚔️  Player deals 300 damage!");
         println!(
@@ -361,7 +370,10 @@ fn demo_scenario_3_boss_fight_with_ui() {
     // === PHASE 2: Boss enrage ===
     println!("\n📺 Phase 2: Boss Enraged! (HP < 50%)");
 
-    if let ObjectiveType::Boss { objective: ref mut boss } = quest.objectives[0] {
+    if let ObjectiveType::Boss {
+        objective: ref mut boss,
+    } = quest.objectives[0]
+    {
         boss.current_phase = quest_types::BossPhase::Phase2;
         boss.boss_health = 400.0;
         println!("⚠️  Boss entered Phase 2! Attack speed increased!");
@@ -396,7 +408,10 @@ fn demo_scenario_3_boss_fight_with_ui() {
     // === Victory! ===
     println!("\n📺 Final Strike: Boss Defeated!");
 
-    if let ObjectiveType::Boss { objective: ref mut boss } = quest.objectives[0] {
+    if let ObjectiveType::Boss {
+        objective: ref mut boss,
+    } = quest.objectives[0]
+    {
         boss.boss_health = 0.0;
         boss.current_phase = quest_types::BossPhase::Phase3; // Defeated
         println!("💀 Void Boss shattered!");

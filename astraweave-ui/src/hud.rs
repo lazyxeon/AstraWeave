@@ -2703,7 +2703,11 @@ mod tests {
     fn test_world_to_screen_simple_golden_values() {
         // Screen center with world origin
         let result = world_to_screen_simple((0.0, 0.0, 0.0), (800.0, 600.0));
-        assert_eq!(result, Some((400.0, 300.0)), "Origin should map to screen center");
+        assert_eq!(
+            result,
+            Some((400.0, 300.0)),
+            "Origin should map to screen center"
+        );
 
         // Positive X shifts right: 800/2 + 5*20 = 400 + 100 = 500
         let result = world_to_screen_simple((5.0, 0.0, 0.0), (800.0, 600.0));
@@ -2712,14 +2716,21 @@ mod tests {
         // Positive Y shifts up (screen Y inverted): 600/2 - 5*20 = 300 - 100 = 200
         let result = world_to_screen_simple((0.0, 5.0, 0.0), (800.0, 600.0));
         // screen_x = 800/2 + 0*20 = 400, screen_y = 600/2 - 5*20 = 200
-        assert_eq!(result, Some((400.0, 200.0)), "Positive Y maps up (inverted)");
+        assert_eq!(
+            result,
+            Some((400.0, 200.0)),
+            "Positive Y maps up (inverted)"
+        );
     }
 
     #[test]
     fn test_world_to_screen_simple_depth_culling() {
         // Z within range: should return Some
         let result = world_to_screen_simple((0.0, 0.0, 25.0), (800.0, 600.0));
-        assert!(result.is_some(), "Z=25 within -50..=50 should not be culled");
+        assert!(
+            result.is_some(),
+            "Z=25 within -50..=50 should not be culled"
+        );
 
         // Z at boundary: -50 and 50 should be included (contains uses ..=)
         let result = world_to_screen_simple((0.0, 0.0, 50.0), (800.0, 600.0));
@@ -2740,15 +2751,21 @@ mod tests {
         // screen_x = 1920/2 + 3*20 = 960 + 60 = 1020
         // screen_y = 1080/2 - 2*20 = 540 - 40 = 500
         let result = world_to_screen_simple((3.0, 2.0, 0.0), (1920.0, 1080.0));
-        assert_eq!(result, Some((1020.0, 500.0)),
-            "Arithmetic check: x=960+60=1020, y=540-40=500");
+        assert_eq!(
+            result,
+            Some((1020.0, 500.0)),
+            "Arithmetic check: x=960+60=1020, y=540-40=500"
+        );
 
         // Negative world coords
         // screen_x = 960 + (-4)*20 = 960 - 80 = 880
         // screen_y = 540 - (-3)*20 = 540 + 60 = 600
         let result = world_to_screen_simple((-4.0, -3.0, 0.0), (1920.0, 1080.0));
-        assert_eq!(result, Some((880.0, 600.0)),
-            "Negative coords: x=960-80=880, y=540+60=600");
+        assert_eq!(
+            result,
+            Some((880.0, 600.0)),
+            "Negative coords: x=960-80=880, y=540+60=600"
+        );
     }
 
     // ========================================================================
@@ -2766,14 +2783,20 @@ mod tests {
         // Advance by 0.5s (within 1.5s lifetime)
         hud.game_time = 10.5;
         hud.update(0.5);
-        assert_eq!(hud.damage_numbers.len(), 1,
-            "damage number should persist at age=0.5s (catches - → + in retain)");
+        assert_eq!(
+            hud.damage_numbers.len(),
+            1,
+            "damage number should persist at age=0.5s (catches - → + in retain)"
+        );
 
         // Advance past lifetime (total age > 1.5s)
         hud.game_time = 12.0;
         hud.update(1.5);
-        assert_eq!(hud.damage_numbers.len(), 0,
-            "damage number should be removed after 2.0s lifetime");
+        assert_eq!(
+            hud.damage_numbers.len(),
+            0,
+            "damage number should be removed after 2.0s lifetime"
+        );
     }
 
     #[test]

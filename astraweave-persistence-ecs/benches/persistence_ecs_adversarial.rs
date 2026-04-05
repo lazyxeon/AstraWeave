@@ -8,9 +8,7 @@
 //! - Migration/versioning overhead
 //! - Corruption detection and recovery
 
-use criterion::{
-    criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::collections::HashMap;
 use std::hint::black_box as std_black_box;
 
@@ -36,7 +34,11 @@ struct Version {
 
 impl Version {
     fn new(major: u16, minor: u16, patch: u16) -> Self {
-        Self { major, minor, patch }
+        Self {
+            major,
+            minor,
+            patch,
+        }
     }
 
     fn serialize(&self) -> [u8; 6] {
@@ -316,7 +318,12 @@ impl SerializedEntity {
 
     #[allow(dead_code)]
     fn byte_size(&self) -> usize {
-        8 + 4 + self.components.values().map(|d| 4 + 4 + d.len()).sum::<usize>()
+        8 + 4
+            + self
+                .components
+                .values()
+                .map(|d| 4 + 4 + d.len())
+                .sum::<usize>()
     }
 }
 
@@ -451,10 +458,7 @@ fn compress_lz4(data: &[u8]) -> Vec<u8> {
 
     while i < data.len() {
         let mut run: u8 = 1;
-        while i + (run as usize) < data.len()
-            && data[i] == data[i + run as usize]
-            && run < 255
-        {
+        while i + (run as usize) < data.len() && data[i] == data[i + run as usize] && run < 255 {
             run += 1;
         }
 
@@ -795,10 +799,10 @@ fn bench_compression_efficiency(c: &mut Criterion) {
             .map(|i| {
                 // Mix of patterns: repeated bytes, sequential, random-ish
                 match i % 16 {
-                    0..=3 => 0u8,                    // Zero runs
-                    4..=7 => (i & 0xFF) as u8,      // Sequential
+                    0..=3 => 0u8,                     // Zero runs
+                    4..=7 => (i & 0xFF) as u8,        // Sequential
                     8..=11 => ((i * 7) & 0xFF) as u8, // Pseudo-random
-                    _ => 0xFFu8,                     // High runs
+                    _ => 0xFFu8,                      // High runs
                 }
             })
             .collect();
@@ -806,18 +810,14 @@ fn bench_compression_efficiency(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("compress", format!("{}bytes", size)),
             &data,
-            |b, data| {
-                b.iter(|| std_black_box(compress_lz4(data)))
-            },
+            |b, data| b.iter(|| std_black_box(compress_lz4(data))),
         );
 
         let compressed = compress_lz4(&data);
         group.bench_with_input(
             BenchmarkId::new("decompress", format!("{}bytes", size)),
             &compressed,
-            |b, compressed| {
-                b.iter(|| std_black_box(decompress_lz4(compressed)))
-            },
+            |b, compressed| b.iter(|| std_black_box(decompress_lz4(compressed))),
         );
 
         // Compression ratio calculation
@@ -849,8 +849,10 @@ fn bench_component_deserialization(c: &mut Criterion) {
 
     group.bench_function("deserialize_transforms_1000", |b| {
         b.iter(|| {
-            let deserialized: Vec<Option<Transform>> =
-                transforms.iter().map(|t| Transform::deserialize(t)).collect();
+            let deserialized: Vec<Option<Transform>> = transforms
+                .iter()
+                .map(|t| Transform::deserialize(t))
+                .collect();
             std_black_box(deserialized)
         })
     });

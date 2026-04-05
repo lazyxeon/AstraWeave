@@ -29,10 +29,20 @@ impl ResponseModifiers {
     pub fn from_input(input: &str) -> Self {
         let lower = input.to_lowercase();
         Self {
-            brief: lower.contains("brief") || lower.contains("short") || lower.contains("quick") || lower.contains("concise"),
-            detailed: lower.contains("detail") || lower.contains("elaborate") || lower.contains("thorough") || lower.contains("deep"),
-            no_spoilers: lower.contains("no spoiler") || lower.contains("hint only") || lower.contains("don't spoil"),
-            step_by_step: lower.contains("step by step") || lower.contains("step-by-step") || lower.contains("walkthrough"),
+            brief: lower.contains("brief")
+                || lower.contains("short")
+                || lower.contains("quick")
+                || lower.contains("concise"),
+            detailed: lower.contains("detail")
+                || lower.contains("elaborate")
+                || lower.contains("thorough")
+                || lower.contains("deep"),
+            no_spoilers: lower.contains("no spoiler")
+                || lower.contains("hint only")
+                || lower.contains("don't spoil"),
+            step_by_step: lower.contains("step by step")
+                || lower.contains("step-by-step")
+                || lower.contains("walkthrough"),
         }
     }
 
@@ -189,7 +199,8 @@ impl LlmWorker {
 
     /// Simple request (no modifiers, no streaming).
     pub fn request(&self, prompt: String) -> tokio::sync::oneshot::Receiver<String> {
-        self.request_with_options(prompt, ResponseModifiers::default(), false).0
+        self.request_with_options(prompt, ResponseModifiers::default(), false)
+            .0
     }
 
     /// Request with modifiers parsed from user input.
@@ -207,7 +218,10 @@ impl LlmWorker {
         &self,
         prompt: String,
         input: &str,
-    ) -> (tokio::sync::oneshot::Receiver<String>, std::sync::mpsc::Receiver<String>) {
+    ) -> (
+        tokio::sync::oneshot::Receiver<String>,
+        std::sync::mpsc::Receiver<String>,
+    ) {
         let modifiers = ResponseModifiers::from_input(input);
         self.request_with_options(prompt, modifiers, true)
     }
@@ -217,7 +231,10 @@ impl LlmWorker {
         prompt: String,
         modifiers: ResponseModifiers,
         streaming: bool,
-    ) -> (tokio::sync::oneshot::Receiver<String>, std::sync::mpsc::Receiver<String>) {
+    ) -> (
+        tokio::sync::oneshot::Receiver<String>,
+        std::sync::mpsc::Receiver<String>,
+    ) {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         let (stream_tx, stream_rx) = std::sync::mpsc::channel();
 

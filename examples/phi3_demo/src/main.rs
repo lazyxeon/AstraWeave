@@ -13,7 +13,9 @@
 //! cargo run -p phi3_demo --release
 //! ```
 
-use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance, WorldSnapshot};
+use astraweave_core::{
+    CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance, WorldSnapshot,
+};
 use astraweave_llm::phi3_ollama::Phi3Ollama;
 use astraweave_llm::prompts::{quick, PromptBuilder};
 use astraweave_llm::LlmClient;

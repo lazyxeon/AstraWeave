@@ -10,7 +10,9 @@
 //! orchestrator integration are immediately detected.
 
 use astraweave_ai::{Orchestrator, RuleOrchestrator};
-use astraweave_core::schema::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance};
+use astraweave_core::schema::{
+    CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance,
+};
 use astraweave_core::{ActionStep, PlanIntent, WorldSnapshot};
 use std::collections::BTreeMap;
 

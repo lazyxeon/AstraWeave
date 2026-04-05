@@ -389,7 +389,11 @@ mod tests {
         ];
         for i in 0..hashes.len() {
             for j in (i + 1)..hashes.len() {
-                assert_ne!(hashes[i], hashes[j], "Hash collision between variant {} and {}", i, j);
+                assert_ne!(
+                    hashes[i], hashes[j],
+                    "Hash collision between variant {} and {}",
+                    i, j
+                );
             }
         }
     }
@@ -416,8 +420,8 @@ mod tests {
         // Kills >= vs >, <= vs < boundary mutations on IntRange
         let range = StateValue::IntRange(50, 100);
         assert!(!StateValue::Int(49).satisfies(&range)); // below min
-        assert!(StateValue::Int(50).satisfies(&range));  // at min
-        assert!(StateValue::Int(75).satisfies(&range));  // mid
+        assert!(StateValue::Int(50).satisfies(&range)); // at min
+        assert!(StateValue::Int(75).satisfies(&range)); // mid
         assert!(StateValue::Int(100).satisfies(&range)); // at max
         assert!(!StateValue::Int(101).satisfies(&range)); // above max
     }
@@ -597,7 +601,10 @@ mod tests {
         let a = StateValue::Float(OrderedFloat(0.0));
         let b = StateValue::Float(OrderedFloat(1e-6));
         // (0.0 - 1e-6).abs() = 1e-6; 1e-6 < 1e-6 is false
-        assert!(!a.satisfies(&b), "Exactly 1e-6 apart should NOT satisfy with strict <");
+        assert!(
+            !a.satisfies(&b),
+            "Exactly 1e-6 apart should NOT satisfy with strict <"
+        );
     }
 
     #[test]
@@ -606,7 +613,10 @@ mod tests {
         let i = StateValue::Int(0);
         let f = StateValue::Float(OrderedFloat(1e-6));
         // (0 as f32 - 1e-6).abs() = 1e-6; 1e-6 < 1e-6 is false
-        assert!(!i.satisfies(&f), "Int(0) vs Float(1e-6) at boundary should NOT satisfy");
+        assert!(
+            !i.satisfies(&f),
+            "Int(0) vs Float(1e-6) at boundary should NOT satisfy"
+        );
     }
 
     #[test]
@@ -615,6 +625,9 @@ mod tests {
         let f = StateValue::Float(OrderedFloat(1e-6));
         let i = StateValue::Int(0);
         // (1e-6 - 0.0).abs() = 1e-6; 1e-6 < 1e-6 is false
-        assert!(!f.satisfies(&i), "Float(1e-6) vs Int(0) at boundary should NOT satisfy");
+        assert!(
+            !f.satisfies(&i),
+            "Float(1e-6) vs Int(0) at boundary should NOT satisfy"
+        );
     }
 }

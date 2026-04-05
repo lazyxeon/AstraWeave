@@ -505,12 +505,20 @@ impl SaveManager {
 
             if old_save.exists() {
                 if let Err(e) = std::fs::rename(&old_save, &new_save) {
-                    tracing::warn!("Autosave rotation failed ({:?} -> {:?}): {e}", old_save, new_save);
+                    tracing::warn!(
+                        "Autosave rotation failed ({:?} -> {:?}): {e}",
+                        old_save,
+                        new_save
+                    );
                 }
             }
             if old_meta.exists() {
                 if let Err(e) = std::fs::rename(&old_meta, &new_meta) {
-                    tracing::warn!("Autosave metadata rotation failed ({:?} -> {:?}): {e}", old_meta, new_meta);
+                    tracing::warn!(
+                        "Autosave metadata rotation failed ({:?} -> {:?}): {e}",
+                        old_meta,
+                        new_meta
+                    );
                 }
             }
         }

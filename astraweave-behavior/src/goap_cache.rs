@@ -733,21 +733,16 @@ mod tests {
         ];
 
         let state = WorldState::from_facts(&[("has_weapon", true)]);
-        let goal = GoapGoal::new(
-            "eliminate",
-            WorldState::from_facts(&[("enemy_dead", true)]),
-        );
+        let goal = GoapGoal::new("eliminate", WorldState::from_facts(&[("enemy_dead", true)]));
 
         // Plan with v1 actions
         let plan1 = planner.plan(&state, &goal, &actions_v1);
         assert!(plan1.is_some(), "v1 plan should succeed");
 
         // Modify actions (simulate changing capabilities)
-        let actions_v2 = vec![
-            GoapAction::new("snipe")
-                .with_cost(1.0)
-                .with_effect("enemy_dead", true),
-        ];
+        let actions_v2 = vec![GoapAction::new("snipe")
+            .with_cost(1.0)
+            .with_effect("enemy_dead", true)];
 
         // Plan with v2 — cache should NOT return stale v1 plan
         let plan2 = planner.plan(&state, &goal, &actions_v2);
@@ -797,7 +792,10 @@ mod tests {
         );
 
         // Cache should still be functional with recent entries
-        assert!(!cache.is_empty(), "Cache should not be empty after insertions");
+        assert!(
+            !cache.is_empty(),
+            "Cache should not be empty after insertions"
+        );
     }
 
     #[test]
@@ -816,10 +814,7 @@ mod tests {
                 .with_effect("enemy_dead", true),
         ];
 
-        let goal = GoapGoal::new(
-            "kill",
-            WorldState::from_facts(&[("enemy_dead", true)]),
-        );
+        let goal = GoapGoal::new("kill", WorldState::from_facts(&[("enemy_dead", true)]));
 
         // Agent A: already has ammo → 1-step plan (attack)
         let state_a = WorldState::from_facts(&[("has_ammo", true)]);
@@ -877,7 +872,11 @@ mod tests {
         for i in 0..50u32 {
             let state = WorldState::from_facts(&[("state", i % 2 == 0)]);
             let result = cache.get(&state, &goal, &actions);
-            assert!(result.is_none(), "Stale plan returned after clear for i={}", i);
+            assert!(
+                result.is_none(),
+                "Stale plan returned after clear for i={}",
+                i
+            );
         }
     }
 
@@ -912,7 +911,11 @@ mod tests {
 
         // After round 2: 5 misses, 5 hits
         assert_eq!(cache.stats().hits, 5, "Round 2: all 5 should be hits");
-        assert_eq!(cache.stats().misses, 5, "Misses should not change in round 2");
+        assert_eq!(
+            cache.stats().misses,
+            5,
+            "Misses should not change in round 2"
+        );
         assert_eq!(
             cache.stats().total_accesses(),
             10,
@@ -967,7 +970,7 @@ mod tests {
 
         // Also test when action count is same but content differs
         let actions_v3 = vec![
-            GoapAction::new("find_ammo_v2")  // different name
+            GoapAction::new("find_ammo_v2") // different name
                 .with_cost(1.0)
                 .with_effect("has_ammo", true),
             GoapAction::new("attack")
@@ -1018,7 +1021,10 @@ mod tests {
 
         // A should still be cached (was recently accessed)
         let hit_a2 = cache.get(&state_a, &goal, &actions);
-        assert!(hit_a2.is_some(), "A should survive eviction (recently accessed)");
+        assert!(
+            hit_a2.is_some(),
+            "A should survive eviction (recently accessed)"
+        );
 
         // B should be evicted (oldest after A's access bump)
         let hit_b = cache.get(&state_b, &goal, &actions);

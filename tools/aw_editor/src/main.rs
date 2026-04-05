@@ -4034,7 +4034,8 @@ impl EditorApp {
                             scene_state.world_mut(),
                             Some(&mut self.entity_manager),
                         ) {
-                            self.console_logs.push(format!("Create entity failed: {}", e));
+                            self.console_logs
+                                .push(format!("Create entity failed: {}", e));
                         } else {
                             // Select the newly created entity
                             if let Some(&last) = scene_state.world().entities().last() {
@@ -4099,7 +4100,8 @@ impl EditorApp {
                             scene_state.world_mut(),
                             Some(&mut self.entity_manager),
                         ) {
-                            self.console_logs.push(format!("Spawn archetype failed: {}", e));
+                            self.console_logs
+                                .push(format!("Spawn archetype failed: {}", e));
                         } else {
                             // Select the newly created entity
                             if let Some(&last) = scene_state.world().entities().last() {
@@ -8727,11 +8729,14 @@ impl eframe::App for EditorApp {
                         if count > 0 {
                             if let Some(scene_state) = &mut self.scene_state {
                                 for entity in &root_entities {
-                                    if let Err(e) = self.prefab_manager.revert_instance_to_prefab(
-                                        *entity,
-                                        scene_state.world_mut(),
-                                    ) {
-                                        tracing::error!("Prefab hot-reload revert failed for entity {:?}: {e}", entity);
+                                    if let Err(e) = self
+                                        .prefab_manager
+                                        .revert_instance_to_prefab(*entity, scene_state.world_mut())
+                                    {
+                                        tracing::error!(
+                                            "Prefab hot-reload revert failed for entity {:?}: {e}",
+                                            entity
+                                        );
                                     }
                                 }
                             }

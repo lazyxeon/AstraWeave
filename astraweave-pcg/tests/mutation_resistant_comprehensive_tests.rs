@@ -584,7 +584,10 @@ fn shuffle_actually_reorders() {
     let original: Vec<i32> = (1..=20).collect();
     let mut shuffled = original.clone();
     rng.shuffle(&mut shuffled);
-    assert_ne!(shuffled, original, "shuffle must reorder a 20-element array");
+    assert_ne!(
+        shuffled, original,
+        "shuffle must reorder a 20-element array"
+    );
 }
 
 /// Kill: SeedRng::gen_f32 → 0.0
@@ -592,7 +595,10 @@ fn shuffle_actually_reorders() {
 fn gen_f32_produces_nonzero() {
     let mut rng = SeedRng::new(42, "test");
     let sum: f32 = (0..100).map(|_| rng.gen_f32()).sum();
-    assert!(sum > 1.0, "100 gen_f32 calls should produce sum > 1.0, got {sum}");
+    assert!(
+        sum > 1.0,
+        "100 gen_f32 calls should produce sum > 1.0, got {sum}"
+    );
 }
 
 /// Kill: SeedRng::gen_f64 → 0.0
@@ -600,7 +606,10 @@ fn gen_f32_produces_nonzero() {
 fn gen_f64_produces_nonzero() {
     let mut rng = SeedRng::new(42, "test");
     let sum: f64 = (0..100).map(|_| rng.gen_f64()).sum();
-    assert!(sum > 1.0, "100 gen_f64 calls should produce sum > 1.0, got {sum}");
+    assert!(
+        sum > 1.0,
+        "100 gen_f64 calls should produce sum > 1.0, got {sum}"
+    );
 }
 
 /// Kill: Room::overlaps || → && mutations — rooms separated in X only
@@ -670,8 +679,14 @@ fn generate_rooms_produces_rooms() {
     let lg = LayoutGenerator::new(IVec2::new(200, 200));
     let mut rng = SeedRng::new(42, "layout");
     let rooms = lg.generate_rooms(&mut rng, 5);
-    assert!(!rooms.is_empty(), "generate_rooms must produce at least one room");
-    assert!(rooms.len() >= 3, "with ample space, should place at least 3 of 5 rooms");
+    assert!(
+        !rooms.is_empty(),
+        "generate_rooms must produce at least one room"
+    );
+    assert!(
+        rooms.len() >= 3,
+        "with ample space, should place at least 3 of 5 rooms"
+    );
 }
 
 /// Kill: LayoutGenerator::try_place_room → None (via generate_rooms returning few/no rooms)
@@ -685,8 +700,16 @@ fn generated_rooms_have_positive_dimensions() {
     assert!(rooms.len() >= 2, "should generate rooms in ample space");
     for (i, room) in rooms.iter().enumerate() {
         let size = room.size();
-        assert!(size.x > 0, "room {i} width must be positive, got {}", size.x);
-        assert!(size.y > 0, "room {i} height must be positive, got {}", size.y);
+        assert!(
+            size.x > 0,
+            "room {i} width must be positive, got {}",
+            size.x
+        );
+        assert!(
+            size.y > 0,
+            "room {i} height must be positive, got {}",
+            size.y
+        );
     }
 }
 
@@ -741,5 +764,9 @@ fn encounter_generator_produces_requested_count() {
     let gen = EncounterGenerator::new(constraints);
     let mut rng = SeedRng::new(42, "enc");
     let encounters = gen.generate(&mut rng, 5);
-    assert_eq!(encounters.len(), 5, "with ample space, should produce exactly 5 encounters");
+    assert_eq!(
+        encounters.len(),
+        5,
+        "with ample space, should produce exactly 5 encounters"
+    );
 }

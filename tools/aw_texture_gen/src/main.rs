@@ -207,7 +207,7 @@ fn synth_grass(w: u32, h: u32, seed: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
             let dirt_factor = (dirt > 0.4) as i32 as f32 * 0.25;
             let gcol = 95.0 + 120.0 * height;
             let ycol = 70.0 + 50.0 * (1.0 - height);
-            let                 (r, g, b) = if dirt_factor > 0.0 {
+            let (r, g, b) = if dirt_factor > 0.0 {
                 let mix = dirt_factor;
                 let gr = gcol * 0.3 + ycol * 0.2;
                 let gg = gcol;

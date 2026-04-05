@@ -2,8 +2,8 @@ use anyhow::Result;
 use astraweave_context::{ContextConfig, ConversationHistory, Role};
 use astraweave_core::{ToolRegistry, ToolSpec};
 use astraweave_embeddings::{MockEmbeddingClient, VectorStore};
-use astraweave_llm::MockLlm;
 use astraweave_llm::plan_parser::parse_llm_response;
+use astraweave_llm::MockLlm;
 use astraweave_memory::Persona as BasePersona;
 use astraweave_persona::LlmPersonaManager;
 use astraweave_prompts::engine::TemplateEngine;
@@ -38,7 +38,10 @@ async fn test_full_stack_integration() -> Result<()> {
     let history = ConversationHistory::new(context_config);
 
     history
-        .add_message(Role::User, "What should we do about the dragon?".to_string())
+        .add_message(
+            Role::User,
+            "What should we do about the dragon?".to_string(),
+        )
         .await?;
 
     // 5. Initialize Persona
@@ -92,14 +95,17 @@ async fn test_full_stack_integration() -> Result<()> {
 
     // The MockLlm response is a JSON string.
     let parse_result = parse_llm_response(&response, &registry);
-    
-    // It might fail if the MockLlm response isn't exactly what the parser expects 
+
+    // It might fail if the MockLlm response isn't exactly what the parser expects
     // (e.g. if LlmPersonaManager wraps it in conversational text).
     // But MockLlm returns raw JSON. LlmPersonaManager might wrap it.
     // Let's check if we can parse it.
     if let Ok(result) = parse_result {
         assert!(!result.plan.steps.is_empty());
-        println!("Successfully parsed plan with {} steps", result.plan.steps.len());
+        println!(
+            "Successfully parsed plan with {} steps",
+            result.plan.steps.len()
+        );
     } else {
         println!("Response was conversational, not a plan: {}", response);
     }
@@ -113,10 +119,10 @@ async fn test_full_stack_integration() -> Result<()> {
             "Hello {{name}}".to_string(),
         ),
     )?;
-    
+
     let mut context = astraweave_prompts::context::PromptContext::new();
     context.set("name".to_string(), "World".to_string().into());
-    
+
     let rendered = engine.render("test", &context)?;
     assert_eq!(rendered, "Hello World");
 

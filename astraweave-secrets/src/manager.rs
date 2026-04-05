@@ -44,10 +44,12 @@ mod tests {
     fn test_manager_with_mock_backend() {
         let mock = Arc::new(MockBackend::new());
         let manager = SecretManager::with_backend(mock);
-        
+
         // Set a secret
-        manager.set("test_key", SecretValue::from_str("test_value")).unwrap();
-        
+        manager
+            .set("test_key", SecretValue::from_str("test_value"))
+            .unwrap();
+
         // Get the secret
         let retrieved = manager.get("test_key").unwrap();
         assert_eq!(retrieved.as_str().unwrap(), "test_value");
@@ -57,7 +59,7 @@ mod tests {
     fn test_manager_get_nonexistent() {
         let mock = Arc::new(MockBackend::new());
         let manager = SecretManager::with_backend(mock);
-        
+
         let result = manager.get("nonexistent");
         assert!(result.is_err());
     }
@@ -66,8 +68,10 @@ mod tests {
     fn test_manager_delete() {
         let mock = Arc::new(MockBackend::new());
         let manager = SecretManager::with_backend(mock);
-        
-        manager.set("to_delete", SecretValue::from_str("value")).unwrap();
+
+        manager
+            .set("to_delete", SecretValue::from_str("value"))
+            .unwrap();
         assert!(manager.delete("to_delete").is_ok());
         assert!(manager.get("to_delete").is_err());
     }
@@ -76,7 +80,7 @@ mod tests {
     fn test_manager_delete_nonexistent() {
         let mock = Arc::new(MockBackend::new());
         let manager = SecretManager::with_backend(mock);
-        
+
         let result = manager.delete("nonexistent");
         assert!(result.is_err());
     }
@@ -85,10 +89,10 @@ mod tests {
     fn test_manager_overwrite() {
         let mock = Arc::new(MockBackend::new());
         let manager = SecretManager::with_backend(mock);
-        
+
         manager.set("key", SecretValue::from_str("first")).unwrap();
         manager.set("key", SecretValue::from_str("second")).unwrap();
-        
+
         let retrieved = manager.get("key").unwrap();
         assert_eq!(retrieved.as_str().unwrap(), "second");
     }

@@ -1061,7 +1061,10 @@ mod tests {
             description: "A real description".to_string(),
             ..Default::default()
         };
-        assert!(meta.has_description(), "non-empty description → has_description should be true");
+        assert!(
+            meta.has_description(),
+            "non-empty description → has_description should be true"
+        );
     }
 
     #[test]
@@ -1070,41 +1073,71 @@ mod tests {
             description: String::new(),
             ..Default::default()
         };
-        assert!(!meta.has_description(), "empty description → has_description should be false");
+        assert!(
+            !meta.has_description(),
+            "empty description → has_description should be false"
+        );
     }
 
     #[test]
     fn test_library_is_empty_true_when_no_collections() {
         // Remediation: kills "replace is_empty -> bool with true" mutation
-        let lib = TemplateLibrary::new("test".to_string(), LibraryMetadata {
-            version: "1.0.0".to_string(),
-            description: "test".to_string(),
-            author: "test".to_string(),
-            created_at: "2026-01-01".to_string(),
-        });
-        assert!(lib.is_empty(), "new library with no collections should be empty");
+        let lib = TemplateLibrary::new(
+            "test".to_string(),
+            LibraryMetadata {
+                version: "1.0.0".to_string(),
+                description: "test".to_string(),
+                author: "test".to_string(),
+                created_at: "2026-01-01".to_string(),
+            },
+        );
+        assert!(
+            lib.is_empty(),
+            "new library with no collections should be empty"
+        );
     }
 
     #[test]
     fn test_library_is_empty_false_after_adding_collection() {
-        let mut lib = TemplateLibrary::new("test".to_string(), LibraryMetadata {
-            version: "1.0.0".to_string(),
-            description: "test".to_string(),
-            author: "test".to_string(),
-            created_at: "2026-01-01".to_string(),
-        });
-        lib.add_collection(TemplateCollection::new("col1".to_string(), CollectionMetadata::default()));
-        assert!(!lib.is_empty(), "library with a collection should not be empty");
+        let mut lib = TemplateLibrary::new(
+            "test".to_string(),
+            LibraryMetadata {
+                version: "1.0.0".to_string(),
+                description: "test".to_string(),
+                author: "test".to_string(),
+                created_at: "2026-01-01".to_string(),
+            },
+        );
+        lib.add_collection(TemplateCollection::new(
+            "col1".to_string(),
+            CollectionMetadata::default(),
+        ));
+        assert!(
+            !lib.is_empty(),
+            "library with a collection should not be empty"
+        );
     }
 
     #[test]
     fn test_load_from_directory_nonexistent_still_has_default_collection() {
         // Remediation: kills "&& → ||" in load_from_directory (path.exists() && path.is_dir())
-        let result = TemplateLibrary::load_from_directory(std::path::PathBuf::from("/nonexistent_dir_12345"));
-        assert!(result.is_ok(), "loading from nonexistent dir should succeed with empty default");
+        let result = TemplateLibrary::load_from_directory(std::path::PathBuf::from(
+            "/nonexistent_dir_12345",
+        ));
+        assert!(
+            result.is_ok(),
+            "loading from nonexistent dir should succeed with empty default"
+        );
         let lib = result.unwrap();
-        assert!(lib.has_collection("default"), "should have default collection");
-        assert_eq!(lib.total_template_count(), 0, "no templates from nonexistent dir");
+        assert!(
+            lib.has_collection("default"),
+            "should have default collection"
+        );
+        assert_eq!(
+            lib.total_template_count(),
+            0,
+            "no templates from nonexistent dir"
+        );
     }
 
     #[test]

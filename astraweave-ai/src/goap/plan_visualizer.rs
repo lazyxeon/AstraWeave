@@ -617,16 +617,14 @@ mod tests {
     fn test_calculate_plan_metrics_exact() {
         // Kills: total_cost += → -=, total_risk += → -=, 1.0 - prob → prob
         let visualizer = PlanVisualizer::new(VisualizationFormat::Text);
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action("a", 3.0),
-            create_test_action("b", 5.0),
-        ];
+        let actions: Vec<Box<dyn Action>> =
+            vec![create_test_action("a", 3.0), create_test_action("b", 5.0)];
         let plan = vec!["a".to_string(), "b".to_string()];
         let history = ActionHistory::new();
 
         let (cost, risk) = visualizer.calculate_plan_metrics(&plan, &actions, &history);
         assert_eq!(cost, 8.0); // 3+5
-        // Default prob=0.8, risk=0.2 each, total=0.4
+                               // Default prob=0.8, risk=0.2 each, total=0.4
         assert!((risk - 0.4).abs() < 1e-6);
 
         // Empty plan
@@ -638,8 +636,8 @@ mod tests {
     #[test]
     fn test_format_state_changes_branches() {
         use super::super::StateValue;
-        let visualizer = PlanVisualizer::new(VisualizationFormat::AsciiTimeline)
-            .with_state_changes(true);
+        let visualizer =
+            PlanVisualizer::new(VisualizationFormat::AsciiTimeline).with_state_changes(true);
 
         // Empty effects → "(no changes)"
         let empty = BTreeMap::new();
@@ -690,7 +688,10 @@ mod tests {
         let start = WorldState::new();
 
         let output = visualizer.visualize_plan(&plan, &actions, &history, &start);
-        assert!(output.contains("~"), "0.8 probability should show ~ (not > 0.8)");
+        assert!(
+            output.contains("~"),
+            "0.8 probability should show ~ (not > 0.8)"
+        );
 
         // Build history with 100% success → prob > 0.8 → "✓"
         let mut hist_good = ActionHistory::new();
@@ -713,14 +714,13 @@ mod tests {
     #[test]
     fn test_timeline_with_state_changes() {
         use super::super::StateValue;
-        let visualizer = PlanVisualizer::new(VisualizationFormat::AsciiTimeline)
-            .with_state_changes(true);
+        let visualizer =
+            PlanVisualizer::new(VisualizationFormat::AsciiTimeline).with_state_changes(true);
 
         let mut effects = BTreeMap::new();
         effects.insert("health".to_string(), StateValue::Int(100));
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action_with_effects("heal", 1.0, effects),
-        ];
+        let actions: Vec<Box<dyn Action>> =
+            vec![create_test_action_with_effects("heal", 1.0, effects)];
         let plan = vec!["heal".to_string()];
         let history = ActionHistory::new();
         let start = WorldState::new();
@@ -731,8 +731,8 @@ mod tests {
 
     #[test]
     fn test_timeline_without_state_changes() {
-        let visualizer = PlanVisualizer::new(VisualizationFormat::AsciiTimeline)
-            .with_state_changes(false);
+        let visualizer =
+            PlanVisualizer::new(VisualizationFormat::AsciiTimeline).with_state_changes(false);
 
         let actions: Vec<Box<dyn Action>> = vec![create_test_action("act", 1.0)];
         let plan = vec!["act".to_string()];
@@ -740,7 +740,10 @@ mod tests {
         let start = WorldState::new();
 
         let output = visualizer.visualize_plan(&plan, &actions, &history, &start);
-        assert!(output.contains("..."), "Without state_changes, should show ...");
+        assert!(
+            output.contains("..."),
+            "Without state_changes, should show ..."
+        );
     }
 
     #[test]
@@ -753,17 +756,18 @@ mod tests {
         let start = WorldState::new();
 
         let output = visualizer.visualize_plan(&plan, &actions, &history, &start);
-        assert!(output.contains("unknown"), "Unknown action should say (unknown)");
+        assert!(
+            output.contains("unknown"),
+            "Unknown action should say (unknown)"
+        );
     }
 
     #[test]
     fn test_tree_prefix_last_vs_non_last() {
         // Kills: is_last toggling mutations for ├─ vs └─
         let visualizer = PlanVisualizer::new(VisualizationFormat::AsciiTree);
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action("a", 1.0),
-            create_test_action("b", 1.0),
-        ];
+        let actions: Vec<Box<dyn Action>> =
+            vec![create_test_action("a", 1.0), create_test_action("b", 1.0)];
         let plan = vec!["a".to_string(), "b".to_string()];
         let history = ActionHistory::new();
         let start = WorldState::new();
@@ -786,7 +790,10 @@ mod tests {
             .with_risks(false);
         let o1 = v1.visualize_plan(&plan, &actions, &history, &start);
         // Find the action line (contains "myact" but NOT the header line starting with "Plan")
-        let action_line = o1.lines().find(|l| l.contains("myact") && !l.starts_with("Plan")).unwrap();
+        let action_line = o1
+            .lines()
+            .find(|l| l.contains("myact") && !l.starts_with("Plan"))
+            .unwrap();
         assert!(action_line.contains("cost:"));
         assert!(!action_line.contains("risk:"));
 
@@ -795,7 +802,10 @@ mod tests {
             .with_costs(false)
             .with_risks(true);
         let o2 = v2.visualize_plan(&plan, &actions, &history, &start);
-        let action_line2 = o2.lines().find(|l| l.contains("myact") && !l.starts_with("Plan")).unwrap();
+        let action_line2 = o2
+            .lines()
+            .find(|l| l.contains("myact") && !l.starts_with("Plan"))
+            .unwrap();
         assert!(action_line2.contains("risk:"));
         assert!(!action_line2.contains("cost:"));
 
@@ -804,7 +814,10 @@ mod tests {
             .with_costs(false)
             .with_risks(false);
         let o3 = v3.visualize_plan(&plan, &actions, &history, &start);
-        let action_line3 = o3.lines().find(|l| l.contains("myact") && !l.starts_with("Plan")).unwrap();
+        let action_line3 = o3
+            .lines()
+            .find(|l| l.contains("myact") && !l.starts_with("Plan"))
+            .unwrap();
         assert!(!action_line3.contains("cost:"));
         assert!(!action_line3.contains("risk:"));
     }
@@ -822,19 +835,26 @@ mod tests {
         let start = WorldState::new();
 
         let output = visualizer.visualize_plan(&plan, &actions, &history, &start);
-        assert!(output.contains("start -> action_0"), "First action connects from start");
-        assert!(output.contains("action_0 -> action_1"), "Actions chain together");
-        assert!(output.contains("action_1 -> end"), "Last action connects to end");
+        assert!(
+            output.contains("start -> action_0"),
+            "First action connects from start"
+        );
+        assert!(
+            output.contains("action_0 -> action_1"),
+            "Actions chain together"
+        );
+        assert!(
+            output.contains("action_1 -> end"),
+            "Last action connects to end"
+        );
     }
 
     #[test]
     fn test_json_comma_logic() {
         // Kills: i < plan.len()-1 boundary, comma placement
         let visualizer = PlanVisualizer::new(VisualizationFormat::Json);
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action("a", 1.0),
-            create_test_action("b", 2.0),
-        ];
+        let actions: Vec<Box<dyn Action>> =
+            vec![create_test_action("a", 1.0), create_test_action("b", 2.0)];
         let plan = vec!["a".to_string(), "b".to_string()];
         let history = ActionHistory::new();
         let start = WorldState::new();
@@ -843,9 +863,15 @@ mod tests {
         // The first action's closing brace should have comma, the last should not
         let lines: Vec<&str> = output.lines().collect();
         // Find lines with closing braces for action objects
-        let closing_braces: Vec<&&str> = lines.iter().filter(|l| l.trim().starts_with('}') || l.trim().starts_with("}"    )).collect();
+        let closing_braces: Vec<&&str> = lines
+            .iter()
+            .filter(|l| l.trim().starts_with('}') || l.trim().starts_with("}"))
+            .collect();
         // At least first closing brace has comma
-        assert!(output.contains("},"), "First action should have trailing comma");
+        assert!(
+            output.contains("},"),
+            "First action should have trailing comma"
+        );
     }
 
     #[test]
@@ -875,7 +901,10 @@ mod tests {
         assert!(output.contains("digraph GoalHierarchy"));
         assert!(output.contains("node_0"));
         assert!(output.contains("node_1"));
-        assert!(output.contains("node_0 -> node_1"), "Parent should connect to child");
+        assert!(
+            output.contains("node_0 -> node_1"),
+            "Parent should connect to child"
+        );
         assert!(output.contains("parent"));
         assert!(output.contains("child"));
     }
@@ -886,20 +915,18 @@ mod tests {
 
         let viz = PlanVisualizer::new(VisualizationFormat::AsciiTree);
 
-        let goal_seq = Goal::new("g", BTreeMap::new())
-            .with_strategy(DecompositionStrategy::Sequential);
+        let goal_seq =
+            Goal::new("g", BTreeMap::new()).with_strategy(DecompositionStrategy::Sequential);
         assert!(viz.visualize_goal_hierarchy(&goal_seq).contains("[SEQ]"));
 
-        let goal_par = Goal::new("g", BTreeMap::new())
-            .with_strategy(DecompositionStrategy::Parallel);
+        let goal_par =
+            Goal::new("g", BTreeMap::new()).with_strategy(DecompositionStrategy::Parallel);
         assert!(viz.visualize_goal_hierarchy(&goal_par).contains("[PAR]"));
 
-        let goal_any = Goal::new("g", BTreeMap::new())
-            .with_strategy(DecompositionStrategy::AnyOf);
+        let goal_any = Goal::new("g", BTreeMap::new()).with_strategy(DecompositionStrategy::AnyOf);
         assert!(viz.visualize_goal_hierarchy(&goal_any).contains("[ANY]"));
 
-        let goal_all = Goal::new("g", BTreeMap::new())
-            .with_strategy(DecompositionStrategy::AllOf);
+        let goal_all = Goal::new("g", BTreeMap::new()).with_strategy(DecompositionStrategy::AllOf);
         assert!(viz.visualize_goal_hierarchy(&goal_all).contains("[ALL]"));
     }
 
@@ -920,8 +947,7 @@ mod tests {
     fn test_goal_tree_depth_indent() {
         let viz = PlanVisualizer::new(VisualizationFormat::AsciiTree);
         let child = Goal::new("child", BTreeMap::new());
-        let parent = Goal::new("parent", BTreeMap::new())
-            .with_sub_goals(vec![child]);
+        let parent = Goal::new("parent", BTreeMap::new()).with_sub_goals(vec![child]);
 
         let output = viz.visualize_goal_hierarchy(&parent);
         // Parent at depth 0 has no indent
@@ -944,8 +970,18 @@ mod tests {
         assert!(output.contains("child"));
         assert!(output.contains("priority: 3.0"));
         // Child should be more indented than parent
-        let parent_indent = output.lines().find(|l| l.contains("parent")).unwrap().find('p').unwrap();
-        let child_indent = output.lines().find(|l| l.contains("child")).unwrap().find('c').unwrap();
+        let parent_indent = output
+            .lines()
+            .find(|l| l.contains("parent"))
+            .unwrap()
+            .find('p')
+            .unwrap();
+        let child_indent = output
+            .lines()
+            .find(|l| l.contains("child"))
+            .unwrap()
+            .find('c')
+            .unwrap();
         assert!(child_indent > parent_indent);
     }
 
@@ -1018,17 +1054,18 @@ mod tests {
         hist.record_success("a", 2.0); // avg_duration = 2.0
         hist.record_success("b", 3.0); // avg_duration = 3.0
 
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action("a", 1.0),
-            create_test_action("b", 1.0),
-        ];
+        let actions: Vec<Box<dyn Action>> =
+            vec![create_test_action("a", 1.0), create_test_action("b", 1.0)];
         let plan = vec!["a".to_string(), "b".to_string()];
         let start = WorldState::new();
 
         let output = visualizer.visualize_plan(&plan, &actions, &hist, &start);
         // First action at time 0.0, second at time 2.0
         assert!(output.contains("0.0"), "First action should be at time 0.0");
-        assert!(output.contains("2.0"), "Second action should be at time 2.0 (after duration 2.0)");
+        assert!(
+            output.contains("2.0"),
+            "Second action should be at time 2.0 (after duration 2.0)"
+        );
     }
 
     // ── Round 2 mutation-killing tests ──
@@ -1040,8 +1077,14 @@ mod tests {
         let goal = Goal::new("my_goal", BTreeMap::new()).with_priority(5.0);
         let output = viz.visualize_goal_hierarchy(&goal);
         // Text format should NOT contain strategy tags like [SEQ], [PAR], etc.
-        assert!(!output.contains("[SEQ]"), "Text format should not include [SEQ] tag");
-        assert!(!output.contains("[PAR]"), "Text format should not include [PAR] tag");
+        assert!(
+            !output.contains("[SEQ]"),
+            "Text format should not include [SEQ] tag"
+        );
+        assert!(
+            !output.contains("[PAR]"),
+            "Text format should not include [PAR] tag"
+        );
         assert!(output.contains("my_goal"));
     }
 
@@ -1076,12 +1119,16 @@ mod tests {
 
         let output = viz.visualize_plan(&plan, &actions, &history, &start);
         // Find the action-specific line (contains └─), not the header line
-        let action_line = output.lines()
+        let action_line = output
+            .lines()
             .find(|l| l.contains("└─") || l.contains("├─"))
             .expect("Should have an action line with tree prefix");
         // risk should be 0.20 (1.0 - 0.8), not 1.80 (1.0+0.8) or 1.25 (1.0/0.8)
-        assert!(action_line.contains("risk: 0.20"),
-            "Action line risk should be 0.20 (1.0-0.8), got: {:?}", action_line);
+        assert!(
+            action_line.contains("risk: 0.20"),
+            "Action line risk should be 0.20 (1.0-0.8), got: {:?}",
+            action_line
+        );
     }
 
     #[test]
@@ -1099,7 +1146,10 @@ mod tests {
 
         let output = viz.visualize_plan(&plan, &actions, &hist, &start);
         // 0.5 is NOT > 0.5, so it should show ✗ (failure icon), not ~
-        assert!(output.contains("✗"), "Exactly 0.5 probability should show ✗");
+        assert!(
+            output.contains("✗"),
+            "Exactly 0.5 probability should show ✗"
+        );
     }
 
     #[test]
@@ -1110,25 +1160,28 @@ mod tests {
         hist.record_success("a", 5.0);
         hist.record_success("b", 10.0);
 
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action("a", 1.0),
-            create_test_action("b", 1.0),
-        ];
+        let actions: Vec<Box<dyn Action>> =
+            vec![create_test_action("a", 1.0), create_test_action("b", 1.0)];
         let plan = vec!["a".to_string(), "b".to_string()];
         let start = WorldState::new();
 
         let output = viz.visualize_plan(&plan, &actions, &hist, &start);
         // a at time 0.0 (duration 5.0), b at time 5.0 (duration 10.0)
         // Find the data line for action "b" (skip header/separator)
-        let b_line = output.lines()
+        let b_line = output
+            .lines()
             .find(|l| l.contains("| b"))
             .expect("Should have a line for action b");
         // With +=: time is 5.0 (positive). With -=: time is -5.0. With *=: time is 0.0.
         // The time column is left-justified with width 6, so "5.0" starts at position 0.
         let time_str = b_line.split('|').next().unwrap().trim();
         let time_val: f32 = time_str.parse().expect("Time should be a valid float");
-        assert!((time_val - 5.0).abs() < 0.01,
-            "Second action should start at time 5.0, got {} from line: {:?}", time_val, b_line);
+        assert!(
+            (time_val - 5.0).abs() < 0.01,
+            "Second action should start at time 5.0, got {} from line: {:?}",
+            time_val,
+            b_line
+        );
     }
 
     #[test]
@@ -1151,11 +1204,17 @@ mod tests {
         assert!(output.contains("action_0 -> action_1"));
         assert!(output.contains("action_1 -> action_2"));
         assert!(output.contains("action_2 -> end"));
-        assert!(!output.contains("action_3"), "Should not reference action_3 with only 3 actions");
+        assert!(
+            !output.contains("action_3"),
+            "Should not reference action_3 with only 3 actions"
+        );
         // Risk value in DOT node labels: default prob=0.8, risk=1.0-0.8=0.20
         // With +: risk=1.80. With /: risk=1.25. Either would fail this assertion.
-        assert!(output.contains("risk: 0.20"),
-            "DOT node labels should contain risk: 0.20, got: {:?}", output);
+        assert!(
+            output.contains("risk: 0.20"),
+            "DOT node labels should contain risk: 0.20, got: {:?}",
+            output
+        );
     }
 
     #[test]
@@ -1173,7 +1232,10 @@ mod tests {
         let output = viz.visualize_plan(&plan, &actions, &history, &start);
         // && requires BOTH true. With costs=true, risks=false, && is false → uses plain name
         // || would make it true → would show cost/risk labels
-        assert!(!output.contains("cost:"), "DOT with costs=true but risks=false should not show combined label");
+        assert!(
+            !output.contains("cost:"),
+            "DOT with costs=true but risks=false should not show combined label"
+        );
     }
 
     #[test]
@@ -1198,7 +1260,10 @@ mod tests {
         assert!(output.contains("2. beta"));
         assert!(output.contains("3. gamma"));
         // With i-1: would be "0. alpha", "-1. beta" etc.
-        assert!(!output.contains("0. alpha"), "Should not use 0-based indexing");
+        assert!(
+            !output.contains("0. alpha"),
+            "Should not use 0-based indexing"
+        );
     }
 
     #[test]
@@ -1217,11 +1282,17 @@ mod tests {
         // Both cost and risk shown, with comma separator
         assert!(output.contains("cost:"));
         assert!(output.contains("risk:"));
-        assert!(output.contains(", "), "Cost and risk should be separated by comma");
+        assert!(
+            output.contains(", "),
+            "Cost and risk should be separated by comma"
+        );
         // Text format has no header with separate metrics — risk value is per-action only
         // risk should be 0.20 (1.0-0.8), not 1.80 or 1.25
-        assert!(output.contains("risk: 0.20"),
-            "Text risk should be 0.20 (1.0-0.8), got: {:?}", output);
+        assert!(
+            output.contains("risk: 0.20"),
+            "Text risk should be 0.20 (1.0-0.8), got: {:?}",
+            output
+        );
     }
 
     #[test]
@@ -1242,8 +1313,11 @@ mod tests {
         assert!(!action_line.contains("risk:"));
         // With || mutation: comma is inserted before risk (which isn't shown)
         // producing "(cost: 2.0, )" — check no trailing comma before closing paren
-        assert!(!action_line.contains(", )"),
-            "Should not have trailing comma when only costs shown, got: {:?}", action_line);
+        assert!(
+            !action_line.contains(", )"),
+            "Should not have trailing comma when only costs shown, got: {:?}",
+            action_line
+        );
     }
 
     #[test]
@@ -1255,7 +1329,11 @@ mod tests {
             create_test_action("second", 2.0),
             create_test_action("third", 3.0),
         ];
-        let plan = vec!["first".to_string(), "second".to_string(), "third".to_string()];
+        let plan = vec![
+            "first".to_string(),
+            "second".to_string(),
+            "third".to_string(),
+        ];
         let history = ActionHistory::new();
         let start = WorldState::new();
 
@@ -1263,11 +1341,18 @@ mod tests {
 
         // First two action blocks end with "}," and last ends with "}"
         let commas = output.matches("},").count();
-        assert!(commas >= 2, "First two actions should have trailing commas, found {}", commas);
+        assert!(
+            commas >= 2,
+            "First two actions should have trailing commas, found {}",
+            commas
+        );
         // JSON risk values: default prob=0.8, risk=1.0-0.8=0.20
         // With +: risk=1.80. With /: risk=1.25. Either would fail.
-        assert!(output.contains("\"risk\": 0.20"),
-            "JSON risk should be 0.20 (1.0-0.8), got: {:?}", output);
+        assert!(
+            output.contains("\"risk\": 0.20"),
+            "JSON risk should be 0.20 (1.0-0.8), got: {:?}",
+            output
+        );
     }
 
     #[test]
@@ -1284,7 +1369,10 @@ mod tests {
         let output = viz.visualize_plan(&plan, &actions, &history, &start);
         // Single action should NOT have trailing comma on its closing brace
         // Look for "}," which should not appear
-        assert!(!output.contains("},"), "Single action JSON should not have trailing comma");
+        assert!(
+            !output.contains("},"),
+            "Single action JSON should not have trailing comma"
+        );
     }
 
     #[test]
@@ -1292,10 +1380,8 @@ mod tests {
         // Kills: depth - 1 → depth + 1 or depth / 1 in render_goal_tree (line 330)
         let viz = PlanVisualizer::new(VisualizationFormat::AsciiTree);
         let grandchild = Goal::new("grandchild", BTreeMap::new());
-        let child = Goal::new("child", BTreeMap::new())
-            .with_sub_goals(vec![grandchild]);
-        let parent = Goal::new("parent", BTreeMap::new())
-            .with_sub_goals(vec![child]);
+        let child = Goal::new("child", BTreeMap::new()).with_sub_goals(vec![grandchild]);
+        let parent = Goal::new("parent", BTreeMap::new()).with_sub_goals(vec![child]);
 
         let output = viz.visualize_goal_hierarchy(&parent);
         // depth=0: no indent (empty string)
@@ -1305,16 +1391,27 @@ mod tests {
         // With /1: depth=1 → "  ".repeat(1) + "  └─ " = "    └─ " (4 spaces)
         let lines: Vec<&str> = output.lines().collect();
         // Parent at depth 0: no indent
-        assert!(lines[0].starts_with("["), "Parent line should start with strategy tag");
+        assert!(
+            lines[0].starts_with("["),
+            "Parent line should start with strategy tag"
+        );
         // Child at depth 1: exactly "  └─ " prefix (2 spaces before └)
-        let child_line = lines.iter()
-            .find(|l| l.contains("child") && !l.contains("grandchild")).unwrap();
-        assert!(child_line.starts_with("  └─") || child_line.starts_with("  ├─"),
-            "Child at depth 1 should start with exactly 2 spaces before tree char. Got: {:?}", child_line);
+        let child_line = lines
+            .iter()
+            .find(|l| l.contains("child") && !l.contains("grandchild"))
+            .unwrap();
+        assert!(
+            child_line.starts_with("  └─") || child_line.starts_with("  ├─"),
+            "Child at depth 1 should start with exactly 2 spaces before tree char. Got: {:?}",
+            child_line
+        );
         // Verify grandchild at depth 2: exactly "    └─ " prefix (4 spaces before └)
         let gc_line = lines.iter().find(|l| l.contains("grandchild")).unwrap();
-        assert!(gc_line.starts_with("    └─") || gc_line.starts_with("    ├─"),
-            "Grandchild at depth 2 should start with exactly 4 spaces before tree char. Got: {:?}", gc_line);
+        assert!(
+            gc_line.starts_with("    └─") || gc_line.starts_with("    ├─"),
+            "Grandchild at depth 2 should start with exactly 4 spaces before tree char. Got: {:?}",
+            gc_line
+        );
     }
 
     #[test]
@@ -1323,9 +1420,7 @@ mod tests {
         // When action is found (name matches), cost & risk are added.
         // With !=, it would add metrics for NON-matching actions instead.
         let viz = PlanVisualizer::new(VisualizationFormat::AsciiTree);
-        let actions: Vec<Box<dyn Action>> = vec![
-            create_test_action("known", 5.0),
-        ];
+        let actions: Vec<Box<dyn Action>> = vec![create_test_action("known", 5.0)];
         let history = ActionHistory::new();
 
         // Plan with the known action

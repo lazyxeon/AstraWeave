@@ -11,7 +11,9 @@
 //! - Classical AI target: <1.0 ms
 
 use astraweave_ai::core_loop::{dispatch_planner, CAiController, PlannerMode};
-use astraweave_core::{CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance, WorldSnapshot};
+use astraweave_core::{
+    CompanionState, CoverType, EnemyState, IVec2, PlayerState, Poi, Stance, WorldSnapshot,
+};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::collections::BTreeMap;
 use std::hint::black_box;
@@ -27,7 +29,11 @@ fn create_scalable_snapshot(enemy_count: usize) -> WorldSnapshot {
                 y: 60 + (i / 10) as i32,
             },
             hp: 100,
-            cover: if i % 2 == 0 { CoverType::Low } else { CoverType::High },
+            cover: if i % 2 == 0 {
+                CoverType::Low
+            } else {
+                CoverType::High
+            },
             last_seen: 0.5,
         });
     }
@@ -166,7 +172,11 @@ fn create_complex_snapshot() -> WorldSnapshot {
                 y: 15 + (i % 3),
             },
             hp: 50 + i * 5,
-            cover: if i % 2 == 0 { CoverType::Low } else { CoverType::High },
+            cover: if i % 2 == 0 {
+                CoverType::Low
+            } else {
+                CoverType::High
+            },
             last_seen: (i as f32) * 0.5,
         });
     }

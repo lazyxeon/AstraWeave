@@ -3006,11 +3006,7 @@ mod tests {
 
         // Center-ish point (0,0) in a 2x2 grid — all have normal
         let n11 = cloth.particle_normal(1, 1);
-        assert!(
-            n11.length() > 0.1,
-            "Normal should be non-zero: {:?}",
-            n11
-        );
+        assert!(n11.length() > 0.1, "Normal should be non-zero: {:?}", n11);
     }
 
     #[test]
@@ -3341,7 +3337,11 @@ mod tests {
             "Should push to radius in X: x={}",
             p.position.x
         );
-        assert!(p.position.y.abs() < 0.01, "Y should be ~0: y={}", p.position.y);
+        assert!(
+            p.position.y.abs() < 0.01,
+            "Y should be ~0: y={}",
+            p.position.y
+        );
     }
 
     // ===== ROUND 9: Cloth update + particle_normal + manager update =====
@@ -3394,7 +3394,7 @@ mod tests {
             height: 5,
             spacing: 1.0,
             gravity: Vec3::new(0.0, -10.0, 0.0), // gravity creates droop
-            wind: Vec3::new(10.0, 0.0, 0.0),      // strong wind in X
+            wind: Vec3::new(10.0, 0.0, 0.0),     // strong wind in X
             damping: 0.98,
             air_resistance: 0.0,
             ..Default::default()
@@ -3467,16 +3467,24 @@ mod tests {
         }
 
         // No-drag cloth should fall faster (lower Y) than high-drag cloth
-        let avg_y_no_drag: f32 =
-            cloth_no_drag.particles.iter().map(|p| p.position.y).sum::<f32>()
-                / cloth_no_drag.particles.len() as f32;
-        let avg_y_drag: f32 = cloth_drag.particles.iter().map(|p| p.position.y).sum::<f32>()
+        let avg_y_no_drag: f32 = cloth_no_drag
+            .particles
+            .iter()
+            .map(|p| p.position.y)
+            .sum::<f32>()
+            / cloth_no_drag.particles.len() as f32;
+        let avg_y_drag: f32 = cloth_drag
+            .particles
+            .iter()
+            .map(|p| p.position.y)
+            .sum::<f32>()
             / cloth_drag.particles.len() as f32;
 
         assert!(
             avg_y_no_drag < avg_y_drag,
             "No-drag cloth should fall faster: no_drag_y={}, drag_y={}",
-            avg_y_no_drag, avg_y_drag
+            avg_y_no_drag,
+            avg_y_drag
         );
     }
 
@@ -3542,7 +3550,8 @@ mod tests {
         assert!(
             final_y < initial_y,
             "Manager update should step cloth: initial_y={}, final_y={}",
-            initial_y, final_y
+            initial_y,
+            final_y
         );
     }
 
@@ -3613,7 +3622,8 @@ mod tests {
         assert!(
             vel_f < vel_no_f + 0.001,
             "Friction should reduce or match velocity: no_f={}, f={}",
-            vel_no_f, vel_f
+            vel_no_f,
+            vel_f
         );
     }
 
@@ -3766,7 +3776,8 @@ mod tests {
         assert!(
             final_dist > initial_dist + 0.1,
             "Should push apart: initial={}, final={}",
-            initial_dist, final_dist
+            initial_dist,
+            final_dist
         );
         // Should move toward rest length
         assert!(
@@ -4135,7 +4146,10 @@ mod tests {
         }
 
         // Some non-pinned particles should have moved due to wind
-        let total_moved: f32 = cloth.particles.iter().enumerate()
+        let total_moved: f32 = cloth
+            .particles
+            .iter()
+            .enumerate()
             .filter(|(i, p)| !p.pinned)
             .map(|(i, p)| (p.position - pos_before[i]).length())
             .sum();
@@ -4173,7 +4187,8 @@ mod tests {
         assert!(
             vel_after.x < vel_before.x,
             "Drag should reduce velocity: before={}, after={}",
-            vel_before.x, vel_after.x
+            vel_before.x,
+            vel_after.x
         );
     }
 
@@ -4258,8 +4273,20 @@ mod tests {
         };
 
         let mut particles_half = vec![
-            ClothParticle { position: Vec3::ZERO, prev_position: Vec3::ZERO, acceleration: Vec3::ZERO, inv_mass: 1.0, pinned: false },
-            ClothParticle { position: Vec3::new(3.0, 0.0, 0.0), prev_position: Vec3::new(3.0, 0.0, 0.0), acceleration: Vec3::ZERO, inv_mass: 1.0, pinned: false },
+            ClothParticle {
+                position: Vec3::ZERO,
+                prev_position: Vec3::ZERO,
+                acceleration: Vec3::ZERO,
+                inv_mass: 1.0,
+                pinned: false,
+            },
+            ClothParticle {
+                position: Vec3::new(3.0, 0.0, 0.0),
+                prev_position: Vec3::new(3.0, 0.0, 0.0),
+                acceleration: Vec3::ZERO,
+                inv_mass: 1.0,
+                pinned: false,
+            },
         ];
         let mut particles_full = particles_half.clone();
 
@@ -4273,7 +4300,8 @@ mod tests {
         assert!(
             correction_full > correction_half * 1.5,
             "Full stiffness should give larger correction: half={}, full={}",
-            correction_half, correction_full
+            correction_half,
+            correction_full
         );
     }
 
@@ -4315,7 +4343,10 @@ mod tests {
             cloth.update(1.0 / 60.0);
         }
 
-        let total_moved: f32 = cloth.particles.iter().enumerate()
+        let total_moved: f32 = cloth
+            .particles
+            .iter()
+            .enumerate()
             .filter(|(_, p)| !p.pinned)
             .map(|(i, p)| (p.position - pos_before[i]).length())
             .sum();

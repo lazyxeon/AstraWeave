@@ -1888,17 +1888,32 @@ mod combat_weapon_damage_mutation_tests {
         state.start();
 
         let attacker = Stats {
-            hp: 100, stamina: 100, power: 10, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 100,
+            stamina: 100,
+            power: 10,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         let mut target = Stats {
-            hp: 1000, stamina: 100, power: 0, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 1000,
+            stamina: 100,
+            power: 0,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         let weapon = make_weapon(20, None);
 
         let (hit, dmg) = state.tick(
-            0.0, true, false,
-            Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0),
-            &attacker, Some(&weapon), &mut target,
+            0.0,
+            true,
+            false,
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            &attacker,
+            Some(&weapon),
+            &mut target,
         );
 
         assert!(hit, "should hit when in reach");
@@ -1919,17 +1934,32 @@ mod combat_weapon_damage_mutation_tests {
         state.start();
 
         let attacker = Stats {
-            hp: 100, stamina: 100, power: 10, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 100,
+            stamina: 100,
+            power: 10,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         let mut target = Stats {
-            hp: 1000, stamina: 100, power: 0, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 1000,
+            stamina: 100,
+            power: 0,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         let weapon = make_weapon(20, None);
 
         let (_, dmg) = state.tick(
-            0.0, true, false,
-            Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0),
-            &attacker, Some(&weapon), &mut target,
+            0.0,
+            true,
+            false,
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            &attacker,
+            Some(&weapon),
+            &mut target,
         );
 
         assert!(dmg > 0, "damage must be positive (caught - mutation)");
@@ -1946,17 +1976,32 @@ mod combat_weapon_damage_mutation_tests {
         state.start();
 
         let attacker = Stats {
-            hp: 100, stamina: 100, power: 10, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 100,
+            stamina: 100,
+            power: 10,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         let mut target = Stats {
-            hp: 1000, stamina: 100, power: 0, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 1000,
+            stamina: 100,
+            power: 0,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         let weapon = make_weapon(20, None);
 
         let (_, dmg) = state.tick(
-            0.0, true, false,
-            Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0),
-            &attacker, Some(&weapon), &mut target,
+            0.0,
+            true,
+            false,
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            &attacker,
+            Some(&weapon),
+            &mut target,
         );
 
         assert_ne!(dmg, 300, "must use + not * for base_damage");
@@ -1974,18 +2019,33 @@ mod combat_weapon_damage_mutation_tests {
         state.start();
 
         let attacker = Stats {
-            hp: 100, stamina: 100, power: 10, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 100,
+            stamina: 100,
+            power: 10,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         let mut target = Stats {
-            hp: 1000, stamina: 100, power: 0, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 1000,
+            stamina: 100,
+            power: 0,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         // 2.0x echo multiplier to differentiate * from +
         let weapon = make_weapon(20, Some(2.0));
 
         let (_, dmg) = state.tick(
-            0.0, true, false,
-            Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0),
-            &attacker, Some(&weapon), &mut target,
+            0.0,
+            true,
+            false,
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            &attacker,
+            Some(&weapon),
+            &mut target,
         );
 
         // correct: (15+20)*2.0 = 70
@@ -2005,17 +2065,32 @@ mod combat_weapon_damage_mutation_tests {
         state.start();
 
         let attacker = Stats {
-            hp: 100, stamina: 100, power: 10, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 100,
+            stamina: 100,
+            power: 10,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         let mut target = Stats {
-            hp: 1000, stamina: 100, power: 0, defense: 0, echo_amp: 1.0, effects: vec![],
+            hp: 1000,
+            stamina: 100,
+            power: 0,
+            defense: 0,
+            echo_amp: 1.0,
+            effects: vec![],
         };
         let weapon = make_weapon(20, Some(2.0));
 
         let (_, dmg) = state.tick(
-            0.0, true, false,
-            Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0),
-            &attacker, Some(&weapon), &mut target,
+            0.0,
+            true,
+            false,
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            &attacker,
+            Some(&weapon),
+            &mut target,
         );
 
         assert_ne!(dmg, 17, "must use * not / for echo mult");
@@ -2037,7 +2112,12 @@ mod combat_physics_sweep_mutation_tests {
         Combatant {
             body: body_id,
             stats: Stats {
-                hp, stamina: 100, power: 10, defense: 0, echo_amp: 1.0, effects: vec![],
+                hp,
+                stamina: 100,
+                power: 10,
+                defense: 0,
+                echo_amp: 1.0,
+                effects: vec![],
             },
             iframes: None,
             parry: None,
@@ -2078,10 +2158,14 @@ mod combat_physics_sweep_mutation_tests {
         // Target at x=10 is ~5m from ray start → out of 2m range → miss.
         // If mutated (+): dir=(12,0,0), distance=12 → target within range → hit.
         let result = perform_attack_sweep(
-            &mut phys, attacker_id,
+            &mut phys,
+            attacker_id,
             Vec3::new(5.0, 0.0, 0.0),
             Vec3::new(7.0, 0.0, 0.0),
-            0.5, 20, DamageType::Physical, &mut targets,
+            0.5,
+            20,
+            DamageType::Physical,
+            &mut targets,
         );
 
         assert!(result.is_none(), "target at 10m beyond 2m sweep must miss");
@@ -2109,12 +2193,20 @@ mod combat_physics_sweep_mutation_tests {
         // Rapier ray with non-unit direction and time_of_impact = distance can
         // produce wildly different results.
         let result = perform_attack_sweep(
-            &mut phys, attacker_id,
-            Vec3::ZERO, Vec3::new(10.0, 0.0, 0.0),
-            0.5, 25, DamageType::Physical, &mut targets,
+            &mut phys,
+            attacker_id,
+            Vec3::ZERO,
+            Vec3::new(10.0, 0.0, 0.0),
+            0.5,
+            25,
+            DamageType::Physical,
+            &mut targets,
         );
 
-        assert!(result.is_some(), "target at 2m within 10m sweep should be hit");
+        assert!(
+            result.is_some(),
+            "target at 2m within 10m sweep should be hit"
+        );
         let hit = result.unwrap();
         assert_eq!(hit.damage, 25, "should deal full base damage");
         assert_eq!(targets[0].stats.hp, 75, "target HP should decrease by 25");
@@ -2140,12 +2232,20 @@ mod combat_physics_sweep_mutation_tests {
         let mut targets = vec![make_combatant(target_id, 100)];
 
         let result = perform_attack_sweep(
-            &mut phys, attacker_id,
-            Vec3::ZERO, Vec3::new(5.0, 0.0, 0.0),
-            0.5, 30, DamageType::Physical, &mut targets,
+            &mut phys,
+            attacker_id,
+            Vec3::ZERO,
+            Vec3::new(5.0, 0.0, 0.0),
+            0.5,
+            30,
+            DamageType::Physical,
+            &mut targets,
         );
 
-        assert!(result.is_some(), "correctly offset ray (y=1.0) must hit elevated target (y=[1.0,2.0])");
+        assert!(
+            result.is_some(),
+            "correctly offset ray (y=1.0) must hit elevated target (y=[1.0,2.0])"
+        );
         assert_eq!(result.unwrap().damage, 30);
         assert_eq!(targets[0].stats.hp, 70);
     }
@@ -2170,9 +2270,14 @@ mod combat_physics_sweep_mutation_tests {
         // The Rapier raycast with max_toi=3.0 may return hit at ~2.5 (edge of collider).
         // That's still <= 3.0, so > check should pass.
         let result = perform_attack_sweep(
-            &mut phys, attacker_id,
-            Vec3::ZERO, Vec3::new(3.0, 0.0, 0.0),
-            0.5, 15, DamageType::Physical, &mut targets,
+            &mut phys,
+            attacker_id,
+            Vec3::ZERO,
+            Vec3::new(3.0, 0.0, 0.0),
+            0.5,
+            15,
+            DamageType::Physical,
+            &mut targets,
         );
 
         // With correct > : hit_point_dist (~2.5) > 3.0 is false → NOT filtered → hit
@@ -2196,9 +2301,14 @@ mod combat_physics_sweep_mutation_tests {
 
         // Sweep only 2m, target at 10m
         let result = perform_attack_sweep(
-            &mut phys, attacker_id,
-            Vec3::ZERO, Vec3::new(2.0, 0.0, 0.0),
-            0.5, 20, DamageType::Physical, &mut targets,
+            &mut phys,
+            attacker_id,
+            Vec3::ZERO,
+            Vec3::new(2.0, 0.0, 0.0),
+            0.5,
+            20,
+            DamageType::Physical,
+            &mut targets,
         );
 
         assert!(result.is_none(), "target beyond sweep distance must miss");
@@ -2223,9 +2333,14 @@ mod combat_physics_sweep_mutation_tests {
 
         // Sweep toward target
         let result = perform_attack_sweep(
-            &mut phys, attacker_id,
-            Vec3::ZERO, Vec3::new(5.0, 0.0, 0.0),
-            0.5, 20, DamageType::Physical, &mut targets,
+            &mut phys,
+            attacker_id,
+            Vec3::ZERO,
+            Vec3::new(5.0, 0.0, 0.0),
+            0.5,
+            20,
+            DamageType::Physical,
+            &mut targets,
         );
 
         // The raycast may or may not hit an off-axis target depending on collider size.
@@ -2251,9 +2366,14 @@ mod combat_physics_sweep_mutation_tests {
 
         // Sweep through the target's position
         let result = perform_attack_sweep(
-            &mut phys, attacker_id,
-            Vec3::ZERO, Vec3::new(5.0, 0.0, 0.0),
-            0.5, 20, DamageType::Physical, &mut targets,
+            &mut phys,
+            attacker_id,
+            Vec3::ZERO,
+            Vec3::new(5.0, 0.0, 0.0),
+            0.5,
+            20,
+            DamageType::Physical,
+            &mut targets,
         );
 
         // The target is at position 0.1 from origin.
@@ -2288,9 +2408,14 @@ mod combat_physics_sweep_mutation_tests {
         // Direction to target from ray origin: ~(3, -1, 0.5).normalized
         // dot with (1,0,0) ≈ 3/sqrt(9+1+0.25) ≈ 3/3.2 ≈ 0.94 → well inside cone
         let result = perform_attack_sweep(
-            &mut phys, attacker_id,
-            Vec3::ZERO, Vec3::new(5.0, 0.0, 0.0),
-            0.5, 20, DamageType::Physical, &mut targets,
+            &mut phys,
+            attacker_id,
+            Vec3::ZERO,
+            Vec3::new(5.0, 0.0, 0.0),
+            0.5,
+            20,
+            DamageType::Physical,
+            &mut targets,
         );
 
         // With correct < check, dot 0.94 < 0.5 → false → hit
@@ -2317,9 +2442,14 @@ mod combat_physics_sweep_mutation_tests {
 
         // Sweep forward — target is behind
         let result = perform_attack_sweep(
-            &mut phys, attacker_id,
-            Vec3::ZERO, Vec3::new(5.0, 0.0, 0.0),
-            0.5, 20, DamageType::Physical, &mut targets,
+            &mut phys,
+            attacker_id,
+            Vec3::ZERO,
+            Vec3::new(5.0, 0.0, 0.0),
+            0.5,
+            20,
+            DamageType::Physical,
+            &mut targets,
         );
 
         // Target behind means ray won't hit it at all (Rapier won't detect it).
@@ -2384,7 +2514,11 @@ mod water_movement_mutation_tests {
             state.update(0.5, 0.1); // submerge to add wet_timer
         }
         let status_before = state.wet_status;
-        assert_ne!(status_before, WetStatus::Dry, "should be wet after submersion");
+        assert_ne!(
+            status_before,
+            WetStatus::Dry,
+            "should be wet after submersion"
+        );
 
         // Now dry off — capture wet_timer before and after a known dt
         let timer_wet = state.wet_timer;
@@ -2557,8 +2691,8 @@ mod water_movement_mutation_tests {
 
         // One more tick pushes past grace (drowning_timer = 1.0)
         let _r_boundary = state.update(1.0, 0.1); // timer now 1.0, which is NOT > 1.0
-        // At exactly 1.0 == grace_period, `>` returns false — no damage
-        // At 1.1 it should trigger
+                                                  // At exactly 1.0 == grace_period, `>` returns false — no damage
+                                                  // At 1.1 it should trigger
         let r_past = state.update(1.0, 0.1); // timer now 1.1 > 1.0 → damage
         assert!(
             r_past.drowning_damage > 0.0,
@@ -2624,14 +2758,13 @@ mod water_forces_mutation_tests {
     #[test]
     fn test_buoyancy_applied_when_submerged() {
         let helper = WaterMovementHelper::default();
-        let forces = helper.calculate_water_forces(
-            Vec3::ZERO,
-            0.5,
-            Vec3::ZERO,
-            WaterMovementMode::Swimming,
-        );
+        let forces =
+            helper.calculate_water_forces(Vec3::ZERO, 0.5, Vec3::ZERO, WaterMovementMode::Swimming);
 
-        assert!(forces.buoyancy.y > 0.0, "buoyancy must be upward when submerged");
+        assert!(
+            forces.buoyancy.y > 0.0,
+            "buoyancy must be upward when submerged"
+        );
         // buoyancy_force=15.0, submersion=0.5 → buoyancy.y = 7.5
         assert!(
             (forces.buoyancy.y - 7.5).abs() < f32::EPSILON,
@@ -2648,23 +2781,15 @@ mod water_forces_mutation_tests {
         let helper = WaterMovementHelper::default();
         // length_squared of (0.0316227766, 0, 0) ≈ 0.001
         let v = Vec3::new(0.001_f32.sqrt(), 0.0, 0.0);
-        let _forces = helper.calculate_water_forces(
-            v,
-            1.0,
-            Vec3::ZERO,
-            WaterMovementMode::Swimming,
-        );
+        let _forces =
+            helper.calculate_water_forces(v, 1.0, Vec3::ZERO, WaterMovementMode::Swimming);
 
         // At the threshold (length_squared ≈ 0.001), with > 0.001 this is false → no drag
         // With >= 0.001, this would be true → drag applied
         // Due to floating-point, this might be tricky. Use a velocity clearly below threshold.
         let v_below = Vec3::new(0.01, 0.0, 0.0); // length_squared = 0.0001 < 0.001
-        let forces_below = helper.calculate_water_forces(
-            v_below,
-            1.0,
-            Vec3::ZERO,
-            WaterMovementMode::Swimming,
-        );
+        let forces_below =
+            helper.calculate_water_forces(v_below, 1.0, Vec3::ZERO, WaterMovementMode::Swimming);
         assert!(
             forces_below.drag.length() < f32::EPSILON,
             "drag must be zero when velocity.length_squared < 0.001"
@@ -2672,12 +2797,8 @@ mod water_forces_mutation_tests {
 
         // Well above threshold: drag should be nonzero
         let v_above = Vec3::new(1.0, 0.0, 0.0); // length_squared = 1.0 >> 0.001
-        let forces_above = helper.calculate_water_forces(
-            v_above,
-            1.0,
-            Vec3::ZERO,
-            WaterMovementMode::Swimming,
-        );
+        let forces_above =
+            helper.calculate_water_forces(v_above, 1.0, Vec3::ZERO, WaterMovementMode::Swimming);
         assert!(
             forces_above.drag.length() > 0.0,
             "drag must be nonzero when velocity is significant"
@@ -2694,12 +2815,10 @@ mod water_forces_mutation_tests {
         let helper = WaterMovementHelper::default();
         let vel = Vec3::new(2.0, 0.0, 0.0);
 
-        let forces_half = helper.calculate_water_forces(
-            vel, 0.5, Vec3::ZERO, WaterMovementMode::Swimming,
-        );
-        let forces_full = helper.calculate_water_forces(
-            vel, 1.0, Vec3::ZERO, WaterMovementMode::Swimming,
-        );
+        let forces_half =
+            helper.calculate_water_forces(vel, 0.5, Vec3::ZERO, WaterMovementMode::Swimming);
+        let forces_full =
+            helper.calculate_water_forces(vel, 1.0, Vec3::ZERO, WaterMovementMode::Swimming);
 
         // With * submersion: drag at submersion=1.0 should be 2x drag at submersion=0.5
         let drag_half = forces_half.drag.length();
@@ -2774,7 +2893,10 @@ mod water_forces_mutation_tests {
         // With first + replaced by *: buoyancy * drag is component-wise Vec3 mul
         // (2*-3, 5*-1, 1*0.5) = (-6, -5, 0.5) + swim = (-5, -5, 0.5)
         let multiplied = forces.buoyancy * forces.drag + forces.swim;
-        assert_ne!(total, multiplied, "total must differ from buoyancy * drag + swim");
+        assert_ne!(
+            total, multiplied,
+            "total must differ from buoyancy * drag + swim"
+        );
     }
 
     /// Catches: `(buoyancy + drag) + swim` → `(buoyancy + drag) - swim` (L536 second +)
@@ -2849,7 +2971,12 @@ mod weaving_mutation_tests {
         let mut logger = |_: String| {};
 
         let result = crate::weaving::apply_weave_op(
-            &mut world, &mut physics, &nav_src, &mut budget, &op, &mut logger,
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &op,
+            &mut logger,
         );
         assert!(result.is_ok());
 
@@ -2913,7 +3040,12 @@ mod weaving_mutation_tests {
 
         let initial_obstacles = world.obstacles.len();
         crate::weaving::apply_weave_op(
-            &mut world, &mut physics, &nav_src, &mut budget, &op, &mut logger,
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &op,
+            &mut logger,
         )
         .unwrap();
 
@@ -2942,13 +3074,18 @@ mod weaving_mutation_tests {
         let op = WeaveOp {
             kind: WeaveOpKind::RedirectWind,
             a: vec3(3.0, 0.0, 0.0), // non-zero position
-            b: None,                 // triggers default direction: a+(1,0,0)
+            b: None,                // triggers default direction: a+(1,0,0)
             budget_cost: 1,
         };
         let mut logger = |_: String| {};
 
         crate::weaving::apply_weave_op(
-            &mut world, &mut physics, &nav_src, &mut budget, &op, &mut logger,
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &op,
+            &mut logger,
         )
         .unwrap();
 
@@ -2989,7 +3126,12 @@ mod weaving_mutation_tests {
         let mut logger = |_: String| {};
 
         crate::weaving::apply_weave_op(
-            &mut world, &mut physics, &nav_src, &mut budget, &op, &mut logger,
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &op,
+            &mut logger,
         )
         .unwrap();
 
@@ -3239,11 +3381,7 @@ mod weave_portals_mutation_tests {
             waypoints
         );
         assert_eq!(waypoints[0], start, "First must be start");
-        assert_eq!(
-            *waypoints.last().unwrap(),
-            goal,
-            "Last must be goal"
-        );
+        assert_eq!(*waypoints.last().unwrap(), goal, "Last must be goal");
 
         // Intermediate waypoints are the bottom (right) portal points
         assert_eq!(
@@ -3259,11 +3397,7 @@ mod weave_portals_mutation_tests {
 
         // No consecutive duplicates
         for w in waypoints.windows(2) {
-            assert_ne!(
-                w[0], w[1],
-                "No consecutive duplicate waypoints: {:?}",
-                w
-            );
+            assert_ne!(w[0], w[1], "No consecutive duplicate waypoints: {:?}", w);
         }
     }
 
@@ -3344,13 +3478,7 @@ mod weave_portals_mutation_tests {
                     right_tri: 4,
                 },
             ],
-            tri_to_portals: vec![
-                vec![0],
-                vec![0, 1],
-                vec![1],
-                vec![2],
-                vec![2],
-            ],
+            tri_to_portals: vec![vec![0], vec![0, 1], vec![1], vec![2], vec![2]],
         };
 
         let start = Vec3::new(0.0, 0.0, 2.5);
@@ -3454,10 +3582,10 @@ mod weave_portals_mutation_tests {
             ],
             // CRITICAL: decoy (portal 2) listed BEFORE correct (portal 0) for tri 0
             tri_to_portals: vec![
-                vec![2, 0],    // tri 0: decoy first, correct second
-                vec![0, 1],    // tri 1
-                vec![1],       // tri 2
-                vec![2],       // tri 3 (decoy only)
+                vec![2, 0], // tri 0: decoy first, correct second
+                vec![0, 1], // tri 1
+                vec![1],    // tri 2
+                vec![2],    // tri 3 (decoy only)
             ],
         };
 

@@ -122,7 +122,12 @@ pub fn render_quest_progress(quest: &Quest) -> Vec<String> {
 
     // Rewards
     if !quest.rewards.is_empty() {
-        let reward_text = quest.rewards.iter().map(|r| format!("{:?}", r)).collect::<Vec<_>>().join(", ");
+        let reward_text = quest
+            .rewards
+            .iter()
+            .map(|r| format!("{:?}", r))
+            .collect::<Vec<_>>()
+            .join(", ");
         lines.push(format!(
             "   {}Reward: {}{}{}",
             colors::DIM,
@@ -167,7 +172,12 @@ pub fn render_ability_panel(player: &Player) -> Vec<String> {
     if !dash_ready {
         lines.push(format!(
             "     {}",
-            render_cooldown_bar("Cooldown", dash.state.remaining_cooldown(), dash.state.cooldown_seconds, 20)
+            render_cooldown_bar(
+                "Cooldown",
+                dash.state.remaining_cooldown(),
+                dash.state.cooldown_seconds,
+                20
+            )
         ));
     }
 
@@ -191,7 +201,12 @@ pub fn render_ability_panel(player: &Player) -> Vec<String> {
     if !shield_ready {
         lines.push(format!(
             "     {}",
-            render_cooldown_bar("Cooldown", shield.state.remaining_cooldown(), shield.state.cooldown_seconds, 20)
+            render_cooldown_bar(
+                "Cooldown",
+                shield.state.remaining_cooldown(),
+                shield.state.cooldown_seconds,
+                20
+            )
         ));
     }
 

@@ -86,7 +86,12 @@ impl ApplicationHandler for CutsceneApp {
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
         let renderer = match self.renderer.as_mut() {
             Some(r) => r,
             None => return,
@@ -111,14 +116,13 @@ impl ApplicationHandler for CutsceneApp {
                     },
                 ..
             } => {
-                self.ctl.process_keyboard(code, state == ElementState::Pressed);
+                self.ctl
+                    .process_keyboard(code, state == ElementState::Pressed);
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if button == MouseButton::Right {
-                    self.ctl.process_mouse_button(
-                        MouseButton::Right,
-                        state == ElementState::Pressed,
-                    );
+                    self.ctl
+                        .process_mouse_button(MouseButton::Right, state == ElementState::Pressed);
                 }
             }
             WindowEvent::CursorMoved { position, .. } => self.ctl.process_mouse_move(
@@ -142,7 +146,7 @@ impl ApplicationHandler for CutsceneApp {
         let dt = (Instant::now() - self.last).as_secs_f32();
         self.last = Instant::now();
         self.t += dt;
-        
+
         let (cam, _title, _done) = self.cs.tick(dt, &self.tl);
         if let Some((pos, yaw, pitch)) = cam {
             self.camera.position = pos;
@@ -151,7 +155,7 @@ impl ApplicationHandler for CutsceneApp {
         } else {
             self.ctl.update_camera(&mut self.camera, dt);
         }
-        
+
         renderer.update_camera(&self.camera);
         if let Err(e) = renderer.render() {
             eprintln!("{e:?}");

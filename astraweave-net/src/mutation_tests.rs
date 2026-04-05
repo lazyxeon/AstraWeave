@@ -2,10 +2,10 @@
 //! Targets: Interest policies, delta compression, Bresenham LOS, hashing, replay.
 
 use crate::{
-    apply_delta, build_snapshot, diff_snapshots, filter_snapshot_for_viewer,
-    has_los, stable_hash_snapshot, subset_hash, world_obstacles_btree, world_to_entities,
-    Delta, EntityDelta, EntityDeltaMask, EntityState, FovInterest, FovLosInterest, FullInterest,
-    Interest, RadiusTeamInterest, ReplayEvent, Snapshot, SNAPSHOT_VERSION,
+    apply_delta, build_snapshot, diff_snapshots, filter_snapshot_for_viewer, has_los,
+    stable_hash_snapshot, subset_hash, world_obstacles_btree, world_to_entities, Delta,
+    EntityDelta, EntityDeltaMask, EntityState, FovInterest, FovLosInterest, FullInterest, Interest,
+    RadiusTeamInterest, ReplayEvent, Snapshot, SNAPSHOT_VERSION,
 };
 use astraweave_core::{ActionStep, IVec2, PlanIntent, Team, World};
 use std::collections::BTreeSet;
@@ -443,8 +443,8 @@ fn mutation_has_los_dx_sub_not_add() {
     // For a horizontal line, the path is the same (steps through every x).
     // But for a diagonal: a=(1,0), b=(4,2), obstacle at (2,1)
     // Original dx=3, dy=-2, err=1. Path visits (2,1) → blocked.
-    // Mutation dx=5, dy=-2, err=3. Path: (2,0),(3,0),(4,1)... skips (2,1)? 
-    // Actually mutation may cause infinite loop (overshoot). 
+    // Mutation dx=5, dy=-2, err=3. Path: (2,0),(3,0),(4,1)... skips (2,1)?
+    // Actually mutation may cause infinite loop (overshoot).
     // If it infinite-loops, that's a TIMEOUT → still detected.
     // Test it anyway — at worst it's a timeout, at best it catches.
     let mut obs = BTreeSet::new();
@@ -634,10 +634,26 @@ fn mutation_diff_each_field_independently() {
     };
     let d = diff_snapshots(&base, &head, &FullInterest, &viewer);
     assert_eq!(d.changed.len(), 1);
-    assert_ne!(d.changed[0].mask & EntityDeltaMask::POS, 0, "pos mask must be set");
-    assert_eq!(d.changed[0].mask & EntityDeltaMask::HP, 0, "hp mask must be clear");
-    assert_eq!(d.changed[0].mask & EntityDeltaMask::TEAM, 0, "team mask must be clear");
-    assert_eq!(d.changed[0].mask & EntityDeltaMask::AMMO, 0, "ammo mask must be clear");
+    assert_ne!(
+        d.changed[0].mask & EntityDeltaMask::POS,
+        0,
+        "pos mask must be set"
+    );
+    assert_eq!(
+        d.changed[0].mask & EntityDeltaMask::HP,
+        0,
+        "hp mask must be clear"
+    );
+    assert_eq!(
+        d.changed[0].mask & EntityDeltaMask::TEAM,
+        0,
+        "team mask must be clear"
+    );
+    assert_eq!(
+        d.changed[0].mask & EntityDeltaMask::AMMO,
+        0,
+        "ammo mask must be clear"
+    );
     assert_eq!(d.changed[0].pos, Some(IVec2 { x: 6, y: 5 }));
 
     // Only hp changes
@@ -938,7 +954,11 @@ fn mutation_replay_returns_correct_hash() {
         actor_id: p,
         intent: PlanIntent {
             plan_id: "mv".into(),
-            steps: vec![ActionStep::MoveTo { x: 3, y: 2, speed: None }],
+            steps: vec![ActionStep::MoveTo {
+                x: 3,
+                y: 2,
+                speed: None,
+            }],
         },
         world_hash: 0,
     }];
@@ -948,14 +968,20 @@ fn mutation_replay_returns_correct_hash() {
     let p2 = w2.spawn("P", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
     let dt = 1.0f32 / 60.0f32;
     w2.tick(dt); // tick 0 → 1
-    let vcfg = ValidateCfg { world_bounds: (0, 0, 19, 9) };
-    let mut log = |s: String| { let _ = s; };
+    let vcfg = ValidateCfg {
+        world_bounds: (0, 0, 19, 9),
+    };
+    let mut log = |s: String| {
+        let _ = s;
+    };
     let _ = validate_and_execute(&mut w2, p2, &events[0].intent, &vcfg, &mut log);
     let expected = build_snapshot(&w2, 1, 0);
 
     let actual_hash = replay_from(w1, &events).unwrap();
-    assert_eq!(actual_hash, expected.world_hash,
-        "replay hash must match manually-replayed hash (not Ok(1) or other constant)");
+    assert_eq!(
+        actual_hash, expected.world_hash,
+        "replay hash must match manually-replayed hash (not Ok(1) or other constant)"
+    );
 }
 
 #[test]
@@ -974,7 +1000,11 @@ fn mutation_replay_ticks_advance() {
             actor_id: p1,
             intent: PlanIntent {
                 plan_id: "mv1".into(),
-                steps: vec![ActionStep::MoveTo { x: 3, y: 2, speed: None }],
+                steps: vec![ActionStep::MoveTo {
+                    x: 3,
+                    y: 2,
+                    speed: None,
+                }],
             },
             world_hash: 0,
         },
@@ -984,7 +1014,11 @@ fn mutation_replay_ticks_advance() {
             actor_id: p1,
             intent: PlanIntent {
                 plan_id: "mv2".into(),
-                steps: vec![ActionStep::MoveTo { x: 4, y: 2, speed: None }],
+                steps: vec![ActionStep::MoveTo {
+                    x: 4,
+                    y: 2,
+                    speed: None,
+                }],
             },
             world_hash: 0,
         },
@@ -1022,7 +1056,10 @@ fn mutation_diff_detects_removed_entities() {
         delta.removed.contains(&2),
         "entity 2 must be in removed list"
     );
-    assert!(!delta.removed.contains(&1), "entity 1 must not be in removed");
+    assert!(
+        !delta.removed.contains(&1),
+        "entity 1 must not be in removed"
+    );
 }
 
 #[test]

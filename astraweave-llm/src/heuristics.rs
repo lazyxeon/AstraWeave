@@ -197,7 +197,9 @@ impl HeuristicRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::{CompanionState, Constraints, CoverType, EnemyState, PlayerState, Poi, Stance, ToolSpec};
+    use astraweave_core::{
+        CompanionState, Constraints, CoverType, EnemyState, PlayerState, Poi, Stance, ToolSpec,
+    };
     use std::collections::BTreeMap;
 
     fn create_basic_snapshot() -> WorldSnapshot {

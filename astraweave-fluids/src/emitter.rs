@@ -782,7 +782,11 @@ mod tests {
 
         // 20 * 0.1 = 2 particles
         let (_, velocities, _) = emitter.tick(0.1);
-        assert!(velocities.len() >= 2, "need >= 2 particles, got {}", velocities.len());
+        assert!(
+            velocities.len() >= 2,
+            "need >= 2 particles, got {}",
+            velocities.len()
+        );
 
         // Reproduce the jitter formula for each particle.
         // Point emitter: sample_shape always returns pos=[0,0,0], normal=[0,-1,0].
@@ -799,15 +803,24 @@ mod tests {
 
             assert!(
                 (vel[0] - expected_x).abs() < 1e-3,
-                "particle {} vx: got {} expected {}", i, vel[0], expected_x
+                "particle {} vx: got {} expected {}",
+                i,
+                vel[0],
+                expected_x
             );
             assert!(
                 (vel[1] - expected_y).abs() < 1e-3,
-                "particle {} vy: got {} expected {}", i, vel[1], expected_y
+                "particle {} vy: got {} expected {}",
+                i,
+                vel[1],
+                expected_y
             );
             assert!(
                 (vel[2] - expected_z).abs() < 1e-3,
-                "particle {} vz: got {} expected {}", i, vel[2], expected_z
+                "particle {} vz: got {} expected {}",
+                i,
+                vel[2],
+                expected_z
             );
         }
     }

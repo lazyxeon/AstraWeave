@@ -483,15 +483,24 @@ mod tests {
 
         // Exactly 0.0 should be valid (kills < → <=)
         config.learning.initial_success_rate = 0.0;
-        assert!(config.validate().is_ok(), "initial_success_rate=0.0 should be valid");
+        assert!(
+            config.validate().is_ok(),
+            "initial_success_rate=0.0 should be valid"
+        );
 
         // Exactly 1.0 should be valid (kills > → >=)
         config.learning.initial_success_rate = 1.0;
-        assert!(config.validate().is_ok(), "initial_success_rate=1.0 should be valid");
+        assert!(
+            config.validate().is_ok(),
+            "initial_success_rate=1.0 should be valid"
+        );
 
         // Negative should fail (kills < → ==)
         config.learning.initial_success_rate = -0.1;
-        assert!(config.validate().is_err(), "initial_success_rate=-0.1 should be invalid");
+        assert!(
+            config.validate().is_err(),
+            "initial_success_rate=-0.1 should be invalid"
+        );
     }
 
     /// Kills lines 240: boundary tests for min_success_rate
@@ -500,10 +509,16 @@ mod tests {
         let mut config = GOAPConfig::default();
 
         config.learning.min_success_rate = 0.0;
-        assert!(config.validate().is_ok(), "min_success_rate=0.0 should be valid");
+        assert!(
+            config.validate().is_ok(),
+            "min_success_rate=0.0 should be valid"
+        );
 
         config.learning.min_success_rate = -0.1;
-        assert!(config.validate().is_err(), "min_success_rate=-0.1 should be invalid");
+        assert!(
+            config.validate().is_err(),
+            "min_success_rate=-0.1 should be invalid"
+        );
 
         // Just under max to avoid min >= max error
         config.learning.min_success_rate = config.learning.max_success_rate - 0.01;
@@ -516,13 +531,22 @@ mod tests {
         let mut config = GOAPConfig::default();
 
         config.learning.max_success_rate = 1.0;
-        assert!(config.validate().is_ok(), "max_success_rate=1.0 should be valid");
+        assert!(
+            config.validate().is_ok(),
+            "max_success_rate=1.0 should be valid"
+        );
 
         config.learning.max_success_rate = -0.1;
-        assert!(config.validate().is_err(), "max_success_rate=-0.1 should be invalid");
+        assert!(
+            config.validate().is_err(),
+            "max_success_rate=-0.1 should be invalid"
+        );
 
         config.learning.max_success_rate = 1.1;
-        assert!(config.validate().is_err(), "max_success_rate=1.1 should be invalid");
+        assert!(
+            config.validate().is_err(),
+            "max_success_rate=1.1 should be invalid"
+        );
     }
 
     /// Kills lines 259: boundary tests for ewma_alpha
@@ -537,10 +561,16 @@ mod tests {
         assert!(config.validate().is_ok(), "ewma_alpha=1.0 should be valid");
 
         config.learning.smoothing.ewma_alpha = -0.1;
-        assert!(config.validate().is_err(), "ewma_alpha=-0.1 should be invalid");
+        assert!(
+            config.validate().is_err(),
+            "ewma_alpha=-0.1 should be invalid"
+        );
 
         config.learning.smoothing.ewma_alpha = 1.1;
-        assert!(config.validate().is_err(), "ewma_alpha=1.1 should be invalid");
+        assert!(
+            config.validate().is_err(),
+            "ewma_alpha=1.1 should be invalid"
+        );
     }
 
     /// Kills line 272: boundary test for risk_weight
@@ -552,6 +582,9 @@ mod tests {
         assert!(config.validate().is_ok(), "risk_weight=0.0 should be valid");
 
         config.cost_tuning.risk_weight = -0.1;
-        assert!(config.validate().is_err(), "risk_weight=-0.1 should be invalid");
+        assert!(
+            config.validate().is_err(),
+            "risk_weight=-0.1 should be invalid"
+        );
     }
 }

@@ -490,7 +490,11 @@ mod tests {
 
         // Use a value guaranteed different from whatever was loaded
         let orig = manager.settings.audio.master_volume;
-        let different_vol = if (orig - 42.0).abs() < 0.01 { 73.0 } else { 42.0 };
+        let different_vol = if (orig - 42.0).abs() < 0.01 {
+            73.0
+        } else {
+            42.0
+        };
         manager.settings.audio.master_volume = different_vol;
         assert!(manager.settings_modified());
 

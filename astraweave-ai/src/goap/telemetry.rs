@@ -449,10 +449,7 @@ mod tests {
         assert_eq!(collector.metrics().total_plans_completed, 2);
         assert_eq!(collector.metrics().total_plans_abandoned, 1);
         let rate = collector.metrics().avg_plan_success_rate;
-        assert!(
-            (rate - 2.0 / 3.0).abs() < 0.01,
-            "success rate: {rate}"
-        );
+        assert!((rate - 2.0 / 3.0).abs() < 0.01, "success rate: {rate}");
     }
 
     #[test]
@@ -525,8 +522,7 @@ mod tests {
         // Record 2 successes and 1 failure
         let _ = tracker.record_step("move".into(), true, Duration::from_millis(10));
         let _ = tracker.record_step("attack".into(), true, Duration::from_millis(20));
-        let step_event =
-            tracker.record_step("heal".into(), false, Duration::from_millis(50));
+        let step_event = tracker.record_step("heal".into(), false, Duration::from_millis(50));
 
         // Verify duration_ms conversion
         match step_event {
@@ -558,10 +554,7 @@ mod tests {
                     total_duration_ms < 500.0,
                     "total_duration_ms should be small, got {total_duration_ms}"
                 );
-                assert!(
-                    total_duration_ms >= 0.0,
-                    "duration must be non-negative"
-                );
+                assert!(total_duration_ms >= 0.0, "duration must be non-negative");
             }
             _ => panic!("expected PlanCompleted"),
         }

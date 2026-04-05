@@ -290,7 +290,10 @@ mod tests {
     fn test_terrain_modify_metadata_tags_not_empty() {
         // Kills: delete field tags from struct TemplateMetadata in terrain_modify_template
         let t = terrain_modify_template();
-        assert!(!t.metadata().tags.is_empty(), "terrain_modify must have tags");
+        assert!(
+            !t.metadata().tags.is_empty(),
+            "terrain_modify must have tags"
+        );
         assert!(t.metadata().tags.contains(&"terrain".to_string()));
     }
 
@@ -302,7 +305,10 @@ mod tests {
             !t.metadata().required_variables.is_empty(),
             "terrain_modify must declare required_variables"
         );
-        assert!(t.metadata().required_variables.contains(&"request_text".to_string()));
+        assert!(t
+            .metadata()
+            .required_variables
+            .contains(&"request_text".to_string()));
     }
 
     #[test]

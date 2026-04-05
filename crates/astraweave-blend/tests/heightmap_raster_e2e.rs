@@ -3,8 +3,7 @@
 //! Tests the flow: terrain mesh → rasterization → bilinear sampling → FixedPlacement extraction.
 
 use astraweave_blend::heightmap_raster::{
-    is_terrain_name, rasterize_terrain_meshes, ExtractedTerrainMesh, FixedPlacement,
-    TerrainBounds,
+    is_terrain_name, rasterize_terrain_meshes, ExtractedTerrainMesh, FixedPlacement, TerrainBounds,
 };
 
 // ============================================================================
@@ -12,7 +11,14 @@ use astraweave_blend::heightmap_raster::{
 // ============================================================================
 
 /// Create a flat terrain mesh (two triangles forming a quad) at known coordinates.
-fn make_flat_quad(name: &str, min_x: f32, min_z: f32, max_x: f32, max_z: f32, height: f32) -> ExtractedTerrainMesh {
+fn make_flat_quad(
+    name: &str,
+    min_x: f32,
+    min_z: f32,
+    max_x: f32,
+    max_z: f32,
+    height: f32,
+) -> ExtractedTerrainMesh {
     let vertices = vec![
         [min_x, height, min_z],
         [max_x, height, min_z],
@@ -32,8 +38,12 @@ fn make_flat_quad(name: &str, min_x: f32, min_z: f32, max_x: f32, max_z: f32, he
 /// Create a sloped terrain mesh: height increases linearly from min_z to max_z.
 fn make_sloped_quad(
     name: &str,
-    min_x: f32, min_z: f32, max_x: f32, max_z: f32,
-    h_low: f32, h_high: f32,
+    min_x: f32,
+    min_z: f32,
+    max_x: f32,
+    max_z: f32,
+    h_low: f32,
+    h_high: f32,
 ) -> ExtractedTerrainMesh {
     let vertices = vec![
         [min_x, h_low, min_z],

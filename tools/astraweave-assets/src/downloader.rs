@@ -466,7 +466,11 @@ mod tests {
         assert!(result, "Hash verification failed");
     }
 
-    fn make_test_downloader(client: reqwest::Client, max_retries: u32, retry_delay_ms: u64) -> Downloader {
+    fn make_test_downloader(
+        client: reqwest::Client,
+        max_retries: u32,
+        retry_delay_ms: u64,
+    ) -> Downloader {
         Downloader {
             client,
             max_retries,

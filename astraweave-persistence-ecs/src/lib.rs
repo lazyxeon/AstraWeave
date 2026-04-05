@@ -1066,7 +1066,7 @@ mod tests {
     #[test]
     fn roundtrip_with_cooldowns() {
         use astraweave_core::cooldowns::CooldownKey;
-        
+
         let mut world = World::new();
         let e1 = world.spawn();
         let mut cooldowns = std::collections::BTreeMap::new();

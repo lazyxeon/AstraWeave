@@ -502,7 +502,10 @@ mod tests {
         // Remediation: kills "replace TemplateEngine::sanitizer() with leaked default" mutation
         // Default engine uses default sanitization config, which is NOT strict
         let engine = TemplateEngine::new();
-        assert!(!engine.sanitizer().is_strict(), "default TemplateEngine sanitizer should not be strict");
+        assert!(
+            !engine.sanitizer().is_strict(),
+            "default TemplateEngine sanitizer should not be strict"
+        );
     }
 
     #[test]
@@ -756,10 +759,16 @@ mod tests {
             ..Default::default()
         };
         let engine = PromptEngine::new(config);
-        assert!(engine.sanitizer().is_strict(), "engine built with strict config should return strict sanitizer");
+        assert!(
+            engine.sanitizer().is_strict(),
+            "engine built with strict config should return strict sanitizer"
+        );
 
         let default_engine = PromptEngine::new(EngineConfig::default());
-        assert!(!default_engine.sanitizer().is_strict(), "default engine should not have strict sanitizer");
+        assert!(
+            !default_engine.sanitizer().is_strict(),
+            "default engine should not have strict sanitizer"
+        );
     }
 
     #[test]
@@ -771,8 +780,15 @@ mod tests {
             ..Default::default()
         };
         let engine = PromptEngine::new(config);
-        assert_eq!(engine.config().max_template_size, 42, "config getter must reflect constructed value");
-        assert!(!engine.config().enable_caching, "caching must reflect constructed value");
+        assert_eq!(
+            engine.config().max_template_size,
+            42,
+            "config getter must reflect constructed value"
+        );
+        assert!(
+            !engine.config().enable_caching,
+            "caching must reflect constructed value"
+        );
     }
 
     #[test]
@@ -783,7 +799,10 @@ mod tests {
             ..Default::default()
         };
         let engine = PromptEngine::new(config);
-        assert!(!engine.caching_enabled(), "caching_enabled must be false when constructed with caching disabled");
+        assert!(
+            !engine.caching_enabled(),
+            "caching_enabled must be false when constructed with caching disabled"
+        );
     }
 
     #[test]

@@ -67,7 +67,10 @@ fn player_profile_default_path() {
     let path = PlayerProfile::default_path();
     let p = path.to_string_lossy();
     assert!(p.contains("saves"), "path should contain 'saves': {p}");
-    assert!(p.contains("player_profile.toml"), "path should contain 'player_profile.toml': {p}");
+    assert!(
+        p.contains("player_profile.toml"),
+        "path should contain 'player_profile.toml': {p}"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -369,7 +372,10 @@ fn save_load_preserves_settings() {
 fn load_nonexistent_creates_default() {
     // load_from_file creates a default profile when file doesn't exist
     let result = PlayerProfile::load_from_file("/nonexistent/path/profile.toml");
-    assert!(result.is_ok(), "load_from_file should create default on missing file");
+    assert!(
+        result.is_ok(),
+        "load_from_file should create default on missing file"
+    );
     let p = result.unwrap();
     assert_eq!(p.name, "Player");
     assert_eq!(p.version, 1);
@@ -427,7 +433,14 @@ fn save_slot_manager_save_load_roundtrip() {
     let dir = tempfile::tempdir().unwrap();
     let sm = SaveSlotManager::new(10, dir.path().to_path_buf());
     let profile = PlayerProfile::default();
-    sm.save_to_slot(0, vec![1, 2, 3], profile.clone(), "level_1".into(), Some("checkpoint_a".into())).unwrap();
+    sm.save_to_slot(
+        0,
+        vec![1, 2, 3],
+        profile.clone(),
+        "level_1".into(),
+        Some("checkpoint_a".into()),
+    )
+    .unwrap();
 
     assert!(sm.slot_exists(0));
     let slot = sm.load_from_slot(0).unwrap();
@@ -449,7 +462,8 @@ fn save_slot_manager_load_nonexistent_fails() {
 fn save_slot_manager_delete_slot() {
     let dir = tempfile::tempdir().unwrap();
     let sm = SaveSlotManager::new(10, dir.path().to_path_buf());
-    sm.save_to_slot(0, vec![], PlayerProfile::default(), "l".into(), None).unwrap();
+    sm.save_to_slot(0, vec![], PlayerProfile::default(), "l".into(), None)
+        .unwrap();
     assert!(sm.slot_exists(0));
     sm.delete_slot(0).unwrap();
     assert!(!sm.slot_exists(0));
@@ -461,13 +475,16 @@ fn save_slot_manager_next_available_slot() {
     let sm = SaveSlotManager::new(3, dir.path().to_path_buf());
     assert_eq!(sm.next_available_slot(), Some(0));
 
-    sm.save_to_slot(0, vec![], PlayerProfile::default(), "".into(), None).unwrap();
+    sm.save_to_slot(0, vec![], PlayerProfile::default(), "".into(), None)
+        .unwrap();
     assert_eq!(sm.next_available_slot(), Some(1));
 
-    sm.save_to_slot(1, vec![], PlayerProfile::default(), "".into(), None).unwrap();
+    sm.save_to_slot(1, vec![], PlayerProfile::default(), "".into(), None)
+        .unwrap();
     assert_eq!(sm.next_available_slot(), Some(2));
 
-    sm.save_to_slot(2, vec![], PlayerProfile::default(), "".into(), None).unwrap();
+    sm.save_to_slot(2, vec![], PlayerProfile::default(), "".into(), None)
+        .unwrap();
     assert_eq!(sm.next_available_slot(), None, "all slots full → None");
 }
 
@@ -475,8 +492,10 @@ fn save_slot_manager_next_available_slot() {
 fn save_slot_manager_list_slots() {
     let dir = tempfile::tempdir().unwrap();
     let sm = SaveSlotManager::new(10, dir.path().to_path_buf());
-    sm.save_to_slot(0, vec![], PlayerProfile::default(), "a".into(), None).unwrap();
-    sm.save_to_slot(3, vec![], PlayerProfile::default(), "b".into(), None).unwrap();
+    sm.save_to_slot(0, vec![], PlayerProfile::default(), "a".into(), None)
+        .unwrap();
+    sm.save_to_slot(3, vec![], PlayerProfile::default(), "b".into(), None)
+        .unwrap();
     let list = sm.list_slots().unwrap();
     assert_eq!(list.len(), 2);
 }

@@ -604,7 +604,7 @@ mod tests {
         assert!(debugger.jump_to_step(2).is_ok());
         assert_eq!(debugger.current_step(), 2);
 
-        // Jump beyond plan length should fail  
+        // Jump beyond plan length should fail
         assert!(debugger.jump_to_step(3).is_err());
     }
 
@@ -643,9 +643,13 @@ mod tests {
         assert_eq!(explanation.cost, 5.0);
         assert_eq!(explanation.risk, 0.0);
         // "move" is executable, should be in alternatives
-        assert!(explanation.alternatives_considered.contains(&"move".to_string()));
+        assert!(explanation
+            .alternatives_considered
+            .contains(&"move".to_string()));
         // "fire" itself should NOT be in alternatives
-        assert!(!explanation.alternatives_considered.contains(&"fire".to_string()));
+        assert!(!explanation
+            .alternatives_considered
+            .contains(&"fire".to_string()));
         // reason string should contain the counts
         assert!(explanation.reason.contains("2 preconditions"));
         assert!(explanation.reason.contains("1 effects"));
@@ -718,7 +722,10 @@ mod tests {
         start.set("health", StateValue::Int(100));
 
         let plan = vec!["a".to_string()];
-        let actions = vec![create_test_action("a", vec![("health", StateValue::Int(50))])];
+        let actions = vec![create_test_action(
+            "a",
+            vec![("health", StateValue::Int(50))],
+        )];
 
         let mut debugger = PlanDebugger::new(plan, start, actions);
         debugger.step_forward().unwrap();
@@ -749,7 +756,7 @@ mod tests {
             "a",
             vec![
                 ("hp", StateValue::Int(50)),      // changed
-                ("flag", StateValue::Bool(true)),  // added
+                ("flag", StateValue::Bool(true)), // added
             ],
         )];
 

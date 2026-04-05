@@ -516,11 +516,19 @@ mod tests {
         let snap = make_test_snapshot();
         let rule_plan = PlanIntent {
             plan_id: "rule-1".to_string(),
-            steps: vec![ActionStep::MoveTo { x: 1, y: 2, speed: None }],
+            steps: vec![ActionStep::MoveTo {
+                x: 1,
+                y: 2,
+                speed: None,
+            }],
         };
         let goap_plan = PlanIntent {
             plan_id: "goap-1".to_string(),
-            steps: vec![ActionStep::MoveTo { x: 1, y: 2, speed: None }],
+            steps: vec![ActionStep::MoveTo {
+                x: 1,
+                y: 2,
+                speed: None,
+            }],
         };
         let comparison = PlanComparison::new(&snap, rule_plan, 1.0, goap_plan, 2.0);
 
@@ -578,7 +586,11 @@ mod tests {
         let rule_plan = PlanIntent {
             plan_id: "rule-1".to_string(),
             steps: vec![
-                ActionStep::MoveTo { x: 1, y: 1, speed: None },
+                ActionStep::MoveTo {
+                    x: 1,
+                    y: 1,
+                    speed: None,
+                },
                 ActionStep::Attack { target_id: 1 },
             ],
         };
@@ -587,7 +599,11 @@ mod tests {
             steps: vec![
                 ActionStep::Reload,
                 ActionStep::Attack { target_id: 1 },
-                ActionStep::MoveTo { x: 2, y: 2, speed: None },
+                ActionStep::MoveTo {
+                    x: 2,
+                    y: 2,
+                    speed: None,
+                },
             ],
         };
         let comparison = PlanComparison::new(&snap, rule_plan, 1.0, goap_plan, 2.0);
@@ -596,11 +612,15 @@ mod tests {
         assert_eq!(comparison.differences.step_count_diff, 1);
         // unique_to_rule should have exactly the actions only in rule
         assert!(
-            !comparison.differences.unique_to_rule.is_empty() || !comparison.differences.unique_to_goap.is_empty(),
+            !comparison.differences.unique_to_rule.is_empty()
+                || !comparison.differences.unique_to_goap.is_empty(),
             "Should have some unique actions"
         );
         // order_differs should be true (different action sequences)
-        assert!(comparison.differences.order_differs, "Action order should differ");
+        assert!(
+            comparison.differences.order_differs,
+            "Action order should differ"
+        );
     }
 
     /// Kills lines 214-215: similarity_score exact value
@@ -664,7 +684,10 @@ mod tests {
         );
         assert!(!comparison.metrics.goap_more_steps, "Rule has more steps");
         assert!(!comparison.metrics.both_empty, "Neither is empty");
-        assert!(comparison.metrics.both_non_empty, "Both should be non-empty");
+        assert!(
+            comparison.metrics.both_non_empty,
+            "Both should be non-empty"
+        );
     }
 
     /// Kills line 290: get_comparisons returning empty slice

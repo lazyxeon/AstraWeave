@@ -42,10 +42,7 @@ fn disabled_script_must_not_execute() {
     // Verify it ran while enabled
     {
         let s = app.world.get::<CScript>(e).unwrap();
-        assert!(
-            s.cached_ast.is_some(),
-            "AST must be cached after first run"
-        );
+        assert!(s.cached_ast.is_some(), "AST must be cached after first run");
         let val = s.script_state.get("executed").unwrap().as_bool().unwrap();
         assert!(val, "Script should have run while enabled");
     }
@@ -142,21 +139,9 @@ fn vec3_addition_in_script() {
     let x = s.script_state.get("sum_x").unwrap().as_float().unwrap();
     let y = s.script_state.get("sum_y").unwrap().as_float().unwrap();
     let z = s.script_state.get("sum_z").unwrap().as_float().unwrap();
-    assert!(
-        (x - 11.0).abs() < 0.01,
-        "Vec3 + x: expected 11, got {}",
-        x
-    );
-    assert!(
-        (y - 22.0).abs() < 0.01,
-        "Vec3 + y: expected 22, got {}",
-        y
-    );
-    assert!(
-        (z - 33.0).abs() < 0.01,
-        "Vec3 + z: expected 33, got {}",
-        z
-    );
+    assert!((x - 11.0).abs() < 0.01, "Vec3 + x: expected 11, got {}", x);
+    assert!((y - 22.0).abs() < 0.01, "Vec3 + y: expected 22, got {}", y);
+    assert!((z - 33.0).abs() < 0.01, "Vec3 + z: expected 33, got {}", z);
 }
 
 // ===========================================================================
@@ -196,21 +181,9 @@ fn vec3_subtraction_in_script() {
     let x = s.script_state.get("diff_x").unwrap().as_float().unwrap();
     let y = s.script_state.get("diff_y").unwrap().as_float().unwrap();
     let z = s.script_state.get("diff_z").unwrap().as_float().unwrap();
-    assert!(
-        (x - 7.0).abs() < 0.01,
-        "Vec3 - x: expected 7, got {}",
-        x
-    );
-    assert!(
-        (y - 15.0).abs() < 0.01,
-        "Vec3 - y: expected 15, got {}",
-        y
-    );
-    assert!(
-        (z - 23.0).abs() < 0.01,
-        "Vec3 - z: expected 23, got {}",
-        z
-    );
+    assert!((x - 7.0).abs() < 0.01, "Vec3 - x: expected 7, got {}", x);
+    assert!((y - 15.0).abs() < 0.01, "Vec3 - y: expected 15, got {}", y);
+    assert!((z - 23.0).abs() < 0.01, "Vec3 - z: expected 23, got {}", z);
 }
 
 // ===========================================================================
@@ -249,21 +222,9 @@ fn vec3_scalar_multiply_in_script() {
     let x = s.script_state.get("mul_x").unwrap().as_float().unwrap();
     let y = s.script_state.get("mul_y").unwrap().as_float().unwrap();
     let z = s.script_state.get("mul_z").unwrap().as_float().unwrap();
-    assert!(
-        (x - 10.0).abs() < 0.01,
-        "Vec3 * x: expected 10, got {}",
-        x
-    );
-    assert!(
-        (y - 15.0).abs() < 0.01,
-        "Vec3 * y: expected 15, got {}",
-        y
-    );
-    assert!(
-        (z - 20.0).abs() < 0.01,
-        "Vec3 * z: expected 20, got {}",
-        z
-    );
+    assert!((x - 10.0).abs() < 0.01, "Vec3 * x: expected 10, got {}", x);
+    assert!((y - 15.0).abs() < 0.01, "Vec3 * y: expected 15, got {}", y);
+    assert!((z - 20.0).abs() < 0.01, "Vec3 * z: expected 20, got {}", z);
 }
 
 // ===========================================================================
@@ -318,10 +279,7 @@ async fn script_loader_produces_correct_hash() {
         .expect("Failed to load test script");
 
     // Hash should be non-empty
-    assert!(
-        !asset.hash.is_empty(),
-        "Script hash must not be empty"
-    );
+    assert!(!asset.hash.is_empty(), "Script hash must not be empty");
 
     // Hash should be hex-encoded SHA256 (64 hex chars)
     assert_eq!(

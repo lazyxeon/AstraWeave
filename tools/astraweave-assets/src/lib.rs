@@ -216,13 +216,10 @@ mod tests {
         manifest.save(&manifest_path).unwrap();
 
         // First call fetches and writes
-        let paths = ensure_asset::ensure_asset_with_base_url(
-            &manifest_path,
-            "tex",
-            Some(&server.uri()),
-        )
-        .await
-        .unwrap();
+        let paths =
+            ensure_asset::ensure_asset_with_base_url(&manifest_path, "tex", Some(&server.uri()))
+                .await
+                .unwrap();
         assert_eq!(paths.len(), 1);
         assert!(paths[0].exists());
 
@@ -230,13 +227,10 @@ mod tests {
         assert!(reqs_after_first >= 3);
 
         // Second call should be cached (no more HTTP requests)
-        let paths2 = ensure_asset::ensure_asset_with_base_url(
-            &manifest_path,
-            "tex",
-            Some(&server.uri()),
-        )
-        .await
-        .unwrap();
+        let paths2 =
+            ensure_asset::ensure_asset_with_base_url(&manifest_path, "tex", Some(&server.uri()))
+                .await
+                .unwrap();
         assert_eq!(paths2.len(), 1);
         assert!(paths2[0].exists());
 
@@ -244,7 +238,9 @@ mod tests {
         assert_eq!(reqs_after_second, reqs_after_first);
 
         // is_available uses only lockfile + filesystem
-        assert!(ensure_asset::is_available(&manifest_path, "tex").await.unwrap());
+        assert!(ensure_asset::is_available(&manifest_path, "tex")
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
@@ -304,13 +300,10 @@ mod tests {
         };
         manifest.save(&manifest_path).unwrap();
 
-        let paths = ensure_asset::ensure_asset_with_base_url(
-            &manifest_path,
-            "sky",
-            Some(&server.uri()),
-        )
-        .await
-        .unwrap();
+        let paths =
+            ensure_asset::ensure_asset_with_base_url(&manifest_path, "sky", Some(&server.uri()))
+                .await
+                .unwrap();
         assert_eq!(paths.len(), 1);
         assert!(paths[0].exists());
     }
@@ -373,13 +366,10 @@ mod tests {
         };
         manifest.save(&manifest_path).unwrap();
 
-        let paths = ensure_asset::ensure_asset_with_base_url(
-            &manifest_path,
-            "m",
-            Some(&server.uri()),
-        )
-        .await
-        .unwrap();
+        let paths =
+            ensure_asset::ensure_asset_with_base_url(&manifest_path, "m", Some(&server.uri()))
+                .await
+                .unwrap();
         assert_eq!(paths.len(), 1);
         assert!(paths[0].exists());
     }
@@ -475,7 +465,7 @@ mod tests {
         let texture = super::AssetType::Texture;
         let hdri = super::AssetType::Hdri;
         let model = super::AssetType::Model;
-        
+
         assert!(matches!(texture, super::AssetType::Texture));
         assert!(matches!(hdri, super::AssetType::Hdri));
         assert!(matches!(model, super::AssetType::Model));

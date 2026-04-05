@@ -245,8 +245,7 @@ mod tests {
     fn test_plan_to_intent_move_to_coordinates() {
         // me=(10,10), enemy=(20,20) → signum=1, target = 10 + 1*2 = 12
         let snap = make_test_snapshot_at(10, 10, 20, 20);
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["move_to".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["move_to".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::MoveTo { x, y, .. } => {
                 assert_eq!(*x, 12, "move_to x = me.x + signum(dx)*2");
@@ -275,8 +274,7 @@ mod tests {
     #[test]
     fn test_plan_to_intent_attack() {
         let snap = make_test_snapshot();
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["attack".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["attack".into()], &snap, "t".into());
         assert_eq!(intent.steps.len(), 1);
         match &intent.steps[0] {
             ActionStep::Attack { target_id } => assert_eq!(*target_id, 1),
@@ -287,8 +285,7 @@ mod tests {
     #[test]
     fn test_plan_to_intent_cover_fire() {
         let snap = make_test_snapshot();
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["cover_fire".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["cover_fire".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::CoverFire {
                 target_id,
@@ -304,8 +301,7 @@ mod tests {
     #[test]
     fn test_plan_to_intent_reload() {
         let snap = make_test_snapshot();
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["reload".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["reload".into()], &snap, "t".into());
         assert_eq!(intent.steps.len(), 1);
         assert!(matches!(&intent.steps[0], ActionStep::Reload));
     }
@@ -314,8 +310,7 @@ mod tests {
     fn test_plan_to_intent_take_cover_coordinates() {
         // me=(10,10), enemy=(20,20) → signum=1, retreat = 10 - 1*3 = 7
         let snap = make_test_snapshot_at(10, 10, 20, 20);
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["take_cover".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["take_cover".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::MoveTo { x, y, .. } => {
                 assert_eq!(*x, 7, "take_cover x = me.x - signum(dx)*3");
@@ -328,8 +323,7 @@ mod tests {
     #[test]
     fn test_plan_to_intent_heal() {
         let snap = make_test_snapshot();
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["heal".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["heal".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::Heal { target_id } => assert_eq!(*target_id, None),
             other => panic!("expected Heal, got {:?}", other),
@@ -356,8 +350,7 @@ mod tests {
     fn test_plan_to_intent_retreat_coordinates() {
         // me=(10,10), enemy=(20,20) → retreat = 10 - 1*5 = 5
         let snap = make_test_snapshot_at(10, 10, 20, 20);
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["retreat".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["retreat".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::MoveTo { x, y, speed } => {
                 assert_eq!(*x, 5, "retreat x = me.x - signum(dx)*5");
@@ -371,8 +364,7 @@ mod tests {
     #[test]
     fn test_plan_to_intent_revive() {
         let snap = make_test_snapshot();
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["revive".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["revive".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::Revive { ally_id } => assert_eq!(*ally_id, 0),
             other => panic!("expected Revive, got {:?}", other),
@@ -382,8 +374,7 @@ mod tests {
     #[test]
     fn test_plan_to_intent_scan() {
         let snap = make_test_snapshot();
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["scan".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["scan".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::Scan { radius } => assert_eq!(*radius, 10.0),
             other => panic!("expected Scan, got {:?}", other),
@@ -434,8 +425,7 @@ mod tests {
     fn test_plan_to_intent_move_to_negative_direction() {
         // me=(10,10), enemy=(3,3) → signum(3-10)=signum(-7)=-1
         let snap = make_test_snapshot_at(10, 10, 3, 3);
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["move_to".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["move_to".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::MoveTo { x, y, .. } => {
                 // target = 10 + (-1)*2 = 8
@@ -450,8 +440,7 @@ mod tests {
     fn test_plan_to_intent_take_cover_negative_direction() {
         // me=(10,10), enemy=(3,3) → signum(-7)=-1, retreat = 10 - (-1)*3 = 13
         let snap = make_test_snapshot_at(10, 10, 3, 3);
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["take_cover".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["take_cover".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::MoveTo { x, y, .. } => {
                 assert_eq!(*x, 13);
@@ -465,8 +454,7 @@ mod tests {
     fn test_plan_to_intent_retreat_negative_direction() {
         // me=(10,10), enemy=(3,3) → retreat = 10 - (-1)*5 = 15
         let snap = make_test_snapshot_at(10, 10, 3, 3);
-        let intent =
-            GOAPOrchestrator::plan_to_intent(vec!["retreat".into()], &snap, "t".into());
+        let intent = GOAPOrchestrator::plan_to_intent(vec!["retreat".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::MoveTo { x, y, speed } => {
                 assert_eq!(*x, 15);

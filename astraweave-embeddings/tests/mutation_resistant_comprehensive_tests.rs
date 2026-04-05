@@ -120,7 +120,9 @@ fn vector_store_new_empty() {
 #[test]
 fn vector_store_insert_and_len() {
     let store = VectorStore::new(3);
-    store.insert("a".into(), vec![1.0, 0.0, 0.0], "hello".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0, 0.0], "hello".into())
+        .unwrap();
     assert_eq!(store.len(), 1);
     assert!(!store.is_empty());
 }
@@ -135,7 +137,9 @@ fn vector_store_insert_wrong_dimension_errors() {
 #[test]
 fn vector_store_get_existing() {
     let store = VectorStore::new(2);
-    store.insert("x".into(), vec![1.0, 2.0], "text_x".into()).unwrap();
+    store
+        .insert("x".into(), vec![1.0, 2.0], "text_x".into())
+        .unwrap();
     let got = store.get("x");
     assert!(got.is_some());
     assert_eq!(got.unwrap().text, "text_x");
@@ -150,7 +154,9 @@ fn vector_store_get_nonexistent() {
 #[test]
 fn vector_store_remove_existing() {
     let store = VectorStore::new(2);
-    store.insert("r".into(), vec![1.0, 0.0], "removeme".into()).unwrap();
+    store
+        .insert("r".into(), vec![1.0, 0.0], "removeme".into())
+        .unwrap();
     let removed = store.remove("r");
     assert!(removed.is_some());
     assert_eq!(store.len(), 0);
@@ -165,8 +171,12 @@ fn vector_store_remove_nonexistent() {
 #[test]
 fn vector_store_clear() {
     let store = VectorStore::new(2);
-    store.insert("a".into(), vec![1.0, 0.0], "a".into()).unwrap();
-    store.insert("b".into(), vec![0.0, 1.0], "b".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0], "a".into())
+        .unwrap();
+    store
+        .insert("b".into(), vec![0.0, 1.0], "b".into())
+        .unwrap();
     store.clear();
     assert_eq!(store.len(), 0);
 }
@@ -174,8 +184,12 @@ fn vector_store_clear() {
 #[test]
 fn vector_store_get_all_ids() {
     let store = VectorStore::new(2);
-    store.insert("x".into(), vec![1.0, 0.0], "x".into()).unwrap();
-    store.insert("y".into(), vec![0.0, 1.0], "y".into()).unwrap();
+    store
+        .insert("x".into(), vec![1.0, 0.0], "x".into())
+        .unwrap();
+    store
+        .insert("y".into(), vec![0.0, 1.0], "y".into())
+        .unwrap();
     let ids = store.get_all_ids();
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&"x".to_string()));
@@ -196,7 +210,9 @@ fn vector_store_search_empty_returns_empty() {
 #[test]
 fn vector_store_search_wrong_dim_errors() {
     let store = VectorStore::new(3);
-    store.insert("a".into(), vec![1.0, 0.0, 0.0], "a".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0, 0.0], "a".into())
+        .unwrap();
     let result = store.search(&[1.0, 0.0], 5);
     assert!(result.is_err());
 }
@@ -204,9 +220,15 @@ fn vector_store_search_wrong_dim_errors() {
 #[test]
 fn vector_store_search_returns_correct_order() {
     let store = VectorStore::new(3);
-    store.insert("a".into(), vec![1.0, 0.0, 0.0], "a".into()).unwrap();
-    store.insert("b".into(), vec![0.9, 0.1, 0.0], "b".into()).unwrap();
-    store.insert("c".into(), vec![0.0, 1.0, 0.0], "c".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0, 0.0], "a".into())
+        .unwrap();
+    store
+        .insert("b".into(), vec![0.9, 0.1, 0.0], "b".into())
+        .unwrap();
+    store
+        .insert("c".into(), vec![0.0, 1.0, 0.0], "c".into())
+        .unwrap();
     let results = store.search(&[1.0, 0.0, 0.0], 3).unwrap();
     assert!(!results.is_empty());
     // Most similar should be first
@@ -217,7 +239,9 @@ fn vector_store_search_returns_correct_order() {
 fn vector_store_search_k_limits_results() {
     let store = VectorStore::new(2);
     for i in 0..10 {
-        store.insert(format!("{}", i), vec![1.0, 0.0], format!("t{}", i)).unwrap();
+        store
+            .insert(format!("{}", i), vec![1.0, 0.0], format!("t{}", i))
+            .unwrap();
     }
     let results = store.search(&[1.0, 0.0], 3).unwrap();
     assert!(results.len() <= 3);
@@ -226,7 +250,9 @@ fn vector_store_search_k_limits_results() {
 #[test]
 fn vector_store_search_score_in_valid_range() {
     let store = VectorStore::new(2);
-    store.insert("a".into(), vec![1.0, 0.0], "a".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0], "a".into())
+        .unwrap();
     let results = store.search(&[1.0, 0.0], 1).unwrap();
     assert!(!results.is_empty());
     // Cosine similarity should be between -1 and 1
@@ -242,7 +268,9 @@ fn vector_store_insert_with_metadata() {
     let store = VectorStore::new(2);
     let mut meta = HashMap::new();
     meta.insert("key".to_string(), "value".to_string());
-    store.insert_with_metadata("m".into(), vec![1.0, 0.0], "meta".into(), 0.8, meta).unwrap();
+    store
+        .insert_with_metadata("m".into(), vec![1.0, 0.0], "meta".into(), 0.8, meta)
+        .unwrap();
     let got = store.get("m").unwrap();
     assert_eq!(got.importance, 0.8);
     assert_eq!(got.metadata.get("key").unwrap(), "value");
@@ -255,7 +283,9 @@ fn vector_store_insert_with_metadata() {
 #[test]
 fn vector_store_prune_no_op_when_below_target() {
     let store = VectorStore::new(2);
-    store.insert("a".into(), vec![1.0, 0.0], "a".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0], "a".into())
+        .unwrap();
     let removed = store.prune_vectors(10).unwrap();
     assert_eq!(removed, 0);
     assert_eq!(store.len(), 1);
@@ -266,10 +296,14 @@ fn vector_store_prune_removes_low_importance() {
     let store = VectorStore::new(2);
     let mut low_meta = HashMap::new();
     low_meta.insert("k".to_string(), "v".to_string());
-    store.insert_with_metadata("low".into(), vec![1.0, 0.0], "low".into(), 0.1, low_meta).unwrap();
+    store
+        .insert_with_metadata("low".into(), vec![1.0, 0.0], "low".into(), 0.1, low_meta)
+        .unwrap();
     let mut high_meta = HashMap::new();
     high_meta.insert("k".to_string(), "v".to_string());
-    store.insert_with_metadata("high".into(), vec![0.0, 1.0], "high".into(), 0.9, high_meta).unwrap();
+    store
+        .insert_with_metadata("high".into(), vec![0.0, 1.0], "high".into(), 0.9, high_meta)
+        .unwrap();
     let removed = store.prune_vectors(1).unwrap();
     assert_eq!(removed, 1);
     assert_eq!(store.len(), 1);
@@ -284,7 +318,9 @@ fn vector_store_prune_removes_low_importance() {
 #[test]
 fn vector_store_json_roundtrip() {
     let store = VectorStore::new(2);
-    store.insert("a".into(), vec![1.0, 0.0], "alpha".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0], "alpha".into())
+        .unwrap();
     let json = store.to_json().unwrap();
     let restored = VectorStore::from_json(&json).unwrap();
     assert_eq!(restored.len(), 1);
@@ -303,7 +339,9 @@ fn vector_store_metrics_initial() {
 #[test]
 fn vector_store_metrics_after_operations() {
     let store = VectorStore::new(2);
-    store.insert("a".into(), vec![1.0, 0.0], "a".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0], "a".into())
+        .unwrap();
     let _ = store.search(&[1.0, 0.0], 1).unwrap();
     let m = store.get_metrics();
     assert_eq!(m.total_vectors, 1);
@@ -468,7 +506,12 @@ fn create_memory_clamps_importance_below_zero() {
 
 #[test]
 fn create_memory_sets_entities() {
-    let m = MemoryUtils::create_memory("t".to_string(), MemoryCategory::Social, 0.5, vec!["player".into()]);
+    let m = MemoryUtils::create_memory(
+        "t".to_string(),
+        MemoryCategory::Social,
+        0.5,
+        vec!["player".into()],
+    );
     assert_eq!(m.entities, vec!["player".to_string()]);
 }
 
@@ -486,25 +529,31 @@ fn create_social_memory_clamps_valence() {
 
 #[test]
 fn create_combat_memory_victory_positive_valence() {
-    let m = MemoryUtils::create_combat_memory("won".to_string(), vec![], 0.5, CombatOutcome::Victory);
+    let m =
+        MemoryUtils::create_combat_memory("won".to_string(), vec![], 0.5, CombatOutcome::Victory);
     assert!(m.valence > 0.0, "Victory should have positive valence");
 }
 
 #[test]
 fn create_combat_memory_defeat_negative_valence() {
-    let m = MemoryUtils::create_combat_memory("lost".to_string(), vec![], 0.5, CombatOutcome::Defeat);
+    let m =
+        MemoryUtils::create_combat_memory("lost".to_string(), vec![], 0.5, CombatOutcome::Defeat);
     assert!(m.valence < 0.0, "Defeat should have negative valence");
 }
 
 #[test]
 fn create_combat_memory_draw_neutral_valence() {
     let m = MemoryUtils::create_combat_memory("tied".to_string(), vec![], 0.5, CombatOutcome::Draw);
-    assert!(m.valence.abs() < 0.4, "Draw should have near-neutral valence");
+    assert!(
+        m.valence.abs() < 0.4,
+        "Draw should have near-neutral valence"
+    );
 }
 
 #[test]
 fn create_combat_memory_retreat_negative_valence() {
-    let m = MemoryUtils::create_combat_memory("ran".to_string(), vec![], 0.5, CombatOutcome::Retreat);
+    let m =
+        MemoryUtils::create_combat_memory("ran".to_string(), vec![], 0.5, CombatOutcome::Retreat);
     assert!(m.valence < 0.0, "Retreat should have negative valence");
 }
 
@@ -519,7 +568,10 @@ fn calculate_decay_recent_memory_high() {
     let m = MemoryUtils::create_memory("t".to_string(), MemoryCategory::Social, 0.5, vec![]);
     let now = current_timestamp();
     let decay = MemoryUtils::calculate_decay(&m, now);
-    assert!(decay > 0.5, "Recent memory should have high decay value (retention)");
+    assert!(
+        decay > 0.5,
+        "Recent memory should have high decay value (retention)"
+    );
 }
 
 #[test]
@@ -529,7 +581,10 @@ fn calculate_decay_high_importance_slower() {
     let future = current_timestamp() + 3600 * 24; // 24h later
     let decay_high = MemoryUtils::calculate_decay(&m_high, future);
     let decay_low = MemoryUtils::calculate_decay(&m_low, future);
-    assert!(decay_high >= decay_low, "High importance should decay slower");
+    assert!(
+        decay_high >= decay_low,
+        "High importance should decay slower"
+    );
 }
 
 #[test]
@@ -604,7 +659,11 @@ fn extract_keyphrases_filters_short() {
     let kp = TextPreprocessor::extract_keyphrases("a the big battle is won by us");
     // Words <= 3 chars should be filtered
     for phrase in &kp {
-        assert!(phrase.len() > 3, "Short words should be filtered: {}", phrase);
+        assert!(
+            phrase.len() > 3,
+            "Short words should be filtered: {}",
+            phrase
+        );
     }
 }
 
@@ -723,8 +782,12 @@ fn vector_store_with_config() {
     config.dimensions = 5;
     config.max_vectors = 2;
     let store = VectorStore::with_config(config);
-    store.insert("a".into(), vec![1.0, 0.0, 0.0, 0.0, 0.0], "a".into()).unwrap();
-    store.insert("b".into(), vec![0.0, 1.0, 0.0, 0.0, 0.0], "b".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0, 0.0, 0.0, 0.0], "a".into())
+        .unwrap();
+    store
+        .insert("b".into(), vec![0.0, 1.0, 0.0, 0.0, 0.0], "b".into())
+        .unwrap();
     // Third insert should fail if capacity is enforced
     let result = store.insert("c".into(), vec![0.0, 0.0, 1.0, 0.0, 0.0], "c".into());
     assert!(result.is_err(), "Should fail when exceeding max_vectors");
@@ -733,7 +796,9 @@ fn vector_store_with_config() {
 #[test]
 fn vector_store_rebuild_index_no_error() {
     let store = VectorStore::new(2);
-    store.insert("a".into(), vec![1.0, 0.0], "a".into()).unwrap();
+    store
+        .insert("a".into(), vec![1.0, 0.0], "a".into())
+        .unwrap();
     // rebuild_index is a no-op but should not error
     store.rebuild_index().unwrap();
 }
@@ -807,7 +872,9 @@ fn insert_with_metadata_and_auto_prune_stores_vector() {
         .unwrap();
 
     assert_eq!(store.len(), 1, "vector should be stored");
-    let got = store.get("ap1").expect("inserted vector must be retrievable");
+    let got = store
+        .get("ap1")
+        .expect("inserted vector must be retrievable");
     assert_eq!(got.text, "auto-pruned");
     assert!((got.importance - 0.5).abs() < 1e-6);
     assert_eq!(got.metadata.get("tag").unwrap(), "test");

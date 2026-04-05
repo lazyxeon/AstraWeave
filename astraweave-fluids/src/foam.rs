@@ -724,7 +724,11 @@ mod tests {
         let p = &system.particles()[0];
         // intensity = shore_intensity = 0.5, .min(1.0) = 0.5
         // opacity = initial_opacity * 0.5 = 0.4
-        assert!((p.opacity - 0.4).abs() < 1e-4, "shore opacity={}", p.opacity);
+        assert!(
+            (p.opacity - 0.4).abs() < 1e-4,
+            "shore opacity={}",
+            p.opacity
+        );
     }
 
     #[test]
@@ -738,7 +742,11 @@ mod tests {
         system.spawn_foam(Vec3::ZERO, Vec2::ZERO, FoamSource::Wake);
         let p = &system.particles()[0];
         // intensity = wake_intensity = 0.3, opacity = 0.8 * 0.3 = 0.24
-        assert!((p.opacity - 0.24).abs() < 1e-4, "wake opacity={}", p.opacity);
+        assert!(
+            (p.opacity - 0.24).abs() < 1e-4,
+            "wake opacity={}",
+            p.opacity
+        );
     }
 
     #[test]
@@ -753,7 +761,11 @@ mod tests {
         let p = &system.particles()[0];
         // intensity = shore_intensity * 1.5 = 0.6, .min(1.0) = 0.6
         // opacity = 1.0 * 0.6 = 0.6
-        assert!((p.opacity - 0.6).abs() < 1e-4, "waterfall opacity={}", p.opacity);
+        assert!(
+            (p.opacity - 0.6).abs() < 1e-4,
+            "waterfall opacity={}",
+            p.opacity
+        );
     }
 
     #[test]

@@ -117,7 +117,7 @@ fn simulate_compression(input: &TextureInput, format: CompressionFormat) -> Comp
 fn optimize_mesh(input: &MeshInput) -> OptimizedMesh {
     // Simulate vertex cache optimization (reorder indices)
     let optimized_indices = input.indices.clone();
-    
+
     // Simple FIFO cache simulation
     let cache_size = 32usize;
     let mut cache: Vec<u32> = Vec::with_capacity(cache_size);
@@ -342,11 +342,7 @@ fn bench_mesh_optimization(c: &mut Criterion) {
             let mut remap = Vec::with_capacity(positions.len());
 
             for pos in &positions {
-                let key = [
-                    pos[0].to_bits(),
-                    pos[1].to_bits(),
-                    pos[2].to_bits(),
-                ];
+                let key = [pos[0].to_bits(), pos[1].to_bits(), pos[2].to_bits()];
 
                 let next_idx = unique_map.len() as u32;
                 let idx = *unique_map.entry(key).or_insert(next_idx);
@@ -361,11 +357,7 @@ fn bench_mesh_optimization(c: &mut Criterion) {
     group.bench_function("overdraw_analysis_1000_tris", |bencher| {
         let triangles: Vec<[[f32; 3]; 3]> = (0..1000)
             .map(|i| {
-                let base = [
-                    (i % 10) as f32,
-                    ((i / 10) % 10) as f32,
-                    (i / 100) as f32,
-                ];
+                let base = [(i % 10) as f32, ((i / 10) % 10) as f32, (i / 100) as f32];
                 [
                     base,
                     [base[0] + 1.0, base[1], base[2]],
@@ -464,7 +456,9 @@ fn bench_validation(c: &mut Criterion) {
 
                     // Check for degenerate triangles
                     for tri in m.indices.chunks(3) {
-                        if tri.len() == 3 && (tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2]) {
+                        if tri.len() == 3
+                            && (tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2])
+                        {
                             warnings.push("Degenerate triangle found".to_string());
                             break;
                         }
@@ -496,7 +490,10 @@ fn bench_validation(c: &mut Criterion) {
             .collect();
 
         let available_materials: std::collections::HashSet<&str> =
-            ["material_0", "material_1", "material_2"].iter().copied().collect();
+            ["material_0", "material_1", "material_2"]
+                .iter()
+                .copied()
+                .collect();
 
         bencher.iter(|| {
             let missing: Vec<(&String, &str)> = mesh_materials
@@ -586,8 +583,11 @@ fn bench_batch_processing(c: &mut Criterion) {
         bencher.iter(|| {
             let results: Vec<OptimizedMesh> = meshes.iter().map(optimize_mesh).collect();
 
-            let avg_miss_ratio: f32 =
-                results.iter().map(|r| r.vertex_cache_miss_ratio).sum::<f32>() / results.len() as f32;
+            let avg_miss_ratio: f32 = results
+                .iter()
+                .map(|r| r.vertex_cache_miss_ratio)
+                .sum::<f32>()
+                / results.len() as f32;
             std_black_box(avg_miss_ratio)
         });
     });
@@ -684,13 +684,7 @@ fn bench_lod_generation(c: &mut Criterion) {
     // Test 1: Quadric error metrics
     group.bench_function("quadric_error_5000_verts", |bencher| {
         let positions: Vec<[f32; 3]> = (0..5000)
-            .map(|i| {
-                [
-                    (i % 50) as f32,
-                    ((i / 50) % 50) as f32,
-                    (i / 2500) as f32,
-                ]
-            })
+            .map(|i| [(i % 50) as f32, ((i / 50) % 50) as f32, (i / 2500) as f32])
             .collect();
 
         bencher.iter(|| {
@@ -744,10 +738,14 @@ fn bench_lod_generation(c: &mut Criterion) {
                 .map(|&ratio| {
                     let target_count = (base_mesh.indices.len() as f32 * ratio) as usize;
                     MeshInput {
-                        positions: base_mesh.positions[..target_count.min(base_mesh.positions.len())].to_vec(),
-                        normals: base_mesh.normals[..target_count.min(base_mesh.normals.len())].to_vec(),
+                        positions: base_mesh.positions
+                            [..target_count.min(base_mesh.positions.len())]
+                            .to_vec(),
+                        normals: base_mesh.normals[..target_count.min(base_mesh.normals.len())]
+                            .to_vec(),
                         uvs: base_mesh.uvs[..target_count.min(base_mesh.uvs.len())].to_vec(),
-                        indices: base_mesh.indices[..target_count.min(base_mesh.indices.len())].to_vec(),
+                        indices: base_mesh.indices[..target_count.min(base_mesh.indices.len())]
+                            .to_vec(),
                     }
                 })
                 .collect();
@@ -762,8 +760,8 @@ fn bench_lod_generation(c: &mut Criterion) {
         let objects: Vec<(f32, f32)> = (0..100)
             .map(|i| {
                 (
-                    i as f32 * 10.0,        // distance
-                    (i % 10 + 1) as f32,    // bounding radius
+                    i as f32 * 10.0,     // distance
+                    (i % 10 + 1) as f32, // bounding radius
                 )
             })
             .collect();
@@ -841,10 +839,7 @@ fn bench_format_conversion(c: &mut Criterion) {
                         enc[1] = (1.0 - enc[0].abs()) * enc[1].signum();
                     }
 
-                    [
-                        (enc[0] * 32767.0) as i16,
-                        (enc[1] * 32767.0) as i16,
-                    ]
+                    [(enc[0] * 32767.0) as i16, (enc[1] * 32767.0) as i16]
                 })
                 .collect();
 

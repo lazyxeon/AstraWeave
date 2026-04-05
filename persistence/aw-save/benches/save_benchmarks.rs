@@ -42,39 +42,73 @@ use aw_save::{
 /// CORRECTNESS: Validate serialized data can be deserialized back identically
 #[inline]
 fn assert_round_trip_valid(original: &SaveBundleV2, decoded: &SaveBundleV2, context: &str) {
-    assert_eq!(original.schema, decoded.schema,
-        "[CORRECTNESS FAILURE] {}: schema mismatch", context);
-    assert_eq!(original.player_id, decoded.player_id,
-        "[CORRECTNESS FAILURE] {}: player_id mismatch", context);
-    assert_eq!(original.slot, decoded.slot,
-        "[CORRECTNESS FAILURE] {}: slot mismatch", context);
-    assert_eq!(original.world.tick, decoded.world.tick,
-        "[CORRECTNESS FAILURE] {}: world tick mismatch", context);
-    assert_eq!(original.world.ecs_blob.len(), decoded.world.ecs_blob.len(),
-        "[CORRECTNESS FAILURE] {}: ecs_blob size mismatch", context);
-    assert_eq!(original.world.state_hash, decoded.world.state_hash,
-        "[CORRECTNESS FAILURE] {}: state_hash mismatch", context);
-    assert_eq!(original.companions.len(), decoded.companions.len(),
-        "[CORRECTNESS FAILURE] {}: companions count mismatch", context);
-    assert_eq!(original.inventory.credits, decoded.inventory.credits,
-        "[CORRECTNESS FAILURE] {}: credits mismatch", context);
+    assert_eq!(
+        original.schema, decoded.schema,
+        "[CORRECTNESS FAILURE] {}: schema mismatch",
+        context
+    );
+    assert_eq!(
+        original.player_id, decoded.player_id,
+        "[CORRECTNESS FAILURE] {}: player_id mismatch",
+        context
+    );
+    assert_eq!(
+        original.slot, decoded.slot,
+        "[CORRECTNESS FAILURE] {}: slot mismatch",
+        context
+    );
+    assert_eq!(
+        original.world.tick, decoded.world.tick,
+        "[CORRECTNESS FAILURE] {}: world tick mismatch",
+        context
+    );
+    assert_eq!(
+        original.world.ecs_blob.len(),
+        decoded.world.ecs_blob.len(),
+        "[CORRECTNESS FAILURE] {}: ecs_blob size mismatch",
+        context
+    );
+    assert_eq!(
+        original.world.state_hash, decoded.world.state_hash,
+        "[CORRECTNESS FAILURE] {}: state_hash mismatch",
+        context
+    );
+    assert_eq!(
+        original.companions.len(),
+        decoded.companions.len(),
+        "[CORRECTNESS FAILURE] {}: companions count mismatch",
+        context
+    );
+    assert_eq!(
+        original.inventory.credits, decoded.inventory.credits,
+        "[CORRECTNESS FAILURE] {}: credits mismatch",
+        context
+    );
 }
 
 /// CORRECTNESS: Validate compression preserves data size
 #[inline]
 fn assert_compression_valid(original_size: usize, decompressed_size: usize, context: &str) {
-    assert_eq!(original_size, decompressed_size,
-        "[CORRECTNESS FAILURE] {}: compression size mismatch (orig={}, decomp={})", 
-        context, original_size, decompressed_size);
+    assert_eq!(
+        original_size, decompressed_size,
+        "[CORRECTNESS FAILURE] {}: compression size mismatch (orig={}, decomp={})",
+        context, original_size, decompressed_size
+    );
 }
 
 /// CORRECTNESS: Validate checksum is non-zero and deterministic
 #[inline]
 fn assert_checksum_valid(crc1: u32, crc2: u32, context: &str) {
-    assert_ne!(crc1, 0, 
-        "[CORRECTNESS FAILURE] {}: CRC32 is zero (degenerate input?)", context);
-    assert_eq!(crc1, crc2,
-        "[CORRECTNESS FAILURE] {}: CRC32 non-deterministic ({} vs {})", context, crc1, crc2);
+    assert_ne!(
+        crc1, 0,
+        "[CORRECTNESS FAILURE] {}: CRC32 is zero (degenerate input?)",
+        context
+    );
+    assert_eq!(
+        crc1, crc2,
+        "[CORRECTNESS FAILURE] {}: CRC32 non-deterministic ({} vs {})",
+        context, crc1, crc2
+    );
 }
 
 // ============================================================================
@@ -158,8 +192,10 @@ fn bench_serialization(c: &mut Criterion) {
         b.iter(|| {
             let bytes = postcard::to_allocvec(&bundle).unwrap();
             // CORRECTNESS: Validate non-empty serialization
-            assert!(!bytes.is_empty(),
-                "[CORRECTNESS FAILURE] serialize_small: produced empty bytes");
+            assert!(
+                !bytes.is_empty(),
+                "[CORRECTNESS FAILURE] serialize_small: produced empty bytes"
+            );
             std_black_box(bytes)
         })
     });
@@ -170,8 +206,10 @@ fn bench_serialization(c: &mut Criterion) {
 
         b.iter(|| {
             let bytes = postcard::to_allocvec(&bundle).unwrap();
-            assert!(!bytes.is_empty(),
-                "[CORRECTNESS FAILURE] serialize_medium: produced empty bytes");
+            assert!(
+                !bytes.is_empty(),
+                "[CORRECTNESS FAILURE] serialize_medium: produced empty bytes"
+            );
             std_black_box(bytes)
         })
     });
@@ -182,8 +220,10 @@ fn bench_serialization(c: &mut Criterion) {
 
         b.iter(|| {
             let bytes = postcard::to_allocvec(&bundle).unwrap();
-            assert!(!bytes.is_empty(),
-                "[CORRECTNESS FAILURE] serialize_large: produced empty bytes");
+            assert!(
+                !bytes.is_empty(),
+                "[CORRECTNESS FAILURE] serialize_large: produced empty bytes"
+            );
             std_black_box(bytes)
         })
     });
@@ -233,8 +273,10 @@ fn bench_compression(c: &mut Criterion) {
         b.iter(|| {
             let compressed = lz4_flex::compress_prepend_size(&bytes);
             // CORRECTNESS: Validate compression produces output
-            assert!(!compressed.is_empty(),
-                "[CORRECTNESS FAILURE] lz4_compress_10kb: produced empty output");
+            assert!(
+                !compressed.is_empty(),
+                "[CORRECTNESS FAILURE] lz4_compress_10kb: produced empty output"
+            );
             // CORRECTNESS: Verify round-trip
             let decompressed = lz4_flex::decompress_size_prepended(&compressed).unwrap();
             assert_compression_valid(original_size, decompressed.len(), "lz4_compress_10kb");
@@ -251,8 +293,10 @@ fn bench_compression(c: &mut Criterion) {
 
         b.iter(|| {
             let compressed = lz4_flex::compress_prepend_size(&bytes);
-            assert!(!compressed.is_empty(),
-                "[CORRECTNESS FAILURE] lz4_compress_100kb: produced empty output");
+            assert!(
+                !compressed.is_empty(),
+                "[CORRECTNESS FAILURE] lz4_compress_100kb: produced empty output"
+            );
             let decompressed = lz4_flex::decompress_size_prepended(&compressed).unwrap();
             assert_compression_valid(original_size, decompressed.len(), "lz4_compress_100kb");
             std_black_box(compressed)
@@ -268,8 +312,10 @@ fn bench_compression(c: &mut Criterion) {
 
         b.iter(|| {
             let compressed = lz4_flex::compress_prepend_size(&bytes);
-            assert!(!compressed.is_empty(),
-                "[CORRECTNESS FAILURE] lz4_compress_1mb: produced empty output");
+            assert!(
+                !compressed.is_empty(),
+                "[CORRECTNESS FAILURE] lz4_compress_1mb: produced empty output"
+            );
             let decompressed = lz4_flex::decompress_size_prepended(&compressed).unwrap();
             assert_compression_valid(original_size, decompressed.len(), "lz4_compress_1mb");
             std_black_box(compressed)
@@ -389,8 +435,10 @@ fn bench_save_load_cycle(c: &mut Criterion) {
         b.iter(|| {
             let path = mgr.save("player1", 0, bundle.clone()).unwrap();
             // CORRECTNESS: Validate save file created
-            assert!(path.exists(),
-                "[CORRECTNESS FAILURE] full_save_small: save file not created");
+            assert!(
+                path.exists(),
+                "[CORRECTNESS FAILURE] full_save_small: save file not created"
+            );
             std_black_box(path)
         })
     });
@@ -403,8 +451,10 @@ fn bench_save_load_cycle(c: &mut Criterion) {
 
         b.iter(|| {
             let path = mgr.save("player1", 0, bundle.clone()).unwrap();
-            assert!(path.exists(),
-                "[CORRECTNESS FAILURE] full_save_medium: save file not created");
+            assert!(
+                path.exists(),
+                "[CORRECTNESS FAILURE] full_save_medium: save file not created"
+            );
             std_black_box(path)
         })
     });
@@ -417,8 +467,10 @@ fn bench_save_load_cycle(c: &mut Criterion) {
 
         b.iter(|| {
             let path = mgr.save("player1", 0, bundle.clone()).unwrap();
-            assert!(path.exists(),
-                "[CORRECTNESS FAILURE] full_save_large: save file not created");
+            assert!(
+                path.exists(),
+                "[CORRECTNESS FAILURE] full_save_large: save file not created"
+            );
             std_black_box(path)
         })
     });

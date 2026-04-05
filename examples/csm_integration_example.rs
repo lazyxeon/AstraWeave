@@ -18,13 +18,13 @@ impl SceneRenderer {
     pub fn new(device: &wgpu::Device) -> anyhow::Result<Self> {
         // Create CSM renderer
         let csm = CsmRenderer::new(device)?;
-        
+
         Ok(Self {
             csm,
             // ... initialize other resources
         })
     }
-    
+
     /// Render frame with shadows
     ///
     /// This demonstrates the complete shadow rendering pipeline:
@@ -45,44 +45,34 @@ impl SceneRenderer {
         // ========================================================================
         // STEP 1: Update shadow cascades
         // ========================================================================
-        
-        let near = 0.1;  // Camera near plane
+
+        let near = 0.1; // Camera near plane
         let far = 1000.0; // Camera far plane
-        
-        self.csm.update_cascades(
-            camera_pos,
-            camera_view,
-            camera_proj,
-            light_dir,
-            near,
-            far,
-        );
-        
+
+        self.csm
+            .update_cascades(camera_pos, camera_view, camera_proj, light_dir, near, far);
+
         // Upload to GPU
         self.csm.upload_to_gpu(queue, device);
-        
+
         // ========================================================================
         // STEP 2: Render shadow maps (4 cascade passes)
         // ========================================================================
-        
+
         // Prepare geometry buffers (position-only for shadow pass)
         // In a real renderer, you'd extract this from your scene graph
         let vertex_buffer = create_scene_vertex_buffer(device);
         let index_buffer = create_scene_index_buffer(device);
         let index_count = get_scene_index_count();
-        
+
         // Render all 4 cascades to shadow atlas
-        self.csm.render_shadow_maps(
-            encoder,
-            &vertex_buffer,
-            &index_buffer,
-            index_count,
-        );
-        
+        self.csm
+            .render_shadow_maps(encoder, &vertex_buffer, &index_buffer, index_count);
+
         // ========================================================================
         // STEP 3: Render main scene with shadows
         // ========================================================================
-        
+
         // Your main render pass (color + depth)
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Main Render Pass"),
@@ -105,20 +95,20 @@ impl SceneRenderer {
             timestamp_writes: None,
             occlusion_query_set: None,
         });
-        
+
         // Set your main pipeline
         // render_pass.set_pipeline(&your_main_pipeline);
-        
+
         // CRITICAL: Bind shadow resources (group 1 in shader)
         if let Some(bind_group) = &self.csm.bind_group {
             render_pass.set_bind_group(1, bind_group, &[]);
         }
-        
+
         // Draw your scene
         // render_pass.set_vertex_buffer(0, full_vertex_buffer.slice(..));
         // render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         // render_pass.draw_indexed(0..index_count, 0, 0..1);
-        
+
         drop(render_pass);
     }
 }
@@ -179,12 +169,12 @@ fn main_fragment(in: FragmentInput) -> @location(0) vec4<f32> {
 fn create_scene_vertex_buffer(device: &wgpu::Device) -> wgpu::Buffer {
     // TODO: Extract position-only vertices from your scene
     // For shadow pass, you only need vec3<f32> positions
-    
+
     // Example:
     // let positions: Vec<[f32; 3]> = scene.meshes.iter()
     //     .flat_map(|mesh| mesh.vertices.iter().map(|v| v.position))
     //     .collect();
-    
+
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Shadow Vertex Buffer"),
         size: 0, // Replace with actual size
@@ -210,20 +200,22 @@ fn get_scene_index_count() -> u32 {
 
 fn create_depth_view(device: &wgpu::Device) -> wgpu::TextureView {
     // TODO: Return your main depth buffer view
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("Main Depth Buffer"),
-        size: wgpu::Extent3d {
-            width: 1920,
-            height: 1080,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Depth32Float,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
-    }).create_view(&wgpu::TextureViewDescriptor::default())
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("Main Depth Buffer"),
+            size: wgpu::Extent3d {
+                width: 1920,
+                height: 1080,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        })
+        .create_view(&wgpu::TextureViewDescriptor::default())
 }
 
 // ============================================================================
@@ -233,12 +225,12 @@ fn create_depth_view(device: &wgpu::Device) -> wgpu::TextureView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_csm_initialization() {
         // This test requires a real wgpu device
         // Use pollster::block_on for async device creation
-        
+
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
@@ -246,21 +238,20 @@ mod tests {
             compatible_surface: None,
         }))
         .expect("Failed to find GPU adapter");
-        
-        let (device, _queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor::default(),
-        ))
-        .expect("Failed to create device");
-        
+
+        let (device, _queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("Failed to create device");
+
         // Test CSM creation
         let csm = CsmRenderer::new(&device);
         assert!(csm.is_ok(), "CSM initialization failed");
-        
+
         let csm = csm.unwrap();
-        
+
         // Verify cascade count
         assert_eq!(csm.cascades.len(), 4);
-        
+
         // Verify atlas size
         assert_eq!(csm.atlas_texture.size().width, 4096);
         assert_eq!(csm.atlas_texture.size().height, 4096);

@@ -252,7 +252,10 @@ fn generate_stress_entities_positions_in_range() {
     let entities = generate_stress_entities(&cfg);
     for e in &entities {
         for &p in &e.position {
-            assert!(p >= -1000.0 && p < 1000.0, "position {p} out of range [-1000, 1000)");
+            assert!(
+                p >= -1000.0 && p < 1000.0,
+                "position {p} out of range [-1000, 1000)"
+            );
         }
     }
 }
@@ -269,7 +272,10 @@ fn generate_stress_entities_velocities_in_range() {
     let entities = generate_stress_entities(&cfg);
     for e in &entities {
         for &v in &e.velocity {
-            assert!(v >= -10.0 && v < 10.0, "velocity {v} out of range [-10, 10)");
+            assert!(
+                v >= -10.0 && v < 10.0,
+                "velocity {v} out of range [-10, 10)"
+            );
         }
     }
 }
@@ -285,7 +291,11 @@ fn generate_stress_entities_health_in_range() {
     };
     let entities = generate_stress_entities(&cfg);
     for e in &entities {
-        assert!(e.health >= 0.0 && e.health < 100.0, "health {} out of range", e.health);
+        assert!(
+            e.health >= 0.0 && e.health < 100.0,
+            "health {} out of range",
+            e.health
+        );
     }
 }
 
@@ -346,8 +356,16 @@ fn generate_ai_stress_entities_tree_size_5_to_20() {
     };
     let entities = generate_ai_stress_entities(&cfg);
     for ai in &entities {
-        assert!(ai.behavior_tree.len() >= 5, "tree too small: {}", ai.behavior_tree.len());
-        assert!(ai.behavior_tree.len() < 20, "tree too large: {}", ai.behavior_tree.len());
+        assert!(
+            ai.behavior_tree.len() >= 5,
+            "tree too small: {}",
+            ai.behavior_tree.len()
+        );
+        assert!(
+            ai.behavior_tree.len() < 20,
+            "tree too large: {}",
+            ai.behavior_tree.len()
+        );
     }
 }
 
@@ -363,7 +381,10 @@ fn generate_ai_stress_entities_node_naming() {
     let entities = generate_ai_stress_entities(&cfg);
     for ai in &entities {
         for node in &ai.behavior_tree {
-            assert!(node.starts_with("node_"), "node should start with 'node_': {node}");
+            assert!(
+                node.starts_with("node_"),
+                "node should start with 'node_': {node}"
+            );
         }
     }
 }
@@ -409,7 +430,11 @@ fn generate_network_stress_entities_player_ids() {
     };
     let entities = generate_network_stress_entities(&cfg);
     for (i, e) in entities.iter().enumerate() {
-        assert_eq!(e.player_id, format!("player_{i}"), "player_id mismatch at index {i}");
+        assert_eq!(
+            e.player_id,
+            format!("player_{i}"),
+            "player_id mismatch at index {i}"
+        );
     }
 }
 
@@ -424,8 +449,16 @@ fn generate_network_stress_entities_buffer_1_to_10() {
     };
     let entities = generate_network_stress_entities(&cfg);
     for e in &entities {
-        assert!(e.input_buffer.len() >= 1, "buffer too small: {}", e.input_buffer.len());
-        assert!(e.input_buffer.len() < 10, "buffer too large: {}", e.input_buffer.len());
+        assert!(
+            e.input_buffer.len() >= 1,
+            "buffer too small: {}",
+            e.input_buffer.len()
+        );
+        assert!(
+            e.input_buffer.len() < 10,
+            "buffer too large: {}",
+            e.input_buffer.len()
+        );
     }
 }
 

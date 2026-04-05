@@ -52,13 +52,21 @@ impl Node {
 
     /// Returns `true` if this is a PBR property node.
     pub fn is_pbr_property(&self) -> bool {
-        matches!(self, Self::MetallicRoughness { .. } | Self::Clearcoat { .. } |
-                 Self::Anisotropy { .. } | Self::Transmission { .. })
+        matches!(
+            self,
+            Self::MetallicRoughness { .. }
+                | Self::Clearcoat { .. }
+                | Self::Anisotropy { .. }
+                | Self::Transmission { .. }
+        )
     }
 
     /// Creates a Texture2D node.
     pub fn texture_2d(id: impl Into<String>, uv: impl Into<String>) -> Self {
-        Self::Texture2D { id: id.into(), uv: uv.into() }
+        Self::Texture2D {
+            id: id.into(),
+            uv: uv.into(),
+        }
     }
 
     /// Creates a Constant3 (color/vector) node.
@@ -73,22 +81,35 @@ impl Node {
 
     /// Creates an Add node.
     pub fn add(a: impl Into<String>, b: impl Into<String>) -> Self {
-        Self::Add { a: a.into(), b: b.into() }
+        Self::Add {
+            a: a.into(),
+            b: b.into(),
+        }
     }
 
     /// Creates a Multiply node.
     pub fn multiply(a: impl Into<String>, b: impl Into<String>) -> Self {
-        Self::Multiply { a: a.into(), b: b.into() }
+        Self::Multiply {
+            a: a.into(),
+            b: b.into(),
+        }
     }
 
     /// Creates a MetallicRoughness node.
     pub fn metallic_roughness(metallic: impl Into<String>, roughness: impl Into<String>) -> Self {
-        Self::MetallicRoughness { metallic: metallic.into(), roughness: roughness.into() }
+        Self::MetallicRoughness {
+            metallic: metallic.into(),
+            roughness: roughness.into(),
+        }
     }
 
     /// Creates a NormalMap node.
     pub fn normal_map(id: impl Into<String>, uv: impl Into<String>, scale: f32) -> Self {
-        Self::NormalMap { id: id.into(), uv: uv.into(), scale }
+        Self::NormalMap {
+            id: id.into(),
+            uv: uv.into(),
+            scale,
+        }
     }
 }
 
@@ -96,15 +117,26 @@ impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Texture2D { id, uv } => write!(f, "Texture2D(id=\"{}\", uv={})", id, uv),
-            Self::Constant3 { value } => write!(f, "Constant3({:.2}, {:.2}, {:.2})", value[0], value[1], value[2]),
+            Self::Constant3 { value } => write!(
+                f,
+                "Constant3({:.2}, {:.2}, {:.2})",
+                value[0], value[1], value[2]
+            ),
             Self::Constant1 { value } => write!(f, "Constant1({:.2})", value),
             Self::Multiply { a, b } => write!(f, "Multiply({} × {})", a, b),
             Self::Add { a, b } => write!(f, "Add({} + {})", a, b),
-            Self::MetallicRoughness { metallic, roughness } => write!(f, "MetallicRoughness(m={}, r={})", metallic, roughness),
-            Self::Clearcoat { weight, roughness } => write!(f, "Clearcoat(w={}, r={})", weight, roughness),
+            Self::MetallicRoughness {
+                metallic,
+                roughness,
+            } => write!(f, "MetallicRoughness(m={}, r={})", metallic, roughness),
+            Self::Clearcoat { weight, roughness } => {
+                write!(f, "Clearcoat(w={}, r={})", weight, roughness)
+            }
             Self::Anisotropy { amount } => write!(f, "Anisotropy({})", amount),
             Self::Transmission { amount } => write!(f, "Transmission({})", amount),
-            Self::NormalMap { id, uv, scale } => write!(f, "NormalMap(id=\"{}\", uv={}, scale={:.2})", id, uv, scale),
+            Self::NormalMap { id, uv, scale } => {
+                write!(f, "NormalMap(id=\"{}\", uv={}, scale={:.2})", id, uv, scale)
+            }
         }
     }
 }
@@ -201,11 +233,21 @@ impl Graph {
     /// Returns the number of active PBR channels.
     pub fn active_channel_count(&self) -> usize {
         let mut count = 1; // base_color is always active
-        if self.mr.is_some() { count += 1; }
-        if self.normal.is_some() { count += 1; }
-        if self.clearcoat.is_some() { count += 1; }
-        if self.anisotropy.is_some() { count += 1; }
-        if self.transmission.is_some() { count += 1; }
+        if self.mr.is_some() {
+            count += 1;
+        }
+        if self.normal.is_some() {
+            count += 1;
+        }
+        if self.clearcoat.is_some() {
+            count += 1;
+        }
+        if self.anisotropy.is_some() {
+            count += 1;
+        }
+        if self.transmission.is_some() {
+            count += 1;
+        }
         count
     }
 
@@ -217,7 +259,12 @@ impl Graph {
 
 impl std::fmt::Display for Graph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Graph({} nodes, {} channels)", self.node_count(), self.active_channel_count())
+        write!(
+            f,
+            "Graph({} nodes, {} channels)",
+            self.node_count(),
+            self.active_channel_count()
+        )
     }
 }
 
@@ -588,51 +635,158 @@ mod tests {
     #[test]
     fn test_node_type_name() {
         assert_eq!(Node::Constant1 { value: 1.0 }.type_name(), "Constant1");
-        assert_eq!(Node::Constant3 { value: [1.0, 2.0, 3.0] }.type_name(), "Constant3");
-        assert_eq!(Node::Texture2D { id: "t".into(), uv: "u".into() }.type_name(), "Texture2D");
-        assert_eq!(Node::Add { a: "a".into(), b: "b".into() }.type_name(), "Add");
-        assert_eq!(Node::Multiply { a: "a".into(), b: "b".into() }.type_name(), "Multiply");
-        assert_eq!(Node::MetallicRoughness { metallic: "m".into(), roughness: "r".into() }.type_name(), "MetallicRoughness");
-        assert_eq!(Node::NormalMap { id: "n".into(), uv: "u".into(), scale: 1.0 }.type_name(), "NormalMap");
-        assert_eq!(Node::Clearcoat { weight: "w".into(), roughness: "r".into() }.type_name(), "Clearcoat");
-        assert_eq!(Node::Anisotropy { amount: "a".into() }.type_name(), "Anisotropy");
-        assert_eq!(Node::Transmission { amount: "a".into() }.type_name(), "Transmission");
+        assert_eq!(
+            Node::Constant3 {
+                value: [1.0, 2.0, 3.0]
+            }
+            .type_name(),
+            "Constant3"
+        );
+        assert_eq!(
+            Node::Texture2D {
+                id: "t".into(),
+                uv: "u".into()
+            }
+            .type_name(),
+            "Texture2D"
+        );
+        assert_eq!(
+            Node::Add {
+                a: "a".into(),
+                b: "b".into()
+            }
+            .type_name(),
+            "Add"
+        );
+        assert_eq!(
+            Node::Multiply {
+                a: "a".into(),
+                b: "b".into()
+            }
+            .type_name(),
+            "Multiply"
+        );
+        assert_eq!(
+            Node::MetallicRoughness {
+                metallic: "m".into(),
+                roughness: "r".into()
+            }
+            .type_name(),
+            "MetallicRoughness"
+        );
+        assert_eq!(
+            Node::NormalMap {
+                id: "n".into(),
+                uv: "u".into(),
+                scale: 1.0
+            }
+            .type_name(),
+            "NormalMap"
+        );
+        assert_eq!(
+            Node::Clearcoat {
+                weight: "w".into(),
+                roughness: "r".into()
+            }
+            .type_name(),
+            "Clearcoat"
+        );
+        assert_eq!(
+            Node::Anisotropy { amount: "a".into() }.type_name(),
+            "Anisotropy"
+        );
+        assert_eq!(
+            Node::Transmission { amount: "a".into() }.type_name(),
+            "Transmission"
+        );
     }
 
     #[test]
     fn test_node_is_texture() {
-        assert!(Node::Texture2D { id: "t".into(), uv: "u".into() }.is_texture());
-        assert!(Node::NormalMap { id: "n".into(), uv: "u".into(), scale: 1.0 }.is_texture());
+        assert!(Node::Texture2D {
+            id: "t".into(),
+            uv: "u".into()
+        }
+        .is_texture());
+        assert!(Node::NormalMap {
+            id: "n".into(),
+            uv: "u".into(),
+            scale: 1.0
+        }
+        .is_texture());
         assert!(!Node::Constant1 { value: 1.0 }.is_texture());
-        assert!(!Node::Constant3 { value: [1.0, 2.0, 3.0] }.is_texture());
+        assert!(!Node::Constant3 {
+            value: [1.0, 2.0, 3.0]
+        }
+        .is_texture());
     }
 
     #[test]
     fn test_node_is_constant() {
         assert!(Node::Constant1 { value: 1.0 }.is_constant());
-        assert!(Node::Constant3 { value: [1.0, 2.0, 3.0] }.is_constant());
-        assert!(!Node::Texture2D { id: "t".into(), uv: "u".into() }.is_constant());
-        assert!(!Node::Add { a: "a".into(), b: "b".into() }.is_constant());
+        assert!(Node::Constant3 {
+            value: [1.0, 2.0, 3.0]
+        }
+        .is_constant());
+        assert!(!Node::Texture2D {
+            id: "t".into(),
+            uv: "u".into()
+        }
+        .is_constant());
+        assert!(!Node::Add {
+            a: "a".into(),
+            b: "b".into()
+        }
+        .is_constant());
     }
 
     #[test]
     fn test_node_is_arithmetic() {
-        assert!(Node::Add { a: "a".into(), b: "b".into() }.is_arithmetic());
-        assert!(Node::Multiply { a: "a".into(), b: "b".into() }.is_arithmetic());
+        assert!(Node::Add {
+            a: "a".into(),
+            b: "b".into()
+        }
+        .is_arithmetic());
+        assert!(Node::Multiply {
+            a: "a".into(),
+            b: "b".into()
+        }
+        .is_arithmetic());
         assert!(!Node::Constant1 { value: 1.0 }.is_arithmetic());
-        assert!(!Node::Texture2D { id: "t".into(), uv: "u".into() }.is_arithmetic());
+        assert!(!Node::Texture2D {
+            id: "t".into(),
+            uv: "u".into()
+        }
+        .is_arithmetic());
     }
 
     #[test]
     fn test_node_is_pbr_property() {
-        assert!(Node::MetallicRoughness { metallic: "m".into(), roughness: "r".into() }.is_pbr_property());
-        assert!(Node::Clearcoat { weight: "w".into(), roughness: "r".into() }.is_pbr_property());
+        assert!(Node::MetallicRoughness {
+            metallic: "m".into(),
+            roughness: "r".into()
+        }
+        .is_pbr_property());
+        assert!(Node::Clearcoat {
+            weight: "w".into(),
+            roughness: "r".into()
+        }
+        .is_pbr_property());
         assert!(Node::Anisotropy { amount: "a".into() }.is_pbr_property());
         assert!(Node::Transmission { amount: "a".into() }.is_pbr_property());
         // NormalMap is a texture node, not a PBR property node
-        assert!(!Node::NormalMap { id: "n".into(), uv: "u".into(), scale: 1.0 }.is_pbr_property());
+        assert!(!Node::NormalMap {
+            id: "n".into(),
+            uv: "u".into(),
+            scale: 1.0
+        }
+        .is_pbr_property());
         assert!(!Node::Constant1 { value: 1.0 }.is_pbr_property());
-        assert!(!Node::Add { a: "a".into(), b: "b".into() }.is_pbr_property());
+        assert!(!Node::Add {
+            a: "a".into(),
+            b: "b".into()
+        }
+        .is_pbr_property());
     }
 
     #[test]
@@ -662,16 +816,88 @@ mod tests {
 
     #[test]
     fn test_node_display() {
-        assert_eq!(format!("{}", Node::Constant1 { value: 0.5 }), "Constant1(0.50)");
-        assert_eq!(format!("{}", Node::Constant3 { value: [1.0, 0.5, 0.0] }), "Constant3(1.00, 0.50, 0.00)");
-        assert_eq!(format!("{}", Node::Texture2D { id: "albedo".into(), uv: "uv0".into() }), "Texture2D(id=\"albedo\", uv=uv0)");
-        assert_eq!(format!("{}", Node::Add { a: "x".into(), b: "y".into() }), "Add(x + y)");
-        assert_eq!(format!("{}", Node::Multiply { a: "x".into(), b: "y".into() }), "Multiply(x × y)");
-        assert_eq!(format!("{}", Node::MetallicRoughness { metallic: "m".into(), roughness: "r".into() }), "MetallicRoughness(m=m, r=r)");
-        assert_eq!(format!("{}", Node::NormalMap { id: "nrm".into(), uv: "uv".into(), scale: 1.0 }), "NormalMap(id=\"nrm\", uv=uv, scale=1.00)");
-        assert_eq!(format!("{}", Node::Clearcoat { weight: "w".into(), roughness: "r".into() }), "Clearcoat(w=w, r=r)");
-        assert_eq!(format!("{}", Node::Anisotropy { amount: "a".into() }), "Anisotropy(a)");
-        assert_eq!(format!("{}", Node::Transmission { amount: "t".into() }), "Transmission(t)");
+        assert_eq!(
+            format!("{}", Node::Constant1 { value: 0.5 }),
+            "Constant1(0.50)"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                Node::Constant3 {
+                    value: [1.0, 0.5, 0.0]
+                }
+            ),
+            "Constant3(1.00, 0.50, 0.00)"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                Node::Texture2D {
+                    id: "albedo".into(),
+                    uv: "uv0".into()
+                }
+            ),
+            "Texture2D(id=\"albedo\", uv=uv0)"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                Node::Add {
+                    a: "x".into(),
+                    b: "y".into()
+                }
+            ),
+            "Add(x + y)"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                Node::Multiply {
+                    a: "x".into(),
+                    b: "y".into()
+                }
+            ),
+            "Multiply(x × y)"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                Node::MetallicRoughness {
+                    metallic: "m".into(),
+                    roughness: "r".into()
+                }
+            ),
+            "MetallicRoughness(m=m, r=r)"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                Node::NormalMap {
+                    id: "nrm".into(),
+                    uv: "uv".into(),
+                    scale: 1.0
+                }
+            ),
+            "NormalMap(id=\"nrm\", uv=uv, scale=1.00)"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                Node::Clearcoat {
+                    weight: "w".into(),
+                    roughness: "r".into()
+                }
+            ),
+            "Clearcoat(w=w, r=r)"
+        );
+        assert_eq!(
+            format!("{}", Node::Anisotropy { amount: "a".into() }),
+            "Anisotropy(a)"
+        );
+        assert_eq!(
+            format!("{}", Node::Transmission { amount: "t".into() }),
+            "Transmission(t)"
+        );
     }
 
     // ====================================================================
@@ -1020,7 +1246,12 @@ impl MaterialPackage {
 
 impl std::fmt::Display for MaterialPackage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "MaterialPackage({} bytes, {} bindings)", self.wgsl_size(), self.binding_count())
+        write!(
+            f,
+            "MaterialPackage({} bytes, {} bindings)",
+            self.wgsl_size(),
+            self.binding_count()
+        )
     }
 }
 
@@ -1106,9 +1337,17 @@ impl BakeConfig {
 
 impl std::fmt::Display for BakeConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BakeConfig({}x{}, {} samples{}{})",
-            self.resolution, self.resolution, self.samples,
-            if self.generate_mipmaps { ", mipmaps" } else { "" },
+        write!(
+            f,
+            "BakeConfig({}x{}, {} samples{}{})",
+            self.resolution,
+            self.resolution,
+            self.samples,
+            if self.generate_mipmaps {
+                ", mipmaps"
+            } else {
+                ""
+            },
             if self.compress { ", BC7" } else { "" }
         )
     }
@@ -1155,7 +1394,13 @@ impl BakedMaterial {
 
 impl std::fmt::Display for BakedMaterial {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BakedMaterial({}x{}, {} KB)", self.resolution, self.resolution, self.memory_usage() / 1024)
+        write!(
+            f,
+            "BakedMaterial({}x{}, {} KB)",
+            self.resolution,
+            self.resolution,
+            self.memory_usage() / 1024
+        )
     }
 }
 
@@ -1267,18 +1512,30 @@ impl BrdfValidation {
     /// Returns the number of passed checks (0-3).
     pub fn passed_count(&self) -> usize {
         let mut count = 0;
-        if self.energy_conservation { count += 1; }
-        if self.reciprocity { count += 1; }
-        if self.positivity { count += 1; }
+        if self.energy_conservation {
+            count += 1;
+        }
+        if self.reciprocity {
+            count += 1;
+        }
+        if self.positivity {
+            count += 1;
+        }
         count
     }
 
     /// Returns a list of failed validation checks.
     pub fn failed_checks(&self) -> Vec<&'static str> {
         let mut failed = Vec::new();
-        if !self.energy_conservation { failed.push("energy_conservation"); }
-        if !self.reciprocity { failed.push("reciprocity"); }
-        if !self.positivity { failed.push("positivity"); }
+        if !self.energy_conservation {
+            failed.push("energy_conservation");
+        }
+        if !self.reciprocity {
+            failed.push("reciprocity");
+        }
+        if !self.positivity {
+            failed.push("positivity");
+        }
         failed
     }
 
@@ -1291,9 +1548,18 @@ impl BrdfValidation {
 impl std::fmt::Display for BrdfValidation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_valid() {
-            write!(f, "BrdfValidation(PASS, energy={:.2})", self.max_energy_ratio)
+            write!(
+                f,
+                "BrdfValidation(PASS, energy={:.2})",
+                self.max_energy_ratio
+            )
         } else {
-            write!(f, "BrdfValidation(FAIL: {:?}, energy={:.2})", self.failed_checks(), self.max_energy_ratio)
+            write!(
+                f,
+                "BrdfValidation(FAIL: {:?}, energy={:.2})",
+                self.failed_checks(),
+                self.max_energy_ratio
+            )
         }
     }
 }
@@ -1465,7 +1731,13 @@ impl BrdfLut {
 
 impl std::fmt::Display for BrdfLut {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BrdfLut({}x{}, {} bytes)", self.resolution, self.resolution, self.byte_size())
+        write!(
+            f,
+            "BrdfLut({}x{}, {} bytes)",
+            self.resolution,
+            self.resolution,
+            self.byte_size()
+        )
     }
 }
 

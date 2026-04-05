@@ -251,14 +251,12 @@ pub fn load_gltf(path: impl AsRef<Path>) -> Result<Vec<LoadedMesh>> {
                     // log::info!("  Primitive {}: No vertex colors, using white", prim_idx);
                     vec![[1.0, 1.0, 1.0, 1.0]; positions.len()]
                 });
-            
+
             // Clamp colors to prevent blowout
-            let colors: Vec<[f32; 4]> = colors.into_iter().map(|c| [
-                c[0].min(1.0),
-                c[1].min(1.0),
-                c[2].min(1.0),
-                c[3].min(1.0),
-            ]).collect();
+            let colors: Vec<[f32; 4]> = colors
+                .into_iter()
+                .map(|c| [c[0].min(1.0), c[1].min(1.0), c[2].min(1.0), c[3].min(1.0)])
+                .collect();
 
             // Extract or compute tangents
             let tangents: Vec<[f32; 4]> = if let Some(tangents_iter) = reader.read_tangents() {
@@ -283,7 +281,7 @@ pub fn load_gltf(path: impl AsRef<Path>) -> Result<Vec<LoadedMesh>> {
             }
 
             let material_name = primitive.material().name().map(|s| s.to_string());
-            
+
             log::info!(
                 "  Primitive {}: {} vertices, {} triangles, material: {:?}",
                 prim_idx,

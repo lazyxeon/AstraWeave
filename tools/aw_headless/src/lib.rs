@@ -202,7 +202,7 @@ mod tests {
     /// GPU gradient rendering test with cross-platform tolerance
     /// Uses relaxed thresholds (maxd≤15, avg≤2.0) to account for GPU driver differences
     /// Different GPUs may produce slightly different rounding in fragment shaders
-    /// 
+    ///
     /// NOTE: This test may fail on headless CI or software GPU backends where
     /// wgpu falls back to a non-standard rendering path. A maxd >200 indicates
     /// the GPU backend is producing fundamentally different output (not just rounding).
@@ -229,7 +229,7 @@ mod tests {
             }
         }
         let (maxd, avg) = image_delta(&img, &exp);
-        
+
         // If maxd > 200, the GPU backend is producing fundamentally different output
         // (e.g., software fallback, different colorspace, missing sRGB conversion).
         // Skip the test with a warning rather than failing CI.
@@ -241,7 +241,7 @@ mod tests {
             );
             return;
         }
-        
+
         // Cross-platform tolerances for GPU driver differences
         // Intel/AMD/NVIDIA may have different rounding in hardware
         // maxd≤15: allow up to 15/255 = 5.9% per-pixel deviation

@@ -193,7 +193,8 @@ async fn test_texture_download_success_mock_api() {
         .await;
 
     // Use ensure_asset_with_base_url to avoid env var race conditions
-    let result = ensure_asset_with_base_url(&manifest_path, "test_texture", Some(&server_url)).await;
+    let result =
+        ensure_asset_with_base_url(&manifest_path, "test_texture", Some(&server_url)).await;
 
     // Assert success
     assert!(

@@ -65,7 +65,7 @@ struct App {
     ui: Option<UiLayer>,
     camera: Camera,
     cam_ctl: CameraController,
-    
+
     // Game state
     input: InputManager,
     flags: UiFlags,
@@ -108,7 +108,7 @@ impl App {
 
         let last = Instant::now();
         let instances: Vec<Instance> = vec![];
-        
+
         let camera = Camera {
             position: vec3(0.0, 6.0, 14.0),
             yaw: -1.57,
@@ -145,25 +145,32 @@ impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_none() {
             let win = std::sync::Arc::new(
-                event_loop.create_window(
-                    Window::default_attributes()
-                        .with_title("UI & Controls Demo")
-                        .with_inner_size(PhysicalSize::new(1280, 720))
-                ).unwrap()
+                event_loop
+                    .create_window(
+                        Window::default_attributes()
+                            .with_title("UI & Controls Demo")
+                            .with_inner_size(PhysicalSize::new(1280, 720)),
+                    )
+                    .unwrap(),
             );
             self.window = Some(win.clone());
 
             let r = pollster::block_on(Renderer::new(win.clone())).unwrap();
             let u = UiLayer::new(&win, r.device(), r.surface_format());
-            
+
             self.renderer = Some(r);
             self.ui = Some(u);
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-        if let (Some(window), Some(ui), Some(renderer)) = 
-            (&self.window, &mut self.ui, &mut self.renderer) 
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        if let (Some(window), Some(ui), Some(renderer)) =
+            (&self.window, &mut self.ui, &mut self.renderer)
         {
             let _consumed_by_ui = ui.on_event(window, &event);
             self.input.process_window_event(&event);
@@ -184,7 +191,8 @@ impl ApplicationHandler for App {
                     ..
                 } => {
                     // Camera + toggles
-                    self.cam_ctl.process_keyboard(code, state == ElementState::Pressed);
+                    self.cam_ctl
+                        .process_keyboard(code, state == ElementState::Pressed);
                     if state == ElementState::Pressed {
                         match code {
                             KeyCode::KeyI => {
@@ -251,7 +259,6 @@ impl ApplicationHandler for App {
                         ui_data.quest_log.as_deref_mut(),
                     );
 
-
                     // Draw scene instances (simple markers)
                     self.instances.clear();
                     // Add a couple of cubes to show something on screen
@@ -276,7 +283,7 @@ impl ApplicationHandler for App {
             }
         }
     }
-    
+
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(window) = &self.window {
             window.request_redraw();

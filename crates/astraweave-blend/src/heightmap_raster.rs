@@ -131,9 +131,7 @@ impl RasterizedHeightmap {
 // ============================================================================
 
 /// Terrain-related name keywords (case-insensitive matching).
-const TERRAIN_KEYWORDS: &[&str] = &[
-    "terrain", "ground", "landscape", "floor", "land", "earth",
-];
+const TERRAIN_KEYWORDS: &[&str] = &["terrain", "ground", "landscape", "floor", "land", "earth"];
 
 /// Check if an object name suggests it is a terrain mesh.
 pub fn is_terrain_name(name: &str) -> bool {
@@ -217,9 +215,13 @@ pub fn rasterize_terrain_meshes(
             let tri_max_z = v0[2].max(v1[2]).max(v2[2]);
 
             let ix_min = ((tri_min_x - global_min[0]) / step_x).floor().max(0.0) as u32;
-            let ix_max = ((tri_max_x - global_min[0]) / step_x).ceil().min(resolution as f32 - 1.0) as u32;
+            let ix_max = ((tri_max_x - global_min[0]) / step_x)
+                .ceil()
+                .min(resolution as f32 - 1.0) as u32;
             let iz_min = ((tri_min_z - global_min[2]) / step_z).floor().max(0.0) as u32;
-            let iz_max = ((tri_max_z - global_min[2]) / step_z).ceil().min(resolution as f32 - 1.0) as u32;
+            let iz_max = ((tri_max_z - global_min[2]) / step_z)
+                .ceil()
+                .min(resolution as f32 - 1.0) as u32;
 
             for gz in iz_min..=iz_max {
                 for gx in ix_min..=ix_max {
@@ -282,13 +284,7 @@ pub fn rasterize_terrain_meshes(
 
 /// Cast a vertical ray at (x, z) through a triangle and return the Y height
 /// at the intersection, if the point is inside the triangle's XZ projection.
-fn ray_triangle_height(
-    x: f32,
-    z: f32,
-    v0: &[f32; 3],
-    v1: &[f32; 3],
-    v2: &[f32; 3],
-) -> Option<f32> {
+fn ray_triangle_height(x: f32, z: f32, v0: &[f32; 3], v1: &[f32; 3], v2: &[f32; 3]) -> Option<f32> {
     // Barycentric coordinate test in XZ plane
     let ax = v0[0];
     let az = v0[2];
@@ -346,11 +342,7 @@ fn fill_holes(data: &mut [f32], hit_count: &[u32], resolution: u32) {
                 for &(dx, dz) in offsets {
                     let nx = gx as i32 + dx;
                     let nz = gz as i32 + dz;
-                    if nx >= 0
-                        && nx < resolution as i32
-                        && nz >= 0
-                        && nz < resolution as i32
-                    {
+                    if nx >= 0 && nx < resolution as i32 && nz >= 0 && nz < resolution as i32 {
                         let nidx = (nz as u32 * resolution + nx as u32) as usize;
                         if filled[nidx] {
                             sum += prev_data[nidx];
@@ -426,10 +418,7 @@ mod tests {
 
         // All heights should be ~5.0
         for h in &hm.data {
-            assert!(
-                (*h - 5.0).abs() < 0.1,
-                "Expected ~5.0, got {h}"
-            );
+            assert!((*h - 5.0).abs() < 0.1, "Expected ~5.0, got {h}");
         }
         assert!((hm.min_height - 5.0).abs() < 0.1);
         assert!((hm.max_height - 5.0).abs() < 0.1);
@@ -442,7 +431,10 @@ mod tests {
 
         // At z=0 (row 0), height should be ~0
         let h_start = hm.data[0];
-        assert!(h_start.abs() < 0.5, "Height at z=0 should be ~0, got {h_start}");
+        assert!(
+            h_start.abs() < 0.5,
+            "Height at z=0 should be ~0, got {h_start}"
+        );
 
         // At z=max (last row), height should be ~10
         let last_row = (hm.resolution - 1) * hm.resolution;
@@ -519,11 +511,8 @@ mod tests {
 
     #[test]
     fn test_terrain_bounds() {
-        let b = TerrainBounds::from_vertices(&[
-            [0.0, 0.0, 0.0],
-            [10.0, 5.0, 20.0],
-            [-3.0, 2.0, 8.0],
-        ]);
+        let b =
+            TerrainBounds::from_vertices(&[[0.0, 0.0, 0.0], [10.0, 5.0, 20.0], [-3.0, 2.0, 8.0]]);
         let b = b.unwrap();
         assert_eq!(b.min, [-3.0, 0.0, 0.0]);
         assert_eq!(b.max, [10.0, 5.0, 20.0]);

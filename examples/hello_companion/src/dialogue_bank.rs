@@ -108,10 +108,15 @@ impl DialogueBank {
         {
             return Topic::Combat;
         }
-        if s.contains("stealth") || s.contains("hide") || s.contains("quiet") || s.contains("sneak") {
+        if s.contains("stealth") || s.contains("hide") || s.contains("quiet") || s.contains("sneak")
+        {
             return Topic::Stealth;
         }
-        if s.contains("ai") || s.contains("model") || s.contains("llm") || s.contains("how do you work") {
+        if s.contains("ai")
+            || s.contains("model")
+            || s.contains("llm")
+            || s.contains("how do you work")
+        {
             return Topic::Tech;
         }
         if s.contains("sad")
@@ -192,10 +197,7 @@ impl DialogueBank {
         if first.is_empty() {
             return None;
         }
-        let capped = first
-            .chars()
-            .take(32)
-            .collect::<String>();
+        let capped = first.chars().take(32).collect::<String>();
         Some(capped)
     }
 
@@ -209,13 +211,20 @@ impl DialogueBank {
 
         // Name parsing (lightweight; not persistent memory, but feels responsive).
         if let Some(rest) = lower.strip_prefix("my name is ") {
-            let raw = input_trim.get((input_trim.len() - rest.len())..).unwrap_or("");
+            let raw = input_trim
+                .get((input_trim.len() - rest.len())..)
+                .unwrap_or("");
             if let Some(name) = Self::normalize_name(raw) {
-                return Some(format!("Nice to meet you, {}. What do you want to do next?", name));
+                return Some(format!(
+                    "Nice to meet you, {}. What do you want to do next?",
+                    name
+                ));
             }
         }
         if let Some(rest) = lower.strip_prefix("call me ") {
-            let raw = input_trim.get((input_trim.len() - rest.len())..).unwrap_or("");
+            let raw = input_trim
+                .get((input_trim.len() - rest.len())..)
+                .unwrap_or("");
             if let Some(name) = Self::normalize_name(raw) {
                 return Some(format!("Got it — I’ll call you {}. What’s the goal?", name));
             }
@@ -255,7 +264,10 @@ impl DialogueBank {
         }
 
         // Summaries / recap scaffolding.
-        if lower.starts_with("summarize") || lower.starts_with("summary") || lower.starts_with("recap") {
+        if lower.starts_with("summarize")
+            || lower.starts_with("summary")
+            || lower.starts_with("recap")
+        {
             return Some(
                 "Tell me what to summarize (goal, options, or the last exchange), and I’ll condense it into a next step."
                     .to_string(),
@@ -372,7 +384,8 @@ impl DialogueBank {
                     .to_string(),
             );
         }
-        if lower.contains("take my time") || lower.contains("no rush") || lower.contains("patient") {
+        if lower.contains("take my time") || lower.contains("no rush") || lower.contains("patient")
+        {
             return Some(
                 "Relaxed mode: we can explore thoroughly. What do you want to understand deeply?"
                     .to_string(),
@@ -388,7 +401,10 @@ impl DialogueBank {
         }
 
         // Negation patterns ("I don't", "I can't").
-        if lower.starts_with("i don't") || lower.starts_with("i can't") || lower.starts_with("i cannot") {
+        if lower.starts_with("i don't")
+            || lower.starts_with("i can't")
+            || lower.starts_with("i cannot")
+        {
             return Some(
                 "Noted. Tell me what you *do* want or *can* do, and we'll work from there."
                     .to_string(),
@@ -396,7 +412,10 @@ impl DialogueBank {
         }
 
         // Elaboration requests.
-        if lower.contains("tell me more") || lower.contains("elaborate") || lower.contains("go deeper") {
+        if lower.contains("tell me more")
+            || lower.contains("elaborate")
+            || lower.contains("go deeper")
+        {
             return Some(
                 "Sure. Which part should I expand: the goal, the method, or the reasoning?"
                     .to_string(),
@@ -437,7 +456,7 @@ impl DialogueBank {
         } else {
             return None;
         };
-        
+
         if items.len() >= 2 {
             Some(items)
         } else {
@@ -561,7 +580,11 @@ impl DialogueBank {
 
     /// Get a sequence of context-aware thinking fillers for extended wait
     /// Analyzes user input to provide relevant filler responses
-    pub fn thinking_sequence_contextual(&self, duration_seconds: f32, user_input: &str) -> Vec<String> {
+    pub fn thinking_sequence_contextual(
+        &self,
+        duration_seconds: f32,
+        user_input: &str,
+    ) -> Vec<String> {
         self.thinking_sequence_contextual_for_mode(DemoMode::Arbiter, duration_seconds, user_input)
     }
 
@@ -617,13 +640,18 @@ impl DialogueBank {
 
         // Add deeper engagement filler if wait > 9s
         if duration_seconds > 9.0 {
-            let deep = Self::choose_seeded(content::THINKING_DEEP_GENERAL, base_seed ^ 0xD00D, "Almost there…");
+            let deep = Self::choose_seeded(
+                content::THINKING_DEEP_GENERAL,
+                base_seed ^ 0xD00D,
+                "Almost there…",
+            );
             sequence.push(deep.to_string());
         }
 
         // Final reassurance if wait > 12s
         if duration_seconds > 12.0 {
-            sequence.push("I’m shaping the answer carefully — thanks for your patience.".to_string());
+            sequence
+                .push("I’m shaping the answer carefully — thanks for your patience.".to_string());
         }
 
         sequence
@@ -716,8 +744,13 @@ mod tests {
     fn short_trigger_does_not_match_inside_other_words() {
         let bank = DialogueBank::new();
         // Previously, "hi" could match the substring in "this".
-        let r = bank.goap_response("This place feels calm.").unwrap_or("<none>");
-        assert!(r.contains("peaceful") || r.contains("quiet"), "response={r}");
+        let r = bank
+            .goap_response("This place feels calm.")
+            .unwrap_or("<none>");
+        assert!(
+            r.contains("peaceful") || r.contains("quiet"),
+            "response={r}"
+        );
 
         let hi = bank.goap_response("hi").unwrap_or("<none>");
         assert!(hi.starts_with("Hi") || hi.starts_with("Hello") || hi.starts_with("Hey"));

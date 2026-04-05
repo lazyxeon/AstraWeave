@@ -5,10 +5,10 @@
 
 #![allow(clippy::field_reassign_with_default)]
 
-use astraweave_persona::*;
 use astraweave_embeddings::{MockEmbeddingClient, VectorStore};
 use astraweave_llm::MockLlm;
 use astraweave_memory::Persona as BasePersona;
+use astraweave_persona::*;
 use astraweave_rag::{RagConfig, RagPipeline, VectorStoreWrapper};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -1248,8 +1248,15 @@ async fn evolve_personality_single_keyword_triggers() {
     let manager = create_kill_test_manager().await;
     manager.evolve_personality("creative").await.unwrap();
     let state = manager.get_persona_state().await;
-    let creativity = state.llm_config.personality_factors.get("creativity").unwrap();
-    assert!(*creativity > 0.7, "creativity should increase from 0.7, got {creativity}");
+    let creativity = state
+        .llm_config
+        .personality_factors
+        .get("creativity")
+        .unwrap();
+    assert!(
+        *creativity > 0.7,
+        "creativity should increase from 0.7, got {creativity}"
+    );
 }
 
 /// Kill: evolve_personality || → && — second branch (help/support/care)
@@ -1259,7 +1266,10 @@ async fn evolve_personality_help_triggers_empathy() {
     manager.evolve_personality("help").await.unwrap();
     let state = manager.get_persona_state().await;
     let empathy = state.llm_config.personality_factors.get("empathy").unwrap();
-    assert!(*empathy > 0.8, "empathy should increase from 0.8, got {empathy}");
+    assert!(
+        *empathy > 0.8,
+        "empathy should increase from 0.8, got {empathy}"
+    );
 }
 
 /// Kill: update_personality_state * → + on mood_change (line 696)
@@ -1285,7 +1295,11 @@ async fn mood_change_uses_correct_scaling() {
 #[tokio::test]
 async fn equal_sentiment_leaves_confidence_unchanged() {
     let manager = create_kill_test_manager().await;
-    let initial = manager.get_persona_state().await.personality_state.confidence;
+    let initial = manager
+        .get_persona_state()
+        .await
+        .personality_state
+        .confidence;
     // "good" = 1 positive, "bad" = 1 negative → equal counts
     manager.generate_response("good bad", None).await.unwrap();
     let state = manager.get_persona_state().await;
@@ -1305,7 +1319,11 @@ async fn equal_sentiment_leaves_confidence_unchanged() {
 #[tokio::test]
 async fn negative_input_decreases_confidence() {
     let manager = create_kill_test_manager().await;
-    let initial = manager.get_persona_state().await.personality_state.confidence;
+    let initial = manager
+        .get_persona_state()
+        .await
+        .personality_state
+        .confidence;
     // "terrible" has 1 negative word, 0 positive → negative_count > positive_count
     manager.generate_response("terrible", None).await.unwrap();
     let state = manager.get_persona_state().await;

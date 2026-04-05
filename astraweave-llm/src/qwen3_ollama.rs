@@ -391,7 +391,10 @@ impl Qwen3Ollama {
             "options": self.build_options(),
         });
 
-        tracing::info!("Preloading model {} (weights + KV prefix cache)...", self.model);
+        tracing::info!(
+            "Preloading model {} (weights + KV prefix cache)...",
+            self.model
+        );
         let start = std::time::Instant::now();
 
         let response = client
@@ -557,7 +560,8 @@ Rules:
 /// Ultra-short — only 2 lines, ~15 tokens. Every token saved at the system prompt
 /// level reduces TTFC because it shrinks the prefill workload. The JSON schema
 /// example acts as a one-shot template that Qwen3 reliably follows.
-const FAST_SYSTEM_PROMPT: &str = "JSON only. {\"plan_id\":\"id\",\"steps\":[{\"act\":\"MoveTo\",\"x\":0,\"y\":0}]}";
+const FAST_SYSTEM_PROMPT: &str =
+    "JSON only. {\"plan_id\":\"id\",\"steps\":[{\"act\":\"MoveTo\",\"x\":0,\"y\":0}]}";
 
 /// Strip `<think>...</think>` blocks from Qwen3 thinking-mode responses.
 ///
@@ -662,7 +666,11 @@ impl LlmClient for Qwen3Ollama {
 
         tracing::debug!(
             "Sending request to Ollama: {} (thinking={}, temp={}, max_tokens={}, ctx={})",
-            self.model, self.enable_thinking, self.temperature, self.max_tokens, self.context_length
+            self.model,
+            self.enable_thinking,
+            self.temperature,
+            self.max_tokens,
+            self.context_length
         );
         let start = std::time::Instant::now();
 

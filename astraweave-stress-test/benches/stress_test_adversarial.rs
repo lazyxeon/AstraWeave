@@ -8,9 +8,7 @@
 //! - Garbage collection pressure simulation
 //! - System resource exhaustion patterns
 
-use criterion::{
-    criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::collections::VecDeque;
 use std::hint::black_box as std_black_box;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -302,11 +300,9 @@ impl CacheTrasher {
         let data: Vec<Vec<u64>> = (0..arrays)
             .map(|_| (0..array_size).map(|i| i as u64).collect())
             .collect();
-        
+
         // Random access pattern to defeat prefetcher
-        let access_pattern: Vec<usize> = (0..1000)
-            .map(|_| gen.next_usize(arrays))
-            .collect();
+        let access_pattern: Vec<usize> = (0..1000).map(|_| gen.next_usize(arrays)).collect();
 
         Self {
             data,
@@ -410,9 +406,7 @@ fn bench_measurement_overhead(c: &mut Criterion) {
     let mut group = c.benchmark_group("measurement_overhead");
 
     // Baseline: measure nothing
-    group.bench_function("baseline_empty", |b| {
-        b.iter(|| std_black_box(()))
-    });
+    group.bench_function("baseline_empty", |b| b.iter(|| std_black_box(())));
 
     // Instant::now overhead
     group.bench_function("instant_now_overhead", |b| {
@@ -509,8 +503,7 @@ fn bench_memory_patterns(c: &mut Criterion) {
             &burst_size,
             |b, &size| {
                 b.iter(|| {
-                    let allocations: Vec<Vec<u8>> =
-                        (0..size).map(|_| vec![0u8; 1024]).collect();
+                    let allocations: Vec<Vec<u8>> = (0..size).map(|_| vec![0u8; 1024]).collect();
                     std_black_box(allocations.len())
                 })
             },
@@ -645,23 +638,19 @@ fn bench_cache_effects(c: &mut Criterion) {
             },
         );
 
-        group.bench_with_input(
-            BenchmarkId::new("random", name),
-            &elements,
-            |b, &count| {
-                let data: Vec<u64> = (0..count).map(|i| i as u64).collect();
-                let mut gen = StressPatternGenerator::new(42);
-                let indices: Vec<usize> = (0..count).map(|_| gen.next_usize(count)).collect();
+        group.bench_with_input(BenchmarkId::new("random", name), &elements, |b, &count| {
+            let data: Vec<u64> = (0..count).map(|i| i as u64).collect();
+            let mut gen = StressPatternGenerator::new(42);
+            let indices: Vec<usize> = (0..count).map(|_| gen.next_usize(count)).collect();
 
-                b.iter(|| {
-                    let mut sum = 0u64;
-                    for &idx in &indices {
-                        sum = sum.wrapping_add(data[idx]);
-                    }
-                    std_black_box(sum)
-                })
-            },
-        );
+            b.iter(|| {
+                let mut sum = 0u64;
+                for &idx in &indices {
+                    sum = sum.wrapping_add(data[idx]);
+                }
+                std_black_box(sum)
+            })
+        });
     }
 
     // Cache line bouncing

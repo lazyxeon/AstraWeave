@@ -99,7 +99,11 @@ fn create_complex_snapshot() -> WorldSnapshot {
                 y: 15 + (i % 3),
             },
             hp: 50 + i * 5,
-            cover: if i % 2 == 0 { CoverType::Low } else { CoverType::High },
+            cover: if i % 2 == 0 {
+                CoverType::Low
+            } else {
+                CoverType::High
+            },
             last_seen: (i as f32) * 0.5,
         });
     }

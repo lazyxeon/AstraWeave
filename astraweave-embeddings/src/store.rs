@@ -193,7 +193,11 @@ impl VectorStore {
         }
 
         // Sort by distance and take top k
-        results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(k);
 
         Ok(results)
@@ -333,7 +337,7 @@ impl VectorStore {
     /// Deserialize the store from a JSON string
     pub fn from_json(json: &str) -> Result<Self> {
         let snapshot: VectorStoreSnapshot = serde_json::from_str(json)?;
-        
+
         let vectors = DashMap::new();
         for (k, v) in snapshot.vectors {
             vectors.insert(k, v);
@@ -456,7 +460,9 @@ mod tests {
     #[test]
     fn test_is_empty_false() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 2.0, 3.0], "test".to_string()).unwrap();
+        store
+            .insert("v1".to_string(), vec![1.0, 2.0, 3.0], "test".to_string())
+            .unwrap();
         assert!(!store.is_empty());
     }
 
@@ -495,9 +501,13 @@ mod tests {
     #[test]
     fn test_insert_at_capacity_error() {
         let store = create_store_with_max_capacity(3, 2);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "first".to_string()).unwrap();
-        store.insert("v2".to_string(), vec![0.0, 1.0, 0.0], "second".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "first".to_string())
+            .unwrap();
+        store
+            .insert("v2".to_string(), vec![0.0, 1.0, 0.0], "second".to_string())
+            .unwrap();
+
         let result = store.insert("v3".to_string(), vec![0.0, 0.0, 1.0], "third".to_string());
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -507,8 +517,10 @@ mod tests {
     #[test]
     fn test_insert_updates_metrics() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "first".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "first".to_string())
+            .unwrap();
+
         let metrics = store.get_metrics();
         assert_eq!(metrics.total_vectors, 1);
     }
@@ -519,19 +531,27 @@ mod tests {
         let mut metadata = HashMap::new();
         metadata.insert("category".to_string(), "test".to_string());
         metadata.insert("priority".to_string(), "high".to_string());
-        
-        store.insert_with_metadata(
-            "v1".to_string(),
-            vec![1.0, 2.0, 3.0],
-            "metadata test".to_string(),
-            0.8,
-            metadata.clone(),
-        ).unwrap();
-        
+
+        store
+            .insert_with_metadata(
+                "v1".to_string(),
+                vec![1.0, 2.0, 3.0],
+                "metadata test".to_string(),
+                0.8,
+                metadata.clone(),
+            )
+            .unwrap();
+
         let retrieved = store.get("v1").unwrap();
         assert_eq!(retrieved.importance, 0.8);
-        assert_eq!(retrieved.metadata.get("category"), Some(&"test".to_string()));
-        assert_eq!(retrieved.metadata.get("priority"), Some(&"high".to_string()));
+        assert_eq!(
+            retrieved.metadata.get("category"),
+            Some(&"test".to_string())
+        );
+        assert_eq!(
+            retrieved.metadata.get("priority"),
+            Some(&"high".to_string())
+        );
     }
 
     #[test]
@@ -550,9 +570,17 @@ mod tests {
     #[test]
     fn test_insert_overwrites_existing() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "original".to_string()).unwrap();
-        store.insert("v1".to_string(), vec![0.0, 1.0, 0.0], "updated".to_string()).unwrap();
-        
+        store
+            .insert(
+                "v1".to_string(),
+                vec![1.0, 0.0, 0.0],
+                "original".to_string(),
+            )
+            .unwrap();
+        store
+            .insert("v1".to_string(), vec![0.0, 1.0, 0.0], "updated".to_string())
+            .unwrap();
+
         let retrieved = store.get("v1").unwrap();
         assert_eq!(retrieved.text, "updated");
         assert_eq!(retrieved.vector, vec![0.0, 1.0, 0.0]);
@@ -566,17 +594,43 @@ mod tests {
     #[test]
     fn test_insert_with_auto_prune() {
         let store = create_store_with_max_capacity(3, 3);
-        
+
         // Fill to capacity
-        store.insert_with_metadata("v1".to_string(), vec![1.0, 0.0, 0.0], "low".to_string(), 0.1, HashMap::new()).unwrap();
-        store.insert_with_metadata("v2".to_string(), vec![0.0, 1.0, 0.0], "medium".to_string(), 0.5, HashMap::new()).unwrap();
-        store.insert_with_metadata("v3".to_string(), vec![0.0, 0.0, 1.0], "high".to_string(), 0.9, HashMap::new()).unwrap();
-        
+        store
+            .insert_with_metadata(
+                "v1".to_string(),
+                vec![1.0, 0.0, 0.0],
+                "low".to_string(),
+                0.1,
+                HashMap::new(),
+            )
+            .unwrap();
+        store
+            .insert_with_metadata(
+                "v2".to_string(),
+                vec![0.0, 1.0, 0.0],
+                "medium".to_string(),
+                0.5,
+                HashMap::new(),
+            )
+            .unwrap();
+        store
+            .insert_with_metadata(
+                "v3".to_string(),
+                vec![0.0, 0.0, 1.0],
+                "high".to_string(),
+                0.9,
+                HashMap::new(),
+            )
+            .unwrap();
+
         assert_eq!(store.len(), 3);
-        
+
         // Insert with auto-prune should prune first and then insert
-        store.insert_with_auto_prune("v4".to_string(), vec![1.0, 1.0, 0.0], "new".to_string()).unwrap();
-        
+        store
+            .insert_with_auto_prune("v4".to_string(), vec![1.0, 1.0, 0.0], "new".to_string())
+            .unwrap();
+
         // Should still have room (pruned 10% = 0, but at least allows insert after prune attempt)
         assert!(store.len() <= 3);
     }
@@ -584,23 +638,49 @@ mod tests {
     #[test]
     fn test_insert_with_metadata_and_auto_prune() {
         let store = create_store_with_max_capacity(3, 3);
-        
+
         // Fill to capacity with low importance
-        store.insert_with_metadata("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string(), 0.1, HashMap::new()).unwrap();
-        store.insert_with_metadata("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string(), 0.1, HashMap::new()).unwrap();
-        store.insert_with_metadata("v3".to_string(), vec![0.0, 0.0, 1.0], "c".to_string(), 0.1, HashMap::new()).unwrap();
-        
+        store
+            .insert_with_metadata(
+                "v1".to_string(),
+                vec![1.0, 0.0, 0.0],
+                "a".to_string(),
+                0.1,
+                HashMap::new(),
+            )
+            .unwrap();
+        store
+            .insert_with_metadata(
+                "v2".to_string(),
+                vec![0.0, 1.0, 0.0],
+                "b".to_string(),
+                0.1,
+                HashMap::new(),
+            )
+            .unwrap();
+        store
+            .insert_with_metadata(
+                "v3".to_string(),
+                vec![0.0, 0.0, 1.0],
+                "c".to_string(),
+                0.1,
+                HashMap::new(),
+            )
+            .unwrap();
+
         let mut metadata = HashMap::new();
         metadata.insert("key".to_string(), "value".to_string());
-        
-        store.insert_with_metadata_and_auto_prune(
-            "v4".to_string(),
-            vec![1.0, 1.0, 1.0],
-            "new with metadata".to_string(),
-            0.9,
-            metadata,
-        ).unwrap();
-        
+
+        store
+            .insert_with_metadata_and_auto_prune(
+                "v4".to_string(),
+                vec![1.0, 1.0, 1.0],
+                "new with metadata".to_string(),
+                0.9,
+                metadata,
+            )
+            .unwrap();
+
         // Should still have room after auto-prune
         assert!(store.len() <= 3);
     }
@@ -635,8 +715,10 @@ mod tests {
     #[test]
     fn test_search_dimension_mismatch() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "test".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "test".to_string())
+            .unwrap();
+
         let result = store.search(&[1.0, 0.0], 1);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -646,11 +728,13 @@ mod tests {
     #[test]
     fn test_search_updates_metrics() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "test".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "test".to_string())
+            .unwrap();
+
         let _ = store.search(&[1.0, 0.0, 0.0], 1).unwrap();
         let _ = store.search(&[0.0, 1.0, 0.0], 1).unwrap();
-        
+
         let metrics = store.get_metrics();
         assert_eq!(metrics.total_searches, 2);
         assert!(metrics.avg_search_time_ms >= 0.0);
@@ -666,9 +750,13 @@ mod tests {
     #[test]
     fn test_search_k_larger_than_store() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        store.insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+        store
+            .insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string())
+            .unwrap();
+
         let results = store.search(&[1.0, 0.0, 0.0], 10).unwrap();
         assert_eq!(results.len(), 2);
     }
@@ -676,10 +764,16 @@ mod tests {
     #[test]
     fn test_search_with_euclidean_metric() {
         let store = create_store_with_metric(3, DistanceMetric::Euclidean);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        store.insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string()).unwrap();
-        store.insert("v3".to_string(), vec![0.5, 0.5, 0.0], "c".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+        store
+            .insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string())
+            .unwrap();
+        store
+            .insert("v3".to_string(), vec![0.5, 0.5, 0.0], "c".to_string())
+            .unwrap();
+
         let results = store.search(&[0.5, 0.5, 0.0], 1).unwrap();
         assert_eq!(results[0].vector.id, "v3");
     }
@@ -687,9 +781,13 @@ mod tests {
     #[test]
     fn test_search_with_manhattan_metric() {
         let store = create_store_with_metric(3, DistanceMetric::Manhattan);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        store.insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+        store
+            .insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string())
+            .unwrap();
+
         let results = store.search(&[0.9, 0.1, 0.0], 1).unwrap();
         assert_eq!(results[0].vector.id, "v1");
     }
@@ -697,9 +795,13 @@ mod tests {
     #[test]
     fn test_search_with_dot_product_metric() {
         let store = create_store_with_metric(3, DistanceMetric::DotProduct);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        store.insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+        store
+            .insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string())
+            .unwrap();
+
         let results = store.search(&[1.0, 0.0, 0.0], 2).unwrap();
         // Dot product should rank v1 higher (dot product = 1.0 vs 0.0)
         assert_eq!(results[0].vector.id, "v1");
@@ -748,13 +850,19 @@ mod tests {
     #[test]
     fn test_get_all_ids() {
         let store = create_test_store(3);
-        store.insert("a".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        store.insert("b".to_string(), vec![0.0, 1.0, 0.0], "b".to_string()).unwrap();
-        store.insert("c".to_string(), vec![0.0, 0.0, 1.0], "c".to_string()).unwrap();
-        
+        store
+            .insert("a".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+        store
+            .insert("b".to_string(), vec![0.0, 1.0, 0.0], "b".to_string())
+            .unwrap();
+        store
+            .insert("c".to_string(), vec![0.0, 0.0, 1.0], "c".to_string())
+            .unwrap();
+
         let mut ids = store.get_all_ids();
         ids.sort();
-        
+
         assert_eq!(ids.len(), 3);
         assert_eq!(ids, vec!["a", "b", "c"]);
     }
@@ -762,13 +870,17 @@ mod tests {
     #[test]
     fn test_clear() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        store.insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+        store
+            .insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string())
+            .unwrap();
+
         assert_eq!(store.len(), 2);
-        
+
         store.clear();
-        
+
         assert_eq!(store.len(), 0);
         assert!(store.is_empty());
         assert!(store.get("v1").is_none());
@@ -778,8 +890,10 @@ mod tests {
     #[test]
     fn test_rebuild_index() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+
         // Should succeed (no-op in simplified version)
         let result = store.rebuild_index();
         assert!(result.is_ok());
@@ -793,7 +907,7 @@ mod tests {
     fn test_get_metrics_initial() {
         let store = create_test_store(3);
         let metrics = store.get_metrics();
-        
+
         assert_eq!(metrics.total_vectors, 0);
         assert_eq!(metrics.total_searches, 0);
         assert_eq!(metrics.avg_search_time_ms, 0.0);
@@ -802,12 +916,16 @@ mod tests {
     #[test]
     fn test_get_metrics_after_operations() {
         let store = create_test_store(3);
-        
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        store.insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string()).unwrap();
-        
+
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+        store
+            .insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string())
+            .unwrap();
+
         let _ = store.search(&[0.5, 0.5, 0.0], 1).unwrap();
-        
+
         let metrics = store.get_metrics();
         assert_eq!(metrics.total_vectors, 2);
         assert_eq!(metrics.total_searches, 1);
@@ -831,7 +949,7 @@ mod tests {
             total_searches: 50,
             ..Default::default()
         };
-        
+
         let cloned = metrics.clone();
         assert_eq!(cloned.total_vectors, 100);
         assert_eq!(cloned.total_searches, 50);
@@ -864,7 +982,7 @@ mod tests {
     fn test_cosine_distance_zero_vector() {
         let a = vec![0.0, 0.0, 0.0];
         let b = vec![1.0, 0.0, 0.0];
-        
+
         let dist = cosine_distance(&a, &b);
         assert_eq!(dist, 1.0); // Maximum distance for zero vector
     }
@@ -880,7 +998,7 @@ mod tests {
     fn test_cosine_distance_opposite() {
         let a = vec![1.0, 0.0, 0.0];
         let b = vec![-1.0, 0.0, 0.0];
-        
+
         let dist = cosine_distance(&a, &b);
         assert!((dist - 2.0).abs() < 0.0001); // Opposite directions = max distance
     }
@@ -889,7 +1007,7 @@ mod tests {
     fn test_euclidean_distance_basic() {
         let a = vec![0.0, 0.0, 0.0];
         let b = vec![3.0, 4.0, 0.0];
-        
+
         let dist = euclidean_distance(&a, &b);
         assert!((dist - 5.0).abs() < 0.0001); // 3-4-5 triangle
     }
@@ -905,7 +1023,7 @@ mod tests {
     fn test_manhattan_distance_basic() {
         let a = vec![0.0, 0.0, 0.0];
         let b = vec![1.0, 2.0, 3.0];
-        
+
         let dist = manhattan_distance(&a, &b);
         assert_eq!(dist, 6.0); // 1 + 2 + 3
     }
@@ -921,7 +1039,7 @@ mod tests {
     fn test_manhattan_distance_negative() {
         let a = vec![5.0, 5.0];
         let b = vec![2.0, 1.0];
-        
+
         let dist = manhattan_distance(&a, &b);
         assert_eq!(dist, 7.0); // |5-2| + |5-1| = 3 + 4
     }
@@ -930,7 +1048,7 @@ mod tests {
     fn test_dot_product_distance_basic() {
         let a = vec![1.0, 0.0, 0.0];
         let b = vec![1.0, 0.0, 0.0];
-        
+
         let dist = dot_product_distance(&a, &b);
         assert_eq!(dist, -1.0); // Negative of dot product
     }
@@ -939,7 +1057,7 @@ mod tests {
     fn test_dot_product_distance_orthogonal() {
         let a = vec![1.0, 0.0, 0.0];
         let b = vec![0.0, 1.0, 0.0];
-        
+
         let dist = dot_product_distance(&a, &b);
         assert_eq!(dist, 0.0); // Orthogonal = 0 dot product
     }
@@ -948,7 +1066,7 @@ mod tests {
     fn test_dot_product_distance_opposite() {
         let a = vec![1.0, 0.0];
         let b = vec![-1.0, 0.0];
-        
+
         let dist = dot_product_distance(&a, &b);
         assert_eq!(dist, 1.0); // -(-1) = 1
     }
@@ -1008,8 +1126,10 @@ mod tests {
     #[test]
     fn test_prune_vectors_already_under_target() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+
         let removed = store.prune_vectors(10).unwrap();
         assert_eq!(removed, 0);
         assert_eq!(store.len(), 1);
@@ -1018,9 +1138,13 @@ mod tests {
     #[test]
     fn test_prune_vectors_to_zero() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-        store.insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+            .unwrap();
+        store
+            .insert("v2".to_string(), vec![0.0, 1.0, 0.0], "b".to_string())
+            .unwrap();
+
         let removed = store.prune_vectors(0).unwrap();
         assert_eq!(removed, 2);
         assert_eq!(store.len(), 0);
@@ -1033,11 +1157,15 @@ mod tests {
     #[test]
     fn test_to_json() {
         let store = create_test_store(3);
-        store.insert("v1".to_string(), vec![1.0, 0.0, 0.0], "first".to_string()).unwrap();
-        store.insert("v2".to_string(), vec![0.0, 1.0, 0.0], "second".to_string()).unwrap();
-        
+        store
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], "first".to_string())
+            .unwrap();
+        store
+            .insert("v2".to_string(), vec![0.0, 1.0, 0.0], "second".to_string())
+            .unwrap();
+
         let json = store.to_json().unwrap();
-        
+
         assert!(json.contains("\"v1\""));
         assert!(json.contains("\"v2\""));
         assert!(json.contains("first"));
@@ -1047,25 +1175,27 @@ mod tests {
     #[test]
     fn test_from_json() {
         let store = create_test_store(3);
-        store.insert_with_metadata(
-            "v1".to_string(),
-            vec![1.0, 2.0, 3.0],
-            "test".to_string(),
-            0.7,
-            HashMap::new(),
-        ).unwrap();
-        
+        store
+            .insert_with_metadata(
+                "v1".to_string(),
+                vec![1.0, 2.0, 3.0],
+                "test".to_string(),
+                0.7,
+                HashMap::new(),
+            )
+            .unwrap();
+
         let _ = store.search(&[1.0, 2.0, 3.0], 1).unwrap();
-        
+
         let json = store.to_json().unwrap();
         let restored = VectorStore::from_json(&json).unwrap();
-        
+
         assert_eq!(restored.len(), 1);
         let retrieved = restored.get("v1").unwrap();
         assert_eq!(retrieved.vector, vec![1.0, 2.0, 3.0]);
         assert_eq!(retrieved.text, "test");
         assert_eq!(retrieved.importance, 0.7);
-        
+
         let metrics = restored.get_metrics();
         assert_eq!(metrics.total_searches, 1);
     }
@@ -1079,35 +1209,43 @@ mod tests {
     #[test]
     fn test_roundtrip_serialization() {
         let store = create_store_with_metric(4, DistanceMetric::Euclidean);
-        
+
         let mut metadata = HashMap::new();
         metadata.insert("tag".to_string(), "test".to_string());
-        
-        store.insert_with_metadata(
-            "vec1".to_string(),
-            vec![0.1, 0.2, 0.3, 0.4],
-            "first vector".to_string(),
-            0.95,
-            metadata,
-        ).unwrap();
-        
-        store.insert("vec2".to_string(), vec![0.5, 0.6, 0.7, 0.8], "second".to_string()).unwrap();
-        
+
+        store
+            .insert_with_metadata(
+                "vec1".to_string(),
+                vec![0.1, 0.2, 0.3, 0.4],
+                "first vector".to_string(),
+                0.95,
+                metadata,
+            )
+            .unwrap();
+
+        store
+            .insert(
+                "vec2".to_string(),
+                vec![0.5, 0.6, 0.7, 0.8],
+                "second".to_string(),
+            )
+            .unwrap();
+
         // Perform some searches to update metrics
         let _ = store.search(&[0.1, 0.2, 0.3, 0.4], 1).unwrap();
-        
+
         // Serialize and deserialize
         let json = store.to_json().unwrap();
         let restored = VectorStore::from_json(&json).unwrap();
-        
+
         // Verify all data
         assert_eq!(restored.len(), 2);
-        
+
         let v1 = restored.get("vec1").unwrap();
         assert_eq!(v1.text, "first vector");
         assert_eq!(v1.importance, 0.95);
         assert_eq!(v1.metadata.get("tag"), Some(&"test".to_string()));
-        
+
         let v2 = restored.get("vec2").unwrap();
         assert_eq!(v2.text, "second");
     }
@@ -1116,7 +1254,7 @@ mod tests {
     fn test_to_json_empty_store() {
         let store = create_test_store(3);
         let json = store.to_json().unwrap();
-        
+
         let restored = VectorStore::from_json(&json).unwrap();
         assert!(restored.is_empty());
     }
@@ -1128,45 +1266,49 @@ mod tests {
     #[test]
     fn test_concurrent_insert() {
         use std::thread;
-        
+
         let store = Arc::new(create_test_store(3));
         let mut handles = vec![];
-        
+
         for i in 0..10 {
             let store_clone = Arc::clone(&store);
             handles.push(thread::spawn(move || {
-                store_clone.insert(
-                    format!("v{}", i),
-                    vec![i as f32, 0.0, 0.0],
-                    format!("vector {}", i),
-                ).unwrap();
+                store_clone
+                    .insert(
+                        format!("v{}", i),
+                        vec![i as f32, 0.0, 0.0],
+                        format!("vector {}", i),
+                    )
+                    .unwrap();
             }));
         }
-        
+
         for handle in handles {
             handle.join().unwrap();
         }
-        
+
         assert_eq!(store.len(), 10);
     }
 
     #[test]
     fn test_concurrent_search() {
         use std::thread;
-        
+
         let store = Arc::new(create_test_store(3));
-        
+
         // Pre-populate
         for i in 0..10 {
-            store.insert(
-                format!("v{}", i),
-                vec![i as f32, 0.0, 0.0],
-                format!("vector {}", i),
-            ).unwrap();
+            store
+                .insert(
+                    format!("v{}", i),
+                    vec![i as f32, 0.0, 0.0],
+                    format!("vector {}", i),
+                )
+                .unwrap();
         }
-        
+
         let mut handles = vec![];
-        
+
         for i in 0..10 {
             let store_clone = Arc::clone(&store);
             handles.push(thread::spawn(move || {
@@ -1175,7 +1317,7 @@ mod tests {
                 assert!(!results.is_empty());
             }));
         }
-        
+
         for handle in handles {
             handle.join().unwrap();
         }
@@ -1190,7 +1332,7 @@ mod tests {
         let ts1 = current_timestamp();
         std::thread::sleep(std::time::Duration::from_millis(10));
         let ts2 = current_timestamp();
-        
+
         // Should be non-zero and increasing (or equal for very fast execution)
         assert!(ts1 > 0);
         assert!(ts2 >= ts1);
@@ -1200,10 +1342,10 @@ mod tests {
     fn test_get_distance_func_cosine() {
         let store = create_store_with_metric(3, DistanceMetric::Cosine);
         let func = store.get_distance_func();
-        
+
         let a = [1.0, 0.0, 0.0];
         let b = [1.0, 0.0, 0.0];
-        
+
         assert_eq!(func(&a, &b), cosine_distance(&a, &b));
     }
 
@@ -1211,10 +1353,10 @@ mod tests {
     fn test_get_distance_func_euclidean() {
         let store = create_store_with_metric(3, DistanceMetric::Euclidean);
         let func = store.get_distance_func();
-        
+
         let a = [1.0, 0.0, 0.0];
         let b = [0.0, 1.0, 0.0];
-        
+
         assert_eq!(func(&a, &b), euclidean_distance(&a, &b));
     }
 
@@ -1222,10 +1364,10 @@ mod tests {
     fn test_get_distance_func_manhattan() {
         let store = create_store_with_metric(3, DistanceMetric::Manhattan);
         let func = store.get_distance_func();
-        
+
         let a = [1.0, 2.0, 3.0];
         let b = [4.0, 5.0, 6.0];
-        
+
         assert_eq!(func(&a, &b), manhattan_distance(&a, &b));
     }
 
@@ -1233,10 +1375,10 @@ mod tests {
     fn test_get_distance_func_dot_product() {
         let store = create_store_with_metric(3, DistanceMetric::DotProduct);
         let func = store.get_distance_func();
-        
+
         let a = [1.0, 0.0, 0.0];
         let b = [0.5, 0.5, 0.0];
-        
+
         assert_eq!(func(&a, &b), dot_product_distance(&a, &b));
     }
 }

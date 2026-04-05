@@ -6,8 +6,8 @@ use astract::animation::{AnimationController, EasingFunction, Spring, SpringPara
 use astract::charts::{Bar, BarChart, BarGroup, LineChart, PointCluster, ScatterPlot};
 use astract::graph::{GraphNode, NodeGraph, Port, PortType};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use std::hint::black_box;
 use egui::Color32;
+use std::hint::black_box;
 
 // Helper: Generate point data
 fn generate_points(count: usize) -> Vec<(f64, f64)> {

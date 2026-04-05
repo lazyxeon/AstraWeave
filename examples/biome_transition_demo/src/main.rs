@@ -95,7 +95,10 @@ fn main() -> Result<()> {
 
     println!("🌍 Climate system seeded: {}", seed);
     println!("🎯 Biome detector: threshold=5.0 units, hysteresis=2 samples");
-    println!("🎨 Transition effect: {:?}, duration=1.5s", EasingFunction::SmootherStep);
+    println!(
+        "🎨 Transition effect: {:?}, duration=1.5s",
+        EasingFunction::SmootherStep
+    );
     println!();
 
     // ── 4. Simulate walking across the world ─────────────────────────────
@@ -115,7 +118,7 @@ fn main() -> Result<()> {
         // Update any active transition effect
         if transition_effect.is_active() {
             transition_effect.update(dt);
-            
+
             // Log interpolation progress every ~10 steps while transitioning
             if i % 10 == 0 {
                 let visuals = transition_effect.current_visuals();
@@ -130,7 +133,10 @@ fn main() -> Result<()> {
                     let tint = transition_effect.tint_color();
                     println!(
                         "   🎨 Tint: [{:.2},{:.2},{:.2}] alpha={:.2}",
-                        tint[0], tint[1], tint[2], transition_effect.tint_alpha(),
+                        tint[0],
+                        tint[1],
+                        tint[2],
+                        transition_effect.tint_alpha(),
                     );
                 }
             }
@@ -168,24 +174,35 @@ fn main() -> Result<()> {
 
             // Start visual transition effect
             transition_effect.start(transition.old_biome, transition.new_biome);
-            let from_visuals = transition.old_biome
+            let from_visuals = transition
+                .old_biome
                 .map(BiomeVisuals::for_biome)
                 .unwrap_or_else(|| BiomeVisuals::for_biome(BiomeType::Grassland));
             let to_visuals = BiomeVisuals::for_biome(transition.new_biome);
             println!(
                 "   🎬 Starting transition: fog {:.3}→{:.3}, ambient {:.2}→{:.2}",
-                from_visuals.fog_density, to_visuals.fog_density,
-                from_visuals.ambient_intensity, to_visuals.ambient_intensity,
+                from_visuals.fog_density,
+                to_visuals.fog_density,
+                from_visuals.ambient_intensity,
+                to_visuals.ambient_intensity,
             );
             println!(
                 "   🌅 Sky day: [{:.2},{:.2},{:.2}] → [{:.2},{:.2},{:.2}]",
-                from_visuals.sky_day_top[0], from_visuals.sky_day_top[1], from_visuals.sky_day_top[2],
-                to_visuals.sky_day_top[0], to_visuals.sky_day_top[1], to_visuals.sky_day_top[2],
+                from_visuals.sky_day_top[0],
+                from_visuals.sky_day_top[1],
+                from_visuals.sky_day_top[2],
+                to_visuals.sky_day_top[0],
+                to_visuals.sky_day_top[1],
+                to_visuals.sky_day_top[2],
             );
             println!(
                 "   🌊 Water deep: [{:.2},{:.2},{:.2}] → [{:.2},{:.2},{:.2}]",
-                from_visuals.water_deep[0], from_visuals.water_deep[1], from_visuals.water_deep[2],
-                to_visuals.water_deep[0], to_visuals.water_deep[1], to_visuals.water_deep[2],
+                from_visuals.water_deep[0],
+                from_visuals.water_deep[1],
+                from_visuals.water_deep[2],
+                to_visuals.water_deep[0],
+                to_visuals.water_deep[1],
+                to_visuals.water_deep[2],
             );
 
             bms.mark_loaded(transition.new_biome, None);
@@ -241,10 +258,7 @@ fn main() -> Result<()> {
         bms.set_time_of_day(*period);
         match bms.resolve_sky_mode(current_biome) {
             Ok(sky_mode) => {
-                println!(
-                    "  {:?} {:>8?} → {:?}",
-                    current_biome, period, sky_mode,
-                );
+                println!("  {:?} {:>8?} → {:?}", current_biome, period, sky_mode,);
             }
             Err(e) => {
                 println!("  {:?} {:>8?} → ⚠️  {}", current_biome, period, e);
@@ -300,10 +314,7 @@ fn main() -> Result<()> {
 
     // ── 9. Summary ───────────────────────────────────────────────────────
     println!("━━━━ Summary ━━━━");
-    println!(
-        "  Transitions detected: {}",
-        detector.transition_count()
-    );
+    println!("  Transitions detected: {}", detector.transition_count());
     println!(
         "  Final biome: {:?}",
         detector.current_biome().unwrap_or(BiomeType::Grassland)

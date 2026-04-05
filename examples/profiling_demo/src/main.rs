@@ -396,11 +396,13 @@ fn movement_system(world: &mut World) {
     // Direct mutation - no collect, no writeback, O(1) per entity
     // Note: We use a manual counter because enumerate() would require additional iterator machinery
     // and we need the final count for profiling metrics
-    #[allow(clippy::explicit_counter_loop)]    #[allow(unused_variables)]    let _moved_count = {
+    #[allow(clippy::explicit_counter_loop)]
+    #[allow(unused_variables)]
+    let _moved_count = {
         let mut count = 0_usize;
         for (_entity, pos, vel) in query {
             count += 1;
-            
+
             // Update position with velocity
             pos.0.x += vel.0.x * 1.0;
             pos.0.y += vel.0.y * 1.0;

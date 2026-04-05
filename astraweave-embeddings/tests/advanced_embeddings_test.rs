@@ -12,7 +12,7 @@ use tokio::task;
 #[tokio::test]
 async fn test_large_scale_search() {
     // Scale down for test speed, but enough to verify logic
-    let vector_count = 1000; 
+    let vector_count = 1000;
     let dimensions = 10;
     let config = EmbeddingConfig {
         dimensions,
@@ -26,11 +26,7 @@ async fn test_large_scale_search() {
         let mut vector = vec![0.0; dimensions];
         vector[i % dimensions] = 1.0; // Simple pattern
         store
-            .insert(
-                format!("vec_{}", i),
-                vector,
-                format!("text_{}", i),
-            )
+            .insert(format!("vec_{}", i), vector, format!("text_{}", i))
             .unwrap();
     }
 
@@ -56,8 +52,10 @@ fn test_distance_metric_cosine() {
     };
     let store = VectorStore::with_config(config);
 
-    store.insert("a".to_string(), vec![1.0, 0.0, 0.0], "a".to_string()).unwrap();
-    
+    store
+        .insert("a".to_string(), vec![1.0, 0.0, 0.0], "a".to_string())
+        .unwrap();
+
     // Search with identical vector
     let results = store.search(&[1.0, 0.0, 0.0], 1).unwrap();
     assert!(results[0].score > 0.99); // Cosine similarity 1.0
@@ -76,8 +74,10 @@ fn test_distance_metric_euclidean() {
     };
     let store = VectorStore::with_config(config);
 
-    store.insert("a".to_string(), vec![0.0, 0.0, 0.0], "origin".to_string()).unwrap();
-    
+    store
+        .insert("a".to_string(), vec![0.0, 0.0, 0.0], "origin".to_string())
+        .unwrap();
+
     // Distance to (3, 4, 0) should be 5
     let results = store.search(&[3.0, 4.0, 0.0], 1).unwrap();
     assert!((results[0].distance - 5.0).abs() < 0.001);
@@ -92,8 +92,10 @@ fn test_distance_metric_manhattan() {
     };
     let store = VectorStore::with_config(config);
 
-    store.insert("a".to_string(), vec![0.0, 0.0, 0.0], "origin".to_string()).unwrap();
-    
+    store
+        .insert("a".to_string(), vec![0.0, 0.0, 0.0], "origin".to_string())
+        .unwrap();
+
     // Distance to (1, 2, 3) should be 1+2+3 = 6
     let results = store.search(&[1.0, 2.0, 3.0], 1).unwrap();
     assert!((results[0].distance - 6.0).abs() < 0.001);
@@ -108,8 +110,10 @@ fn test_distance_metric_dot() {
     };
     let store = VectorStore::with_config(config);
 
-    store.insert("a".to_string(), vec![1.0, 2.0, 3.0], "vec".to_string()).unwrap();
-    
+    store
+        .insert("a".to_string(), vec![1.0, 2.0, 3.0], "vec".to_string())
+        .unwrap();
+
     // Dot product with (1, 1, 1) should be 1+2+3 = 6
     let results = store.search(&[1.0, 1.0, 1.0], 1).unwrap();
     // Note: store implementation negates dot product for distance sorting
@@ -126,9 +130,13 @@ fn test_capacity_limits() {
     };
     let store = VectorStore::with_config(config);
 
-    store.insert("1".to_string(), vec![0.0, 0.0], "1".to_string()).unwrap();
-    store.insert("2".to_string(), vec![0.0, 0.0], "2".to_string()).unwrap();
-    
+    store
+        .insert("1".to_string(), vec![0.0, 0.0], "1".to_string())
+        .unwrap();
+    store
+        .insert("2".to_string(), vec![0.0, 0.0], "2".to_string())
+        .unwrap();
+
     // Should fail
     let result = store.insert("3".to_string(), vec![0.0, 0.0], "3".to_string());
     assert!(result.is_err());
@@ -145,11 +153,15 @@ fn test_overflow_handling() {
 
     // Fill store
     for i in 0..5 {
-        store.insert(format!("{}", i), vec![0.0, 0.0], format!("{}", i)).unwrap();
+        store
+            .insert(format!("{}", i), vec![0.0, 0.0], format!("{}", i))
+            .unwrap();
     }
 
     // Insert with auto-prune
-    store.insert_with_auto_prune("new".to_string(), vec![0.0, 0.0], "new".to_string()).unwrap();
+    store
+        .insert_with_auto_prune("new".to_string(), vec![0.0, 0.0], "new".to_string())
+        .unwrap();
 
     // Should have pruned (target is 90% of 5 = 4.5 -> 4)
     // So we expect 4 old + 1 new = 5 vectors total
@@ -165,11 +177,13 @@ async fn test_concurrent_insertion() {
     for i in 0..10 {
         let store_clone = store.clone();
         handles.push(task::spawn(async move {
-            store_clone.insert(
-                format!("thread_{}", i),
-                vec![0.0; 10],
-                format!("text_{}", i),
-            ).unwrap();
+            store_clone
+                .insert(
+                    format!("thread_{}", i),
+                    vec![0.0; 10],
+                    format!("text_{}", i),
+                )
+                .unwrap();
         }));
     }
 
@@ -183,7 +197,9 @@ async fn test_concurrent_insertion() {
 #[tokio::test]
 async fn test_concurrent_search() {
     let store = Arc::new(VectorStore::new(10));
-    store.insert("target".to_string(), vec![1.0; 10], "target".to_string()).unwrap();
+    store
+        .insert("target".to_string(), vec![1.0; 10], "target".to_string())
+        .unwrap();
 
     let mut handles = vec![];
     for _ in 0..10 {
@@ -202,7 +218,9 @@ async fn test_concurrent_search() {
 #[test]
 fn test_vectorstore_serialization() {
     let store = VectorStore::new(2);
-    store.insert("1".to_string(), vec![1.0, 2.0], "text".to_string()).unwrap();
+    store
+        .insert("1".to_string(), vec![1.0, 2.0], "text".to_string())
+        .unwrap();
 
     let json = store.to_json().unwrap();
     let loaded_store = VectorStore::from_json(&json).unwrap();
@@ -221,7 +239,7 @@ async fn test_batch_embedding() {
     let client = MockEmbeddingClient::new();
     let texts = vec!["a".to_string(), "b".to_string(), "c".to_string()];
     let embeddings = client.embed_batch(&texts).await.unwrap();
-    
+
     assert_eq!(embeddings.len(), 3);
     assert_eq!(embeddings[0].len(), 384);
 }
@@ -230,11 +248,11 @@ async fn test_batch_embedding() {
 async fn test_cache_hit_behavior() {
     let client = MockEmbeddingClient::new();
     let text = "cached text";
-    
+
     // First call populates cache
     let _ = client.embed(text).await.unwrap();
-    
-    // Second call should hit cache (MockEmbeddingClient implementation details make this hard to verify externally without metrics, 
+
+    // Second call should hit cache (MockEmbeddingClient implementation details make this hard to verify externally without metrics,
     // but we can verify consistency)
     let emb2 = client.embed(text).await.unwrap();
     assert_eq!(emb2.len(), 384);
@@ -281,11 +299,11 @@ fn test_model_info_validation() {
 fn test_vector_normalization() {
     let mut v = vec![3.0, 4.0]; // Magnitude 5
     SimilarityMetrics::normalize_vector(&mut v);
-    
+
     assert!((v[0] - 0.6).abs() < 0.001); // 3/5
     assert!((v[1] - 0.8).abs() < 0.001); // 4/5
-    
-    let mag: f32 = v.iter().map(|x| x*x).sum::<f32>().sqrt();
+
+    let mag: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
     assert!((mag - 1.0).abs() < 0.001);
 }
 
@@ -295,7 +313,7 @@ fn test_cosine_distance_accuracy() {
     let b = vec![0.0, 1.0];
     let sim = SimilarityMetrics::cosine_similarity(&a, &b);
     assert_eq!(sim, 0.0);
-    
+
     let c = vec![1.0, 0.0];
     let sim2 = SimilarityMetrics::cosine_similarity(&a, &c);
     assert_eq!(sim2, 1.0);
@@ -329,11 +347,11 @@ fn test_dot_product_accuracy() {
 fn test_distance_edge_cases() {
     let a = vec![0.0, 0.0];
     let b = vec![0.0, 0.0];
-    
+
     assert_eq!(SimilarityMetrics::euclidean_distance(&a, &b), 0.0);
     assert_eq!(SimilarityMetrics::manhattan_distance(&a, &b), 0.0);
     assert_eq!(SimilarityMetrics::dot_product(&a, &b), 0.0);
-    
+
     // Cosine similarity of zero vectors is 0.0 in our implementation
     assert_eq!(SimilarityMetrics::cosine_similarity(&a, &b), 0.0);
 }

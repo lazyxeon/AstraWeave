@@ -1221,51 +1221,90 @@ mod tests {
     #[test]
     fn test_static_walls_all_fields() {
         let c = BoundaryConfig::static_walls();
-        assert!(matches!(c.slip_condition, SlipCondition::NoSlip),
-            "static_walls must use NoSlip");
-        assert!((c.friction - 0.8).abs() < 1e-6,
-            "static_walls friction should be 0.8, got {}", c.friction);
+        assert!(
+            matches!(c.slip_condition, SlipCondition::NoSlip),
+            "static_walls must use NoSlip"
+        );
+        assert!(
+            (c.friction - 0.8).abs() < 1e-6,
+            "static_walls friction should be 0.8, got {}",
+            c.friction
+        );
     }
 
     #[test]
     fn test_smooth_surface_all_fields() {
         let c = BoundaryConfig::smooth_surface();
-        assert!(matches!(
-            c.method,
-            BoundaryMethod::Hybrid { sdf_for_density: true, particles_for_friction: false }
-        ), "smooth_surface method mismatch");
-        assert!((c.friction - 0.1).abs() < 1e-6,
-            "smooth_surface friction should be 0.1, got {}", c.friction);
-        assert!((c.restitution - 0.5).abs() < 1e-6,
-            "smooth_surface restitution should be 0.5, got {}", c.restitution);
+        assert!(
+            matches!(
+                c.method,
+                BoundaryMethod::Hybrid {
+                    sdf_for_density: true,
+                    particles_for_friction: false
+                }
+            ),
+            "smooth_surface method mismatch"
+        );
+        assert!(
+            (c.friction - 0.1).abs() < 1e-6,
+            "smooth_surface friction should be 0.1, got {}",
+            c.friction
+        );
+        assert!(
+            (c.restitution - 0.5).abs() < 1e-6,
+            "smooth_surface restitution should be 0.5, got {}",
+            c.restitution
+        );
     }
 
     #[test]
     fn test_rough_surface_all_fields() {
         let c = BoundaryConfig::rough_surface();
-        assert!(matches!(
-            c.method,
-            BoundaryMethod::Hybrid { sdf_for_density: true, particles_for_friction: true }
-        ), "rough_surface method mismatch");
-        assert!(matches!(c.slip_condition, SlipCondition::NoSlip),
-            "rough_surface must use NoSlip");
-        assert!((c.restitution - 0.1).abs() < 1e-6,
-            "rough_surface restitution should be 0.1, got {}", c.restitution);
+        assert!(
+            matches!(
+                c.method,
+                BoundaryMethod::Hybrid {
+                    sdf_for_density: true,
+                    particles_for_friction: true
+                }
+            ),
+            "rough_surface method mismatch"
+        );
+        assert!(
+            matches!(c.slip_condition, SlipCondition::NoSlip),
+            "rough_surface must use NoSlip"
+        );
+        assert!(
+            (c.restitution - 0.1).abs() < 1e-6,
+            "rough_surface restitution should be 0.1, got {}",
+            c.restitution
+        );
     }
 
     #[test]
     fn test_dynamic_object_all_fields() {
         let c = BoundaryConfig::dynamic_object();
         if let SlipCondition::PartialSlip(f) = c.slip_condition {
-            assert!((f - 0.5).abs() < 1e-6,
-                "dynamic_object partial slip should be 0.5, got {}", f);
+            assert!(
+                (f - 0.5).abs() < 1e-6,
+                "dynamic_object partial slip should be 0.5, got {}",
+                f
+            );
         } else {
-            panic!("dynamic_object must use PartialSlip, got {:?}", c.slip_condition);
+            panic!(
+                "dynamic_object must use PartialSlip, got {:?}",
+                c.slip_condition
+            );
         }
-        assert!((c.friction - 0.5).abs() < 1e-6,
-            "dynamic_object friction should be 0.5, got {}", c.friction);
-        assert!(c.adaptive_sampling,
-            "dynamic_object must enable adaptive_sampling");
+        assert!(
+            (c.friction - 0.5).abs() < 1e-6,
+            "dynamic_object friction should be 0.5, got {}",
+            c.friction
+        );
+        assert!(
+            c.adaptive_sampling,
+            "dynamic_object must enable adaptive_sampling"
+        );
     }
 
     #[test]
@@ -1279,8 +1318,15 @@ mod tests {
 
         let actual = cubic_spline_kernel(r, h);
         let rel_err = (actual - expected).abs() / expected.abs();
-        assert!(rel_err < 1e-5,
-            "kernel({},{})={}, expected={}, rel_err={}", r, h, actual, expected, rel_err);
+        assert!(
+            rel_err < 1e-5,
+            "kernel({},{})={}, expected={}, rel_err={}",
+            r,
+            h,
+            actual,
+            expected,
+            rel_err
+        );
     }
 
     #[test]
@@ -1294,8 +1340,15 @@ mod tests {
 
         let actual = cubic_spline_kernel(r, h);
         let rel_err = (actual - expected).abs() / expected.abs();
-        assert!(rel_err < 1e-4,
-            "kernel({},{})={}, expected={}, rel_err={}", r, h, actual, expected, rel_err);
+        assert!(
+            rel_err < 1e-4,
+            "kernel({},{})={}, expected={}, rel_err={}",
+            r,
+            h,
+            actual,
+            expected,
+            rel_err
+        );
     }
 
     #[test]
@@ -1309,8 +1362,15 @@ mod tests {
 
         let actual = cubic_spline_gradient(r, h);
         let rel_err = (actual - expected).abs() / expected.abs();
-        assert!(rel_err < 1e-4,
-            "gradient({},{})={}, expected={}, rel_err={}", r, h, actual, expected, rel_err);
+        assert!(
+            rel_err < 1e-4,
+            "gradient({},{})={}, expected={}, rel_err={}",
+            r,
+            h,
+            actual,
+            expected,
+            rel_err
+        );
     }
 
     #[test]
@@ -1324,8 +1384,15 @@ mod tests {
 
         let actual = cubic_spline_gradient(r, h);
         let rel_err = (actual - expected).abs() / expected.abs();
-        assert!(rel_err < 1e-4,
-            "gradient({},{})={}, expected={}, rel_err={}", r, h, actual, expected, rel_err);
+        assert!(
+            rel_err < 1e-4,
+            "gradient({},{})={}, expected={}, rel_err={}",
+            r,
+            h,
+            actual,
+            expected,
+            rel_err
+        );
     }
 
     #[test]
@@ -1335,7 +1402,10 @@ mod tests {
         // but == or <= mutations would early-return 0.0
         let h = 0.1_f32;
         let result = cubic_spline_gradient(MIN_DISTANCE, h);
-        assert!(result.abs() > 0.0,
-            "gradient at MIN_DISTANCE should be nonzero, got {}", result);
+        assert!(
+            result.abs() > 0.0,
+            "gradient at MIN_DISTANCE should be nonzero, got {}",
+            result
+        );
     }
 }
