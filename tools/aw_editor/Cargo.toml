@@ -18,6 +18,7 @@ editor-terrain = ["editor-core"]
 editor-nav = ["editor-core"]
 editor-sim = ["editor-core"]
 editor-full = ["editor-graphs", "editor-materials", "editor-terrain", "editor-nav", "editor-sim"]
+legacy-preview = []  # Keeps the FastPreview EntityRenderer (deprecated — use engine path)
 profiling = ["astraweave-profiling/profiling"]
 kittest = ["dep:egui_kittest"]
 
