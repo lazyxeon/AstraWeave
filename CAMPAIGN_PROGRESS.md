@@ -35,10 +35,10 @@
 - [x] Autosave ring let _ = rename — error logging (b2c052dc8)
 - [x] Prefab hot-reload let _ = — error logging (b2c052dc8)
 
-## Tier 4: SOTA Upgrades — IN PROGRESS (4/6)
+## Tier 4: SOTA Upgrades — 5/6 COMPLETE
 - [x] Khronos PBR Neutral tonemapper — 3-mode runtime selection (34e8c480d)
 - [x] 3-channel DFG LUT for cloth sheen — Charlie DG in B channel (2f5b880d6)
 - [x] Load glTF tangent attributes — MikkTSpace TBN, 64-byte vertex (a9b48c684)
-- [ ] Align shadow cascades 1 -> 4 — major shadow system rewrite (dedicated session)
+- [x] 4-cascade CSM shadows — frustum-fitted splits + texel-snap stabilization (30d4f1415 + 1d6f175cd)
 - [ ] IBL prefiltered cubemap — major IBL system upgrade (dedicated session)
 - [ ] Unify FastPreview/EnginePBR paths — architectural refactor (dedicated session)
