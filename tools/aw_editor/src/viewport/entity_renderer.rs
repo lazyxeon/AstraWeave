@@ -281,8 +281,11 @@ pub struct EntityRenderer {
     /// IBL bind group layout (group 4)
     ibl_bind_group_layout: wgpu::BindGroupLayout,
 
-    /// IBL bind group (group 4): BRDF LUT + sampler + SH uniform
+    /// IBL bind group (group 4): BRDF LUT + sampler + SH uniform + cubemap
     ibl_bind_group: wgpu::BindGroup,
+
+    /// IBL 2D sampler (for BRDF LUT — no mip filtering)
+    ibl_sampler: wgpu::Sampler,
 
     /// IBL uniform buffer (SH9 + intensity)
     ibl_uniform_buffer: wgpu::Buffer,
@@ -1541,6 +1544,7 @@ impl EntityRenderer {
             brdf_lut_view,
             ibl_bind_group_layout,
             ibl_bind_group,
+            ibl_sampler,
             ibl_uniform_buffer,
             ibl_enabled: true,
             specular_cubemap_view: fallback_cubemap_view,
@@ -1729,6 +1733,57 @@ impl EntityRenderer {
         self.ibl_enabled
     }
 
+    /// Bake an IBL environment cubemap from the engine's IblManager.
+    /// On success, rebuilds the IBL bind group with the prefiltered specular cubemap.
+    /// `mode` controls the source: procedural sky or HDRI path.
+    #[cfg(feature = "astraweave-render")]
+    pub fn bake_ibl_environment(
+        &mut self,
+        mode: astraweave_render::SkyMode,
+    ) -> anyhow::Result<()> {
+        let mut manager = astraweave_render::IblManager::new(&self.device, astraweave_render::IblQuality::Medium)?;
+        manager.mode = mode;
+        let resources = manager.bake_environment(&self.device, &self.queue, astraweave_render::IblQuality::Medium)?;
+
+        // Swap the specular cubemap view and update mip count
+        self.specular_cubemap_view = resources.specular_cube;
+        self.specular_mip_count = resources.mips_specular;
+
+        // Rebuild IBL bind group with the real cubemap
+        self.ibl_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("IBL Bind Group (cubemap active)"),
+            layout: &self.ibl_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.brdf_lut_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.ibl_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: self.ibl_uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&self.specular_cubemap_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&self.cubemap_sampler),
+                },
+            ],
+        });
+
+        tracing::info!(
+            "IBL environment baked: specular cubemap with {} mip levels",
+            self.specular_mip_count
+        );
+        Ok(())
+    }
+
     /// Set exposure compensation in EV (exposure value).
     /// 0.0 = neutral, +1.0 = double brightness, -1.0 = half brightness.
     pub fn set_exposure_ev(&mut self, ev: f32) {
@@ -1816,8 +1871,8 @@ impl EntityRenderer {
             sh8: [0.0; 4],
             ibl_intensity: [
                 1.0, // diffuse intensity
-                0.5, // specular intensity (half — SH is low-freq)
-                6.0, // max spec mip (unused for SH-only path)
+                if self.specular_mip_count > 0 { 1.0 } else { 0.5 }, // specular intensity (full when cubemap, half for SH)
+                if self.specular_mip_count > 0 { (self.specular_mip_count - 1) as f32 } else { 0.0 }, // max spec mip (0 = SH fallback)
                 if self.ibl_enabled { 1.0 } else { 0.0 },
             ],
         }
