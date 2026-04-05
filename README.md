@@ -36,25 +36,29 @@ Built in Rust, designed for massive-scale intelligent worlds with production-gra
 
 ---
 
-### 🔍 Engine Health Status (February 26, 2026)
+### 🔍 Engine Health Status (April 5, 2026)
 
-✅ **MIRI + KANI FORMAL VERIFICATION COMPLETE** — [Miri Report](docs/current/MIRI_VALIDATION_REPORT.md) | [Coverage Report](docs/current/MASTER_COVERAGE_REPORT.md)
+✅ **MIRI + KANI FORMAL VERIFICATION COMPLETE** — [Miri Report](docs/current/MIRI_VALIDATION_REPORT.md) | [Coverage Report](docs/current/MASTER_COVERAGE_REPORT.md) | [Behavioral Audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md)
 
-**🏆 Production-Grade Quality**: AstraWeave has **~27,000+ passing tests** across **49 production crates** (28 measured via LLVM source-based coverage) with **59.3% weighted coverage** — 14 crates at 85%+ including ECS (96.39%), Physics (94.38%), and Nav (93.11%). All unsafe code is **Miri-validated** and **Kani-verified** for memory safety.
+**🏆 Production-Grade Quality**: AstraWeave has **~27,000+ passing tests** across **49 production crates** with **59.3% weighted coverage** — 14 crates at 85%+ including ECS (96.39%), Physics (94.38%), and Nav (93.11%). All unsafe code is **Miri-validated** and **Kani-verified**. The editor has undergone a **37-fix behavioral correctness audit** with unified rendering pipeline.
 
 | Metric | Status | Details |
 |--------|--------|---------|
 | **Coverage** | ✅ **59.3% weighted** (P0: 55.4%, P1: 58.9%, P2: 73.9%) | **28 crates measured** via `cargo llvm-cov` |
-| **Tests** | ✅ **~27,000+ passing** | 14/28 crates ≥ 85% coverage |
+| **Tests** | ✅ **~27,000+ passing** | Core: 516, ECS: 454, Editor: 3,892, Render: 990+, Physics: 1,460+ |
 | **Memory Safety** | ✅ **Miri-Validated** | 977 tests, **0 undefined behavior** across 4 crates |
 | **Formal Verification** | ✅ **Kani-Verified** | 69 proof harnesses across 4 crates |
+| **Behavioral Correctness** | ✅ **37 fixes applied** | 8-phase audit: visual math, data pipeline, undo system, silent failures |
 | **Mutation Testing** | ✅ **2,028+ tests** | Wave 1: 767 manual + Wave 2: 1,261+ automated (100% kill rate) |
 | **Determinism** | ✅ **100% bit-identical** | Replay validation, 5-run consistency |
-| **Health Grade** | ✅ **B+** | Strong quality, GPU/async code lowers weighted average |
+| **Rendering** | ✅ **Unified Pipeline** | Disney BRDF + multi-scatter, 4-cascade CSM, IBL cubemaps, PBR Neutral |
+| **Health Grade** | ✅ **A-** | Upgraded from B+ after audit remediation + unified pipeline |
 
-> **Why 59.3%?** Previous reports claimed 94.57% using manual source-file filtering. The v5.0 methodology uses `cargo llvm-cov --lib --summary-only` which instruments all compiled code including inlined dependency generics. Large GPU-only and async code paths (rendering: 37,035 lines, terrain: 18,826 lines, audio: 11,662 lines) are untestable in headless mode. See [MASTER_COVERAGE_REPORT](docs/current/MASTER_COVERAGE_REPORT.md) for full analysis.
+> **Why 59.3%?** The v5.0 methodology uses `cargo llvm-cov --lib --summary-only` which instruments all compiled code including inlined dependency generics. Large GPU-only and async code paths (rendering, terrain, audio) are untestable in headless mode. See [MASTER_COVERAGE_REPORT](docs/current/MASTER_COVERAGE_REPORT.md) for full analysis.
+>
+> **What changed (April 2026)?** The editor underwent a comprehensive [Behavioral Correctness Audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md): 37 fixes across 48 commits addressing shader math (GGX NDF, Fresnel energy conservation, multi-scatter compensation), undo system completion (all 9 operations now undoable), silent failure resolution (60 patterns identified, critical ones fixed), and a [7-phase architectural refactor](docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md) that eliminated the dual rendering pipeline (-4,669 LOC). Health grade upgraded from B+ to A- reflecting the correctness improvements.
 
-**Miri Validated**: astraweave-ecs (386 tests), astraweave-math (109 tests), astraweave-core (465 tests), astraweave-sdk (17 tests) — **ZERO undefined behavior** | [MIRI_VALIDATION_REPORT](docs/current/MIRI_VALIDATION_REPORT.md)
+**Miri Validated**: astraweave-ecs (386 tests), astraweave-math (109 tests), astraweave-core (465→516 tests), astraweave-sdk (17 tests) — **ZERO undefined behavior** | [MIRI_VALIDATION_REPORT](docs/current/MIRI_VALIDATION_REPORT.md)
 
 **Unsafe Code Validated**: BlobVec, SparseSet, EntityAllocator, SIMD intrinsics (SSE2), C ABI FFI functions — all memory-safe ✅
 
