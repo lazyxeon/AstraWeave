@@ -290,6 +290,18 @@ pub struct EntityRenderer {
     /// Whether IBL is enabled
     ibl_enabled: bool,
 
+    /// Prefiltered specular cubemap view (from IblManager or fallback)
+    specular_cubemap_view: wgpu::TextureView,
+
+    /// Cubemap sampler with mip filtering
+    cubemap_sampler: wgpu::Sampler,
+
+    /// Fallback 1x1x6 cubemap (bound when no environment is loaded)
+    _fallback_cubemap: wgpu::Texture,
+
+    /// Number of specular cubemap mip levels (0 = no cubemap, use SH fallback)
+    specular_mip_count: u32,
+
     /// Exposure value in EV (0.0 = no adjustment, +1 = double brightness)
     exposure_ev: f32,
 
@@ -1040,7 +1052,67 @@ impl EntityRenderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // IBL bind group layout (group 4): BRDF LUT + sampler + SH uniform
+        // Fallback 1x1x6 cubemap (black — bound when no environment is loaded)
+        let fallback_cubemap = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("IBL Fallback Cubemap (1x1x6)"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 6,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        // Zero-fill fallback cubemap (black environment)
+        let black_pixel: [u8; 8] = [0; 8]; // 4x f16 = 8 bytes
+        for face in 0..6u32 {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &fallback_cubemap,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: face,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &black_pixel,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(8),
+                    rows_per_image: Some(1),
+                },
+                wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        let fallback_cubemap_view = fallback_cubemap.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("IBL Fallback Cubemap View"),
+            dimension: Some(wgpu::TextureViewDimension::Cube),
+            ..Default::default()
+        });
+
+        // Cubemap sampler with mip filtering (critical for roughness LOD interpolation)
+        let cubemap_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("IBL Cubemap Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        // IBL bind group layout (group 4): BRDF LUT + sampler + SH uniform + cubemap + cubemap sampler
         let ibl_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("IBL Bind Group Layout (group 4)"),
@@ -1071,10 +1143,26 @@ impl EntityRenderer {
                         },
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
             });
 
-        // IBL bind group
+        // IBL bind group (starts with fallback cubemap — upgraded when HDRI loaded)
         let ibl_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("IBL Bind Group"),
             layout: &ibl_bind_group_layout,
@@ -1090,6 +1178,14 @@ impl EntityRenderer {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: ibl_uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&fallback_cubemap_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&cubemap_sampler),
                 },
             ],
         });
@@ -1447,6 +1543,10 @@ impl EntityRenderer {
             ibl_bind_group,
             ibl_uniform_buffer,
             ibl_enabled: true,
+            specular_cubemap_view: fallback_cubemap_view,
+            cubemap_sampler,
+            _fallback_cubemap: fallback_cubemap,
+            specular_mip_count: 0, // No cubemap yet — SH fallback active
             exposure_ev: 0.0,
             hdr_output: false,
             mipmap_generator: None,

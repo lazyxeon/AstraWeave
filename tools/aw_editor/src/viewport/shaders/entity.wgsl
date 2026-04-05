@@ -161,6 +161,8 @@ struct IblParams {
 @group(4) @binding(0) var brdf_lut: texture_2d<f32>;
 @group(4) @binding(1) var ibl_sampler: sampler;
 @group(4) @binding(2) var<uniform> ibl: IblParams;
+@group(4) @binding(3) var env_cubemap: texture_cube<f32>;
+@group(4) @binding(4) var cubemap_sampler: sampler;
 
 // Evaluate SH L2 irradiance from 9 coefficients
 fn eval_sh_irradiance(n: vec3<f32>) -> vec3<f32> {
@@ -355,10 +357,20 @@ fn calc_pbr_lighting(
         let kD_ibl = (vec3<f32>(1.0) - kS_ibl) * (1.0 - metallic);
         let diffuse_ibl = irradiance * albedo * kD_ibl * diffuse_intensity;
 
-        // Specular IBL from BRDF LUT with energy compensation
+        // Specular IBL from prefiltered cubemap (or SH fallback)
         let r = reflect(-v, n);
-        let spec_env = eval_sh_irradiance(r) * (1.0 - roughness * 0.5);
-        let specular_ibl = spec_env * (f0 * dfg.x + dfg.y) * specular_intensity * energy_comp;
+        let max_spec_mip = ibl.ibl_intensity.z;
+        var specular_ibl: vec3<f32>;
+        if max_spec_mip > 0.5 {
+            // Prefiltered environment cubemap: mip 0 = mirror, higher mips = rougher
+            let spec_mip = roughness * max_spec_mip;
+            let spec_env = textureSampleLevel(env_cubemap, cubemap_sampler, r, spec_mip).rgb;
+            specular_ibl = spec_env * (f0 * dfg.x + dfg.y) * specular_intensity * energy_comp;
+        } else {
+            // Fallback: SH irradiance at reflection direction (no cubemap loaded)
+            let spec_env = eval_sh_irradiance(r) * (1.0 - roughness * 0.5);
+            specular_ibl = spec_env * (f0 * dfg.x + dfg.y) * specular_intensity * energy_comp;
+        }
 
         let ambient = (diffuse_ibl + specular_ibl) * ao;
         color += ambient;
