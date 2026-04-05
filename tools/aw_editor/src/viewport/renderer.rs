@@ -128,6 +128,9 @@ pub struct ViewportRenderer {
     /// Currently selected entities (for highlighting) - supports multi-selection
     selected_entities: Vec<Entity>,
 
+    /// Entity-to-mesh path mapping (for engine adapter entity feeding)
+    entity_mesh_map: std::collections::HashMap<Entity, String>,
+
     /// Component gizmo debug lines (light radius, collider shapes, audio range)
     component_gizmo_lines: Vec<astraweave_physics::DebugLine>,
 
@@ -196,6 +199,7 @@ impl ViewportRenderer {
             depth_map_ready: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             cached_depth_value: None,
             selected_entities: Vec::new(),
+            entity_mesh_map: std::collections::HashMap::new(),
             component_gizmo_lines: Vec::new(),
             brush_cursor_lines: Vec::new(),
             zone_overlay_lines: Vec::new(),
@@ -436,6 +440,8 @@ impl ViewportRenderer {
                     .as_mut()
                     .context("Engine adapter disappeared unexpectedly")?;
                 adapter.update_camera(camera);
+                // Feed World entities to the engine for PBR rendering
+                adapter.feed_entities(world, &self.entity_mesh_map, &self.selected_entities);
                 adapter
                     .render_to_texture(scene_target_view, &mut encoder)
                     .context("Engine render failed")?;
@@ -810,6 +816,7 @@ impl ViewportRenderer {
 
     /// Set the entity-to-mesh mapping so models render with actual GLTF geometry
     pub fn set_entity_meshes(&mut self, meshes: std::collections::HashMap<Entity, String>) {
+        self.entity_mesh_map = meshes.clone();
         self.entity_renderer.set_entity_meshes(meshes);
     }
 

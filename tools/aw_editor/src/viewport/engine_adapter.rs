@@ -151,6 +151,128 @@ impl EngineRenderAdapter {
         Ok(())
     }
 
+    /// Feed World entities to the engine renderer as named models.
+    ///
+    /// Iterates all entities in the World, groups them by mesh path, and
+    /// updates the engine's model list. Entities without a mesh use the
+    /// engine's built-in cube primitive. Selected entities get an orange
+    /// tint for highlighting.
+    pub fn feed_entities(
+        &mut self,
+        world: &astraweave_core::World,
+        entity_meshes: &std::collections::HashMap<astraweave_core::Entity, String>,
+        selected_entities: &[astraweave_core::Entity],
+    ) {
+        use astraweave_render::Instance;
+        use std::collections::HashMap;
+
+        // Group instances by mesh path (None = default cube)
+        let mut mesh_groups: HashMap<Option<String>, Vec<Instance>> = HashMap::new();
+
+        for entity in world.entities() {
+            if let Some(pose) = world.pose(entity) {
+                let x = if pose.use_float_pos { pose.float_x } else { pose.pos.x as f32 };
+                let z = if pose.use_float_pos { pose.float_z } else { pose.pos.y as f32 };
+                let position = glam::Vec3::new(x, pose.height, z);
+                let scale = glam::Vec3::new(pose.scale, pose.scale_y, pose.scale_z);
+                let rotation = glam::Quat::from_euler(
+                    glam::EulerRot::XYZ,
+                    pose.rotation_x,
+                    pose.rotation,
+                    pose.rotation_z,
+                );
+                let transform = glam::Mat4::from_scale_rotation_translation(scale, rotation, position);
+
+                let is_selected = selected_entities.contains(&entity);
+                let color = if is_selected {
+                    [1.0, 0.6, 0.2, 1.0] // Orange highlight
+                } else if let Some(team) = world.team(entity) {
+                    match team.id {
+                        0 => [0.2, 0.8, 0.3, 1.0],
+                        1 => [0.3, 0.6, 1.0, 1.0],
+                        2 => [1.0, 0.3, 0.2, 1.0],
+                        _ => [0.6, 0.6, 0.7, 1.0],
+                    }
+                } else {
+                    [1.0, 1.0, 1.0, 1.0]
+                };
+
+                let instance = Instance {
+                    transform,
+                    color,
+                    material_id: 0,
+                };
+
+                let mesh_key = entity_meshes.get(&entity).cloned();
+                mesh_groups.entry(mesh_key).or_default().push(instance);
+            }
+        }
+
+        // Clear previous entity models (prefixed with "entity_")
+        let old_names: Vec<String> = self.renderer.model_names()
+            .into_iter()
+            .filter(|n| n.starts_with("entity_"))
+            .collect();
+        for name in &old_names {
+            self.renderer.clear_model(name);
+        }
+
+        // Add each group as a named model
+        for (mesh_key, instances) in &mesh_groups {
+            let model_name = match mesh_key {
+                Some(path) => format!("entity_mesh_{}", path.replace(['/', '\\', '.'], "_")),
+                None => "entity_default_cubes".to_string(),
+            };
+
+            // Load mesh if not already in engine (lazy load)
+            if !self.renderer.has_model(&model_name) {
+                let mesh = match mesh_key {
+                    Some(path) => {
+                        // Try to load glTF mesh
+                        let opts = astraweave_render::mesh_gltf::GltfOptions::default();
+                        match astraweave_render::mesh_gltf::load_gltf(Path::new(path), &opts) {
+                            Ok(cpu_meshes) if !cpu_meshes.is_empty() => {
+                                self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0])
+                            }
+                            _ => {
+                                // Fallback: use simple cube arrays
+                                self.renderer.create_mesh_from_arrays(
+                                    &CUBE_POSITIONS, &CUBE_NORMALS, &CUBE_INDICES,
+                                )
+                            }
+                        }
+                    }
+                    None => {
+                        self.renderer.create_mesh_from_arrays(
+                            &CUBE_POSITIONS, &CUBE_NORMALS, &CUBE_INDICES,
+                        )
+                    }
+                };
+                self.renderer.add_model(&model_name, mesh, instances);
+            } else {
+                // Model mesh already loaded — just update instances
+                self.renderer.clear_model(&model_name);
+                let mesh = match mesh_key {
+                    Some(path) => {
+                        let opts = astraweave_render::mesh_gltf::GltfOptions::default();
+                        match astraweave_render::mesh_gltf::load_gltf(Path::new(path), &opts) {
+                            Ok(cpu_meshes) if !cpu_meshes.is_empty() => {
+                                self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0])
+                            }
+                            _ => self.renderer.create_mesh_from_arrays(
+                                &CUBE_POSITIONS, &CUBE_NORMALS, &CUBE_INDICES,
+                            ),
+                        }
+                    }
+                    None => self.renderer.create_mesh_from_arrays(
+                        &CUBE_POSITIONS, &CUBE_NORMALS, &CUBE_INDICES,
+                    ),
+                };
+                self.renderer.add_model(&model_name, mesh, instances);
+            }
+        }
+    }
+
     pub fn has_model(&self, name: &str) -> bool {
         self.renderer.has_model(name)
     }
@@ -557,3 +679,45 @@ impl EngineRenderAdapter {
     }
 }
 
+// ─── Default cube geometry for entities without meshes ──────────────────────
+#[rustfmt::skip]
+const CUBE_POSITIONS: [[f32; 3]; 24] = [
+    // Front face (+Z)
+    [-0.5, -0.5,  0.5], [ 0.5, -0.5,  0.5], [ 0.5,  0.5,  0.5], [-0.5,  0.5,  0.5],
+    // Back face (-Z)
+    [ 0.5, -0.5, -0.5], [-0.5, -0.5, -0.5], [-0.5,  0.5, -0.5], [ 0.5,  0.5, -0.5],
+    // Top face (+Y)
+    [-0.5,  0.5,  0.5], [ 0.5,  0.5,  0.5], [ 0.5,  0.5, -0.5], [-0.5,  0.5, -0.5],
+    // Bottom face (-Y)
+    [-0.5, -0.5, -0.5], [ 0.5, -0.5, -0.5], [ 0.5, -0.5,  0.5], [-0.5, -0.5,  0.5],
+    // Right face (+X)
+    [ 0.5, -0.5,  0.5], [ 0.5, -0.5, -0.5], [ 0.5,  0.5, -0.5], [ 0.5,  0.5,  0.5],
+    // Left face (-X)
+    [-0.5, -0.5, -0.5], [-0.5, -0.5,  0.5], [-0.5,  0.5,  0.5], [-0.5,  0.5, -0.5],
+];
+
+#[rustfmt::skip]
+const CUBE_NORMALS: [[f32; 3]; 24] = [
+    // Front
+    [0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
+    // Back
+    [0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
+    // Top
+    [0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0],
+    // Bottom
+    [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
+    // Right
+    [1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+    // Left
+    [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+];
+
+#[rustfmt::skip]
+const CUBE_INDICES: [u32; 36] = [
+    0,  1,  2,  2,  3,  0,   // Front
+    4,  5,  6,  6,  7,  4,   // Back
+    8,  9,  10, 10, 11, 8,   // Top
+    12, 13, 14, 14, 15, 12,  // Bottom
+    16, 17, 18, 18, 19, 16,  // Right
+    20, 21, 22, 22, 23, 20,  // Left
+];
