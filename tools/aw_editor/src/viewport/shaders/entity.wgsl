@@ -160,7 +160,7 @@ fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
     let a = roughness * roughness;
     let a2 = a * a;
     let denom = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
-    return a2 / (PI * denom * denom + 0.0001);
+    return a2 / max(PI * denom * denom, 1e-7);
 }
 
 // ─── PBR: Schlick Geometry Function ──────────────────────────────────────────
@@ -225,15 +225,16 @@ fn disney_brdf_directional(
 
     let f0 = mix(vec3<f32>(f0_dielectric), albedo, metallic);
 
-    // Burley diffuse (energy-conserving)
-    let fd = diffuse_burley(n_dot_v, n_dot_l, l_dot_h, roughness);
-    let diffuse = albedo * fd * (1.0 - metallic);
-
     // GGX specular with height-correlated Smith visibility
     let D = distribution_ggx(n_dot_h, roughness);
     let V = v_smith_ggx_correlated(n_dot_v, n_dot_l, alpha);
     let F = fresnel_schlick(h_dot_v, f0);
     let specular = D * V * F;
+
+    // Burley diffuse with Fresnel energy conservation
+    let fd = diffuse_burley(n_dot_v, n_dot_l, l_dot_h, roughness);
+    let kD = (vec3<f32>(1.0) - F) * (1.0 - metallic);
+    let diffuse = albedo * fd * kD;
 
     return (diffuse + specular) * light_color * n_dot_l;
 }
@@ -399,7 +400,13 @@ fn vs_main(
     );
 
     let world_position = model_matrix * vec4<f32>(vertex.position, 1.0);
-    let world_normal = (model_matrix * vec4<f32>(vertex.normal, 0.0)).xyz;
+    // Compute inverse-transpose for correct normals under non-uniform scale.
+    // adjugate(M) = det(M) * inverse(M)^T — since we normalize, det cancels out.
+    let m3 = mat3x3<f32>(model_matrix[0].xyz, model_matrix[1].xyz, model_matrix[2].xyz);
+    let it_col0 = cross(m3[1], m3[2]);
+    let it_col1 = cross(m3[2], m3[0]);
+    let it_col2 = cross(m3[0], m3[1]);
+    let world_normal = mat3x3<f32>(it_col0, it_col1, it_col2) * vertex.normal;
 
     var output: VertexOutput;
     // Camera-relative transform: subtract camera_pos to avoid f32 jitter far from origin
