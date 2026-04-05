@@ -52,9 +52,10 @@ impl ScaleGizmo {
         _object_rotation: Quat, // Scale doesn't rotate axes
         _local_space: bool,     // Scale is always in local space
     ) -> Vec3 {
-        // 1. Calculate scale factor from mouse delta magnitude
-        let delta_magnitude = mouse_delta.length();
-        let mut scale_factor = 1.0 + (delta_magnitude / 100.0) * sensitivity;
+        // 1. Calculate scale factor from signed mouse delta (horizontal = primary axis)
+        // Positive X (drag right) → scale up; negative X (drag left) → scale down
+        let signed_delta = mouse_delta.x;
+        let mut scale_factor = 1.0 + (signed_delta / 100.0) * sensitivity;
 
         // 2. Clamp to safe range
         scale_factor = scale_factor.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
@@ -145,12 +146,9 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_uniform_half() {
-        // Negative movement would shrink, but mouse_delta.length() is positive
-        // For shrinking, we'd need negative sensitivity or different input mechanism
-        // Let's test small delta = slight growth
+    fn test_scale_uniform_slight_growth() {
         let scale = ScaleGizmo::calculate_scale(
-            Vec2::new(10.0, 0.0), // 10px movement
+            Vec2::new(10.0, 0.0), // 10px rightward
             AxisConstraint::None,
             true,
             1.0,
@@ -159,6 +157,21 @@ mod tests {
         );
         // 1.0 + (10 / 100) * 1.0 = 1.1
         assert_vec3_eq(scale, Vec3::splat(1.1), 0.001);
+    }
+
+    #[test]
+    fn test_scale_uniform_shrink() {
+        // Drag left (negative X) → scale down
+        let scale = ScaleGizmo::calculate_scale(
+            Vec2::new(-50.0, 0.0), // 50px leftward
+            AxisConstraint::None,
+            true,
+            1.0,
+            Quat::IDENTITY,
+            false,
+        );
+        // 1.0 + (-50 / 100) * 1.0 = 0.5
+        assert_vec3_eq(scale, Vec3::splat(0.5), 0.001);
     }
 
     // --- Per-Axis Scaling Tests ---
