@@ -4353,71 +4353,48 @@ impl EditorApp {
                     entity_id,
                     component_type,
                 } => {
-                    // Add component to EntityManager entity
-                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
-                        let default_value = match component_type.as_str() {
-                            "Transform" => serde_json::json!({"x": 0, "y": 0, "z": 0}),
-                            "Health" => serde_json::json!({"hp": 100}),
-                            "Team" => serde_json::json!({"id": 0}),
-                            "Ammo" => serde_json::json!({"count": 30}),
-                            "Sprite" => serde_json::json!({"texture": ""}),
-                            "Collider" => {
-                                serde_json::json!({"shape": "box", "size": [1, 1, 1], "is_trigger": false})
-                            }
-                            "RigidBody" => {
-                                serde_json::json!({"type": "dynamic", "mass": 1.0, "drag": 0.0, "angular_drag": 0.05, "use_gravity": true})
-                            }
-                            "Script" => serde_json::json!({"path": ""}),
-                            "MovementScript" => {
-                                movement_scripts::MovementScript::default().to_json()
-                            }
-                            "Audio" => {
-                                serde_json::json!({"clip": "", "volume": 1.0, "spatial": true, "looping": false, "play_on_start": false})
-                            }
-                            "Light" => {
-                                serde_json::json!({"type": "point", "intensity": 1.0, "color_r": 1.0, "color_g": 1.0, "color_b": 1.0, "range": 10.0, "cast_shadows": true})
-                            }
-                            "Camera" => {
-                                serde_json::json!({"fov": 60.0, "near": 0.1, "far": 1000.0})
-                            }
-                            "Particle" => {
-                                serde_json::json!({"emission_rate": 10.0, "lifetime": 2.0, "start_size": 0.1, "speed": 5.0, "shape": "cone", "looping": true})
-                            }
-                            _ => serde_json::json!({}),
-                        };
-                        entity
-                            .components
-                            .insert(component_type.clone(), default_value);
-                        self.is_dirty = true;
-                        self.console_logs.push(format!(
-                            "Added {} to entity {}",
-                            component_type, entity.name
-                        ));
-                    }
-                    // Sync to World for core component types
-                    if let (Some(scene_state), Some(eid)) =
-                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
-                    {
-                        match component_type.as_str() {
-                            "Health" => {
-                                if let Some(h) = scene_state.world_mut().health_mut(eid) {
-                                    // Already exists, reset to default
-                                    h.hp = 100;
-                                }
-                                // If entity doesn't have health in World, it was set at spawn
-                            }
-                            "Team" => {
-                                if let Some(t) = scene_state.world_mut().team_mut(eid) {
-                                    t.id = 0;
-                                }
-                            }
-                            "Ammo" => {
-                                if let Some(a) = scene_state.world_mut().ammo_mut(eid) {
-                                    a.rounds = 30;
-                                }
-                            }
-                            _ => {}
+                    // Build default value for the component type
+                    let default_value = match component_type.as_str() {
+                        "Transform" => serde_json::json!({"x": 0, "y": 0, "z": 0}),
+                        "Health" => serde_json::json!({"hp": 100}),
+                        "Team" => serde_json::json!({"id": 0}),
+                        "Ammo" => serde_json::json!({"count": 30}),
+                        "Sprite" => serde_json::json!({"texture": ""}),
+                        "Collider" => {
+                            serde_json::json!({"shape": "box", "size": [1, 1, 1], "is_trigger": false})
                         }
+                        "RigidBody" => {
+                            serde_json::json!({"type": "dynamic", "mass": 1.0, "drag": 0.0, "angular_drag": 0.05, "use_gravity": true})
+                        }
+                        "Script" => serde_json::json!({"path": ""}),
+                        "MovementScript" => {
+                            movement_scripts::MovementScript::default().to_json()
+                        }
+                        "Audio" => {
+                            serde_json::json!({"clip": "", "volume": 1.0, "spatial": true, "looping": false, "play_on_start": false})
+                        }
+                        "Light" => {
+                            serde_json::json!({"type": "point", "intensity": 1.0, "color_r": 1.0, "color_g": 1.0, "color_b": 1.0, "range": 10.0, "cast_shadows": true})
+                        }
+                        "Camera" => {
+                            serde_json::json!({"fov": 60.0, "near": 0.1, "far": 1000.0})
+                        }
+                        "Particle" => {
+                            serde_json::json!({"emission_rate": 10.0, "lifetime": 2.0, "start_size": 0.1, "speed": 5.0, "shape": "cone", "looping": true})
+                        }
+                        _ => serde_json::json!({}),
+                    };
+                    // Route through undo stack (undoable)
+                    if let Some(scene_state) = self.scene_state.as_mut() {
+                        let cmd = command::AddComponentCommand::new(
+                            entity_id, component_type.clone(), default_value,
+                        );
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Add component failed: {e}"));
+                        }
+                        self.is_dirty = true;
                     }
                     self.status = format!("Added {} to entity {}", component_type, entity_id);
                 }
@@ -4425,39 +4402,17 @@ impl EditorApp {
                     entity_id,
                     component_type,
                 } => {
-                    // Remove component from EntityManager entity
-                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
-                        entity.components.remove(&component_type);
-                        self.is_dirty = true;
-                        self.console_logs.push(format!(
-                            "Removed {} from entity {}",
-                            component_type, entity.name
-                        ));
-                    }
-                    // Sync removal to World for core types
-                    if let (Some(scene_state), Some(eid)) =
-                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
-                    {
-                        match component_type.as_str() {
-                            "Health" => {
-                                if let Some(h) = scene_state.world_mut().health_mut(eid) {
-                                    h.hp = 0; // Zero out (World doesn't support true removal)
-                                }
-                            }
-                            "Team" => {
-                                if let Some(t) = scene_state.world_mut().team_mut(eid) {
-                                    t.id = 0;
-                                }
-                            }
-                            "Ammo" => {
-                                if let Some(a) = scene_state.world_mut().ammo_mut(eid) {
-                                    a.rounds = 0;
-                                }
-                            }
-                            _ => {
-                                // Non-core components exist only in EntityManager
-                            }
+                    // Route through undo stack (undoable)
+                    if let Some(scene_state) = self.scene_state.as_mut() {
+                        let cmd = command::RemoveComponentCommand::new(
+                            entity_id, component_type.clone(),
+                        );
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Remove component failed: {e}"));
                         }
+                        self.is_dirty = true;
                     }
                     self.status = format!("Removed {} from entity {}", component_type, entity_id);
                 }
@@ -4537,8 +4492,16 @@ impl EditorApp {
                     component_type,
                     data,
                 } => {
-                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
-                        entity.components.insert(component_type.clone(), data);
+                    // Route through undo stack for undoable component data changes
+                    if let Some(scene_state) = self.scene_state.as_mut() {
+                        let cmd = command::ComponentDataChangedCommand::new(
+                            entity_id, component_type.clone(), data,
+                        );
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Component edit failed: {e}"));
+                        }
                         self.is_dirty = true;
                     }
                     self.status = format!("Updated {} on entity {}", component_type, entity_id);
@@ -4548,34 +4511,15 @@ impl EditorApp {
                     property,
                     value,
                 } => {
-                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
-                        match property.as_str() {
-                            "base_color" => {
-                                if let Some(arr) = value.as_array() {
-                                    entity.material.base_color = glam::Vec4::new(
-                                        arr.first().and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
-                                        arr.get(1).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
-                                        arr.get(2).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
-                                        arr.get(3).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
-                                    );
-                                }
-                            }
-                            "metallic" => {
-                                entity.material.metallic = value.as_f64().unwrap_or(0.0) as f32;
-                            }
-                            "roughness" => {
-                                entity.material.roughness = value.as_f64().unwrap_or(0.5) as f32;
-                            }
-                            "emissive" => {
-                                if let Some(arr) = value.as_array() {
-                                    entity.material.emissive = glam::Vec3::new(
-                                        arr.first().and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
-                                        arr.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
-                                        arr.get(2).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
-                                    );
-                                }
-                            }
-                            _ => {}
+                    // Route through undo stack for undoable material property changes
+                    if let Some(scene_state) = self.scene_state.as_mut() {
+                        let cmd = command::MaterialPropertyChangedCommand::new(
+                            entity_id, property.clone(), value,
+                        );
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Material edit failed: {e}"));
                         }
                         self.is_dirty = true;
                     }
@@ -4586,26 +4530,15 @@ impl EditorApp {
                     slot,
                     path,
                 } => {
-                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
-                        use crate::entity_manager::MaterialSlot;
-                        let slot_key = match slot.as_str() {
-                            "Albedo" => Some(MaterialSlot::Albedo),
-                            "Normal" => Some(MaterialSlot::Normal),
-                            "Roughness" => Some(MaterialSlot::Roughness),
-                            "Metallic" => Some(MaterialSlot::Metallic),
-                            "AO" => Some(MaterialSlot::AO),
-                            "Emission" => Some(MaterialSlot::Emission),
-                            _ => None,
-                        };
-                        if let Some(key) = slot_key {
-                            if path.is_empty() {
-                                entity.material.texture_slots.remove(&key);
-                            } else {
-                                entity
-                                    .material
-                                    .texture_slots
-                                    .insert(key, std::path::PathBuf::from(&path));
-                            }
+                    // Route through undo stack for undoable texture changes
+                    if let Some(scene_state) = self.scene_state.as_mut() {
+                        let cmd = command::MaterialTextureChangedCommand::new(
+                            entity_id, slot.clone(), path,
+                        );
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Texture change failed: {e}"));
                         }
                         self.is_dirty = true;
                     }

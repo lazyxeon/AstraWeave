@@ -1722,6 +1722,272 @@ impl EditorCommand for TerrainBrushCommand {
     }
 }
 
+// ─── Component Data Commands (EntityManager-only operations) ────────────────
+
+/// Add a named component to an entity's component map.
+#[derive(Debug)]
+pub struct AddComponentCommand {
+    entity_id: u64,
+    component_type: String,
+    data: serde_json::Value,
+}
+
+impl AddComponentCommand {
+    pub fn new(entity_id: u64, component_type: String, data: serde_json::Value) -> Box<dyn EditorCommand> {
+        Box::new(Self { entity_id, component_type, data })
+    }
+}
+
+impl EditorCommand for AddComponentCommand {
+    fn execute(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                e.components.insert(self.component_type.clone(), self.data.clone());
+            }
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                e.components.remove(&self.component_type);
+            }
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        format!("Add {} to entity {}", self.component_type, self.entity_id)
+    }
+}
+
+/// Remove a named component from an entity (stores old value for undo).
+#[derive(Debug)]
+pub struct RemoveComponentCommand {
+    entity_id: u64,
+    component_type: String,
+    old_data: Option<serde_json::Value>,
+}
+
+impl RemoveComponentCommand {
+    pub fn new(entity_id: u64, component_type: String) -> Box<dyn EditorCommand> {
+        Box::new(Self { entity_id, component_type, old_data: None })
+    }
+}
+
+impl EditorCommand for RemoveComponentCommand {
+    fn execute(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                self.old_data = e.components.remove(&self.component_type);
+            }
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                if let Some(data) = &self.old_data {
+                    e.components.insert(self.component_type.clone(), data.clone());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        format!("Remove {} from entity {}", self.component_type, self.entity_id)
+    }
+}
+
+/// Change component JSON data (stores old value for undo).
+#[derive(Debug)]
+pub struct ComponentDataChangedCommand {
+    entity_id: u64,
+    component_type: String,
+    old_data: Option<serde_json::Value>,
+    new_data: serde_json::Value,
+}
+
+impl ComponentDataChangedCommand {
+    pub fn new(entity_id: u64, component_type: String, new_data: serde_json::Value) -> Box<dyn EditorCommand> {
+        Box::new(Self { entity_id, component_type, old_data: None, new_data })
+    }
+}
+
+impl EditorCommand for ComponentDataChangedCommand {
+    fn execute(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                self.old_data = e.components.get(&self.component_type).cloned();
+                e.components.insert(self.component_type.clone(), self.new_data.clone());
+            }
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                if let Some(data) = &self.old_data {
+                    e.components.insert(self.component_type.clone(), data.clone());
+                } else {
+                    e.components.remove(&self.component_type);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        format!("Edit {} on entity {}", self.component_type, self.entity_id)
+    }
+}
+
+/// Change a material property (stores old material state for undo).
+#[derive(Debug)]
+pub struct MaterialPropertyChangedCommand {
+    entity_id: u64,
+    property: String,
+    old_value: serde_json::Value,
+    new_value: serde_json::Value,
+}
+
+impl MaterialPropertyChangedCommand {
+    pub fn new(entity_id: u64, property: String, new_value: serde_json::Value) -> Box<dyn EditorCommand> {
+        Box::new(Self { entity_id, property, old_value: serde_json::Value::Null, new_value })
+    }
+}
+
+impl EditorCommand for MaterialPropertyChangedCommand {
+    fn execute(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                // Capture old value for undo
+                self.old_value = match self.property.as_str() {
+                    "metallic" => serde_json::json!(e.material.metallic),
+                    "roughness" => serde_json::json!(e.material.roughness),
+                    "base_color" => serde_json::json!([e.material.base_color.x, e.material.base_color.y, e.material.base_color.z, e.material.base_color.w]),
+                    "emissive" => serde_json::json!([e.material.emissive.x, e.material.emissive.y, e.material.emissive.z]),
+                    _ => serde_json::Value::Null,
+                };
+                // Apply new value
+                apply_material_property(e, &self.property, &self.new_value);
+            }
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                apply_material_property(e, &self.property, &self.old_value);
+            }
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        format!("Material {} on entity {}", self.property, self.entity_id)
+    }
+}
+
+/// Change a material texture slot (stores old path for undo).
+#[derive(Debug)]
+pub struct MaterialTextureChangedCommand {
+    entity_id: u64,
+    slot: String,
+    old_path: Option<String>,
+    new_path: String,
+}
+
+impl MaterialTextureChangedCommand {
+    pub fn new(entity_id: u64, slot: String, new_path: String) -> Box<dyn EditorCommand> {
+        Box::new(Self { entity_id, slot, old_path: None, new_path })
+    }
+}
+
+impl EditorCommand for MaterialTextureChangedCommand {
+    fn execute(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                if let Some(slot_key) = parse_material_slot(&self.slot) {
+                    self.old_path = e.material.texture_slots.get(&slot_key).map(|p| p.to_string_lossy().to_string());
+                    if self.new_path.is_empty() {
+                        e.material.texture_slots.remove(&slot_key);
+                    } else {
+                        e.material.texture_slots.insert(slot_key, std::path::PathBuf::from(&self.new_path));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity_id) {
+                if let Some(slot_key) = parse_material_slot(&self.slot) {
+                    if let Some(old) = &self.old_path {
+                        e.material.texture_slots.insert(slot_key, std::path::PathBuf::from(old));
+                    } else {
+                        e.material.texture_slots.remove(&slot_key);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        format!("Texture {} on entity {}", self.slot, self.entity_id)
+    }
+}
+
+/// Helper: apply a material property value to an entity's material.
+fn apply_material_property(entity: &mut crate::entity_manager::EditorEntity, property: &str, value: &serde_json::Value) {
+    match property {
+        "base_color" => {
+            if let Some(arr) = value.as_array() {
+                entity.material.base_color = glam::Vec4::new(
+                    arr.first().and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                    arr.get(1).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                    arr.get(2).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                    arr.get(3).and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                );
+            }
+        }
+        "metallic" => { entity.material.metallic = value.as_f64().unwrap_or(0.0) as f32; }
+        "roughness" => { entity.material.roughness = value.as_f64().unwrap_or(0.5) as f32; }
+        "emissive" => {
+            if let Some(arr) = value.as_array() {
+                entity.material.emissive = glam::Vec3::new(
+                    arr.first().and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                    arr.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                    arr.get(2).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Helper: parse a material slot name string into a MaterialSlot enum.
+fn parse_material_slot(slot: &str) -> Option<crate::entity_manager::MaterialSlot> {
+    use crate::entity_manager::MaterialSlot;
+    match slot {
+        "Albedo" => Some(MaterialSlot::Albedo),
+        "Normal" => Some(MaterialSlot::Normal),
+        "Roughness" => Some(MaterialSlot::Roughness),
+        "Metallic" => Some(MaterialSlot::Metallic),
+        "AO" => Some(MaterialSlot::AO),
+        "Emission" => Some(MaterialSlot::Emission),
+        _ => None,
+    }
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
