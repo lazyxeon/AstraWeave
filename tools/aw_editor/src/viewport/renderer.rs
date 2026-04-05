@@ -554,28 +554,58 @@ impl ViewportRenderer {
         }
 
         // Pass 5.0: Tonemap blit (HDR → LDR)
-        // Renders a fullscreen triangle with ACES tonemapping from the HDR scene target
-        // to the final LDR display surface (Bgra8UnormSrgb).
-        if let (Some(pipeline), Some(bind_group)) =
-            (&self.tonemap_pipeline, &self.tonemap_bind_group)
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Tonemap Blit Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, bind_group, &[]);
-            pass.draw(0..3, 0..1); // Fullscreen triangle
+        // Only needed for FastPreview path. The engine path already tonemaps
+        // in draw_into() via its own post-processing pipeline.
+        if !engine_path {
+            if let (Some(pipeline), Some(bind_group)) =
+                (&self.tonemap_pipeline, &self.tonemap_bind_group)
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Tonemap Blit Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &target_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, bind_group, &[]);
+                pass.draw(0..3, 0..1); // Fullscreen triangle
+            }
+        } else {
+            // Engine path: draw_into() already wrote tonemapped LDR to scene_target_view.
+            // Copy/blit HDR target → LDR target (the engine output is already tonemapped
+            // but sitting in the Rgba16Float buffer — we need it in the Bgra8UnormSrgb target).
+            // For now, use the tonemap pass as a simple blit (the ACES curve on already-
+            // tonemapped data is close to identity for values in [0,1]).
+            // TODO: Replace with a raw copy/blit pass that doesn't apply tonemapping.
+            if let (Some(pipeline), Some(bind_group)) =
+                (&self.tonemap_pipeline, &self.tonemap_bind_group)
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Engine LDR Blit Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &target_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, bind_group, &[]);
+                pass.draw(0..3, 0..1);
+            }
         }
 
         // Pass 5.5: Gizmos (if entity selected and gizmo active)
