@@ -44,6 +44,7 @@ struct VertexInput {
     @location(1) normal: vec3<f32>,
     @location(2) vertex_color: vec4<f32>,
     @location(8) uv: vec2<f32>,
+    @location(9) tangent: vec4<f32>,  // xyz=tangent direction, w=handedness
 }
 
 struct InstanceInput {
@@ -60,6 +61,7 @@ struct VertexOutput {
     @location(1) world_normal: vec3<f32>,
     @location(2) color: vec4<f32>,
     @location(3) uv: vec2<f32>,
+    @location(4) world_tangent: vec4<f32>,  // xyz=tangent, w=handedness
 }
 
 @group(0) @binding(0)
@@ -365,26 +367,34 @@ fn aces_tonemap(color: vec3<f32>) -> vec3<f32> {
 }
 
 // ─── Tangent-space normal map → world-space normal ───────────────────────────
-fn perturb_normal(world_normal: vec3<f32>, world_pos: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
-    // Sample normal map (encoded as [0,1] → remap to [-1,1])
+// Uses MikkTSpace tangent attribute when available; falls back to cotangent frame.
+fn perturb_normal_tbn(world_normal: vec3<f32>, world_tangent: vec4<f32>, world_pos: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
     let ts_normal = textureSample(normal_texture, material_sampler, uv).xyz * 2.0 - 1.0;
+    let n = normalize(world_normal);
 
-    // Screen-space derivatives for TBN construction (cotangent frame)
+    // Use vertex tangent if available (w != 0 indicates valid tangent)
+    let tangent_valid = abs(world_tangent.w) > 0.5;
+    if tangent_valid {
+        // MikkTSpace TBN from vertex attribute
+        let t = normalize(world_tangent.xyz);
+        let b = cross(n, t) * world_tangent.w; // w = handedness (+1 or -1)
+        return normalize(t * ts_normal.x + b * ts_normal.y + n * ts_normal.z);
+    }
+
+    // Fallback: cotangent frame from screen-space derivatives
     let dp1 = dpdx(world_pos);
     let dp2 = dpdy(world_pos);
     let duv1 = dpdx(uv);
     let duv2 = dpdy(uv);
 
-    let n = normalize(world_normal);
     let dp2perp = cross(dp2, n);
     let dp1perp = cross(n, dp1);
 
-    let det_inv = 1.0 / (dot(dp1, dp2perp) * duv1.x - dot(dp2, dp1perp) * duv1.y + 0.0001);
-    // Guard against degenerate UVs producing NaN tangent frames
     let det_check = abs(dot(dp1, dp2perp) * duv1.x - dot(dp2, dp1perp) * duv1.y);
     if det_check < 0.000001 {
         return n;
     }
+    let det_inv = 1.0 / (dot(dp1, dp2perp) * duv1.x - dot(dp2, dp1perp) * duv1.y + 0.0001);
 
     let t = (dp2perp * duv1.x + dp1perp * duv2.x) * det_inv;
     let b = (dp2perp * duv1.y + dp1perp * duv2.y) * det_inv;
@@ -419,6 +429,9 @@ fn vs_main(
     output.clip_position = uniforms.view_proj * vec4<f32>(rel_pos, 1.0);
     output.world_position = world_position.xyz;
     output.world_normal = normalize(world_normal);
+    // Transform tangent direction by model matrix (not inverse-transpose — tangents transform normally)
+    let world_tangent_dir = normalize((m3 * vertex.tangent.xyz));
+    output.world_tangent = vec4<f32>(world_tangent_dir, vertex.tangent.w);
     // Multiply vertex color by instance tint (white tint = pass-through vertex colors)
     output.color = vertex.vertex_color * instance.color;
     output.uv = vertex.uv;
@@ -535,7 +548,7 @@ fn fs_textured(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @loca
     let metallic = clamp(orm.b * metallic_factor, 0.0, 1.0);
 
     // ── Normal mapping ───────────────────────────────────────────────────
-    var n = perturb_normal(in.world_normal, in.world_position, in.uv);
+    var n = perturb_normal_tbn(in.world_normal, in.world_tangent, in.world_position, in.uv);
 
     // ── Double-sided: flip normal for back faces ─────────────────────
     if !is_front {

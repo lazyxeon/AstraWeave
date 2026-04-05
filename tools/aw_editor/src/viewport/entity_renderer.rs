@@ -389,6 +389,11 @@ impl EntityRenderer {
                                 shader_location: 8,
                                 format: wgpu::VertexFormat::Float32x2, // uv
                             },
+                            wgpu::VertexAttribute {
+                                offset: 48,
+                                shader_location: 9,
+                                format: wgpu::VertexFormat::Float32x4, // tangent
+                            },
                         ],
                     },
                     // Instance buffer (model matrix + color)
@@ -1753,6 +1758,14 @@ impl EntityRenderer {
                     vec![[0.0, 0.0]; positions.len()]
                 };
 
+                // Tangent vectors (MikkTSpace, w=handedness)
+                let tangents: Vec<[f32; 4]> = if let Some(t) = reader.read_tangents() {
+                    t.collect()
+                } else {
+                    // Default tangent along +X with positive handedness (cotangent frame fallback in shader)
+                    vec![[1.0, 0.0, 0.0, 1.0]; positions.len()]
+                };
+
                 // Skinning: joint indices + weights (set 0)
                 let prim_joints: Option<Vec<[u16; 4]>> =
                     reader.read_joints(0).map(|j| j.into_u16().collect());
@@ -1862,22 +1875,27 @@ impl EntityRenderer {
                 // Base index for this primitive's vertices in the merged buffer
                 let base_vertex = all_vertices.len() as u32;
 
-                for (((p, n), c), uv) in positions
+                for ((((p, n), c), uv), t) in positions
                     .iter()
                     .zip(normals.iter())
                     .zip(vertex_colors.iter())
                     .zip(uvs.iter())
+                    .zip(tangents.iter())
                 {
                     // Apply node transform to position
                     let tp = *node_transform * glam::Vec4::new(p[0], p[1], p[2], 1.0);
                     // Apply normal matrix to normal and re-normalize
                     let tn = (normal_mat * glam::Vec4::new(n[0], n[1], n[2], 0.0)).truncate();
                     let tn = tn.normalize_or(Vec3::Y);
+                    // Apply normal matrix to tangent direction (preserve handedness in w)
+                    let tt = (normal_mat * glam::Vec4::new(t[0], t[1], t[2], 0.0)).truncate();
+                    let tt = tt.normalize_or(Vec3::X);
                     all_vertices.push(Vertex {
                         position: [tp.x, tp.y, tp.z],
                         normal: [tn.x, tn.y, tn.z],
                         color: *c,
                         uv: *uv,
+                        tangent: [tt.x, tt.y, tt.z, t[3]], // Preserve handedness
                     });
                 }
 
@@ -2993,6 +3011,7 @@ struct Vertex {
     normal: [f32; 3],
     color: [f32; 4],
     uv: [f32; 2],
+    tangent: [f32; 4], // xyz=tangent direction, w=handedness (+1 or -1)
 }
 
 /// Instance data (per-entity transform + color)
@@ -3139,24 +3158,28 @@ fn create_cube_mesh() -> (Vec<Vertex>, Vec<u16>) {
             normal: [0.0, 0.0, 1.0],
             color: white,
             uv: [0.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y0, z1],
             normal: [0.0, 0.0, 1.0],
             color: white,
             uv: [1.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y1, z1],
             normal: [0.0, 0.0, 1.0],
             color: white,
             uv: [1.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x0, y1, z1],
             normal: [0.0, 0.0, 1.0],
             color: white,
             uv: [0.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         // Back face (-Z)
         Vertex {
@@ -3164,24 +3187,28 @@ fn create_cube_mesh() -> (Vec<Vertex>, Vec<u16>) {
             normal: [0.0, 0.0, -1.0],
             color: white,
             uv: [0.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x0, y0, z0],
             normal: [0.0, 0.0, -1.0],
             color: white,
             uv: [1.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x0, y1, z0],
             normal: [0.0, 0.0, -1.0],
             color: white,
             uv: [1.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y1, z0],
             normal: [0.0, 0.0, -1.0],
             color: white,
             uv: [0.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         // Right face (+X)
         Vertex {
@@ -3189,24 +3216,28 @@ fn create_cube_mesh() -> (Vec<Vertex>, Vec<u16>) {
             normal: [1.0, 0.0, 0.0],
             color: white,
             uv: [0.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y0, z0],
             normal: [1.0, 0.0, 0.0],
             color: white,
             uv: [1.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y1, z0],
             normal: [1.0, 0.0, 0.0],
             color: white,
             uv: [1.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y1, z1],
             normal: [1.0, 0.0, 0.0],
             color: white,
             uv: [0.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         // Left face (-X)
         Vertex {
@@ -3214,24 +3245,28 @@ fn create_cube_mesh() -> (Vec<Vertex>, Vec<u16>) {
             normal: [-1.0, 0.0, 0.0],
             color: white,
             uv: [0.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x0, y0, z1],
             normal: [-1.0, 0.0, 0.0],
             color: white,
             uv: [1.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x0, y1, z1],
             normal: [-1.0, 0.0, 0.0],
             color: white,
             uv: [1.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x0, y1, z0],
             normal: [-1.0, 0.0, 0.0],
             color: white,
             uv: [0.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         // Top face (+Y)
         Vertex {
@@ -3239,24 +3274,28 @@ fn create_cube_mesh() -> (Vec<Vertex>, Vec<u16>) {
             normal: [0.0, 1.0, 0.0],
             color: white,
             uv: [0.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y1, z1],
             normal: [0.0, 1.0, 0.0],
             color: white,
             uv: [1.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y1, z0],
             normal: [0.0, 1.0, 0.0],
             color: white,
             uv: [1.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x0, y1, z0],
             normal: [0.0, 1.0, 0.0],
             color: white,
             uv: [0.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         // Bottom face (-Y)
         Vertex {
@@ -3264,24 +3303,28 @@ fn create_cube_mesh() -> (Vec<Vertex>, Vec<u16>) {
             normal: [0.0, -1.0, 0.0],
             color: white,
             uv: [0.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y0, z0],
             normal: [0.0, -1.0, 0.0],
             color: white,
             uv: [1.0, 1.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x1, y0, z1],
             normal: [0.0, -1.0, 0.0],
             color: white,
             uv: [1.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
         Vertex {
             position: [x0, y0, z1],
             normal: [0.0, -1.0, 0.0],
             color: white,
             uv: [0.0, 0.0],
+            tangent: [1.0, 0.0, 0.0, 1.0],
         },
     ];
 

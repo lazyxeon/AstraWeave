@@ -12,6 +12,7 @@ struct VertexInput {
     @location(1) normal: vec3<f32>,
     @location(2) vertex_color: vec4<f32>,
     @location(8) uv: vec2<f32>,
+    @location(9) tangent: vec4<f32>,
 }
 
 struct InstanceInput {
