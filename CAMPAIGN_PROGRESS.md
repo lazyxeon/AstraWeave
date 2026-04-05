@@ -41,4 +41,8 @@
 - [x] Load glTF tangent attributes — MikkTSpace TBN, 64-byte vertex (a9b48c684)
 - [x] 4-cascade CSM shadows — frustum-fitted splits + texel-snap stabilization (30d4f1415 + 1d6f175cd)
 - [x] IBL prefiltered cubemap — infrastructure + IblManager bake + shader (4d0f77796 + 49682bb71)
-- [~] Unify FastPreview/EnginePBR paths — Phase 0 COMPLETE (2de64d658), Phases 1-7 remaining
+- [~] Unify FastPreview/EnginePBR paths — Phases 0-2 COMPLETE, Phases 3-7 remaining
+  - Phase 0: Non-optional dep + cfg guard removal (2de64d658)
+  - Phase 1: Entity feeding to engine + selection highlighting (3a7e6ad57, e6cd4ce97)
+  - Phase 2: Shadow/IBL/lighting already forwarded to engine (no additional code needed)
+  - Phases 3-7: Tonemap unification, overlay hooks, terrain, deletion, headless
