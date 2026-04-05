@@ -563,7 +563,20 @@ Mar 25 ── v1.49: Blueprint Zone Editor (9 phases, 125+ tests)
 
 **Next Review Date**: 2026-04-25 (monthly cadence)  
 **Revision History Format Version**: 2.0.0 (IEEE/ACM-compliant)  
-**Last Restructured**: 2026-03-25
+**Last Restructured**: 2026-04-05
+
+### v1.50 (2026-04-05) — Editor Behavioral Correctness Audit + Unified Pipeline
+
+**Scope**: Complete behavioral correctness audit and remediation of `aw_editor`, culminating in unified rendering pipeline.
+
+**Key Changes**:
+- **37 fixes** across 47 commits addressing 14 CRITICAL, 18 HIGH, 28 MEDIUM findings
+- **Unified rendering pipeline** (Fix 27): eliminated dual FastPreview/EnginePBR architecture, deleted ~4,669 LOC of duplicate rendering code
+- **SOTA rendering upgrades**: Disney BRDF + multi-scatter energy compensation (Turquin 2019), 4-cascade CSM shadows with frustum fitting, IBL prefiltered cubemap, Khronos PBR Neutral tonemapper, 3-channel DFG LUT, glTF MikkTSpace tangent loading
+- **Undo system completion**: All 9 previously-bypassing operations now route through undo stack
+- **Silent failure resolution**: 60 error-swallowing patterns identified, critical ones fixed with structured logging
+
+**Documents**: [Audit Report](../current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md) | [Architecture Map](../current/ARCHITECTURE_MAP.md) | [Campaign Plan](../current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md)
 
 ---
 

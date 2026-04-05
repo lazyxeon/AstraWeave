@@ -78,7 +78,12 @@ cargo run -p hello_companion --release
 cargo run -p unified_showcase --release
 ```
 
-**Note**: Editor (`aw_editor`) has 6,100+ tests. See workflow tests in `tools/aw_editor/tests`.
+**Note**: Editor (`aw_editor`) has 3,892+ tests. See workflow tests in `tools/aw_editor/tests`.
+
+**Key Documentation**:
+- [Architecture Map](docs/current/ARCHITECTURE_MAP.md) — Crate relationships, editor viewport pipeline, data flow diagrams
+- [Editor Behavioral Audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md) — 37-fix correctness audit with visual, data pipeline, and state machine verification
+- [Unified Pipeline Plan](docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md) — 7-phase architectural refactor eliminating the dual rendering pipeline
 
 ---
 
@@ -148,13 +153,15 @@ flowchart TB
   **Persistence**: ECS world save/load with version migration.
 
 ### 🎨 Rendering (wgpu)
- **AAA Pipeline**: Cook-Torrance PBR, IBL, and clustered forward lighting (100k+ lights).
+ **AAA Pipeline**: Disney BRDF with multi-scatter energy compensation (Turquin 2019), IBL via prefiltered cubemaps, and clustered forward lighting (100k+ lights).
  
- **Advanced Effects**: VXGI, Volumetric Fog, SSAO, SSR, Bloom, DOF, Motion Blur.
+ **Advanced Effects**: VXGI, Volumetric Fog, SSAO, SSR, Bloom, DOF, Motion Blur, 4-cascade CSM shadows with frustum fitting + texel-snap stabilization.
  
- **Optimization**: Nanite-inspired virtualized geometry, GPU occlusion culling.
+ **Optimization**: Nanite-inspired virtualized geometry, GPU occlusion culling, 3-channel DFG LUT (GGX + cloth sheen).
  
- **Materials**: Advanced shaders (Clearcoat, SSS, Anisotropy).
+ **Materials**: Advanced shaders (Clearcoat, Sheen/Charlie, SSS, Anisotropy). Tonemapping: ACES, Khronos PBR Neutral (2024), Reinhard.
+ 
+ **Unified Editor Pipeline**: Editor viewport renders through the engine — single source of truth for PBR, shadows, IBL, and post-processing. See [Architecture Map](docs/current/ARCHITECTURE_MAP.md).
 
 ### 🍎 Physics & Simulation
  **Rapier3D Integration**: Rigid bodies, character controllers, and spatial queries.
@@ -176,13 +183,13 @@ flowchart TB
 | Component | Status | Notes |
 | :--- | :--- | :--- |
 | **Core ECS** | ✅ Production Ready | 330 tests, 96.39% coverage, Miri + Kani validated. |
-| **Rendering** | ✅ Production Ready | 806 tests, feature complete AAA pipeline. |
+| **Rendering** | ✅ Production Ready | 990+ tests, Disney BRDF + multi-scatter, 4-cascade CSM, IBL cubemaps, PBR Neutral tonemapping. |
 | **Physics/Nav** | ✅ Production Ready | 1,460 tests (1,244 physics + 216 nav), highly optimized. |
 | **AI Orchestration** | ✅ Production Ready | 268 tests, validated at scale. |
 | **Fluids** | ✅ Production Ready | 4,907 tests, SPH/FLIP simulation with caustics and foam. |
 | **Prompts** | ✅ Production Ready | 1,931 tests, 100% mutation kill rate (792 mutants). |
 | **Scripting** | ⚠️ Alpha | 179 tests, functional Rhai integration, expanding API. |
-| **Editor** | ✅ Production Ready | 6,100+ tests passing, UI automation via `egui_kittest`. |
+| **Editor** | ✅ Production Ready | 3,892+ tests, unified engine pipeline, behavioral audit complete ([Audit Report](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md)). |
 | **UI Framework** | ✅ Production Ready | 331 tests, functional coverage. |
 | **LLM Support** | ✅ Production Ready | 16,776 lines, robust inference pipeline. |
 | **AI Generation** | 🧪 Experimental | Prototype asset generation pipeline. |

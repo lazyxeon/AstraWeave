@@ -248,7 +248,7 @@ WorldSnapshot  AI Model   PlanIntent  Tool Validation
 - **Physics/World**: `physics`, `nav`, `terrain`, `fluids`, `scene` — Rapier3D, navmesh, procedural terrain
 - **Gameplay**: `gameplay`, `quests`, `weaving`, `cinematics`, `pcg` — combat, crafting, quest systems
 - **Networking**: `net`, `net-ecs`, `persistence-ecs` — snapshot networking, delta compression
-- **Tools**: `tools/aw_editor` (6,100+ tests), `tools/aw_asset_cli`, `tools/aw_build`
+- **Tools**: `tools/aw_editor` (3,892+ tests, unified engine pipeline), `tools/aw_asset_cli`, `tools/aw_build`
 
 All crate names are prefixed with `astraweave-`.
 
@@ -334,7 +334,9 @@ Read these when you need deeper context. **Do not ask the user for information t
 
 | File | Contains |
 |------|----------|
-| `docs/current/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams with risk levels, data flow paths, unsafe code inventory, test infrastructure. All agents should consult this before modifying shared types or cross-crate boundaries. |
+| `docs/current/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams, editor viewport pipeline (unified post-Fix-27), data flow paths, unsafe code inventory. |
+| `docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` | 37-fix behavioral correctness audit: visual math, data pipeline, undo system, silent failures, integration seams. Completed 2026-04-05. |
+| `docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md` | 7-phase campaign plan that eliminated the dual FastPreview/EnginePBR rendering pipeline. |
 | `docs/current/PROJECT_STATUS.md` | Current state, active work, recently completed milestones |
 | `docs/current/ARCHITECTURE_REFERENCE.md` | Full API patterns (7 arbiter patterns, testing, benchmarking), performance data, formal verification details |
 | `docs/current/DOCUMENTATION_INDEX.md` | Master navigation for all project documentation |
