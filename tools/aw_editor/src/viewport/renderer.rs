@@ -34,13 +34,12 @@ const HDR_COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const LDR_COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
 
 use super::camera::OrbitCamera;
-use super::entity_renderer::EntityRenderer;
 use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
-use super::mipmap_generator::MipmapGenerator;
 use super::physics_renderer::PhysicsDebugRenderer;
 use super::types::{
-    ScatterPlacement, TerrainFogParams, TerrainLightingParams, TerrainVertex, WaterStyle,
+    GltfAnimationClip, GltfSkeleton, ScatterPlacement, SceneLight, TerrainFogParams,
+    TerrainLightingParams, TerrainVertex, WaterStyle,
 };
 use crate::gizmo::GizmoState;
 use astraweave_core::{Entity, World};
@@ -65,12 +64,8 @@ pub struct ViewportRenderer {
     /// wgpu queue (command submission)
     queue: Arc<wgpu::Queue>,
 
-    /// GPU mipmap generator (shared by entity renderer)
-    mipmap_generator: MipmapGenerator,
-
     /// Sub-renderers (essential — created at startup)
     grid_renderer: GridRenderer,
-    entity_renderer: EntityRenderer,
     gizmo_renderer: GizmoRendererWgpu,
 
     /// Sub-renderers (deferred — created lazily on first use)
@@ -153,32 +148,18 @@ impl ViewportRenderer {
     ///
     /// Returns error if sub-renderer creation fails.
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Result<Self> {
-        // Only create essential renderers at startup (grid, entities, gizmos).
+        // Only create essential renderers at startup (grid, gizmos).
         // Physics debug renderer is deferred to first use.
-        let mipmap_generator = MipmapGenerator::new(&device);
-
+        // Entity rendering is handled by the engine adapter (PBR path).
         let grid_renderer = GridRenderer::with_color_format(&device, HDR_COLOR_FORMAT)
             .context("Failed to create grid renderer")?;
-        let mut entity_renderer = EntityRenderer::with_color_format(
-            device.clone(),
-            queue.clone(),
-            20000,
-            HDR_COLOR_FORMAT,
-        )
-        .context("Failed to create entity renderer")?;
-        // Enable HDR output — shader outputs linear HDR; tonemap pass handles the rest.
-        entity_renderer.set_hdr_output(true);
-        // Inject GPU mipmap generator (H-1) — replaces CPU box-filter path.
-        entity_renderer.set_mipmap_generator(MipmapGenerator::new(&device));
         let gizmo_renderer = GizmoRendererWgpu::new((*device).clone(), (*queue).clone(), 10000)
             .context("Failed to create gizmo renderer")?;
 
         Ok(Self {
             device,
             queue,
-            mipmap_generator,
             grid_renderer,
-            entity_renderer,
             gizmo_renderer,
             physics_renderer: None,
             scatter_placements: Vec::new(),
@@ -740,40 +721,41 @@ impl ViewportRenderer {
         self.zone_overlay_lines = lines;
     }
 
-    /// Set the entity-to-mesh mapping so models render with actual GLTF geometry
+    /// Set the entity-to-mesh mapping so models render with actual GLTF geometry.
+    /// Populates `entity_mesh_map` which `feed_entities()` uses to pass data to the
+    /// engine adapter.
     pub fn set_entity_meshes(&mut self, meshes: std::collections::HashMap<Entity, String>) {
-        self.entity_mesh_map = meshes.clone();
-        self.entity_renderer.set_entity_meshes(meshes);
+        self.entity_mesh_map = meshes;
     }
 
-    /// Set per-entity external texture overrides (entity → texture file path).
+    /// Set per-entity external texture overrides.
+    /// No-op: texture overrides are handled by the engine PBR material pipeline.
     pub fn set_entity_texture_overrides(
         &mut self,
-        overrides: std::collections::HashMap<Entity, String>,
+        _overrides: std::collections::HashMap<Entity, String>,
     ) {
-        self.entity_renderer.set_entity_texture_overrides(overrides);
+        // Legacy entity renderer handled per-entity texture overrides.
+        // Engine adapter manages materials through its own PBR pipeline.
     }
 
-    /// Get skeleton for a mesh (delegates to entity renderer).
-    pub fn get_mesh_skeleton(
-        &self,
-        mesh_path: &str,
-    ) -> Option<&super::entity_renderer::GltfSkeleton> {
-        self.entity_renderer.get_mesh_skeleton(mesh_path)
+    /// Get skeleton for a mesh.
+    /// Returns `None` — skeleton data is no longer stored in the legacy renderer.
+    /// Future: engine adapter will expose skeleton data from its own mesh cache.
+    pub fn get_mesh_skeleton(&self, _mesh_path: &str) -> Option<&GltfSkeleton> {
+        None
     }
 
-    /// Get animation clips for a mesh (delegates to entity renderer).
-    pub fn get_mesh_animations(
-        &self,
-        mesh_path: &str,
-    ) -> &[super::entity_renderer::GltfAnimationClip] {
-        self.entity_renderer.get_mesh_animations(mesh_path)
+    /// Get animation clips for a mesh.
+    /// Returns empty — animation clips are no longer stored in the legacy renderer.
+    /// Future: engine adapter will expose animation data from its own mesh cache.
+    pub fn get_mesh_animations(&self, _mesh_path: &str) -> &[GltfAnimationClip] {
+        &[]
     }
 
-    /// Apply CPU skinning to a mesh (delegates to entity renderer).
-    pub fn apply_cpu_skinning(&mut self, mesh_path: &str, joint_matrices: &[glam::Mat4]) {
-        self.entity_renderer
-            .apply_cpu_skinning(mesh_path, joint_matrices, &self.queue);
+    /// Apply CPU skinning to a mesh.
+    /// No-op: skinning will be handled by the engine's GPU skinning pipeline.
+    pub fn apply_cpu_skinning(&mut self, _mesh_path: &str, _joint_matrices: &[glam::Mat4]) {
+        // Legacy CPU skinning removed. Engine adapter handles GPU skinning.
     }
 
     /// Set selected entity (for backward compatibility)
@@ -1053,23 +1035,19 @@ impl ViewportRenderer {
         }
     }
 
-    /// Set lighting parameters for PBR terrain shading (also syncs to entity renderer)
+    /// Set lighting parameters for PBR terrain shading
     pub fn set_lighting_params(&mut self, params: TerrainLightingParams) {
-        // Sync sun/ambient to entity renderer so entities share the same directional light
-        self.entity_renderer
-            .set_sun(params.sun_dir, params.sun_color, params.sun_intensity);
-        self.entity_renderer
-            .set_ambient(params.ambient_color, params.ambient_intensity);
-
-        // Forward to engine adapter
+        // Forward to engine adapter (handles all scene lighting)
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.set_lighting_params(&params);
         }
     }
 
-    /// Set scene point lights from entity Light components (forwarded to entity renderer)
-    pub fn set_scene_lights(&mut self, lights: Vec<super::entity_renderer::SceneLight>) {
-        self.entity_renderer.set_scene_lights(lights);
+    /// Set scene point lights from entity Light components.
+    /// No-op: scene lights are now managed by the engine adapter's clustered lighting.
+    pub fn set_scene_lights(&mut self, _lights: Vec<SceneLight>) {
+        // Legacy entity renderer handled per-entity point lights.
+        // Engine adapter manages lights through its own clustered lighting pipeline.
     }
 
     /// Set water level for volumetric water plane
@@ -1088,9 +1066,11 @@ impl ViewportRenderer {
     // ── Scatter management ──────────────────────────────────────────────
 
     /// Set scatter placements for instanced rendering.
-    /// Preload glTF meshes into the entity renderer's mesh cache.
-    pub fn preload_gltf_meshes(&mut self, paths: &[String]) -> usize {
-        self.entity_renderer.preload_gltf_meshes(paths)
+    /// Preload glTF meshes into the mesh cache.
+    /// No-op stub: the engine adapter loads meshes on demand via its own asset pipeline.
+    /// Returns 0 (no meshes loaded through the legacy path).
+    pub fn preload_gltf_meshes(&mut self, _paths: &[String]) -> usize {
+        0
     }
 
     pub fn set_scatter_placements(&mut self, placements: Vec<ScatterPlacement>) {

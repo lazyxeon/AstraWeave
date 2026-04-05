@@ -171,8 +171,16 @@ impl EngineRenderAdapter {
 
         for entity in world.entities() {
             if let Some(pose) = world.pose(entity) {
-                let x = if pose.use_float_pos { pose.float_x } else { pose.pos.x as f32 };
-                let z = if pose.use_float_pos { pose.float_z } else { pose.pos.y as f32 };
+                let x = if pose.use_float_pos {
+                    pose.float_x
+                } else {
+                    pose.pos.x as f32
+                };
+                let z = if pose.use_float_pos {
+                    pose.float_z
+                } else {
+                    pose.pos.y as f32
+                };
                 let position = glam::Vec3::new(x, pose.height, z);
                 let scale = glam::Vec3::new(pose.scale, pose.scale_y, pose.scale_z);
                 let rotation = glam::Quat::from_euler(
@@ -181,7 +189,8 @@ impl EngineRenderAdapter {
                     pose.rotation,
                     pose.rotation_z,
                 );
-                let transform = glam::Mat4::from_scale_rotation_translation(scale, rotation, position);
+                let transform =
+                    glam::Mat4::from_scale_rotation_translation(scale, rotation, position);
 
                 let is_selected = selected_entities.contains(&entity);
                 let color = if is_selected {
@@ -209,7 +218,9 @@ impl EngineRenderAdapter {
         }
 
         // Clear previous entity models (prefixed with "entity_")
-        let old_names: Vec<String> = self.renderer.model_names()
+        let old_names: Vec<String> = self
+            .renderer
+            .model_names()
             .into_iter()
             .filter(|n| n.starts_with("entity_"))
             .collect();
@@ -237,16 +248,18 @@ impl EngineRenderAdapter {
                             _ => {
                                 // Fallback: use simple cube arrays
                                 self.renderer.create_mesh_from_arrays(
-                                    &CUBE_POSITIONS, &CUBE_NORMALS, &CUBE_INDICES,
+                                    &CUBE_POSITIONS,
+                                    &CUBE_NORMALS,
+                                    &CUBE_INDICES,
                                 )
                             }
                         }
                     }
-                    None => {
-                        self.renderer.create_mesh_from_arrays(
-                            &CUBE_POSITIONS, &CUBE_NORMALS, &CUBE_INDICES,
-                        )
-                    }
+                    None => self.renderer.create_mesh_from_arrays(
+                        &CUBE_POSITIONS,
+                        &CUBE_NORMALS,
+                        &CUBE_INDICES,
+                    ),
                 };
                 self.renderer.add_model(&model_name, mesh, instances);
             } else {
@@ -260,12 +273,16 @@ impl EngineRenderAdapter {
                                 self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0])
                             }
                             _ => self.renderer.create_mesh_from_arrays(
-                                &CUBE_POSITIONS, &CUBE_NORMALS, &CUBE_INDICES,
+                                &CUBE_POSITIONS,
+                                &CUBE_NORMALS,
+                                &CUBE_INDICES,
                             ),
                         }
                     }
                     None => self.renderer.create_mesh_from_arrays(
-                        &CUBE_POSITIONS, &CUBE_NORMALS, &CUBE_INDICES,
+                        &CUBE_POSITIONS,
+                        &CUBE_NORMALS,
+                        &CUBE_INDICES,
                     ),
                 };
                 self.renderer.add_model(&model_name, mesh, instances);

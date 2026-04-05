@@ -4,7 +4,7 @@
 //! and ticks clip playback each frame to produce transforms for skinned entities.
 
 use crate::panels::animation_panel::AnimationAction;
-use crate::viewport::entity_renderer::{
+use crate::viewport::types::{
     GltfAnimationClip, GltfChannelProperty, GltfInterpolation, GltfSkeleton,
 };
 use glam::{Mat4, Quat, Vec3};
@@ -365,7 +365,7 @@ impl EditorAnimationBridge {
 
     /// Interpolate a channel at a given time, returning the interpolated value.
     fn interpolate_channel(
-        channel: &crate::viewport::entity_renderer::GltfAnimChannel,
+        channel: &crate::viewport::types::GltfAnimChannel,
         time: f32,
     ) -> Vec<f32> {
         let times = &channel.times;

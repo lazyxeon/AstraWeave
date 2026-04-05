@@ -226,3 +226,83 @@ pub fn find_assets_dir() -> PathBuf {
     );
     PathBuf::from("assets")
 }
+
+// ─── Scene Light ────────────────────────────────────────────────────────────
+
+/// A point light extracted from entity components for scene lighting.
+///
+/// Previously defined in `entity_renderer.rs`; moved here so it can be shared
+/// across the editor without depending on the legacy entity renderer.
+#[derive(Clone, Debug)]
+pub struct SceneLight {
+    pub position: [f32; 3],
+    pub range: f32,
+    pub color: [f32; 3],
+    pub intensity: f32,
+}
+
+// ─── GLTF Animation Types ───────────────────────────────────────────────────
+
+/// A single joint in a skeleton hierarchy (extracted from glTF skin data).
+#[derive(Clone, Debug)]
+pub struct GltfJoint {
+    /// Joint name (from the glTF node).
+    pub name: String,
+    /// Parent joint index in the skeleton's `joints` array, or `None` for roots.
+    pub parent_index: Option<usize>,
+    /// Inverse bind matrix (transforms from mesh space to joint-local space).
+    pub inverse_bind_matrix: glam::Mat4,
+    /// Local (rest-pose) transform of the joint.
+    pub local_transform: glam::Mat4,
+}
+
+/// A skeleton extracted from a glTF skin.
+#[derive(Clone, Debug)]
+pub struct GltfSkeleton {
+    /// Ordered joint list (index matches glTF skin joint order).
+    pub joints: Vec<GltfJoint>,
+    /// Indices of root joints (joints with no parent).
+    pub root_indices: Vec<usize>,
+}
+
+/// Keyframe interpolation mode.
+#[derive(Clone, Copy, Debug)]
+pub enum GltfInterpolation {
+    Linear,
+    Step,
+    CubicSpline,
+}
+
+/// Channel target property being animated.
+#[derive(Clone, Copy, Debug)]
+pub enum GltfChannelProperty {
+    Translation,
+    Rotation,
+    Scale,
+}
+
+/// A single animation channel targeting one joint.
+#[derive(Clone, Debug)]
+pub struct GltfAnimChannel {
+    /// Joint index in the skeleton.
+    pub joint_index: usize,
+    /// Property being animated.
+    pub property: GltfChannelProperty,
+    /// Keyframe timestamps in seconds.
+    pub times: Vec<f32>,
+    /// Keyframe values (3 floats for translation/scale, 4 for rotation quaternion).
+    pub values: Vec<Vec<f32>>,
+    /// Interpolation mode.
+    pub interpolation: GltfInterpolation,
+}
+
+/// An animation clip extracted from a glTF animation.
+#[derive(Clone, Debug)]
+pub struct GltfAnimationClip {
+    /// Clip name.
+    pub name: String,
+    /// Duration in seconds.
+    pub duration: f32,
+    /// Animation channels.
+    pub channels: Vec<GltfAnimChannel>,
+}

@@ -20,9 +20,8 @@
 //! ViewportWidget (egui integration)
 //!     ↓
 //! ViewportRenderer (rendering coordinator)
-//!     ├─ EngineRenderAdapter (terrain, sky, water, weather, scatter, post-FX)
+//!     ├─ EngineRenderAdapter (terrain, sky, water, weather, scatter, entities, post-FX)
 //!     ├─ GridRenderer (floor grid + axes)
-//!     ├─ EntityRenderer (world entities / preview cubes)
 //!     ├─ GizmoRenderer (transform handles)
 //!     └─ PhysicsDebugRenderer (collider wireframes)
 //! ```
@@ -42,10 +41,8 @@
 pub mod blueprint_overlay;
 pub mod camera;
 mod engine_adapter;
-pub(crate) mod entity_renderer;
 mod gizmo_renderer;
 mod grid_renderer;
-pub(crate) mod mipmap_generator;
 mod physics_renderer;
 mod renderer;
 pub mod toolbar;
@@ -61,8 +58,9 @@ pub use renderer::RenderMode;
 // Shared types — canonical exports
 #[allow(unused_imports)]
 pub use types::{
-    TerrainFogParams, TerrainLightingParams, TerrainVertex, WaterStyle, WeatherKind,
-    MATERIAL_DISPLAY_NAMES, MATERIAL_NAMES,
+    GltfAnimChannel, GltfAnimationClip, GltfChannelProperty, GltfInterpolation, GltfJoint,
+    GltfSkeleton, SceneLight, TerrainFogParams, TerrainLightingParams, TerrainVertex, WaterStyle,
+    WeatherKind, MATERIAL_DISPLAY_NAMES, MATERIAL_NAMES,
 };
 pub use widget::ViewportLayout;
 pub use widget::ViewportWidget;

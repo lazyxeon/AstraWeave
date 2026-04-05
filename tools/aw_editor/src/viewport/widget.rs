@@ -574,7 +574,7 @@ impl ViewportWidget {
                     })
                     .collect();
 
-                let scene_lights: Vec<super::entity_renderer::SceneLight> = entity_manager
+                let scene_lights: Vec<super::types::SceneLight> = entity_manager
                     .entities()
                     .iter()
                     .filter_map(|(_, entity)| {
@@ -583,23 +583,19 @@ impl ViewportWidget {
                         if ltype != "point" {
                             return None;
                         }
-                        Some(super::entity_renderer::SceneLight {
+                        Some(super::types::SceneLight {
                             position: [entity.position.x, entity.position.y, entity.position.z],
                             range: data.get("range").and_then(|v| v.as_f64()).unwrap_or(10.0)
                                 as f32,
                             color: [
-                                data.get("color_r").and_then(|v| v.as_f64()).unwrap_or(1.0)
-                                    as f32,
-                                data.get("color_g").and_then(|v| v.as_f64()).unwrap_or(1.0)
-                                    as f32,
-                                data.get("color_b").and_then(|v| v.as_f64()).unwrap_or(1.0)
-                                    as f32,
+                                data.get("color_r").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                                data.get("color_g").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
+                                data.get("color_b").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32,
                             ],
                             intensity: data
                                 .get("intensity")
                                 .and_then(|v| v.as_f64())
-                                .unwrap_or(1.0)
-                                as f32,
+                                .unwrap_or(1.0) as f32,
                         })
                     })
                     .collect();
@@ -631,8 +627,7 @@ impl ViewportWidget {
         if let Some(texture) = self.render_texture.clone() {
             // Render in separate scope to drop MutexGuard early
             {
-                let show_grid =
-                    self.toolbar.show_grid && self.toolbar.grid_type != GridType::None;
+                let show_grid = self.toolbar.show_grid && self.toolbar.grid_type != GridType::None;
                 let crosshair_mode = self.toolbar.grid_type == GridType::Crosshair;
                 let shading_mode = self.toolbar.shading_mode.to_u32();
 
@@ -1188,7 +1183,9 @@ impl ViewportWidget {
 
                     // Try depth-based pick first
                     let mut hit = None;
-                    let depth_val = self.with_renderer("read_depth_for_pick", |r| r.read_depth_at_pixel(px, py)).flatten();
+                    let depth_val = self
+                        .with_renderer("read_depth_for_pick", |r| r.read_depth_at_pixel(px, py))
+                        .flatten();
                     if let Some(depth) = depth_val {
                         if depth < 1.0 {
                             let world_pos = self.camera.unproject_depth_to_world(
@@ -1241,7 +1238,9 @@ impl ViewportWidget {
 
                 // Get world hit for cursor center
                 let mut cursor_center = None;
-                let depth_val = self.with_renderer("read_depth_for_brush", |r| r.read_depth_at_pixel(px, py)).flatten();
+                let depth_val = self
+                    .with_renderer("read_depth_for_brush", |r| r.read_depth_at_pixel(px, py))
+                    .flatten();
                 if let Some(depth) = depth_val {
                     if depth < 1.0 {
                         let wp = self.camera.unproject_depth_to_world(
@@ -1790,12 +1789,12 @@ impl ViewportWidget {
                 // Pick World entities (which are actually rendered)
                 let mut closest_entity: Option<(Entity, f32)> = None; // (entity_id, distance)
 
-                // Check all World entities (matching entity_renderer logic)
+                // Check all World entities
                 for entity_id in 1..100 {
                     let entity: Entity = entity_id;
 
                     if let Some(pose) = world.pose(entity) {
-                        // Match entity_renderer position calculation
+                        // Position calculation from entity pose
                         let x = pose.pos.x as f32;
                         let z = pose.pos.y as f32;
                         let position = glam::Vec3::new(x, pose.height, z);
@@ -2644,7 +2643,9 @@ impl ViewportWidget {
         &self,
         chunks: &[(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)],
     ) {
-        self.with_renderer("upload_terrain_chunks_raw", |r| r.upload_terrain_chunks_raw(chunks));
+        self.with_renderer("upload_terrain_chunks_raw", |r| {
+            r.upload_terrain_chunks_raw(chunks)
+        });
     }
 
     /// Incrementally update vertex data for a single terrain chunk on the GPU.
@@ -2653,16 +2654,22 @@ impl ViewportWidget {
         chunk_index: usize,
         vertices: &[super::types::TerrainVertex],
     ) {
-        self.with_renderer("update_terrain_chunk_vertices", |r| r.update_terrain_chunk_vertices(chunk_index, vertices));
+        self.with_renderer("update_terrain_chunk_vertices", |r| {
+            r.update_terrain_chunk_vertices(chunk_index, vertices)
+        });
     }
 
     pub fn set_brush_cursor_lines(&self, lines: Vec<astraweave_physics::DebugLine>) {
-        self.with_renderer("set_brush_cursor_lines", |r| r.set_brush_cursor_lines(lines));
+        self.with_renderer("set_brush_cursor_lines", |r| {
+            r.set_brush_cursor_lines(lines)
+        });
     }
 
     /// Set zone overlay lines (blueprint zone wireframes) for 3D rendering.
     pub fn set_zone_overlay_lines(&self, lines: Vec<astraweave_physics::DebugLine>) {
-        self.with_renderer("set_zone_overlay_lines", |r| r.set_zone_overlay_lines(lines));
+        self.with_renderer("set_zone_overlay_lines", |r| {
+            r.set_zone_overlay_lines(lines)
+        });
     }
 
     /// Set scatter placements for instanced vegetation/prop rendering.
@@ -2670,13 +2677,16 @@ impl ViewportWidget {
         &self,
         placements: Vec<crate::terrain_integration::ScatterPlacement>,
     ) {
-        self.with_renderer("set_scatter_placements", |r| r.set_scatter_placements(placements));
+        self.with_renderer("set_scatter_placements", |r| {
+            r.set_scatter_placements(placements)
+        });
     }
 
     /// Preload glTF meshes from decomposed blend files into the entity renderer cache.
     /// Returns the number of meshes successfully loaded.
     pub fn preload_gltf_meshes(&self, paths: &[String]) -> usize {
-        self.with_renderer("preload_gltf_meshes", |r| r.preload_gltf_meshes(paths)).unwrap_or(0)
+        self.with_renderer("preload_gltf_meshes", |r| r.preload_gltf_meshes(paths))
+            .unwrap_or(0)
     }
 
     pub fn clear_terrain(&self) {
@@ -2685,7 +2695,9 @@ impl ViewportWidget {
 
     /// Set the procedural sky gradient colors for skybox presets / time-of-day / weather
     pub fn set_sky_colors(&self, sky_top: [f32; 4], sky_horizon: [f32; 4], ground_color: [f32; 4]) {
-        self.with_renderer("set_sky_colors", |r| r.set_sky_colors(sky_top, sky_horizon, ground_color));
+        self.with_renderer("set_sky_colors", |r| {
+            r.set_sky_colors(sky_top, sky_horizon, ground_color)
+        });
     }
 
     /// Set fog and weather parameters for distance-based terrain fog rendering
