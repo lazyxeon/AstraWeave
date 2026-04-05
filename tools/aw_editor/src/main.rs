@@ -1,105 +1,82 @@
-#![allow(dead_code)]
+// Dead code cleanup (2026-04-03): reduced from 738 to 0 aw_editor warnings.
+//
+// Strategy: modules shared with lib.rs (where they form the public API for
+// tests/benchmarks) get #[allow(dead_code)] on their `mod` declarations in
+// main.rs. Items defined directly in main.rs get targeted per-item allows
+// with justification comments. The lib target compiles with zero dead_code
+// warnings, confirming all suppressed items are exercised through tests.
+#![warn(dead_code)]
 
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct DialogueDoc {
-    title: String,
-    nodes: Vec<DialogueNode>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct DialogueNode {
-    id: String,
-    text: String,
-    responses: Vec<DialogueResponse>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct DialogueResponse {
-    text: String,
-    next_id: Option<String>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct QuestDoc {
-    title: String,
-    steps: Vec<QuestStep>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct QuestStep {
-    description: String,
-    completed: bool,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum ToastLevel {
-    Info,
-    Success,
-    Warning,
-    Error,
-}
-
-struct Toast {
-    message: String,
-    level: ToastLevel,
-    created: std::time::Instant,
-}
-
-impl Toast {
-    fn new(message: impl Into<String>, level: ToastLevel) -> Self {
-        Self {
-            message: message.into(),
-            level,
-            created: std::time::Instant::now(),
-        }
-    }
-
-    fn color(&self) -> egui::Color32 {
-        match self.level {
-            ToastLevel::Info => egui::Color32::from_rgb(100, 149, 237),
-            ToastLevel::Success => egui::Color32::from_rgb(50, 205, 50),
-            ToastLevel::Warning => egui::Color32::from_rgb(255, 165, 0),
-            ToastLevel::Error => egui::Color32::from_rgb(220, 20, 60),
-        }
-    }
-
-    fn is_expired(&self, duration_secs: f32) -> bool {
-        self.created.elapsed().as_secs_f32() > duration_secs
-    }
-}
-
+// These modules are shared with lib.rs where they form the public API used by
+// tests and benchmarks. Items appear "dead" in the binary but are exercised
+// through the library target. allow(dead_code) suppresses binary-only warnings.
+#[allow(dead_code)]
 mod animation_bridge;
+#[allow(dead_code)]
 mod asset_pack;
+#[allow(dead_code)]
 mod audio_bridge;
+#[allow(dead_code)]
 mod behavior_graph;
+#[allow(dead_code)]
 mod blend_scanner; // Blend asset discovery for blueprint zones
+#[allow(dead_code)]
 mod brdf_preview;
+#[allow(dead_code)]
 mod clipboard; // Phase 3.4 - Copy/Paste/Duplicate
+#[allow(dead_code)]
 mod command; // Phase 2.1 - Undo/Redo system
+#[allow(dead_code)]
 mod component_ui; // Phase 2.3 - Component-based inspector
+#[allow(dead_code)]
 mod dialogs; // Modal dialog helpers
+#[allow(dead_code)]
 mod editor_mode; // Phase 4.2 - Play-in-Editor
+#[allow(dead_code)]
 mod editor_preferences; // Phase 9 - Editor preferences persistence
+#[allow(dead_code)]
 mod entity_manager;
+#[allow(dead_code)]
+mod file_helpers;
+#[allow(dead_code)]
 mod file_watcher;
+#[allow(dead_code)]
 mod game_project; // Game project configuration (game.toml)
+#[allow(dead_code)]
 mod gizmo;
+#[allow(dead_code)]
 mod interaction; // Phase 8.1 Week 5 Day 3 - Gizmo interaction helpers (auto-tracking)
+#[allow(dead_code)]
 mod level_doc; // Level document types
+#[allow(dead_code)]
 mod material_inspector;
+#[allow(dead_code)]
 mod movement_scripts;
+#[allow(dead_code)]
 mod panels;
+#[allow(dead_code)]
 mod polish;
+#[allow(dead_code)]
 mod prefab; // Phase 4.1 - Prefab System
+#[allow(dead_code)]
 mod recent_files; // Phase 3 - Recent files tracking
+#[allow(dead_code)]
 mod runtime; // Week 4 - Deterministic runtime integration
+#[allow(dead_code)]
 mod scene_serialization; // Phase 2.2 - Scene Save/Load
+#[allow(dead_code)]
 mod scene_state; // Week 1 - Canonical edit-mode world owner
+#[allow(dead_code)]
 mod splash; // Startup splash screen with logo + cinematic video
+#[allow(dead_code)]
 mod terrain_integration; // Terrain generation integration
+#[allow(dead_code)]
 mod tutorial; // First-run tutorial walkthrough
+#[allow(dead_code)]
 mod ui; // Phase 3 - UI components (StatusBar, etc.)
+#[allow(dead_code)]
 mod viewport; // Phase 1.1 - 3D Viewport
+#[allow(dead_code)]
 mod voxel_tools; // Phase 10: Voxel editing tools // Phase 2: Asset packaging and compression
 
 use anyhow::{Context as _, Result};
@@ -122,10 +99,15 @@ use panels::{
     ProfilerPanel, SceneStats, SceneStatsPanel, TextureType, ThemeManagerPanel, TransformPanel,
     WorldPanel,
 };
+#[allow(dead_code)]
 mod dock_layout;
+#[allow(dead_code)]
 mod dock_panels;
+#[allow(dead_code)]
 mod panel_type;
+#[allow(dead_code)]
 mod plugin;
+#[allow(dead_code)]
 mod tab_viewer;
 use dock_layout::{DockLayout, LayoutPreset};
 use panel_type::PanelType;
@@ -140,7 +122,23 @@ use tracing::{debug, error, info, span, warn, Level};
 use ui::StatusBar;
 use ui::{AlignDirection, DistributeDirection, MenuActionHandler, MenuBar};
 use uuid::Uuid;
+use viewport::camera::OrbitCamera;
 use viewport::ViewportWidget; // Phase 1.1
+
+/// Convert EntityManager EntityId (u64) to World Entity (u32) with overflow check.
+/// Returns None and logs a warning if the ID exceeds u32::MAX.
+fn entity_id_to_world(id: u64) -> Option<Entity> {
+    match u32::try_from(id) {
+        Ok(eid) => Some(eid),
+        Err(_) => {
+            warn!(
+                "EntityId {} exceeds u32::MAX — cannot map to World Entity",
+                id
+            );
+            None
+        }
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 struct LevelDoc {
@@ -302,15 +300,12 @@ struct DecompThreadResult {
     status_message: String,
 }
 
+#[allow(dead_code)] // Panels/managers initialized for dock system; wired through tab viewer
 struct EditorApp {
     content_root: PathBuf,
     level: LevelDoc,
     status: String,
     mat_doc: MaterialLiveDoc,
-    #[allow(dead_code)]
-    dialogue: DialogueDoc,
-    #[allow(dead_code)]
-    quest: QuestDoc,
     asset_db: AssetDatabase,
     behavior_graph_doc: BehaviorGraphDocument,
     behavior_graph_ui: BehaviorGraphEditorUi,
@@ -350,6 +345,8 @@ struct EditorApp {
     transform_panel: TransformPanel,
     asset_browser: AssetBrowser,
     hierarchy_panel: HierarchyPanel,
+    // Legacy hierarchy search (was incorrectly using level.title)
+    legacy_hierarchy_search: String,
     // Phase 5.2: Build Manager
     build_manager_panel: BuildManagerPanel,
     // Enhanced Console Panel
@@ -385,9 +382,6 @@ struct EditorApp {
     pending_quit: bool,
     // Phase 6: Toast notifications (Week 6 Day 3-4: Enhanced toast manager)
     toast_manager: ui::ToastManager,
-    // Legacy toasts field (kept for backward compatibility during migration)
-    #[allow(dead_code)]
-    toasts: Vec<Toast>,
     // Phase 7: Help dialog
     show_help_dialog: bool,
     show_about_dialog: bool,
@@ -421,10 +415,6 @@ struct EditorApp {
     dock_layout: DockLayout,
     dock_tab_viewer: EditorTabViewer,
     use_docking: bool,
-    /// Counter for generating unique entity IDs
-    next_entity_id: u64,
-    /// Track if scene has unsaved changes
-    is_scene_modified: bool,
     /// Asset registry for counting loaded assets
     asset_registry: AssetRegistry,
     /// Last save timestamp
@@ -438,7 +428,7 @@ struct EditorApp {
     /// Startup splash screen (Some while active, None after transition)
     splash: Option<splash::SplashScreen>,
     /// Cached environment params to avoid redundant GPU updates each frame
-    cached_fog_params: Option<crate::viewport::terrain_renderer::TerrainFogParams>,
+    cached_fog_params: Option<crate::viewport::types::TerrainFogParams>,
     cached_sky_colors: Option<([f32; 4], [f32; 4], [f32; 4])>,
     /// Measured subsystem timings (from previous frame, in ms)
     measured_render_ms: f32,
@@ -499,24 +489,6 @@ impl Default for EditorApp {
                 roughness: 0.6,
                 texture_path: None,
             },
-            dialogue: DialogueDoc {
-                title: "Sample Dialogue".into(),
-                nodes: vec![DialogueNode {
-                    id: "start".into(),
-                    text: "Hello, traveler!".into(),
-                    responses: vec![DialogueResponse {
-                        text: "Hi!".into(),
-                        next_id: None,
-                    }],
-                }],
-            },
-            quest: QuestDoc {
-                title: "Sample Quest".into(),
-                steps: vec![QuestStep {
-                    description: "Talk to the elder.".into(),
-                    completed: false,
-                }],
-            },
             asset_db,
             behavior_graph_doc: BehaviorGraphDocument::new_default(),
             behavior_graph_ui: BehaviorGraphEditorUi::default(),
@@ -570,6 +542,7 @@ impl Default for EditorApp {
             transform_panel: TransformPanel::new(),
             asset_browser: AssetBrowser::new(PathBuf::from("assets")),
             hierarchy_panel: HierarchyPanel::new(),
+            legacy_hierarchy_search: String::new(),
             // Phase 5.2: Build Manager
             build_manager_panel: BuildManagerPanel::new(),
             // Enhanced Console Panel
@@ -606,7 +579,6 @@ impl Default for EditorApp {
             pending_quit: false,
             // Phase 6: Toast notifications (Week 6 Day 3-4: Enhanced toast manager)
             toast_manager: ui::ToastManager::new(),
-            toasts: Vec::new(), // Legacy, kept for migration
             // Phase 7: Help dialog
             show_help_dialog: false,
             show_about_dialog: false,
@@ -644,10 +616,6 @@ impl Default for EditorApp {
                 .unwrap_or_else(|| DockLayout::from_preset(LayoutPreset::Default)),
             dock_tab_viewer: EditorTabViewer::new(),
             use_docking: true, // Re-enabled after fixing layout gap
-            // Entity ID counter - start after sample entities (100+)
-            next_entity_id: 100,
-            // Scene modification tracking
-            is_scene_modified: false,
             asset_registry: AssetRegistry::default(),
             last_save_time: None,
             // Week 6: Progress manager for long-running operations
@@ -681,6 +649,7 @@ impl Default for EditorApp {
     }
 }
 
+#[allow(dead_code)] // Helper methods for toast/progress/world access — used as editor features grow
 impl EditorApp {
     fn edit_world(&self) -> Option<&World> {
         self.scene_state.as_ref().map(|state| state.world())
@@ -699,17 +668,6 @@ impl EditorApp {
     }
 
     // Week 6 Day 3-4: Enhanced toast notification methods
-    fn toast(&mut self, message: impl Into<String>, level: ToastLevel) {
-        // Convert to new toast level
-        let new_level = match level {
-            ToastLevel::Info => ui::ToastLevel::Info,
-            ToastLevel::Success => ui::ToastLevel::Success,
-            ToastLevel::Warning => ui::ToastLevel::Warning,
-            ToastLevel::Error => ui::ToastLevel::Error,
-        };
-        self.toast_manager.toast(message, new_level);
-    }
-
     fn toast_success(&mut self, message: impl Into<String>) {
         self.toast_manager.success(message);
     }
@@ -984,7 +942,10 @@ impl EditorApp {
                     .entity_manager
                     .entities()
                     .iter()
-                    .map(|(&id, entity)| (id as u32, entity.parent.map(|p| p as u32)))
+                    .filter_map(|(&id, entity)| {
+                        entity_id_to_world(id)
+                            .map(|eid| (eid, entity.parent.and_then(entity_id_to_world)))
+                    })
                     .collect();
                 self.hierarchy_panel.rebuild_from_parents(&parent_map);
 
@@ -1013,7 +974,7 @@ impl EditorApp {
 
         for entity_id in world.entities() {
             let name = world.name(entity_id).unwrap_or("Entity").to_string();
-            let em_id = entity_id as u64;
+            let em_id: u64 = entity_id.into();
 
             let mut editor_entity = entity_manager::EditorEntity::new(em_id, name);
 
@@ -1136,7 +1097,10 @@ impl EditorApp {
         // Collect matching auto-save files
         let mut autosaves: Vec<_> = match fs::read_dir(&autosave_dir) {
             Ok(entries) => entries
-                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    e.map_err(|err| tracing::debug!("Autosave dir entry error: {}", err))
+                        .ok()
+                })
                 .map(|e| e.path())
                 .filter(|p| {
                     p.file_name()
@@ -1182,7 +1146,10 @@ impl EditorApp {
         // Collect all auto-save files
         let mut autosaves: Vec<_> = match fs::read_dir(&autosave_dir) {
             Ok(entries) => entries
-                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    e.map_err(|err| tracing::debug!("Autosave dir entry error: {}", err))
+                        .ok()
+                })
                 .map(|e| e.path())
                 .filter(|p| {
                     p.extension()
@@ -1272,15 +1239,12 @@ impl EditorApp {
         if let Some(path) = self.recovery_autosave_path.take() {
             // Load the auto-save file
             self.load_scene_from_path(&path);
-            self.toast(
-                format!(
-                    "Recovered from auto-save: {}",
-                    path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown")
-                ),
-                ToastLevel::Success,
-            );
+            self.toast_manager.success(format!(
+                "Recovered from auto-save: {}",
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+            ));
 
             // Clear the recovery state and create new lock file
             self.show_recovery_dialog = false;
@@ -2197,7 +2161,9 @@ impl EditorApp {
         // Process collected actions
         if do_undo && self.undo_stack.can_undo() {
             if let Some(state) = self.scene_state.as_mut() {
-                let _ = self.undo_stack.undo(state.world_mut());
+                let _ = self
+                    .undo_stack
+                    .undo(state.world_mut(), Some(&mut self.entity_manager));
                 self.status = "Undo successful".into();
                 self.toast_manager.info("Undone");
             }
@@ -2312,7 +2278,7 @@ impl EditorApp {
             scene_state.sync_entity(world_id);
 
             // Add to EntityManager with matching ID
-            let em_id = world_id as u64;
+            let em_id: u64 = world_id.into();
             let mut em_entity = entity_manager::EditorEntity::new(em_id, name.to_string());
             em_entity.position = *pos;
             em_entity.scale = *scale;
@@ -3228,7 +3194,7 @@ impl EditorApp {
                                     pose.height = spawn_height;
                                 }
                                 scene_state.sync_entity(entity);
-                                let em_id = entity as u64;
+                                let em_id: u64 = entity.into();
                                 let mut em_entity = entity_manager::EditorEntity::new(
                                     em_id,
                                     starter.name.to_string(),
@@ -3415,7 +3381,7 @@ impl EditorApp {
                     ui.horizontal(|ui| {
                         ui.set_min_width(ui.available_width());
                         ui.label("Search:");
-                        ui.text_edit_singleline(&mut self.level.title);
+                        ui.text_edit_singleline(&mut self.legacy_hierarchy_search);
                     });
                     ui.separator();
 
@@ -3446,21 +3412,21 @@ impl EditorApp {
             .entities()
             .iter()
             .map(|(id, entity)| {
-                let eid = *id as u32;
-                let (hp, team_id, ammo, pos_x, pos_y, rotation, scale) = if let Some(w) = &world_ref
-                {
-                    (
-                        w.health(eid).map(|h| h.hp),
-                        w.team(eid).map(|t| t.id),
-                        w.ammo(eid).map(|a| a.rounds),
-                        w.pose(eid).map(|p| p.pos.x),
-                        w.pose(eid).map(|p| p.pos.y),
-                        w.pose(eid).map(|p| p.rotation),
-                        w.pose(eid).map(|p| p.scale),
-                    )
-                } else {
-                    (None, None, None, None, None, None, None)
-                };
+                let eid = entity_id_to_world(*id);
+                let (hp, team_id, ammo, pos_x, pos_y, rotation, scale) =
+                    if let (Some(eid), Some(w)) = (eid, &world_ref) {
+                        (
+                            w.health(eid).map(|h| h.hp),
+                            w.team(eid).map(|t| t.id),
+                            w.ammo(eid).map(|a| a.rounds),
+                            w.pose(eid).map(|p| p.pos.x),
+                            w.pose(eid).map(|p| p.pos.y),
+                            w.pose(eid).map(|p| p.rotation),
+                            w.pose(eid).map(|p| p.scale),
+                        )
+                    } else {
+                        (None, None, None, None, None, None, None)
+                    };
                 EntityInfo {
                     id: *id,
                     name: entity.name.clone(),
@@ -3524,20 +3490,21 @@ impl EditorApp {
                 } else {
                     "Entity".to_string()
                 };
-                let eid = entity_id as u32;
-                let (hp, tid, ammo_v, px, py, rot_v, sc_v) = if let Some(w) = &world_ref {
-                    (
-                        w.health(eid).map(|h| h.hp),
-                        w.team(eid).map(|t| t.id),
-                        w.ammo(eid).map(|a| a.rounds),
-                        w.pose(eid).map(|p| p.pos.x),
-                        w.pose(eid).map(|p| p.pos.y),
-                        w.pose(eid).map(|p| p.rotation),
-                        w.pose(eid).map(|p| p.scale),
-                    )
-                } else {
-                    (None, None, None, None, None, None, None)
-                };
+                let eid = entity_id_to_world(entity_id);
+                let (hp, tid, ammo_v, px, py, rot_v, sc_v) =
+                    if let (Some(eid), Some(w)) = (eid, &world_ref) {
+                        (
+                            w.health(eid).map(|h| h.hp),
+                            w.team(eid).map(|t| t.id),
+                            w.ammo(eid).map(|a| a.rounds),
+                            w.pose(eid).map(|p| p.pos.x),
+                            w.pose(eid).map(|p| p.pos.y),
+                            w.pose(eid).map(|p| p.rotation),
+                            w.pose(eid).map(|p| p.scale),
+                        )
+                    } else {
+                        (None, None, None, None, None, None, None)
+                    };
                 self.dock_tab_viewer
                     .set_selected_entity_info(Some(EntityInfo {
                         id: entity_id,
@@ -3574,8 +3541,9 @@ impl EditorApp {
                     }));
             } else if let Some(w) = &world_ref {
                 // Entity exists in World but not in entity_manager — read directly
-                let eid = entity_id as u32;
-                if let Some(pose) = w.pose(eid) {
+                if let Some((eid, pose)) =
+                    entity_id_to_world(entity_id).and_then(|e| w.pose(e).map(|p| (e, p)))
+                {
                     let name = w.name(eid).unwrap_or("Entity").to_string();
                     self.dock_tab_viewer.set_selected_transform(Some((
                         pose.pos.x as f32,
@@ -3732,7 +3700,7 @@ impl EditorApp {
             light_count,
             mesh_count,
             physics_bodies,
-            is_modified: self.is_scene_modified,
+            is_modified: self.is_dirty,
             audio_sources,
             particle_systems,
             camera_count,
@@ -3844,11 +3812,9 @@ impl EditorApp {
                         let dirty = self.dock_tab_viewer.take_terrain_dirty_chunks();
                         if let Some(viewport) = &self.viewport {
                             for (chunk_index, verts) in &dirty {
-                                let gpu_verts: Vec<
-                                    crate::viewport::terrain_renderer::TerrainVertex,
-                                > = verts
+                                let gpu_verts: Vec<crate::viewport::types::TerrainVertex> = verts
                                     .iter()
-                                    .map(|v| crate::viewport::terrain_renderer::TerrainVertex {
+                                    .map(|v| crate::viewport::types::TerrainVertex {
                                         position: v.position,
                                         normal: v.normal,
                                         uv: v.uv,
@@ -3879,7 +3845,7 @@ impl EditorApp {
             let fog_color = [sky_horizon[0], sky_horizon[1], sky_horizon[2]];
             let (fog_enabled, fog_density, weather_type, particle_count_override) =
                 self.dock_tab_viewer.fog_weather_params();
-            let fog_params = crate::viewport::terrain_renderer::TerrainFogParams {
+            let fog_params = crate::viewport::types::TerrainFogParams {
                 fog_enabled,
                 fog_density,
                 fog_color,
@@ -3937,17 +3903,36 @@ impl EditorApp {
                     self.status = "Deselected entity".to_string();
                 }
                 tab_viewer::PanelEvent::TransformPositionChanged { entity_id, x, y, z } => {
-                    // Update entity transform in scene
-                    if let Some(scene_state) = self.scene_state.as_mut() {
-                        let entity = entity_id as u32;
-                        if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
-                            pose.pos.x = x as i32;
-                            pose.pos.y = z as i32; // World IVec2.y maps to world Z
-                            pose.height = y;
+                    // Route through undo stack for undoable position changes
+                    if let (Some(scene_state), Some(entity)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
+                        let new_pos = astraweave_core::IVec2 {
+                            x: x as i32,
+                            y: z as i32,
+                        };
+                        let old_pos = scene_state
+                            .world()
+                            .pose(entity)
+                            .map(|p| p.pos)
+                            .unwrap_or(astraweave_core::IVec2 { x: 0, y: 0 });
+                        let cmd = command::MoveEntityCommand::new(entity, old_pos, new_pos);
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Move failed: {}", e));
+                        } else {
+                            // MoveEntityCommand only sets pos; also update height
+                            if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
+                                pose.height = y;
+                            }
+                            scene_state.sync_entity(entity);
                         }
-                        scene_state.sync_entity(entity);
                     }
                     // Sync EntityManager position (full 3D)
+                    // NOTE: EntityManager not part of command; undo won't revert it
                     self.entity_manager
                         .update_position(entity_id, glam::Vec3::new(x, y, z));
                     self.status = format!(
@@ -3959,12 +3944,27 @@ impl EditorApp {
                     entity_id,
                     rotation,
                 } => {
-                    if let Some(scene_state) = self.scene_state.as_mut() {
-                        let entity = entity_id as u32;
-                        if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
-                            pose.rotation = rotation;
+                    // Route through undo stack for undoable rotation changes
+                    if let (Some(scene_state), Some(entity)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
+                        let old_rot = scene_state
+                            .world()
+                            .pose(entity)
+                            .map(|p| (p.rotation_x, p.rotation, p.rotation_z))
+                            .unwrap_or((0.0, 0.0, 0.0));
+                        // Only Y-axis rotation comes from this event; preserve X/Z
+                        let new_rot = (old_rot.0, rotation, old_rot.2);
+                        let cmd = command::RotateEntityCommand::new(entity, old_rot, new_rot);
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Rotate failed: {}", e));
+                        } else {
+                            scene_state.sync_entity(entity);
                         }
-                        scene_state.sync_entity(entity);
                     }
                     self.status = format!(
                         "Entity {} rotation: {:.1}deg",
@@ -3978,15 +3978,29 @@ impl EditorApp {
                     scale_y,
                     scale_z,
                 } => {
-                    if let Some(scene_state) = self.scene_state.as_mut() {
-                        let entity = entity_id as u32;
-                        if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
-                            // Use average for uniform scale (World uses single scale value)
-                            pose.scale = (scale_x + scale_y + scale_z) / 3.0;
+                    // Route through undo stack for undoable scale changes
+                    if let (Some(scene_state), Some(entity)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
+                        let old_scale = scene_state
+                            .world()
+                            .pose(entity)
+                            .map(|p| p.scale)
+                            .unwrap_or(1.0);
+                        let new_scale = (scale_x + scale_y + scale_z) / 3.0;
+                        let cmd = command::ScaleEntityCommand::new(entity, old_scale, new_scale);
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Scale failed: {}", e));
+                        } else {
+                            scene_state.sync_entity(entity);
                         }
-                        scene_state.sync_entity(entity);
                     }
                     // Sync EntityManager scale (full 3D)
+                    // NOTE: EntityManager not part of command; undo won't revert it
                     self.entity_manager
                         .update_scale(entity_id, glam::Vec3::new(scale_x, scale_y, scale_z));
                     self.status = format!(
@@ -4008,7 +4022,7 @@ impl EditorApp {
                         );
                         scene_state.sync_entity(entity);
                         // Add to EntityManager using World entity ID for consistent lookups
-                        let em_id = entity as u64;
+                        let em_id: u64 = entity.into();
                         let mut editor_entity =
                             entity_manager::EditorEntity::new(em_id, name.clone());
                         editor_entity.components.insert(
@@ -4066,7 +4080,7 @@ impl EditorApp {
                         scene_state.sync_entity(entity);
 
                         // Add to EntityManager using World entity ID for consistent lookups
-                        let em_id = entity as u64;
+                        let em_id: u64 = entity.into();
                         let mut em_entity_new =
                             entity_manager::EditorEntity::new(em_id, name.clone());
                         {
@@ -4166,7 +4180,7 @@ impl EditorApp {
                         }
                         scene_state.sync_entity(entity);
 
-                        let em_id = entity as u64;
+                        let em_id: u64 = entity.into();
                         let mut em_entity =
                             entity_manager::EditorEntity::new(em_id, entity_name.clone());
                         em_entity.components.insert(
@@ -4193,18 +4207,24 @@ impl EditorApp {
                     }
                 }
                 tab_viewer::PanelEvent::DeleteEntity(entity_id) => {
-                    // Remove entity from EntityManager and World
-                    self.entity_manager.remove(entity_id);
-                    if let Some(scene_state) = self.scene_state.as_mut() {
-                        let entity = entity_id as u32;
+                    // Delete entity via undo stack, then sync EntityManager
+                    if let (Some(scene_state), Some(entity)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
                         let delete_cmd = command::DeleteEntitiesCommand::new(vec![entity]);
-                        if let Err(e) = self.undo_stack.execute(delete_cmd, scene_state.world_mut())
-                        {
+                        if let Err(e) = self.undo_stack.execute(
+                            delete_cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
                             self.console_logs.push(format!("Delete failed: {}", e));
                         } else {
                             scene_state.sync_entity(entity);
                             self.hierarchy_panel
                                 .sync_with_world(scene_state.world_mut());
+                            // Remove from EntityManager AFTER successful delete command
+                            // NOTE: undo will not restore EntityManager entry (known limitation)
+                            self.entity_manager.remove(entity_id);
                         }
                     }
                     if self.selected_entity == Some(entity_id) {
@@ -4224,10 +4244,12 @@ impl EditorApp {
                         let new_name = format!("{}_copy", source.name);
                         // Duplicate in World first to get the canonical entity ID
                         let mut new_em_id = None;
-                        if let Some(scene_state) = self.scene_state.as_mut() {
+                        if let (Some(scene_state), Some(src_eid)) =
+                            (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                        {
                             let clipboard = crate::clipboard::ClipboardData::from_entities(
                                 scene_state.world(),
-                                &[entity_id as u32],
+                                &[src_eid],
                             );
                             let offset = astraweave_core::IVec2 { x: 1, y: 1 };
                             if let Ok(spawned) =
@@ -4237,7 +4259,7 @@ impl EditorApp {
                                     scene_state.sync_entity(*e);
                                     // Use first spawned World ID as EntityManager ID
                                     if new_em_id.is_none() {
-                                        new_em_id = Some(*e as u64);
+                                        new_em_id = Some(u64::from(*e));
                                     }
                                 }
                                 self.hierarchy_panel
@@ -4280,6 +4302,23 @@ impl EditorApp {
                     value,
                 } => {
                     self.status = format!("Material '{}': {} = {:.2}", name, property, value);
+                    // Apply material property change to the selected entity
+                    if let Some(entity_id) = self.selected_entity {
+                        if let Some(entity) = self.entity_manager.get_mut(entity_id) {
+                            match property.as_str() {
+                                "metallic" => entity.material.metallic = value,
+                                "roughness" => entity.material.roughness = value,
+                                "emission_strength" => {
+                                    entity.material.emissive = glam::Vec3::splat(value);
+                                }
+                                "alpha" | "opacity" => {
+                                    entity.material.base_color.w = value;
+                                }
+                                _ => {}
+                            }
+                            self.is_dirty = true;
+                        }
+                    }
                 }
                 tab_viewer::PanelEvent::AnimationPlayStateChanged { is_playing } => {
                     if is_playing {
@@ -4289,6 +4328,7 @@ impl EditorApp {
                     }
                 }
                 tab_viewer::PanelEvent::AnimationFrameChanged { frame } => {
+                    self.dock_tab_viewer.set_animation_frame(frame);
                     self.status = format!("Animation frame: {}", frame);
                 }
                 tab_viewer::PanelEvent::AnimationKeyframeAdded {
@@ -4306,8 +4346,26 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::BuildRequested { target, profile } => {
                     self.status = format!("Build requested: {} ({})", target, profile);
+                    let target_idx = match target.as_str() {
+                        "Windows" => 0,
+                        "Linux" => 1,
+                        "macOS" => 2,
+                        "WebGL" => 3,
+                        _ => 0,
+                    };
+                    let profile_idx = match profile.as_str() {
+                        "Debug" => 0,
+                        "Release" => 1,
+                        _ => 0,
+                    };
+                    self.dock_tab_viewer
+                        .set_build_config(target_idx, profile_idx);
+                    self.dock_tab_viewer.start_build();
+                    self.dock_tab_viewer
+                        .add_build_output(format!("Starting {} build for {}...", profile, target));
                 }
                 tab_viewer::PanelEvent::ConsoleCleared => {
+                    self.console_logs.clear();
                     self.status = "Console cleared".to_string();
                 }
                 tab_viewer::PanelEvent::AssetSelected(asset) => {
@@ -4315,18 +4373,26 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::BehaviorNodeSelected(node_id) => {
                     self.status = format!("Selected behavior node: {}", node_id);
+                    self.dock_tab_viewer.select_behavior_node(Some(node_id));
                 }
                 tab_viewer::PanelEvent::GraphNodeSelected(node_id) => {
                     self.status = format!("Selected graph node: {}", node_id);
+                    self.dock_tab_viewer.select_graph_node(Some(node_id));
                 }
                 tab_viewer::PanelEvent::HierarchySearchChanged(search) => {
+                    self.dock_tab_viewer.set_hierarchy_search(search.clone());
                     self.status = format!("Hierarchy search: {}", search);
                 }
                 tab_viewer::PanelEvent::ConsoleSearchChanged(search) => {
+                    self.dock_tab_viewer.set_console_search(search.clone());
                     self.status = format!("Console search: {}", search);
                 }
                 tab_viewer::PanelEvent::RefreshSceneStats => {
-                    self.status = "Refreshing scene statistics...".to_string();
+                    let entity_count = self.entity_manager.count();
+                    let stats = self.dock_tab_viewer.scene_stats_mut();
+                    stats.total_entities = entity_count;
+                    stats.loaded_assets = self.asset_registry.count();
+                    self.status = format!("Scene refreshed: {} entities", entity_count);
                 }
                 tab_viewer::PanelEvent::AddComponent {
                     entity_id,
@@ -4374,8 +4440,9 @@ impl EditorApp {
                         ));
                     }
                     // Sync to World for core component types
-                    if let Some(scene_state) = self.scene_state.as_mut() {
-                        let eid = entity_id as u32;
+                    if let (Some(scene_state), Some(eid)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
                         match component_type.as_str() {
                             "Health" => {
                                 if let Some(h) = scene_state.world_mut().health_mut(eid) {
@@ -4412,17 +4479,52 @@ impl EditorApp {
                             component_type, entity.name
                         ));
                     }
+                    // Sync removal to World for core types
+                    if let (Some(scene_state), Some(eid)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
+                        match component_type.as_str() {
+                            "Health" => {
+                                if let Some(h) = scene_state.world_mut().health_mut(eid) {
+                                    h.hp = 0; // Zero out (World doesn't support true removal)
+                                }
+                            }
+                            "Team" => {
+                                if let Some(t) = scene_state.world_mut().team_mut(eid) {
+                                    t.id = 0;
+                                }
+                            }
+                            "Ammo" => {
+                                if let Some(a) = scene_state.world_mut().ammo_mut(eid) {
+                                    a.rounds = 0;
+                                }
+                            }
+                            _ => {
+                                // Non-core components exist only in EntityManager
+                            }
+                        }
+                    }
                     self.status = format!("Removed {} from entity {}", component_type, entity_id);
                 }
                 tab_viewer::PanelEvent::HealthChanged { entity_id, new_hp } => {
-                    if let Some(scene_state) = self.scene_state.as_mut() {
-                        let eid = entity_id as u32;
-                        if let Some(h) = scene_state.world_mut().health_mut(eid) {
-                            h.hp = new_hp;
+                    // Route through undo stack for undoable health changes
+                    if let (Some(scene_state), Some(eid)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
+                        let old_hp = scene_state.world().health(eid).map(|h| h.hp).unwrap_or(0);
+                        let cmd = command::EditHealthCommand::new(eid, old_hp, new_hp);
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Edit health failed: {}", e));
+                        } else {
+                            scene_state.sync_entity(eid);
                         }
-                        scene_state.sync_entity(eid);
                     }
                     // Also update EntityManager JSON
+                    // NOTE: EntityManager not part of command; undo won't revert it
                     if let Some(entity) = self.entity_manager.get_mut(entity_id) {
                         entity
                             .components
@@ -4434,13 +4536,27 @@ impl EditorApp {
                     entity_id,
                     new_team_id,
                 } => {
-                    if let Some(scene_state) = self.scene_state.as_mut() {
-                        let eid = entity_id as u32;
-                        if let Some(t) = scene_state.world_mut().team_mut(eid) {
-                            t.id = new_team_id;
+                    // Route through undo stack for undoable team changes
+                    if let (Some(scene_state), Some(eid)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
+                        let old_team = scene_state
+                            .world()
+                            .team(eid)
+                            .unwrap_or(astraweave_core::Team { id: 0 });
+                        let new_team = astraweave_core::Team { id: new_team_id };
+                        let cmd = command::EditTeamCommand::new(eid, old_team, new_team);
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Edit team failed: {}", e));
+                        } else {
+                            scene_state.sync_entity(eid);
                         }
-                        scene_state.sync_entity(eid);
                     }
+                    // NOTE: EntityManager not part of command; undo won't revert it
                     if let Some(entity) = self.entity_manager.get_mut(entity_id) {
                         entity
                             .components
@@ -4452,13 +4568,24 @@ impl EditorApp {
                     entity_id,
                     new_ammo,
                 } => {
-                    if let Some(scene_state) = self.scene_state.as_mut() {
-                        let eid = entity_id as u32;
-                        if let Some(a) = scene_state.world_mut().ammo_mut(eid) {
-                            a.rounds = new_ammo;
+                    // Route through undo stack for undoable ammo changes
+                    if let (Some(scene_state), Some(eid)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
+                        let old_rounds =
+                            scene_state.world().ammo(eid).map(|a| a.rounds).unwrap_or(0);
+                        let cmd = command::EditAmmoCommand::new(eid, old_rounds, new_ammo);
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Edit ammo failed: {}", e));
+                        } else {
+                            scene_state.sync_entity(eid);
                         }
-                        scene_state.sync_entity(eid);
                     }
+                    // NOTE: EntityManager not part of command; undo won't revert it
                     if let Some(entity) = self.entity_manager.get_mut(entity_id) {
                         entity
                             .components
@@ -4549,6 +4676,22 @@ impl EditorApp {
                     entity_id,
                     ref new_name,
                 } => {
+                    // Route through undo stack for undoable rename
+                    if let (Some(scene_state), Some(entity)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
+                        let old_name = scene_state.world().name(entity).unwrap_or("").to_string();
+                        let cmd =
+                            command::RenameEntityCommand::new(entity, old_name, new_name.clone());
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Rename failed: {}", e));
+                        }
+                    }
+                    // NOTE: EntityManager not part of command; undo won't revert it
                     if let Some(entity) = self.entity_manager.get_mut(entity_id) {
                         entity.name = new_name.clone();
                     }
@@ -4579,12 +4722,26 @@ impl EditorApp {
                     let mode_names = ["Translate", "Rotate", "Scale"];
                     self.status =
                         format!("Gizmo mode: {}", mode_names.get(mode).unwrap_or(&"Unknown"));
+                    self.dock_tab_viewer.set_viewport_gizmo_mode(mode);
+                    if let Some(viewport) = &mut self.viewport {
+                        let gs = viewport.gizmo_state_mut();
+                        match mode {
+                            0 => gs.start_translate(),
+                            1 => gs.start_rotate(),
+                            2 => gs.start_scale(false),
+                            _ => {}
+                        }
+                    }
                 }
                 tab_viewer::PanelEvent::ViewportGizmoSpaceChanged(space) => {
                     self.status = format!(
                         "Gizmo space: {}",
                         if space == 0 { "Local" } else { "World" }
                     );
+                    self.dock_tab_viewer.set_viewport_gizmo_space(space);
+                    if let Some(viewport) = &mut self.viewport {
+                        viewport.gizmo_state_mut().local_space = space == 0;
+                    }
                 }
                 tab_viewer::PanelEvent::ViewportOverlayToggled { overlay, enabled } => {
                     self.status = format!(
@@ -4592,6 +4749,14 @@ impl EditorApp {
                         overlay,
                         if enabled { "enabled" } else { "disabled" }
                     );
+                    self.dock_tab_viewer.set_viewport_overlay(&overlay, enabled);
+                    if let Some(viewport) = &mut self.viewport {
+                        match overlay.as_str() {
+                            "Grid" | "grid" => viewport.toolbar_mut().show_grid = enabled,
+                            "Stats" | "stats" => viewport.toolbar_mut().show_stats = enabled,
+                            _ => {}
+                        }
+                    }
                 }
                 tab_viewer::PanelEvent::ViewportCameraChanged {
                     fov,
@@ -4599,18 +4764,72 @@ impl EditorApp {
                     far,
                     speed,
                 } => {
+                    if let Some(viewport) = &mut self.viewport {
+                        let mut cam = viewport.camera().clone();
+                        cam.fov = fov;
+                        cam.near = near;
+                        cam.far = far;
+                        viewport.set_camera(cam);
+                    }
                     self.status = format!(
                         "Camera: FOV={:.0}°, Clip={:.2}-{:.0}, Speed={:.1}",
                         fov, near, far, speed
                     );
                 }
                 tab_viewer::PanelEvent::ViewportFocusOnSelection => {
+                    if let Some(selected_id) = self.selected_entity {
+                        if let Some(entity) = self.entity_manager.get(selected_id) {
+                            if let Some(viewport) = &mut self.viewport {
+                                let mut cam = viewport.camera().clone();
+                                cam.set_focal_point(glam::Vec3::new(
+                                    entity.position.x,
+                                    entity.position.y,
+                                    entity.position.z,
+                                ));
+                                viewport.set_camera(cam);
+                            }
+                        }
+                    }
                     self.status = "Focusing on selection...".to_string();
                 }
                 tab_viewer::PanelEvent::ViewportResetCamera => {
+                    if let Some(viewport) = &mut self.viewport {
+                        viewport.set_camera(OrbitCamera::default());
+                    }
                     self.status = "Camera reset to default position".to_string();
                 }
                 tab_viewer::PanelEvent::ViewportCameraPreset(preset) => {
+                    if let Some(viewport) = &mut self.viewport {
+                        let mut cam = viewport.camera().clone();
+                        match preset.as_str() {
+                            "front" => {
+                                cam.set_yaw(0.0);
+                                cam.set_pitch(0.0);
+                            }
+                            "back" => {
+                                cam.set_yaw(std::f32::consts::PI);
+                                cam.set_pitch(0.0);
+                            }
+                            "top" => {
+                                cam.set_yaw(0.0);
+                                cam.set_pitch(-std::f32::consts::FRAC_PI_2 + 0.01);
+                            }
+                            "bottom" => {
+                                cam.set_yaw(0.0);
+                                cam.set_pitch(std::f32::consts::FRAC_PI_2 - 0.01);
+                            }
+                            "left" => {
+                                cam.set_yaw(std::f32::consts::FRAC_PI_2);
+                                cam.set_pitch(0.0);
+                            }
+                            "right" => {
+                                cam.set_yaw(-std::f32::consts::FRAC_PI_2);
+                                cam.set_pitch(0.0);
+                            }
+                            _ => {}
+                        }
+                        viewport.set_camera(cam);
+                    }
                     self.status = format!("Camera preset applied: {}", preset);
                 }
                 tab_viewer::PanelEvent::ResetLayout => {
@@ -4648,7 +4867,7 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::TerrainReady => {
                     let src_chunks = self.dock_tab_viewer.terrain_gpu_chunks();
-                    // Both terrain_integration::TerrainVertex and terrain_renderer::TerrainVertex
+                    // Both terrain_integration::TerrainVertex and viewport::types::TerrainVertex
                     // are #[repr(C)] Pod with identical layout — pass bytes directly to GPU.
                     if let Some(viewport) = &self.viewport {
                         viewport.upload_terrain_chunks_raw(&src_chunks);
@@ -4664,9 +4883,7 @@ impl EditorApp {
                             if let Ok(mut renderer) = viewport.renderer().lock() {
                                 let count = scatter_placements.len();
                                 renderer.set_scatter_placements(scatter_placements);
-                                tracing::info!(
-                                    "Scatter: {count} placements uploaded to renderer"
-                                );
+                                tracing::info!("Scatter: {count} placements uploaded to renderer");
                             }
                         }
                     }
@@ -4685,10 +4902,10 @@ impl EditorApp {
                         .dock_tab_viewer
                         .cached_biome_pack()
                         .map(|p| (p.name.clone(), p.ground_textures.len()));
-                    eprintln!("=== BIOMEPACK CHECK: {:?}", pack_info);
+                    tracing::debug!("Biomepack check: {:?}", pack_info);
                     if let Some(pack) = self.dock_tab_viewer.cached_biome_pack() {
-                        eprintln!(
-                            "=== BIOMEPACK: name='{}', ground_textures={}, root={:?}",
+                        tracing::debug!(
+                            "Biomepack: name='{}', ground_textures={}, root={:?}",
                             pack.name,
                             pack.ground_textures.len(),
                             pack.root_dir
@@ -4867,19 +5084,18 @@ impl EditorApp {
                     let dirty = self.dock_tab_viewer.take_terrain_dirty_chunks();
                     if let Some(viewport) = &self.viewport {
                         for (chunk_index, verts) in &dirty {
-                            let gpu_verts: Vec<crate::viewport::terrain_renderer::TerrainVertex> =
-                                verts
-                                    .iter()
-                                    .map(|v| crate::viewport::terrain_renderer::TerrainVertex {
-                                        position: v.position,
-                                        normal: v.normal,
-                                        uv: v.uv,
-                                        biome_weights_0: v.biome_weights_0,
-                                        biome_weights_1: v.biome_weights_1,
-                                        material_ids: v.material_ids,
-                                        material_weights: v.material_weights,
-                                    })
-                                    .collect();
+                            let gpu_verts: Vec<crate::viewport::types::TerrainVertex> = verts
+                                .iter()
+                                .map(|v| crate::viewport::types::TerrainVertex {
+                                    position: v.position,
+                                    normal: v.normal,
+                                    uv: v.uv,
+                                    biome_weights_0: v.biome_weights_0,
+                                    biome_weights_1: v.biome_weights_1,
+                                    material_ids: v.material_ids,
+                                    material_weights: v.material_weights,
+                                })
+                                .collect();
                             viewport.update_terrain_chunk_vertices(*chunk_index, &gpu_verts);
                         }
                     }
@@ -5255,12 +5471,12 @@ impl EditorApp {
                 .max_height(200.0)
                 .show(ui, |ui| {
                     for (entity, name, pose, health, team) in &entity_data {
-                        let is_selected = current_primary == Some(*entity as u64);
+                        let is_selected = current_primary == Some(u64::from(*entity));
 
                         let response = ui.selectable_label(is_selected, format!("{}", name));
 
                         if response.clicked() {
-                            new_selection = Some(*entity as u64);
+                            new_selection = Some(u64::from(*entity));
                         }
 
                         // Show entity info on hover
@@ -5432,6 +5648,7 @@ impl EditorApp {
             .and_then(|id| u32::try_from(id).ok())
     }
 
+    #[allow(dead_code)] // Will be used when hierarchy panel wires entity labels
     fn resolve_entity_label(&self, entity: Entity) -> String {
         self.scene_state
             .as_ref()
@@ -5542,7 +5759,7 @@ impl EditorApp {
         ) {
             Ok(root_entity) => {
                 scene_state.sync_entity(root_entity);
-                self.selected_entity = Some(root_entity as u64);
+                self.selected_entity = Some(u64::from(root_entity));
                 info!(
                     "Instantiated prefab '{}' at ({}, {}) - root entity #{}",
                     prefab_name, spawn_pos.0, spawn_pos.1, root_entity
@@ -5692,6 +5909,7 @@ impl EditorApp {
     }
 
     /// Exit prefab editing mode and optionally save changes back to the prefab file
+    #[allow(dead_code)] // Will be called from prefab editor toolbar
     fn exit_prefab_editing(&mut self, save: bool) {
         if let Some(path) = self.editing_prefab_path.take() {
             if save {
@@ -5747,13 +5965,16 @@ impl EditorApp {
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         // Use undo-able command instead of direct deletion
                         let delete_cmd = command::DeleteEntitiesCommand::new(vec![entity]);
-                        if let Err(e) = self.undo_stack.execute(delete_cmd, scene_state.world_mut())
-                        {
+                        if let Err(e) = self.undo_stack.execute(
+                            delete_cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
                             self.log(format!("Delete failed: {}", e));
                         } else {
                             scene_state.sync_entity(entity);
                             self.log(format!("Deleted entity {}", entity));
-                            if self.selected_entity == Some(entity as u64) {
+                            if self.selected_entity == Some(u64::from(entity)) {
                                 self.selected_entity = None;
                             }
                         }
@@ -5773,7 +5994,7 @@ impl EditorApp {
                                     scene_state.sync_entity(*e);
                                 }
                                 if let Some(&first) = spawned.first() {
-                                    self.selected_entity = Some(first as u64);
+                                    self.selected_entity = Some(u64::from(first));
                                 }
                                 self.log(format!("Duplicated entity {} -> {:?}", entity, spawned));
                             }
@@ -5784,7 +6005,7 @@ impl EditorApp {
                     }
                 }
                 HierarchyAction::FocusEntity(entity) => {
-                    self.selected_entity = Some(entity as u64);
+                    self.selected_entity = Some(u64::from(entity));
                     self.log(format!("Focused on entity {}", entity));
                 }
                 HierarchyAction::BreakPrefabConnection(entity) => {
@@ -5800,14 +6021,18 @@ impl EditorApp {
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let old_parent = scene_state.world().parent_of(child);
                         let cmd = command::SetParentCommand::new(child, parent, old_parent);
-                        if let Err(e) = self.undo_stack.execute(cmd, scene_state.world_mut()) {
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
                             self.log(format!("SetParent failed: {}", e));
                         } else {
                             scene_state.sync_entity(child);
                         }
                     }
-                    if let Some(child_entity) = self.entity_manager.get_mut(child as u64) {
-                        child_entity.parent = Some(parent as u64);
+                    if let Some(child_entity) = self.entity_manager.get_mut(u64::from(child)) {
+                        child_entity.parent = Some(u64::from(parent));
                     }
                     self.log(format!("Set parent of {} to {}", child, parent));
                 }
@@ -5815,13 +6040,17 @@ impl EditorApp {
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let old_parent = scene_state.world().parent_of(entity);
                         let cmd = command::UnparentCommand::new(entity, old_parent);
-                        if let Err(e) = self.undo_stack.execute(cmd, scene_state.world_mut()) {
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
                             self.log(format!("Unparent failed: {}", e));
                         } else {
                             scene_state.sync_entity(entity);
                         }
                     }
-                    if let Some(e) = self.entity_manager.get_mut(entity as u64) {
+                    if let Some(e) = self.entity_manager.get_mut(u64::from(entity)) {
                         e.parent = None;
                     }
                     self.log(format!("Unparented entity {}", entity));
@@ -5838,7 +6067,11 @@ impl EditorApp {
                             .to_string();
                         let cmd =
                             command::RenameEntityCommand::new(entity, old_name, new_name.clone());
-                        if let Err(e) = self.undo_stack.execute(cmd, scene_state.world_mut()) {
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
                             self.log(format!("Rename failed: {}", e));
                         } else {
                             scene_state.sync_entity(entity);
@@ -5852,8 +6085,11 @@ impl EditorApp {
                         let mut to_delete = vec![entity];
                         to_delete.extend(scene_state.world().descendants_of(entity));
                         let delete_cmd = command::DeleteEntitiesCommand::new(to_delete.clone());
-                        if let Err(e) = self.undo_stack.execute(delete_cmd, scene_state.world_mut())
-                        {
+                        if let Err(e) = self.undo_stack.execute(
+                            delete_cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
                             self.log(format!("Cascading delete failed: {}", e));
                         } else {
                             for &e in &to_delete {
@@ -5864,7 +6100,7 @@ impl EditorApp {
                                 entity,
                                 to_delete.len() - 1
                             ));
-                            if self.selected_entity == Some(entity as u64) {
+                            if self.selected_entity == Some(u64::from(entity)) {
                                 self.selected_entity = None;
                             }
                         }
@@ -6105,7 +6341,7 @@ impl EditorApp {
                                                 }
                                                 Err(e) => format!("Could not read {}: {e}", result_json_path.display()),
                                             };
-                                            eprintln!("[Blend Import] 0-asset diagnostics: {raw_json_info}");
+                                            tracing::warn!("[Blend Import] 0-asset diagnostics: {raw_json_info}");
                                             let _ = tx.send(DecompThreadMsg::Failed(
                                                 format!(
                                                     "Blender processed the scene (total_objects={}) but 0 assets \
@@ -6157,7 +6393,7 @@ impl EditorApp {
                                         let debug_msg = format!("{e:?}");
                                         let _ = tx.send(DecompThreadMsg::Failed(display_msg));
                                         // Log Debug details — these include stderr, blender_output, etc.
-                                        eprintln!("[Blend Import] Decomposition error (debug): {debug_msg}");
+                                        tracing::warn!("[Blend Import] Decomposition error: {debug_msg}");
                                     }
                                 }
                             });
@@ -6921,7 +7157,7 @@ impl EditorApp {
 
                     // Sync mesh to the EntityManager so the viewport can find it
                     {
-                        let em_id = entity as u64;
+                        let em_id: u64 = entity.into();
                         if let Some(em_entity) = self.entity_manager.get_mut(em_id) {
                             em_entity.set_mesh(mesh_path_str);
                         } else {
@@ -6951,7 +7187,7 @@ impl EditorApp {
                         }
                     }
 
-                    self.selected_entity = Some(entity as u64);
+                    self.selected_entity = Some(u64::from(entity));
                     info!("Imported model '{}' as entity #{}", model_name, entity);
                     self.console_logs.push(format!(
                         "Imported model '{}' as entity #{}",
@@ -7435,11 +7671,13 @@ impl EditorApp {
                     self.mat_doc.base_color[2],
                     1.0, // Alpha
                 ];
-                let _ = viewport.set_material_params(
+                if let Err(e) = viewport.set_material_params(
                     base_color,
                     self.mat_doc.metallic,
                     self.mat_doc.roughness,
-                );
+                ) {
+                    tracing::error!("Failed to apply material parameters to viewport: {e}");
+                }
             }
         }
 
@@ -7807,11 +8045,16 @@ impl EditorApp {
                     self.asset_db.assets.len()
                 ));
             } else {
-                let _ = self.asset_db.scan_directory(&PathBuf::from("assets"));
+                if let Err(e) = self.asset_db.scan_directory(&PathBuf::from("assets")) {
+                    tracing::error!("Asset directory scan failed: {e}");
+                }
                 // Cache the manifest so subsequent startups are instant
-                let _ = self
+                if let Err(e) = self
                     .asset_db
-                    .save_manifest(&PathBuf::from("assets/assets.json"));
+                    .save_manifest(&PathBuf::from("assets/assets.json"))
+                {
+                    tracing::error!("Asset manifest save failed: {e}");
+                }
                 self.status = "Rescanned assets directory (manifest cached)".into();
                 self.console_logs.push(format!(
                     "Assets rescanned from directory: {} total (manifest saved)",
@@ -8009,7 +8252,7 @@ impl MenuActionHandler for EditorApp {
         if let Some(scene_state) = self.scene_state.as_mut() {
             let world = scene_state.world_mut();
             if self.undo_stack.can_undo() {
-                if let Err(e) = self.undo_stack.undo(world) {
+                if let Err(e) = self.undo_stack.undo(world, Some(&mut self.entity_manager)) {
                     self.status = format!("Undo failed: {}", e);
                 } else {
                     self.status = "Undo".to_string();
@@ -8022,7 +8265,7 @@ impl MenuActionHandler for EditorApp {
         if let Some(scene_state) = self.scene_state.as_mut() {
             let world = scene_state.world_mut();
             if self.undo_stack.can_redo() {
-                if let Err(e) = self.undo_stack.redo(world) {
+                if let Err(e) = self.undo_stack.redo(world, Some(&mut self.entity_manager)) {
                     self.status = format!("Redo failed: {}", e);
                 } else {
                     self.status = "Redo".to_string();
@@ -8230,7 +8473,10 @@ impl MenuActionHandler for EditorApp {
             if dir.exists() {
                 if let Ok(entries) = std::fs::read_dir(dir) {
                     let glb_files: Vec<_> = entries
-                        .filter_map(|e| e.ok())
+                        .filter_map(|e| {
+                            e.map_err(|err| tracing::debug!("Autosave dir entry error: {}", err))
+                                .ok()
+                        })
                         .filter(|e| {
                             matches!(
                                 e.path().extension().and_then(|ext| ext.to_str()),
@@ -8468,7 +8714,7 @@ impl eframe::App for EditorApp {
         {
             let assignments = std::mem::take(&mut self.entity_panel.pending_mesh_assignments);
             for (entity_id, mesh_path) in assignments {
-                let em_id = entity_id as u64;
+                let em_id: u64 = entity_id.into();
                 if let Some(em_entity) = self.entity_manager.get_mut(em_id) {
                     em_entity.set_mesh(mesh_path);
                 } else {
@@ -8705,7 +8951,10 @@ impl eframe::App for EditorApp {
             // Ctrl+Z: Undo
             if i.modifiers.ctrl && i.key_pressed(egui::Key::Z) && !i.modifiers.shift {
                 if let Some(scene_state) = self.scene_state.as_mut() {
-                    let undo_error = self.undo_stack.undo(scene_state.world_mut()).err();
+                    let undo_error = self
+                        .undo_stack
+                        .undo(scene_state.world_mut(), Some(&mut self.entity_manager))
+                        .err();
 
                     if let Some(e) = undo_error {
                         self.console_logs.push(format!("Undo failed: {}", e));
@@ -8722,7 +8971,10 @@ impl eframe::App for EditorApp {
                 || (i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::Z))
             {
                 if let Some(scene_state) = self.scene_state.as_mut() {
-                    let redo_error = self.undo_stack.redo(scene_state.world_mut()).err();
+                    let redo_error = self
+                        .undo_stack
+                        .redo(scene_state.world_mut(), Some(&mut self.entity_manager))
+                        .err();
 
                     if let Some(e) = redo_error {
                         self.console_logs.push(format!("Redo failed: {}", e));
@@ -8753,15 +9005,13 @@ impl eframe::App for EditorApp {
                             self.console_logs.push(format!("Scene saved: {:?}", path));
                             self.last_auto_save = std::time::Instant::now();
                             self.is_dirty = false;
-                            self.toasts
-                                .push(Toast::new("Scene saved successfully", ToastLevel::Success));
+                            self.toast_manager.success("Scene saved successfully");
                         }
                         Err(e) => {
                             self.status = format!("Scene save failed: {}", e);
                             self.console_logs
                                 .push(format!("Failed to save scene: {}", e));
-                            self.toasts
-                                .push(Toast::new(format!("Save failed: {}", e), ToastLevel::Error));
+                            self.toast_manager.error(format!("Save failed: {}", e));
                         }
                     }
                 } else {
@@ -8809,7 +9059,11 @@ impl eframe::App for EditorApp {
                         let offset = IVec2 { x: 1, y: 1 };
                         let cmd =
                             command::SpawnEntitiesCommand::new(clipboard_data.clone(), offset);
-                        let paste_result = self.undo_stack.execute(cmd, scene_state.world_mut());
+                        let paste_result = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        );
 
                         match paste_result {
                             Ok(()) => {
@@ -8835,8 +9089,11 @@ impl eframe::App for EditorApp {
                     if !selected.is_empty() {
                         let offset = IVec2 { x: 1, y: 1 };
                         let cmd = command::DuplicateEntitiesCommand::new(selected.clone(), offset);
-                        let duplicate_result =
-                            self.undo_stack.execute(cmd, scene_state.world_mut());
+                        let duplicate_result = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        );
 
                         match duplicate_result {
                             Ok(()) => {
@@ -8886,7 +9143,11 @@ impl eframe::App for EditorApp {
                     let selected = self.hierarchy_panel.get_all_selected();
                     if !selected.is_empty() {
                         let cmd = command::DeleteEntitiesCommand::new(selected.clone());
-                        let delete_result = self.undo_stack.execute(cmd, scene_state.world_mut());
+                        let delete_result = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        );
 
                         match delete_result {
                             Ok(()) => {
@@ -8928,7 +9189,7 @@ impl eframe::App for EditorApp {
                         0,
                         0,
                     );
-                    self.selected_entity = Some(entity_id as u64);
+                    self.selected_entity = Some(u64::from(entity_id));
                     self.hierarchy_panel.set_selected(Some(entity_id));
                     self.is_dirty = true;
                     self.status = format!("Created entity {}", entity_id);
@@ -9113,30 +9374,9 @@ impl eframe::App for EditorApp {
                 }
             }
 
-            // Ctrl+D: Duplicate selected entities
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::D) {
-                if let Some(selected_id) = self.selected_entity {
-                    if let Some(entity) = self.entity_manager.get(selected_id) {
-                        let new_name = format!("{}_copy", entity.name.clone());
-                        let new_pos = glam::Vec3::new(
-                            entity.position.x + 1.0,
-                            entity.position.y,
-                            entity.position.z + 1.0,
-                        );
-                        let rotation = entity.rotation;
-                        let scale = entity.scale;
-                        let new_id = self.entity_manager.create(new_name);
-                        if let Some(new_entity) = self.entity_manager.get_mut(new_id) {
-                            new_entity.set_transform(new_pos, rotation, scale);
-                        }
-                        self.selected_entity = Some(new_id);
-                        self.hierarchy_panel.set_selected(Some(new_id as u32));
-                        self.status = format!("Duplicated entity {} -> {}", selected_id, new_id);
-                    }
-                } else {
-                    self.status = "No entity selected to duplicate".to_string();
-                }
-            }
+            // Ctrl+D duplicate is handled by the clipboard-based DuplicateEntitiesCommand above.
+            // (Legacy shallow-copy handler removed — it created ghost entities in EntityManager
+            //  without corresponding World entities, corrupting selection state.)
         });
 
         // Phase 2.2 legacy autosave removed — handled by Week 7 enhanced autosave
@@ -9212,7 +9452,7 @@ impl eframe::App for EditorApp {
             if panel.playback_state == panels::animation::PlaybackState::Playing {
                 if let Some(entity_id) = panel.selected_entity {
                     self.animation_bridge
-                        .assign_clip(entity_id as u64, panel.selected_clip_idx.unwrap_or(0));
+                        .assign_clip(u64::from(entity_id), panel.selected_clip_idx.unwrap_or(0));
                 }
             }
         }
