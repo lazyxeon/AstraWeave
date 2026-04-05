@@ -1,9 +1,12 @@
-// BRDF Integration LUT — Split-Sum Approximation
+// BRDF Integration LUT — Split-Sum Approximation (3-channel)
 //
-// Generates a 2D look-up table storing (Fresnel scale, Fresnel bias) for the
-// split-sum approximation of specular IBL. Indexed by (NdotV, roughness).
-// Output format: RG16Float (R=scale, G=bias).
-// Reference: Epic Games, "Real Shading in Unreal Engine 4", 2013.
+// Generates a 2D look-up table indexed by (NdotV, roughness):
+//   R = GGX specular scale (F0 coefficient)
+//   G = GGX specular bias (F90 coefficient / energy compensation 'r')
+//   B = Charlie cloth sheen DG term
+//
+// Output format: Rgba16Float
+// Reference: Google Filament (DFG.cpp), Epic Games UE4 2013, Estevez & Kulla 2017.
 
 const PI: f32 = 3.14159265359;
 
@@ -49,6 +52,19 @@ fn v_smith_ggx_correlated(n_dot_v: f32, n_dot_l: f32, alpha: f32) -> f32 {
     return 0.5 / (ggx_v + ggx_l + 0.0001);
 }
 
+// Charlie sheen distribution (Estevez & Kulla 2017)
+fn d_charlie(n_dot_h: f32, roughness: f32) -> f32 {
+    let alpha = roughness * roughness;
+    let inv_alpha = 1.0 / max(alpha, 0.001);
+    let sin2 = 1.0 - n_dot_h * n_dot_h;
+    return (2.0 + inv_alpha) * pow(max(sin2, 0.0), inv_alpha * 0.5) / (2.0 * PI);
+}
+
+// Ashikhmin visibility for cloth (simplified — no masking/shadowing)
+fn v_ashikhmin(n_dot_v: f32, n_dot_l: f32) -> f32 {
+    return 1.0 / (4.0 * (n_dot_l + n_dot_v - n_dot_l * n_dot_v) + 0.0001);
+}
+
 @compute @workgroup_size(8, 8, 1)
 fn cs_brdf_lut(@builtin(global_invocation_id) gid: vec3<u32>) {
     let size = params.size;
@@ -65,6 +81,7 @@ fn cs_brdf_lut(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     var scale = 0.0;
     var bias = 0.0;
+    var cloth_dg = 0.0;
     let sample_count = 256u;
 
     for (var i = 0u; i < sample_count; i++) {
@@ -77,19 +94,31 @@ fn cs_brdf_lut(@builtin(global_invocation_id) gid: vec3<u32>) {
         let v_dot_h = max(dot(v, h), 0.0);
 
         if n_dot_l > 0.0 {
+            // ── GGX specular (R + G channels) ───────────────────────────
             let alpha = max(roughness * roughness, 0.002);
             let vis = v_smith_ggx_correlated(n_dot_v, n_dot_l, alpha);
-            // V already includes 1/(4*NdotV*NdotL); recover G_vis for integration:
-            // G_vis = V * 4 * NdotL * VdotH / NdotH
             let g_vis = vis * 4.0 * n_dot_l * v_dot_h / (n_dot_h + 0.0001);
             let fc = pow(1.0 - v_dot_h, 5.0);
             scale += (1.0 - fc) * g_vis;
             bias += fc * g_vis;
+
+            // ── Charlie cloth sheen (B channel) ─────────────────────────
+            // DG term: Charlie NDF * Ashikhmin visibility, importance-sampled
+            // with the GGX distribution (reuses the same sample direction).
+            let d_cloth = d_charlie(n_dot_h, roughness);
+            let v_cloth = v_ashikhmin(n_dot_v, n_dot_l);
+            // PDF of GGX importance sampling = D_ggx * NdotH / (4 * VdotH)
+            let d_ggx = alpha * alpha / max(PI * pow(n_dot_h * n_dot_h * (alpha * alpha - 1.0) + 1.0, 2.0), 1e-7);
+            let pdf = d_ggx * n_dot_h / (4.0 * v_dot_h + 0.0001);
+            // Importance sampling weight: f(l) * NdotL / pdf
+            cloth_dg += d_cloth * v_cloth * n_dot_l / (pdf + 0.0001);
         }
     }
 
-    scale /= f32(sample_count);
-    bias /= f32(sample_count);
+    let inv_samples = 1.0 / f32(sample_count);
+    scale *= inv_samples;
+    bias *= inv_samples;
+    cloth_dg *= inv_samples;
 
-    textureStore(output, vec2<i32>(gid.xy), vec4<f32>(scale, bias, 0.0, 1.0));
+    textureStore(output, vec2<i32>(gid.xy), vec4<f32>(scale, bias, cloth_dg, 1.0));
 }
