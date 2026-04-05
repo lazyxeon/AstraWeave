@@ -45,4 +45,6 @@
   - Phase 0: Non-optional dep + cfg guard removal (2de64d658)
   - Phase 1: Entity feeding to engine + selection highlighting (3a7e6ad57, e6cd4ce97)
   - Phase 2: Shadow/IBL/lighting already forwarded to engine (no additional code needed)
-  - Phases 3-7: Tonemap unification, overlay hooks, terrain, deletion, headless
+  - Phase 3: Double-tonemapping fixed — engine/FastPreview paths separated (15c4b30e7)
+  - Phase 4: Overlay hooks — existing architecture already implements correct ordering
+  - Phases 5-7: Terrain vertex unification, legacy deletion, headless — remaining
