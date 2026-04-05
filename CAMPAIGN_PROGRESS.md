@@ -47,4 +47,5 @@
   - Phase 2: Shadow/IBL/lighting already forwarded to engine (no additional code needed)
   - Phase 3: Double-tonemapping fixed — engine/FastPreview paths separated (15c4b30e7)
   - Phase 4: Overlay hooks — existing architecture already implements correct ordering
-  - Phases 5-7: Terrain vertex unification, legacy deletion, headless — remaining
+  - Phase 6a: FastPreview render path removed — engine-only rendering (33c1023a3)
+  - Remaining: Phase 5 (terrain vertex), Phase 6b (delete entity_renderer.rs + shaders), Phase 7 (headless)
