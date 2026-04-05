@@ -28,6 +28,40 @@ pub struct TerrainVertex {
     pub material_weights: [f32; 4],
 }
 
+impl TerrainVertex {
+    /// Convert to engine-compatible vertex by extracting the dominant biome ID.
+    /// The engine uses a single biome_id per vertex; we pick the biome with the
+    /// highest weight from biome_weights_0/1 (8 slots → indices 0-7).
+    pub fn to_engine_vertex(&self) -> astraweave_render::TerrainVertex {
+        // Find dominant biome from the 8 weight slots
+        let weights = [
+            self.biome_weights_0[0],
+            self.biome_weights_0[1],
+            self.biome_weights_0[2],
+            self.biome_weights_0[3],
+            self.biome_weights_1[0],
+            self.biome_weights_1[1],
+            self.biome_weights_1[2],
+            self.biome_weights_1[3],
+        ];
+        let mut best_idx = 0u32;
+        let mut best_weight = weights[0];
+        for (i, &w) in weights.iter().enumerate().skip(1) {
+            if w > best_weight {
+                best_weight = w;
+                best_idx = i as u32;
+            }
+        }
+
+        astraweave_render::TerrainVertex {
+            position: self.position,
+            normal: self.normal,
+            uv: self.uv,
+            biome_id: best_idx,
+        }
+    }
+}
+
 // ─── Fog Parameters ──────────────────────────────────────────────────────────
 
 /// Fog and weather parameters passed to terrain/scene shaders.
