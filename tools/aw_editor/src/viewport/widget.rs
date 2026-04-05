@@ -325,6 +325,22 @@ impl ViewportWidget {
         })
     }
 
+    /// Lock the renderer, recovering from mutex poison if needed.
+    /// On poison, recovers the inner value and logs a warning once.
+    fn with_renderer<F, R>(&self, op: &str, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ViewportRenderer) -> R,
+    {
+        match self.renderer.lock() {
+            Ok(mut renderer) => Some(f(&mut renderer)),
+            Err(poisoned) => {
+                tracing::error!("Renderer mutex poisoned during '{op}' — recovering inner state");
+                let mut renderer = poisoned.into_inner();
+                Some(f(&mut renderer))
+            }
+        }
+    }
+
     /// Set the selection count for display in viewport HUD
     pub fn set_selection_count(&mut self, count: usize) {
         self.toolbar.stats.selection_count = count;
@@ -527,82 +543,85 @@ impl ViewportWidget {
 
         // Update renderer selected entities and entity mesh map
         {
-            if let Ok(mut renderer) = self.renderer.lock() {
-                let entities_u32: Vec<u32> =
-                    self.selected_entities.iter().map(|&id| id as u32).collect();
+            // Pre-compute data outside the lock to avoid holding the mutex while iterating EntityManager
+            let entities_u32: Vec<u32> =
+                self.selected_entities.iter().map(|&id| id as u32).collect();
+
+            let current_count = entity_manager.count();
+            let needs_rebuild = current_count != self.cached_entity_count;
+
+            // Pre-compute entity maps only when entity count changes
+            let rebuild_data = if needs_rebuild {
+                self.cached_entity_count = current_count;
+
+                let mesh_map: std::collections::HashMap<u32, String> = entity_manager
+                    .entities()
+                    .iter()
+                    .filter_map(|(&id, entity)| {
+                        entity.mesh.as_ref().map(|path| (id as u32, path.clone()))
+                    })
+                    .collect();
+
+                let tex_overrides: std::collections::HashMap<u32, String> = entity_manager
+                    .entities()
+                    .iter()
+                    .filter_map(|(&id, entity)| {
+                        entity
+                            .material
+                            .get_texture(crate::entity_manager::MaterialSlot::Albedo)
+                            .and_then(|p| p.to_str())
+                            .map(|s| (id as u32, s.to_string()))
+                    })
+                    .collect();
+
+                let scene_lights: Vec<super::entity_renderer::SceneLight> = entity_manager
+                    .entities()
+                    .iter()
+                    .filter_map(|(_, entity)| {
+                        let data = entity.components.get("Light")?;
+                        let ltype = data.get("type")?.as_str().unwrap_or("point");
+                        if ltype != "point" {
+                            return None;
+                        }
+                        Some(super::entity_renderer::SceneLight {
+                            position: [entity.position.x, entity.position.y, entity.position.z],
+                            range: data.get("range").and_then(|v| v.as_f64()).unwrap_or(10.0)
+                                as f32,
+                            color: [
+                                data.get("color_r").and_then(|v| v.as_f64()).unwrap_or(1.0)
+                                    as f32,
+                                data.get("color_g").and_then(|v| v.as_f64()).unwrap_or(1.0)
+                                    as f32,
+                                data.get("color_b").and_then(|v| v.as_f64()).unwrap_or(1.0)
+                                    as f32,
+                            ],
+                            intensity: data
+                                .get("intensity")
+                                .and_then(|v| v.as_f64())
+                                .unwrap_or(1.0)
+                                as f32,
+                        })
+                    })
+                    .collect();
+
+                let gizmo_lines = Self::generate_component_gizmo_lines(entity_manager);
+                Some((mesh_map, tex_overrides, scene_lights, gizmo_lines))
+            } else {
+                None
+            };
+
+            // Apply pre-computed data under a short lock
+            self.with_renderer("update_entity_state", |renderer| {
                 renderer.set_selected_entities(&entities_u32);
-
-                // Dirty check: only rebuild entity maps when entity count changes.
-                // Selection changes, transforms, and component edits trigger via
-                // other paths (undo events, panel actions). This avoids 3 HashMap
-                // rebuilds + string clones every frame for static scenes.
-                let current_count = entity_manager.count();
-                if current_count != self.cached_entity_count {
-                    self.cached_entity_count = current_count;
-
-                    // Build entity-to-mesh mapping from EntityManager
-                    let mesh_map: std::collections::HashMap<u32, String> = entity_manager
-                        .entities()
-                        .iter()
-                        .filter_map(|(&id, entity)| {
-                            entity.mesh.as_ref().map(|path| (id as u32, path.clone()))
-                        })
-                        .collect();
+                if let Some((mesh_map, tex_overrides, scene_lights, gizmo_lines)) = rebuild_data {
                     renderer.set_entity_meshes(mesh_map);
-
-                    // Build entity-to-texture override mapping
-                    let tex_overrides: std::collections::HashMap<u32, String> = entity_manager
-                        .entities()
-                        .iter()
-                        .filter_map(|(&id, entity)| {
-                            entity
-                                .material
-                                .get_texture(crate::entity_manager::MaterialSlot::Albedo)
-                                .and_then(|p| p.to_str())
-                                .map(|s| (id as u32, s.to_string()))
-                        })
-                        .collect();
                     if !tex_overrides.is_empty() {
                         renderer.set_entity_texture_overrides(tex_overrides);
                     }
-
-                    // Collect point lights from entities with Light components
-                    let scene_lights: Vec<super::entity_renderer::SceneLight> = entity_manager
-                        .entities()
-                        .iter()
-                        .filter_map(|(_, entity)| {
-                            let data = entity.components.get("Light")?;
-                            let ltype = data.get("type")?.as_str().unwrap_or("point");
-                            if ltype != "point" {
-                                return None;
-                            }
-                            Some(super::entity_renderer::SceneLight {
-                                position: [entity.position.x, entity.position.y, entity.position.z],
-                                range: data.get("range").and_then(|v| v.as_f64()).unwrap_or(10.0)
-                                    as f32,
-                                color: [
-                                    data.get("color_r").and_then(|v| v.as_f64()).unwrap_or(1.0)
-                                        as f32,
-                                    data.get("color_g").and_then(|v| v.as_f64()).unwrap_or(1.0)
-                                        as f32,
-                                    data.get("color_b").and_then(|v| v.as_f64()).unwrap_or(1.0)
-                                        as f32,
-                                ],
-                                intensity: data
-                                    .get("intensity")
-                                    .and_then(|v| v.as_f64())
-                                    .unwrap_or(1.0)
-                                    as f32,
-                            })
-                        })
-                        .collect();
                     renderer.set_scene_lights(scene_lights);
-
-                    // Generate component gizmo lines
-                    let gizmo_lines = Self::generate_component_gizmo_lines(entity_manager);
                     renderer.set_component_gizmo_lines(gizmo_lines);
                 }
-            }
+            });
         }
 
         // Update gizmo hover state for visual highlighting
@@ -612,15 +631,12 @@ impl ViewportWidget {
         if let Some(texture) = self.render_texture.clone() {
             // Render in separate scope to drop MutexGuard early
             {
-                if let Ok(mut renderer) = self.renderer.lock() {
-                    // Pass None for physics debug lines for now
-                    // (integration with actual physics world would require passing PhysicsWorld to viewport)
-                    // Pass grid settings from toolbar
-                    let show_grid =
-                        self.toolbar.show_grid && self.toolbar.grid_type != GridType::None;
-                    let crosshair_mode = self.toolbar.grid_type == GridType::Crosshair;
+                let show_grid =
+                    self.toolbar.show_grid && self.toolbar.grid_type != GridType::None;
+                let crosshair_mode = self.toolbar.grid_type == GridType::Crosshair;
+                let shading_mode = self.toolbar.shading_mode.to_u32();
 
-                    let shading_mode = self.toolbar.shading_mode.to_u32();
+                self.with_renderer("render", |renderer| {
                     if let Err(e) = renderer.render(
                         &texture,
                         &self.camera,
@@ -634,7 +650,7 @@ impl ViewportWidget {
                     ) {
                         warn!(error = %e, "Viewport render failed");
                     }
-                }
+                });
             }
 
             // Copy texture to CPU and upload to egui (after renderer is unlocked)
@@ -1172,19 +1188,17 @@ impl ViewportWidget {
 
                     // Try depth-based pick first
                     let mut hit = None;
-                    if let Ok(mut renderer) = self.renderer.lock() {
-                        if let Some(depth) = renderer.read_depth_at_pixel(px, py) {
-                            if depth < 1.0 {
-                                // Depth hit on geometry — unproject to world space
-                                let world_pos = self.camera.unproject_depth_to_world(
-                                    px as f32,
-                                    py as f32,
-                                    viewport_size.x,
-                                    viewport_size.y,
-                                    depth,
-                                );
-                                hit = Some([world_pos.x, world_pos.z]);
-                            }
+                    let depth_val = self.with_renderer("read_depth_for_pick", |r| r.read_depth_at_pixel(px, py)).flatten();
+                    if let Some(depth) = depth_val {
+                        if depth < 1.0 {
+                            let world_pos = self.camera.unproject_depth_to_world(
+                                px as f32,
+                                py as f32,
+                                viewport_size.x,
+                                viewport_size.y,
+                                depth,
+                            );
+                            hit = Some([world_pos.x, world_pos.z]);
                         }
                     }
 
@@ -1227,18 +1241,17 @@ impl ViewportWidget {
 
                 // Get world hit for cursor center
                 let mut cursor_center = None;
-                if let Ok(mut renderer) = self.renderer.lock() {
-                    if let Some(depth) = renderer.read_depth_at_pixel(px, py) {
-                        if depth < 1.0 {
-                            let wp = self.camera.unproject_depth_to_world(
-                                px as f32,
-                                py as f32,
-                                viewport_size.x,
-                                viewport_size.y,
-                                depth,
-                            );
-                            cursor_center = Some(wp);
-                        }
+                let depth_val = self.with_renderer("read_depth_for_brush", |r| r.read_depth_at_pixel(px, py)).flatten();
+                if let Some(depth) = depth_val {
+                    if depth < 1.0 {
+                        let wp = self.camera.unproject_depth_to_world(
+                            px as f32,
+                            py as f32,
+                            viewport_size.x,
+                            viewport_size.y,
+                            depth,
+                        );
+                        cursor_center = Some(wp);
                     }
                 }
                 if cursor_center.is_none() {
@@ -1527,14 +1540,14 @@ impl ViewportWidget {
             if (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(egui::Key::Z) {
                 if i.modifiers.shift {
                     // Ctrl+Shift+Z: Redo
-                    if let Err(e) = undo_stack.redo(world) {
+                    if let Err(e) = undo_stack.redo(world, None) {
                         warn!("Redo failed: {}", e);
                     } else if let Some(desc) = undo_stack.redo_description() {
                         debug!("Redo: {}", desc);
                     }
                 } else {
                     // Ctrl+Z: Undo
-                    if let Err(e) = undo_stack.undo(world) {
+                    if let Err(e) = undo_stack.undo(world, None) {
                         warn!("Undo failed: {}", e);
                     } else if let Some(desc) = undo_stack.undo_description() {
                         debug!("Undo: {}", desc);
@@ -1543,7 +1556,7 @@ impl ViewportWidget {
             }
             if (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(egui::Key::Y) {
                 // Ctrl+Y: Redo (alternative to Ctrl+Shift+Z)
-                if let Err(e) = undo_stack.redo(world) {
+                if let Err(e) = undo_stack.redo(world, None) {
                     warn!("Redo failed: {}", e);
                 } else if let Some(desc) = undo_stack.redo_description() {
                     debug!("Redo: {}", desc);
@@ -2440,6 +2453,11 @@ impl ViewportWidget {
         &mut self.toolbar
     }
 
+    /// Get mutable reference to gizmo state
+    pub fn gizmo_state_mut(&mut self) -> &mut GizmoState {
+        &mut self.gizmo_state
+    }
+
     #[cfg(feature = "astraweave-render")]
     pub fn load_gltf_model(
         &self,
@@ -2679,13 +2697,8 @@ impl ViewportWidget {
         self.selected_entities.contains(&entity)
     }
 
-    pub fn upload_terrain_chunks(
-        &self,
-        chunks: &[(Vec<super::terrain_renderer::TerrainVertex>, Vec<u32>)],
-    ) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.upload_terrain_chunks(chunks);
-        }
+    pub fn upload_terrain_chunks(&self, chunks: &[(Vec<super::types::TerrainVertex>, Vec<u32>)]) {
+        self.with_renderer("upload_terrain_chunks", |r| r.upload_terrain_chunks(chunks));
     }
 
     /// Upload terrain chunks using the terrain_integration vertex type directly
@@ -2694,33 +2707,25 @@ impl ViewportWidget {
         &self,
         chunks: &[(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)],
     ) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.upload_terrain_chunks_raw(chunks);
-        }
+        self.with_renderer("upload_terrain_chunks_raw", |r| r.upload_terrain_chunks_raw(chunks));
     }
 
     /// Incrementally update vertex data for a single terrain chunk on the GPU.
     pub fn update_terrain_chunk_vertices(
         &self,
         chunk_index: usize,
-        vertices: &[super::terrain_renderer::TerrainVertex],
+        vertices: &[super::types::TerrainVertex],
     ) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.update_terrain_chunk_vertices(chunk_index, vertices);
-        }
+        self.with_renderer("update_terrain_chunk_vertices", |r| r.update_terrain_chunk_vertices(chunk_index, vertices));
     }
 
     pub fn set_brush_cursor_lines(&self, lines: Vec<astraweave_physics::DebugLine>) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.set_brush_cursor_lines(lines);
-        }
+        self.with_renderer("set_brush_cursor_lines", |r| r.set_brush_cursor_lines(lines));
     }
 
     /// Set zone overlay lines (blueprint zone wireframes) for 3D rendering.
     pub fn set_zone_overlay_lines(&self, lines: Vec<astraweave_physics::DebugLine>) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.set_zone_overlay_lines(lines);
-        }
+        self.with_renderer("set_zone_overlay_lines", |r| r.set_zone_overlay_lines(lines));
     }
 
     /// Set scatter placements for instanced vegetation/prop rendering.
@@ -2728,60 +2733,42 @@ impl ViewportWidget {
         &self,
         placements: Vec<crate::terrain_integration::ScatterPlacement>,
     ) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.set_scatter_placements(placements);
-        }
+        self.with_renderer("set_scatter_placements", |r| r.set_scatter_placements(placements));
     }
 
     /// Preload glTF meshes from decomposed blend files into the entity renderer cache.
     /// Returns the number of meshes successfully loaded.
     pub fn preload_gltf_meshes(&self, paths: &[String]) -> usize {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.preload_gltf_meshes(paths)
-        } else {
-            0
-        }
+        self.with_renderer("preload_gltf_meshes", |r| r.preload_gltf_meshes(paths)).unwrap_or(0)
     }
 
     pub fn clear_terrain(&self) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.clear_terrain();
-        }
+        self.with_renderer("clear_terrain", |r| r.clear_terrain());
     }
 
     /// Set the procedural sky gradient colors for skybox presets / time-of-day / weather
     pub fn set_sky_colors(&self, sky_top: [f32; 4], sky_horizon: [f32; 4], ground_color: [f32; 4]) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.set_sky_colors(sky_top, sky_horizon, ground_color);
-        }
+        self.with_renderer("set_sky_colors", |r| r.set_sky_colors(sky_top, sky_horizon, ground_color));
     }
 
     /// Set fog and weather parameters for distance-based terrain fog rendering
-    pub fn set_fog_params(&self, params: super::terrain_renderer::TerrainFogParams) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.set_fog_params(params);
-        }
+    pub fn set_fog_params(&self, params: super::types::TerrainFogParams) {
+        self.with_renderer("set_fog_params", |r| r.set_fog_params(params));
     }
 
     /// Set lighting parameters for PBR terrain shading
-    pub fn set_lighting_params(&self, params: super::terrain_renderer::TerrainLightingParams) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.set_lighting_params(params);
-        }
+    pub fn set_lighting_params(&self, params: super::types::TerrainLightingParams) {
+        self.with_renderer("set_lighting_params", |r| r.set_lighting_params(params));
     }
 
     /// Set water level for volumetric water plane
     pub fn set_water_level(&self, level: f32) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.set_water_level(level);
-        }
+        self.with_renderer("set_water_level", |r| r.set_water_level(level));
     }
 
     /// Enable or disable the volumetric water plane
     pub fn set_water_enabled(&self, enabled: bool) {
-        if let Ok(mut renderer) = self.renderer.lock() {
-            renderer.set_water_enabled(enabled);
-        }
+        self.with_renderer("set_water_enabled", |r| r.set_water_enabled(enabled));
     }
 
     /// Copy selected entities to clipboard
@@ -2857,7 +2844,7 @@ impl ViewportWidget {
 
         let duplicate_cmd = crate::command::DuplicateEntitiesCommand::new(source_entities, offset);
 
-        match undo_stack.execute(duplicate_cmd, world) {
+        match undo_stack.execute(duplicate_cmd, world, None) {
             Ok(()) => {
                 // Get the spawned entities from the command (they're stored in the command)
                 // For now, we don't have direct access to them after execute, so we'll
@@ -2884,7 +2871,7 @@ impl ViewportWidget {
             self.selected_entities.iter().map(|&id| id as u32).collect();
 
         let delete_cmd = crate::command::DeleteEntitiesCommand::new(entities_to_delete);
-        if let Err(e) = undo_stack.execute(delete_cmd, world) {
+        if let Err(e) = undo_stack.execute(delete_cmd, world, None) {
             debug!("Delete failed: {}", e);
         }
 
