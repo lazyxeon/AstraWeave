@@ -4003,42 +4003,60 @@ impl EditorApp {
                     );
                 }
                 tab_viewer::PanelEvent::CreateEntity => {
-                    // Create an empty entity in both World and EntityManager
+                    // Create an empty entity via undo stack (undoable)
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let entity_count = scene_state.world().entities().len();
                         let name = format!("Empty_{}", entity_count);
-                        let entity = scene_state.world_mut().spawn(
-                            &name,
+                        let clipboard = crate::clipboard::ClipboardData {
+                            version: 2,
+                            entities: vec![crate::clipboard::ClipboardEntityData {
+                                name: name.clone(),
+                                pos: astraweave_core::IVec2 { x: 0, y: 0 },
+                                height: 0.0,
+                                rotation: 0.0,
+                                rotation_x: 0.0,
+                                rotation_z: 0.0,
+                                scale: 1.0,
+                                hp: 0,
+                                team_id: 0,
+                                ammo: 0,
+                                cooldowns: Default::default(),
+                                behavior_graph: None,
+                                parent: None,
+                            }],
+                        };
+                        let cmd = command::SpawnEntitiesCommand::new(
+                            clipboard,
                             astraweave_core::IVec2 { x: 0, y: 0 },
-                            astraweave_core::Team { id: 0 },
-                            0,
-                            0,
                         );
-                        scene_state.sync_entity(entity);
-                        // Add to EntityManager using World entity ID for consistent lookups
-                        let em_id: u64 = entity.into();
-                        let mut editor_entity =
-                            entity_manager::EditorEntity::new(em_id, name.clone());
-                        editor_entity.components.insert(
-                            "Transform".to_string(),
-                            serde_json::json!({"x": 0, "y": 0, "z": 0}),
-                        );
-                        self.entity_manager.add(editor_entity);
-                        self.selected_entity = Some(em_id);
-                        self.selection_set.primary = Some(em_id);
-                        if let Some(viewport) = &mut self.viewport {
-                            viewport.set_selected_entity(Some(em_id));
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Create entity failed: {}", e));
+                        } else {
+                            // Select the newly created entity
+                            if let Some(&last) = scene_state.world().entities().last() {
+                                let em_id: u64 = last.into();
+                                self.selected_entity = Some(em_id);
+                                self.selection_set.primary = Some(em_id);
+                                if let Some(viewport) = &mut self.viewport {
+                                    viewport.set_selected_entity(Some(em_id));
+                                }
+                            }
+                            scene_state.sync_all();
+                            self.hierarchy_panel
+                                .sync_with_world(scene_state.world_mut());
+                            self.is_dirty = true;
+                            self.console_logs
+                                .push(format!("Created empty entity: {}", name));
+                            self.status = format!("Created entity: {}", name);
                         }
-                        self.is_dirty = true;
-                        self.hierarchy_panel
-                            .sync_with_world(scene_state.world_mut());
-                        self.console_logs
-                            .push(format!("Created empty entity: {}", name));
-                        self.status = format!("Created entity: {}", name);
                     }
                 }
                 tab_viewer::PanelEvent::SpawnArchetype { ref archetype } => {
-                    // Spawn an entity from a named archetype into World + EntityManager
+                    // Spawn an entity from a named archetype via undo stack (undoable)
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let entity_count = scene_state.world().entities().len();
                         let name = format!("{}_{}", archetype, entity_count);
@@ -4054,150 +4072,109 @@ impl EditorApp {
                             "Camera" => (2, 1, 0),
                             _ => (0, 1, 0),
                         };
-                        // Query terrain height at spawn position so entity sits on top
-                        let spawn_height = self
-                            .dock_tab_viewer
-                            .sample_terrain_height_at(0.0, 0.0)
-                            .unwrap_or(0.0);
-
-                        let entity = scene_state.world_mut().spawn(
-                            &name,
-                            astraweave_core::IVec2 { x: 0, y: 0 },
-                            astraweave_core::Team { id: team_id },
-                            hp,
-                            ammo,
-                        );
-                        // Set entity height to terrain surface
-                        if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
-                            pose.height = spawn_height;
-                        }
-                        scene_state.sync_entity(entity);
-
-                        // Add to EntityManager using World entity ID for consistent lookups
-                        let em_id: u64 = entity.into();
-                        let mut em_entity_new =
-                            entity_manager::EditorEntity::new(em_id, name.clone());
-                        {
-                            let em_entity = &mut em_entity_new;
-                            em_entity.components.insert(
-                                "Transform".to_string(),
-                                serde_json::json!({"x": 0, "y": spawn_height, "z": 0}),
-                            );
-                            match archetype.as_str() {
-                                "Player" | "Companion" | "Enemy" | "Boss" => {
-                                    em_entity.components.insert(
-                                        "Health".to_string(),
-                                        serde_json::json!({"hp": hp}),
-                                    );
-                                    em_entity.components.insert(
-                                        "Team".to_string(),
-                                        serde_json::json!({"id": team_id}),
-                                    );
-                                    em_entity.components.insert(
-                                        "Ammo".to_string(),
-                                        serde_json::json!({"count": ammo}),
-                                    );
-                                }
-                                "NPC" => {
-                                    em_entity.components.insert(
-                                        "Health".to_string(),
-                                        serde_json::json!({"hp": hp}),
-                                    );
-                                }
-                                "Light" => {
-                                    em_entity.components.insert(
-                                        "Light".to_string(),
-                                        serde_json::json!({"type": "point", "intensity": 1.0}),
-                                    );
-                                }
-                                "Camera" => {
-                                    em_entity.components.insert(
-                                        "Camera".to_string(),
-                                        serde_json::json!({"fov": 60.0, "near": 0.1, "far": 1000.0}),
-                                    );
-                                }
-                                _ => {}
-                            }
-                        }
-                        // Assign default KayKit mesh based on archetype
-                        let mesh_path = match archetype.as_str() {
-                            "Player" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"),
-                            "Companion" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Knight.glb"),
-                            "Enemy" => Some("assets/The Complete KayKit Collection v4/KayKit Skeletons 1.1/characters/gltf/Skeleton_Warrior.glb"),
-                            "Boss" => Some("assets/The Complete KayKit Collection v4/KayKit Skeletons 1.1/characters/gltf/Skeleton_Golem.glb"),
-                            "NPC" => Some("assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Mage.glb"),
-                            _ => None,
+                        let clipboard = crate::clipboard::ClipboardData {
+                            version: 2,
+                            entities: vec![crate::clipboard::ClipboardEntityData {
+                                name: name.clone(),
+                                pos: astraweave_core::IVec2 { x: 0, y: 0 },
+                                height: 0.0,
+                                rotation: 0.0,
+                                rotation_x: 0.0,
+                                rotation_z: 0.0,
+                                scale: 1.0,
+                                hp,
+                                team_id,
+                                ammo,
+                                cooldowns: Default::default(),
+                                behavior_graph: None,
+                                parent: None,
+                            }],
                         };
-                        if let Some(path) = mesh_path {
-                            em_entity_new.set_mesh(path.to_string());
+                        let cmd = command::SpawnEntitiesCommand::new(
+                            clipboard,
+                            astraweave_core::IVec2 { x: 0, y: 0 },
+                        );
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Spawn archetype failed: {}", e));
+                        } else {
+                            // Select the newly created entity
+                            if let Some(&last) = scene_state.world().entities().last() {
+                                let em_id: u64 = last.into();
+                                self.selected_entity = Some(em_id);
+                                self.selection_set.primary = Some(em_id);
+                                if let Some(viewport) = &mut self.viewport {
+                                    viewport.set_selected_entity(Some(em_id));
+                                }
+                            }
+                            scene_state.sync_all();
+                            self.hierarchy_panel
+                                .sync_with_world(scene_state.world_mut());
+                            self.is_dirty = true;
+                            self.console_logs
+                                .push(format!("Spawned {} entity: {}", archetype, name));
+                            self.status = format!("Spawned {}: {}", archetype, name);
                         }
-
-                        self.entity_manager.add(em_entity_new);
-
-                        self.selected_entity = Some(em_id);
-                        self.selection_set.primary = Some(em_id);
-                        if let Some(viewport) = &mut self.viewport {
-                            viewport.set_selected_entity(Some(em_id));
-                        }
-                        self.is_dirty = true;
-                        self.hierarchy_panel
-                            .sync_with_world(scene_state.world_mut());
-                        self.console_logs
-                            .push(format!("Spawned {} entity: {}", archetype, name));
-                        self.status = format!("Spawned {}: {}", archetype, name);
                     }
                 }
                 tab_viewer::PanelEvent::SpawnModel { ref name, ref path } => {
-                    // Spawn an entity representing a 3D model from the asset pack
+                    // Spawn a model entity via undo stack (undoable)
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let entity_count = scene_state.world().entities().len();
                         let entity_name = format!("{}_{}", name, entity_count);
-                        // Offset each spawned model so they don't overlap
                         let offset = entity_count as i32 * 3;
-                        // Query terrain height at spawn position
-                        let spawn_x = offset as f32;
-                        let spawn_height = self
-                            .dock_tab_viewer
-                            .sample_terrain_height_at(spawn_x, 0.0)
-                            .unwrap_or(0.0);
-
-                        let entity = scene_state.world_mut().spawn(
-                            &entity_name,
-                            astraweave_core::IVec2 { x: offset, y: 0 },
-                            astraweave_core::Team { id: 0 },
-                            0,
-                            0,
+                        let clipboard = crate::clipboard::ClipboardData {
+                            version: 2,
+                            entities: vec![crate::clipboard::ClipboardEntityData {
+                                name: entity_name.clone(),
+                                pos: astraweave_core::IVec2 { x: offset, y: 0 },
+                                height: 0.0,
+                                rotation: 0.0,
+                                rotation_x: 0.0,
+                                rotation_z: 0.0,
+                                scale: 1.0,
+                                hp: 0,
+                                team_id: 0,
+                                ammo: 0,
+                                cooldowns: Default::default(),
+                                behavior_graph: None,
+                                parent: None,
+                            }],
+                        };
+                        let cmd = command::SpawnEntitiesCommand::new(
+                            clipboard,
+                            astraweave_core::IVec2 { x: 0, y: 0 },
                         );
-                        // Set entity height to terrain surface
-                        if let Some(pose) = scene_state.world_mut().pose_mut(entity) {
-                            pose.height = spawn_height;
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Spawn model failed: {}", e));
+                        } else {
+                            // Assign mesh to the newly created entity in EntityManager
+                            if let Some(&last) = scene_state.world().entities().last() {
+                                let em_id: u64 = last.into();
+                                if let Some(em_entity) = self.entity_manager.get_mut(em_id) {
+                                    em_entity.mesh = Some(path.clone());
+                                }
+                                self.selected_entity = Some(em_id);
+                                self.selection_set.primary = Some(em_id);
+                                if let Some(viewport) = &mut self.viewport {
+                                    viewport.set_selected_entity(Some(em_id));
+                                }
+                            }
+                            scene_state.sync_all();
+                            self.hierarchy_panel
+                                .sync_with_world(scene_state.world_mut());
+                            self.is_dirty = true;
+                            self.console_logs
+                                .push(format!("Spawned model entity: {} ({})", entity_name, path));
+                            self.status = format!("Spawned model: {}", entity_name);
                         }
-                        scene_state.sync_entity(entity);
-
-                        let em_id: u64 = entity.into();
-                        let mut em_entity =
-                            entity_manager::EditorEntity::new(em_id, entity_name.clone());
-                        em_entity.components.insert(
-                            "Transform".to_string(),
-                            serde_json::json!({"x": spawn_x, "y": spawn_height, "z": 0}),
-                        );
-                        em_entity
-                            .components
-                            .insert("Model".to_string(), serde_json::json!({"path": path}));
-                        em_entity.mesh = Some(path.clone());
-                        self.entity_manager.add(em_entity);
-
-                        self.selected_entity = Some(em_id);
-                        self.selection_set.primary = Some(em_id);
-                        if let Some(viewport) = &mut self.viewport {
-                            viewport.set_selected_entity(Some(em_id));
-                        }
-                        self.is_dirty = true;
-                        self.hierarchy_panel
-                            .sync_with_world(scene_state.world_mut());
-                        self.console_logs
-                            .push(format!("Spawned model entity: {} ({})", entity_name, path));
-                        self.status = format!("Spawned model: {}", entity_name);
                     }
                 }
                 tab_viewer::PanelEvent::DeleteEntity(entity_id) => {
@@ -4232,52 +4209,34 @@ impl EditorApp {
                     self.status = format!("Deleted entity {}", entity_id);
                 }
                 tab_viewer::PanelEvent::DuplicateEntity(entity_id) => {
-                    // Duplicate entity in both EntityManager and World
-                    let source_info = self.entity_manager.get(entity_id).cloned();
-                    if let Some(source) = source_info {
-                        let new_name = format!("{}_copy", source.name);
-                        // Duplicate in World first to get the canonical entity ID
-                        let mut new_em_id = None;
-                        if let (Some(scene_state), Some(src_eid)) =
-                            (self.scene_state.as_mut(), entity_id_to_world(entity_id))
-                        {
-                            let clipboard = crate::clipboard::ClipboardData::from_entities(
-                                scene_state.world(),
-                                &[src_eid],
-                            );
-                            let offset = astraweave_core::IVec2 { x: 1, y: 1 };
-                            if let Ok(spawned) =
-                                clipboard.spawn_entities(scene_state.world_mut(), offset)
-                            {
-                                for e in &spawned {
-                                    scene_state.sync_entity(*e);
-                                    // Use first spawned World ID as EntityManager ID
-                                    if new_em_id.is_none() {
-                                        new_em_id = Some(u64::from(*e));
-                                    }
+                    // Duplicate entity via undo stack (undoable)
+                    if let (Some(scene_state), Some(src_eid)) =
+                        (self.scene_state.as_mut(), entity_id_to_world(entity_id))
+                    {
+                        let offset = astraweave_core::IVec2 { x: 1, y: 1 };
+                        let cmd = command::DuplicateEntitiesCommand::new(vec![src_eid], offset);
+                        if let Err(e) = self.undo_stack.execute(
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
+                        ) {
+                            self.console_logs.push(format!("Duplicate failed: {}", e));
+                        } else {
+                            // Select the duplicated entity
+                            if let Some(&last) = scene_state.world().entities().last() {
+                                let em_id: u64 = last.into();
+                                self.selected_entity = Some(em_id);
+                                self.selection_set.primary = Some(em_id);
+                                if let Some(viewport) = &mut self.viewport {
+                                    viewport.set_selected_entity(Some(em_id));
                                 }
-                                self.hierarchy_panel
-                                    .sync_with_world(scene_state.world_mut());
                             }
+                            scene_state.sync_all();
+                            self.hierarchy_panel
+                                .sync_with_world(scene_state.world_mut());
+                            self.is_dirty = true;
+                            self.status = format!("Duplicated entity {}", entity_id);
                         }
-                        if let Some(em_id) = new_em_id {
-                            let mut new_em =
-                                entity_manager::EditorEntity::new(em_id, new_name.clone());
-                            new_em.components = source.components.clone();
-                            new_em.position = source.position + glam::Vec3::new(1.0, 0.0, 1.0);
-                            new_em.mesh = source.mesh.clone();
-                            new_em.material = source.material.clone();
-                            self.entity_manager.add(new_em);
-                            self.selected_entity = Some(em_id);
-                            self.selection_set.primary = Some(em_id);
-                            // Sync viewport selection so the per-frame
-                            // viewport→app sync doesn't overwrite back to the old entity
-                            if let Some(viewport) = &mut self.viewport {
-                                viewport.set_selected_entity(Some(em_id));
-                            }
-                        }
-                        self.is_dirty = true;
-                        self.status = format!("Duplicated entity {} as {}", entity_id, new_name);
                     }
                 }
                 tab_viewer::PanelEvent::PanelClosed(panel) => {
