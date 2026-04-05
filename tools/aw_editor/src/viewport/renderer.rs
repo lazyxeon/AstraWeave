@@ -421,7 +421,10 @@ impl ViewportRenderer {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.12, g: 0.12, b: 0.15, a: 1.0,
+                            r: 0.12,
+                            g: 0.12,
+                            b: 0.15,
+                            a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -847,6 +850,11 @@ impl ViewportRenderer {
         // Forward to engine adapter
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.upload_terrain_chunks(chunks);
+        } else {
+            tracing::warn!(
+                "upload_terrain_chunks: engine adapter not initialized — {} chunks dropped",
+                chunks.len()
+            );
         }
     }
 
@@ -856,6 +864,33 @@ impl ViewportRenderer {
         &mut self,
         chunks: &[(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)],
     ) {
+        // Auto-initialize the engine adapter if it hasn't been created yet.
+        // The adapter is normally lazy-initialized on first glTF load, but
+        // terrain generation can happen before any model is loaded.
+        if self.engine_adapter.is_none() {
+            use pollster::FutureExt;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.init_engine_adapter().block_on()
+            }));
+            match result {
+                Ok(Ok(())) => {
+                    tracing::info!("Engine adapter auto-initialized for terrain rendering");
+                    // Load default grassland terrain texture
+                    self.load_default_terrain_texture();
+                }
+                Ok(Err(e)) => {
+                    tracing::error!("Failed to initialize engine adapter for terrain: {e}");
+                    return;
+                }
+                Err(_) => {
+                    tracing::error!(
+                        "Engine adapter initialization panicked — terrain upload skipped"
+                    );
+                    return;
+                }
+            }
+        }
+
         // Re-map terrain_integration::TerrainVertex → viewport TerrainVertex for engine adapter.
         if let Some(adapter) = &mut self.engine_adapter {
             let converted: Vec<(Vec<TerrainVertex>, Vec<u32>)> = chunks
@@ -877,6 +912,11 @@ impl ViewportRenderer {
                 })
                 .collect();
             adapter.upload_terrain_chunks(&converted);
+        } else {
+            tracing::warn!(
+                "upload_terrain_chunks_raw: engine adapter not initialized — {} chunks dropped",
+                chunks.len()
+            );
         }
     }
 
@@ -1208,6 +1248,29 @@ impl ViewportRenderer {
     /// Set render mode directly
     pub fn set_render_mode(&mut self, mode: RenderMode) {
         self.render_mode = mode;
+    }
+
+    /// Load the default grassland terrain texture from the bundled glTF asset.
+    /// Called once after engine adapter initialization for terrain rendering.
+    fn load_default_terrain_texture(&mut self) {
+        let grass_path = std::path::Path::new("assets/textures/leafy_grass_diff_4k.jpg");
+        if !grass_path.exists() {
+            tracing::warn!("Default grass texture not found: {grass_path:?}");
+            return;
+        }
+        match image::open(grass_path) {
+            Ok(img) => {
+                let rgba = img.to_rgba8();
+                let (w, h) = (rgba.width(), rgba.height());
+                if let Some(adapter) = &mut self.engine_adapter {
+                    adapter.renderer_mut().set_albedo_from_rgba8(w, h, &rgba);
+                    tracing::info!("Loaded grass terrain texture ({w}x{h}) from {grass_path:?}");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load grass texture {grass_path:?}: {e}");
+            }
+        }
     }
 
     /// Initialize the engine renderer adapter (async, call once)

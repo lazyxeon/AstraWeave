@@ -4736,8 +4736,6 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::TerrainReady => {
                     let src_chunks = self.dock_tab_viewer.terrain_gpu_chunks();
-                    // Both terrain_integration::TerrainVertex and viewport::types::TerrainVertex
-                    // are #[repr(C)] Pod with identical layout — pass bytes directly to GPU.
                     if let Some(viewport) = &self.viewport {
                         viewport.upload_terrain_chunks_raw(&src_chunks);
                     }

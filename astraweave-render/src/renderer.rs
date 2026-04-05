@@ -3,12 +3,12 @@ use crate::post::{WGSL_SSAO, WGSL_SSGI, WGSL_SSR};
 use anyhow::Context;
 use anyhow::Result;
 use glam::Vec4Swizzles;
-use glam::{vec3, Mat4};
+use glam::{Mat4, vec3};
 use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
 use crate::camera::Camera;
-use crate::clustered::{bin_lights_cpu, ClusterDims, CpuLight, WGSL_CLUSTER_BIN};
+use crate::clustered::{ClusterDims, CpuLight, WGSL_CLUSTER_BIN, bin_lights_cpu};
 use crate::depth::Depth;
 use crate::types::SkinnedVertex;
 use crate::types::{Instance, InstanceRaw, Mesh};
@@ -451,6 +451,12 @@ pub struct Renderer {
     material_buf: wgpu::Buffer,
     material_bg: wgpu::BindGroup,
     post_pipeline: wgpu::RenderPipeline,
+    /// Passthrough blit pipeline for editor mode (copies HDR without tonemapping).
+    /// Uses `Rgba16Float` target format so it's compatible with the editor's HDR buffer.
+    hdr_blit_pipeline: wgpu::RenderPipeline,
+    /// Bind group for the HDR blit pass (hdr_tex + sampler, independent of postfx).
+    hdr_blit_bind_group: wgpu::BindGroup,
+    hdr_blit_bgl: wgpu::BindGroupLayout,
     post_bind_group: wgpu::BindGroup,
     post_bgl: wgpu::BindGroupLayout,
     hdr_tex: wgpu::Texture,
@@ -1775,6 +1781,96 @@ impl Renderer {
             multiview: None,
         });
 
+        // HDR passthrough blit pipeline — used in editor mode (surface=None) to copy
+        // the internal HDR buffer to an Rgba16Float external target without tonemapping.
+        // Uses its own bind group layout (texture + sampler only) so it works regardless
+        // of the postfx feature flag.
+        let hdr_blit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("hdr blit shader"),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(
+                r#"
+struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
+    var p = array<vec2<f32>, 3>(vec2(-1.0,-3.0), vec2(3.0,1.0), vec2(-1.0,1.0));
+    var out: VSOut;
+    out.pos = vec4<f32>(p[vid], 0.0, 1.0);
+    out.uv = (p[vid] + vec2(1.0,1.0)) * 0.5;
+    return out;
+}
+@group(0) @binding(0) var hdr_tex: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+@fragment fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
+    return textureSampleLevel(hdr_tex, samp, in.uv, 0.0);
+}
+"#,
+            )),
+        });
+        let hdr_blit_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("hdr blit bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let hdr_blit_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("hdr blit bg"),
+            layout: &hdr_blit_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&hdr_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&hdr_sampler),
+                },
+            ],
+        });
+        let hdr_blit_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("hdr blit layout"),
+            bind_group_layouts: &[&hdr_blit_bgl],
+            push_constant_ranges: &[],
+        });
+        let hdr_blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
+            label: Some("hdr blit pipeline"),
+            layout: Some(&hdr_blit_layout),
+            vertex: wgpu::VertexState {
+                module: &hdr_blit_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &hdr_blit_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        });
+
         // Shadow map resources (2-layer array for CSM)
         let shadow_size: u32 = 1024;
         let shadow_tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -2737,6 +2833,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             material_buf,
             material_bg,
             post_pipeline,
+            hdr_blit_pipeline,
+            hdr_blit_bind_group,
+            hdr_blit_bgl,
             post_bind_group,
             post_bgl,
             hdr_tex,
@@ -3315,6 +3414,21 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     binding: 1,
                     #[cfg(feature = "postfx")]
                     binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.hdr_sampler),
+                },
+            ],
+        });
+        // Recreate HDR blit bind group (references the new hdr_view)
+        self.hdr_blit_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("hdr blit bg"),
+            layout: &self.hdr_blit_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.hdr_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
                     resource: wgpu::BindingResource::Sampler(&self.hdr_sampler),
                 },
             ],
@@ -4189,6 +4303,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&vis_raws));
         }
 
+        // Skip built-in ground plane when terrain chunks are loaded (prevents Z-fighting)
+        let has_terrain = self.models.keys().any(|k| k.starts_with("terrain_chunk_"));
+
         // Shadow passes - TEST 5 (suspected crash source!)
         for (idx, layer_view) in [&self.shadow_layer0_view, &self.shadow_layer1_view]
             .iter()
@@ -4218,13 +4335,15 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             });
             sp.set_pipeline(&self.shadow_pipeline);
             sp.set_bind_group(0, &self.light_bg_shadow, &[]);
-            sp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
-            sp.set_index_buffer(
-                self.mesh_plane.index_buf.slice(..),
-                wgpu::IndexFormat::Uint32,
-            );
-            sp.set_vertex_buffer(1, self.plane_inst_buf.slice(..));
-            sp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
+            if !has_terrain {
+                sp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
+                sp.set_index_buffer(
+                    self.mesh_plane.index_buf.slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                sp.set_vertex_buffer(1, self.plane_inst_buf.slice(..));
+                sp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
+            }
             // Draw sphere instances into shadow map (aligned with render() path)
             sp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
             sp.set_index_buffer(
@@ -4289,10 +4408,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             .render(
                 &self.device,
                 enc,
-                &self
-                    .hdr_tex
-                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                &self.depth.view, // Sky renders to depth buffer (read-only or clears?) Environment.rs clears it.
+                &self.hdr_view,
+                &self.depth.view,
                 vp_sky,
                 &self.queue,
                 sky_tex,
@@ -4340,14 +4457,16 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             rp.set_bind_group(4, &self.scene_env_bg, &[]);
             rp.set_bind_group(5, &self.ibl_bind_group, &[]);
 
-            // Ground plane
-            rp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
-            rp.set_index_buffer(
-                self.mesh_plane.index_buf.slice(..),
-                wgpu::IndexFormat::Uint32,
-            );
-            rp.set_vertex_buffer(1, plane_buf.slice(..));
-            rp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
+            // Ground plane — skip when terrain chunks are loaded to prevent Z-fighting
+            if !has_terrain {
+                rp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
+                rp.set_index_buffer(
+                    self.mesh_plane.index_buf.slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                rp.set_vertex_buffer(1, plane_buf.slice(..));
+                rp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
+            }
 
             // Tokens as spheres - TEST 6
             rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
@@ -4387,25 +4506,38 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             }
         }
 
-        // Post to surface view provided
-        let mut pp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("post pass (external)"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-        pp.set_pipeline(&self.post_pipeline);
-        pp.set_bind_group(0, &self.post_bind_group, &[]);
-        pp.set_bind_group(1, &self.scene_env_bg, &[]);
-        pp.draw(0..3, 0..1);
+        // Blit internal HDR → external view.
+        // Editor mode (surface=None): use passthrough blit (no tonemapping) —
+        // the editor has its own tonemap pass.
+        // Standalone mode: use the full post pipeline (ACES tonemap + tint).
+        {
+            let mut pp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("post pass (external)"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            if self.surface.is_none() {
+                // Editor: passthrough blit (HDR → HDR, no tonemap)
+                pp.set_pipeline(&self.hdr_blit_pipeline);
+                pp.set_bind_group(0, &self.hdr_blit_bind_group, &[]);
+                pp.draw(0..3, 0..1);
+            } else {
+                // Standalone: full post-processing (tonemap + tint)
+                pp.set_pipeline(&self.post_pipeline);
+                pp.set_bind_group(0, &self.post_bind_group, &[]);
+                pp.set_bind_group(1, &self.scene_env_bg, &[]);
+                pp.draw(0..3, 0..1);
+            }
+        }
 
         Ok(())
     }
@@ -4652,7 +4784,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 match crate::material_loader::material_loader_impl::load_ktx2_to_rgba(path_ref) {
                     Ok(img) => img,
                     Err(e) => {
-                        log::warn!("Failed to load KTX2 texture '{}': {}. Falling back to standard image loading.", path, e);
+                        log::warn!(
+                            "Failed to load KTX2 texture '{}': {}. Falling back to standard image loading.",
+                            path,
+                            e
+                        );
                         // Fallback: manually read and guess format because image::open fails on .ktx2 extensions it doesn't know
                         let bytes = std::fs::read(path).expect("Failed to read fallback file");
                         image::load_from_memory(&bytes)
@@ -5119,7 +5255,7 @@ fn aabb_in_view_space(view: &glam::Mat4, corners_ws: &[glam::Vec3; 8]) -> (glam:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::{vec3, Mat4, Vec3};
+    use glam::{Mat4, Vec3, vec3};
 
     #[test]
     fn test_inside_frustum_sphere() {

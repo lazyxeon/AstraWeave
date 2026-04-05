@@ -250,7 +250,8 @@ impl OrbitCamera {
     /// Sets focal_point.y to the average terrain height and pulls the camera
     /// back far enough to see the full height range.
     pub fn frame_terrain(&mut self, min_height: f32, max_height: f32, avg_height: f32) {
-        self.focal_point.y = avg_height;
+        // Center on terrain origin (chunks are generated symmetrically around 0,0)
+        self.focal_point = Vec3::new(0.0, avg_height, 0.0);
         let height_range = (max_height - min_height).max(10.0);
         self.distance = (height_range * 1.8).clamp(self.min_distance, self.max_distance);
         self.zoom_target = self.distance;
@@ -697,7 +698,7 @@ mod tests {
         let camera = OrbitCamera::default();
         assert_eq!(camera.focal_point, Vec3::ZERO);
         assert_eq!(camera.distance, 25.0); // Default is 25.0 for better initial view
-                                           // Default pitch is PI/6 (30°) for shallower angle to see more horizon/sky
+        // Default pitch is PI/6 (30°) for shallower angle to see more horizon/sky
         assert_relative_eq!(camera.pitch, std::f32::consts::PI / 6.0);
     }
 
