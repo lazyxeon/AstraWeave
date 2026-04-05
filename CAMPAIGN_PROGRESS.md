@@ -41,4 +41,4 @@
 - [x] Load glTF tangent attributes — MikkTSpace TBN, 64-byte vertex (a9b48c684)
 - [x] 4-cascade CSM shadows — frustum-fitted splits + texel-snap stabilization (30d4f1415 + 1d6f175cd)
 - [x] IBL prefiltered cubemap — infrastructure + IblManager bake + shader (4d0f77796 + 49682bb71)
-- [~] Unify FastPreview/EnginePBR paths — architectural refactor (multi-week, deferred)
+- [~] Unify FastPreview/EnginePBR paths — Phase 0 COMPLETE (2de64d658), Phases 1-7 remaining
