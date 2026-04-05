@@ -24,6 +24,7 @@
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tracing::debug;
+use wgpu::util::DeviceExt;
 
 /// Color format used for the HDR scene render target.
 /// All scene sub-renderers create their pipelines against this format.
@@ -104,8 +105,14 @@ pub struct ViewportRenderer {
     /// Tonemap bind group layout
     tonemap_bind_group_layout: Option<wgpu::BindGroupLayout>,
 
-    /// Tonemap bind group (references HDR texture)
+    /// Tonemap bind group (references HDR texture + params uniform)
     tonemap_bind_group: Option<wgpu::BindGroup>,
+
+    /// Tonemap params uniform buffer (mode selection)
+    tonemap_params_buffer: Option<wgpu::Buffer>,
+
+    /// Active tonemapper: 0=ACES, 1=PBR Neutral, 2=Reinhard
+    tonemap_mode: u32,
 
     /// Depth texture (shared across passes)
     depth_texture: Option<wgpu::Texture>,
@@ -191,6 +198,8 @@ impl ViewportRenderer {
             tonemap_pipeline: None,
             tonemap_bind_group_layout: None,
             tonemap_bind_group: None,
+            tonemap_params_buffer: None,
+            tonemap_mode: 0, // Default: ACES
             depth_texture: None,
             depth_view: None,
             size: (0, 0),
@@ -625,7 +634,7 @@ impl ViewportRenderer {
     fn create_tonemap_resources(&mut self, hdr_view: &wgpu::TextureView) {
         let device = &self.device;
 
-        // Bind group layout: HDR texture + sampler
+        // Bind group layout: HDR texture + sampler + tonemap params
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Tonemap Bind Group Layout"),
             entries: &[
@@ -645,6 +654,16 @@ impl ViewportRenderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -656,6 +675,14 @@ impl ViewportRenderer {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
+        });
+
+        // Tonemap params uniform buffer
+        let params_data: [u32; 4] = [self.tonemap_mode, 0, 0, 0];
+        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Tonemap Params Buffer"),
+            contents: bytemuck::cast_slice(&params_data),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         // Bind group
@@ -671,8 +698,13 @@ impl ViewportRenderer {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: params_buffer.as_entire_binding(),
+                },
             ],
         });
+        self.tonemap_params_buffer = Some(params_buffer);
 
         // Pipeline (only create once — the layout doesn't change)
         if self.tonemap_pipeline.is_none() {
@@ -849,6 +881,21 @@ impl ViewportRenderer {
     /// Handle GPU device lost
     ///
     /// Clears all GPU-dependent resources and prepares for recovery.
+    /// Set the active tonemapper: 0=ACES, 1=PBR Neutral, 2=Reinhard
+    pub fn set_tonemap_mode(&mut self, mode: u32) {
+        self.tonemap_mode = mode.min(2);
+        // Update the GPU buffer if it exists
+        if let Some(buffer) = &self.tonemap_params_buffer {
+            let params_data: [u32; 4] = [self.tonemap_mode, 0, 0, 0];
+            self.queue.write_buffer(buffer, 0, bytemuck::cast_slice(&params_data));
+        }
+    }
+
+    /// Get the current tonemapper mode: 0=ACES, 1=PBR Neutral, 2=Reinhard
+    pub fn tonemap_mode(&self) -> u32 {
+        self.tonemap_mode
+    }
+
     pub fn handle_device_lost(&mut self) -> Result<()> {
         tracing::error!("GPU device lost in ViewportRenderer - cleaning up resources for recovery");
 

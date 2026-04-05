@@ -1,14 +1,24 @@
 // Tonemap Blit Shader
 //
 // Renders a fullscreen triangle that samples the HDR scene target (Rgba16Float)
-// and applies ACES tonemapping + sRGB gamma encoding to produce LDR output.
+// and applies tonemapping + sRGB gamma encoding to produce LDR output.
 //
-// Uses the "fullscreen triangle" technique: 3 vertices, no vertex buffer.
+// Supports multiple tonemappers selectable via uniform:
+// 0 = ACES Filmic (Narkowicz 2015)
+// 1 = Khronos PBR Neutral (2024)
+// 2 = Reinhard
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) uv: vec2<f32>,
 };
+
+struct TonemapParams {
+    mode: u32,       // 0=ACES, 1=PBR Neutral, 2=Reinhard
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+}
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
@@ -26,9 +36,9 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 
 @group(0) @binding(0) var hdr_texture: texture_2d<f32>;
 @group(0) @binding(1) var hdr_sampler: sampler;
+@group(0) @binding(2) var<uniform> params: TonemapParams;
 
-// ACES Filmic Tonemapping (Narkowicz 2015 fit)
-// Input: linear HDR color, Output: tonemapped color in [0,1]
+// ─── ACES Filmic Tonemapping (Narkowicz 2015 fit) ───────────────────────────
 fn aces_tonemap(x: vec3<f32>) -> vec3<f32> {
     let a = 2.51;
     let b = 0.03;
@@ -38,27 +48,56 @@ fn aces_tonemap(x: vec3<f32>) -> vec3<f32> {
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-// Linear to sRGB gamma encoding
-fn linear_to_srgb(linear: vec3<f32>) -> vec3<f32> {
-    let cutoff = vec3<f32>(0.0031308);
-    let low = linear * 12.92;
-    let high = 1.055 * pow(linear, vec3<f32>(1.0 / 2.4)) - 0.055;
-    return select(high, low, linear <= cutoff);
+// ─── Khronos PBR Neutral Tonemapper (May 2024) ─────────────────────────────
+// Reference: https://github.com/KhronosGroup/ToneMapping
+// Designed for faithful reproduction of PBR material colors under neutral lighting.
+// Linear pass-through below ~0.8, smooth highlight compression above.
+fn pbr_neutral_tonemap(color_in: vec3<f32>) -> vec3<f32> {
+    let start_compression = 0.8 - 0.04;
+    let desaturation = 0.15;
+
+    var color = color_in;
+    let x = min(color.r, min(color.g, color.b));
+    let offset = select(0.04, x - 6.25 * x * x, x < 0.08);
+    color -= vec3<f32>(offset);
+
+    let peak = max(color.r, max(color.g, color.b));
+    if peak < start_compression {
+        return color;
+    }
+
+    let d = 1.0 - start_compression;
+    let new_peak = 1.0 - d * d / (peak + d - start_compression);
+    color *= new_peak / peak;
+
+    let g = 1.0 - 1.0 / (desaturation * (peak - new_peak) + 1.0);
+    return mix(color, vec3<f32>(new_peak), g);
+}
+
+// ─── Reinhard Tonemapping ───────────────────────────────────────────────────
+fn reinhard_tonemap(color: vec3<f32>) -> vec3<f32> {
+    return color / (color + vec3<f32>(1.0));
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let hdr_color = textureSample(hdr_texture, hdr_sampler, in.uv).rgb;
 
-    // Apply exposure (EV 0.0 = no change)
-    let exposed = hdr_color;
+    // Select tonemapper based on uniform parameter
+    var tonemapped: vec3<f32>;
+    switch params.mode {
+        case 1u: {
+            tonemapped = pbr_neutral_tonemap(hdr_color);
+        }
+        case 2u: {
+            tonemapped = reinhard_tonemap(hdr_color);
+        }
+        default: {
+            tonemapped = aces_tonemap(hdr_color);
+        }
+    }
 
-    // ACES tonemapping
-    let tonemapped = aces_tonemap(exposed);
-
-    // sRGB gamma (the output surface is Bgra8UnormSrgb so the hardware
-    // does sRGB encoding, but ACES output is in linear space)
-    // Since target is *Srgb format, GPU applies gamma automatically.
+    // Since target is Bgra8UnormSrgb format, GPU applies sRGB gamma automatically.
     // We output linear tonemapped values.
     return vec4<f32>(tonemapped, 1.0);
 }
