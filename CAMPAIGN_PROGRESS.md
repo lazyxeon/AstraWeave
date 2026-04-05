@@ -17,8 +17,8 @@
 - [x] M-21: Scale gizmo UP-only — gizmo/scale.rs (3de4bc10d)
 - [x] Surface lost recovery — N/A (eframe manages surfaces, not editor viewport)
 - [x] Simulation crash recovery — runtime.rs (4857e55a2)
-- [ ] EntityManager/World undo desync — multiple files (NEXT)
-- [ ] C-5: 9 operations bypass undo stack — command.rs + main.rs
+- [x] EntityManager/World undo desync — removed 6 duplicate handler updates (d3570e6d0)
+- [ ] C-5: 9 operations bypass undo stack — command.rs + main.rs (NEXT — largest remaining item)
 
 ## Tier 3: Important
 - [ ] Permanent mesh blacklist no retry — entity_renderer.rs:174
