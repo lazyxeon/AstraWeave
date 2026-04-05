@@ -3931,10 +3931,7 @@ impl EditorApp {
                             scene_state.sync_entity(entity);
                         }
                     }
-                    // Sync EntityManager position (full 3D)
-                    // NOTE: EntityManager not part of command; undo won't revert it
-                    self.entity_manager
-                        .update_position(entity_id, glam::Vec3::new(x, y, z));
+                    // EntityManager position is updated by MoveEntityCommand (via undo stack)
                     self.status = format!(
                         "Entity {} position: ({:.2}, {:.2}, {:.2})",
                         entity_id, x, y, z
@@ -3999,10 +3996,7 @@ impl EditorApp {
                             scene_state.sync_entity(entity);
                         }
                     }
-                    // Sync EntityManager scale (full 3D)
-                    // NOTE: EntityManager not part of command; undo won't revert it
-                    self.entity_manager
-                        .update_scale(entity_id, glam::Vec3::new(scale_x, scale_y, scale_z));
+                    // EntityManager scale is updated by ScaleEntityCommand (via undo stack)
                     self.status = format!(
                         "Entity {} scale: ({:.2}, {:.2}, {:.2})",
                         entity_id, scale_x, scale_y, scale_z
@@ -4523,13 +4517,7 @@ impl EditorApp {
                             scene_state.sync_entity(eid);
                         }
                     }
-                    // Also update EntityManager JSON
-                    // NOTE: EntityManager not part of command; undo won't revert it
-                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
-                        entity
-                            .components
-                            .insert("Health".to_string(), serde_json::json!({"hp": new_hp}));
-                    }
+                    // EntityManager JSON is updated by EditHealthCommand (via undo stack)
                     self.is_dirty = true;
                 }
                 tab_viewer::PanelEvent::TeamChanged {
@@ -4556,12 +4544,7 @@ impl EditorApp {
                             scene_state.sync_entity(eid);
                         }
                     }
-                    // NOTE: EntityManager not part of command; undo won't revert it
-                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
-                        entity
-                            .components
-                            .insert("Team".to_string(), serde_json::json!({"id": new_team_id}));
-                    }
+                    // EntityManager JSON is updated by EditTeamCommand (via undo stack)
                     self.is_dirty = true;
                 }
                 tab_viewer::PanelEvent::AmmoChanged {
@@ -4585,12 +4568,7 @@ impl EditorApp {
                             scene_state.sync_entity(eid);
                         }
                     }
-                    // NOTE: EntityManager not part of command; undo won't revert it
-                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
-                        entity
-                            .components
-                            .insert("Ammo".to_string(), serde_json::json!({"count": new_ammo}));
-                    }
+                    // EntityManager JSON is updated by EditAmmoCommand (via undo stack)
                     self.is_dirty = true;
                 }
                 tab_viewer::PanelEvent::ComponentDataChanged {
@@ -4691,10 +4669,7 @@ impl EditorApp {
                             self.console_logs.push(format!("Rename failed: {}", e));
                         }
                     }
-                    // NOTE: EntityManager not part of command; undo won't revert it
-                    if let Some(entity) = self.entity_manager.get_mut(entity_id) {
-                        entity.name = new_name.clone();
-                    }
+                    // EntityManager name is updated by RenameEntityCommand (via undo stack)
                     self.is_dirty = true;
                     self.console_logs
                         .push(format!("Renamed entity {} to '{}'", entity_id, new_name));
