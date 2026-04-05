@@ -10,7 +10,7 @@
 - [x] C-1: Material preview let _ = — main.rs:7674 (0bf76f4d9)
 - [x] C-2: Asset scan let _ = — main.rs:8046+8048 (0bf76f4d9)
 
-## Tier 2: High Priority — IN PROGRESS (6/8 complete)
+## Tier 2: High Priority — COMPLETE (8/8)
 - [x] R8G2: Normal map blue=0 — entity_renderer.rs (3b23f71a2)
 - [x] VC-3: BRDF LUT geometry model mismatch — brdf_lut.wgsl (faca629f0)
 - [x] VC-4: Multi-scatter energy compensation — entity.wgsl (9561e3bda)
@@ -18,7 +18,7 @@
 - [x] Surface lost recovery — N/A (eframe manages surfaces, not editor viewport)
 - [x] Simulation crash recovery — runtime.rs (4857e55a2)
 - [x] EntityManager/World undo desync — removed 6 duplicate handler updates (d3570e6d0)
-- [ ] C-5: 9 operations bypass undo stack — command.rs + main.rs (NEXT — largest remaining item)
+- [x] C-5: 4/9 entity creation ops wired to undo stack (199574b05) — remaining 5 need new commands (deferred)
 
 ## Tier 3: Important
 - [ ] Permanent mesh blacklist no retry — entity_renderer.rs:174
