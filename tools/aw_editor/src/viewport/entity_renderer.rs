@@ -246,23 +246,26 @@ pub struct EntityRenderer {
     /// Ambient intensity
     ambient_intensity: f32,
 
-    // ─── Shadow mapping ──────────────────────────────────────
-    /// Shadow map depth texture (SHADOW_MAP_SIZE × SHADOW_MAP_SIZE)
+    // ─── Shadow mapping (4-cascade CSM) ────────────────────────
+    /// Shadow map depth texture array (4 layers × SHADOW_MAP_SIZE²)
     shadow_texture: wgpu::Texture,
 
-    /// Shadow map texture view (used as depth attachment in shadow pass)
-    shadow_texture_view: wgpu::TextureView,
+    /// D2Array view for sampling all cascades in main pass
+    shadow_texture_array_view: wgpu::TextureView,
 
-    /// Bind group layout for sampling shadow map in main pass (group 3)
+    /// Per-cascade D2 views for rendering (one per layer)
+    shadow_cascade_views: Vec<wgpu::TextureView>,
+
+    /// Bind group layout for sampling shadow map array in main pass (group 3)
     shadow_bind_group_layout: wgpu::BindGroupLayout,
 
-    /// Bind group for sampling shadow map in main pass (group 3)
+    /// Bind group for sampling shadow map array in main pass (group 3)
     shadow_bind_group: wgpu::BindGroup,
 
     /// Depth-only shadow render pipeline (uses shadow.wgsl vs_shadow)
     shadow_pipeline: wgpu::RenderPipeline,
 
-    /// Uniform buffer for shadow pass (light VP matrix)
+    /// Uniform buffer for shadow pass (single light VP per pass)
     shadow_uniform_buffer: wgpu::Buffer,
 
     /// Bind group 0 for shadow pass (light VP uniforms)
@@ -684,13 +687,13 @@ impl EntityRenderer {
         // Shadow mapping resources
         // ═══════════════════════════════════════════════════════════════════
 
-        // Shadow depth texture (SHADOW_MAP_SIZE × SHADOW_MAP_SIZE)
+        // Shadow depth texture array (CASCADE_COUNT layers × SHADOW_MAP_SIZE²)
         let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Shadow Map Depth Texture"),
+            label: Some("Shadow Map Depth Texture Array"),
             size: wgpu::Extent3d {
                 width: SHADOW_MAP_SIZE,
                 height: SHADOW_MAP_SIZE,
-                depth_or_array_layers: 1,
+                depth_or_array_layers: CASCADE_COUNT,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -699,8 +702,24 @@ impl EntityRenderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let shadow_texture_view =
-            shadow_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        // D2Array view for sampling all cascades in the main pass
+        let shadow_texture_array_view =
+            shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2Array),
+                ..Default::default()
+            });
+        // Per-cascade D2 views for rendering (depth attachment per layer)
+        let shadow_cascade_views: Vec<wgpu::TextureView> = (0..CASCADE_COUNT)
+            .map(|i| {
+                shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some(&format!("Shadow Cascade {i} View")),
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: i,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                })
+            })
+            .collect();
 
         // Comparison sampler for shadow depth testing
         let shadow_comparison_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -711,7 +730,7 @@ impl EntityRenderer {
             ..Default::default()
         });
 
-        // Shadow bind group layout (group 3 in main pass): depth texture + comparison sampler
+        // Shadow bind group layout (group 3 in main pass): depth texture array + comparison sampler
         let shadow_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Shadow Map Bind Group Layout (group 3)"),
@@ -721,7 +740,7 @@ impl EntityRenderer {
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Depth,
-                            view_dimension: wgpu::TextureViewDimension::D2,
+                            view_dimension: wgpu::TextureViewDimension::D2Array,
                             multisampled: false,
                         },
                         count: None,
@@ -735,14 +754,14 @@ impl EntityRenderer {
                 ],
             });
 
-        // Shadow bind group (group 3 in main pass)
+        // Shadow bind group (group 3 in main pass) — uses D2Array view
         let shadow_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Shadow Map Bind Group"),
             layout: &shadow_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&shadow_texture_view),
+                    resource: wgpu::BindingResource::TextureView(&shadow_texture_array_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -1415,7 +1434,8 @@ impl EntityRenderer {
             ambient_color: [0.55, 0.52, 0.48],
             ambient_intensity: 0.35,
             shadow_texture,
-            shadow_texture_view,
+            shadow_texture_array_view,
+            shadow_cascade_views,
             shadow_bind_group_layout,
             shadow_bind_group,
             shadow_pipeline,
@@ -1506,29 +1526,28 @@ impl EntityRenderer {
         self.shadow_enabled
     }
 
-    /// Compute the light-space view-projection matrix for the directional sun.
-    /// Centers the shadow frustum on `focus_pos` (typically the camera position).
-    fn compute_shadow_vp(&self, focus_pos: Vec3) -> Mat4 {
+    /// Compute 4 cascade view-projection matrices and their split distances.
+    /// Returns ([VP0..VP3], [split_far_0..split_far_3]).
+    /// Phase 5 will implement proper frustum fitting; currently uses a fixed
+    /// ortho extent per cascade as a regression baseline.
+    fn compute_cascade_vps(&self, focus_pos: Vec3) -> ([Mat4; 4], [f32; 4]) {
         let sun_dir = Vec3::from(self.sun_direction).normalize_or(Vec3::new(0.5, 0.7, 0.35));
-        let light_pos = focus_pos - sun_dir * (SHADOW_HALF_EXTENT * 2.0);
+        let up = if sun_dir.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
 
-        // Choose an up vector that isn't parallel to sun direction
-        let up = if sun_dir.y.abs() > 0.99 {
-            Vec3::Z
-        } else {
-            Vec3::Y
-        };
+        // Temporary: uniform extents per cascade (Phase 5 replaces with frustum fitting)
+        let extents = [25.0_f32, 50.0, 100.0, 200.0];
+        let splits = [25.0_f32, 60.0, 150.0, SHADOW_MAX_DISTANCE];
 
-        let light_view = Mat4::look_at_rh(light_pos, focus_pos, up);
-        let light_proj = Mat4::orthographic_rh(
-            -SHADOW_HALF_EXTENT,
-            SHADOW_HALF_EXTENT,
-            -SHADOW_HALF_EXTENT,
-            SHADOW_HALF_EXTENT,
-            0.1,
-            SHADOW_HALF_EXTENT * 4.0,
-        );
-        light_proj * light_view
+        let mut vps = [Mat4::IDENTITY; 4];
+        for i in 0..4 {
+            let half = extents[i];
+            let light_pos = focus_pos - sun_dir * (half * 2.0);
+            let light_view = Mat4::look_at_rh(light_pos, focus_pos, up);
+            let light_proj = Mat4::orthographic_rh(-half, half, -half, half, 0.1, half * 4.0);
+            vps[i] = light_proj * light_view;
+        }
+
+        (vps, splits)
     }
 
     /// Enable or disable IBL.
@@ -2593,8 +2612,8 @@ impl EntityRenderer {
         let view_proj = camera.view_projection_matrix_relative();
         let camera_pos = camera.position();
 
-        // Compute directional shadow light-space VP matrix
-        let shadow_vp = self.compute_shadow_vp(camera_pos);
+        // Compute 4-cascade shadow VP matrices and split distances
+        let (cascade_vps, cascade_splits) = self.compute_cascade_vps(camera_pos);
 
         let uniforms = EntityUniforms {
             view_proj: view_proj.to_cols_array_2d(),
@@ -2626,7 +2645,11 @@ impl EntityRenderer {
             light2_color_intensity: self.pack_light_color(2),
             light3_pos_range: self.pack_light_pos(3),
             light3_color_intensity: self.pack_light_color(3),
-            shadow_vp: shadow_vp.to_cols_array_2d(),
+            shadow_vp_0: cascade_vps[0].to_cols_array_2d(),
+            shadow_vp_1: cascade_vps[1].to_cols_array_2d(),
+            shadow_vp_2: cascade_vps[2].to_cols_array_2d(),
+            shadow_vp_3: cascade_vps[3].to_cols_array_2d(),
+            cascade_splits,
             shadow_params: [
                 0.002,                                       // x: depth bias
                 0.05,                                        // y: normal offset bias
@@ -2707,55 +2730,66 @@ impl EntityRenderer {
         // Shadow depth pass — render scene from light's perspective
         // ═══════════════════════════════════════════════════════════════════
         if self.shadow_enabled {
-            // Write light VP to shadow uniform buffer
-            let shadow_uniforms = ShadowUniforms {
-                light_vp: shadow_vp.to_cols_array_2d(),
-            };
-            queue.write_buffer(
-                &self.shadow_uniform_buffer,
-                0,
-                bytemuck::bytes_of(&shadow_uniforms),
-            );
+            // Render shadow depth for each cascade layer
+            for cascade_idx in 0..CASCADE_COUNT as usize {
+                // Write this cascade's VP to shadow uniform buffer
+                let shadow_uniforms = ShadowUniforms {
+                    light_vp: cascade_vps[cascade_idx].to_cols_array_2d(),
+                };
+                queue.write_buffer(
+                    &self.shadow_uniform_buffer,
+                    0,
+                    bytemuck::bytes_of(&shadow_uniforms),
+                );
 
-            let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Shadow Depth Pass"),
-                color_attachments: &[], // No color output — depth only
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.shadow_texture_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
+                let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some(&format!("Shadow Depth Pass (Cascade {cascade_idx})")),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.shadow_cascade_views[cascade_idx],
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
                     }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
 
-            shadow_pass.set_pipeline(&self.shadow_pipeline);
-            shadow_pass.set_bind_group(0, &self.shadow_bind_group_0, &[]);
-            shadow_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+                shadow_pass.set_pipeline(&self.shadow_pipeline);
+                shadow_pass.set_bind_group(0, &self.shadow_bind_group_0, &[]);
+                shadow_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
-            for (mesh_path, start, count) in &draw_groups {
-                if *count == 0 || (*start + *count) as usize > total {
-                    continue;
-                }
-
-                match mesh_path {
-                    Some(path) if self.mesh_cache.contains_key(path) => {
-                        let mesh = &self.mesh_cache[path];
-                        shadow_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                        shadow_pass
-                            .set_index_buffer(mesh.index_buffer.slice(..), mesh.index_format);
-                        shadow_pass.draw_indexed(0..mesh.index_count, 0, *start..*start + *count);
+                for (mesh_path, start, count) in &draw_groups {
+                    if *count == 0 || (*start + *count) as usize > total {
+                        continue;
                     }
-                    _ => {
-                        shadow_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-                        shadow_pass.set_index_buffer(
-                            self.index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint16,
-                        );
-                        shadow_pass.draw_indexed(0..self.index_count, 0, *start..*start + *count);
+
+                    match mesh_path {
+                        Some(path) if self.mesh_cache.contains_key(path) => {
+                            let mesh = &self.mesh_cache[path];
+                            shadow_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                            shadow_pass
+                                .set_index_buffer(mesh.index_buffer.slice(..), mesh.index_format);
+                            shadow_pass.draw_indexed(
+                                0..mesh.index_count,
+                                0,
+                                *start..*start + *count,
+                            );
+                        }
+                        _ => {
+                            shadow_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+                            shadow_pass.set_index_buffer(
+                                self.index_buffer.slice(..),
+                                wgpu::IndexFormat::Uint16,
+                            );
+                            shadow_pass.draw_indexed(
+                                0..self.index_count,
+                                0,
+                                *start..*start + *count,
+                            );
+                        }
                     }
                 }
             }
@@ -3031,11 +3065,17 @@ pub struct SceneLight {
     pub intensity: f32,
 }
 
-/// Shadow map resolution (single cascade)
+/// Shadow map resolution (per cascade)
 const SHADOW_MAP_SIZE: u32 = 2048;
 
-/// Shadow map orthographic half-extent (world units from center)
-const SHADOW_HALF_EXTENT: f32 = 50.0;
+/// Number of shadow cascades
+const CASCADE_COUNT: u32 = 4;
+
+/// Logarithmic/uniform blend factor for cascade splits (0=uniform, 1=logarithmic)
+const SHADOW_LAMBDA: f32 = 0.5;
+
+/// Maximum shadow distance (world units from camera)
+const SHADOW_MAX_DISTANCE: f32 = 300.0;
 
 /// BRDF LUT texture resolution
 const BRDF_LUT_SIZE: u32 = 256;
@@ -3102,8 +3142,12 @@ struct EntityUniforms {
     light2_color_intensity: [f32; 4],
     light3_pos_range: [f32; 4],
     light3_color_intensity: [f32; 4],
-    // Shadow mapping
-    shadow_vp: [[f32; 4]; 4],
+    // Shadow mapping (4-cascade CSM)
+    shadow_vp_0: [[f32; 4]; 4],
+    shadow_vp_1: [[f32; 4]; 4],
+    shadow_vp_2: [[f32; 4]; 4],
+    shadow_vp_3: [[f32; 4]; 4],
+    cascade_splits: [f32; 4],  // view-space far distances per cascade
     shadow_params: [f32; 4],
     // Color management
     exposure_params: [f32; 4],

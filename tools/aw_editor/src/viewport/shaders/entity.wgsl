@@ -24,8 +24,12 @@ struct Uniforms {
     light2_color_intensity: vec4<f32>,
     light3_pos_range: vec4<f32>,
     light3_color_intensity: vec4<f32>,
-    // Shadow mapping
-    shadow_vp: mat4x4<f32>,            // Light view-projection matrix
+    // Shadow mapping (4-cascade CSM)
+    shadow_vp_0: mat4x4<f32>,          // Cascade 0 light VP matrix (near)
+    shadow_vp_1: mat4x4<f32>,          // Cascade 1 light VP matrix
+    shadow_vp_2: mat4x4<f32>,          // Cascade 2 light VP matrix
+    shadow_vp_3: mat4x4<f32>,          // Cascade 3 light VP matrix (far)
+    cascade_splits: vec4<f32>,          // view-space far distances for cascades 0-3
     shadow_params: vec4<f32>,           // x=bias, y=normal_bias, z=enabled(0/1), w=texel_size
     // Color management
     exposure_params: vec4<f32>,         // x=exposure_ev (EV compensation), y/z/w=reserved
@@ -77,11 +81,11 @@ var<uniform> uniforms: Uniforms;
 @group(2) @binding(0)
 var<uniform> material: MaterialParams;
 
-// ─── Group 3: Shadow Map ─────────────────────────────────────────────────────
-@group(3) @binding(0) var shadow_map: texture_depth_2d;
+// ─── Group 3: Shadow Map (4-cascade array) ──────────────────────────────────
+@group(3) @binding(0) var shadow_map: texture_depth_2d_array;
 @group(3) @binding(1) var shadow_sampler: sampler_comparison;
 
-// ─── Shadow Map Sampling (5-tap PCF) ─────────────────────────────────────────
+// ─── Shadow Map Sampling (4-cascade CSM, 5-tap PCF) ─────────────────────────
 fn sample_shadow(world_pos: vec3<f32>, n: vec3<f32>) -> f32 {
     let enabled = uniforms.shadow_params.z;
     if enabled < 0.5 { return 1.0; }
@@ -90,14 +94,33 @@ fn sample_shadow(world_pos: vec3<f32>, n: vec3<f32>) -> f32 {
     let normal_bias = uniforms.shadow_params.y;
     let texel_size = uniforms.shadow_params.w;
 
-    // Apply normal offset bias to reduce shadow acne on angled surfaces
+    // Select cascade based on distance from camera
+    let dist = length(world_pos - uniforms.camera_pos);
+    var cascade_index: i32 = 3;
+    if dist < uniforms.cascade_splits.x {
+        cascade_index = 0;
+    } else if dist < uniforms.cascade_splits.y {
+        cascade_index = 1;
+    } else if dist < uniforms.cascade_splits.z {
+        cascade_index = 2;
+    }
+
+    // Get the VP matrix for the selected cascade
+    var shadow_vp: mat4x4<f32>;
+    switch cascade_index {
+        case 0: { shadow_vp = uniforms.shadow_vp_0; }
+        case 1: { shadow_vp = uniforms.shadow_vp_1; }
+        case 2: { shadow_vp = uniforms.shadow_vp_2; }
+        default: { shadow_vp = uniforms.shadow_vp_3; }
+    }
+
+    // Apply normal offset bias
     let biased_pos = world_pos + n * normal_bias;
 
     // Project to light clip space
-    let shadow_clip = uniforms.shadow_vp * vec4<f32>(biased_pos, 1.0);
+    let shadow_clip = shadow_vp * vec4<f32>(biased_pos, 1.0);
     let shadow_ndc = shadow_clip.xyz / shadow_clip.w;
 
-    // NDC → UV: x [-1,1] → [0,1], y [-1,1] → [1,0] (flipped for wgpu texture coords)
     let shadow_uv = vec2<f32>(
         shadow_ndc.x * 0.5 + 0.5,
         -shadow_ndc.y * 0.5 + 0.5
@@ -109,12 +132,12 @@ fn sample_shadow(world_pos: vec3<f32>, n: vec3<f32>) -> f32 {
         return 1.0;
     }
 
-    // 5-tap PCF (center + 4 cardinal neighbors)
-    var shadow = textureSampleCompare(shadow_map, shadow_sampler, shadow_uv, compare_depth);
-    shadow += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(-texel_size, 0.0), compare_depth);
-    shadow += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(texel_size, 0.0), compare_depth);
-    shadow += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(0.0, -texel_size), compare_depth);
-    shadow += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(0.0, texel_size), compare_depth);
+    // 5-tap PCF on the selected cascade layer
+    var shadow = textureSampleCompare(shadow_map, shadow_sampler, shadow_uv, cascade_index, compare_depth);
+    shadow += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(-texel_size, 0.0), cascade_index, compare_depth);
+    shadow += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(texel_size, 0.0), cascade_index, compare_depth);
+    shadow += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(0.0, -texel_size), cascade_index, compare_depth);
+    shadow += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(0.0, texel_size), cascade_index, compare_depth);
     return shadow / 5.0;
 }
 
