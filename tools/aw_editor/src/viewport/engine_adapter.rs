@@ -266,9 +266,12 @@ impl EngineRenderAdapter {
             }
             let name = format!("terrain_chunk_{i}");
 
-            // Convert editor TerrainVertex → engine-compatible arrays.
-            // The engine's create_mesh_from_full_arrays accepts positions, normals,
-            // tangents, UVs, and indices separately.
+            // Convert editor TerrainVertex (96 bytes) → engine-compatible arrays (geometry only).
+            // NOTE: Biome weights (biome_weights_0/1), material IDs, and material blend
+            // weights are NOT passed to the engine — the engine uses its own biome system
+            // (single biome_id per vertex + shader-side blending). This is a deliberate
+            // simplification for the EnginePBR path; the editor's FastPreview path uses
+            // the full 96-byte vertex with all biome data.
             let positions: Vec<[f32; 3]> = vertices.iter().map(|v| v.position).collect();
             let normals: Vec<[f32; 3]> = vertices.iter().map(|v| v.normal).collect();
             let uvs: Vec<[f32; 2]> = vertices.iter().map(|v| v.uv).collect();
