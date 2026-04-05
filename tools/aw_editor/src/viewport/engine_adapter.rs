@@ -557,12 +557,3 @@ impl EngineRenderAdapter {
     }
 }
 
-#[cfg(not(feature = "astraweave-render"))]
-pub struct EngineRenderAdapter;
-
-#[cfg(not(feature = "astraweave-render"))]
-impl EngineRenderAdapter {
-    pub fn is_initialized(&self) -> bool {
-        false
-    }
-}

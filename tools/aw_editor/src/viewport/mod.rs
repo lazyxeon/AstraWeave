@@ -41,7 +41,6 @@
 
 pub mod blueprint_overlay;
 pub mod camera;
-#[cfg(feature = "astraweave-render")]
 mod engine_adapter;
 pub(crate) mod entity_renderer;
 mod gizmo_renderer;
@@ -58,7 +57,6 @@ mod widget;
 #[allow(unused_imports)]
 pub use physics_renderer::{PhysicsDebugOptions, PhysicsDebugRenderer};
 #[allow(unused_imports)] // Re-exported for external API consumers
-#[cfg(feature = "astraweave-render")]
 pub use renderer::RenderMode;
 // Shared types — canonical exports
 #[allow(unused_imports)]

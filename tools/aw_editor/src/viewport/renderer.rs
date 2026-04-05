@@ -45,9 +45,7 @@ use super::types::{
 use crate::gizmo::GizmoState;
 use astraweave_core::{Entity, World};
 
-#[cfg(feature = "astraweave-render")]
 use super::engine_adapter::EngineRenderAdapter;
-#[cfg(feature = "astraweave-render")]
 pub use super::engine_adapter::RenderMode;
 
 /// Viewport rendering coordinator
@@ -81,17 +79,11 @@ pub struct ViewportRenderer {
     /// Scatter placements forwarded to engine adapter each frame
     scatter_placements: Vec<ScatterPlacement>,
 
-    /// Engine renderer adapter for PBR mesh rendering (feature-gated)
-    #[cfg(feature = "astraweave-render")]
+    /// Engine renderer adapter for PBR mesh rendering
     engine_adapter: Option<EngineRenderAdapter>,
 
     /// Enable engine rendering (PBR meshes) vs cube rendering
-    #[cfg(feature = "astraweave-render")]
     render_mode: RenderMode,
-
-    /// Fallback flag when astraweave-render feature is disabled
-    #[cfg(not(feature = "astraweave-render"))]
-    render_mode: bool,
 
     /// HDR scene render target (Rgba16Float) — all scene passes render here
     hdr_texture: Option<wgpu::Texture>,
@@ -187,12 +179,8 @@ impl ViewportRenderer {
             gizmo_renderer,
             physics_renderer: None,
             scatter_placements: Vec::new(),
-            #[cfg(feature = "astraweave-render")]
             engine_adapter: None,
-            #[cfg(feature = "astraweave-render")]
             render_mode: RenderMode::EnginePBR,
-            #[cfg(not(feature = "astraweave-render"))]
-            render_mode: false,
             hdr_texture: None,
             hdr_view: None,
             tonemap_pipeline: None,
@@ -351,7 +339,6 @@ impl ViewportRenderer {
             mapped_at_creation: false,
         }));
 
-        #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.resize(width, height);
         }
@@ -434,11 +421,8 @@ impl ViewportRenderer {
         // EnginePBR mode: engine adapter renders all scene content (sky, terrain,
         // scatter, water, entities, weather, post-fx) in a single draw_into() call.
         // FastPreview mode: use the existing custom sub-renderer chain.
-        #[cfg(feature = "astraweave-render")]
         let engine_path =
             self.render_mode == RenderMode::EnginePBR && self.engine_adapter.is_some();
-        #[cfg(not(feature = "astraweave-render"))]
-        let engine_path = false;
 
         if engine_path {
             // ── ENGINE-FIRST PATH ───────────────────────────────────────
@@ -446,7 +430,6 @@ impl ViewportRenderer {
             // water, entities, weather particles, post-processing.
             // We only render editor overlays on top.
 
-            #[cfg(feature = "astraweave-render")]
             {
                 let adapter = self
                     .engine_adapter
@@ -903,10 +886,7 @@ impl ViewportRenderer {
         self.depth_texture = None;
         self.depth_view = None;
 
-        #[cfg(feature = "astraweave-render")]
-        {
-            self.engine_adapter = None;
-        }
+        self.engine_adapter = None;
 
         // Sub-renderers may need to be recreated with a new device too
         // but that usually happens by recreating the ViewportRenderer itself.
@@ -928,7 +908,6 @@ impl ViewportRenderer {
 
     pub fn upload_terrain_chunks(&mut self, chunks: &[(Vec<TerrainVertex>, Vec<u32>)]) {
         // Forward to engine adapter
-        #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.upload_terrain_chunks(chunks);
         }
@@ -941,7 +920,6 @@ impl ViewportRenderer {
         chunks: &[(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)],
     ) {
         // Re-map terrain_integration::TerrainVertex → viewport TerrainVertex for engine adapter.
-        #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             let converted: Vec<(Vec<TerrainVertex>, Vec<u32>)> = chunks
                 .iter()
@@ -1071,18 +1049,14 @@ impl ViewportRenderer {
     }
 
     pub fn clear_terrain(&mut self) {
-        #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.clear_terrain();
         }
     }
 
     pub fn terrain_chunk_count(&self) -> usize {
-        #[cfg(feature = "astraweave-render")]
-        {
-            if let Some(adapter) = &self.engine_adapter {
-                return adapter.terrain_chunk_count();
-            }
+        if let Some(adapter) = &self.engine_adapter {
+            return adapter.terrain_chunk_count();
         }
         0
     }
@@ -1103,11 +1077,8 @@ impl ViewportRenderer {
 
     /// Check if any animated weather effects are active (rain, etc.)
     pub fn has_active_effects(&self) -> bool {
-        #[cfg(feature = "astraweave-render")]
-        {
-            if let Some(adapter) = &self.engine_adapter {
-                return adapter.weather_active();
-            }
+        if let Some(adapter) = &self.engine_adapter {
+            return adapter.weather_active();
         }
         false
     }
@@ -1132,7 +1103,6 @@ impl ViewportRenderer {
         _ground_color: [f32; 4],
     ) {
         // Forward to engine adapter
-        #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             let mut cfg = adapter.sky_config();
             cfg.day_color_top = glam::Vec3::new(sky_top[0], sky_top[1], sky_top[2]);
@@ -1144,7 +1114,6 @@ impl ViewportRenderer {
     /// Set fog and weather parameters for distance-based terrain fog
     pub fn set_fog_params(&mut self, params: TerrainFogParams) {
         // Forward to engine adapter
-        #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.set_fog_params(&params);
         }
@@ -1159,7 +1128,6 @@ impl ViewportRenderer {
             .set_ambient(params.ambient_color, params.ambient_intensity);
 
         // Forward to engine adapter
-        #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.set_lighting_params(&params);
         }
@@ -1178,7 +1146,6 @@ impl ViewportRenderer {
     /// Enable or disable the volumetric water plane
     pub fn set_water_enabled(&mut self, enabled: bool) {
         // Forward water state to engine adapter
-        #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.set_water_enabled(enabled, WaterStyle::Ocean);
         }
@@ -1206,7 +1173,6 @@ impl ViewportRenderer {
         }
 
         // Forward scatter to engine adapter
-        #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.upload_scatter_placements(&placements);
         }
@@ -1245,44 +1211,32 @@ impl ViewportRenderer {
 
     /// Get the number of scatter instances rendered last frame.
     pub fn scatter_instance_count(&self) -> u32 {
-        #[cfg(feature = "astraweave-render")]
-        {
-            if let Some(adapter) = &self.engine_adapter {
-                return adapter.scatter_instance_count() as u32;
-            }
+        if let Some(adapter) = &self.engine_adapter {
+            return adapter.scatter_instance_count() as u32;
         }
         0
     }
 
     /// Get the number of scatter draw calls last frame.
     pub fn scatter_draw_calls(&self) -> u32 {
-        #[cfg(feature = "astraweave-render")]
-        {
-            if let Some(adapter) = &self.engine_adapter {
-                return adapter.scatter_draw_calls();
-            }
+        if let Some(adapter) = &self.engine_adapter {
+            return adapter.scatter_draw_calls();
         }
         0
     }
 
     /// Total triangles rendered by the terrain renderer.
     pub fn terrain_triangles(&self) -> usize {
-        #[cfg(feature = "astraweave-render")]
-        {
-            if let Some(adapter) = &self.engine_adapter {
-                return adapter.terrain_triangles();
-            }
+        if let Some(adapter) = &self.engine_adapter {
+            return adapter.terrain_triangles();
         }
         0
     }
 
     /// Total indices rendered by the terrain renderer.
     pub fn terrain_indices(&self) -> usize {
-        #[cfg(feature = "astraweave-render")]
-        {
-            if let Some(adapter) = &self.engine_adapter {
-                return adapter.terrain_indices();
-            }
+        if let Some(adapter) = &self.engine_adapter {
+            return adapter.terrain_indices();
         }
         0
     }
@@ -1299,40 +1253,24 @@ impl ViewportRenderer {
 
     /// Check if engine rendering (PBR meshes) is enabled
     pub fn use_engine_rendering(&self) -> bool {
-        #[cfg(feature = "astraweave-render")]
-        {
-            self.render_mode == RenderMode::EnginePBR
-        }
-        #[cfg(not(feature = "astraweave-render"))]
-        {
-            false
-        }
+        self.render_mode == RenderMode::EnginePBR
     }
 
     /// Enable/disable engine rendering (PBR meshes vs cubes)
     pub fn set_use_engine_rendering(&mut self, enabled: bool) {
-        #[cfg(feature = "astraweave-render")]
-        {
-            self.render_mode = if enabled {
-                RenderMode::EnginePBR
-            } else {
-                RenderMode::FastPreview
-            };
-        }
-        #[cfg(not(feature = "astraweave-render"))]
-        {
-            let _ = enabled;
-        }
+        self.render_mode = if enabled {
+            RenderMode::EnginePBR
+        } else {
+            RenderMode::FastPreview
+        };
     }
 
     /// Get the current render mode
-    #[cfg(feature = "astraweave-render")]
     pub fn render_mode(&self) -> RenderMode {
         self.render_mode
     }
 
     /// Set render mode directly
-    #[cfg(feature = "astraweave-render")]
     pub fn set_render_mode(&mut self, mode: RenderMode) {
         self.render_mode = mode;
     }
@@ -1341,7 +1279,6 @@ impl ViewportRenderer {
     ///
     /// Must be called before engine rendering can be used.
     /// Uses the viewport's current size for initialization.
-    #[cfg(feature = "astraweave-render")]
     pub async fn init_engine_adapter(&mut self) -> Result<()> {
         if self.engine_adapter.is_some() {
             return Ok(());
@@ -1363,19 +1300,16 @@ impl ViewportRenderer {
     }
 
     /// Check if engine adapter is initialized
-    #[cfg(feature = "astraweave-render")]
     pub fn engine_adapter_initialized(&self) -> bool {
         self.engine_adapter.is_some()
     }
 
     /// Get immutable reference to engine adapter (if initialized)
-    #[cfg(feature = "astraweave-render")]
     pub fn engine_adapter(&self) -> Option<&EngineRenderAdapter> {
         self.engine_adapter.as_ref()
     }
 
     /// Get mutable reference to engine adapter (if initialized)
-    #[cfg(feature = "astraweave-render")]
     pub fn engine_adapter_mut(&mut self) -> Option<&mut EngineRenderAdapter> {
         self.engine_adapter.as_mut()
     }
@@ -1390,10 +1324,7 @@ impl Drop for ViewportRenderer {
         // Explicitly clear optional resources
         self.depth_texture = None;
         self.depth_view = None;
-        #[cfg(feature = "astraweave-render")]
-        {
-            self.engine_adapter = None;
-        }
+        self.engine_adapter = None;
     }
 }
 

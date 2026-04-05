@@ -564,7 +564,6 @@ impl OrbitCamera {
         }
     }
 
-    #[cfg(feature = "astraweave-render")]
     pub fn to_engine_camera(&self) -> astraweave_render::camera::Camera {
         astraweave_render::camera::Camera {
             position: self.position(),

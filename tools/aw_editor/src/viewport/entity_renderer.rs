@@ -1736,7 +1736,6 @@ impl EntityRenderer {
     /// Bake an IBL environment cubemap from the engine's IblManager.
     /// On success, rebuilds the IBL bind group with the prefiltered specular cubemap.
     /// `mode` controls the source: procedural sky or HDRI path.
-    #[cfg(feature = "astraweave-render")]
     pub fn bake_ibl_environment(
         &mut self,
         mode: astraweave_render::SkyMode,

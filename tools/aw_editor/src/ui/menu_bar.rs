@@ -376,7 +376,6 @@ impl MenuBar {
         ui.menu_button("Debug", |ui| {
             ui.label("Viewport Tests:");
 
-            #[cfg(feature = "astraweave-render")]
             {
                 if ui.button("Load barrels.glb").clicked() {
                     handler.on_load_test_model(

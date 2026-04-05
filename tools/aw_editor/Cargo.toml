@@ -11,7 +11,7 @@ unwrap_used = "allow"
 
 [features]
 default = ["editor-core"]
-editor-core = ["astraweave-render"]
+editor-core = []
 editor-graphs = ["editor-core"]
 editor-materials = ["editor-core"]
 editor-terrain = ["editor-core"]
@@ -51,7 +51,7 @@ astract = { path = "../../crates/astract" }
 astraweave-core = { path = "../../astraweave-core" }
 astraweave-ecs = { path = "../../astraweave-ecs" }
 astraweave-profiling = { path = "../../astraweave-profiling" }
-astraweave-render = { path = "../../astraweave-render", optional = true, features = ["gltf-assets", "textures"] }
+astraweave-render = { path = "../../astraweave-render", features = ["gltf-assets", "textures"] }
 astraweave-author = { path = "../../astraweave-author" }
 astraweave-asset = { path = "../../astraweave-asset", features = ["blend"] }
 astraweave-audio = { path = "../../astraweave-audio" }

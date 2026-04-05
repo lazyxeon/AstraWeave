@@ -2458,7 +2458,6 @@ impl ViewportWidget {
         &mut self.gizmo_state
     }
 
-    #[cfg(feature = "astraweave-render")]
     pub fn load_gltf_model(
         &self,
         name: impl Into<String>,
@@ -2495,17 +2494,7 @@ impl ViewportWidget {
         }
     }
 
-    #[cfg(not(feature = "astraweave-render"))]
-    pub fn load_gltf_model(
-        &self,
-        _name: impl Into<String>,
-        _path: &std::path::Path,
-    ) -> anyhow::Result<()> {
-        anyhow::bail!("astraweave-render feature not enabled")
-    }
-
     /// Set material parameters for the viewport renderer
-    #[cfg(feature = "astraweave-render")]
     pub fn set_material_params(
         &self,
         base_color: [f32; 4],
@@ -2525,18 +2514,7 @@ impl ViewportWidget {
         }
     }
 
-    #[cfg(not(feature = "astraweave-render"))]
-    pub fn set_material_params(
-        &self,
-        _base_color: [f32; 4],
-        _metallic: f32,
-        _roughness: f32,
-    ) -> anyhow::Result<()> {
-        anyhow::bail!("astraweave-render feature not enabled")
-    }
-
     /// Get current time of day (0.0 - 24.0 hours)
-    #[cfg(feature = "astraweave-render")]
     pub fn get_time_of_day(&self) -> anyhow::Result<f32> {
         let renderer = self
             .renderer
@@ -2550,13 +2528,7 @@ impl ViewportWidget {
         }
     }
 
-    #[cfg(not(feature = "astraweave-render"))]
-    pub fn get_time_of_day(&self) -> anyhow::Result<f32> {
-        anyhow::bail!("astraweave-render feature not enabled")
-    }
-
     /// Set time of day (0.0 - 24.0 hours)
-    #[cfg(feature = "astraweave-render")]
     pub fn set_time_of_day(&self, hour: f32) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
@@ -2571,13 +2543,7 @@ impl ViewportWidget {
         }
     }
 
-    #[cfg(not(feature = "astraweave-render"))]
-    pub fn set_time_of_day(&self, _hour: f32) -> anyhow::Result<()> {
-        anyhow::bail!("astraweave-render feature not enabled")
-    }
-
     /// Get time scale (1.0 = real time)
-    #[cfg(feature = "astraweave-render")]
     pub fn get_time_scale(&self) -> anyhow::Result<f32> {
         let renderer = self
             .renderer
@@ -2591,13 +2557,7 @@ impl ViewportWidget {
         }
     }
 
-    #[cfg(not(feature = "astraweave-render"))]
-    pub fn get_time_scale(&self) -> anyhow::Result<f32> {
-        anyhow::bail!("astraweave-render feature not enabled")
-    }
-
     /// Set time scale (1.0 = real time, 60.0 = fast forward)
-    #[cfg(feature = "astraweave-render")]
     pub fn set_time_scale(&self, scale: f32) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
@@ -2612,13 +2572,7 @@ impl ViewportWidget {
         }
     }
 
-    #[cfg(not(feature = "astraweave-render"))]
-    pub fn set_time_scale(&self, _scale: f32) -> anyhow::Result<()> {
-        anyhow::bail!("astraweave-render feature not enabled")
-    }
-
     /// Get time-of-day period description (Day/Twilight/Night)
-    #[cfg(feature = "astraweave-render")]
     pub fn get_time_period(&self) -> anyhow::Result<&'static str> {
         let renderer = self
             .renderer
@@ -2632,13 +2586,7 @@ impl ViewportWidget {
         }
     }
 
-    #[cfg(not(feature = "astraweave-render"))]
-    pub fn get_time_period(&self) -> anyhow::Result<&'static str> {
-        anyhow::bail!("astraweave-render feature not enabled")
-    }
-
     /// Check if shadows are enabled
-    #[cfg(feature = "astraweave-render")]
     pub fn shadows_enabled(&self) -> anyhow::Result<bool> {
         let renderer = self
             .renderer
@@ -2652,13 +2600,7 @@ impl ViewportWidget {
         }
     }
 
-    #[cfg(not(feature = "astraweave-render"))]
-    pub fn shadows_enabled(&self) -> anyhow::Result<bool> {
-        anyhow::bail!("astraweave-render feature not enabled")
-    }
-
     /// Enable or disable shadows
-    #[cfg(feature = "astraweave-render")]
     pub fn set_shadows_enabled(&self, enabled: bool) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
@@ -2671,11 +2613,6 @@ impl ViewportWidget {
         } else {
             anyhow::bail!("Engine adapter not initialized")
         }
-    }
-
-    #[cfg(not(feature = "astraweave-render"))]
-    pub fn set_shadows_enabled(&self, _enabled: bool) -> anyhow::Result<()> {
-        anyhow::bail!("astraweave-render feature not enabled")
     }
 
     /// Toggle entity selection

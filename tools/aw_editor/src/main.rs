@@ -7110,7 +7110,6 @@ impl EditorApp {
                     }
 
                     // Load the glTF model into the engine renderer
-                    #[cfg(feature = "astraweave-render")]
                     if let Some(viewport) = &self.viewport {
                         if let Err(e) = viewport.load_gltf_model(&model_name, &path) {
                             warn!("Failed to load glTF model into renderer: {}", e);
@@ -7310,7 +7309,6 @@ impl EditorApp {
                     .unwrap_or("preview_model")
                     .to_string();
 
-                #[cfg(feature = "astraweave-render")]
                 if let Some(viewport) = &self.viewport {
                     match viewport.load_gltf_model(&model_name, &path) {
                         Ok(()) => {
@@ -7329,13 +7327,6 @@ impl EditorApp {
                     warn!("No viewport available for model preview");
                     self.console_logs
                         .push("Viewport not available for preview".into());
-                }
-
-                #[cfg(not(feature = "astraweave-render"))]
-                {
-                    warn!("astraweave-render feature not enabled - cannot preview model");
-                    self.console_logs
-                        .push("Render feature not enabled - cannot preview model".into());
                 }
             }
 
