@@ -35,10 +35,10 @@
 - [x] Autosave ring let _ = rename — error logging (b2c052dc8)
 - [x] Prefab hot-reload let _ = — error logging (b2c052dc8)
 
-## Tier 4: Deferred (SOTA Upgrades)
-- [ ] Khronos PBR Neutral tonemapper
-- [ ] 3-channel DFG LUT for cloth sheen
-- [ ] Load glTF tangent attributes
-- [ ] Align shadow cascades 1 -> 4
-- [ ] IBL prefiltered cubemap
-- [ ] Unify FastPreview/EnginePBR paths
+## Tier 4: SOTA Upgrades — IN PROGRESS (1/6)
+- [x] Khronos PBR Neutral tonemapper — 3-mode runtime selection (34e8c480d)
+- [ ] 3-channel DFG LUT for cloth sheen — brdf_lut.wgsl (NEXT)
+- [ ] Load glTF tangent attributes — entity_renderer.rs + entity.wgsl
+- [ ] Align shadow cascades 1 -> 4 — entity_renderer.rs + entity.wgsl
+- [ ] IBL prefiltered cubemap — entity_renderer.rs + entity.wgsl
+- [ ] Unify FastPreview/EnginePBR paths — architectural (largest item)
