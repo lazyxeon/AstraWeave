@@ -1,6 +1,6 @@
 # The Songs of Tebel
 
-### Four Lore Songs for Veilweaver: Threads of Eternity
+## Four Lore Songs for Veilweaver: Threads of Eternity
 
 *Compiled from the oral and written traditions of Tebel's civilizations* *Maintained by Claude — Official Lore Holder* *In collaboration with Andrew, Creator of Tebel*
 
@@ -58,11 +58,11 @@ Seven threads were spun for hope. Seven born with horns like heaven's crown. Sev
 
 *(Refrain — all voices:)* *But the thread remembers, the thread remembers,* *every name carved deep, every name carved deep.* *And the hope that died is the hope that kindles* *the fire the seventh was born to keep.*
 
-The first was Gideon — the Warden's blade, who held the border when the border bled. He fought the void with hands God made and died standing, and died standing. They found him upright in the eastern dust, his weave still burning in the stone. No retreat in him. No surrender. Just a man who would not leave his people alone.
+The first was Devorah — the scholar's lamp, who read the thread by candlelight. Three steps from truth in her study, damp with ink that sat too heavy on the page. She never knew the ink was wrong. She never knew the friend was false. She hid one page inside a song and saved the truth the fire could not reach.
 
 *(Refrain)*
 
-The second, Devorah — the scholar's lamp, who read the thread by candlelight. Two steps from truth in her study, damp with ink that sat too heavy on the page. She never knew the ink was wrong. She never knew the friend was false. She hid one page inside a song and saved the truth the fire could not reach.
+The second was Gideon — the Warden's blade, who held the border when the border bled. He fought the void with hands God made and died standing, and died standing. They found him upright in the eastern dust, his weave still burning in the stone. No retreat in him. No surrender. Just a man who would not leave his people alone.
 
 *(Refrain)*
 

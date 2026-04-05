@@ -1,13 +1,11 @@
 //! Numeric input UI widget.
 
 /// Numeric input widget for precise transform values.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct NumericInput {
     buffer: String,
 }
 
-#[allow(dead_code)]
 impl NumericInput {
     pub fn new() -> Self {
         Self::default()

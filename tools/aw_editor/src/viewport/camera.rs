@@ -307,7 +307,9 @@ impl OrbitCamera {
 
     /// Update aspect ratio (call when viewport resizes)
     pub fn set_aspect(&mut self, width: f32, height: f32) {
-        self.aspect = width / height;
+        if height > 0.0 {
+            self.aspect = width / height;
+        }
     }
 
     /// Get camera position in world space
@@ -458,7 +460,8 @@ impl OrbitCamera {
 
         // Unproject to world space
         let inv_vp = self.view_projection_matrix().inverse();
-        let near_point = inv_vp.project_point3(Vec3::new(ndc_x, ndc_y, -1.0));
+        // wgpu uses [0, 1] depth range (near=0, far=1), not OpenGL's [-1, 1]
+        let near_point = inv_vp.project_point3(Vec3::new(ndc_x, ndc_y, 0.0));
         let far_point = inv_vp.project_point3(Vec3::new(ndc_x, ndc_y, 1.0));
 
         Ray {

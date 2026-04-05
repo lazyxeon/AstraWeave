@@ -55,7 +55,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     out.position = vec4<f32>(pos, 0.0, 1.0);
     
     // Unproject to camera-relative space (near and far plane)
-    let near = uniforms.inv_view_proj * vec4<f32>(pos, -1.0, 1.0);
+    // wgpu uses [0, 1] depth range: near=0, far=1
+    let near = uniforms.inv_view_proj * vec4<f32>(pos, 0.0, 1.0);
     let far = uniforms.inv_view_proj * vec4<f32>(pos, 1.0, 1.0);
     
     out.near_point = near.xyz / near.w;

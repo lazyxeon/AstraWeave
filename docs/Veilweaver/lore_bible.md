@@ -59,7 +59,7 @@ Each holds a piece of the truth that the others don’t. The complete picture on
 
 #### Before the First War
 
-The Keh’Dem were prominent across Tebel. Recognizing the signs of what was coming — not Tav’al’s war but Abzu’s deeper stirring — they deliberately removed themselves from the thread of fate entirely, using their innate connection to Eyn magic to become invisible to fate-weaving, the Keepers’ oracle, Tav’al, and even Dav’al himself. They have existed in the shadows of Tebel undetected ever since. Watching. Waiting.
+The Keh’Dem were prominent across Tebel. Recognizing the signs of what was coming — not Tav’al’s war but Abzu’s deeper stirring — they deliberately removed their trace from the thread of fate entirely, using their innate connection to Eyn magic to become invisible to fate-weaving, the Keepers’ oracle, Tav’al, and even Dav’al himself. They have existed in the shadows of Tebel undetected ever since. Watching. Waiting.
 
 #### The First Cataclysmic War
 
@@ -106,7 +106,7 @@ Co-survivors of the first war. Built Dur Dunnum and shaped every stone of Milah 
 
 The oldest race in Tebel. A mix of elven and gnomish — small, ancient, almost alien in appearance. Vibrant and strange, with teal eyes that see the substrate of reality constantly. Born with an innate ability to touch Eyn magic — the oldest magic, the substrate beneath both creation and void. After millennia of effort have made an inch of progress understanding something larger than an aircraft carrier.
 
-Deliberately removed themselves from the thread of fate before the first war, recognizing signs of Abzu’s stirring that nobody else could perceive. Have been invisible to everything and everyone — the Keepers’ oracle, the Nachash, Tav’al, Dav’al, Abzu himself — ever since. Living in the shadows of Tebel undetected. Waiting for the Tikva because they alone understand what Abzu truly is and what defeating him actually requires.
+Deliberately removed their trace from the thread of fate before the first war, recognizing signs of Abzu’s stirring that nobody else could perceive. Have been invisible to everything and everyone — the Keepers’ oracle, the Nachash, Tav’al, Dav’al, Abzu himself — ever since because Eyn lets them observe the web without leaving a readable signature inside it. Living in the shadows of Tebel undetected. Waiting for the Tikva because they alone understand what Abzu truly is and what defeating him actually requires.
 
 Their name drawn from Qedem (Hebrew): those of the east, those who came before, the ancient ones. The player will underestimate them immediately and be absolutely wrong.
 
@@ -138,7 +138,7 @@ Irregular, like something broken from a larger whole — which it is. The color 
 
 Because the Emberstoat was the first thing Dav’al created and this object is a fragment of that creative act. Held passively: a low constant awareness of the thread. Held actively with focus: the thread becomes navigable. The holder can follow a specific fate-strand across time. The birth of a Tikva doesn’t just register as a disruption — it illuminates.
 
-The entire thread surrounding that birth lights up. Cannot perceive Abzu — the First Word cannot perceive what existed before it was spoken. Cannot perceive the Keh’Dem — they removed themselves from the thread entirely. When the seventh Tikva was born, Kalum was holding the Even Qol in his sleep. It became hot for the first time in seven centuries.
+The entire thread surrounding that birth lights up. Cannot perceive Abzu — the First Word cannot perceive what existed before it was spoken. Cannot perceive the Keh’Dem — they removed their trace from the thread entirely. When the seventh Tikva was born, Kalum was holding the Even Qol in his sleep. It became hot for the first time in seven centuries.
 
 #### ABAN DUMMU — The Silenced Stone Akkadian: Aban (stone) + Dummu (silenced, the voice that was stopped)
 
@@ -165,10 +165,10 @@ He learns the truth about Abzu. Stands beside Tav’al for the first and only ti
 Archon of the Final Silence Etymology: Tav (Hebrew: the final letter, mark of ending) + Al (of) + Kurum (Akkadian: consumption/devouring). Loosely: The End That Consumes.
 Same fundamental nature as Dav’al. Same primordial origin. Opposite eternal choice. Where Dav’al speaks creation into existence, Tav’al consumes through void. The cold blue titan — winged, horned, crowned. A king of everything beyond the veil. Arms open not in aggression but in reception. He receives rather than attacks. This isn’t a beast. It is a ruler.
 
-Has been executing a strategy of geological patience for seven centuries — corrupting institutions, erasing history, quietly eliminating each generation’s Tikva through the Nachash. Believes Dav’al has been hiding and waiting. Has no awareness that Abzu exists or that he has been Abzu’s unwitting instrument the entire time. When Tav’al learns the truth — that his seven century strategy was never his own, that he was a pawn — something cracks.
+Has been executing a strategy of geological patience for seven centuries — corrupting institutions, erasing history, quietly eliminating each generation’s Tikva through the Nachash. Believes Dav’al has been hiding and waiting. Has no awareness that Abzu exists or that his long campaign has been ridden from beneath by a third will older than both brothers. At the Convergence, the Tikva uses Thread Sense to perceive what Tav’al cannot: a primordial signature braided through the Nachash, the Aban Dummu, and Dav’al’s seven-century exhaustion alike. The Tikva names it quietly. Dav’al recognizes the pattern immediately. When Tav’al learns the truth — that his seven century strategy was never entirely his own, that he was a pawn — something cracks.
 
 Not his nature. His pride. The Archon of Final Silence discovering there is something that makes even his silence irrelevant. He withdraws the Nachash quietly. Without announcement. Not because he becomes good. Because he refuses to be anyone’s instrument. He will be the sovereign of endings on his own terms or not at all.
-His final conversation with the Tikva is the most unexpected exchange in the entire game. Not enemies. Not allies. Two beings who found something honest in the space between war and peace.
+His final conversation with the Tikva happens immediately after the Yahwey weave, before he withdraws beyond the veil. Not enemies. Not allies. Two beings who found something honest in the space between war and peace. The post-game midpoint preserves only an echo of its final line.
 “Eternity is not conquered, merely respectfully withdrawn.”
 
 #### ABZU
@@ -176,9 +176,9 @@ His final conversation with the Tikva is the most unexpected exchange in the ent
 The Unwritten Etymology: Sumerian (the oldest written language) — the primordial void before creation, the formless deep that existed before the first word was ever spoken. Named from Sumerian rather than Hebrew/Akkadian because he predates the linguistic framework Dav’al and Tav’al represent. The linguistic age gap between the three names tells the entire story without exposition.
 The third being. The oldest. Predates Dav’al and Tav’al entirely. Exiled before their existence by the very act of creation itself — when Dav’al spoke the First Word, Abzu’s exile was the consequence. Neither creation nor void. Something that existed before the distinction between creation and void had meaning. Forgotten even by Dav’al and Tav’al. Re-emerging now after millennia.
 
-He does not want victory. He does not want dominion. He does not want destruction. He wants the First Word unspoken. Total cosmic undoing. Existence returned to the state before Dav’al spoke. He fights Dav’al secretly without revealing himself — not through direct confrontation but through exhaustion. Letting Dav’al spend seven centuries fighting shadows, draining his power.
+He does not want victory. He does not want dominion. He does not want destruction in Tav’al’s sense. He wants the First Word unspoken. Total cosmic undoing. Existence returned to the state before Dav’al spoke. He is not mindless. He chooses. But what he chooses is reversal rather than rule — the grief of the formless deep trying to close the wound of differentiation by erasing the world that followed it. He fights Dav’al secretly without revealing himself — not through direct confrontation but through exhaustion. Letting Dav’al spend seven centuries fighting shadows, draining his power.
 
-He leaves Tav’al entirely alone because Tav’al’s consumption and corruption is doing Abzu’s work for him. Tav’al is his unwitting instrument. Abzu cannot be destroyed — destruction is a Tav concept and he predates it. Cannot be imprisoned — containment is a Dav concept and he predates that too. The Yahwey weave does something far more profound: it makes him witness.
+He leaves Tav’al entirely alone because Tav’al’s consumption and corruption opens channels that Abzu can inhabit without ever naming himself. Tav’al is his unwitting instrument. Abzu cannot be destroyed — destruction is a Tav concept and he predates it. Cannot be imprisoned — containment is a Dav concept and he predates that too. The Yahwey weave does something far more profound: it makes him witness.
 
 Forces him to experience what he has been trying to undo — every life, every fate-weave, every stone of Dur Dunnum, every fallen Tikva. He has never experienced existence from the inside. He has only ever known the absence that preceded it. Abzu becomes still. Not destroyed. Not imprisoned. Witnessed. He recedes into the Eyn substrate. Changed by the experience of having been inside what he tried to undo.
 
@@ -189,7 +189,7 @@ He didn’t die. He became the deepest layer of the world’s foundation. Which 
 
 As recorded in the stone archive of Shamaru Kalam by Kalum, First Keeper. Each entry marked with the Keeper notation for a thread cut before its full length was reached. Six marks that made Kalum’s hands shake each time he carved them. Every single one of them moved the needle. The Nachash eliminated them. They did not erase them.
 DEVORAH — The Scholar Who Remembered First Tikva | Female | Generation One | ~680 Years Ago Davar (Hebrew: the bee, she who speaks truth with a sting, the judge who saw clearly when no one would look)
-A scholar of linguistics and ancient history operating before the Nachash fully controlled academic institutions. Her fate-weaving manifested as pattern recognition operating at an impossible level — she would read three texts written centuries apart in different languages and see the single connecting thread in minutes. She was within ten years of connecting Davar to Dav’al Narum.
+A scholar of linguistics and ancient history operating before the Nachash fully controlled academic institutions. Her fate-weaving manifested as pattern recognition operating at an impossible level — she would read three texts written centuries apart in different languages and see the single connecting thread in minutes. She was within ten years of publicly proving what her final three inferential steps would have shown: that Davar pointed to Dav’al Narum.
 
 The Nachash stole seven years of research the night before her presentation and had her reputation quietly destroyed. She died fourteen years later of void magic administered through contaminated ink used daily across eighteen months. She hid one text before the theft — incomplete, inside the binding of a donated book in Shamatu’s library. It has sat there for 680 years.
 
@@ -233,11 +233,11 @@ Tell them what I knew. Kalum felt the Even Qol burn hot for nine days and cool s
 ARAM — The One Who Still Breathes Sixth Tikva | Male | Generation Six | ~30 Years Ago | ALIVE Aram (Hebrew: the exalted one, the high place — also the ancient kingdom that existed before the boundaries were drawn)
 Only Kalum knows he is alive. The Nachash believe they succeeded. They did something worse. Born in the northern reaches with more Keeper protection than any previous Tikva — Kalum had learned from the previous five. Aram’s fate-weaving was different: the thread didn’t just respond to him, it spoke to him. Constantly. An unceasing awareness of every fate-strand in his vicinity.
 
-Overwhelming from adolescence. Kalum found him at seventeen — earlier than any previous Tikva — because the Even Qol was practically screaming. Three years of training. Aram absorbed seven centuries of history simultaneously and built frameworks that exceeded anything Kalum had witnessed. The Nachash found him at twenty. Six operatives — the most ever sent for one Tikva.
+Overwhelming from adolescence. Kalum found him at seventeen — earlier than any previous Tikva — because the Even Qol was practically screaming. Three years of training. Aram absorbed seven centuries of history simultaneously and built frameworks that exceeded anything Kalum had witnessed. The Nachash found him at twenty. Six operatives — the largest covert team the Nachash had ever sent for one unrevealed Tikva.
 
 They used Kurnugi Serpent venom — a paralytic suppressing fate-weaving temporarily. The sudden silencing of an ability that had been constant since adolescence broke something. His mind, built around constant perception of fate, didn’t know what to do with absence. The Nachash administered a killing dose of void magic and left. It didn’t kill him. His connection to the thread redirected it unconsciously.
 
-Kalum found him three days later. He lives now in a cave system in the far northern reaches of Tsafon. The madness isn’t constant — days or weeks of complete clarity where he is the most formidable intellect Kalum has ever encountered, then the thread speaks too loudly and he fractures again. The cave system around him has been quietly, gently reshaped by thirty-two years of unconscious fate-weaving into the most sheltered place in Tebel.
+Kalum found him three days later. He lives now in a cave system in the far northern reaches of Tsafon. The madness isn’t constant — there are stretches of lucidity, sometimes days or weeks long, where he can think and speak with terrifying precision inside the shelter of the cave, then the thread speaks too loudly and he fractures again. The cave system around him has been quietly, gently reshaped by thirty-two years of unconscious fate-weaving into the most sheltered place in Tebel.
 
 Warm. Safe. Emberstoat sleep on him. Kalum visits twice per year. On his last clarity visit, three months before the seventh Tikva was born, Aram said: ‘The seventh will be different. The thread is quiet around them. Like the moment before someone says something true.’ Keeper Record: “His entry in the Keeper record has been left blank for thirty-two years. Because it is not final yet.”
 
@@ -267,6 +267,7 @@ When the seventh Tikva is born he does something he has never done in seven cent
 #### BARU — The Dwarf
 
 Innkeeper of Yaqar Runs the tavern where the player truly wakes in layer three of the opening sequence. Serves the best food within fifty miles and asks no questions. Has a symbol carved inside the bar he has never explained to anyone. It is a Keeper of the Thread marker. He knows exactly who the player is the moment they walk in. Says nothing. Watches everything.
+The figures that follow are recorded by title rather than personal name because title, office, or role is how the player, their communities, and often even the Keeper archive know them. The absence of personal names is intentional, not a missing field.
 The Healer of Malon Two hundred and forty years old and doesn’t look a day over sixty. Has never explained this. The oldest living human in Tebel. She knew the second Tikva personally. She has been waiting a very long time for the seventh.
 The Blind Storyteller of Ahavah Performs in Ahavah’s oldest theater every month. Tells a cycle of stories that — assembled in the right order — describes the first war with accuracy that would make the Keepers’ jaws drop. She learned it from her grandmother who learned it from hers. She has no idea what she knows. She also knows two songs written about Malkah, the third Tikva, without knowing she is singing about a Tikva.
 The Scholar of Shamatu Has spent thirty years in Shamatu’s Nachash-controlled library. Recently found an annotation that contradicted itself in a way implying the original text said something different. Has told no one. Is currently being monitored. Is three shelves away from Devorah’s hidden text.
@@ -477,7 +478,7 @@ Somewhere in the eastern borders. Unmarked on any map. The geological alteration
 
 #### RESHIT’S DEEP CHAMBER
 
-The oldest prophecy in Tebel. Painted by the Keh’Dem before the first war, before Dur Dunnum, before the concept of the Tikva existed. Depicts three figures — one golden, one cold blue, one horned and small — standing against something that has no form. Painted by people who had no prophetic tradition because they hadn’t needed one yet. They just saw it coming and put it on a wall and left.
+The oldest prophecy in Tebel, and the clearest Keh’Dem example of observation becoming prophecy. Painted by the Keh’Dem before the first war, before Dur Dunnum, before the concept of the Tikva existed. Depicts three figures — one golden, one cold blue, one horned and small — standing against something that has no form. Painted by people who had no prophetic tradition because they hadn’t needed one yet. They saw the pattern coming, put it on a wall, and history proved them right.
 NATURAL LANDMARKS THE SCAR OF MATU A valley that shouldn’t exist — too straight, too deep, too clean to be natural. Created when Dav’al spoke a single Word at a force too large to fight conventionally. The valley floor is permanently warm. Nothing void-touched will enter it. Pilgrims who don’t know its history report feeling inexplicably safe inside it.
 
 Plants grow there that don’t exist anywhere else in Tebel — species preserved since before the first war.
@@ -583,18 +584,28 @@ Player truly wakes in a tavern inn room. Companions still passed out. The parano
 
 ### XVI. THE FINAL BATTLE & ENDING
 
-The Convergence Tav’al destroys the statue in Milah. The echo returns to Dav’al. Full power restored for the first time in seven centuries. Tav’al learns the truth — he was never Dav’al’s obstacle. He was Abzu’s instrument. The Archon of Final Silence discovering there is something that makes even his silence irrelevant. Two eternal opposites stand in the same direction for the first time. The Keepers have no record of this moment. It has never happened before.
+The Convergence Tav’al destroys the statue in Milah. The echo returns to Dav’al. Full power restored for the first time in seven centuries. The battlefield becomes newly legible to the Tikva: through Thread Sense they perceive a third signature braided through the Nachash, the Aban Dummu, Tav’al’s seven-century campaign, and Dav’al’s exhaustion alike. Older than both brothers. The Tikva does not accuse. The Tikva names. Quietly, with the certainty of direct perception: Abzu. Dav’al hears the name and recognizes the pattern instantly. Tav’al understands in the same breath that he was never Dav’al’s true counterpart in this war. He was a channel. An instrument. The Archon of Final Silence discovering there is something that makes even his silence irrelevant. Two eternal opposites stand in the same direction for the first time. The Keepers have no record of this moment. It has never happened before.
 The Three-Part Battle Dav’al speaks — Words of pure creation carving reality into weapons of golden light against the Unwritten. Tav’al consumes — turning Abzu’s own unwriting against him. Void eating void. The Tikva weaves — not the most powerful on the battlefield but the most precise. The needle threading between two cosmic forces. The only one who can touch the thread of fate and redirect it.
 
 Dav’al and Tav’al cannot defeat Abzu alone — he predates their power entirely. But the Tikva carries something neither of them does.
 The Final Weave The first fate-weave at Dur Dunnum. Seven centuries of recorded thread. Six fallen Tikva who each moved the needle without knowing it. Kalum’s unbroken witness. Dav’al’s echo. All of it woven into a single declaration. The Tikva screams Yahwey — the primordial cry of existence, the sound of being alive made into defiance — and weaves everything into one declaration: This exists.
 
 This cannot be unwritten. Abzu encounters the one thing it cannot undo — a world that chose to exist.
-“Eternity is not conquered, merely respectfully withdrawn.” “The threat was never to creation. But to existence itself.” — Tav’al Kurum, in his final conversation with the Tikva
+After the Yahwey weave, before Tav’al withdraws, he speaks to the Tikva directly. Not warmly. Not with apology. With austere recognition.
+“You named the hand beneath my hand,” he says.
+The Tikva is still holding the midpoint. Their answer is quiet. “I named what was there.”
+“Quietly.”
+“Quietly was enough.”
+The silence between them is not hostile. It is structural — the kind that gives shape rather than erases it.
+“The threat was never to creation,” Tav’al says. “But to existence itself.”
+The Tikva does not look away. “And being used is not innocence.”
+“No,” Tav’al says. “But neither is silence unwriting.”
+The Tikva inclines their head. “I know.”
+That is as close to peace as the scene allows. When he withdraws, he leaves the final line behind like architecture settling into place: “Eternity is not conquered, merely respectfully withdrawn.”
 The Aftermath Abzu recedes into the Eyn substrate — witnessed into stillness, not destroyed. Changed by the experience of having been inside what he tried to undo. He becomes the deepest layer of the world’s foundation. He could stir again. In another age entirely. Dav’al returns to Tebel not as a ruler but as a presence. No new cities spoken into existence.
 
 No restored statue. He walks among people the way the fire statue depicted him — active, present, engaged. The Sultan of the First Word learning that sometimes the most powerful word is silence. Tav’al withdraws the Nachash quietly. Without announcement. The Etemmu of the Silence simply cease between one moment and the next — their void sustenance cut off simultaneously. He retreats beyond the veil. Not as a defeated villain.
-As an eternal force that chose, for the first time, to exercise restraint. Not because he was conquered. Because he was humiliated by a truth larger than himself and decided that if he could not be the architect of endings he would at least be their sovereign rather than their instrument. Kalum sets down the record. The thread needs no keeper when the world itself holds it.
+As an eternal force that chose, for the first time, to exercise restraint. Not because he was conquered. Because the Tikva named the larger truth and he refused to remain inside another will. If he cannot be the architect of endings, he will at least be their sovereign rather than their instrument. Kalum sets down the record. The thread needs no keeper when the world itself holds it.
 
 He doesn’t die. He simply stops being the First Keeper and becomes something with no title yet — the first free dwarf in seven centuries. What does a being who has only ever witnessed do when the witnessing is complete? The Tikva does not become a god. Does not rule. Does not receive a throne. They get something better. They get to choose. The player’s final act is sitting with Kalum — who has set down the record — and telling him what they want to do next.
 
@@ -694,7 +705,7 @@ The Fourth Companion — Late Game
 ARAM — The Broken Thread
 Male | Human (Tikva) | All four branches (damaged) | Combat role: Unpredictable
 Aram does not join the party in the traditional sense. After the Quiet Before Movement I, if the player visits the cave regularly and builds sufficient Thread Keeper connection, Aram begins having longer clarity periods. In Act VI, when the Unwriting manifests, Aram feels it from his cave — every thread in Tebel screaming at once, the thing he has been drowning in for thirty-two years suddenly justified — and he walks out.
-He arrives at the player’s position during Act VII. He is not well. He is not stable. He is the most powerful fate-weaver alive and he is broken in ways that make his power unpredictable. His GOAP-driven behavior oscillates between moments of devastating competence — Tier 5 weaves executed with thirty-two years of theoretical refinement — and moments where the thread speaks too loudly and he freezes, or weaves something unintended, or simply sits down in the middle of combat and puts his hands over his horns because the noise is too much.
+He arrives at the player’s position during Act VII. He is not well. He is not stable. When the thread aligns cleanly enough for him to act, he is the most powerful fate-weaver alive; he is also broken in ways that make his power unpredictable. His GOAP-driven behavior oscillates between moments of devastating competence — Tier 5 weaves executed with thirty-two years of theoretical refinement — and moments where the thread speaks too loudly and he freezes, or weaves something unintended, or simply sits down in the middle of combat and puts his hands over his horns because the noise is too much.
 The player cannot control when Aram is brilliant and when Aram is broken. They can only be there when the broken moments happen and provide the Thread Keeper stability that Kalum provided for thirty-two years. Aram in the party is the highest risk and highest reward companion in the game. When he is lucid, he is transcendent. When he is not, he is the most dangerous person within twenty meters and the danger is not malice — it is a musical instrument that was played too hard and now resonates with everything whether the player wants it to or not.
 During the Yahwey weave, Aram’s contribution is the broken note. The sixth thread that should have been whole and is not. The dense Yahwey incorporates his damage as a harmonic — the sound of something that broke and kept singing. It is not the strongest note. It is the most honest one.
 Act availability: Act VII through Epilogue. Cannot be dismissed once he arrives — he is not here because the player chose him. He is here because the thread finally gave him a reason to walk out of the cave.
@@ -933,7 +944,7 @@ The Sundering was not a war. It was a birth. Dav’al and Tav’al emerged from 
 The Sundering was not violent. But it was not painless. Abzu — the undifferentiated whole — experienced the emergence of its own children as a diminishment. Not because Dav’al and Tav’al took something from Abzu but because the act of differentiation — the creation of structure, of distinction, of here-versus-there — was antithetical to Abzu’s nature.
 
 The formless deep is formless. Structure is the opposite of formlessness. Dav’al’s first act — the First Word — was simultaneously the greatest creation in history and the final exile of the thing that existed before creation was possible.
-Abzu did not choose exile. Abzu was exiled by the consequences of Dav’al’s choice. This is the tragedy that the allegory carries: the void before the Word was not evil. It was the deep from which everything emerged. And it was pushed aside by the emergence itself, the way a chrysalis is broken by the butterfly it protected. The chrysalis did not choose to break.
+Abzu did not choose the exile itself. Abzu was exiled by the consequences of Dav’al’s choice. What Abzu chooses later is what to do with that wound: reversal rather than reconciliation. This is the tragedy that the allegory carries: the void before the Word was not evil. It was the deep from which everything emerged. And it was pushed aside by the emergence itself, the way a chrysalis is broken by the butterfly it protected. The chrysalis did not choose to break.
 
 The butterfly did not choose to break it. Both things happened because growth requires the dissolution of what contained it.
 The First Witnesses — Yeshurun’s Foundation
@@ -1032,7 +1043,7 @@ The post-game web is subtly different: Abzu settles more peacefully into the sub
 
 The Painting Described in Full
 The cave system at Reshit is the oldest continuously inhabited location in Tebel. The outer chambers have been used for storage by the current inhabitants for generations. The inner chambers are avoided because the Substrate Crawlers make people uncomfortable — they move through solid matter in ways that the uninitiated find unsettling. The deep chamber has not been entered by a surface-dweller in living memory.
-The painting is on the far wall of the deepest accessible chamber, approximately forty meters below the surface in a space where the air is still and carries a faint mineral tang. The Keh’Dem painted it before the first war, before Dur Dunnum, before the concept of the Tikva existed. They painted it because they saw it coming the way they see everything coming — not through prophecy but through observation so patient and so precise that the future becomes legible in the patterns of the present.
+The painting is on the far wall of the deepest accessible chamber, approximately forty meters below the surface in a space where the air is still and carries a faint mineral tang. The Keh’Dem painted it before the first war, before Dur Dunnum, before the concept of the Tikva existed. They painted it because they saw it coming the way they see everything coming — through observation so patient and so precise, and from so far outside the thread’s readable surface, that what they recorded became prophecy to every culture that came after them.
 
 **The Image**
 The painting is rendered in Keh’Dem geometric pigments — minerals ground from substrate-adjacent stone that carry faint Eyn resonance. The colors do not behave normally. They shift slightly depending on the observer’s thread-frequency alignment, appearing warmer to Dav-aligned viewers and cooler to Tav-aligned viewers. A viewer with no thread alignment sees a neutral palette that is nevertheless wrong in a way they cannot articulate — the colors exist at a frequency that the human eye can process but the human brain does not expect.
@@ -1052,7 +1063,7 @@ It is the color of a wall that had paint on it and then had the paint taken away
 Margin Notation
 Around the painting’s edges, in early Keh’Dem geometric script that predates the refined notation in the observation space by several thousand years, a single annotation. Tikkun can translate it if the player brings them to Reshit (or if the player has sufficient Geometric Notation literacy from Movement II). It reads:
 “We do not know when. We do not know who. We know the shape. Three and one and the space before everything. The small one holds the line. It has always been the small one. It will always be the small one. We painted this so that when the small one arrives they will know: you were expected. You were always expected. The shape was visible before you were born.”
-The player stands before a painting that was created for them before the concept of them existed, by beings who saw the future not through prophecy but through the patient observation of structural inevitability. The horns are in the painting. The horns are on the player’s head. The shape matches. It has always matched.
+The player stands before a painting that was created for them before the concept of them existed, by beings who reached prophecy through the patient observation of structural inevitability. The horns are in the painting. The horns are on the player’s head. The shape matches. It has always matched.
 
 
 ### XXVIII. THE GIFTED OBJECT — Clarification and Full Design
@@ -1063,10 +1074,10 @@ The Even Qol’s True Form
 When Dav’al gifted the Even Qol to Kalum, it was not a shard. It was a complete crystal — approximately the size of two hands cupped together, irregular and organic in shape, as if a piece of somewhere else had been compressed into a form that could exist in the physical world without destroying it. The crystal was a fragment of the First Word itself: the moment Dav’al spoke Tebel into existence, crystallized into physical matter.
 
 The universe began with that Word. The crystal is a frozen instant of that beginning.
-Over seven centuries, the Even Qol degraded. Not physically — physically it is as perfect as the moment Dav’al created it. It degraded informationally. Each Tikva born caused the crystal to flare, and each Tikva eliminated caused it to crack — not a visible crack but a harmonic fracture, a split in the crystal’s resonant frequency. Six Tikva born, six Tikva eliminated (or, in Aram’s case, broken).
+Over seven centuries, the Even Qol degraded. Not physically — physically it is as perfect as the moment Dav’al created it. It degraded informationally. Each Tikva birth caused the crystal to flare, and each Tikva’s fall caused it to crack — not a visible crack but a harmonic fracture, a split in the crystal’s resonant frequency. Six births. Six falls. Aram’s counted because the line lost him even though his body survived.
 
-Six harmonic fractures. The complete crystal’s unified frequency became six fragments of frequency that no longer harmonized perfectly.
-The shard that Kalum gives the player in Act I is the largest fragment of the Even Qol’s harmonic — the portion that still resonates with the strongest thread. The other five fragments are embedded in objects and locations across Tebel, each corresponding to a fallen Tikva’s fate:
+Six harmonic fractures radiated outward from a surviving keeper-core. The complete crystal’s unified frequency became one central shard and six resonance splinters that no longer harmonized perfectly.
+The shard that Kalum gives the player in Act I is that keeper-core — the largest surviving fragment of the Even Qol’s harmonic, the portion that never migrated away from Kalum’s custody. The other six fragments are embedded in objects and locations across Tebel, each corresponding to a fallen Tikva’s fate:
 Devorah’s Fragment: In the binding of the donated book in Shamatu’s library, where Devorah hid her research. The crystal shard migrated into the binding the way Dav magic migrates toward conviction. Finding it requires completing the Wrong Ink quest chain and following the Devorah Echo Log to its conclusion.
 Gideon’s Fragment: In the geological record at his last stand site. The crystal shard was absorbed into the landscape by the force of his unconscious fate-weaving during the nine-day stand. Extracting it requires Pattern Recall at the Healer’s guidance (she knew Gideon; she knows where he stood longest).
 Malkah’s Fragment: In her journal, confiscated by the Nachash. The crystal shard embedded itself in the page where Malkah first described feeling the thread. Recovering it requires the underchamber infiltration in Act V.
@@ -1144,7 +1155,7 @@ The player opens their eyes in a study. Late evening. Three candles. The desk is
 
 Devorah did not have Thread Sense terminology. She did what Thread Readers do instinctively: she arranged information spatially until the pattern emerged.
 The player has Devorah’s hands. They are ink-stained. The ink is the ink — the contaminated ink that will kill her across eighteen months of daily use. She does not know this. The player knows this because they completed the Wrong Ink quest. The knowledge sits in the player’s chest like a stone while Devorah’s hands reach for the inkwell to make a note.
-The pattern on the desk is almost complete. Devorah has connected Milah’s etymology to Davar, Davar to a pattern in three separate ancient texts, and the pattern to the naming convention of Dur Dunnum. She is eight steps from connecting Dur Dunnum’s naming to the first fate-weave. She is three steps from connecting the first fate-weave to Dav’al Narum.
+The pattern on the desk is almost complete. Devorah has connected Milah’s etymology to Davar, Davar to a pattern in three separate ancient texts, and the pattern to the naming convention of Dur Dunnum. She is eight steps from connecting Dur Dunnum’s naming to the first fate-weave. She is three steps from connecting the first fate-weave to Dav’al Narum. Three inferential steps remain. The years between her and the finished proof are verification, corroboration, and surviving the institutions already beginning to close around her.
 
 She is holding the thread of the most important discovery in seven centuries and she does not know that the ink in her hand is slowing her pattern recognition by fractions of a percent per day — enough that the connections she could make in minutes last year now take hours.
 The vignette’s gameplay: the player, using Devorah’s Thread Reader abilities, can examine each text on the desk and see the connections she saw. The Pattern Recall shows not just the content of the texts but Devorah’s emotional impressions embedded in her handling of them — excitement here, frustration there, the specific thrill of a scholar who has found something no one else has found.
@@ -1179,7 +1190,7 @@ She stays. Not because she is brave, though she is. Because the Thread Keeper ca
 Her arrest protects her people. Her conviction protects her people. Her death protects her people.
 The player feels this calculation through Malkah’s Thread Keeper perception — the specific agony of someone who can feel every connection in their web and chooses to let the web cut into them rather than abandon the people at the other ends of the threads.
 The vignette ends with Malkah sitting in her office, writing the fourth verse of the lullaby that will eventually carry her name through four centuries of children’s bedtimes. She writes it in first person. She writes it knowing it is the last thing she will write as a free woman. She writes it in ink that is clean.
-On exit: The player returns to the Bitu archive. The Echo Log entry updates: “Of all six she was the one who most understood what Dav’al was trying to build.” — Keeper Record. The player’s Thread Keeper abilities permanently enhance: Shared Weave range +15%. Malkah’s web, experienced from inside, teaches the player what it means to hold connections at personal cost.
+On exit: The player returns to the Bitu municipal archive. The Echo Log entry updates: “Of all six she was the one who most understood what Dav’al was trying to build.” — Keeper Record. The player’s Thread Keeper abilities permanently enhance: Shared Weave range +15%. Malkah’s web, experienced from inside, teaches the player what it means to hold connections at personal cost.
 
 #### VIGNETTE III — EZRA: The Cathedral Built Twice
 
@@ -1335,17 +1346,17 @@ The player can feel him through Thread Sense. The void frequency — which regis
 
 Tav’al is the architect of negative space. He always was. The Nachash turned his architecture into demolition. The reweaving restored it.
 The Aban Dummu, in the post-game, hums. Not with Dav’al’s golden warmth. With a low, constant tone that Thread Sense registers as structural — the sound of load-bearing silence. The sound of a foundation that is not made of stone but of the space that stone needs to exist in.
-Tav’al’s One Communication
-In the entire post-game, Tav’al speaks once. Not through the Aban Dummu. Not through void creatures. Through the silence itself.
+Tav’al’s Final Echo
+In the entire post-game, Tav’al does not begin a new conversation. What the player receives here is the afterimage of the one exchange he chose to make at the end of Act VII.
 The trigger: the player visits the exact midpoint of the rewritten web — the position they held during the Act VII reweaving, the space between Dav’al’s ceiling and Tav’al’s floor. Standing there in the post-game, with Thread Sense active, the player hears silence. Not the absence of sound. The presence of silence as a positive force — the way you hear silence in a concert hall between movements and understand that the silence is part of the music.
-In that silence, a single impression. Not words. Not images. A feeling: the specific feeling of someone who spent seven centuries being misunderstood discovering that one person — the person standing in the silence right now — understood what the silence was for. Not an enemy. Not a void. The space that creation needs to exist within. The frame that gives the picture its edges. The rest between notes that makes the music possible.
+In that silence, not new words. Not new images. The distilled remainder of what was already said: the specific feeling of someone who spent seven centuries being misunderstood discovering that one person — the person standing in the silence right now — understood what the silence was for. Not an enemy. Not a void. The space that creation needs to exist within. The frame that gives the picture its edges. The rest between notes that makes the music possible.
 The impression carries Tav’al’s regard. Not gratitude — gratitude implies debt and Tav’al does not traffic in debts. Recognition. The Archon of the Final Silence recognizing the Tikva who stood between two brothers and held the space where they could hear each other for the first time in seven hundred years.
 The impression fades. The silence remains. It has always been there. The player simply learned to hear it.
 “Eternity is not conquered, merely respectfully withdrawn.”
 
 #### — Tav’al
 
-Kurum, in his final conversation with the Tikva
+Kurum, in the final line of his final conversation with the Tikva
 
 
 ### XXXII. THE PRIMORDIAL TIER — Crafting at the Intersection
@@ -1354,6 +1365,7 @@ Post-Yahwey Endgame Crafting System
 Where Creation and Silence Meet in the Player’s Hands
 Design Philosophy
 Primordial crafting is the mechanical expression of the impossible alliance. Every Primordial item carries both Dav and Tav frequencies in stable harmonic — the material form of what the reweaving achieved cosmologically. Crafting at this tier is not simply combining rare materials at a special forge. It is an act of dual-frequency weaving that requires the player to demonstrate, through both what they possess and what they have done, that they understand what it means to hold creation and void in balance.
+The tier borrows its name from the primordial order of reality. A Primordial item is not a primordial being, nor a literal fragment of one; it is crafted matter carrying the stable dual-frequency harmonic that only became possible once the brothers were reconciled.
 The system operates on two parallel tracks: the Forge (player-directed crafting) and the Manifestation (fate-decided emergence). Both produce Primordial items. The Forge gives the player agency over what they build. The Manifestation gives the web agency over what it offers. A player can pursue both tracks simultaneously. Neither is superior. The Forge produces items the player chose.
 
 The Manifestation produces items the web chose for the player. The distinction is philosophical and the results are mechanically equivalent but personally different — the item you built feels like mastery, the item that appeared feels like recognition.
@@ -1370,7 +1382,7 @@ Kur Narum Lake — The underground lake that glows gold. The lake’s Dav-touche
 
 Items forged at Kur Narum carry the lake’s warmth permanently. Requires completion of the Kur Narum Lake Vigil quest.
 Seraphina’s Last Stand — The woven battlefield. Nine days of Tier 4 fate-weaving compressed into geology, now integrated into the rewritten web’s dual-frequency structure. Forge site specialized for Primordial weapons and combat equipment. The conviction of a woman who turned her death into a message permeates everything crafted here. Items forged at Seraphina’s Stand inherit a legacy property: they become slightly stronger each time the player uses them to protect someone else. Requires completing the Seraphina vignette.
-Player-Built Settlement — If the player constructed a workshop during Movement III using Dav-touched materials (emberstoat-warmed earth, Kur Narum sediment, crystal from Shamaru Kalam) AND the post-reweaving void integration has reached the settlement’s location, the workshop becomes a viable Primordial forge. This is the only forge site the player creates rather than discovers.
+Player-Built Settlement — If the player constructed a workshop during Movement III using Dav-touched materials (emberstoat-warmed earth, Kur Narum sediment, crystal from Shamaru Kalam) AND the post-reweaving void integration has reached the settlement’s location, the workshop becomes one of the five viable Primordial forge sites. It is the only forge site the player creates rather than discovers.
 
 Its properties reflect the player’s building choices — a workshop built with warmth emphasis produces Primordial items with warmth properties; a workshop built with structural emphasis produces items with durability properties. The settlement forge is the least powerful of the five but the most personal. What you built becomes where you build.
 Dual Requirements — Material and Experiential
@@ -3673,7 +3685,7 @@ The location is known. The window is closing. The player must decide whether to 
 Hook 2 — The Keh’Dem First Contact The scout who watched the Act 4 fight makes contact. Not dramatically. They are small, vibrant, teal-eyed, carrying a staff that the Thread Sense reads with the third frequency at full intensity. They say: ‘We have been watching you since Yaqar. We watched all six before you. You are the first who found the lens.’ They know about Abzu.
 
 They have known longer than anyone. They are ready to share an inch of what they understand — which is an inch more than anyone else in Tebel has.
-Hook 3 — Aram Kalum mentions him for the first time after Seraphina’s site. Not as a quest. As a fact, offered carefully: ‘There is a sixth who is not in the fallen record. He is alive. He is not well. When you are ready — when you have read enough of what the thread holds — I will take you to him. He has clarity days. On a clarity day he is the most useful mind in Tebel.’ The player can push on this.
+Hook 3 — Aram Kalum mentions him for the first time after Seraphina’s site. Not as a quest. As a fact, offered carefully: ‘There is a sixth who is not in the fallen record. He is alive. He is not well. When you are ready — when you have read enough of what the thread holds — I will take you to him. He has lucid days in the cave. On one of those days he is the most useful mind in Tebel. Outside the cave is another matter.’ The player can push on this.
 
 Kalum will not be rushed. He knows what Aram’s cave costs a visitor who isn’t prepared for it.
 Hook 4 — Milah The capital city. The golden statue. The corrupt political apparatus above an entire dwarven civilization that has been maintaining it. The Nachash underchamber beneath it. The statue that is a barrier that is also a beacon that is also the most important single object in the world, preserved by vanity for seven centuries. The player knows everything about it now except how it ends.
@@ -3808,7 +3820,7 @@ Aram: “Good. Then you know I have been trying to understand what happened to m
 He is precise. He is analytical. He is also describing the worst thing that ever happened to him and the precision is what makes it devastating rather than distant.
 
 Aram’s Teaching
-The clarity day conversation transitions from Aram’s experience to Aram’s teaching. He knows things about fate-weaving that no one else alive knows, because he experienced Tier 5 from the inside and survived to analyze it. He cannot weave anymore — his connection to the thread is damaged at a level that the Healer’s techniques cannot reach — but he can describe the mechanics of what he felt.
+The clarity day conversation transitions from Aram’s experience to Aram’s teaching. He knows things about fate-weaving that no one else alive knows, because he experienced Tier 5 from the inside and survived to analyze it. He cannot weave anymore in practice — not yet, not reliably — because his connection to the thread is damaged at a level that the Healer’s techniques cannot reach, but he can describe the mechanics of what he felt.
 He pauses. Looks at his hands. Aram: “Tier 4 is the last tier where you are pulling the thread. Everything past Tier 4, the thread is pulling you. The difference is not scale. The difference is agency. At Tier 5, you are not rewriting reality. Reality is flowing through you and you are directing where it goes. Your conviction determines the direction. Your understanding determines the precision. Your connections determine the cost. The reason I broke is that my connection to Revael was load-bearing and I did not know it. When she died, the thread I was channeling through her connection went somewhere I could not follow and it took part of me with it.”
 Aram: “This is what I need you to understand. At the highest tiers, your allies are not separate from your weaving. They are part of it. The thread connects everything you care about. That is its nature. That is also its danger. If you lose someone while weaving at scale, the loss is not emotional. It is structural. The thread tears. And the tear does not heal the way a wound heals. It scars in a way that changes the shape of every weave you attempt afterward. Ask Kalum what the word for that is. He knows. He has been watching me live inside it for thirty-two years.”
 Kalum, when asked, is quiet for a long time. Then:
@@ -5664,7 +5676,7 @@ The most poetic function and the one Tav’al himself would recognize: the silen
 
 The pulse is made of alternating creation and void, Word and Silence, Dav and Tav. The brothers’ frequencies, woven together, produce the heartbeat of a world that is alive in a way it has not been since the original weaving.
 Tav’al’s Ongoing Presence
-Tav’al does not communicate again after his single impression at the web’s midpoint (documented in Section XXXI). He is present the way gravity is present: as a force that shapes everything without drawing attention to itself. The player’s Thread Sense can detect his influence but cannot communicate with it. He is not hiding. He is not being coy. He has nothing more to say.
+Tav’al does not communicate directly again after the midpoint echo of his Act VII exchange (documented in Section XXXI). He is present the way gravity is present: as a force that shapes everything without drawing attention to itself. The player’s Thread Sense can detect his influence but cannot draw another answer from it. He is not hiding. He is not being coy. He has already said what he intended to say.
 
 The one impression carried everything he intended to express: recognition, acceptance, the specific regard of an entity that spent seven centuries being misunderstood discovering that understanding was possible. Having communicated this once, he is content.
 His presence manifests in the world through the six functions described above and through occasional moments of what the Keh’Dem call “structural beauty”: instances where the void’s integration with creation produces something aesthetically striking that neither frequency could produce alone. A shadow that falls in exactly the shape needed to define a sunlit surface.

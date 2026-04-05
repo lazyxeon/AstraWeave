@@ -8,8 +8,6 @@
 //!
 //! Uses the same line rendering approach as GizmoRenderer for consistency.
 
-#![allow(dead_code)]
-
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
 
@@ -80,6 +78,21 @@ impl PhysicsDebugRenderer {
     /// * `queue` - wgpu queue
     /// * `max_vertices` - Maximum vertices per frame (default: 50000 for large scenes)
     pub fn new(device: wgpu::Device, queue: wgpu::Queue, max_vertices: usize) -> Result<Self> {
+        Self::with_color_format(
+            device,
+            queue,
+            max_vertices,
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+        )
+    }
+
+    /// Create physics debug renderer with a configurable color target format.
+    pub fn with_color_format(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        max_vertices: usize,
+        color_format: wgpu::TextureFormat,
+    ) -> Result<Self> {
         // Load shader (reuse gizmo shader - same vertex format)
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Physics Debug Shader"),
@@ -158,7 +171,7 @@ impl PhysicsDebugRenderer {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    format: color_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],

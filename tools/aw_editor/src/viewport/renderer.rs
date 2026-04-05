@@ -25,23 +25,29 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 use tracing::debug;
 
+/// Color format used for the HDR scene render target.
+/// All scene sub-renderers create their pipelines against this format.
+const HDR_COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+
+/// Color format used for the final LDR output (egui display surface).
+const LDR_COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
+
 use super::camera::OrbitCamera;
 use super::entity_renderer::EntityRenderer;
 use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
+use super::mipmap_generator::MipmapGenerator;
 use super::physics_renderer::PhysicsDebugRenderer;
-#[cfg(feature = "astraweave-render")]
-use super::post_process::PostProcessChain;
-use super::scatter_renderer::{ScatterPlacement, ScatterRenderer};
-use super::skybox_renderer::SkyboxRenderer;
-use super::terrain_renderer::TerrainRenderer;
-use super::water_renderer::WaterRenderer;
-use super::weather_particle_renderer::{WeatherKind, WeatherParticleRenderer};
+use super::types::{
+    ScatterPlacement, TerrainFogParams, TerrainLightingParams, TerrainVertex, WaterStyle,
+};
 use crate::gizmo::GizmoState;
 use astraweave_core::{Entity, World};
 
 #[cfg(feature = "astraweave-render")]
 use super::engine_adapter::EngineRenderAdapter;
+#[cfg(feature = "astraweave-render")]
+pub use super::engine_adapter::RenderMode;
 
 /// Viewport rendering coordinator
 ///
@@ -60,32 +66,46 @@ pub struct ViewportRenderer {
     /// wgpu queue (command submission)
     queue: Arc<wgpu::Queue>,
 
+    /// GPU mipmap generator (shared by entity renderer)
+    mipmap_generator: MipmapGenerator,
+
     /// Sub-renderers (essential — created at startup)
     grid_renderer: GridRenderer,
-    skybox_renderer: SkyboxRenderer,
     entity_renderer: EntityRenderer,
     gizmo_renderer: GizmoRendererWgpu,
 
     /// Sub-renderers (deferred — created lazily on first use)
     physics_renderer: Option<PhysicsDebugRenderer>,
-    terrain_renderer: Option<TerrainRenderer>,
-    water_renderer: Option<WaterRenderer>,
-    weather_renderer: Option<WeatherParticleRenderer>,
-    scatter_renderer: Option<ScatterRenderer>,
 
-    /// Scatter placements for current frame
+    /// Scatter placements forwarded to engine adapter each frame
     scatter_placements: Vec<ScatterPlacement>,
 
     /// Engine renderer adapter for PBR mesh rendering (feature-gated)
     #[cfg(feature = "astraweave-render")]
     engine_adapter: Option<EngineRenderAdapter>,
 
-    /// Production post-processing chain (HDR → GTAO → Bloom → Tonemap → LDR)
-    #[cfg(feature = "astraweave-render")]
-    post_chain: Option<PostProcessChain>,
-
     /// Enable engine rendering (PBR meshes) vs cube rendering
-    use_engine_rendering: bool,
+    #[cfg(feature = "astraweave-render")]
+    render_mode: RenderMode,
+
+    /// Fallback flag when astraweave-render feature is disabled
+    #[cfg(not(feature = "astraweave-render"))]
+    render_mode: bool,
+
+    /// HDR scene render target (Rgba16Float) — all scene passes render here
+    hdr_texture: Option<wgpu::Texture>,
+
+    /// HDR scene render target view
+    hdr_view: Option<wgpu::TextureView>,
+
+    /// Tonemap pipeline (HDR → LDR blit with ACES tonemapping)
+    tonemap_pipeline: Option<wgpu::RenderPipeline>,
+
+    /// Tonemap bind group layout
+    tonemap_bind_group_layout: Option<wgpu::BindGroupLayout>,
+
+    /// Tonemap bind group (references HDR texture)
+    tonemap_bind_group: Option<wgpu::BindGroup>,
 
     /// Depth texture (shared across passes)
     depth_texture: Option<wgpu::Texture>,
@@ -131,35 +151,46 @@ impl ViewportRenderer {
     ///
     /// Returns error if sub-renderer creation fails.
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Result<Self> {
-        // Only create essential renderers at startup (grid, skybox, entities, gizmos).
-        // Non-essential renderers (terrain, water, rain, scatter, physics debug)
-        // are deferred to first use to minimize time-to-first-frame.
-        let grid_renderer = GridRenderer::new(&device).context("Failed to create grid renderer")?;
-        let skybox_renderer =
-            SkyboxRenderer::new(&device).context("Failed to create skybox renderer")?;
-        let entity_renderer = EntityRenderer::new(device.clone(), queue.clone(), 20000)
-            .context("Failed to create entity renderer")?;
+        // Only create essential renderers at startup (grid, entities, gizmos).
+        // Physics debug renderer is deferred to first use.
+        let mipmap_generator = MipmapGenerator::new(&device);
+
+        let grid_renderer = GridRenderer::with_color_format(&device, HDR_COLOR_FORMAT)
+            .context("Failed to create grid renderer")?;
+        let mut entity_renderer = EntityRenderer::with_color_format(
+            device.clone(),
+            queue.clone(),
+            20000,
+            HDR_COLOR_FORMAT,
+        )
+        .context("Failed to create entity renderer")?;
+        // Enable HDR output — shader outputs linear HDR; tonemap pass handles the rest.
+        entity_renderer.set_hdr_output(true);
+        // Inject GPU mipmap generator (H-1) — replaces CPU box-filter path.
+        entity_renderer.set_mipmap_generator(MipmapGenerator::new(&device));
         let gizmo_renderer = GizmoRendererWgpu::new((*device).clone(), (*queue).clone(), 10000)
             .context("Failed to create gizmo renderer")?;
 
         Ok(Self {
             device,
             queue,
+            mipmap_generator,
             grid_renderer,
-            skybox_renderer,
             entity_renderer,
             gizmo_renderer,
             physics_renderer: None,
-            terrain_renderer: None,
-            water_renderer: None,
-            weather_renderer: None,
-            scatter_renderer: None,
             scatter_placements: Vec::new(),
             #[cfg(feature = "astraweave-render")]
             engine_adapter: None,
             #[cfg(feature = "astraweave-render")]
-            post_chain: None,
-            use_engine_rendering: false,
+            render_mode: RenderMode::EnginePBR,
+            #[cfg(not(feature = "astraweave-render"))]
+            render_mode: false,
+            hdr_texture: None,
+            hdr_view: None,
+            tonemap_pipeline: None,
+            tonemap_bind_group_layout: None,
+            tonemap_bind_group: None,
             depth_texture: None,
             depth_view: None,
             size: (0, 0),
@@ -191,59 +222,16 @@ impl ViewportRenderer {
 
     // ── Deferred renderer lazy-init helpers ─────────────────────────────
 
-    fn ensure_terrain_renderer(&mut self) -> Result<&mut TerrainRenderer> {
-        if self.terrain_renderer.is_none() {
-            self.terrain_renderer = Some(
-                TerrainRenderer::new(&self.device, &self.queue)
-                    .context("Failed to create terrain renderer (deferred)")?,
-            );
-        }
-        self.terrain_renderer
-            .as_mut()
-            .context("terrain renderer not initialized after creation")
-    }
-
-    fn ensure_water_renderer(&mut self) -> Result<&mut WaterRenderer> {
-        if self.water_renderer.is_none() {
-            self.water_renderer = Some(
-                WaterRenderer::new(&self.device, &self.queue)
-                    .context("Failed to create water renderer (deferred)")?,
-            );
-        }
-        self.water_renderer
-            .as_mut()
-            .context("water renderer not initialized after creation")
-    }
-
-    fn ensure_weather_renderer(&mut self) -> Result<&mut WeatherParticleRenderer> {
-        if self.weather_renderer.is_none() {
-            self.weather_renderer = Some(
-                WeatherParticleRenderer::new(&self.device)
-                    .context("Failed to create weather particle renderer (deferred)")?,
-            );
-        }
-        self.weather_renderer
-            .as_mut()
-            .context("weather renderer not initialized after creation")
-    }
-
-    fn ensure_scatter_renderer(&mut self) -> Result<&mut ScatterRenderer> {
-        if self.scatter_renderer.is_none() {
-            self.scatter_renderer = Some(
-                ScatterRenderer::new(self.device.clone(), self.queue.clone())
-                    .context("Failed to create scatter renderer (deferred)")?,
-            );
-        }
-        self.scatter_renderer
-            .as_mut()
-            .context("scatter renderer not initialized after creation")
-    }
-
     fn ensure_physics_renderer(&mut self) -> Result<&mut PhysicsDebugRenderer> {
         if self.physics_renderer.is_none() {
             self.physics_renderer = Some(
-                PhysicsDebugRenderer::new((*self.device).clone(), (*self.queue).clone(), 5000)
-                    .context("Failed to create physics debug renderer (deferred)")?,
+                PhysicsDebugRenderer::with_color_format(
+                    (*self.device).clone(),
+                    (*self.queue).clone(),
+                    5000,
+                    HDR_COLOR_FORMAT,
+                )
+                .context("Failed to create physics debug renderer (deferred)")?,
             );
         }
         self.physics_renderer
@@ -251,35 +239,16 @@ impl ViewportRenderer {
             .context("physics renderer not initialized after creation")
     }
 
-    /// Eagerly initialize all deferred renderers to avoid frame hitches during gameplay.
+    /// Eagerly initialize deferred renderers to avoid frame hitches during gameplay.
     /// Call once after the first frame has rendered (GPU device is warm).
     pub fn eagerly_init_all(&mut self) {
-        if self.terrain_renderer.is_none() {
-            match TerrainRenderer::new(&self.device, &self.queue) {
-                Ok(r) => self.terrain_renderer = Some(r),
-                Err(e) => tracing::warn!("Eager init terrain renderer failed: {e:#}"),
-            }
-        }
-        if self.water_renderer.is_none() {
-            match WaterRenderer::new(&self.device, &self.queue) {
-                Ok(r) => self.water_renderer = Some(r),
-                Err(e) => tracing::warn!("Eager init water renderer failed: {e:#}"),
-            }
-        }
-        if self.weather_renderer.is_none() {
-            match WeatherParticleRenderer::new(&self.device) {
-                Ok(r) => self.weather_renderer = Some(r),
-                Err(e) => tracing::warn!("Eager init weather renderer failed: {e:#}"),
-            }
-        }
-        if self.scatter_renderer.is_none() {
-            match ScatterRenderer::new(self.device.clone(), self.queue.clone()) {
-                Ok(r) => self.scatter_renderer = Some(r),
-                Err(e) => tracing::warn!("Eager init scatter renderer failed: {e:#}"),
-            }
-        }
         if self.physics_renderer.is_none() {
-            match PhysicsDebugRenderer::new((*self.device).clone(), (*self.queue).clone(), 5000) {
+            match PhysicsDebugRenderer::with_color_format(
+                (*self.device).clone(),
+                (*self.queue).clone(),
+                5000,
+                HDR_COLOR_FORMAT,
+            ) {
                 Ok(r) => self.physics_renderer = Some(r),
                 Err(e) => tracing::warn!("Eager init physics renderer failed: {e:#}"),
             }
@@ -300,9 +269,12 @@ impl ViewportRenderer {
     /// Returns error if depth buffer creation fails.
     pub fn resize(&mut self, width: u32, height: u32) -> Result<()> {
         if width == 0 || height == 0 {
-            // Invalid size, clear depth buffer
+            // Invalid size, clear render targets
             self.depth_texture = None;
             self.depth_view = None;
+            self.hdr_texture = None;
+            self.hdr_view = None;
+            self.tonemap_bind_group = None;
             self.size = (0, 0);
             return Ok(());
         }
@@ -331,6 +303,29 @@ impl ViewportRenderer {
         self.depth_view = Some(depth_view);
         self.size = (width, height);
 
+        // Create HDR scene render target (Rgba16Float)
+        let hdr_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Viewport HDR Scene Target"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: HDR_COLOR_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let hdr_view = hdr_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Create or recreate the tonemap pipeline and bind group
+        self.create_tonemap_resources(&hdr_view);
+
+        self.hdr_texture = Some(hdr_texture);
+        self.hdr_view = Some(hdr_view);
+
         // Cancel any in-flight depth readback before replacing the staging buffer
         self.depth_read_pending = false;
         self.depth_map_ready
@@ -350,19 +345,6 @@ impl ViewportRenderer {
         #[cfg(feature = "astraweave-render")]
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.resize(width, height);
-        }
-
-        #[cfg(feature = "astraweave-render")]
-        {
-            // Lazily create post chain on first resize (when we know dimensions)
-            if let Some(chain) = &mut self.post_chain {
-                chain.resize(&self.device, width, height);
-            } else {
-                match PostProcessChain::new(&self.device, width, height) {
-                    Ok(chain) => self.post_chain = Some(chain),
-                    Err(e) => tracing::warn!("Failed to create post-process chain: {e}"),
-                }
-            }
         }
 
         Ok(())
@@ -410,18 +392,6 @@ impl ViewportRenderer {
 
         let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // All scene passes render to the target_view (Bgra8UnormSrgb) directly.
-        // The post-processing chain reads from this after scene rendering completes
-        // and applies GTAO, bloom, god rays as screen-space compute effects.
-        // NOTE: Full HDR pipeline would require refactoring all sub-renderer pipeline
-        // formats to Rgba16Float — deferred to a future pass.
-        let scene_target_view = &target_view;
-
-        // Eagerly init scatter renderer before depth_view borrow (avoids self re-borrow)
-        if !self.scatter_placements.is_empty() && self.scatter_renderer.is_none() {
-            let _ = self.ensure_scatter_renderer();
-        }
-
         // Eagerly init physics renderer if component gizmo lines, physics lines, brush cursor, or zone overlay exist
         if (!self.component_gizmo_lines.is_empty()
             || physics_debug_lines.is_some()
@@ -431,6 +401,14 @@ impl ViewportRenderer {
         {
             let _ = self.ensure_physics_renderer();
         }
+
+        // All scene passes render to the HDR target (Rgba16Float).
+        // After scene rendering + post-processing, a tonemap blit converts
+        // HDR → LDR (Bgra8UnormSrgb) for the final display surface.
+        let scene_target_view = self
+            .hdr_view
+            .as_ref()
+            .context("HDR render target not initialized — call resize() first")?;
 
         let depth_view = self
             .depth_view
@@ -443,130 +421,98 @@ impl ViewportRenderer {
                 label: Some("Viewport Render Encoder"),
             });
 
-        // Pass 1: Skybox (clears color/depth and renders gradient background)
-        self.skybox_renderer
-            .render(
-                &mut encoder,
-                scene_target_view,
-                depth_view,
-                camera,
-                &self.queue,
-            )
-            .context("Skybox render failed")?;
-
-        // Pass 2: Grid (only if enabled)
-        if show_grid {
-            self.grid_renderer
-                .render(
-                    &mut encoder,
-                    scene_target_view,
-                    depth_view,
-                    camera,
-                    &self.queue,
-                    crosshair_mode,
-                )
-                .context("Grid render failed")?;
-        }
-
-        // Pass 2.5: Terrain (generated terrain chunks) — deferred init
-        if let Some(terrain) = self.terrain_renderer.as_mut() {
-            terrain
-                .render(
-                    &mut encoder,
-                    scene_target_view,
-                    depth_view,
-                    camera,
-                    &self.queue,
-                    shading_mode,
-                )
-                .context("Terrain render failed")?;
-        }
-
-        // Pass 2.6: Scatter objects (GPU-instanced vegetation, rocks, props) — deferred init
-        if !self.scatter_placements.is_empty() {
-            if let Some(scatter) = self.scatter_renderer.as_mut() {
-                // Take placements temporarily (borrow-checker requires this since
-                // scatter.render() borrows &mut self through scatter_renderer).
-                // CRITICAL: Always restore placements before propagating errors.
-                let placements = std::mem::take(&mut self.scatter_placements);
-                let result = scatter.render(
-                    &mut encoder,
-                    scene_target_view,
-                    depth_view,
-                    camera,
-                    &placements,
-                    &self.queue,
-                );
-                self.scatter_placements = placements;
-                result.context("Scatter render failed")?;
-            }
-        }
-
-        // Pass 2.7: Water plane (transparent, rendered after terrain) — deferred init
-        if let Some(water) = self.water_renderer.as_mut() {
-            if water.is_enabled() {
-                // Create a depth-only view for sampling terrain depth in the water shader
-                if let Some(depth_tex) = self.depth_texture.as_ref() {
-                    let depth_sample_view = depth_tex.create_view(&wgpu::TextureViewDescriptor {
-                        aspect: wgpu::TextureAspect::DepthOnly,
-                        ..Default::default()
-                    });
-                    water.update_depth_binding(&self.device, &depth_sample_view);
-                }
-                water
-                    .render(
-                        &mut encoder,
-                        scene_target_view,
-                        depth_view,
-                        camera,
-                        &self.queue,
-                        self.size.0,
-                        self.size.1,
-                    )
-                    .context("Water render failed")?;
-            }
-        }
-
-        // Pass 3: Entities (engine renderer or cube fallback)
+        // ── Determine render path ────────────────────────────────────────
+        // EnginePBR mode: engine adapter renders all scene content (sky, terrain,
+        // scatter, water, entities, weather, post-fx) in a single draw_into() call.
+        // FastPreview mode: use the existing custom sub-renderer chain.
         #[cfg(feature = "astraweave-render")]
-        {
-            if self.use_engine_rendering {
-                if let Some(adapter) = &mut self.engine_adapter {
-                    adapter.update_camera(camera);
-                    adapter
-                        .render_to_texture(scene_target_view, &mut encoder)
-                        .context("Engine render failed")?;
-                } else {
-                    self.entity_renderer
-                        .render(
-                            &mut encoder,
-                            scene_target_view,
-                            depth_view,
-                            camera,
-                            world,
-                            &self.selected_entities,
-                            &self.queue,
-                            shading_mode,
-                        )
-                        .context("Entity render failed")?;
-                }
-            } else {
-                self.entity_renderer
+        let engine_path =
+            self.render_mode == RenderMode::EnginePBR && self.engine_adapter.is_some();
+        #[cfg(not(feature = "astraweave-render"))]
+        let engine_path = false;
+
+        if engine_path {
+            // ── ENGINE-FIRST PATH ───────────────────────────────────────
+            // The engine renderer handles: sky, shadows, terrain, scatter,
+            // water, entities, weather particles, post-processing.
+            // We only render editor overlays on top.
+
+            #[cfg(feature = "astraweave-render")]
+            {
+                let adapter = self
+                    .engine_adapter
+                    .as_mut()
+                    .context("Engine adapter disappeared unexpectedly")?;
+                adapter.update_camera(camera);
+                adapter
+                    .render_to_texture(scene_target_view, &mut encoder)
+                    .context("Engine render failed")?;
+            }
+
+            // Grid overlay (on top of engine scene)
+            if show_grid {
+                self.grid_renderer
                     .render(
                         &mut encoder,
                         scene_target_view,
                         depth_view,
                         camera,
-                        world,
-                        &self.selected_entities,
                         &self.queue,
-                        shading_mode,
+                        crosshair_mode,
                     )
-                    .context("Entity render failed")?;
+                    .context("Grid render failed")?;
             }
-        }
-        #[cfg(not(feature = "astraweave-render"))]
-        {
+        } else {
+            // ── FAST-PREVIEW / FALLBACK PATH ─────────────────────────────
+            // Minimal rendering: clear → grid → entity cubes.
+            // Full scene (terrain, water, sky, weather, scatter) is handled
+            // by the engine adapter when in EnginePBR mode.
+
+            // Clear color + depth (replaces skybox renderer that previously did this)
+            {
+                let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Fast-Preview Clear Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: scene_target_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.15,
+                                g: 0.15,
+                                b: 0.18,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: depth_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+            }
+
+            // Grid overlay
+            if show_grid {
+                self.grid_renderer
+                    .render(
+                        &mut encoder,
+                        scene_target_view,
+                        depth_view,
+                        camera,
+                        &self.queue,
+                        crosshair_mode,
+                    )
+                    .context("Grid render failed")?;
+            }
+
+            // Entity cubes (preview mode)
             self.entity_renderer
                 .render(
                     &mut encoder,
@@ -609,55 +555,32 @@ impl ViewportRenderer {
             }
         }
 
-        // Pass 4.5: Weather particles (rain, snow, hail, sandstorm, blizzard) — deferred init
-        if let Some(weather) = self.weather_renderer.as_mut() {
-            weather
-                .render(
-                    &mut encoder,
-                    scene_target_view,
-                    depth_view,
-                    camera,
-                    &self.queue,
-                )
-                .context("Weather particle render failed")?;
+        // Pass 5.0: Tonemap blit (HDR → LDR)
+        // Renders a fullscreen triangle with ACES tonemapping from the HDR scene target
+        // to the final LDR display surface (Bgra8UnormSrgb).
+        if let (Some(pipeline), Some(bind_group)) =
+            (&self.tonemap_pipeline, &self.tonemap_bind_group)
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Tonemap Blit Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &target_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, bind_group, &[]);
+            pass.draw(0..3, 0..1); // Fullscreen triangle
         }
 
-        // Pass 4.9: Post-processing chain (GTAO → Bloom → God Rays → Auto-Exposure → Tonemap)
-        // Reads from HDR scene target, writes tonemapped LDR to final target.
-        #[cfg(feature = "astraweave-render")]
-        if let Some(chain) = &mut self.post_chain {
-            let fov_y = camera.fov.to_radians();
-            let aspect = if self.size.1 > 0 {
-                self.size.0 as f32 / self.size.1 as f32
-            } else {
-                1.0
-            };
-
-            // Get sun direction from entity renderer for atmosphere/god rays
-            let sun_dir = glam::Vec3::from(self.entity_renderer.sun_direction());
-            let sun_color = glam::Vec3::from(self.entity_renderer.sun_color());
-            let sun_intensity = self.entity_renderer.sun_intensity();
-            let view_proj = camera.view_projection_matrix();
-
-            chain.execute(
-                &self.device,
-                &self.queue,
-                &mut encoder,
-                depth_view,
-                None, // TODO: wire normal G-buffer when available
-                &target_view,
-                camera.near,
-                1000.0, // far plane
-                fov_y,
-                aspect,
-                sun_dir,
-                sun_color,
-                sun_intensity,
-                view_proj,
-            );
-        }
-
-        // Pass 5: Gizmos (if entity selected and gizmo active)
+        // Pass 5.5: Gizmos (if entity selected and gizmo active)
         // Gizmos render AFTER post-processing onto the final LDR target for crisp overlays.
         if let (Some(selected), Some(gizmo)) = (self.selected_entity(), gizmo_state) {
             if gizmo.mode != crate::gizmo::GizmoMode::Inactive {
@@ -695,6 +618,109 @@ impl ViewportRenderer {
         self.queue.submit(std::iter::once(encoder.finish()));
 
         Ok(())
+    }
+
+    /// Create the tonemap pipeline and bind group for HDR → LDR blit.
+    /// Called from `resize()` whenever the HDR target is (re)created.
+    fn create_tonemap_resources(&mut self, hdr_view: &wgpu::TextureView) {
+        let device = &self.device;
+
+        // Bind group layout: HDR texture + sampler
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Tonemap Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        // Sampler (bilinear, clamp)
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Tonemap HDR Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        // Bind group
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Tonemap Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(hdr_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        // Pipeline (only create once — the layout doesn't change)
+        if self.tonemap_pipeline.is_none() {
+            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Tonemap Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shaders/tonemap.wgsl").into()),
+            });
+
+            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Tonemap Pipeline Layout"),
+                bind_group_layouts: &[&bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+            let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Tonemap Render Pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: Default::default(),
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: LDR_COLOR_FORMAT,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                multiview: None,
+                cache: None,
+            });
+
+            self.tonemap_pipeline = Some(pipeline);
+        }
+
+        self.tonemap_bind_group_layout = Some(bind_group_layout);
+        self.tonemap_bind_group = Some(bind_group);
     }
 
     /// Create render texture
@@ -853,12 +879,11 @@ impl ViewportRenderer {
             .options)
     }
 
-    pub fn upload_terrain_chunks(
-        &mut self,
-        chunks: &[(Vec<super::terrain_renderer::TerrainVertex>, Vec<u32>)],
-    ) {
-        if let Ok(terrain) = self.ensure_terrain_renderer() {
-            terrain.upload_chunks(chunks);
+    pub fn upload_terrain_chunks(&mut self, chunks: &[(Vec<TerrainVertex>, Vec<u32>)]) {
+        // Forward to engine adapter
+        #[cfg(feature = "astraweave-render")]
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.upload_terrain_chunks(chunks);
         }
     }
 
@@ -868,20 +893,41 @@ impl ViewportRenderer {
         &mut self,
         chunks: &[(Vec<crate::terrain_integration::TerrainVertex>, Vec<u32>)],
     ) {
-        if let Ok(terrain) = self.ensure_terrain_renderer() {
-            terrain.upload_chunks_raw(chunks);
+        // Re-map terrain_integration::TerrainVertex → viewport TerrainVertex for engine adapter.
+        #[cfg(feature = "astraweave-render")]
+        if let Some(adapter) = &mut self.engine_adapter {
+            let converted: Vec<(Vec<TerrainVertex>, Vec<u32>)> = chunks
+                .iter()
+                .map(|(verts, indices)| {
+                    let mapped: Vec<TerrainVertex> = verts
+                        .iter()
+                        .map(|v| TerrainVertex {
+                            position: v.position,
+                            normal: v.normal,
+                            uv: v.uv,
+                            biome_weights_0: v.biome_weights_0,
+                            biome_weights_1: v.biome_weights_1,
+                            material_ids: v.material_ids,
+                            material_weights: v.material_weights,
+                        })
+                        .collect();
+                    (mapped, indices.clone())
+                })
+                .collect();
+            adapter.upload_terrain_chunks(&converted);
         }
     }
 
     /// Incrementally update vertex data for a single terrain chunk on the GPU.
     pub fn update_terrain_chunk_vertices(
         &mut self,
-        chunk_index: usize,
-        vertices: &[super::terrain_renderer::TerrainVertex],
+        _chunk_index: usize,
+        _vertices: &[TerrainVertex],
     ) {
-        if let Some(terrain) = self.terrain_renderer.as_mut() {
-            terrain.update_chunk_vertices(chunk_index, vertices);
-        }
+        tracing::warn!(
+            "update_terrain_chunk_vertices: incremental update not supported — \
+             re-upload all chunks via upload_terrain_chunks() instead"
+        );
     }
 
     // ── Depth Readback for Brush Hit Detection ──────────────────────────
@@ -978,15 +1024,20 @@ impl ViewportRenderer {
     }
 
     pub fn clear_terrain(&mut self) {
-        if let Some(terrain) = self.terrain_renderer.as_mut() {
-            terrain.clear_chunks();
+        #[cfg(feature = "astraweave-render")]
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.clear_terrain();
         }
     }
 
     pub fn terrain_chunk_count(&self) -> usize {
-        self.terrain_renderer
-            .as_ref()
-            .map_or(0, |t| t.chunk_count())
+        #[cfg(feature = "astraweave-render")]
+        {
+            if let Some(adapter) = &self.engine_adapter {
+                return adapter.terrain_chunk_count();
+            }
+        }
+        0
     }
 
     /// Check if physics debug rendering is enabled
@@ -1005,90 +1056,65 @@ impl ViewportRenderer {
 
     /// Check if any animated weather effects are active (rain, etc.)
     pub fn has_active_effects(&self) -> bool {
-        self.weather_renderer
-            .as_ref()
-            .map_or(false, |r| r.is_active())
+        #[cfg(feature = "astraweave-render")]
+        {
+            if let Some(adapter) = &self.engine_adapter {
+                return adapter.weather_active();
+            }
+        }
+        false
     }
 
-    /// Load an HDRI file and apply it as the skybox background
-    pub fn load_hdri(&mut self, path: &std::path::Path) -> Result<()> {
-        self.skybox_renderer
-            .load_hdri(&self.device, &self.queue, path)
-            .context("Failed to load HDRI skybox")
+    /// Load an HDRI file and apply it as the skybox background.
+    /// Not supported: skybox is handled by the engine adapter's procedural sky.
+    pub fn load_hdri(&mut self, _path: &std::path::Path) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "HDRI loading not supported — use engine adapter sky presets instead"
+        ))
     }
 
-    /// Remove the HDRI skybox and revert to procedural gradient
-    pub fn clear_hdri(&mut self) {
-        self.skybox_renderer.clear_hdri();
-    }
+    /// Remove the HDRI skybox and revert to procedural gradient.
+    /// No-op: skybox is now handled by the engine adapter.
+    pub fn clear_hdri(&mut self) {}
 
     /// Set environment sky colors (for skybox presets, time-of-day, weather)
     pub fn set_sky_colors(
         &mut self,
         sky_top: [f32; 4],
         sky_horizon: [f32; 4],
-        ground_color: [f32; 4],
+        _ground_color: [f32; 4],
     ) {
-        self.skybox_renderer
-            .set_sky_colors(sky_top, sky_horizon, ground_color);
+        // Forward to engine adapter
+        #[cfg(feature = "astraweave-render")]
+        if let Some(adapter) = &mut self.engine_adapter {
+            let mut cfg = adapter.sky_config();
+            cfg.day_color_top = glam::Vec3::new(sky_top[0], sky_top[1], sky_top[2]);
+            cfg.day_color_horizon = glam::Vec3::new(sky_horizon[0], sky_horizon[1], sky_horizon[2]);
+            adapter.set_sky_config(cfg);
+        }
     }
 
     /// Set fog and weather parameters for distance-based terrain fog
-    pub fn set_fog_params(&mut self, params: super::terrain_renderer::TerrainFogParams) {
-        if let Ok(terrain) = self.ensure_terrain_renderer() {
-            terrain.set_fog_params(params);
-        }
-        // Forward fog to water renderer only if it already exists (don't create it)
-        if let Some(water) = self.water_renderer.as_mut() {
-            water.set_fog(params.fog_enabled, params.fog_density, params.fog_color);
-        }
-        // Forward fog to scatter renderer only if it already exists (don't create it)
-        if let Some(scatter) = self.scatter_renderer.as_mut() {
-            scatter.set_fog_params(params);
-        }
-        // Map weather type to particle weather kind — only create renderer if weather is active
-        let kind = WeatherKind::from_weather_type(params.weather_type);
-        if kind != WeatherKind::None {
-            let intensity = match params.weather_type {
-                3 => 1.0, // Storm = heavy
-                _ => 0.7,
-            };
-            let queue = self.queue.clone();
-            if let Ok(weather) = self.ensure_weather_renderer() {
-                weather.set_particle_count_override(params.particle_count_override);
-                weather.set_weather(kind, intensity, &queue);
-                let (wx, wz) = match params.weather_type {
-                    3 => (5.0, 3.0),
-                    2 => (1.5, 0.8),
-                    6 => (6.0, 3.0), // Sandstorm = strong wind
-                    _ => (0.0, 0.0),
-                };
-                weather.set_wind(wx, wz);
-            }
-        } else if let Some(weather) = self.weather_renderer.as_mut() {
-            // Weather off — deactivate existing renderer without creating one
-            let queue = self.queue.clone();
-            weather.set_weather(WeatherKind::None, 0.0, &queue);
+    pub fn set_fog_params(&mut self, params: TerrainFogParams) {
+        // Forward to engine adapter
+        #[cfg(feature = "astraweave-render")]
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.set_fog_params(&params);
         }
     }
 
     /// Set lighting parameters for PBR terrain shading (also syncs to entity renderer)
-    pub fn set_lighting_params(&mut self, params: super::terrain_renderer::TerrainLightingParams) {
-        if let Ok(terrain) = self.ensure_terrain_renderer() {
-            terrain.set_lighting_params(params);
-        }
-        // Forward lighting to scatter renderer only if it already exists
-        if let Some(scatter) = self.scatter_renderer.as_mut() {
-            scatter.set_lighting_params(params);
-        }
+    pub fn set_lighting_params(&mut self, params: TerrainLightingParams) {
         // Sync sun/ambient to entity renderer so entities share the same directional light
         self.entity_renderer
             .set_sun(params.sun_dir, params.sun_color, params.sun_intensity);
         self.entity_renderer
             .set_ambient(params.ambient_color, params.ambient_intensity);
-        // Forward sun direction to water renderer for consistent specular reflections
-        if let Some(water) = self.water_renderer.as_mut() {
-            water.set_sun(params.sun_dir, params.sun_intensity);
+
+        // Forward to engine adapter
+        #[cfg(feature = "astraweave-render")]
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.set_lighting_params(&params);
         }
     }
 
@@ -1098,25 +1124,16 @@ impl ViewportRenderer {
     }
 
     /// Set water level for volumetric water plane
-    pub fn set_water_level(&mut self, level: f32) {
-        // Only forward to water renderer if it already exists (don't create it)
-        if let Some(water) = self.water_renderer.as_mut() {
-            water.set_water_level(level);
-        }
-        if let Ok(terrain) = self.ensure_terrain_renderer() {
-            terrain.set_water_level(level);
-        }
+    pub fn set_water_level(&mut self, _level: f32) {
+        // Water is now handled by engine adapter.
     }
 
     /// Enable or disable the volumetric water plane
     pub fn set_water_enabled(&mut self, enabled: bool) {
-        if enabled {
-            if let Ok(water) = self.ensure_water_renderer() {
-                water.set_enabled(true);
-            }
-        } else {
-            // Drop the water renderer entirely to guarantee no rendering
-            self.water_renderer = None;
+        // Forward water state to engine adapter
+        #[cfg(feature = "astraweave-render")]
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.set_water_enabled(enabled, WaterStyle::Ocean);
         }
     }
 
@@ -1140,112 +1157,137 @@ impl ViewportRenderer {
                 sample.mesh_path
             );
         }
+
+        // Forward scatter to engine adapter
+        #[cfg(feature = "astraweave-render")]
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.upload_scatter_placements(&placements);
+        }
+
         self.scatter_placements = placements;
     }
 
     // ── Terrain texture management ────────────────────────────────────
 
-    /// Replace a single material layer's textures in the terrain renderer.
-    /// Used to inject BiomePack ground textures into the GPU texture arrays.
-    /// `layer_index` should be 12-17 (reserved custom pack slots).
+    /// Replace a single material layer's textures.
+    /// Terrain textures are managed by the engine adapter's material system.
     pub fn replace_terrain_texture_layer(
         &mut self,
-        layer_index: u32,
-        albedo_data: &[u8],
-        normal_data: &[u8],
-        mra_data: &[u8],
+        _layer_index: u32,
+        _albedo_data: &[u8],
+        _normal_data: &[u8],
+        _mra_data: &[u8],
     ) {
-        // Ensure terrain renderer exists before attempting texture replacement
-        if self.terrain_renderer.is_none() {
-            eprintln!(
-                "=== replace_terrain_texture_layer: terrain_renderer was NONE — creating it now"
-            );
-            let _ = self.ensure_terrain_renderer();
-        }
-        if let Some(tr) = &self.terrain_renderer {
-            eprintln!(
-                "=== replace_terrain_texture_layer: writing layer {} (albedo={}B)",
-                layer_index,
-                albedo_data.len()
-            );
-            tr.replace_texture_layer(layer_index, albedo_data, normal_data, mra_data);
-        } else {
-            eprintln!(
-                "=== replace_terrain_texture_layer: FAILED — terrain_renderer still NONE after ensure!"
-            );
-        }
+        tracing::warn!(
+            "replace_terrain_texture_layer: not supported in engine render mode — \
+             terrain textures are managed by the engine adapter's PBR material pipeline"
+        );
     }
 
     /// Ensure a scatter mesh is loaded and cached.
-    pub fn ensure_scatter_mesh(&mut self, key: &str, path: &str) -> Result<()> {
-        self.ensure_scatter_renderer()?
-            .ensure_mesh_loaded(key, path)
+    /// No-op: scatter rendering is handled by the engine adapter.
+    pub fn ensure_scatter_mesh(&mut self, _key: &str, _path: &str) -> Result<()> {
+        Ok(())
     }
 
     /// Set wind parameters for scatter vegetation animation.
-    pub fn set_scatter_wind(&mut self, strength: f32, frequency: f32) {
-        if let Ok(scatter) = self.ensure_scatter_renderer() {
-            scatter.set_wind(strength, frequency);
-        }
-    }
+    pub fn set_scatter_wind(&mut self, _strength: f32, _frequency: f32) {}
 
     /// Set cull distance for scatter objects.
-    pub fn set_scatter_cull_distance(&mut self, distance: f32) {
-        if let Ok(scatter) = self.ensure_scatter_renderer() {
-            scatter.set_cull_distance(distance);
-        }
-    }
+    pub fn set_scatter_cull_distance(&mut self, _distance: f32) {}
 
     /// Get the number of scatter instances rendered last frame.
     pub fn scatter_instance_count(&self) -> u32 {
-        self.scatter_renderer
-            .as_ref()
-            .map_or(0, |s| s.last_instance_count())
+        #[cfg(feature = "astraweave-render")]
+        {
+            if let Some(adapter) = &self.engine_adapter {
+                return adapter.scatter_instance_count() as u32;
+            }
+        }
+        0
     }
 
     /// Get the number of scatter draw calls last frame.
     pub fn scatter_draw_calls(&self) -> u32 {
-        self.scatter_renderer
-            .as_ref()
-            .map_or(0, |s| s.last_draw_calls())
+        #[cfg(feature = "astraweave-render")]
+        {
+            if let Some(adapter) = &self.engine_adapter {
+                return adapter.scatter_draw_calls();
+            }
+        }
+        0
     }
 
     /// Total triangles rendered by the terrain renderer.
     pub fn terrain_triangles(&self) -> usize {
-        self.terrain_renderer
-            .as_ref()
-            .map_or(0, |t| t.total_triangles())
+        #[cfg(feature = "astraweave-render")]
+        {
+            if let Some(adapter) = &self.engine_adapter {
+                return adapter.terrain_triangles();
+            }
+        }
+        0
     }
 
     /// Total indices rendered by the terrain renderer.
     pub fn terrain_indices(&self) -> usize {
-        self.terrain_renderer
-            .as_ref()
-            .map_or(0, |t| t.total_indices())
+        #[cfg(feature = "astraweave-render")]
+        {
+            if let Some(adapter) = &self.engine_adapter {
+                return adapter.terrain_indices();
+            }
+        }
+        0
     }
 
     /// Total triangles rendered by the scatter renderer last frame.
     pub fn scatter_triangles(&self) -> usize {
-        self.scatter_renderer
-            .as_ref()
-            .map_or(0, |s| s.last_total_triangles())
+        0
     }
 
     /// Total vertices rendered by the scatter renderer last frame.
     pub fn scatter_vertices(&self) -> usize {
-        self.scatter_renderer
-            .as_ref()
-            .map_or(0, |s| s.last_total_vertices())
+        0
     }
 
     /// Check if engine rendering (PBR meshes) is enabled
     pub fn use_engine_rendering(&self) -> bool {
-        self.use_engine_rendering
+        #[cfg(feature = "astraweave-render")]
+        {
+            self.render_mode == RenderMode::EnginePBR
+        }
+        #[cfg(not(feature = "astraweave-render"))]
+        {
+            false
+        }
     }
 
     /// Enable/disable engine rendering (PBR meshes vs cubes)
     pub fn set_use_engine_rendering(&mut self, enabled: bool) {
-        self.use_engine_rendering = enabled;
+        #[cfg(feature = "astraweave-render")]
+        {
+            self.render_mode = if enabled {
+                RenderMode::EnginePBR
+            } else {
+                RenderMode::FastPreview
+            };
+        }
+        #[cfg(not(feature = "astraweave-render"))]
+        {
+            let _ = enabled;
+        }
+    }
+
+    /// Get the current render mode
+    #[cfg(feature = "astraweave-render")]
+    pub fn render_mode(&self) -> RenderMode {
+        self.render_mode
+    }
+
+    /// Set render mode directly
+    #[cfg(feature = "astraweave-render")]
+    pub fn set_render_mode(&mut self, mode: RenderMode) {
+        self.render_mode = mode;
     }
 
     /// Initialize the engine renderer adapter (async, call once)

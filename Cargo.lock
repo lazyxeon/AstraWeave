@@ -2063,7 +2063,6 @@ dependencies = [
  "pollster",
  "rand 0.8.5",
  "rfd",
- "rhai",
  "ron 0.8.1",
  "serde",
  "serde_json",

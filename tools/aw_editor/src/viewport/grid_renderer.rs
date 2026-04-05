@@ -2,7 +2,6 @@
 //!
 //! Renders infinite grid overlay on ground plane using screen-space technique.
 
-#![allow(dead_code)]
 //! No vertex buffers needed - renders fullscreen quad and computes grid in fragment shader.
 //!
 //! # Features
@@ -43,6 +42,14 @@ impl GridRenderer {
     ///
     /// Returns error if shader compilation fails or buffer creation fails.
     pub fn new(device: &wgpu::Device) -> Result<Self> {
+        Self::with_color_format(device, wgpu::TextureFormat::Bgra8UnormSrgb)
+    }
+
+    /// Create grid renderer with a configurable color target format.
+    pub fn with_color_format(
+        device: &wgpu::Device,
+        color_format: wgpu::TextureFormat,
+    ) -> Result<Self> {
         // Load shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Grid Shader"),
@@ -106,7 +113,7 @@ impl GridRenderer {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    format: color_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],

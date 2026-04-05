@@ -2123,9 +2123,36 @@ impl ProjectSettingsPanel {
         ui.add_space(10.0);
 
         ui.horizontal(|ui| {
-            ui.button("🔨 Build").clicked();
-            ui.button("🔨 Build and Run").clicked();
-            if ui.button("Open Build Folder").clicked() {}
+            if ui.button("🔨 Build").clicked() {
+                self.pending_actions
+                    .push(ProjectSettingsAction::StartBuild(self.selected_build));
+            }
+            if ui.button("🔨 Build and Run").clicked() {
+                // Start a build; the runner will detect that it should also launch
+                self.pending_actions
+                    .push(ProjectSettingsAction::StartBuild(self.selected_build));
+            }
+            if ui.button("Open Build Folder").clicked() {
+                let output_dir = std::path::PathBuf::from("target/build_output");
+                if output_dir.exists() {
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = std::process::Command::new("explorer")
+                            .arg(&output_dir)
+                            .spawn();
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = std::process::Command::new("open").arg(&output_dir).spawn();
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = std::process::Command::new("xdg-open")
+                            .arg(&output_dir)
+                            .spawn();
+                    }
+                }
+            }
         });
     }
 
@@ -3273,7 +3300,7 @@ mod tests {
     #[test]
     fn test_settings_tab_all() {
         let all = SettingsTab::all();
-        assert_eq!(all.len(), 8);
+        assert_eq!(all.len(), 9);
     }
 
     #[test]

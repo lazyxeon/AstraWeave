@@ -3654,6 +3654,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         self.water_renderer = Some(water);
     }
 
+    /// Remove the water renderer, disabling water rendering.
+    pub fn clear_water_renderer(&mut self) {
+        self.water_renderer = None;
+    }
+
     /// Update water renderer state (call each frame before render)
     pub fn update_water(&mut self, view_proj: glam::Mat4, camera_pos: glam::Vec3, time: f32) {
         if let Some(ref mut water) = self.water_renderer {

@@ -10,15 +10,21 @@
 //!
 //! # Architecture
 //!
+//! The viewport uses a **unified rendering architecture** where the engine
+//! renderer (`astraweave-render`) is the default path for terrain, sky, water,
+//! weather, scatter, and post-processing. Editor-specific overlays (grid,
+//! entity cubes, gizmos, physics debug) are handled by lightweight local
+//! renderers.
+//!
 //! ```text
 //! ViewportWidget (egui integration)
 //!     ↓
 //! ViewportRenderer (rendering coordinator)
-//!     ↓
-//! ├─ GridRenderer (floor grid + axes)
-//! ├─ EntityRenderer (world entities)
-//! ├─ GizmoRenderer (transform handles)
-//! └─ PhysicsDebugRenderer (collider wireframes)
+//!     ├─ EngineRenderAdapter (terrain, sky, water, weather, scatter, post-FX)
+//!     ├─ GridRenderer (floor grid + axes)
+//!     ├─ EntityRenderer (world entities / preview cubes)
+//!     ├─ GizmoRenderer (transform handles)
+//!     └─ PhysicsDebugRenderer (collider wireframes)
 //! ```
 //!
 //! # Usage
@@ -40,24 +46,26 @@ mod engine_adapter;
 pub(crate) mod entity_renderer;
 mod gizmo_renderer;
 mod grid_renderer;
+pub(crate) mod mipmap_generator;
 mod physics_renderer;
-#[cfg(feature = "astraweave-render")]
-pub(crate) mod post_process;
-mod rain_renderer;
 mod renderer;
-mod scatter_renderer;
-mod skybox_renderer;
-pub mod terrain_renderer;
 pub mod toolbar;
-mod water_renderer;
-mod weather_particle_renderer;
+/// Shared viewport types (fog params, lighting params, terrain vertex, etc.)
+pub mod types;
 mod widget;
 
 // Physics debug types are exported for external configuration
 #[allow(unused_imports)]
 pub use physics_renderer::{PhysicsDebugOptions, PhysicsDebugRenderer};
+#[allow(unused_imports)] // Re-exported for external API consumers
+#[cfg(feature = "astraweave-render")]
+pub use renderer::RenderMode;
+// Shared types — canonical exports
 #[allow(unused_imports)]
-pub use terrain_renderer::{TerrainFogParams, TerrainRenderer, TerrainVertex};
+pub use types::{
+    TerrainFogParams, TerrainLightingParams, TerrainVertex, WaterStyle, WeatherKind,
+    MATERIAL_DISPLAY_NAMES, MATERIAL_NAMES,
+};
 pub use widget::ViewportLayout;
 pub use widget::ViewportWidget;
 

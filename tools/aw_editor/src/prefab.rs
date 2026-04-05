@@ -407,7 +407,10 @@ impl PrefabData {
         let ron_string = ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default())
             .context("Failed to serialize prefab to RON")?;
 
-        std::fs::write(path.as_ref(), ron_string).context("Failed to write prefab file")?;
+        let path_ref = path.as_ref();
+        let tmp_path = path_ref.with_extension("tmp");
+        std::fs::write(&tmp_path, &ron_string).context("Failed to write temp prefab file")?;
+        std::fs::rename(&tmp_path, path_ref).context("Failed to rename temp prefab file")?;
 
         Ok(())
     }

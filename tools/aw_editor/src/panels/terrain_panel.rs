@@ -1100,7 +1100,7 @@ impl TerrainPanel {
 
             if self.brush_mode == BrushMode::Paint {
                 self.ensure_thumbnails_loaded(ui.ctx());
-                let display_names = &crate::viewport::terrain_renderer::MATERIAL_DISPLAY_NAMES;
+                let display_names = &crate::viewport::types::MATERIAL_DISPLAY_NAMES;
 
                 ui.label("Material:");
                 egui::ScrollArea::vertical()
@@ -1784,8 +1784,8 @@ impl TerrainPanel {
         }
         self.thumbnails_loaded = true;
 
-        let assets_dir = crate::viewport::terrain_renderer::find_assets_dir();
-        let names = &crate::viewport::terrain_renderer::MATERIAL_NAMES;
+        let assets_dir = crate::viewport::types::find_assets_dir();
+        let names = &crate::viewport::types::MATERIAL_NAMES;
 
         self.material_thumbnails = names
             .iter()
@@ -2451,7 +2451,7 @@ mod tests {
         let panel = TerrainPanel::new();
         assert_eq!(panel.seed, 12345);
         assert_eq!(panel.primary_biome, "grassland");
-        assert_eq!(panel.chunk_radius, 2);
+        assert_eq!(panel.chunk_radius, 5);
     }
 
     #[test]
@@ -2684,7 +2684,7 @@ mod tests {
     #[test]
     fn test_brush_mode_all() {
         let all = BrushMode::all();
-        assert_eq!(all.len(), 5);
+        assert_eq!(all.len(), 8);
     }
 
     #[test]

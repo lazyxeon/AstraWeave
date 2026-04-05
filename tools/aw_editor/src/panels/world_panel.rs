@@ -1398,7 +1398,7 @@ mod tests {
     #[test]
     fn test_lighting_settings_default() {
         let settings = LightingSettings::default();
-        assert_eq!(settings.sun_intensity, 1.0);
+        assert_eq!(settings.sun_intensity, 1.5);
         assert!(!settings.fog_enabled);
         assert_eq!(settings.gamma, 2.2);
     }
@@ -1548,7 +1548,7 @@ mod tests {
     #[test]
     fn test_world_panel_lighting() {
         let panel = WorldPanel::new();
-        assert_eq!(panel.lighting().sun_intensity, 1.0);
+        assert_eq!(panel.lighting().sun_intensity, 1.5);
     }
 
     #[test]

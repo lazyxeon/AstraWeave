@@ -863,6 +863,9 @@ impl ProfilerPanel {
                 y: &mut f32,
                 row_height: f32,
             ) {
+                if total_time <= 0.0 {
+                    return;
+                }
                 let node_width = (node.time_ms / total_time) * total_width;
                 if node_width < 1.0 {
                     return;

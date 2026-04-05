@@ -55,7 +55,23 @@
       "Bash(ls -1 assets/materials/*.png)",
       "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); cats={}:*)",
       "Bash(ls -la assets/imported/Namaqualand/meshes/*.glb)",
-      "Bash(sort -k5 -n -r)"
+      "Bash(sort -k5 -n -r)",
+      "Bash(sort -t: -k2 -rn)",
+      "Bash(git stash:*)",
+      "Bash(ls -la /c/Users/pv2br/AstraWeave-AI-Native-Gaming-Engine/tools/aw_editor/src/*.rs)",
+      "WebFetch(domain:google.github.io)",
+      "WebFetch(domain:therealmjp.github.io)",
+      "WebFetch(domain:www.khronos.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:learnopengl.com)",
+      "WebFetch(domain:www.ludicon.com)",
+      "WebFetch(domain:advances.realtimerendering.com)",
+      "WebFetch(domain:blog.selfshadow.com)",
+      "WebFetch(domain:modelviewer.dev)",
+      "WebFetch(domain:bruop.github.io)",
+      "Bash(ls -d \"C:\\\\Users\\\\pv2br\\\\AstraWeave-AI-Native-Gaming-Engine\"/astraweave-*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
     ]
   }
 }

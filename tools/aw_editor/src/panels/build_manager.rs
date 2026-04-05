@@ -449,7 +449,7 @@ impl BuildManagerPanel {
     fn run_build(
         config: BuildConfig,
         tx: Sender<BuildMessage>,
-        _cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) {
         let start_time = std::time::Instant::now();
 
@@ -473,7 +473,20 @@ impl BuildManagerPanel {
             config.output_dir.display()
         )));
 
+        // Helper macro to check cancel at each build stage
+        macro_rules! check_cancel {
+            () => {
+                if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = tx.send(BuildMessage::Failed {
+                        error: "Build cancelled by user".to_string(),
+                    });
+                    return;
+                }
+            };
+        }
+
         // Step 2: Create output directory
+        check_cancel!();
         let _ = tx.send(BuildMessage::Progress {
             percent: 0.10,
             step: "Creating output directory...".to_string(),
@@ -487,6 +500,7 @@ impl BuildManagerPanel {
         }
 
         // Step 3: Run cargo build
+        check_cancel!();
         let _ = tx.send(BuildMessage::Progress {
             percent: 0.15,
             step: "Compiling Rust code...".to_string(),

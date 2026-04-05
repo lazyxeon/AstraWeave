@@ -291,6 +291,9 @@ pub struct EntityRenderer {
 
     /// When true, shader outputs linear HDR (post-process chain handles tonemap).
     hdr_output: bool,
+
+    /// GPU mipmap generator — replaces the old CPU box-filter path (H-1).
+    mipmap_generator: Option<super::mipmap_generator::MipmapGenerator>,
 }
 
 impl EntityRenderer {
@@ -308,6 +311,21 @@ impl EntityRenderer {
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
         max_instances: u32,
+    ) -> Result<Self> {
+        Self::with_color_format(
+            device,
+            queue,
+            max_instances,
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+        )
+    }
+
+    /// Create entity renderer with a configurable color target format.
+    pub fn with_color_format(
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        max_instances: u32,
+        color_format: wgpu::TextureFormat,
     ) -> Result<Self> {
         // Load shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -434,7 +452,7 @@ impl EntityRenderer {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    format: color_format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -1159,7 +1177,7 @@ impl EntityRenderer {
                 module: &shader,
                 entry_point: Some("fs_textured"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    format: color_format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -1204,7 +1222,7 @@ impl EntityRenderer {
                 module: &shader,
                 entry_point: Some("fs_textured"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    format: color_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -1250,7 +1268,7 @@ impl EntityRenderer {
                     module: &shader,
                     entry_point: Some("fs_textured"),
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                        format: color_format,
                         blend: Some(wgpu::BlendState::REPLACE),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
@@ -1307,7 +1325,7 @@ impl EntityRenderer {
                         module: &shader,
                         entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                            format: color_format,
                             blend: Some(wgpu::BlendState::REPLACE),
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
@@ -1339,7 +1357,7 @@ impl EntityRenderer {
                         module: &shader,
                         entry_point: Some("fs_textured"),
                         targets: &[Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                            format: color_format,
                             blend: Some(wgpu::BlendState::REPLACE),
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
@@ -1405,7 +1423,13 @@ impl EntityRenderer {
             ibl_enabled: true,
             exposure_ev: 0.0,
             hdr_output: false,
+            mipmap_generator: None,
         })
+    }
+
+    /// Inject a GPU mipmap generator (replaces CPU box-filter mipmap path).
+    pub fn set_mipmap_generator(&mut self, gen: super::mipmap_generator::MipmapGenerator) {
+        self.mipmap_generator = Some(gen);
     }
 
     /// Set the entity-to-mesh mapping for the next render. Call before render().
@@ -2057,7 +2081,9 @@ impl EntityRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: fmt,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
 
@@ -2082,53 +2108,20 @@ impl EntityRenderer {
             },
         );
 
-        // Generate and upload CPU mipmaps (box filter)
+        // Generate mipmaps via GPU blit passes (H-1).
+        // The GPU path is both faster and more correct for sRGB textures:
+        // hardware linearises before bilinear filtering when the source view
+        // format is *Srgb, avoiding the sRGB-space averaging bug of the old
+        // CPU box filter.
         if mip_count > 1 {
-            let mut prev_data = rgba_pixels;
-            let mut prev_w = width as usize;
-            let mut prev_h = height as usize;
-            for mip in 1..mip_count {
-                let new_w = (prev_w / 2).max(1);
-                let new_h = (prev_h / 2).max(1);
-                let mut mip_data = vec![0u8; new_w * new_h * 4];
-                for y in 0..new_h {
-                    for x in 0..new_w {
-                        let sx = (x * 2).min(prev_w - 1);
-                        let sy = (y * 2).min(prev_h - 1);
-                        let sx1 = (sx + 1).min(prev_w - 1);
-                        let sy1 = (sy + 1).min(prev_h - 1);
-                        for c in 0..4usize {
-                            let s00 = prev_data[(sy * prev_w + sx) * 4 + c] as u32;
-                            let s10 = prev_data[(sy * prev_w + sx1) * 4 + c] as u32;
-                            let s01 = prev_data[(sy1 * prev_w + sx) * 4 + c] as u32;
-                            let s11 = prev_data[(sy1 * prev_w + sx1) * 4 + c] as u32;
-                            mip_data[(y * new_w + x) * 4 + c] =
-                                ((s00 + s10 + s01 + s11 + 2) / 4) as u8;
-                        }
-                    }
-                }
-                self.queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &tex,
-                        mip_level: mip,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &mip_data,
-                    wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(new_w as u32 * 4),
-                        rows_per_image: Some(new_h as u32),
-                    },
-                    wgpu::Extent3d {
-                        width: new_w as u32,
-                        height: new_h as u32,
-                        depth_or_array_layers: 1,
-                    },
-                );
-                prev_data = mip_data;
-                prev_w = new_w;
-                prev_h = new_h;
+            if let Some(gen) = self.mipmap_generator.as_ref() {
+                let mut encoder =
+                    self.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("mipmap gen encoder"),
+                        });
+                gen.generate(&self.device, &mut encoder, &tex, mip_count, fmt);
+                self.queue.submit(std::iter::once(encoder.finish()));
             }
         }
 
@@ -2876,8 +2869,16 @@ impl EntityRenderer {
         for entity in world.entities() {
             if let Some(pose) = world.pose(entity) {
                 // Use high-precision float position when available (scatter objects)
-                let x = if pose.use_float_pos { pose.float_x } else { pose.pos.x as f32 };
-                let z = if pose.use_float_pos { pose.float_z } else { pose.pos.y as f32 };
+                let x = if pose.use_float_pos {
+                    pose.float_x
+                } else {
+                    pose.pos.x as f32
+                };
+                let z = if pose.use_float_pos {
+                    pose.float_z
+                } else {
+                    pose.pos.y as f32
+                };
                 let position = Vec3::new(x, pose.height, z);
 
                 if !frustum.contains_sphere(position, ENTITY_RADIUS * pose.scale) {

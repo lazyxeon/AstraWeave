@@ -377,15 +377,25 @@ impl SaveManager {
         Ok(())
     }
 
+    /// Sanitize a slot name to prevent path traversal
+    fn sanitize_slot_name(name: &str) -> String {
+        name.replace(['/', '\\'], "")
+            .replace("..", "")
+            .trim_matches('.')
+            .to_string()
+    }
+
     /// Get save file path for a slot
     pub fn save_path(&self, slot_name: &str) -> PathBuf {
+        let safe_name = Self::sanitize_slot_name(slot_name);
         self.save_dir
-            .join(format!("{}.{}", slot_name, self.config.extension))
+            .join(format!("{}.{}", safe_name, self.config.extension))
     }
 
     /// Get metadata path for a save
     pub fn metadata_path(&self, slot_name: &str) -> PathBuf {
-        self.save_dir.join(format!("{}.meta.json", slot_name))
+        let safe_name = Self::sanitize_slot_name(slot_name);
+        self.save_dir.join(format!("{}.meta.json", safe_name))
     }
 
     /// Save game state

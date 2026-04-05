@@ -386,8 +386,14 @@ impl EntityManager {
         }
     }
 
-    /// Create a new entity with auto-generated ID
+    /// Create a new entity with auto-generated ID.
+    /// Panics if next_id exceeds u32::MAX (World Entity is u32).
     pub fn create(&mut self, name: String) -> EntityId {
+        assert!(
+            self.next_id <= u32::MAX as u64,
+            "EntityId overflow: {} exceeds World Entity (u32) range",
+            self.next_id
+        );
         let id = self.next_id;
         self.next_id += 1;
         let entity = EditorEntity::new(id, name);

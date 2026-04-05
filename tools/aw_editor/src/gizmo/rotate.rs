@@ -1,7 +1,5 @@
 //! Rotation gizmo implementation
 
-#![allow(dead_code)]
-
 use super::{AxisConstraint, SnappingConfig};
 use glam::{Quat, Vec2, Vec3};
 

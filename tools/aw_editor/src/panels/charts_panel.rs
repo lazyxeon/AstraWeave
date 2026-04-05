@@ -220,11 +220,11 @@ impl ChartStats {
         let stddev = variance.sqrt();
 
         let mut sorted = values.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
         let p50 = sorted[count / 2];
-        let p95 = sorted[(count as f64 * 0.95) as usize];
-        let p99 = sorted[(count as f64 * 0.99) as usize];
+        let p95 = sorted[((count as f64 * 0.95) as usize).min(count - 1)];
+        let p99 = sorted[((count as f64 * 0.99) as usize).min(count - 1)];
 
         Self {
             min,

@@ -489,8 +489,14 @@ impl BehaviorGraphDocument {
         let pretty = PrettyConfig::new();
         let text = ron::ser::to_string_pretty(&serializable, pretty)
             .map_err(BehaviorGraphDocumentError::Serialize)?;
-        fs::write(path.as_ref(), text).map_err(|err| BehaviorGraphDocumentError::Io {
-            action: "write",
+        // Atomic write: temp file then rename to prevent corruption on crash
+        let tmp_path = path.as_ref().with_extension("tmp");
+        fs::write(&tmp_path, &text).map_err(|err| BehaviorGraphDocumentError::Io {
+            action: "write temp",
+            source: err,
+        })?;
+        fs::rename(&tmp_path, path.as_ref()).map_err(|err| BehaviorGraphDocumentError::Io {
+            action: "rename temp",
             source: err,
         })?;
         self.file_path = Some(path.as_ref().to_path_buf());

@@ -72,7 +72,10 @@ impl EditorPreferences {
     pub fn save(&self) {
         match serde_json::to_string_pretty(&self) {
             Ok(json) => {
-                if let Err(e) = fs::write(PREFERENCES_PATH, json) {
+                let tmp_path = format!("{}.tmp", PREFERENCES_PATH);
+                if let Err(e) = fs::write(&tmp_path, &json)
+                    .and_then(|_| fs::rename(&tmp_path, PREFERENCES_PATH))
+                {
                     tracing::error!(
                         "Failed to write editor preferences to {}: {}",
                         PREFERENCES_PATH,

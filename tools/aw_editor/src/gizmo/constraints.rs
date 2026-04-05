@@ -4,7 +4,6 @@ use super::AxisConstraint;
 use glam::Vec3;
 
 /// Apply axis constraint to a vector.
-#[allow(dead_code)]
 pub fn apply_constraint(value: Vec3, constraint: AxisConstraint) -> Vec3 {
     let mask = constraint.axis_vector();
     value * mask

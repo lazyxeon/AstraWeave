@@ -25,6 +25,8 @@ The Veilweaver documentation is being migrated to this documentation site. For t
 - **GitHub Repository**: [Games-VEILWEAVER](https://github.com/lazyxeon/Games-VEILWEAVER)
 - **Design Documents**: Located in `docs/archive/projects/veilweaver/`
 
+This page is an engine-facing reference overview, not a canon authority. Canon narrative, geography, and worldbuilding for the current workspace live in `docs/Veilweaver/`.
+
 ## Key Features Demonstrated
 
 ### AI Companion System
@@ -44,9 +46,9 @@ The signature gameplay mechanic demonstrates:
 - **Deterministic Simulation**: Consistent weaving effects
 - **Physics Integration**: Weave-affected environments
 
-### World Design
+### Reference Slice Design
 
-Three biome zones showcase terrain systems:
+Three prototype biome slices showcase terrain systems. These are reference-implementation labels for the current vertical slice, not authoritative canon place names:
 
 1. **Loomspire Sanctum** - Tutorial and hub area
 2. **Echo Grove** - Forest exploration zone

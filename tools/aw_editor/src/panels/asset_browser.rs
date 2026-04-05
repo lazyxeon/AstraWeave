@@ -721,7 +721,11 @@ impl AssetBrowser {
         };
 
         let mut entries: Vec<AssetEntry> = read_dir
-            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| {
+                entry
+                    .map_err(|err| tracing::warn!("Failed to read directory entry: {}", err))
+                    .ok()
+            })
             .filter_map(|entry| {
                 let path = entry.path().canonicalize().unwrap_or_else(|_| entry.path());
                 AssetEntry::from_path(path)
@@ -2712,7 +2716,7 @@ mod tests {
     #[test]
     fn test_asset_type_all() {
         let all = AssetType::all();
-        assert_eq!(all.len(), 9);
+        assert_eq!(all.len(), 10);
         assert!(all.contains(&AssetType::Model));
         assert!(all.contains(&AssetType::Unknown));
     }
@@ -2796,7 +2800,7 @@ mod tests {
     #[test]
     fn test_asset_action_all_variants() {
         let all = AssetAction::all_variants();
-        assert_eq!(all.len(), 8);
+        assert_eq!(all.len(), 10);
         assert!(all.contains(&"ImportModel"));
         assert!(all.contains(&"ApplyTexture"));
         assert!(all.contains(&"LoadScene"));

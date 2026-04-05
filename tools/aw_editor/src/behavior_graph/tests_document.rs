@@ -10,7 +10,7 @@ mod tests {
 
         let root = doc.node(doc.root_id()).expect("Root node should exist");
         assert_eq!(root.label, "Idle");
-        matches!(root.kind, BehaviorGraphNodeKind::Action { .. });
+        assert!(matches!(root.kind, BehaviorGraphNodeKind::Action { .. }));
     }
 
     #[test]

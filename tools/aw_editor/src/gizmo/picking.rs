@@ -11,7 +11,6 @@ use super::{AxisConstraint, GizmoMode};
 use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
 
 /// Gizmo handle type (for picking).
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum GizmoHandle {
@@ -125,7 +124,6 @@ impl GizmoHandle {
     }
 }
 
-#[allow(dead_code)]
 impl GizmoHandle {
     /// Convert to AxisConstraint (for state machine).
     pub fn to_constraint(self) -> AxisConstraint {
@@ -168,14 +166,12 @@ impl GizmoHandle {
 }
 
 /// Ray for intersection testing.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct Ray {
     pub origin: Vec3,
     pub direction: Vec3, // Normalized
 }
 
-#[allow(dead_code)]
 impl Ray {
     /// Create ray from screen coordinates.
     ///
@@ -217,7 +213,6 @@ impl Ray {
 }
 
 /// Gizmo picking parameters.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct GizmoPicker {
     /// Maximum pick distance (in world units).
@@ -240,7 +235,6 @@ impl Default for GizmoPicker {
     }
 }
 
-#[allow(dead_code)]
 impl GizmoPicker {
     /// Pick gizmo handle from screen coordinates.
     ///
@@ -373,7 +367,6 @@ impl GizmoPicker {
 /// 1. Project ray onto line segment
 /// 2. Find closest points on both
 /// 3. Return distance between closest points
-#[allow(dead_code)]
 fn ray_line_segment_distance(ray: &Ray, segment_start: Vec3, segment_end: Vec3) -> f32 {
     let segment_dir = segment_end - segment_start;
     let segment_length = segment_dir.length();
@@ -413,7 +406,6 @@ fn ray_line_segment_distance(ray: &Ray, segment_start: Vec3, segment_end: Vec3) 
 /// 1. Project ray onto circle plane
 /// 2. Find closest point on circle to ray
 /// 3. Return distance
-#[allow(dead_code)]
 fn ray_circle_distance(ray: &Ray, center: Vec3, normal: Vec3, radius: f32) -> f32 {
     // Intersect ray with circle plane
     let denom = ray.direction.dot(normal);

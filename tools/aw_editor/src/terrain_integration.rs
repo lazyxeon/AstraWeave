@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use astraweave_terrain::{
     BiomeBlendConfig, BiomeBlender, BiomeConfig, BiomePack, BiomeType, ChunkId, Heightmap,
     HeightmapPatch, PackedBiomeBlend, ScatterConfig, SplatConfig, SplatMapGenerator, SplatRule,
@@ -606,8 +604,8 @@ impl TerrainState {
                     max_height: f32::MAX,
                     min_slope: 0.0,
                     max_slope: 90.0,
-                    priority: 1,     // lowest priority — overridden by all specific rules
-                    weight: 0.5,     // moderate base weight
+                    priority: 1, // lowest priority — overridden by all specific rules
+                    weight: 0.5, // moderate base weight
                     height_falloff: 0.0,
                     slope_falloff: 0.0,
                 });
@@ -1648,13 +1646,19 @@ impl TerrainState {
                 // Log first successful chunk for diagnostics
                 eprintln!(
                     "=== SCATTER GEN: chunk {:?}: {} instances from {} veg types (density={:.4})",
-                    chunk_id, vegetation.len(), veg_count, density,
+                    chunk_id,
+                    vegetation.len(),
+                    veg_count,
+                    density,
                 );
                 if let Some(vi) = vegetation.first() {
                     eprintln!(
                         "=== SCATTER INSTANCE: type='{}' path='{}' pos=({:.1},{:.1},{:.1})",
-                        vi.vegetation_type, vi.model_path,
-                        vi.position.x, vi.position.y, vi.position.z,
+                        vi.vegetation_type,
+                        vi.model_path,
+                        vi.position.x,
+                        vi.position.y,
+                        vi.position.z,
                     );
                 }
             } else if vegetation.is_empty() && placements.is_empty() {

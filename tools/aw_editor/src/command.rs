@@ -35,16 +35,17 @@
 //!
 //! // Execute a command
 //! let cmd = MoveEntityCommand::new(entity_id, old_pos, new_pos);
-//! undo_stack.execute(cmd, &mut world)?;
+//! undo_stack.execute(cmd, &mut world, None)?;
 //!
 //! // Undo
-//! undo_stack.undo(&mut world)?;
+//! undo_stack.undo(&mut world, None)?;
 //!
 //! // Redo
-//! undo_stack.redo(&mut world)?;
+//! undo_stack.redo(&mut world, None)?;
 //! ```
 
 use crate::clipboard::ClipboardData;
+use crate::entity_manager::EntityManager;
 use anyhow::Result;
 use astraweave_core::{Entity, IVec2, Team, World};
 use std::fmt;
@@ -70,18 +71,30 @@ use tracing::debug;
 pub trait EditorCommand: Send + fmt::Debug + std::any::Any {
     /// Execute the command (apply the change).
     ///
+    /// # Arguments
+    ///
+    /// * `world` - Mutable reference to the ECS World
+    /// * `entities` - Optional mutable reference to EntityManager for syncing editor state.
+    ///   Pass `None` when EntityManager sync is not needed (e.g., in tests).
+    ///
     /// # Errors
     ///
     /// Returns `Err` if the command fails (e.g., entity doesn't exist).
     /// Failed commands are NOT added to the undo stack.
-    fn execute(&mut self, world: &mut World) -> Result<()>;
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()>;
 
     /// Undo the command (revert the change).
+    ///
+    /// # Arguments
+    ///
+    /// * `world` - Mutable reference to the ECS World
+    /// * `entities` - Optional mutable reference to EntityManager for syncing editor state.
+    ///   Pass `None` when EntityManager sync is not needed (e.g., in tests).
     ///
     /// # Errors
     ///
     /// Returns `Err` if undo fails (should be rare - log and continue).
-    fn undo(&mut self, world: &mut World) -> Result<()>;
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()>;
 
     /// Human-readable description for UI (e.g., "Move Entity", "Rotate Entity").
     ///
@@ -269,9 +282,10 @@ impl UndoStack {
         &mut self,
         mut command: Box<dyn EditorCommand>,
         world: &mut World,
+        entities: Option<&mut EntityManager>,
     ) -> Result<()> {
         // Execute the command first
-        command.execute(world)?;
+        command.execute(world, entities)?;
 
         // Discard redo history (branching)
         self.commands.truncate(self.cursor);
@@ -306,7 +320,7 @@ impl UndoStack {
     /// # Errors
     ///
     /// Returns `Err` if undo fails (logs error and continues).
-    pub fn undo(&mut self, world: &mut World) -> Result<()> {
+    pub fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if self.cursor == 0 {
             return Ok(()); // Nothing to undo
         }
@@ -315,7 +329,7 @@ impl UndoStack {
         let cmd = &mut self.commands[self.cursor];
 
         debug!("Undo: {}", cmd.describe());
-        cmd.undo(world)?;
+        cmd.undo(world, entities)?;
 
         Ok(())
     }
@@ -325,7 +339,7 @@ impl UndoStack {
     /// # Errors
     ///
     /// Returns `Err` if redo fails (logs error and continues).
-    pub fn redo(&mut self, world: &mut World) -> Result<()> {
+    pub fn redo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if self.cursor >= self.commands.len() {
             return Ok(()); // Nothing to redo
         }
@@ -333,7 +347,7 @@ impl UndoStack {
         let cmd = &mut self.commands[self.cursor];
 
         debug!(">|  Redo: {}", cmd.describe());
-        cmd.execute(world)?;
+        cmd.execute(world, entities)?;
 
         self.cursor += 1;
 
@@ -502,13 +516,14 @@ impl UndoStack {
         commands: Vec<Box<dyn EditorCommand>>,
         world: &mut World,
         description: String,
+        entities: Option<&mut EntityManager>,
     ) -> Result<()> {
         if commands.is_empty() {
             return Ok(());
         }
 
         let batch = BatchCommand::new(commands, description);
-        self.execute(batch, world)
+        self.execute(batch, world, entities)
     }
 
     /// Add an already-executed command to the undo stack.
@@ -606,18 +621,23 @@ impl BatchCommand {
 }
 
 impl EditorCommand for BatchCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(
+        &mut self,
+        world: &mut World,
+        mut entities: Option<&mut EntityManager>,
+    ) -> Result<()> {
         self.executed_up_to = 0;
 
         for (i, cmd) in self.commands.iter_mut().enumerate() {
-            match cmd.execute(world) {
+            match cmd.execute(world, entities.as_deref_mut()) {
                 Ok(()) => {
                     self.executed_up_to = i + 1;
                 }
                 Err(e) => {
                     // Rollback previously executed commands in reverse order
                     for j in (0..i).rev() {
-                        if let Err(undo_err) = self.commands[j].undo(world) {
+                        if let Err(undo_err) = self.commands[j].undo(world, entities.as_deref_mut())
+                        {
                             debug!("Rollback failed for command {}: {}", j, undo_err);
                         }
                     }
@@ -629,10 +649,10 @@ impl EditorCommand for BatchCommand {
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, mut entities: Option<&mut EntityManager>) -> Result<()> {
         // Undo in reverse order, only up to what was executed
         for i in (0..self.executed_up_to).rev() {
-            self.commands[i].undo(world)?;
+            self.commands[i].undo(world, entities.as_deref_mut())?;
         }
         Ok(())
     }
@@ -665,18 +685,30 @@ impl MoveEntityCommand {
 }
 
 impl EditorCommand for MoveEntityCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(pose) = world.pose_mut(self.entity_id) {
             pose.pos = self.new_pos;
+            if let Some(em) = entities {
+                em.update_position(
+                    self.entity_id as u64,
+                    glam::Vec3::new(self.new_pos.x as f32, 0.0, self.new_pos.y as f32),
+                );
+            }
             Ok(())
         } else {
             anyhow::bail!("Entity {:?} not found", self.entity_id)
         }
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(pose) = world.pose_mut(self.entity_id) {
             pose.pos = self.old_pos;
+            if let Some(em) = entities {
+                em.update_position(
+                    self.entity_id as u64,
+                    glam::Vec3::new(self.old_pos.x as f32, 0.0, self.old_pos.y as f32),
+                );
+            }
             Ok(())
         } else {
             anyhow::bail!("Entity {:?} not found", self.entity_id)
@@ -733,22 +765,44 @@ impl RotateEntityCommand {
 }
 
 impl EditorCommand for RotateEntityCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(pose) = world.pose_mut(self.entity_id) {
             pose.rotation_x = self.new_rotation_x;
             pose.rotation = self.new_rotation_y; // Y-axis
             pose.rotation_z = self.new_rotation_z;
+            if let Some(em) = entities {
+                em.update_rotation(
+                    self.entity_id as u64,
+                    glam::Quat::from_euler(
+                        glam::EulerRot::XYZ,
+                        self.new_rotation_x,
+                        self.new_rotation_y,
+                        self.new_rotation_z,
+                    ),
+                );
+            }
             Ok(())
         } else {
             anyhow::bail!("Entity {:?} not found", self.entity_id)
         }
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(pose) = world.pose_mut(self.entity_id) {
             pose.rotation_x = self.old_rotation_x;
             pose.rotation = self.old_rotation_y; // Y-axis
             pose.rotation_z = self.old_rotation_z;
+            if let Some(em) = entities {
+                em.update_rotation(
+                    self.entity_id as u64,
+                    glam::Quat::from_euler(
+                        glam::EulerRot::XYZ,
+                        self.old_rotation_x,
+                        self.old_rotation_y,
+                        self.old_rotation_z,
+                    ),
+                );
+            }
             Ok(())
         } else {
             anyhow::bail!("Entity {:?} not found", self.entity_id)
@@ -793,18 +847,24 @@ impl ScaleEntityCommand {
 }
 
 impl EditorCommand for ScaleEntityCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(pose) = world.pose_mut(self.entity_id) {
             pose.scale = self.new_scale;
+            if let Some(em) = entities {
+                em.update_scale(self.entity_id as u64, glam::Vec3::splat(self.new_scale));
+            }
             Ok(())
         } else {
             anyhow::bail!("Entity {:?} not found", self.entity_id)
         }
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(pose) = world.pose_mut(self.entity_id) {
             pose.scale = self.old_scale;
+            if let Some(em) = entities {
+                em.update_scale(self.entity_id as u64, glam::Vec3::splat(self.old_scale));
+            }
             Ok(())
         } else {
             anyhow::bail!("Entity {:?} not found", self.entity_id)
@@ -847,9 +907,17 @@ impl EditHealthCommand {
 
 impl EditorCommand for EditHealthCommand {
     #[allow(dead_code)]
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(health) = world.health_mut(self.entity) {
             health.hp = self.new_hp;
+            if let Some(em) = entities {
+                if let Some(e) = em.get_mut(self.entity as u64) {
+                    e.components.insert(
+                        "health".to_string(),
+                        serde_json::json!({ "hp": self.new_hp }),
+                    );
+                }
+            }
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -859,9 +927,17 @@ impl EditorCommand for EditHealthCommand {
         }
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(health) = world.health_mut(self.entity) {
             health.hp = self.old_hp;
+            if let Some(em) = entities {
+                if let Some(e) = em.get_mut(self.entity as u64) {
+                    e.components.insert(
+                        "health".to_string(),
+                        serde_json::json!({ "hp": self.old_hp }),
+                    );
+                }
+            }
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -895,9 +971,17 @@ impl EditTeamCommand {
 
 impl EditorCommand for EditTeamCommand {
     #[allow(dead_code)]
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(team) = world.team_mut(self.entity) {
             *team = self.new_team;
+            if let Some(em) = entities {
+                if let Some(e) = em.get_mut(self.entity as u64) {
+                    e.components.insert(
+                        "team".to_string(),
+                        serde_json::json!({ "id": self.new_team.id }),
+                    );
+                }
+            }
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -907,9 +991,17 @@ impl EditorCommand for EditTeamCommand {
         }
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(team) = world.team_mut(self.entity) {
             *team = self.old_team;
+            if let Some(em) = entities {
+                if let Some(e) = em.get_mut(self.entity as u64) {
+                    e.components.insert(
+                        "team".to_string(),
+                        serde_json::json!({ "id": self.old_team.id }),
+                    );
+                }
+            }
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -943,9 +1035,17 @@ impl EditAmmoCommand {
 
 impl EditorCommand for EditAmmoCommand {
     #[allow(dead_code)]
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(ammo) = world.ammo_mut(self.entity) {
             ammo.rounds = self.new_rounds;
+            if let Some(em) = entities {
+                if let Some(e) = em.get_mut(self.entity as u64) {
+                    e.components.insert(
+                        "ammo".to_string(),
+                        serde_json::json!({ "rounds": self.new_rounds }),
+                    );
+                }
+            }
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -955,9 +1055,17 @@ impl EditorCommand for EditAmmoCommand {
         }
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(ammo) = world.ammo_mut(self.entity) {
             ammo.rounds = self.old_rounds;
+            if let Some(em) = entities {
+                if let Some(e) = em.get_mut(self.entity as u64) {
+                    e.components.insert(
+                        "ammo".to_string(),
+                        serde_json::json!({ "rounds": self.old_rounds }),
+                    );
+                }
+            }
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -990,28 +1098,42 @@ impl SpawnEntitiesCommand {
 }
 
 impl EditorCommand for SpawnEntitiesCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         self.spawned_entities = self.clipboard_data.spawn_entities(world, self.offset)?;
+        if let Some(em) = entities {
+            for &entity in &self.spawned_entities {
+                let em_id = entity as u64;
+                let name = world
+                    .name(entity)
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| format!("Entity_{}", entity));
+                let mut editor_entity = crate::entity_manager::EditorEntity::new(em_id, name);
+                if let Some(pose) = world.pose(entity) {
+                    editor_entity.position =
+                        glam::Vec3::new(pose.pos.x as f32, 0.0, pose.pos.y as f32);
+                    editor_entity.scale = glam::Vec3::splat(pose.scale);
+                    editor_entity.rotation = glam::Quat::from_euler(
+                        glam::EulerRot::XYZ,
+                        pose.rotation_x,
+                        pose.rotation,
+                        pose.rotation_z,
+                    );
+                }
+                em.add(editor_entity);
+            }
+        }
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
-        for &entity in &self.spawned_entities {
-            if let Some(pose) = world.pose_mut(entity) {
-                *pose = astraweave_core::Pose {
-                    pos: IVec2 {
-                        x: -10000,
-                        y: -10000,
-                    },
-                    height: 0.0,
-                    rotation: 0.0,
-                    rotation_x: 0.0,
-                    rotation_z: 0.0,
-                    float_x: 0.0,
-                    float_z: 0.0,
-                    use_float_pos: false,
-                    scale: 0.0,
-                };
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            for &entity in &self.spawned_entities {
+                world.destroy_entity(entity);
+                em.remove(entity as u64);
+            }
+        } else {
+            for &entity in &self.spawned_entities {
+                world.destroy_entity(entity);
             }
         }
         Ok(())
@@ -1040,29 +1162,43 @@ impl DuplicateEntitiesCommand {
 }
 
 impl EditorCommand for DuplicateEntitiesCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         let clipboard = ClipboardData::from_entities(world, &self.source_entities);
         self.spawned_entities = clipboard.spawn_entities(world, self.offset)?;
+        if let Some(em) = entities {
+            for &entity in &self.spawned_entities {
+                let em_id = entity as u64;
+                let name = world
+                    .name(entity)
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| format!("Entity_{}", entity));
+                let mut editor_entity = crate::entity_manager::EditorEntity::new(em_id, name);
+                if let Some(pose) = world.pose(entity) {
+                    editor_entity.position =
+                        glam::Vec3::new(pose.pos.x as f32, 0.0, pose.pos.y as f32);
+                    editor_entity.scale = glam::Vec3::splat(pose.scale);
+                    editor_entity.rotation = glam::Quat::from_euler(
+                        glam::EulerRot::XYZ,
+                        pose.rotation_x,
+                        pose.rotation,
+                        pose.rotation_z,
+                    );
+                }
+                em.add(editor_entity);
+            }
+        }
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
-        for &entity in &self.spawned_entities {
-            if let Some(pose) = world.pose_mut(entity) {
-                *pose = astraweave_core::Pose {
-                    pos: IVec2 {
-                        x: -10000,
-                        y: -10000,
-                    },
-                    height: 0.0,
-                    rotation: 0.0,
-                    rotation_x: 0.0,
-                    rotation_z: 0.0,
-                    float_x: 0.0,
-                    float_z: 0.0,
-                    use_float_pos: false,
-                    scale: 0.0,
-                };
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
+        if let Some(em) = entities {
+            for &entity in &self.spawned_entities {
+                world.destroy_entity(entity);
+                em.remove(entity as u64);
+            }
+        } else {
+            for &entity in &self.spawned_entities {
+                world.destroy_entity(entity);
             }
         }
         Ok(())
@@ -1089,19 +1225,26 @@ impl DeleteEntitiesCommand {
 }
 
 impl EditorCommand for DeleteEntitiesCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         // Only capture snapshot if we haven't already (preserves original state across Re-Dos)
         if self.clipboard_data.is_none() {
             self.clipboard_data = Some(ClipboardData::from_entities(world, &self.entities));
         }
 
-        for &entity in &self.entities {
-            world.destroy_entity(entity);
+        if let Some(em) = entities {
+            for &entity in &self.entities {
+                world.destroy_entity(entity);
+                em.remove(entity as u64);
+            }
+        } else {
+            for &entity in &self.entities {
+                world.destroy_entity(entity);
+            }
         }
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, mut entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(clipboard) = &self.clipboard_data {
             if clipboard.entities.len() != self.entities.len() {
                 anyhow::bail!("DeleteEntitiesCommand: Snapshot count mismatch");
@@ -1129,6 +1272,23 @@ impl EditorCommand for DeleteEntitiesCommand {
 
                 if let Some(bg) = &data.behavior_graph {
                     world.set_behavior_graph(id, bg.clone());
+                }
+
+                // Restore in EntityManager
+                if let Some(ref mut em) = entities {
+                    let em_id = id as u64;
+                    let mut editor_entity =
+                        crate::entity_manager::EditorEntity::new(em_id, data.name.clone());
+                    editor_entity.position =
+                        glam::Vec3::new(data.pos.x as f32, 0.0, data.pos.y as f32);
+                    editor_entity.scale = glam::Vec3::splat(data.scale);
+                    editor_entity.rotation = glam::Quat::from_euler(
+                        glam::EulerRot::XYZ,
+                        data.rotation_x,
+                        data.rotation,
+                        data.rotation_z,
+                    );
+                    em.add(editor_entity);
                 }
             }
         }
@@ -1163,13 +1323,23 @@ impl RenameEntityCommand {
 }
 
 impl EditorCommand for RenameEntityCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         world.set_name(self.entity, self.new_name.clone());
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity as u64) {
+                e.name = self.new_name.clone();
+            }
+        }
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         world.set_name(self.entity, self.old_name.clone());
+        if let Some(em) = entities {
+            if let Some(e) = em.get_mut(self.entity as u64) {
+                e.name = self.old_name.clone();
+            }
+        }
         Ok(())
     }
 
@@ -1201,12 +1371,12 @@ impl SetParentCommand {
 }
 
 impl EditorCommand for SetParentCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         world.set_parent(self.child, self.new_parent);
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(old_parent) = self.old_parent {
             world.set_parent(self.child, old_parent);
         } else {
@@ -1234,12 +1404,12 @@ impl UnparentCommand {
 }
 
 impl EditorCommand for UnparentCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         world.remove_parent(self.entity);
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(parent) = self.old_parent {
             world.set_parent(self.entity, parent);
         }
@@ -1284,7 +1454,7 @@ impl PrefabSpawnCommand {
 }
 
 impl EditorCommand for PrefabSpawnCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         let mut manager = self
             .prefab_manager
             .lock()
@@ -1295,7 +1465,7 @@ impl EditorCommand for PrefabSpawnCommand {
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(entity) = self.spawned_entity {
             // Move entity out of view (soft delete) - same pattern as other commands
             if let Some(pose) = world.pose_mut(entity) {
@@ -1357,7 +1527,7 @@ impl PrefabApplyOverridesCommand {
 }
 
 impl EditorCommand for PrefabApplyOverridesCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         let mut manager = self
             .prefab_manager
             .lock()
@@ -1379,7 +1549,7 @@ impl EditorCommand for PrefabApplyOverridesCommand {
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(original_data) = &self.original_prefab_data {
             let manager = self
                 .prefab_manager
@@ -1430,7 +1600,7 @@ impl PrefabRevertOverridesCommand {
 }
 
 impl EditorCommand for PrefabRevertOverridesCommand {
-    fn execute(&mut self, world: &mut World) -> Result<()> {
+    fn execute(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         let mut manager = self
             .prefab_manager
             .lock()
@@ -1440,7 +1610,7 @@ impl EditorCommand for PrefabRevertOverridesCommand {
         Ok(())
     }
 
-    fn undo(&mut self, world: &mut World) -> Result<()> {
+    fn undo(&mut self, world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         let mut manager = self
             .prefab_manager
             .lock()
@@ -1505,7 +1675,7 @@ impl TerrainBrushCommand {
 }
 
 impl EditorCommand for TerrainBrushCommand {
-    fn execute(&mut self, _world: &mut World) -> Result<()> {
+    fn execute(&mut self, _world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         // Redo: apply post-stroke heights
         let heights: Vec<_> = self
             .chunk_deltas
@@ -1518,7 +1688,7 @@ impl EditorCommand for TerrainBrushCommand {
         Ok(())
     }
 
-    fn undo(&mut self, _world: &mut World) -> Result<()> {
+    fn undo(&mut self, _world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
         // Undo: apply pre-stroke heights
         let heights: Vec<_> = self
             .chunk_deltas
@@ -1557,20 +1727,20 @@ mod tests {
 
         // Execute move command
         let cmd = MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(5, 5));
-        stack.execute(cmd, &mut world).unwrap();
+        stack.execute(cmd, &mut world, None).unwrap();
 
         assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(5, 5));
         assert!(stack.can_undo());
         assert!(!stack.can_redo());
 
         // Undo
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(0, 0));
         assert!(!stack.can_undo());
         assert!(stack.can_redo());
 
         // Redo
-        stack.redo(&mut world).unwrap();
+        stack.redo(&mut world, None).unwrap();
         assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(5, 5));
         assert!(stack.can_undo());
         assert!(!stack.can_redo());
@@ -1589,17 +1759,19 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(5, 5)),
                 &mut world,
+                None,
             )
             .unwrap();
         stack
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(5, 5), IVec2::new(10, 10)),
                 &mut world,
+                None,
             )
             .unwrap();
 
         // Undo once
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(5, 5));
 
         // Execute new command (should discard redo history)
@@ -1607,6 +1779,7 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(5, 5), IVec2::new(20, 20)),
                 &mut world,
+                None,
             )
             .unwrap();
         assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(20, 20));
@@ -1627,6 +1800,7 @@ mod tests {
                 .execute(
                     MoveEntityCommand::new(entity, IVec2::new(i - 1, i - 1), IVec2::new(i, i)),
                     &mut world,
+                    None,
                 )
                 .unwrap();
         }
@@ -1635,7 +1809,7 @@ mod tests {
         assert_eq!(stack.len(), 1); // All 5 commands merged into 1
 
         // Undo once (should revert all 5 moves)
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(0, 0));
     }
 
@@ -1653,6 +1827,7 @@ mod tests {
             .execute(
                 RotateEntityCommand::new(entity, old_rot, new_rot),
                 &mut world,
+                None,
             )
             .unwrap();
 
@@ -1661,7 +1836,7 @@ mod tests {
         assert!((pose.rotation - 1.0).abs() < 0.01);
         assert!((pose.rotation_z - 1.5).abs() < 0.01);
 
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
 
         let pose = world.pose(entity).unwrap();
         assert!((pose.rotation_x - 0.0).abs() < 0.01);
@@ -1677,12 +1852,12 @@ mod tests {
         let mut stack = UndoStack::new(10);
 
         stack
-            .execute(ScaleEntityCommand::new(entity, 1.0, 2.5), &mut world)
+            .execute(ScaleEntityCommand::new(entity, 1.0, 2.5), &mut world, None)
             .unwrap();
 
         assert!((world.pose(entity).unwrap().scale - 2.5).abs() < 0.01);
 
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert!((world.pose(entity).unwrap().scale - 1.0).abs() < 0.01);
     }
 
@@ -1695,10 +1870,10 @@ mod tests {
 
         stack.push_executed(EditHealthCommand::new(entity, 100, 50));
 
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.health(entity).unwrap().hp, 100);
 
-        stack.redo(&mut world).unwrap();
+        stack.redo(&mut world, None).unwrap();
         assert_eq!(world.health(entity).unwrap().hp, 50);
     }
 
@@ -1713,10 +1888,10 @@ mod tests {
 
         stack.push_executed(EditTeamCommand::new(entity, old_team, new_team));
 
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.team(entity).unwrap().id, 2);
 
-        stack.redo(&mut world).unwrap();
+        stack.redo(&mut world, None).unwrap();
         assert_eq!(world.team(entity).unwrap().id, 0);
     }
 
@@ -1729,10 +1904,10 @@ mod tests {
 
         stack.push_executed(EditAmmoCommand::new(entity, 30, 15));
 
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.ammo(entity).unwrap().rounds, 30);
 
-        stack.redo(&mut world).unwrap();
+        stack.redo(&mut world, None).unwrap();
         assert_eq!(world.ammo(entity).unwrap().rounds, 15);
     }
 
@@ -1749,6 +1924,7 @@ mod tests {
                 .execute(
                     MoveEntityCommand::new(entity, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                     &mut world,
+                    None,
                 )
                 .unwrap();
         }
@@ -1768,13 +1944,14 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(5, 5)),
                 &mut world,
+                None,
             )
             .unwrap();
 
         assert!(stack.undo_description().unwrap().contains("Move Entity"));
         assert!(stack.redo_description().is_none());
 
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert!(stack.redo_description().unwrap().contains("Move Entity"));
         assert!(stack.undo_description().is_none());
     }
@@ -1795,7 +1972,7 @@ mod tests {
 
         assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(5, 5));
 
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(0, 0));
     }
 
@@ -1822,12 +1999,14 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(1, 1)),
                 &mut world,
+                None,
             )
             .unwrap();
         stack
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(1, 1), IVec2::new(2, 2)),
                 &mut world,
+                None,
             )
             .unwrap();
 
@@ -1837,7 +2016,7 @@ mod tests {
         assert_eq!(stats.redo_available, 0);
 
         // Undo one
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         let stats = stack.stats();
         assert_eq!(stats.undo_available, 1);
         assert_eq!(stats.redo_available, 1);
@@ -1867,6 +2046,7 @@ mod tests {
                 .execute(
                     MoveEntityCommand::new(entity, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                     &mut world,
+                    None,
                 )
                 .unwrap();
         }
@@ -1880,6 +2060,7 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(4, 4), IVec2::new(5, 5)),
                 &mut world,
+                None,
             )
             .unwrap();
 
@@ -1910,12 +2091,12 @@ mod tests {
         assert_eq!(batch.describe(), "Move 2 entities");
 
         // Execute
-        batch.execute(&mut world).unwrap();
+        batch.execute(&mut world, None).unwrap();
         assert_eq!(world.pose(e1).unwrap().pos, IVec2::new(10, 10));
         assert_eq!(world.pose(e2).unwrap().pos, IVec2::new(20, 20));
 
         // Undo
-        batch.undo(&mut world).unwrap();
+        batch.undo(&mut world, None).unwrap();
         assert_eq!(world.pose(e1).unwrap().pos, IVec2::new(0, 0));
         assert_eq!(world.pose(e2).unwrap().pos, IVec2::new(5, 5));
     }
@@ -1938,7 +2119,7 @@ mod tests {
         assert_eq!(batch.len(), 3);
         assert!(batch.describe().contains("3"));
 
-        batch.execute(&mut world).unwrap();
+        batch.execute(&mut world, None).unwrap();
         assert_eq!(world.pose(e1).unwrap().pos, IVec2::new(5, 5));
         assert_eq!(world.pose(e2).unwrap().pos, IVec2::new(6, 6));
         assert_eq!(world.pose(e3).unwrap().pos, IVec2::new(7, 7));
@@ -1955,8 +2136,8 @@ mod tests {
         assert_eq!(batch.len(), 0);
 
         // Empty batch should succeed
-        batch.execute(&mut world).unwrap();
-        batch.undo(&mut world).unwrap();
+        batch.execute(&mut world, None).unwrap();
+        batch.undo(&mut world, None).unwrap();
     }
 
     #[test]
@@ -1973,14 +2154,14 @@ mod tests {
         ];
 
         stack
-            .execute_batch(commands, &mut world, "Batch move".to_string())
+            .execute_batch(commands, &mut world, "Batch move".to_string(), None)
             .unwrap();
 
         assert_eq!(stack.len(), 1); // Should be single entry
         assert!(stack.undo_description().unwrap().contains("Batch move"));
 
         // Undo the whole batch
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.pose(e1).unwrap().pos, IVec2::new(0, 0));
         assert_eq!(world.pose(e2).unwrap().pos, IVec2::new(5, 5));
     }
@@ -1992,7 +2173,7 @@ mod tests {
 
         // Empty batch should succeed without adding entry
         stack
-            .execute_batch(vec![], &mut world, "Empty".to_string())
+            .execute_batch(vec![], &mut world, "Empty".to_string(), None)
             .unwrap();
 
         assert_eq!(stack.len(), 0);
@@ -2024,6 +2205,7 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(1, 1)),
                 &mut world,
+                None,
             )
             .unwrap();
 
@@ -2031,7 +2213,7 @@ mod tests {
         assert!(stats.can_undo());
         assert!(!stats.can_redo());
 
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
 
         let stats = stack.stats();
         assert!(!stats.can_undo());
@@ -2051,12 +2233,14 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(1, 1)),
                 &mut world,
+                None,
             )
             .unwrap();
         stack
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(1, 1), IVec2::new(2, 2)),
                 &mut world,
+                None,
             )
             .unwrap();
 
@@ -2138,6 +2322,7 @@ mod tests {
                 .execute(
                     MoveEntityCommand::new(entity, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                     &mut world,
+                    None,
                 )
                 .unwrap();
         }
@@ -2158,6 +2343,7 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(1, 1)),
                 &mut world,
+                None,
             )
             .unwrap();
 
@@ -2179,18 +2365,21 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(1, 1)),
                 &mut world,
+                None,
             )
             .unwrap();
         stack
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(1, 1), IVec2::new(2, 2)),
                 &mut world,
+                None,
             )
             .unwrap();
         stack
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(2, 2), IVec2::new(3, 3)),
                 &mut world,
+                None,
             )
             .unwrap();
 
@@ -2209,17 +2398,19 @@ mod tests {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(1, 1)),
                 &mut world,
+                None,
             )
             .unwrap();
         stack
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(1, 1), IVec2::new(2, 2)),
                 &mut world,
+                None,
             )
             .unwrap();
 
-        stack.undo(&mut world).unwrap();
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
+        stack.undo(&mut world, None).unwrap();
 
         let redos = stack.upcoming_redos(5);
         assert_eq!(redos.len(), 2);
@@ -2289,9 +2480,9 @@ mod tests {
         );
 
         // Verify undo of each command is independent.
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.health(entity).unwrap().hp, 75);
-        stack.undo(&mut world).unwrap();
+        stack.undo(&mut world, None).unwrap();
         assert_eq!(world.health(entity).unwrap().hp, 100);
     }
 }

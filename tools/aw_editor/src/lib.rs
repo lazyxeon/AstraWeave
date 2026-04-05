@@ -16,6 +16,7 @@ pub mod dock_layout;
 pub mod editor_mode;
 pub mod editor_preferences;
 pub mod entity_manager;
+pub mod file_helpers;
 pub mod file_watcher;
 pub mod game_project;
 pub mod level_doc;

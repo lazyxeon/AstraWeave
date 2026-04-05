@@ -20,7 +20,10 @@ fn scan_audio_dir(root: &Path) -> Vec<PathBuf> {
     let walker = walkdir::WalkDir::new(root)
         .follow_links(true)
         .into_iter()
-        .filter_map(|e| e.ok());
+        .filter_map(|e| {
+            e.map_err(|err| tracing::warn!("Failed to read directory entry: {}", err))
+                .ok()
+        });
     for entry in walker {
         if entry.file_type().is_file() {
             if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {

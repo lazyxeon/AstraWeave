@@ -4,6 +4,8 @@
 **Purpose**: Full audit of the Veilweaver vertical slice showcase built on the AstraWeave engine  
 **Target**: 30-minute playable demo showcasing AI-native game engine capabilities
 
+> Scope note: This document tracks the engine-facing vertical slice and its prototype scenario. Slice labels such as Loomspire Isle, Loomspire Sanctum, Echo Grove, and Fractured Cliffs are reference-implementation names, not canon geography for the current Veilweaver lore set. Canon narrative and worldbuilding authority live in `docs/Veilweaver/`.
+
 ---
 
 ## Table of Contents
@@ -52,6 +54,8 @@ Veilweaver is a **30-minute vertical slice** showcasing AstraWeave's AI-native c
 ## 2. What Veilweaver Is
 
 ### Experience Flow (30 minutes)
+
+The zone labels below are runtime slice identifiers for the prototype build, not canon place names.
 
 | Minutes | Beat | Zone | Core Showcase |
 |---------|------|------|---------------|

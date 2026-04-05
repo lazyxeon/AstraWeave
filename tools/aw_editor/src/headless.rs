@@ -175,13 +175,13 @@ impl GizmoHarness {
 
     pub fn undo_last(&mut self) -> Result<(), String> {
         self.undo_stack
-            .undo(&mut self.world)
+            .undo(&mut self.world, None)
             .map_err(|e| format!("Undo failed: {}", e))
     }
 
     pub fn redo_last(&mut self) -> Result<(), String> {
         self.undo_stack
-            .redo(&mut self.world)
+            .redo(&mut self.world, None)
             .map_err(|e| format!("Redo failed: {}", e))
     }
 }

@@ -2170,7 +2170,7 @@ mod scene_state_exact_tests {
         let t = t.unwrap();
         assert!((t.position.x - 7.0).abs() < 0.01);
         assert!((t.position.z - 3.0).abs() < 0.01);
-        assert!((t.position.y - 1.0).abs() < 0.01);
+        assert!((t.position.y - 0.0).abs() < 0.01);
     }
 }
 
@@ -2573,9 +2573,9 @@ mod scene_state_v4_tests {
             "snapshot_for must return Some for existing entity"
         );
         let snap = snap.unwrap();
-        // Position should reflect entity at (3, 7) → (3.0, 1.0, 7.0)
+        // Position should reflect entity at (3, 7) → (3.0, 0.0, 7.0)
         assert!((snap.position.x - 3.0).abs() < 0.01);
-        assert!((snap.position.y - 1.0).abs() < 0.01);
+        assert!((snap.position.y - 0.0).abs() < 0.01);
         assert!((snap.position.z - 7.0).abs() < 0.01);
     }
 

@@ -3,8 +3,10 @@
 This document lists the available assets and textures in the repository, grouped by their source folders and noting file formats for quick reference.
 
 > Note: No dedicated "pine forest" biome pack was detected in Git LFS or the repository tree; only existing pine tree models are present.
+> Veilweaver assets with labels such as Loomspire Sanctum, Echo Grove, and Fractured Cliffs are prototype vertical-slice identifiers used by the implementation and asset pipeline. Current canon geography and narrative naming live in `docs/Veilweaver/`.
 
 ## assets
+
 | Path | Type | Format | Description |
 | --- | --- | --- | --- |
 | `assets/Astraweave_logo.jpg` | Texture | JPG | Astraweave Logo texture |
@@ -904,6 +906,7 @@ This document lists the available assets and textures in the repository, grouped
 | `assets/voices.toml` | Manifest/metadata | TOML | Voices metadata |
 
 ## assets_src
+
 | Path | Type | Format | Description |
 | --- | --- | --- | --- |
 | `assets_src/environments/desert.toml` | Manifest/metadata | TOML | Desert metadata |
@@ -950,6 +953,7 @@ This document lists the available assets and textures in the repository, grouped
 | `assets_src/textures/stone.png` | Texture | PNG | Stone texture |
 
 ## PBR_2K
+
 | Path | Type | Format | Description |
 | --- | --- | --- | --- |
 | `PBR_2K/Dirt_Mud/Dirt_Mud_AO.png` | Texture | PNG | Dirt Mud Ao texture |
@@ -982,6 +986,7 @@ This document lists the available assets and textures in the repository, grouped
 | `PBR_2K/Stone_Terrain_Rock/Stone_Terrain_Rock_Roughness.png` | Texture | PNG | Stone Terrain Rock Roughness texture |
 
 ## PBR_4K
+
 | Path | Type | Format | Description |
 | --- | --- | --- | --- |
 | `PBR_4K/Dirt_Mud/Dirt_Mud_AO.png` | Texture | PNG | Dirt Mud Ao texture |

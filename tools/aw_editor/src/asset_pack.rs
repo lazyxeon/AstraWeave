@@ -329,7 +329,10 @@ impl AssetPackBuilder {
 
         let entries = walkdir::WalkDir::new(source_dir)
             .into_iter()
-            .filter_map(|e| e.ok());
+            .filter_map(|e| {
+                e.map_err(|err| tracing::warn!("Failed to read directory entry: {}", err))
+                    .ok()
+            });
 
         for entry in entries {
             if entry.file_type().is_file() {

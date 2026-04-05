@@ -854,9 +854,12 @@ impl ReadyAssetStorePanel {
             return;
         };
 
-        let filtered = self.filtered_assets();
-        let Some(asset) = filtered.get(idx).cloned() else {
-            return;
+        let asset = {
+            let filtered = self.filtered_assets();
+            let Some(a) = filtered.get(idx) else {
+                return;
+            };
+            (*a).clone()
         };
 
         // Flags for deferred actions (cannot mutate self inside closures)
@@ -908,11 +911,17 @@ impl ReadyAssetStorePanel {
 
         // Tags
         ui.label("Tags:");
+        let mut clicked_tag = None;
         ui.horizontal_wrapped(|ui| {
             for tag in &asset.tags {
-                let _ = ui.small_button(format!("#{}", tag));
+                if ui.small_button(format!("#{}", tag)).clicked() {
+                    clicked_tag = Some(tag.clone());
+                }
             }
         });
+        if let Some(tag) = clicked_tag {
+            self.queue_action(AssetStoreAction::FilterByTag { tag });
+        }
 
         ui.separator();
 

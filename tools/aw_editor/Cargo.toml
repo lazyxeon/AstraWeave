@@ -40,7 +40,6 @@ image = "0.25"
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
 winit = { workspace = true }
-rhai = { workspace = true }
 gltf = { version = "1.4", features = ["import", "extensions"] }
 glam = { workspace = true }
 rand = "0.8"

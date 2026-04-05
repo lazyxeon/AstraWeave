@@ -2,6 +2,8 @@
 
 **Veilweaver** is the flagship reference implementation for the AstraWeave AI-Native Game Engine. It demonstrates the engine's capabilities through an AI-driven action RPG set in a twilight archipelago of floating islands.
 
+> Archive note: This directory preserves prototype, pre-canon, and vertical-slice-era Veilweaver materials. Names such as Loomspire Isle, Loomspire Sanctum, Echo Grove, and Fractured Cliffs are historical implementation labels in this archive, not the current canon authority. Current canon lore and worldbuilding live in `docs/Veilweaver/`.
+
 ## 📁 Directory Structure
 
 ```

@@ -169,8 +169,12 @@ impl SceneData {
                 .context(format!("Failed to create directory: {:?}", parent))?;
         }
 
-        fs::write(&safe_path, ron_string)
-            .context(format!("Failed to write scene to {:?}", safe_path))?;
+        // Atomic write: write to temp file first, then rename to prevent corruption on crash
+        let tmp_path = safe_path.with_extension("tmp");
+        fs::write(&tmp_path, &ron_string)
+            .context(format!("Failed to write temp scene file {:?}", tmp_path))?;
+        fs::rename(&tmp_path, &safe_path)
+            .context(format!("Failed to rename temp file to {:?}", safe_path))?;
 
         debug!("Saved scene to {:?}", safe_path);
         Ok(())
