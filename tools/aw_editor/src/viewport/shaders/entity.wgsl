@@ -214,6 +214,7 @@ fn disney_brdf_directional(
     l: vec3<f32>,
     light_color: vec3<f32>,
     f0_dielectric: f32,
+    energy_comp: vec3<f32>,
 ) -> vec3<f32> {
     let h = normalize(l + v);
     let n_dot_l = max(dot(n, l), 0.0);
@@ -225,11 +226,11 @@ fn disney_brdf_directional(
 
     let f0 = mix(vec3<f32>(f0_dielectric), albedo, metallic);
 
-    // GGX specular with height-correlated Smith visibility
+    // GGX specular with height-correlated Smith visibility + multi-scatter compensation
     let D = distribution_ggx(n_dot_h, roughness);
     let V = v_smith_ggx_correlated(n_dot_v, n_dot_l, alpha);
     let F = fresnel_schlick(h_dot_v, f0);
-    let specular = D * V * F;
+    let specular = D * V * F * energy_comp;
 
     // Burley diffuse with Fresnel energy conservation
     let fd = diffuse_burley(n_dot_v, n_dot_l, l_dot_h, roughness);
@@ -250,6 +251,7 @@ fn disney_brdf_point(
     light_pos_range: vec4<f32>,
     light_color_intensity: vec4<f32>,
     f0_dielectric: f32,
+    energy_comp: vec3<f32>,
 ) -> vec3<f32> {
     let light_pos = light_pos_range.xyz;
     let light_range = light_pos_range.w;
@@ -268,7 +270,7 @@ fn disney_brdf_point(
     let attenuation = atten * atten;
 
     let radiance = light_color * light_intensity * attenuation;
-    return disney_brdf_directional(albedo, metallic, roughness, n, v, l, radiance, f0_dielectric);
+    return disney_brdf_directional(albedo, metallic, roughness, n, v, l, radiance, f0_dielectric, energy_comp);
 }
 
 // ─── Full PBR lighting (sun + point lights + ambient + shadow) ─────────────────
@@ -286,29 +288,30 @@ fn calc_pbr_lighting(
     let sun_dir = normalize(uniforms.sun_dir_and_count.xyz);
     let point_count = u32(uniforms.sun_dir_and_count.w);
     let sun_color = uniforms.sun_color_and_intensity.xyz * uniforms.sun_color_and_intensity.w;
-    let ambient_color = uniforms.ambient_color_and_intensity.xyz;
-    let ambient_intensity = uniforms.ambient_color_and_intensity.w;
+
+    // Pre-compute multi-scatter energy compensation (Turquin 2019)
+    // Sampled once, applied to all specular contributions (analytical + IBL).
+    let n_dot_v = max(dot(n, v), 0.001);
+    let f0 = mix(vec3<f32>(f0_dielectric), albedo, metallic);
+    let dfg = textureSample(brdf_lut, ibl_sampler, vec2<f32>(n_dot_v, roughness)).rg;
+    let energy_comp = 1.0 + f0 * (1.0 / max(dfg.y, 0.001) - 1.0);
 
     // Directional sun — Disney BRDF (attenuated by shadow)
-    var color = disney_brdf_directional(albedo, metallic, roughness, n, v, sun_dir, sun_color, f0_dielectric) * shadow;
+    var color = disney_brdf_directional(albedo, metallic, roughness, n, v, sun_dir, sun_color, f0_dielectric, energy_comp) * shadow;
 
     // Point lights — Disney BRDF
     if point_count >= 1u {
-        color += disney_brdf_point(albedo, metallic, roughness, n, v, world_pos, uniforms.light0_pos_range, uniforms.light0_color_intensity, f0_dielectric);
+        color += disney_brdf_point(albedo, metallic, roughness, n, v, world_pos, uniforms.light0_pos_range, uniforms.light0_color_intensity, f0_dielectric, energy_comp);
     }
     if point_count >= 2u {
-        color += disney_brdf_point(albedo, metallic, roughness, n, v, world_pos, uniforms.light1_pos_range, uniforms.light1_color_intensity, f0_dielectric);
+        color += disney_brdf_point(albedo, metallic, roughness, n, v, world_pos, uniforms.light1_pos_range, uniforms.light1_color_intensity, f0_dielectric, energy_comp);
     }
     if point_count >= 3u {
-        color += disney_brdf_point(albedo, metallic, roughness, n, v, world_pos, uniforms.light2_pos_range, uniforms.light2_color_intensity, f0_dielectric);
+        color += disney_brdf_point(albedo, metallic, roughness, n, v, world_pos, uniforms.light2_pos_range, uniforms.light2_color_intensity, f0_dielectric, energy_comp);
     }
     if point_count >= 4u {
-        color += disney_brdf_point(albedo, metallic, roughness, n, v, world_pos, uniforms.light3_pos_range, uniforms.light3_color_intensity, f0_dielectric);
+        color += disney_brdf_point(albedo, metallic, roughness, n, v, world_pos, uniforms.light3_pos_range, uniforms.light3_color_intensity, f0_dielectric, energy_comp);
     }
-
-    // Hemisphere ambient with AO
-    let n_dot_v = max(dot(n, v), 0.001);
-    let f0 = mix(vec3<f32>(f0_dielectric), albedo, metallic);
 
     // IBL path: SH diffuse irradiance + BRDF LUT specular
     let ibl_enabled = ibl.ibl_intensity.w;
@@ -322,13 +325,10 @@ fn calc_pbr_lighting(
         let kD_ibl = (vec3<f32>(1.0) - kS_ibl) * (1.0 - metallic);
         let diffuse_ibl = irradiance * albedo * kD_ibl * diffuse_intensity;
 
-        // Specular IBL from BRDF LUT (analytical approximation — no cubemap needed)
-        let brdf_uv = vec2<f32>(n_dot_v, roughness);
-        let brdf = textureSample(brdf_lut, ibl_sampler, brdf_uv).rg;
-        // Approximate specular reflection using SH irradiance as fallback environment
+        // Specular IBL from BRDF LUT with energy compensation
         let r = reflect(-v, n);
-        let spec_env = eval_sh_irradiance(r) * (1.0 - roughness * 0.5); // Rougher → dimmer reflection
-        let specular_ibl = spec_env * (f0 * brdf.x + brdf.y) * specular_intensity;
+        let spec_env = eval_sh_irradiance(r) * (1.0 - roughness * 0.5);
+        let specular_ibl = spec_env * (f0 * dfg.x + dfg.y) * specular_intensity * energy_comp;
 
         let ambient = (diffuse_ibl + specular_ibl) * ao;
         color += ambient;
