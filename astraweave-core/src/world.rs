@@ -32,7 +32,11 @@ pub struct Pose {
     pub rotation: f32,   // Rotation in radians around Y axis (primary, for compatibility)
     pub rotation_x: f32, // Pitch (rotation around X axis)
     pub rotation_z: f32, // Roll (rotation around Z axis)
-    pub scale: f32,      // Uniform scale factor
+    pub scale: f32,      // Uniform scale factor (X axis, or uniform when scale_y/scale_z match)
+    /// Per-axis Y scale. When equal to `scale`, entity has uniform scaling.
+    pub scale_y: f32,
+    /// Per-axis Z scale. When equal to `scale`, entity has uniform scaling.
+    pub scale_z: f32,
     /// High-precision float X position (overrides pos.x when use_float_pos is true).
     /// Used for scatter objects that need sub-grid-unit precision.
     pub float_x: f32,
@@ -114,6 +118,8 @@ impl World {
                 rotation_x: 0.0,
                 rotation_z: 0.0,
                 scale: 1.0,
+                scale_y: 1.0,
+                scale_z: 1.0,
                 float_x: 0.0,
                 float_z: 0.0,
                 use_float_pos: false,

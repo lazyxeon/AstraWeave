@@ -2913,7 +2913,8 @@ impl EntityRenderer {
                 };
                 let position = Vec3::new(x, pose.height, z);
 
-                if !frustum.contains_sphere(position, ENTITY_RADIUS * pose.scale) {
+                let max_scale = pose.scale.max(pose.scale_y).max(pose.scale_z);
+                if !frustum.contains_sphere(position, ENTITY_RADIUS * max_scale) {
                     continue;
                 }
 
@@ -2924,7 +2925,7 @@ impl EntityRenderer {
                     pose.rotation,
                     pose.rotation_z,
                 );
-                let scale = Mat4::from_scale(Vec3::splat(pose.scale));
+                let scale = Mat4::from_scale(Vec3::new(pose.scale, pose.scale_y, pose.scale_z));
                 let model = translation * rotation * scale;
 
                 let is_selected = selected_entities.contains(&entity);

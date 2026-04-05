@@ -406,7 +406,7 @@ pub fn ensure_world_snapshot(state: &mut GizmoState, world: &World) -> Option<Tr
             pose.rotation,
             pose.rotation_z,
         ),
-        scale: glam::Vec3::splat(pose.scale),
+        scale: glam::Vec3::new(pose.scale, pose.scale_y, pose.scale_z),
     };
     state.start_transform = Some(snapshot);
     Some(snapshot)

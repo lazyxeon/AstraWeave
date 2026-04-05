@@ -828,16 +828,26 @@ impl EditorCommand for RotateEntityCommand {
     }
 }
 
-/// Scale entity command.
+/// Scale entity command — stores per-axis scale for full undo fidelity.
 #[derive(Debug)]
 pub struct ScaleEntityCommand {
     entity_id: Entity,
-    old_scale: f32,
-    new_scale: f32,
+    old_scale: [f32; 3],
+    new_scale: [f32; 3],
 }
 
 impl ScaleEntityCommand {
     pub fn new(entity_id: Entity, old_scale: f32, new_scale: f32) -> Box<Self> {
+        // Backward-compatible: uniform scale stored as [s, s, s]
+        Box::new(Self {
+            entity_id,
+            old_scale: [old_scale, old_scale, old_scale],
+            new_scale: [new_scale, new_scale, new_scale],
+        })
+    }
+
+    /// Create with per-axis scale values for full non-uniform undo support.
+    pub fn new_per_axis(entity_id: Entity, old_scale: [f32; 3], new_scale: [f32; 3]) -> Box<Self> {
         Box::new(Self {
             entity_id,
             old_scale,
@@ -849,9 +859,14 @@ impl ScaleEntityCommand {
 impl EditorCommand for ScaleEntityCommand {
     fn execute(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(pose) = world.pose_mut(self.entity_id) {
-            pose.scale = self.new_scale;
+            pose.scale = self.new_scale[0];
+            pose.scale_y = self.new_scale[1];
+            pose.scale_z = self.new_scale[2];
             if let Some(em) = entities {
-                em.update_scale(self.entity_id as u64, glam::Vec3::splat(self.new_scale));
+                em.update_scale(
+                    self.entity_id as u64,
+                    glam::Vec3::from(self.new_scale),
+                );
             }
             Ok(())
         } else {
@@ -861,9 +876,14 @@ impl EditorCommand for ScaleEntityCommand {
 
     fn undo(&mut self, world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(pose) = world.pose_mut(self.entity_id) {
-            pose.scale = self.old_scale;
+            pose.scale = self.old_scale[0];
+            pose.scale_y = self.old_scale[1];
+            pose.scale_z = self.old_scale[2];
             if let Some(em) = entities {
-                em.update_scale(self.entity_id as u64, glam::Vec3::splat(self.old_scale));
+                em.update_scale(
+                    self.entity_id as u64,
+                    glam::Vec3::from(self.old_scale),
+                );
             }
             Ok(())
         } else {
@@ -1111,7 +1131,7 @@ impl EditorCommand for SpawnEntitiesCommand {
                 if let Some(pose) = world.pose(entity) {
                     editor_entity.position =
                         glam::Vec3::new(pose.pos.x as f32, 0.0, pose.pos.y as f32);
-                    editor_entity.scale = glam::Vec3::splat(pose.scale);
+                    editor_entity.scale = glam::Vec3::new(pose.scale, pose.scale_y, pose.scale_z);
                     editor_entity.rotation = glam::Quat::from_euler(
                         glam::EulerRot::XYZ,
                         pose.rotation_x,
@@ -1176,7 +1196,7 @@ impl EditorCommand for DuplicateEntitiesCommand {
                 if let Some(pose) = world.pose(entity) {
                     editor_entity.position =
                         glam::Vec3::new(pose.pos.x as f32, 0.0, pose.pos.y as f32);
-                    editor_entity.scale = glam::Vec3::splat(pose.scale);
+                    editor_entity.scale = glam::Vec3::new(pose.scale, pose.scale_y, pose.scale_z);
                     editor_entity.rotation = glam::Quat::from_euler(
                         glam::EulerRot::XYZ,
                         pose.rotation_x,
@@ -1482,6 +1502,8 @@ impl EditorCommand for PrefabSpawnCommand {
                     float_z: 0.0,
                     use_float_pos: false,
                     scale: 0.0,
+                    scale_y: 0.0,
+                    scale_z: 0.0,
                 };
             }
 

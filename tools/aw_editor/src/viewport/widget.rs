@@ -1393,7 +1393,7 @@ impl ViewportWidget {
                     self.gizmo_state.start_transform = Some(TransformSnapshot {
                         position: glam::Vec3::new(x, pose.height, z),
                         rotation: rotation_quat, // Store all 3 rotation axes
-                        scale: glam::Vec3::splat(pose.scale),
+                        scale: glam::Vec3::new(pose.scale, pose.scale_y, pose.scale_z),
                     });
 
                     // Capture drag offset for translate mode:

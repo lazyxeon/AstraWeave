@@ -52,6 +52,8 @@ impl SceneData {
                 rotation_x: 0.0,
                 rotation_z: 0.0,
                 scale: 1.0,
+                scale_y: 1.0,
+                scale_z: 1.0,
                 float_x: 0.0,
                 float_z: 0.0,
                 use_float_pos: false,

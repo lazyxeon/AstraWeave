@@ -164,7 +164,7 @@ impl EditorSceneState {
             pose.rotation,
             pose.rotation_z,
         );
-        entry.scale = Vec3::splat(pose.scale);
+        entry.scale = Vec3::new(pose.scale, pose.scale_y, pose.scale_z);
 
         Some(entry)
     }
@@ -198,7 +198,7 @@ impl TransformableScene for EditorSceneState {
                 pose.rotation,
                 pose.rotation_z,
             ),
-            scale: Vec3::splat(pose.scale),
+            scale: Vec3::new(pose.scale, pose.scale_y, pose.scale_z),
         })
     }
 
@@ -228,7 +228,7 @@ fn pose_to_transform(pose: Pose) -> Transform {
             pose.rotation,
             pose.rotation_z,
         ),
-        scale: Vec3::splat(pose.scale),
+        scale: Vec3::new(pose.scale, pose.scale_y, pose.scale_z),
     }
 }
 
