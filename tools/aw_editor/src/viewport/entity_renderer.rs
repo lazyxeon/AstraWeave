@@ -1527,27 +1527,96 @@ impl EntityRenderer {
     }
 
     /// Compute 4 cascade view-projection matrices and their split distances.
-    /// Returns ([VP0..VP3], [split_far_0..split_far_3]).
-    /// Phase 5 will implement proper frustum fitting; currently uses a fixed
-    /// ortho extent per cascade as a regression baseline.
-    fn compute_cascade_vps(&self, focus_pos: Vec3) -> ([Mat4; 4], [f32; 4]) {
+    /// Uses camera frustum to fit each cascade tightly around visible geometry.
+    fn compute_cascade_vps(
+        &self,
+        camera: &super::camera::OrbitCamera,
+    ) -> ([Mat4; 4], [f32; 4]) {
         let sun_dir = Vec3::from(self.sun_direction).normalize_or(Vec3::new(0.5, 0.7, 0.35));
         let up = if sun_dir.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
 
-        // Temporary: uniform extents per cascade (Phase 5 replaces with frustum fitting)
-        let extents = [25.0_f32, 50.0, 100.0, 200.0];
-        let splits = [25.0_f32, 60.0, 150.0, SHADOW_MAX_DISTANCE];
+        let cam_near = camera.near;
+        let shadow_far = SHADOW_MAX_DISTANCE.min(camera.far);
 
-        let mut vps = [Mat4::IDENTITY; 4];
-        for i in 0..4 {
-            let half = extents[i];
-            let light_pos = focus_pos - sun_dir * (half * 2.0);
-            let light_view = Mat4::look_at_rh(light_pos, focus_pos, up);
-            let light_proj = Mat4::orthographic_rh(-half, half, -half, half, 0.1, half * 4.0);
-            vps[i] = light_proj * light_view;
+        // Logarithmic split distances (blended with uniform)
+        let mut split_bounds = [0.0_f32; 5];
+        split_bounds[0] = cam_near;
+        split_bounds[4] = shadow_far;
+        for i in 1..4 {
+            let p = i as f32 / 4.0;
+            let log_split = cam_near * (shadow_far / cam_near).powf(p);
+            let uni_split = cam_near + (shadow_far - cam_near) * p;
+            split_bounds[i] = SHADOW_LAMBDA * log_split + (1.0 - SHADOW_LAMBDA) * uni_split;
         }
 
-        (vps, splits)
+        // Inverse camera VP for frustum corner unprojection
+        let cam_view = camera.view_matrix();
+        let cam_proj = camera.projection_matrix();
+        let inv_vp = (cam_proj * cam_view).inverse();
+
+        // NDC corners: 8 corners of the full frustum (wgpu: z in [0,1])
+        let mut full_corners = [Vec3::ZERO; 8];
+        let mut idx = 0;
+        for &z in &[0.0_f32, 1.0] {
+            for &y in &[-1.0_f32, 1.0] {
+                for &x in &[-1.0_f32, 1.0] {
+                    let clip = inv_vp * glam::Vec4::new(x, y, z, 1.0);
+                    full_corners[idx] = clip.truncate() / clip.w;
+                    idx += 1;
+                }
+            }
+        }
+
+        let mut vps = [Mat4::IDENTITY; 4];
+        let mut cascade_splits = [0.0_f32; 4];
+
+        for c in 0..4 {
+            let near_d = split_bounds[c];
+            let far_d = split_bounds[c + 1];
+            cascade_splits[c] = far_d;
+
+            // Interpolate frustum corners to sub-frustum [near_d, far_d]
+            let near_t = (near_d - cam_near) / (shadow_far - cam_near);
+            let far_t = (far_d - cam_near) / (shadow_far - cam_near);
+
+            let mut sub_corners = [Vec3::ZERO; 8];
+            for i in 0..4 {
+                sub_corners[i] = full_corners[i].lerp(full_corners[i + 4], near_t);
+                sub_corners[i + 4] = full_corners[i].lerp(full_corners[i + 4], far_t);
+            }
+
+            // Compute center and bounding sphere radius
+            let center: Vec3 = sub_corners.iter().copied().sum::<Vec3>() / 8.0;
+            let radius = sub_corners
+                .iter()
+                .map(|c| (*c - center).length())
+                .fold(0.0_f32, f32::max);
+
+            // Light view centered on sub-frustum
+            let light_view = Mat4::look_at_rh(center - sun_dir * (radius + 50.0), center, up);
+
+            // Stabilization: snap light-space origin to texel-sized increments
+            // to prevent shadow edge shimmer when camera moves.
+            let texel_size = (radius * 2.0) / SHADOW_MAP_SIZE as f32;
+            let center_ls = (light_view * center.extend(1.0)).truncate();
+            let snapped_x = (center_ls.x / texel_size).floor() * texel_size;
+            let snapped_y = (center_ls.y / texel_size).floor() * texel_size;
+            let snap_offset = Vec3::new(snapped_x - center_ls.x, snapped_y - center_ls.y, 0.0);
+
+            // Square ortho projection using sphere radius (size-stable)
+            let light_proj = Mat4::orthographic_rh(
+                -radius + snap_offset.x,
+                radius + snap_offset.x,
+                -radius + snap_offset.y,
+                radius + snap_offset.y,
+                0.1,
+                radius * 2.0 + 100.0,
+            );
+
+            vps[c] = light_proj * light_view;
+        }
+
+        (vps, cascade_splits)
     }
 
     /// Enable or disable IBL.
@@ -2613,7 +2682,7 @@ impl EntityRenderer {
         let camera_pos = camera.position();
 
         // Compute 4-cascade shadow VP matrices and split distances
-        let (cascade_vps, cascade_splits) = self.compute_cascade_vps(camera_pos);
+        let (cascade_vps, cascade_splits) = self.compute_cascade_vps(camera);
 
         let uniforms = EntityUniforms {
             view_proj: view_proj.to_cols_array_2d(),
