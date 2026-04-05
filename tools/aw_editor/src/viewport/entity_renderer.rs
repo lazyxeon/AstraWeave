@@ -2051,7 +2051,17 @@ impl EntityRenderer {
             gltf::image::Format::R8G8 => {
                 let mut rgba = Vec::with_capacity(img_data.pixels.len() / 2 * 4);
                 for chunk in img_data.pixels.chunks_exact(2) {
-                    rgba.extend_from_slice(&[chunk[0], chunk[1], 0, 255]);
+                    // For data maps (normal maps), reconstruct Z from X/Y:
+                    // z = sqrt(1 - x^2 - y^2), mapped from [0,255] → [-1,1] → back
+                    let b = if !srgb {
+                        let nx = chunk[0] as f32 / 255.0 * 2.0 - 1.0;
+                        let ny = chunk[1] as f32 / 255.0 * 2.0 - 1.0;
+                        let nz = (1.0 - (nx * nx + ny * ny).min(1.0)).sqrt();
+                        ((nz * 0.5 + 0.5) * 255.0) as u8
+                    } else {
+                        0
+                    };
+                    rgba.extend_from_slice(&[chunk[0], chunk[1], b, 255]);
                 }
                 rgba
             }
