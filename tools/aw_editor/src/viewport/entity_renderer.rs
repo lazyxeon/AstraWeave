@@ -170,8 +170,9 @@ pub struct EntityRenderer {
     /// Cache of loaded GLTF meshes keyed by file path
     mesh_cache: HashMap<String, LoadedMesh>,
 
-    /// Negative cache: paths that failed to load (prevents per-frame retry spam)
-    failed_mesh_paths: std::collections::HashSet<String>,
+    /// Negative cache: paths that failed to load with retry tracking.
+    /// Value is (attempt_count, last_attempt_time). Retries after 30s cooldown, max 3 attempts.
+    failed_mesh_paths: HashMap<String, (u32, std::time::Instant)>,
 
     /// Mapping from World entity ID to mesh file path
     entity_meshes: HashMap<Entity, String>,
@@ -1383,7 +1384,7 @@ impl EntityRenderer {
             max_instances,
             index_count,
             mesh_cache: HashMap::new(),
-            failed_mesh_paths: std::collections::HashSet::new(),
+            failed_mesh_paths: HashMap::new(),
             entity_meshes: HashMap::new(),
             texture_bind_group_layout,
             queue,
@@ -1447,17 +1448,25 @@ impl EntityRenderer {
                 loaded += 1;
                 continue;
             }
-            if self.failed_mesh_paths.contains(path) {
-                continue;
+            if let Some(&(attempts, last)) = self.failed_mesh_paths.get(path) {
+                if attempts >= 3 || last.elapsed().as_secs() < 30 {
+                    continue; // Permanently failed or still in cooldown
+                }
             }
             match self.load_gltf_mesh(path) {
                 Ok(()) => {
+                    self.failed_mesh_paths.remove(path); // Clear on success (retry worked)
                     tracing::info!("Preloaded mesh: {}", path);
                     loaded += 1;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to preload mesh '{}': {}", path, e);
-                    self.failed_mesh_paths.insert(path.clone());
+                    let attempts = self.failed_mesh_paths.get(path).map_or(0, |&(a, _)| a) + 1;
+                    if attempts >= 3 {
+                        tracing::warn!("Permanently failed to load mesh '{}' after {} attempts: {}", path, attempts, e);
+                    } else {
+                        tracing::warn!("Failed to preload mesh '{}' (attempt {}/3, retry in 30s): {}", path, attempts, e);
+                    }
+                    self.failed_mesh_paths.insert(path.clone(), (attempts, std::time::Instant::now()));
                 }
             }
         }
@@ -2634,12 +2643,25 @@ impl EntityRenderer {
         let paths_to_load: Vec<String> = draw_groups
             .iter()
             .filter_map(|(mesh, _, _)| mesh.clone())
-            .filter(|p| !self.mesh_cache.contains_key(p) && !self.failed_mesh_paths.contains(p))
+            .filter(|p| {
+                if self.mesh_cache.contains_key(p) {
+                    return false;
+                }
+                if let Some(&(attempts, last)) = self.failed_mesh_paths.get(p.as_str()) {
+                    if attempts >= 3 || last.elapsed().as_secs() < 30 {
+                        return false; // Permanently failed or still in cooldown
+                    }
+                }
+                true
+            })
             .collect();
         for path in paths_to_load {
             if let Err(e) = self.load_gltf_mesh(&path) {
-                tracing::warn!("Failed to load mesh {}: {}", path, e);
-                self.failed_mesh_paths.insert(path);
+                let attempts = self.failed_mesh_paths.get(&path).map_or(0, |&(a, _)| a) + 1;
+                tracing::warn!("Failed to load mesh '{}' (attempt {}/3): {}", path, attempts, e);
+                self.failed_mesh_paths.insert(path, (attempts, std::time::Instant::now()));
+            } else {
+                self.failed_mesh_paths.remove(&path); // Clear on success
             }
         }
 
