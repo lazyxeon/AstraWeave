@@ -143,7 +143,7 @@
 <a href=#143 id=143 data-nosnippet>143</a>
 <a href=#144 id=144 data-nosnippet>144</a>        <span class="comment">// Distribute budget proportionally
 <a href=#145 id=145 data-nosnippet>145</a>        </span><span class="kw">let </span>per_category = total_bytes / <span class="number">8</span>;
-<a href=#146 id=146 data-nosnippet>146</a>        <span class="kw">let </span><span class="kw-2">mut </span>budgets = mgr.budgets.write().expect(<span class="string">"lock poisoned"</span>);
+<a href=#146 id=146 data-nosnippet>146</a>        <span class="kw">let </span><span class="kw-2">mut </span>budgets = mgr.budgets.write().unwrap_or_else(|e| e.into_inner());
 <a href=#147 id=147 data-nosnippet>147</a>        <span class="kw">for </span>budget <span class="kw">in </span>budgets.values_mut() {
 <a href=#148 id=148 data-nosnippet>148</a>            budget.soft_limit = (per_category <span class="kw">as </span>f64 * <span class="number">0.75</span>) <span class="kw">as </span>u64;
 <a href=#149 id=149 data-nosnippet>149</a>            budget.hard_limit = per_category;
@@ -170,7 +170,7 @@
 <a href=#170 id=170 data-nosnippet>170</a>    <span class="doccomment">/// Attempt to allocate memory in a category
 <a href=#171 id=171 data-nosnippet>171</a>    /// Returns true if allocation succeeded, false if blocked
 <a href=#172 id=172 data-nosnippet>172</a>    </span><span class="kw">pub fn </span>try_allocate(<span class="kw-2">&amp;</span><span class="self">self</span>, category: MemoryCategory, bytes: u64) -&gt; bool {
-<a href=#173 id=173 data-nosnippet>173</a>        <span class="kw">let </span><span class="kw-2">mut </span>budgets = <span class="self">self</span>.budgets.write().expect(<span class="string">"lock poisoned"</span>);
+<a href=#173 id=173 data-nosnippet>173</a>        <span class="kw">let </span><span class="kw-2">mut </span>budgets = <span class="self">self</span>.budgets.write().unwrap_or_else(|e| e.into_inner());
 <a href=#174 id=174 data-nosnippet>174</a>
 <a href=#175 id=175 data-nosnippet>175</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(budget) = budgets.get_mut(<span class="kw-2">&amp;</span>category) {
 <a href=#176 id=176 data-nosnippet>176</a>            <span class="kw">let </span>new_total = budget.current + bytes;
@@ -209,7 +209,7 @@
 <a href=#209 id=209 data-nosnippet>209</a>
 <a href=#210 id=210 data-nosnippet>210</a>    <span class="doccomment">/// Record a deallocation
 <a href=#211 id=211 data-nosnippet>211</a>    </span><span class="kw">pub fn </span>deallocate(<span class="kw-2">&amp;</span><span class="self">self</span>, category: MemoryCategory, bytes: u64) {
-<a href=#212 id=212 data-nosnippet>212</a>        <span class="kw">let </span><span class="kw-2">mut </span>budgets = <span class="self">self</span>.budgets.write().expect(<span class="string">"lock poisoned"</span>);
+<a href=#212 id=212 data-nosnippet>212</a>        <span class="kw">let </span><span class="kw-2">mut </span>budgets = <span class="self">self</span>.budgets.write().unwrap_or_else(|e| e.into_inner());
 <a href=#213 id=213 data-nosnippet>213</a>
 <a href=#214 id=214 data-nosnippet>214</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(budget) = budgets.get_mut(<span class="kw-2">&amp;</span>category) {
 <a href=#215 id=215 data-nosnippet>215</a>            budget.current = budget.current.saturating_sub(bytes);
@@ -255,7 +255,7 @@
 <a href=#255 id=255 data-nosnippet>255</a>
 <a href=#256 id=256 data-nosnippet>256</a>    <span class="doccomment">/// Set budget for a specific category
 <a href=#257 id=257 data-nosnippet>257</a>    </span><span class="kw">pub fn </span>set_category_budget(<span class="kw-2">&amp;</span><span class="self">self</span>, category: MemoryCategory, soft: u64, hard: u64) {
-<a href=#258 id=258 data-nosnippet>258</a>        <span class="kw">let </span><span class="kw-2">mut </span>budgets = <span class="self">self</span>.budgets.write().expect(<span class="string">"lock poisoned"</span>);
+<a href=#258 id=258 data-nosnippet>258</a>        <span class="kw">let </span><span class="kw-2">mut </span>budgets = <span class="self">self</span>.budgets.write().unwrap_or_else(|e| e.into_inner());
 <a href=#259 id=259 data-nosnippet>259</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(budget) = budgets.get_mut(<span class="kw-2">&amp;</span>category) {
 <a href=#260 id=260 data-nosnippet>260</a>            budget.soft_limit = soft;
 <a href=#261 id=261 data-nosnippet>261</a>            budget.hard_limit = hard;
@@ -274,7 +274,7 @@
 <a href=#274 id=274 data-nosnippet>274</a>    }
 <a href=#275 id=275 data-nosnippet>275</a>
 <a href=#276 id=276 data-nosnippet>276</a>    <span class="kw">fn </span>fire_event(<span class="kw-2">&amp;</span><span class="self">self</span>, event: BudgetEvent) {
-<a href=#277 id=277 data-nosnippet>277</a>        <span class="kw">let </span>callbacks = <span class="self">self</span>.callbacks.read().expect(<span class="string">"lock poisoned"</span>);
+<a href=#277 id=277 data-nosnippet>277</a>        <span class="kw">let </span>callbacks = <span class="self">self</span>.callbacks.read().unwrap_or_else(|e| e.into_inner());
 <a href=#278 id=278 data-nosnippet>278</a>        <span class="kw">for </span>callback <span class="kw">in </span>callbacks.iter() {
 <a href=#279 id=279 data-nosnippet>279</a>            callback(event.clone());
 <a href=#280 id=280 data-nosnippet>280</a>        }
