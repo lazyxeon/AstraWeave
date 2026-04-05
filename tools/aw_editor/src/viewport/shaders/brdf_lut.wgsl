@@ -41,13 +41,12 @@ fn importance_sample_ggx(xi: vec2<f32>, roughness: f32) -> vec3<f32> {
     return vec3<f32>(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
 }
 
-fn geometry_schlick_ibl(n_dot_v: f32, roughness: f32) -> f32 {
-    let k = (roughness * roughness) / 2.0;
-    return n_dot_v / (n_dot_v * (1.0 - k) + k);
-}
-
-fn geometry_smith_ibl(n_dot_v: f32, n_dot_l: f32, roughness: f32) -> f32 {
-    return geometry_schlick_ibl(n_dot_v, roughness) * geometry_schlick_ibl(n_dot_l, roughness);
+// Height-correlated Smith-GGX visibility (matches entity.wgsl analytical path)
+fn v_smith_ggx_correlated(n_dot_v: f32, n_dot_l: f32, alpha: f32) -> f32 {
+    let a2 = alpha * alpha;
+    let ggx_v = n_dot_l * sqrt(n_dot_v * n_dot_v * (1.0 - a2) + a2);
+    let ggx_l = n_dot_v * sqrt(n_dot_l * n_dot_l * (1.0 - a2) + a2);
+    return 0.5 / (ggx_v + ggx_l + 0.0001);
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -78,8 +77,11 @@ fn cs_brdf_lut(@builtin(global_invocation_id) gid: vec3<u32>) {
         let v_dot_h = max(dot(v, h), 0.0);
 
         if n_dot_l > 0.0 {
-            let g = geometry_smith_ibl(n_dot_v, n_dot_l, roughness);
-            let g_vis = (g * v_dot_h) / (n_dot_h * n_dot_v + 0.0001);
+            let alpha = max(roughness * roughness, 0.002);
+            let vis = v_smith_ggx_correlated(n_dot_v, n_dot_l, alpha);
+            // V already includes 1/(4*NdotV*NdotL); recover G_vis for integration:
+            // G_vis = V * 4 * NdotL * VdotH / NdotH
+            let g_vis = vis * 4.0 * n_dot_l * v_dot_h / (n_dot_h + 0.0001);
             let fc = pow(1.0 - v_dot_h, 5.0);
             scale += (1.0 - fc) * g_vis;
             bias += fc * g_vis;
