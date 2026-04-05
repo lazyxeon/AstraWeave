@@ -10,14 +10,14 @@
 - [x] C-1: Material preview let _ = — main.rs:7674 (0bf76f4d9)
 - [x] C-2: Asset scan let _ = — main.rs:8046+8048 (0bf76f4d9)
 
-## Tier 2: High Priority
-- [ ] R8G2: Normal map blue=0 — entity_renderer.rs
-- [ ] VC-3: BRDF LUT geometry model mismatch — brdf_lut.wgsl
-- [ ] VC-4: Multi-scatter energy compensation — entity.wgsl
-- [ ] M-21: Scale gizmo UP-only — gizmo/scale.rs:56-57
-- [ ] Surface lost recovery — viewport/renderer.rs
-- [ ] Simulation crash recovery — runtime.rs:679-694
-- [ ] EntityManager/World undo desync — multiple files
+## Tier 2: High Priority — IN PROGRESS (6/8 complete)
+- [x] R8G2: Normal map blue=0 — entity_renderer.rs (3b23f71a2)
+- [x] VC-3: BRDF LUT geometry model mismatch — brdf_lut.wgsl (faca629f0)
+- [x] VC-4: Multi-scatter energy compensation — entity.wgsl (9561e3bda)
+- [x] M-21: Scale gizmo UP-only — gizmo/scale.rs (3de4bc10d)
+- [x] Surface lost recovery — N/A (eframe manages surfaces, not editor viewport)
+- [x] Simulation crash recovery — runtime.rs (4857e55a2)
+- [ ] EntityManager/World undo desync — multiple files (NEXT)
 - [ ] C-5: 9 operations bypass undo stack — command.rs + main.rs
 
 ## Tier 3: Important
