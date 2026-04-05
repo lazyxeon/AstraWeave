@@ -2230,210 +2230,246 @@
 <a href=#2230 id=2230 data-nosnippet>2230</a>            rigid_body_set: <span class="prelude-val">None</span>,
 <a href=#2231 id=2231 data-nosnippet>2231</a>            collider_set: <span class="prelude-val">None</span>,
 <a href=#2232 id=2232 data-nosnippet>2232</a>        };
-<a href=#2233 id=2233 data-nosnippet>2233</a>        <span class="macro">assert!</span>(!ctx.has_physics(),
-<a href=#2234 id=2234 data-nosnippet>2234</a>            <span class="string">"has_physics should be false when only pipeline is set (&amp;&amp;, not ||)"</span>);
-<a href=#2235 id=2235 data-nosnippet>2235</a>    }
-<a href=#2236 id=2236 data-nosnippet>2236</a>
-<a href=#2237 id=2237 data-nosnippet>2237</a>    <span class="attr">#[test]
-<a href=#2238 id=2238 data-nosnippet>2238</a>    </span><span class="kw">fn </span>test_has_physics_partial_missing_collider() {
-<a href=#2239 id=2239 data-nosnippet>2239</a>        <span class="comment">// physics_pipeline + rigid_body_set but NO collider_set → false.
-<a href=#2240 id=2240 data-nosnippet>2240</a>        // Catches the second `&amp;&amp;` mutation.
-<a href=#2241 id=2241 data-nosnippet>2241</a>        </span><span class="kw">let </span>pipeline = PhysicsPipeline::new();
-<a href=#2242 id=2242 data-nosnippet>2242</a>        <span class="kw">let </span>bodies = RigidBodySet::new();
-<a href=#2243 id=2243 data-nosnippet>2243</a>        <span class="kw">let </span>ctx = ValidationContext {
-<a href=#2244 id=2244 data-nosnippet>2244</a>            nav_mesh: <span class="prelude-val">None</span>,
-<a href=#2245 id=2245 data-nosnippet>2245</a>            physics_pipeline: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>pipeline),
-<a href=#2246 id=2246 data-nosnippet>2246</a>            rigid_body_set: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>bodies),
-<a href=#2247 id=2247 data-nosnippet>2247</a>            collider_set: <span class="prelude-val">None</span>,
-<a href=#2248 id=2248 data-nosnippet>2248</a>        };
-<a href=#2249 id=2249 data-nosnippet>2249</a>        <span class="macro">assert!</span>(!ctx.has_physics(),
-<a href=#2250 id=2250 data-nosnippet>2250</a>            <span class="string">"has_physics should be false when collider_set is missing"</span>);
-<a href=#2251 id=2251 data-nosnippet>2251</a>    }
-<a href=#2252 id=2252 data-nosnippet>2252</a>
-<a href=#2253 id=2253 data-nosnippet>2253</a>    <span class="attr">#[test]
-<a href=#2254 id=2254 data-nosnippet>2254</a>    </span><span class="kw">fn </span>test_cooldown_zero_allows_action() {
-<a href=#2255 id=2255 data-nosnippet>2255</a>        <span class="comment">// Cooldown = 0.0 should NOT block (&gt; 0.0 is false).
-<a href=#2256 id=2256 data-nosnippet>2256</a>        // Mutation `&gt; → &gt;=` would block at 0.0.
-<a href=#2257 id=2257 data-nosnippet>2257</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>cooldowns = std::collections::BTreeMap::new();
-<a href=#2258 id=2258 data-nosnippet>2258</a>        cooldowns.insert(<span class="string">"throw"</span>.to_string(), <span class="number">0.0</span>);
-<a href=#2259 id=2259 data-nosnippet>2259</a>        <span class="kw">let </span>world = WorldSnapshot {
-<a href=#2260 id=2260 data-nosnippet>2260</a>            t: <span class="number">0.0</span>,
-<a href=#2261 id=2261 data-nosnippet>2261</a>            player: PlayerState {
-<a href=#2262 id=2262 data-nosnippet>2262</a>                hp: <span class="number">100</span>,
-<a href=#2263 id=2263 data-nosnippet>2263</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
-<a href=#2264 id=2264 data-nosnippet>2264</a>                stance: <span class="string">"standing"</span>.into(),
-<a href=#2265 id=2265 data-nosnippet>2265</a>                orders: <span class="macro">vec!</span>[],
-<a href=#2266 id=2266 data-nosnippet>2266</a>            },
-<a href=#2267 id=2267 data-nosnippet>2267</a>            me: CompanionState {
-<a href=#2268 id=2268 data-nosnippet>2268</a>                ammo: <span class="number">10</span>,
-<a href=#2269 id=2269 data-nosnippet>2269</a>                cooldowns,
-<a href=#2270 id=2270 data-nosnippet>2270</a>                morale: <span class="number">1.0</span>,
-<a href=#2271 id=2271 data-nosnippet>2271</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
-<a href=#2272 id=2272 data-nosnippet>2272</a>            },
-<a href=#2273 id=2273 data-nosnippet>2273</a>            enemies: <span class="macro">vec!</span>[],
-<a href=#2274 id=2274 data-nosnippet>2274</a>            pois: <span class="macro">vec!</span>[],
-<a href=#2275 id=2275 data-nosnippet>2275</a>            objective: <span class="prelude-val">None</span>,
-<a href=#2276 id=2276 data-nosnippet>2276</a>            obstacles: <span class="macro">vec!</span>[],
-<a href=#2277 id=2277 data-nosnippet>2277</a>        };
-<a href=#2278 id=2278 data-nosnippet>2278</a>        <span class="kw">let </span>context = ValidationContext::new();
-<a href=#2279 id=2279 data-nosnippet>2279</a>        <span class="kw">let </span>result = validate_tool_action(
-<a href=#2280 id=2280 data-nosnippet>2280</a>            <span class="number">0</span>, ToolVerb::Throw, <span class="kw-2">&amp;</span>world, <span class="kw-2">&amp;</span>context, <span class="prelude-val">Some</span>(IVec2 { x: <span class="number">1</span>, y: <span class="number">0 </span>}),
-<a href=#2281 id=2281 data-nosnippet>2281</a>        );
-<a href=#2282 id=2282 data-nosnippet>2282</a>        <span class="macro">assert!</span>(result.is_ok(), <span class="string">"Cooldown=0.0 should not block (&gt; 0.0 = false)"</span>);
-<a href=#2283 id=2283 data-nosnippet>2283</a>    }
-<a href=#2284 id=2284 data-nosnippet>2284</a>
-<a href=#2285 id=2285 data-nosnippet>2285</a>    <span class="attr">#[test]
-<a href=#2286 id=2286 data-nosnippet>2286</a>    </span><span class="kw">fn </span>test_revive_morale_exact_boundary() {
-<a href=#2287 id=2287 data-nosnippet>2287</a>        <span class="comment">// Morale = 0.5: `&lt; 0.5` is false → allowed.
-<a href=#2288 id=2288 data-nosnippet>2288</a>        // Mutation `&lt; → &lt;=` would block at exactly 0.5.
-<a href=#2289 id=2289 data-nosnippet>2289</a>        </span><span class="kw">let </span>world = WorldSnapshot {
-<a href=#2290 id=2290 data-nosnippet>2290</a>            t: <span class="number">0.0</span>,
-<a href=#2291 id=2291 data-nosnippet>2291</a>            player: PlayerState {
-<a href=#2292 id=2292 data-nosnippet>2292</a>                hp: <span class="number">100</span>,
-<a href=#2293 id=2293 data-nosnippet>2293</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
-<a href=#2294 id=2294 data-nosnippet>2294</a>                stance: <span class="string">"standing"</span>.into(),
-<a href=#2295 id=2295 data-nosnippet>2295</a>                orders: <span class="macro">vec!</span>[],
-<a href=#2296 id=2296 data-nosnippet>2296</a>            },
-<a href=#2297 id=2297 data-nosnippet>2297</a>            me: CompanionState {
-<a href=#2298 id=2298 data-nosnippet>2298</a>                ammo: <span class="number">10</span>,
-<a href=#2299 id=2299 data-nosnippet>2299</a>                cooldowns: std::collections::BTreeMap::new(),
-<a href=#2300 id=2300 data-nosnippet>2300</a>                morale: <span class="number">0.5</span>, <span class="comment">// Exactly at boundary
-<a href=#2301 id=2301 data-nosnippet>2301</a>                </span>pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
-<a href=#2302 id=2302 data-nosnippet>2302</a>            },
-<a href=#2303 id=2303 data-nosnippet>2303</a>            enemies: <span class="macro">vec!</span>[],
-<a href=#2304 id=2304 data-nosnippet>2304</a>            pois: <span class="macro">vec!</span>[],
-<a href=#2305 id=2305 data-nosnippet>2305</a>            objective: <span class="prelude-val">None</span>,
-<a href=#2306 id=2306 data-nosnippet>2306</a>            obstacles: <span class="macro">vec!</span>[],
-<a href=#2307 id=2307 data-nosnippet>2307</a>        };
-<a href=#2308 id=2308 data-nosnippet>2308</a>        <span class="kw">let </span>context = ValidationContext::new();
-<a href=#2309 id=2309 data-nosnippet>2309</a>        <span class="kw">let </span>result = validate_tool_action(
-<a href=#2310 id=2310 data-nosnippet>2310</a>            <span class="number">0</span>, ToolVerb::Revive, <span class="kw-2">&amp;</span>world, <span class="kw-2">&amp;</span>context, <span class="prelude-val">Some</span>(IVec2 { x: <span class="number">1</span>, y: <span class="number">0 </span>}),
-<a href=#2311 id=2311 data-nosnippet>2311</a>        );
-<a href=#2312 id=2312 data-nosnippet>2312</a>        <span class="macro">assert!</span>(result.is_ok(), <span class="string">"Revive at morale=0.5 should pass (&lt; 0.5 is false)"</span>);
-<a href=#2313 id=2313 data-nosnippet>2313</a>    }
-<a href=#2314 id=2314 data-nosnippet>2314</a>
-<a href=#2315 id=2315 data-nosnippet>2315</a>    <span class="attr">#[test]
-<a href=#2316 id=2316 data-nosnippet>2316</a>    </span><span class="kw">fn </span>test_revive_distance_negative_dx_catches_multiply_vs_add() {
-<a href=#2317 id=2317 data-nosnippet>2317</a>        <span class="comment">// When dx is negative: dx*dx = positive, but dx+dx = negative.
-<a href=#2318 id=2318 data-nosnippet>2318</a>        // (dx+dx + dy*dy) could be negative → sqrt(NaN) → NaN &gt; 2.0 = false → OK.
-<a href=#2319 id=2319 data-nosnippet>2319</a>        // We need a case where *→+ changes the outcome.
-<a href=#2320 id=2320 data-nosnippet>2320</a>        // me at (5,0), target at (2,0): dx = 2-5 = -3.
-<a href=#2321 id=2321 data-nosnippet>2321</a>        // Original: (-3)*(-3) = 9, sqrt(9) = 3.0 &gt; 2.0 → FAIL.
-<a href=#2322 id=2322 data-nosnippet>2322</a>        // Mutation: (-3)+(-3) = -6, (-6+0) as f32 → sqrt(-6) = NaN, NaN &gt; 2.0 = false → OK.
-<a href=#2323 id=2323 data-nosnippet>2323</a>        </span><span class="kw">let </span>world = WorldSnapshot {
-<a href=#2324 id=2324 data-nosnippet>2324</a>            t: <span class="number">0.0</span>,
-<a href=#2325 id=2325 data-nosnippet>2325</a>            player: PlayerState {
-<a href=#2326 id=2326 data-nosnippet>2326</a>                hp: <span class="number">100</span>,
-<a href=#2327 id=2327 data-nosnippet>2327</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
-<a href=#2328 id=2328 data-nosnippet>2328</a>                stance: <span class="string">"standing"</span>.into(),
-<a href=#2329 id=2329 data-nosnippet>2329</a>                orders: <span class="macro">vec!</span>[],
-<a href=#2330 id=2330 data-nosnippet>2330</a>            },
-<a href=#2331 id=2331 data-nosnippet>2331</a>            me: CompanionState {
-<a href=#2332 id=2332 data-nosnippet>2332</a>                ammo: <span class="number">10</span>,
-<a href=#2333 id=2333 data-nosnippet>2333</a>                cooldowns: std::collections::BTreeMap::new(),
-<a href=#2334 id=2334 data-nosnippet>2334</a>                morale: <span class="number">1.0</span>,
-<a href=#2335 id=2335 data-nosnippet>2335</a>                pos: IVec2 { x: <span class="number">5</span>, y: <span class="number">0 </span>},
-<a href=#2336 id=2336 data-nosnippet>2336</a>            },
-<a href=#2337 id=2337 data-nosnippet>2337</a>            enemies: <span class="macro">vec!</span>[],
-<a href=#2338 id=2338 data-nosnippet>2338</a>            pois: <span class="macro">vec!</span>[],
-<a href=#2339 id=2339 data-nosnippet>2339</a>            objective: <span class="prelude-val">None</span>,
-<a href=#2340 id=2340 data-nosnippet>2340</a>            obstacles: <span class="macro">vec!</span>[],
-<a href=#2341 id=2341 data-nosnippet>2341</a>        };
-<a href=#2342 id=2342 data-nosnippet>2342</a>        <span class="kw">let </span>context = ValidationContext::new();
-<a href=#2343 id=2343 data-nosnippet>2343</a>        <span class="kw">let </span>result = validate_tool_action(
-<a href=#2344 id=2344 data-nosnippet>2344</a>            <span class="number">0</span>, ToolVerb::Revive, <span class="kw-2">&amp;</span>world, <span class="kw-2">&amp;</span>context, <span class="prelude-val">Some</span>(IVec2 { x: <span class="number">2</span>, y: <span class="number">0 </span>}),
-<a href=#2345 id=2345 data-nosnippet>2345</a>        );
-<a href=#2346 id=2346 data-nosnippet>2346</a>        <span class="macro">assert!</span>(result.is_err(), <span class="string">"Revive at distance 3.0 should fail (target too far)"</span>);
-<a href=#2347 id=2347 data-nosnippet>2347</a>    }
-<a href=#2348 id=2348 data-nosnippet>2348</a>
-<a href=#2349 id=2349 data-nosnippet>2349</a>    <span class="attr">#[test]
-<a href=#2350 id=2350 data-nosnippet>2350</a>    </span><span class="kw">fn </span>test_revive_distance_negative_dy_catches_multiply_vs_add() {
-<a href=#2351 id=2351 data-nosnippet>2351</a>        <span class="comment">// Same idea for dy mutation: me at (0,4), target at (0,1).
-<a href=#2352 id=2352 data-nosnippet>2352</a>        // dy = 1-4 = -3. Original: (-3)² = 9. Mutation: -3+(-3) = -6.
-<a href=#2353 id=2353 data-nosnippet>2353</a>        // sqrt(0+9) = 3 &gt; 2 → fail. Mutation: sqrt(0+(-6)) = NaN → OK.
-<a href=#2354 id=2354 data-nosnippet>2354</a>        </span><span class="kw">let </span>world = WorldSnapshot {
-<a href=#2355 id=2355 data-nosnippet>2355</a>            t: <span class="number">0.0</span>,
-<a href=#2356 id=2356 data-nosnippet>2356</a>            player: PlayerState {
-<a href=#2357 id=2357 data-nosnippet>2357</a>                hp: <span class="number">100</span>,
-<a href=#2358 id=2358 data-nosnippet>2358</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
-<a href=#2359 id=2359 data-nosnippet>2359</a>                stance: <span class="string">"standing"</span>.into(),
-<a href=#2360 id=2360 data-nosnippet>2360</a>                orders: <span class="macro">vec!</span>[],
-<a href=#2361 id=2361 data-nosnippet>2361</a>            },
-<a href=#2362 id=2362 data-nosnippet>2362</a>            me: CompanionState {
-<a href=#2363 id=2363 data-nosnippet>2363</a>                ammo: <span class="number">10</span>,
-<a href=#2364 id=2364 data-nosnippet>2364</a>                cooldowns: std::collections::BTreeMap::new(),
-<a href=#2365 id=2365 data-nosnippet>2365</a>                morale: <span class="number">1.0</span>,
-<a href=#2366 id=2366 data-nosnippet>2366</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">4 </span>},
-<a href=#2367 id=2367 data-nosnippet>2367</a>            },
-<a href=#2368 id=2368 data-nosnippet>2368</a>            enemies: <span class="macro">vec!</span>[],
-<a href=#2369 id=2369 data-nosnippet>2369</a>            pois: <span class="macro">vec!</span>[],
-<a href=#2370 id=2370 data-nosnippet>2370</a>            objective: <span class="prelude-val">None</span>,
-<a href=#2371 id=2371 data-nosnippet>2371</a>            obstacles: <span class="macro">vec!</span>[],
-<a href=#2372 id=2372 data-nosnippet>2372</a>        };
-<a href=#2373 id=2373 data-nosnippet>2373</a>        <span class="kw">let </span>context = ValidationContext::new();
-<a href=#2374 id=2374 data-nosnippet>2374</a>        <span class="kw">let </span>result = validate_tool_action(
-<a href=#2375 id=2375 data-nosnippet>2375</a>            <span class="number">0</span>, ToolVerb::Revive, <span class="kw-2">&amp;</span>world, <span class="kw-2">&amp;</span>context, <span class="prelude-val">Some</span>(IVec2 { x: <span class="number">0</span>, y: <span class="number">1 </span>}),
-<a href=#2376 id=2376 data-nosnippet>2376</a>        );
-<a href=#2377 id=2377 data-nosnippet>2377</a>        <span class="macro">assert!</span>(result.is_err(), <span class="string">"Revive at distance 3.0 should fail (dy*dy vs dy+dy)"</span>);
-<a href=#2378 id=2378 data-nosnippet>2378</a>    }
-<a href=#2379 id=2379 data-nosnippet>2379</a>
-<a href=#2380 id=2380 data-nosnippet>2380</a>    <span class="attr">#[test]
-<a href=#2381 id=2381 data-nosnippet>2381</a>    </span><span class="kw">fn </span>test_los_obstacle_single_coordinate_match() {
-<a href=#2382 id=2382 data-nosnippet>2382</a>        <span class="comment">// Obstacle at (5,1) shares y=1 with path cell (0,1) on vertical line.
-<a href=#2383 id=2383 data-nosnippet>2383</a>        // Original: obs.x == x &amp;&amp; obs.y == y → 5==0 &amp;&amp; 1==1 → false → no block.
-<a href=#2384 id=2384 data-nosnippet>2384</a>        // Mutation `&amp;&amp; → ||`: 5==0 || 1==1 → true → blocked incorrectly.
-<a href=#2385 id=2385 data-nosnippet>2385</a>        </span><span class="kw">let </span>world = WorldSnapshot {
-<a href=#2386 id=2386 data-nosnippet>2386</a>            t: <span class="number">0.0</span>,
-<a href=#2387 id=2387 data-nosnippet>2387</a>            player: PlayerState {
-<a href=#2388 id=2388 data-nosnippet>2388</a>                hp: <span class="number">100</span>,
-<a href=#2389 id=2389 data-nosnippet>2389</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
-<a href=#2390 id=2390 data-nosnippet>2390</a>                stance: <span class="string">"standing"</span>.into(),
-<a href=#2391 id=2391 data-nosnippet>2391</a>                orders: <span class="macro">vec!</span>[],
+<a href=#2233 id=2233 data-nosnippet>2233</a>        <span class="macro">assert!</span>(
+<a href=#2234 id=2234 data-nosnippet>2234</a>            !ctx.has_physics(),
+<a href=#2235 id=2235 data-nosnippet>2235</a>            <span class="string">"has_physics should be false when only pipeline is set (&amp;&amp;, not ||)"
+<a href=#2236 id=2236 data-nosnippet>2236</a>        </span>);
+<a href=#2237 id=2237 data-nosnippet>2237</a>    }
+<a href=#2238 id=2238 data-nosnippet>2238</a>
+<a href=#2239 id=2239 data-nosnippet>2239</a>    <span class="attr">#[test]
+<a href=#2240 id=2240 data-nosnippet>2240</a>    </span><span class="kw">fn </span>test_has_physics_partial_missing_collider() {
+<a href=#2241 id=2241 data-nosnippet>2241</a>        <span class="comment">// physics_pipeline + rigid_body_set but NO collider_set → false.
+<a href=#2242 id=2242 data-nosnippet>2242</a>        // Catches the second `&amp;&amp;` mutation.
+<a href=#2243 id=2243 data-nosnippet>2243</a>        </span><span class="kw">let </span>pipeline = PhysicsPipeline::new();
+<a href=#2244 id=2244 data-nosnippet>2244</a>        <span class="kw">let </span>bodies = RigidBodySet::new();
+<a href=#2245 id=2245 data-nosnippet>2245</a>        <span class="kw">let </span>ctx = ValidationContext {
+<a href=#2246 id=2246 data-nosnippet>2246</a>            nav_mesh: <span class="prelude-val">None</span>,
+<a href=#2247 id=2247 data-nosnippet>2247</a>            physics_pipeline: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>pipeline),
+<a href=#2248 id=2248 data-nosnippet>2248</a>            rigid_body_set: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>bodies),
+<a href=#2249 id=2249 data-nosnippet>2249</a>            collider_set: <span class="prelude-val">None</span>,
+<a href=#2250 id=2250 data-nosnippet>2250</a>        };
+<a href=#2251 id=2251 data-nosnippet>2251</a>        <span class="macro">assert!</span>(
+<a href=#2252 id=2252 data-nosnippet>2252</a>            !ctx.has_physics(),
+<a href=#2253 id=2253 data-nosnippet>2253</a>            <span class="string">"has_physics should be false when collider_set is missing"
+<a href=#2254 id=2254 data-nosnippet>2254</a>        </span>);
+<a href=#2255 id=2255 data-nosnippet>2255</a>    }
+<a href=#2256 id=2256 data-nosnippet>2256</a>
+<a href=#2257 id=2257 data-nosnippet>2257</a>    <span class="attr">#[test]
+<a href=#2258 id=2258 data-nosnippet>2258</a>    </span><span class="kw">fn </span>test_cooldown_zero_allows_action() {
+<a href=#2259 id=2259 data-nosnippet>2259</a>        <span class="comment">// Cooldown = 0.0 should NOT block (&gt; 0.0 is false).
+<a href=#2260 id=2260 data-nosnippet>2260</a>        // Mutation `&gt; → &gt;=` would block at 0.0.
+<a href=#2261 id=2261 data-nosnippet>2261</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>cooldowns = std::collections::BTreeMap::new();
+<a href=#2262 id=2262 data-nosnippet>2262</a>        cooldowns.insert(<span class="string">"throw"</span>.to_string(), <span class="number">0.0</span>);
+<a href=#2263 id=2263 data-nosnippet>2263</a>        <span class="kw">let </span>world = WorldSnapshot {
+<a href=#2264 id=2264 data-nosnippet>2264</a>            t: <span class="number">0.0</span>,
+<a href=#2265 id=2265 data-nosnippet>2265</a>            player: PlayerState {
+<a href=#2266 id=2266 data-nosnippet>2266</a>                hp: <span class="number">100</span>,
+<a href=#2267 id=2267 data-nosnippet>2267</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
+<a href=#2268 id=2268 data-nosnippet>2268</a>                stance: <span class="string">"standing"</span>.into(),
+<a href=#2269 id=2269 data-nosnippet>2269</a>                orders: <span class="macro">vec!</span>[],
+<a href=#2270 id=2270 data-nosnippet>2270</a>            },
+<a href=#2271 id=2271 data-nosnippet>2271</a>            me: CompanionState {
+<a href=#2272 id=2272 data-nosnippet>2272</a>                ammo: <span class="number">10</span>,
+<a href=#2273 id=2273 data-nosnippet>2273</a>                cooldowns,
+<a href=#2274 id=2274 data-nosnippet>2274</a>                morale: <span class="number">1.0</span>,
+<a href=#2275 id=2275 data-nosnippet>2275</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
+<a href=#2276 id=2276 data-nosnippet>2276</a>            },
+<a href=#2277 id=2277 data-nosnippet>2277</a>            enemies: <span class="macro">vec!</span>[],
+<a href=#2278 id=2278 data-nosnippet>2278</a>            pois: <span class="macro">vec!</span>[],
+<a href=#2279 id=2279 data-nosnippet>2279</a>            objective: <span class="prelude-val">None</span>,
+<a href=#2280 id=2280 data-nosnippet>2280</a>            obstacles: <span class="macro">vec!</span>[],
+<a href=#2281 id=2281 data-nosnippet>2281</a>        };
+<a href=#2282 id=2282 data-nosnippet>2282</a>        <span class="kw">let </span>context = ValidationContext::new();
+<a href=#2283 id=2283 data-nosnippet>2283</a>        <span class="kw">let </span>result = validate_tool_action(
+<a href=#2284 id=2284 data-nosnippet>2284</a>            <span class="number">0</span>,
+<a href=#2285 id=2285 data-nosnippet>2285</a>            ToolVerb::Throw,
+<a href=#2286 id=2286 data-nosnippet>2286</a>            <span class="kw-2">&amp;</span>world,
+<a href=#2287 id=2287 data-nosnippet>2287</a>            <span class="kw-2">&amp;</span>context,
+<a href=#2288 id=2288 data-nosnippet>2288</a>            <span class="prelude-val">Some</span>(IVec2 { x: <span class="number">1</span>, y: <span class="number">0 </span>}),
+<a href=#2289 id=2289 data-nosnippet>2289</a>        );
+<a href=#2290 id=2290 data-nosnippet>2290</a>        <span class="macro">assert!</span>(
+<a href=#2291 id=2291 data-nosnippet>2291</a>            result.is_ok(),
+<a href=#2292 id=2292 data-nosnippet>2292</a>            <span class="string">"Cooldown=0.0 should not block (&gt; 0.0 = false)"
+<a href=#2293 id=2293 data-nosnippet>2293</a>        </span>);
+<a href=#2294 id=2294 data-nosnippet>2294</a>    }
+<a href=#2295 id=2295 data-nosnippet>2295</a>
+<a href=#2296 id=2296 data-nosnippet>2296</a>    <span class="attr">#[test]
+<a href=#2297 id=2297 data-nosnippet>2297</a>    </span><span class="kw">fn </span>test_revive_morale_exact_boundary() {
+<a href=#2298 id=2298 data-nosnippet>2298</a>        <span class="comment">// Morale = 0.5: `&lt; 0.5` is false → allowed.
+<a href=#2299 id=2299 data-nosnippet>2299</a>        // Mutation `&lt; → &lt;=` would block at exactly 0.5.
+<a href=#2300 id=2300 data-nosnippet>2300</a>        </span><span class="kw">let </span>world = WorldSnapshot {
+<a href=#2301 id=2301 data-nosnippet>2301</a>            t: <span class="number">0.0</span>,
+<a href=#2302 id=2302 data-nosnippet>2302</a>            player: PlayerState {
+<a href=#2303 id=2303 data-nosnippet>2303</a>                hp: <span class="number">100</span>,
+<a href=#2304 id=2304 data-nosnippet>2304</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
+<a href=#2305 id=2305 data-nosnippet>2305</a>                stance: <span class="string">"standing"</span>.into(),
+<a href=#2306 id=2306 data-nosnippet>2306</a>                orders: <span class="macro">vec!</span>[],
+<a href=#2307 id=2307 data-nosnippet>2307</a>            },
+<a href=#2308 id=2308 data-nosnippet>2308</a>            me: CompanionState {
+<a href=#2309 id=2309 data-nosnippet>2309</a>                ammo: <span class="number">10</span>,
+<a href=#2310 id=2310 data-nosnippet>2310</a>                cooldowns: std::collections::BTreeMap::new(),
+<a href=#2311 id=2311 data-nosnippet>2311</a>                morale: <span class="number">0.5</span>, <span class="comment">// Exactly at boundary
+<a href=#2312 id=2312 data-nosnippet>2312</a>                </span>pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
+<a href=#2313 id=2313 data-nosnippet>2313</a>            },
+<a href=#2314 id=2314 data-nosnippet>2314</a>            enemies: <span class="macro">vec!</span>[],
+<a href=#2315 id=2315 data-nosnippet>2315</a>            pois: <span class="macro">vec!</span>[],
+<a href=#2316 id=2316 data-nosnippet>2316</a>            objective: <span class="prelude-val">None</span>,
+<a href=#2317 id=2317 data-nosnippet>2317</a>            obstacles: <span class="macro">vec!</span>[],
+<a href=#2318 id=2318 data-nosnippet>2318</a>        };
+<a href=#2319 id=2319 data-nosnippet>2319</a>        <span class="kw">let </span>context = ValidationContext::new();
+<a href=#2320 id=2320 data-nosnippet>2320</a>        <span class="kw">let </span>result = validate_tool_action(
+<a href=#2321 id=2321 data-nosnippet>2321</a>            <span class="number">0</span>,
+<a href=#2322 id=2322 data-nosnippet>2322</a>            ToolVerb::Revive,
+<a href=#2323 id=2323 data-nosnippet>2323</a>            <span class="kw-2">&amp;</span>world,
+<a href=#2324 id=2324 data-nosnippet>2324</a>            <span class="kw-2">&amp;</span>context,
+<a href=#2325 id=2325 data-nosnippet>2325</a>            <span class="prelude-val">Some</span>(IVec2 { x: <span class="number">1</span>, y: <span class="number">0 </span>}),
+<a href=#2326 id=2326 data-nosnippet>2326</a>        );
+<a href=#2327 id=2327 data-nosnippet>2327</a>        <span class="macro">assert!</span>(
+<a href=#2328 id=2328 data-nosnippet>2328</a>            result.is_ok(),
+<a href=#2329 id=2329 data-nosnippet>2329</a>            <span class="string">"Revive at morale=0.5 should pass (&lt; 0.5 is false)"
+<a href=#2330 id=2330 data-nosnippet>2330</a>        </span>);
+<a href=#2331 id=2331 data-nosnippet>2331</a>    }
+<a href=#2332 id=2332 data-nosnippet>2332</a>
+<a href=#2333 id=2333 data-nosnippet>2333</a>    <span class="attr">#[test]
+<a href=#2334 id=2334 data-nosnippet>2334</a>    </span><span class="kw">fn </span>test_revive_distance_negative_dx_catches_multiply_vs_add() {
+<a href=#2335 id=2335 data-nosnippet>2335</a>        <span class="comment">// When dx is negative: dx*dx = positive, but dx+dx = negative.
+<a href=#2336 id=2336 data-nosnippet>2336</a>        // (dx+dx + dy*dy) could be negative → sqrt(NaN) → NaN &gt; 2.0 = false → OK.
+<a href=#2337 id=2337 data-nosnippet>2337</a>        // We need a case where *→+ changes the outcome.
+<a href=#2338 id=2338 data-nosnippet>2338</a>        // me at (5,0), target at (2,0): dx = 2-5 = -3.
+<a href=#2339 id=2339 data-nosnippet>2339</a>        // Original: (-3)*(-3) = 9, sqrt(9) = 3.0 &gt; 2.0 → FAIL.
+<a href=#2340 id=2340 data-nosnippet>2340</a>        // Mutation: (-3)+(-3) = -6, (-6+0) as f32 → sqrt(-6) = NaN, NaN &gt; 2.0 = false → OK.
+<a href=#2341 id=2341 data-nosnippet>2341</a>        </span><span class="kw">let </span>world = WorldSnapshot {
+<a href=#2342 id=2342 data-nosnippet>2342</a>            t: <span class="number">0.0</span>,
+<a href=#2343 id=2343 data-nosnippet>2343</a>            player: PlayerState {
+<a href=#2344 id=2344 data-nosnippet>2344</a>                hp: <span class="number">100</span>,
+<a href=#2345 id=2345 data-nosnippet>2345</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
+<a href=#2346 id=2346 data-nosnippet>2346</a>                stance: <span class="string">"standing"</span>.into(),
+<a href=#2347 id=2347 data-nosnippet>2347</a>                orders: <span class="macro">vec!</span>[],
+<a href=#2348 id=2348 data-nosnippet>2348</a>            },
+<a href=#2349 id=2349 data-nosnippet>2349</a>            me: CompanionState {
+<a href=#2350 id=2350 data-nosnippet>2350</a>                ammo: <span class="number">10</span>,
+<a href=#2351 id=2351 data-nosnippet>2351</a>                cooldowns: std::collections::BTreeMap::new(),
+<a href=#2352 id=2352 data-nosnippet>2352</a>                morale: <span class="number">1.0</span>,
+<a href=#2353 id=2353 data-nosnippet>2353</a>                pos: IVec2 { x: <span class="number">5</span>, y: <span class="number">0 </span>},
+<a href=#2354 id=2354 data-nosnippet>2354</a>            },
+<a href=#2355 id=2355 data-nosnippet>2355</a>            enemies: <span class="macro">vec!</span>[],
+<a href=#2356 id=2356 data-nosnippet>2356</a>            pois: <span class="macro">vec!</span>[],
+<a href=#2357 id=2357 data-nosnippet>2357</a>            objective: <span class="prelude-val">None</span>,
+<a href=#2358 id=2358 data-nosnippet>2358</a>            obstacles: <span class="macro">vec!</span>[],
+<a href=#2359 id=2359 data-nosnippet>2359</a>        };
+<a href=#2360 id=2360 data-nosnippet>2360</a>        <span class="kw">let </span>context = ValidationContext::new();
+<a href=#2361 id=2361 data-nosnippet>2361</a>        <span class="kw">let </span>result = validate_tool_action(
+<a href=#2362 id=2362 data-nosnippet>2362</a>            <span class="number">0</span>,
+<a href=#2363 id=2363 data-nosnippet>2363</a>            ToolVerb::Revive,
+<a href=#2364 id=2364 data-nosnippet>2364</a>            <span class="kw-2">&amp;</span>world,
+<a href=#2365 id=2365 data-nosnippet>2365</a>            <span class="kw-2">&amp;</span>context,
+<a href=#2366 id=2366 data-nosnippet>2366</a>            <span class="prelude-val">Some</span>(IVec2 { x: <span class="number">2</span>, y: <span class="number">0 </span>}),
+<a href=#2367 id=2367 data-nosnippet>2367</a>        );
+<a href=#2368 id=2368 data-nosnippet>2368</a>        <span class="macro">assert!</span>(
+<a href=#2369 id=2369 data-nosnippet>2369</a>            result.is_err(),
+<a href=#2370 id=2370 data-nosnippet>2370</a>            <span class="string">"Revive at distance 3.0 should fail (target too far)"
+<a href=#2371 id=2371 data-nosnippet>2371</a>        </span>);
+<a href=#2372 id=2372 data-nosnippet>2372</a>    }
+<a href=#2373 id=2373 data-nosnippet>2373</a>
+<a href=#2374 id=2374 data-nosnippet>2374</a>    <span class="attr">#[test]
+<a href=#2375 id=2375 data-nosnippet>2375</a>    </span><span class="kw">fn </span>test_revive_distance_negative_dy_catches_multiply_vs_add() {
+<a href=#2376 id=2376 data-nosnippet>2376</a>        <span class="comment">// Same idea for dy mutation: me at (0,4), target at (0,1).
+<a href=#2377 id=2377 data-nosnippet>2377</a>        // dy = 1-4 = -3. Original: (-3)² = 9. Mutation: -3+(-3) = -6.
+<a href=#2378 id=2378 data-nosnippet>2378</a>        // sqrt(0+9) = 3 &gt; 2 → fail. Mutation: sqrt(0+(-6)) = NaN → OK.
+<a href=#2379 id=2379 data-nosnippet>2379</a>        </span><span class="kw">let </span>world = WorldSnapshot {
+<a href=#2380 id=2380 data-nosnippet>2380</a>            t: <span class="number">0.0</span>,
+<a href=#2381 id=2381 data-nosnippet>2381</a>            player: PlayerState {
+<a href=#2382 id=2382 data-nosnippet>2382</a>                hp: <span class="number">100</span>,
+<a href=#2383 id=2383 data-nosnippet>2383</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
+<a href=#2384 id=2384 data-nosnippet>2384</a>                stance: <span class="string">"standing"</span>.into(),
+<a href=#2385 id=2385 data-nosnippet>2385</a>                orders: <span class="macro">vec!</span>[],
+<a href=#2386 id=2386 data-nosnippet>2386</a>            },
+<a href=#2387 id=2387 data-nosnippet>2387</a>            me: CompanionState {
+<a href=#2388 id=2388 data-nosnippet>2388</a>                ammo: <span class="number">10</span>,
+<a href=#2389 id=2389 data-nosnippet>2389</a>                cooldowns: std::collections::BTreeMap::new(),
+<a href=#2390 id=2390 data-nosnippet>2390</a>                morale: <span class="number">1.0</span>,
+<a href=#2391 id=2391 data-nosnippet>2391</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">4 </span>},
 <a href=#2392 id=2392 data-nosnippet>2392</a>            },
-<a href=#2393 id=2393 data-nosnippet>2393</a>            me: CompanionState {
-<a href=#2394 id=2394 data-nosnippet>2394</a>                ammo: <span class="number">10</span>,
-<a href=#2395 id=2395 data-nosnippet>2395</a>                cooldowns: std::collections::BTreeMap::new(),
-<a href=#2396 id=2396 data-nosnippet>2396</a>                morale: <span class="number">1.0</span>,
-<a href=#2397 id=2397 data-nosnippet>2397</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
-<a href=#2398 id=2398 data-nosnippet>2398</a>            },
-<a href=#2399 id=2399 data-nosnippet>2399</a>            enemies: <span class="macro">vec!</span>[],
-<a href=#2400 id=2400 data-nosnippet>2400</a>            pois: <span class="macro">vec!</span>[],
-<a href=#2401 id=2401 data-nosnippet>2401</a>            objective: <span class="prelude-val">None</span>,
-<a href=#2402 id=2402 data-nosnippet>2402</a>            obstacles: <span class="macro">vec!</span>[IVec2 { x: <span class="number">5</span>, y: <span class="number">1 </span>}], <span class="comment">// Shares y=1 with path cell (0,1)
-<a href=#2403 id=2403 data-nosnippet>2403</a>        </span>};
-<a href=#2404 id=2404 data-nosnippet>2404</a>        <span class="comment">// LOS from (0,0) to (0,3) — vertical line, obstacle at (5,1) NOT on path.
-<a href=#2405 id=2405 data-nosnippet>2405</a>        </span><span class="kw">let </span>has_los = has_line_of_sight(IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>}, IVec2 { x: <span class="number">0</span>, y: <span class="number">3 </span>}, <span class="kw-2">&amp;</span>world);
-<a href=#2406 id=2406 data-nosnippet>2406</a>        <span class="macro">assert!</span>(has_los,
-<a href=#2407 id=2407 data-nosnippet>2407</a>            <span class="string">"Obstacle at (5,1) should NOT block vertical LOS from (0,0) to (0,3)"</span>);
-<a href=#2408 id=2408 data-nosnippet>2408</a>    }
-<a href=#2409 id=2409 data-nosnippet>2409</a>
-<a href=#2410 id=2410 data-nosnippet>2410</a>    <span class="attr">#[test]
-<a href=#2411 id=2411 data-nosnippet>2411</a>    </span><span class="kw">fn </span>test_los_from_nonzero_origin_with_obstacle() {
-<a href=#2412 id=2412 data-nosnippet>2412</a>        <span class="comment">// Uses non-zero from to catch `(to.x - from.x).abs() → (to.x + from.x).abs()`
-<a href=#2413 id=2413 data-nosnippet>2413</a>        // from (3,2) to (6,4): original dx=3, dy=2.
-<a href=#2414 id=2414 data-nosnippet>2414</a>        // Mutation: dx=abs(6+3)=9, dy=abs(4+2)=6 — different Bresenham path.
-<a href=#2415 id=2415 data-nosnippet>2415</a>        // With the mutation, Bresenham may diverge (timeout=caught) or miss obstacle.
-<a href=#2416 id=2416 data-nosnippet>2416</a>        </span><span class="kw">let </span>world = WorldSnapshot {
-<a href=#2417 id=2417 data-nosnippet>2417</a>            t: <span class="number">0.0</span>,
-<a href=#2418 id=2418 data-nosnippet>2418</a>            player: PlayerState {
-<a href=#2419 id=2419 data-nosnippet>2419</a>                hp: <span class="number">100</span>,
-<a href=#2420 id=2420 data-nosnippet>2420</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
-<a href=#2421 id=2421 data-nosnippet>2421</a>                stance: <span class="string">"standing"</span>.into(),
-<a href=#2422 id=2422 data-nosnippet>2422</a>                orders: <span class="macro">vec!</span>[],
-<a href=#2423 id=2423 data-nosnippet>2423</a>            },
-<a href=#2424 id=2424 data-nosnippet>2424</a>            me: CompanionState {
-<a href=#2425 id=2425 data-nosnippet>2425</a>                ammo: <span class="number">10</span>,
-<a href=#2426 id=2426 data-nosnippet>2426</a>                cooldowns: std::collections::BTreeMap::new(),
-<a href=#2427 id=2427 data-nosnippet>2427</a>                morale: <span class="number">1.0</span>,
-<a href=#2428 id=2428 data-nosnippet>2428</a>                pos: IVec2 { x: <span class="number">3</span>, y: <span class="number">2 </span>},
-<a href=#2429 id=2429 data-nosnippet>2429</a>            },
-<a href=#2430 id=2430 data-nosnippet>2430</a>            enemies: <span class="macro">vec!</span>[],
-<a href=#2431 id=2431 data-nosnippet>2431</a>            pois: <span class="macro">vec!</span>[],
-<a href=#2432 id=2432 data-nosnippet>2432</a>            objective: <span class="prelude-val">None</span>,
-<a href=#2433 id=2433 data-nosnippet>2433</a>            obstacles: <span class="macro">vec!</span>[IVec2 { x: <span class="number">5</span>, y: <span class="number">3 </span>}], <span class="comment">// On original path (3,2)→(4,3)→(5,3)→(6,4)
-<a href=#2434 id=2434 data-nosnippet>2434</a>        </span>};
-<a href=#2435 id=2435 data-nosnippet>2435</a>        <span class="kw">let </span>has_los = has_line_of_sight(IVec2 { x: <span class="number">3</span>, y: <span class="number">2 </span>}, IVec2 { x: <span class="number">6</span>, y: <span class="number">4 </span>}, <span class="kw-2">&amp;</span>world);
-<a href=#2436 id=2436 data-nosnippet>2436</a>        <span class="macro">assert!</span>(!has_los,
-<a href=#2437 id=2437 data-nosnippet>2437</a>            <span class="string">"Obstacle at (5,3) should block LOS from (3,2) to (6,4)"</span>);
-<a href=#2438 id=2438 data-nosnippet>2438</a>    }
-<a href=#2439 id=2439 data-nosnippet>2439</a>}</code></pre></div></section></main></body></html>
+<a href=#2393 id=2393 data-nosnippet>2393</a>            enemies: <span class="macro">vec!</span>[],
+<a href=#2394 id=2394 data-nosnippet>2394</a>            pois: <span class="macro">vec!</span>[],
+<a href=#2395 id=2395 data-nosnippet>2395</a>            objective: <span class="prelude-val">None</span>,
+<a href=#2396 id=2396 data-nosnippet>2396</a>            obstacles: <span class="macro">vec!</span>[],
+<a href=#2397 id=2397 data-nosnippet>2397</a>        };
+<a href=#2398 id=2398 data-nosnippet>2398</a>        <span class="kw">let </span>context = ValidationContext::new();
+<a href=#2399 id=2399 data-nosnippet>2399</a>        <span class="kw">let </span>result = validate_tool_action(
+<a href=#2400 id=2400 data-nosnippet>2400</a>            <span class="number">0</span>,
+<a href=#2401 id=2401 data-nosnippet>2401</a>            ToolVerb::Revive,
+<a href=#2402 id=2402 data-nosnippet>2402</a>            <span class="kw-2">&amp;</span>world,
+<a href=#2403 id=2403 data-nosnippet>2403</a>            <span class="kw-2">&amp;</span>context,
+<a href=#2404 id=2404 data-nosnippet>2404</a>            <span class="prelude-val">Some</span>(IVec2 { x: <span class="number">0</span>, y: <span class="number">1 </span>}),
+<a href=#2405 id=2405 data-nosnippet>2405</a>        );
+<a href=#2406 id=2406 data-nosnippet>2406</a>        <span class="macro">assert!</span>(
+<a href=#2407 id=2407 data-nosnippet>2407</a>            result.is_err(),
+<a href=#2408 id=2408 data-nosnippet>2408</a>            <span class="string">"Revive at distance 3.0 should fail (dy*dy vs dy+dy)"
+<a href=#2409 id=2409 data-nosnippet>2409</a>        </span>);
+<a href=#2410 id=2410 data-nosnippet>2410</a>    }
+<a href=#2411 id=2411 data-nosnippet>2411</a>
+<a href=#2412 id=2412 data-nosnippet>2412</a>    <span class="attr">#[test]
+<a href=#2413 id=2413 data-nosnippet>2413</a>    </span><span class="kw">fn </span>test_los_obstacle_single_coordinate_match() {
+<a href=#2414 id=2414 data-nosnippet>2414</a>        <span class="comment">// Obstacle at (5,1) shares y=1 with path cell (0,1) on vertical line.
+<a href=#2415 id=2415 data-nosnippet>2415</a>        // Original: obs.x == x &amp;&amp; obs.y == y → 5==0 &amp;&amp; 1==1 → false → no block.
+<a href=#2416 id=2416 data-nosnippet>2416</a>        // Mutation `&amp;&amp; → ||`: 5==0 || 1==1 → true → blocked incorrectly.
+<a href=#2417 id=2417 data-nosnippet>2417</a>        </span><span class="kw">let </span>world = WorldSnapshot {
+<a href=#2418 id=2418 data-nosnippet>2418</a>            t: <span class="number">0.0</span>,
+<a href=#2419 id=2419 data-nosnippet>2419</a>            player: PlayerState {
+<a href=#2420 id=2420 data-nosnippet>2420</a>                hp: <span class="number">100</span>,
+<a href=#2421 id=2421 data-nosnippet>2421</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
+<a href=#2422 id=2422 data-nosnippet>2422</a>                stance: <span class="string">"standing"</span>.into(),
+<a href=#2423 id=2423 data-nosnippet>2423</a>                orders: <span class="macro">vec!</span>[],
+<a href=#2424 id=2424 data-nosnippet>2424</a>            },
+<a href=#2425 id=2425 data-nosnippet>2425</a>            me: CompanionState {
+<a href=#2426 id=2426 data-nosnippet>2426</a>                ammo: <span class="number">10</span>,
+<a href=#2427 id=2427 data-nosnippet>2427</a>                cooldowns: std::collections::BTreeMap::new(),
+<a href=#2428 id=2428 data-nosnippet>2428</a>                morale: <span class="number">1.0</span>,
+<a href=#2429 id=2429 data-nosnippet>2429</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
+<a href=#2430 id=2430 data-nosnippet>2430</a>            },
+<a href=#2431 id=2431 data-nosnippet>2431</a>            enemies: <span class="macro">vec!</span>[],
+<a href=#2432 id=2432 data-nosnippet>2432</a>            pois: <span class="macro">vec!</span>[],
+<a href=#2433 id=2433 data-nosnippet>2433</a>            objective: <span class="prelude-val">None</span>,
+<a href=#2434 id=2434 data-nosnippet>2434</a>            obstacles: <span class="macro">vec!</span>[IVec2 { x: <span class="number">5</span>, y: <span class="number">1 </span>}], <span class="comment">// Shares y=1 with path cell (0,1)
+<a href=#2435 id=2435 data-nosnippet>2435</a>        </span>};
+<a href=#2436 id=2436 data-nosnippet>2436</a>        <span class="comment">// LOS from (0,0) to (0,3) — vertical line, obstacle at (5,1) NOT on path.
+<a href=#2437 id=2437 data-nosnippet>2437</a>        </span><span class="kw">let </span>has_los = has_line_of_sight(IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>}, IVec2 { x: <span class="number">0</span>, y: <span class="number">3 </span>}, <span class="kw-2">&amp;</span>world);
+<a href=#2438 id=2438 data-nosnippet>2438</a>        <span class="macro">assert!</span>(
+<a href=#2439 id=2439 data-nosnippet>2439</a>            has_los,
+<a href=#2440 id=2440 data-nosnippet>2440</a>            <span class="string">"Obstacle at (5,1) should NOT block vertical LOS from (0,0) to (0,3)"
+<a href=#2441 id=2441 data-nosnippet>2441</a>        </span>);
+<a href=#2442 id=2442 data-nosnippet>2442</a>    }
+<a href=#2443 id=2443 data-nosnippet>2443</a>
+<a href=#2444 id=2444 data-nosnippet>2444</a>    <span class="attr">#[test]
+<a href=#2445 id=2445 data-nosnippet>2445</a>    </span><span class="kw">fn </span>test_los_from_nonzero_origin_with_obstacle() {
+<a href=#2446 id=2446 data-nosnippet>2446</a>        <span class="comment">// Uses non-zero from to catch `(to.x - from.x).abs() → (to.x + from.x).abs()`
+<a href=#2447 id=2447 data-nosnippet>2447</a>        // from (3,2) to (6,4): original dx=3, dy=2.
+<a href=#2448 id=2448 data-nosnippet>2448</a>        // Mutation: dx=abs(6+3)=9, dy=abs(4+2)=6 — different Bresenham path.
+<a href=#2449 id=2449 data-nosnippet>2449</a>        // With the mutation, Bresenham may diverge (timeout=caught) or miss obstacle.
+<a href=#2450 id=2450 data-nosnippet>2450</a>        </span><span class="kw">let </span>world = WorldSnapshot {
+<a href=#2451 id=2451 data-nosnippet>2451</a>            t: <span class="number">0.0</span>,
+<a href=#2452 id=2452 data-nosnippet>2452</a>            player: PlayerState {
+<a href=#2453 id=2453 data-nosnippet>2453</a>                hp: <span class="number">100</span>,
+<a href=#2454 id=2454 data-nosnippet>2454</a>                pos: IVec2 { x: <span class="number">0</span>, y: <span class="number">0 </span>},
+<a href=#2455 id=2455 data-nosnippet>2455</a>                stance: <span class="string">"standing"</span>.into(),
+<a href=#2456 id=2456 data-nosnippet>2456</a>                orders: <span class="macro">vec!</span>[],
+<a href=#2457 id=2457 data-nosnippet>2457</a>            },
+<a href=#2458 id=2458 data-nosnippet>2458</a>            me: CompanionState {
+<a href=#2459 id=2459 data-nosnippet>2459</a>                ammo: <span class="number">10</span>,
+<a href=#2460 id=2460 data-nosnippet>2460</a>                cooldowns: std::collections::BTreeMap::new(),
+<a href=#2461 id=2461 data-nosnippet>2461</a>                morale: <span class="number">1.0</span>,
+<a href=#2462 id=2462 data-nosnippet>2462</a>                pos: IVec2 { x: <span class="number">3</span>, y: <span class="number">2 </span>},
+<a href=#2463 id=2463 data-nosnippet>2463</a>            },
+<a href=#2464 id=2464 data-nosnippet>2464</a>            enemies: <span class="macro">vec!</span>[],
+<a href=#2465 id=2465 data-nosnippet>2465</a>            pois: <span class="macro">vec!</span>[],
+<a href=#2466 id=2466 data-nosnippet>2466</a>            objective: <span class="prelude-val">None</span>,
+<a href=#2467 id=2467 data-nosnippet>2467</a>            obstacles: <span class="macro">vec!</span>[IVec2 { x: <span class="number">5</span>, y: <span class="number">3 </span>}], <span class="comment">// On original path (3,2)→(4,3)→(5,3)→(6,4)
+<a href=#2468 id=2468 data-nosnippet>2468</a>        </span>};
+<a href=#2469 id=2469 data-nosnippet>2469</a>        <span class="kw">let </span>has_los = has_line_of_sight(IVec2 { x: <span class="number">3</span>, y: <span class="number">2 </span>}, IVec2 { x: <span class="number">6</span>, y: <span class="number">4 </span>}, <span class="kw-2">&amp;</span>world);
+<a href=#2470 id=2470 data-nosnippet>2470</a>        <span class="macro">assert!</span>(
+<a href=#2471 id=2471 data-nosnippet>2471</a>            !has_los,
+<a href=#2472 id=2472 data-nosnippet>2472</a>            <span class="string">"Obstacle at (5,3) should block LOS from (3,2) to (6,4)"
+<a href=#2473 id=2473 data-nosnippet>2473</a>        </span>);
+<a href=#2474 id=2474 data-nosnippet>2474</a>    }
+<a href=#2475 id=2475 data-nosnippet>2475</a>}</code></pre></div></section></main></body></html>
