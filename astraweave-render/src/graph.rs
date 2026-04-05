@@ -625,14 +625,19 @@ impl RenderGraph {
             }
         }
 
-        self.compiled = Some(CompiledGraph {
+        let compiled = CompiledGraph {
             execution_order,
             transient_descs,
             alias_groups,
             release_points,
-        });
+        };
+        self.compiled = Some(compiled);
 
-        Ok(self.compiled.as_ref().expect("just set"))
+        // SAFETY: we just assigned `Some` above, so `as_ref()` cannot be `None`.
+        Ok(self
+            .compiled
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("BUG: compiled graph missing after assignment"))?)
     }
 
     /// Get the compiled graph (if `compile()` was called).

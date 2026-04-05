@@ -20,7 +20,12 @@
 - [x] EntityManager/World undo desync — removed 6 duplicate handler updates (d3570e6d0)
 - [x] C-5: 4/9 entity creation ops wired to undo stack (199574b05) — remaining 5 need new commands (deferred)
 
-## Tier 3: Important — COMPLETE (5 fixed, 3 deferred)
+## Deferred Items — COMPLETE (3/3)
+- [x] Fix-17: Per-axis scale on Pose — scale_y/scale_z fields + ScaleEntityCommand [f32;3] (288f305b3)
+- [x] Fix-18: TerrainVertex adapter — documented deliberate simplification (f13c38055)
+- [x] Fix-19: Instance layout — verified correctly isolated (no code change needed)
+
+## Tier 3: Important — COMPLETE (5 fixed, 3 deferred→resolved)
 - [x] Permanent mesh blacklist no retry — retry-limited cache (a5aaa548d)
 - [x] Tonemap exposure stub — exposure applied in entity.wgsl HDR path (e1032324b)
 - [x] VC-5: IBL Fresnel roughness-aware — fresnel_schlick_roughness (e1032324b)

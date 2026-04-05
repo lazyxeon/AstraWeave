@@ -53,12 +53,9 @@ impl TerrainRenderer {
             self.loaded_meshes.insert(chunk_id, mesh);
         }
 
-        // INVARIANT: chunk just inserted above
-        #[allow(clippy::expect_used)]
-        Ok(self
-            .loaded_meshes
+        self.loaded_meshes
             .get(&chunk_id)
-            .expect("BUG: chunk should exist after insert above"))
+            .ok_or_else(|| anyhow::anyhow!("BUG: chunk {chunk_id:?} missing after insert"))
     }
 
     /// Generate a complete chunk with vegetation and resources

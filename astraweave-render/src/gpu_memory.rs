@@ -143,7 +143,7 @@ impl GpuMemoryBudget {
 
         // Distribute budget proportionally
         let per_category = total_bytes / 8;
-        let mut budgets = mgr.budgets.write().expect("lock poisoned");
+        let mut budgets = mgr.budgets.write().unwrap_or_else(|e| e.into_inner());
         for budget in budgets.values_mut() {
             budget.soft_limit = (per_category as f64 * 0.75) as u64;
             budget.hard_limit = per_category;
@@ -170,7 +170,7 @@ impl GpuMemoryBudget {
     /// Attempt to allocate memory in a category
     /// Returns true if allocation succeeded, false if blocked
     pub fn try_allocate(&self, category: MemoryCategory, bytes: u64) -> bool {
-        let mut budgets = self.budgets.write().expect("lock poisoned");
+        let mut budgets = self.budgets.write().unwrap_or_else(|e| e.into_inner());
 
         if let Some(budget) = budgets.get_mut(&category) {
             let new_total = budget.current + bytes;
@@ -209,7 +209,7 @@ impl GpuMemoryBudget {
 
     /// Record a deallocation
     pub fn deallocate(&self, category: MemoryCategory, bytes: u64) {
-        let mut budgets = self.budgets.write().expect("lock poisoned");
+        let mut budgets = self.budgets.write().unwrap_or_else(|e| e.into_inner());
 
         if let Some(budget) = budgets.get_mut(&category) {
             budget.current = budget.current.saturating_sub(bytes);
@@ -255,7 +255,7 @@ impl GpuMemoryBudget {
 
     /// Set budget for a specific category
     pub fn set_category_budget(&self, category: MemoryCategory, soft: u64, hard: u64) {
-        let mut budgets = self.budgets.write().expect("lock poisoned");
+        let mut budgets = self.budgets.write().unwrap_or_else(|e| e.into_inner());
         if let Some(budget) = budgets.get_mut(&category) {
             budget.soft_limit = soft;
             budget.hard_limit = hard;
@@ -274,7 +274,7 @@ impl GpuMemoryBudget {
     }
 
     fn fire_event(&self, event: BudgetEvent) {
-        let callbacks = self.callbacks.read().expect("lock poisoned");
+        let callbacks = self.callbacks.read().unwrap_or_else(|e| e.into_inner());
         for callback in callbacks.iter() {
             callback(event.clone());
         }

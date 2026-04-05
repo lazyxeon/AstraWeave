@@ -327,10 +327,11 @@ impl BloomPass {
     }
 
     /// Get the final bloom output view (same as bloom_view, alias for consistency).
-    pub fn output_view(&self) -> &wgpu::TextureView {
-        self.mip_views
-            .first()
-            .expect("Bloom must have at least 1 mip")
+    ///
+    /// Returns `None` only if the bloom chain has zero mips (should never happen
+    /// after construction, but callers must handle it gracefully).
+    pub fn output_view(&self) -> Option<&wgpu::TextureView> {
+        self.mip_views.first()
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {

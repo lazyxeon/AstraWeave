@@ -378,8 +378,14 @@ impl VoxelizationPipeline {
         // Upload mesh data
         self.upload_mesh(device, queue, mesh);
 
-        // Create bind group
-        let bind_group = self.create_bind_group(device, voxel_texture_view);
+        // Create bind group (upload_mesh is called above, so buffers are guaranteed present)
+        let bind_group = match self.create_bind_group(device, voxel_texture_view) {
+            Ok(bg) => bg,
+            Err(e) => {
+                log::error!("Failed to create voxelization bind group: {e}");
+                return;
+            }
+        };
 
         // Run voxelization compute pass
         let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -401,22 +407,23 @@ impl VoxelizationPipeline {
         self.stats.voxelization_time_ms = _start_time.elapsed().as_secs_f32() * 1000.0;
     }
 
-    /// Create bind group for voxelization
-    #[allow(clippy::expect_used)] // INVARIANT: caller contract requires upload_mesh() before create_bind_group()
+    /// Create bind group for voxelization.
+    ///
+    /// # Errors
+    /// Returns an error if `upload_mesh()` was not called before this method.
     fn create_bind_group(
         &self,
         device: &wgpu::Device,
         voxel_texture_view: &wgpu::TextureView,
-    ) -> wgpu::BindGroup {
-        // Week 3 Action 10: Safe buffer access (buffers guaranteed to exist after upload_mesh)
-        let vertex_buffer = self.vertex_buffer.as_ref().expect(
-            "vertex_buffer must be initialized before create_bind_group (call upload_mesh first)",
-        );
-        let index_buffer = self.index_buffer.as_ref().expect(
-            "index_buffer must be initialized before create_bind_group (call upload_mesh first)",
-        );
+    ) -> anyhow::Result<wgpu::BindGroup> {
+        let vertex_buffer = self.vertex_buffer.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("vertex_buffer must be initialized before create_bind_group (call upload_mesh first)")
+        })?;
+        let index_buffer = self.index_buffer.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("index_buffer must be initialized before create_bind_group (call upload_mesh first)")
+        })?;
 
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
+        Ok(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Voxelization Bind Group"),
             layout: &self.bind_group_layout,
             entries: &[
@@ -441,7 +448,7 @@ impl VoxelizationPipeline {
                     resource: wgpu::BindingResource::TextureView(voxel_texture_view),
                 },
             ],
-        })
+        }))
     }
 
     /// Create bind group for clear pass (minimal bindings)
