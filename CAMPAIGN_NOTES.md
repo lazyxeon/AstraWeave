@@ -47,3 +47,17 @@ Fixes 12 and 13 are tightly coupled (both modify the undo system in command.rs +
 - **Fix 13 (C-5)**: 9 operations bypass undo entirely. The commands exist (SpawnEntitiesCommand, DuplicateEntitiesCommand) but are not wired to the event handlers.
 
 These should be done together in a focused session since they touch the same code paths. Estimated: 4-6 hours combined.
+
+### Fix 17 (ScaleEntityCommand Vec3): DEFERRED — requires cross-crate Pose change
+
+The World's `Pose.scale` field is `f32` (uniform scale). The ScaleEntityCommand stores `f32` to match. Changing the command to `Vec3` would require changing `astraweave_core::Pose.scale` from `f32` to `Vec3`, which touches every crate that reads or writes Pose. This is a significant architectural change that should be planned as a separate campaign with change-impact-tracer analysis.
+
+The EntityManager has `Vec3` scale (for viewport rendering), but the World (the authoritative data) does not support per-axis scale. The command correctly mirrors the World's limitation.
+
+### Fixes 18-19 (TerrainVertex + Instance layout alignment): DEFERRED — cross-crate boundary
+
+These divergences exist at the editor↔engine boundary:
+- **TerrainVertex**: Editor uses 96 bytes (biome weights + material IDs), engine uses 36 bytes (single biome_id). The engine_adapter converts on the boundary.
+- **Instance layout**: Editor uses @location(3-7), engine uses @location(5-8). These are in different pipelines that never share bind groups.
+
+Both divergences are by design (FastPreview vs EnginePBR are separate render paths). Aligning them would require a unified vertex/instance format across crates — a Tier 4 (architectural unification) task. Documenting as known divergence, not fixing.

@@ -20,15 +20,15 @@
 - [x] EntityManager/World undo desync — removed 6 duplicate handler updates (d3570e6d0)
 - [x] C-5: 4/9 entity creation ops wired to undo stack (199574b05) — remaining 5 need new commands (deferred)
 
-## Tier 3: Important
-- [ ] Permanent mesh blacklist no retry — entity_renderer.rs:174
-- [ ] Tonemap exposure stub — entity.wgsl / renderer
-- [ ] VC-5: IBL Fresnel roughness-aware — entity.wgsl:320
-- [ ] ScaleEntityCommand scalar not Vec3 — command.rs
-- [ ] TerrainVertex 96-vs-36 byte alignment — terrain types
-- [ ] Instance struct location alignment — vertex layout
-- [ ] Autosave ring let _ = rename — autosave code
-- [ ] Prefab hot-reload let _ = — main.rs:8798
+## Tier 3: Important — COMPLETE (5 fixed, 3 deferred)
+- [x] Permanent mesh blacklist no retry — retry-limited cache (a5aaa548d)
+- [x] Tonemap exposure stub — exposure applied in entity.wgsl HDR path (e1032324b)
+- [x] VC-5: IBL Fresnel roughness-aware — fresnel_schlick_roughness (e1032324b)
+- [~] ScaleEntityCommand scalar not Vec3 — DEFERRED (requires Pose.scale f32→Vec3 cross-crate change)
+- [~] TerrainVertex 96-vs-36 byte alignment — DEFERRED (cross-crate architectural, by-design divergence)
+- [~] Instance struct location alignment — DEFERRED (separate pipelines, by-design divergence)
+- [x] Autosave ring let _ = rename — error logging (b2c052dc8)
+- [x] Prefab hot-reload let _ = — error logging (b2c052dc8)
 
 ## Tier 4: Deferred (SOTA Upgrades)
 - [ ] Khronos PBR Neutral tonemapper
