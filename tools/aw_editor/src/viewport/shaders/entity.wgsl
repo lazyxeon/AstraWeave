@@ -180,6 +180,11 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
     return f0 + (1.0 - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
 }
 
+// Roughness-aware Fresnel for IBL (prevents over-darkening of rough dielectrics at grazing angles)
+fn fresnel_schlick_roughness(cos_theta: f32, f0: vec3<f32>, roughness: f32) -> vec3<f32> {
+    return f0 + (max(vec3<f32>(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
 // ─── Burley (Disney) Diffuse ─────────────────────────────────────────────────
 fn diffuse_burley(n_dot_v: f32, n_dot_l: f32, l_dot_h: f32, roughness: f32) -> f32 {
     let f90 = 0.5 + 2.0 * roughness * l_dot_h * l_dot_h;
@@ -321,7 +326,7 @@ fn calc_pbr_lighting(
 
         // Diffuse IBL from spherical harmonics
         let irradiance = eval_sh_irradiance(n);
-        let kS_ibl = fresnel_schlick(n_dot_v, f0);
+        let kS_ibl = fresnel_schlick_roughness(n_dot_v, f0, roughness);
         let kD_ibl = (vec3<f32>(1.0) - kS_ibl) * (1.0 - metallic);
         let diffuse_ibl = irradiance * albedo * kD_ibl * diffuse_intensity;
 
@@ -593,14 +598,16 @@ fn fs_textured(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @loca
     // ── HDR output vs legacy LDR path ────────────────────────────────────
     // exposure_params.y > 0.5 signals that the post-process chain handles
     // exposure and tonemapping; shader outputs linear HDR directly.
+    // Apply exposure in both paths — EV 0.0 = no change (exp2(0) = 1.0)
+    let exposure_ev = uniforms.exposure_params.x;
+    color *= exp2(exposure_ev);
+
     let hdr_mode = uniforms.exposure_params.y;
     if hdr_mode < 0.5 {
-        // Legacy path: inline exposure + ACES tonemap (fallback when no post chain)
-        let exposure_ev = uniforms.exposure_params.x;
-        color *= exp2(exposure_ev);
+        // Legacy path: inline ACES tonemap (fallback when no post chain)
         color = aces_tonemap(color);
     }
-    // else: output HDR — post chain handles exposure + tonemap
+    // else: output exposed HDR — post chain handles tonemapping
 
     // Opaque mode forces alpha=1.0
     if alpha_mode == 0u {
