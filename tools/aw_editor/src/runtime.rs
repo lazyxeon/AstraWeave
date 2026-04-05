@@ -681,13 +681,35 @@ impl EditorRuntime {
             return Ok(());
         }
 
-        if let Some(mut app) = self.sim_app.take() {
+        if let Some(app) = self.sim_app.take() {
+            let mut app_slot = Some(app);
             for _ in 0..steps {
                 span!("editor_runtime.fixed_step");
-                app = app.run_fixed(1);
-                self.tick_count += 1;
+                let current_app = app_slot.take().expect("app consumed unexpectedly");
+                let mut moved_app = Some(current_app);
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    moved_app.take().unwrap().run_fixed(1)
+                }));
+                match result {
+                    Ok(new_app) => {
+                        app_slot = Some(new_app);
+                        self.tick_count += 1;
+                    }
+                    Err(panic_info) => {
+                        let msg = panic_info.downcast_ref::<&str>().copied()
+                            .or_else(|| panic_info.downcast_ref::<String>().map(|s| s.as_str()))
+                            .unwrap_or("(unknown panic payload)");
+                        tracing::error!(
+                            "Simulation panicked at tick {}: {msg}. Auto-pausing play mode.",
+                            self.tick_count,
+                        );
+                        // App is lost (consumed by panicked closure). Clear sim state.
+                        self.state = RuntimeState::Paused;
+                        return Err(anyhow::anyhow!("Simulation panic at tick {}", self.tick_count));
+                    }
+                }
             }
-            self.sim_app = Some(app);
+            self.sim_app = app_slot;
         }
 
         Ok(())
