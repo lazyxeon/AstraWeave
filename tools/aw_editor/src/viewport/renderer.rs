@@ -421,108 +421,34 @@ impl ViewportRenderer {
                 label: Some("Viewport Render Encoder"),
             });
 
-        // ── Determine render path ────────────────────────────────────────
-        // EnginePBR mode: engine adapter renders all scene content (sky, terrain,
-        // scatter, water, entities, weather, post-fx) in a single draw_into() call.
-        // FastPreview mode: use the existing custom sub-renderer chain.
-        let engine_path =
-            self.render_mode == RenderMode::EnginePBR && self.engine_adapter.is_some();
+        // ── Unified engine render path ────────────────────────────────────
+        // The engine renderer handles: sky, shadows, terrain, scatter,
+        // water, entities, weather particles, post-processing.
+        // Editor overlays (grid, gizmo, physics debug) render on top.
+        {
+            let adapter = self
+                .engine_adapter
+                .as_mut()
+                .context("Engine adapter not initialized")?;
+            adapter.update_camera(camera);
+            adapter.feed_entities(world, &self.entity_mesh_map, &self.selected_entities);
+            adapter
+                .render_to_texture(scene_target_view, &mut encoder)
+                .context("Engine render failed")?;
+        }
 
-        if engine_path {
-            // ── ENGINE-FIRST PATH ───────────────────────────────────────
-            // The engine renderer handles: sky, shadows, terrain, scatter,
-            // water, entities, weather particles, post-processing.
-            // We only render editor overlays on top.
-
-            {
-                let adapter = self
-                    .engine_adapter
-                    .as_mut()
-                    .context("Engine adapter disappeared unexpectedly")?;
-                adapter.update_camera(camera);
-                // Feed World entities to the engine for PBR rendering
-                adapter.feed_entities(world, &self.entity_mesh_map, &self.selected_entities);
-                adapter
-                    .render_to_texture(scene_target_view, &mut encoder)
-                    .context("Engine render failed")?;
-            }
-
-            // Grid overlay (on top of engine scene)
-            if show_grid {
-                self.grid_renderer
-                    .render(
-                        &mut encoder,
-                        scene_target_view,
-                        depth_view,
-                        camera,
-                        &self.queue,
-                        crosshair_mode,
-                    )
-                    .context("Grid render failed")?;
-            }
-        } else {
-            // ── FAST-PREVIEW / FALLBACK PATH ─────────────────────────────
-            // Minimal rendering: clear → grid → entity cubes.
-            // Full scene (terrain, water, sky, weather, scatter) is handled
-            // by the engine adapter when in EnginePBR mode.
-
-            // Clear color + depth (replaces skybox renderer that previously did this)
-            {
-                let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Fast-Preview Clear Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: scene_target_view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.15,
-                                g: 0.15,
-                                b: 0.18,
-                                a: 1.0,
-                            }),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: depth_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: None,
-                    }),
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-            }
-
-            // Grid overlay
-            if show_grid {
-                self.grid_renderer
-                    .render(
-                        &mut encoder,
-                        scene_target_view,
-                        depth_view,
-                        camera,
-                        &self.queue,
-                        crosshair_mode,
-                    )
-                    .context("Grid render failed")?;
-            }
-
-            // Entity cubes (preview mode)
-            self.entity_renderer
+        // Grid overlay (on top of engine scene)
+        if show_grid {
+            self.grid_renderer
                 .render(
                     &mut encoder,
                     scene_target_view,
                     depth_view,
                     camera,
-                    world,
-                    &self.selected_entities,
                     &self.queue,
-                    shading_mode,
+                    crosshair_mode,
                 )
-                .context("Entity render failed")?;
+                .context("Grid render failed")?;
         }
 
         // Pass 4: Physics debug + component gizmos + brush cursor
@@ -553,59 +479,29 @@ impl ViewportRenderer {
             }
         }
 
-        // Pass 5.0: Tonemap blit (HDR → LDR)
-        // Only needed for FastPreview path. The engine path already tonemaps
-        // in draw_into() via its own post-processing pipeline.
-        if !engine_path {
-            if let (Some(pipeline), Some(bind_group)) =
-                (&self.tonemap_pipeline, &self.tonemap_bind_group)
-            {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Tonemap Blit Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &target_view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-                pass.set_pipeline(pipeline);
-                pass.set_bind_group(0, bind_group, &[]);
-                pass.draw(0..3, 0..1); // Fullscreen triangle
-            }
-        } else {
-            // Engine path: draw_into() already wrote tonemapped LDR to scene_target_view.
-            // Copy/blit HDR target → LDR target (the engine output is already tonemapped
-            // but sitting in the Rgba16Float buffer — we need it in the Bgra8UnormSrgb target).
-            // For now, use the tonemap pass as a simple blit (the ACES curve on already-
-            // tonemapped data is close to identity for values in [0,1]).
-            // TODO: Replace with a raw copy/blit pass that doesn't apply tonemapping.
-            if let (Some(pipeline), Some(bind_group)) =
-                (&self.tonemap_pipeline, &self.tonemap_bind_group)
-            {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Engine LDR Blit Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &target_view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-                pass.set_pipeline(pipeline);
-                pass.set_bind_group(0, bind_group, &[]);
-                pass.draw(0..3, 0..1);
-            }
+        // Pass 5.0: Blit HDR → LDR
+        // The engine's draw_into() writes tonemapped output to the HDR buffer.
+        // This pass copies it to the final LDR display surface (Bgra8UnormSrgb).
+        if let (Some(pipeline), Some(bind_group)) =
+            (&self.tonemap_pipeline, &self.tonemap_bind_group)
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("HDR to LDR Blit Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &target_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, bind_group, &[]);
+            pass.draw(0..3, 0..1);
         }
 
         // Pass 5.5: Gizmos (if entity selected and gizmo active)
@@ -907,7 +803,8 @@ impl ViewportRenderer {
         // Update the GPU buffer if it exists
         if let Some(buffer) = &self.tonemap_params_buffer {
             let params_data: [u32; 4] = [self.tonemap_mode, 0, 0, 0];
-            self.queue.write_buffer(buffer, 0, bytemuck::cast_slice(&params_data));
+            self.queue
+                .write_buffer(buffer, 0, bytemuck::cast_slice(&params_data));
         }
     }
 
