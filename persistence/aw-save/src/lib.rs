@@ -73,7 +73,7 @@ impl SaveManager {
     pub fn load_latest_slot(&self, player_id: &str, slot: u8) -> Result<(SaveBundleV2, PathBuf)> {
         let dir = self.player_dir(player_id);
         let mut candidates: Vec<_> = fs::read_dir(&dir)
-            .unwrap_or_else(|_| fs::read_dir(".").unwrap()) // empty fallback
+            .context(format!("save directory not found: {}", dir.display()))?
             .filter_map(|e| e.ok())
             .map(|e| e.path())
             .filter(|p| p.extension().map(|e| e == "awsv").unwrap_or(false))

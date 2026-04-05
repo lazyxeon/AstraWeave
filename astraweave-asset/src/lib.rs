@@ -2453,9 +2453,9 @@ mod tests {
         fn test_material_data_default() {
             let mat = gltf_loader::MaterialData::default();
 
-            assert_eq!(mat.base_color_factor, [0.0, 0.0, 0.0, 0.0]);
-            assert_eq!(mat.metallic_factor, 0.0);
-            assert_eq!(mat.roughness_factor, 0.0);
+            assert_eq!(mat.base_color_factor, [1.0, 1.0, 1.0, 1.0]);
+            assert_eq!(mat.metallic_factor, 1.0);
+            assert_eq!(mat.roughness_factor, 1.0);
             assert!(mat.base_color_texture.is_none());
             assert!(mat.normal_texture.is_none());
         }

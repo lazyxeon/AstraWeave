@@ -652,9 +652,9 @@ mod gltf_loader_tests {
     #[test]
     fn test_material_data_default() {
         let mat = MaterialData::default();
-        // Default should have reasonable values
-        assert_eq!(mat.metallic_factor, 0.0);
-        assert_eq!(mat.roughness_factor, 0.0);
+        // Default should have PBR-correct values
+        assert_eq!(mat.metallic_factor, 1.0);
+        assert_eq!(mat.roughness_factor, 1.0);
         assert!(mat.base_color_texture.is_none());
     }
 
@@ -667,6 +667,7 @@ mod gltf_loader_tests {
             base_color_texture: None,
             metallic_roughness_texture: None,
             normal_texture: None,
+            ..Default::default()
         };
         assert_eq!(mat.base_color_factor[0], 1.0);
         assert_eq!(mat.base_color_factor[1], 0.5);
@@ -683,6 +684,7 @@ mod gltf_loader_tests {
             base_color_texture: None,
             metallic_roughness_texture: None,
             normal_texture: None,
+            ..Default::default()
         };
         assert_eq!(mat.metallic_factor, 1.0);
         assert_eq!(mat.roughness_factor, 0.3);

@@ -116,7 +116,7 @@ jobs:
           shared-key: "integration-tests"
       
       - name: Run LLM fallback chain integration tests
-        run: cargo test -p astraweave-llm --test fallback_chain_integration -- --nocapture
+        run: cargo test -p astraweave-llm --test fallback_chain_integration -- --nocapture --test-threads=1
 
   # ===========================================================================
   # Persistence Integration Tests
