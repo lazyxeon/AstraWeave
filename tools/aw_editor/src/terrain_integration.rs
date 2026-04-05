@@ -1644,7 +1644,7 @@ impl TerrainState {
 
             if placements.is_empty() && !vegetation.is_empty() {
                 // Log first successful chunk for diagnostics
-                eprintln!(
+                tracing::debug!(
                     "=== SCATTER GEN: chunk {:?}: {} instances from {} veg types (density={:.4})",
                     chunk_id,
                     vegetation.len(),
@@ -1652,7 +1652,7 @@ impl TerrainState {
                     density,
                 );
                 if let Some(vi) = vegetation.first() {
-                    eprintln!(
+                    tracing::debug!(
                         "=== SCATTER INSTANCE: type='{}' path='{}' pos=({:.1},{:.1},{:.1})",
                         vi.vegetation_type,
                         vi.model_path,
@@ -1662,7 +1662,7 @@ impl TerrainState {
                     );
                 }
             } else if vegetation.is_empty() && placements.is_empty() {
-                eprintln!(
+                tracing::debug!(
                     "=== SCATTER GEN: chunk {:?}: 0 instances (veg_types={}, density={:.4})",
                     chunk_id, veg_count, density,
                 );
@@ -2244,7 +2244,7 @@ mod tests {
 
         match &result {
             Ok(Ok(count)) => {
-                eprintln!("Mountain generation OK: {count} chunks");
+                tracing::debug!("Mountain generation OK: {count} chunks");
             }
             Ok(Err(e)) => {
                 panic!("Mountain generation returned error: {e}");
@@ -2259,7 +2259,7 @@ mod tests {
 
         // Step 6: Check height stats
         let (min_h, max_h, avg_h) = state.height_stats();
-        eprintln!("Heights: min={min_h:.1}, max={max_h:.1}, avg={avg_h:.1}");
+        tracing::debug!("Heights: min={min_h:.1}, max={max_h:.1}, avg={avg_h:.1}");
         assert!(!min_h.is_nan(), "min height is NaN");
         assert!(!max_h.is_nan(), "max height is NaN");
         assert!(!avg_h.is_nan(), "avg height is NaN");
@@ -2270,12 +2270,12 @@ mod tests {
 
         // Step 7: Check GPU chunks (what gets uploaded to renderer)
         let gpu_chunks = state.get_gpu_chunks();
-        eprintln!("GPU chunks: {}", gpu_chunks.len());
+        tracing::debug!("GPU chunks: {}", gpu_chunks.len());
         assert!(!gpu_chunks.is_empty(), "GPU chunks should not be empty");
 
         let total_verts: usize = gpu_chunks.iter().map(|(v, _)| v.len()).sum();
         let total_indices: usize = gpu_chunks.iter().map(|(_, i)| i.len()).sum();
-        eprintln!("Total vertices: {total_verts}, indices: {total_indices}");
+        tracing::debug!("Total vertices: {total_verts}, indices: {total_indices}");
         assert!(total_verts > 0, "Should have vertices");
         assert!(total_indices > 0, "Should have indices");
 
@@ -2301,14 +2301,14 @@ mod tests {
         }));
         match &scatter_result {
             Ok(placements) => {
-                eprintln!("Scatter OK: {} placements", placements.len());
+                tracing::debug!("Scatter OK: {} placements", placements.len());
             }
             Err(panic_info) => {
                 panic!("Scatter generation PANICKED: {panic_info:?}");
             }
         }
 
-        eprintln!("=== Mountain full flow test PASSED ===");
+        tracing::debug!("=== Mountain full flow test PASSED ===");
     }
 
     /// Test ALL biomes generate terrain successfully (not just mountain)
@@ -2363,7 +2363,7 @@ mod tests {
                 Ok(count) => {
                     let (min_h, max_h, avg_h) = state.height_stats();
                     let gpu = state.get_gpu_chunks();
-                    eprintln!(
+                    tracing::debug!(
                         "{biome_name}: {count} chunks, heights=({min_h:.1}, {max_h:.1}, {avg_h:.1}), gpu_chunks={}",
                         gpu.len()
                     );

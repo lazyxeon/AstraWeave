@@ -362,7 +362,7 @@ impl ViewportRenderer {
         physics_debug_lines: Option<&[astraweave_physics::DebugLine]>,
         show_grid: bool,
         crosshair_mode: bool,
-        shading_mode: u32,
+        _shading_mode: u32,
     ) -> Result<()> {
         // Ensure depth buffer matches target size
         let target_size = target.size();

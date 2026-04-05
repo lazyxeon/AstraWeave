@@ -927,7 +927,7 @@ impl EditorCommand for EditHealthCommand {
             if let Some(em) = entities {
                 if let Some(e) = em.get_mut(self.entity as u64) {
                     e.components.insert(
-                        "health".to_string(),
+                        "Health".to_string(),
                         serde_json::json!({ "hp": self.new_hp }),
                     );
                 }
@@ -947,7 +947,7 @@ impl EditorCommand for EditHealthCommand {
             if let Some(em) = entities {
                 if let Some(e) = em.get_mut(self.entity as u64) {
                     e.components.insert(
-                        "health".to_string(),
+                        "Health".to_string(),
                         serde_json::json!({ "hp": self.old_hp }),
                     );
                 }
@@ -991,7 +991,7 @@ impl EditorCommand for EditTeamCommand {
             if let Some(em) = entities {
                 if let Some(e) = em.get_mut(self.entity as u64) {
                     e.components.insert(
-                        "team".to_string(),
+                        "Team".to_string(),
                         serde_json::json!({ "id": self.new_team.id }),
                     );
                 }
@@ -1011,7 +1011,7 @@ impl EditorCommand for EditTeamCommand {
             if let Some(em) = entities {
                 if let Some(e) = em.get_mut(self.entity as u64) {
                     e.components.insert(
-                        "team".to_string(),
+                        "Team".to_string(),
                         serde_json::json!({ "id": self.old_team.id }),
                     );
                 }
@@ -1055,7 +1055,7 @@ impl EditorCommand for EditAmmoCommand {
             if let Some(em) = entities {
                 if let Some(e) = em.get_mut(self.entity as u64) {
                     e.components.insert(
-                        "ammo".to_string(),
+                        "Ammo".to_string(),
                         serde_json::json!({ "rounds": self.new_rounds }),
                     );
                 }
@@ -1075,7 +1075,7 @@ impl EditorCommand for EditAmmoCommand {
             if let Some(em) = entities {
                 if let Some(e) = em.get_mut(self.entity as u64) {
                     e.components.insert(
-                        "ammo".to_string(),
+                        "Ammo".to_string(),
                         serde_json::json!({ "rounds": self.old_rounds }),
                     );
                 }
