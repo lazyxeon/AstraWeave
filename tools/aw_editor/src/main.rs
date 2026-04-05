@@ -8736,10 +8736,12 @@ impl eframe::App for EditorApp {
                         if count > 0 {
                             if let Some(scene_state) = &mut self.scene_state {
                                 for entity in &root_entities {
-                                    let _ = self.prefab_manager.revert_instance_to_prefab(
+                                    if let Err(e) = self.prefab_manager.revert_instance_to_prefab(
                                         *entity,
                                         scene_state.world_mut(),
-                                    );
+                                    ) {
+                                        tracing::error!("Prefab hot-reload revert failed for entity {:?}: {e}", entity);
+                                    }
                                 }
                             }
                             self.console_logs.push(format!(

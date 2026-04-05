@@ -504,16 +504,22 @@ impl SaveManager {
             let new_meta = self.metadata_path(&new_name);
 
             if old_save.exists() {
-                let _ = std::fs::rename(&old_save, &new_save);
+                if let Err(e) = std::fs::rename(&old_save, &new_save) {
+                    tracing::warn!("Autosave rotation failed ({:?} -> {:?}): {e}", old_save, new_save);
+                }
             }
             if old_meta.exists() {
-                let _ = std::fs::rename(&old_meta, &new_meta);
+                if let Err(e) = std::fs::rename(&old_meta, &new_meta) {
+                    tracing::warn!("Autosave metadata rotation failed ({:?} -> {:?}): {e}", old_meta, new_meta);
+                }
             }
         }
 
         // Delete oldest if exceeds max
         let oldest_name = format!("autosave_{}", self.config.max_autosaves + 1);
-        let _ = self.delete(&oldest_name);
+        if let Err(e) = self.delete(&oldest_name) {
+            tracing::debug!("No oldest autosave to clean up ({oldest_name}): {e}");
+        }
 
         // Create new autosave_1
         metadata.name = "Autosave".to_string();
