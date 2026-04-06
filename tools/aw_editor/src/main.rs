@@ -4367,9 +4367,7 @@ impl EditorApp {
                             serde_json::json!({"type": "dynamic", "mass": 1.0, "drag": 0.0, "angular_drag": 0.05, "use_gravity": true})
                         }
                         "Script" => serde_json::json!({"path": ""}),
-                        "MovementScript" => {
-                            movement_scripts::MovementScript::default().to_json()
-                        }
+                        "MovementScript" => movement_scripts::MovementScript::default().to_json(),
                         "Audio" => {
                             serde_json::json!({"clip": "", "volume": 1.0, "spatial": true, "looping": false, "play_on_start": false})
                         }
@@ -4387,10 +4385,14 @@ impl EditorApp {
                     // Route through undo stack (undoable)
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let cmd = command::AddComponentCommand::new(
-                            entity_id, component_type.clone(), default_value,
+                            entity_id,
+                            component_type.clone(),
+                            default_value,
                         );
                         if let Err(e) = self.undo_stack.execute(
-                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
                         ) {
                             self.console_logs.push(format!("Add component failed: {e}"));
                         }
@@ -4404,13 +4406,15 @@ impl EditorApp {
                 } => {
                     // Route through undo stack (undoable)
                     if let Some(scene_state) = self.scene_state.as_mut() {
-                        let cmd = command::RemoveComponentCommand::new(
-                            entity_id, component_type.clone(),
-                        );
+                        let cmd =
+                            command::RemoveComponentCommand::new(entity_id, component_type.clone());
                         if let Err(e) = self.undo_stack.execute(
-                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
                         ) {
-                            self.console_logs.push(format!("Remove component failed: {e}"));
+                            self.console_logs
+                                .push(format!("Remove component failed: {e}"));
                         }
                         self.is_dirty = true;
                     }
@@ -4495,12 +4499,17 @@ impl EditorApp {
                     // Route through undo stack for undoable component data changes
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let cmd = command::ComponentDataChangedCommand::new(
-                            entity_id, component_type.clone(), data,
+                            entity_id,
+                            component_type.clone(),
+                            data,
                         );
                         if let Err(e) = self.undo_stack.execute(
-                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
                         ) {
-                            self.console_logs.push(format!("Component edit failed: {e}"));
+                            self.console_logs
+                                .push(format!("Component edit failed: {e}"));
                         }
                         self.is_dirty = true;
                     }
@@ -4514,10 +4523,14 @@ impl EditorApp {
                     // Route through undo stack for undoable material property changes
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let cmd = command::MaterialPropertyChangedCommand::new(
-                            entity_id, property.clone(), value,
+                            entity_id,
+                            property.clone(),
+                            value,
                         );
                         if let Err(e) = self.undo_stack.execute(
-                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
                         ) {
                             self.console_logs.push(format!("Material edit failed: {e}"));
                         }
@@ -4533,12 +4546,17 @@ impl EditorApp {
                     // Route through undo stack for undoable texture changes
                     if let Some(scene_state) = self.scene_state.as_mut() {
                         let cmd = command::MaterialTextureChangedCommand::new(
-                            entity_id, slot.clone(), path,
+                            entity_id,
+                            slot.clone(),
+                            path,
                         );
                         if let Err(e) = self.undo_stack.execute(
-                            cmd, scene_state.world_mut(), Some(&mut self.entity_manager),
+                            cmd,
+                            scene_state.world_mut(),
+                            Some(&mut self.entity_manager),
                         ) {
-                            self.console_logs.push(format!("Texture change failed: {e}"));
+                            self.console_logs
+                                .push(format!("Texture change failed: {e}"));
                         }
                         self.is_dirty = true;
                     }
@@ -4936,8 +4954,11 @@ impl EditorApp {
                         }
                     }
 
-                    self.status =
-                        format!("Terrain generated: {} chunks uploaded", src_chunks.len());
+                    let chunk_count = src_chunks.len();
+                    self.status = format!("Terrain generated: {} chunks uploaded", chunk_count);
+
+                    // Update hierarchy panel so terrain chunks are visible
+                    self.dock_tab_viewer.set_terrain_chunk_count(chunk_count);
 
                     // Auto-adjust camera so the terrain is visible (prevents camera
                     // being submerged inside tall mountain terrain).

@@ -86,6 +86,12 @@ pub struct OrbitCamera {
 
     /// Target distance for smooth zoom animation
     zoom_target: f32,
+
+    /// Target focal point for smooth camera framing transitions
+    focal_point_target: Vec3,
+
+    /// Target pitch for smooth camera framing transitions
+    pitch_target: f32,
 }
 
 impl Default for OrbitCamera {
@@ -104,6 +110,8 @@ impl Default for OrbitCamera {
             min_pitch: -std::f32::consts::PI / 2.0 + 0.01, // Prevent gimbal lock
             max_pitch: std::f32::consts::PI / 2.0 - 0.01, // Prevent gimbal lock
             zoom_target: 25.0,
+            focal_point_target: Vec3::ZERO,
+            pitch_target: std::f32::consts::PI / 6.0,
         }
     }
 }
@@ -124,6 +132,8 @@ impl OrbitCamera {
             yaw,
             pitch,
             zoom_target: distance,
+            focal_point_target: focal_point,
+            pitch_target: pitch,
             ..Default::default()
         }
     }
@@ -143,6 +153,8 @@ impl OrbitCamera {
 
         self.yaw -= delta_x * SENSITIVITY;
         self.pitch = (self.pitch - delta_y * SENSITIVITY).clamp(self.min_pitch, self.max_pitch);
+        // Cancel any in-flight pitch animation so user input takes priority
+        self.pitch_target = self.pitch;
     }
 
     /// Pan camera (move focal point in screen space)
@@ -169,6 +181,8 @@ impl OrbitCamera {
         let pan_speed = self.distance * SENSITIVITY;
         self.focal_point -= right * delta_x * pan_speed;
         self.focal_point += up * delta_y * pan_speed;
+        // Cancel any in-flight focal_point animation so user input takes priority
+        self.focal_point_target = self.focal_point;
     }
 
     /// Zoom camera (change distance from focal point)
@@ -198,30 +212,48 @@ impl OrbitCamera {
     /// Returns `true` if zoom animation is still in progress (caller should
     /// request a repaint).
     pub fn smooth_update(&mut self, dt: f32) -> bool {
-        if (self.distance - self.zoom_target).abs() < 0.0001 {
-            self.distance = self.zoom_target;
-            return false;
-        }
-
-        // Interpolate in log-space for perceptually smooth zoom at all distances.
-        // High decay rate (k=25) for snappy response — settles in ~3 frames at 60fps.
-        let log_dist = self.distance.ln();
-        let log_target = self.zoom_target.ln();
-        let log_diff = log_target - log_dist;
-
-        // Snap when close enough to prevent micro-oscillation
-        if log_diff.abs() < 0.0002 {
-            self.distance = self.zoom_target;
-            return false;
-        }
-
-        // Frame-rate independent exponential decay.
-        // k=25: at 60fps factor≈0.34, at 35fps factor≈0.51 — fast and consistent.
         let dt_clamped = dt.clamp(0.001, 0.1);
-        let factor = 1.0 - (-25.0 * dt_clamped).exp();
-        let new_log = log_dist + log_diff * factor;
-        self.distance = new_log.exp().clamp(self.min_distance, self.max_distance);
-        true
+        let mut animating = false;
+
+        // Smooth zoom (distance)
+        if (self.distance - self.zoom_target).abs() > 0.0001 {
+            // Interpolate in log-space for perceptually smooth zoom at all distances.
+            // High decay rate (k=25) for snappy response — settles in ~3 frames at 60fps.
+            let log_dist = self.distance.ln();
+            let log_target = self.zoom_target.ln();
+            let log_diff = log_target - log_dist;
+
+            if log_diff.abs() < 0.0002 {
+                self.distance = self.zoom_target;
+            } else {
+                let factor = 1.0 - (-25.0 * dt_clamped).exp();
+                let new_log = log_dist + log_diff * factor;
+                self.distance = new_log.exp().clamp(self.min_distance, self.max_distance);
+                animating = true;
+            }
+        }
+
+        // Smooth focal point transition (for frame_terrain / frame_entity)
+        let fp_diff = self.focal_point_target - self.focal_point;
+        if fp_diff.length_squared() > 0.0001 {
+            let factor = 1.0 - (-8.0 * dt_clamped).exp(); // k=8: smoother ~0.3s settle
+            self.focal_point += fp_diff * factor;
+            animating = true;
+        } else if fp_diff.length_squared() > 0.0 {
+            self.focal_point = self.focal_point_target;
+        }
+
+        // Smooth pitch transition
+        let pitch_diff = self.pitch_target - self.pitch;
+        if pitch_diff.abs() > 0.0001 {
+            let factor = 1.0 - (-8.0 * dt_clamped).exp();
+            self.pitch += pitch_diff * factor;
+            animating = true;
+        } else if pitch_diff.abs() > 0.0 {
+            self.pitch = self.pitch_target;
+        }
+
+        animating
     }
 
     /// Translate camera (FPS-style WASD movement)
@@ -229,6 +261,7 @@ impl OrbitCamera {
     /// Moves both the camera position and focal point by the given delta.
     pub fn translate(&mut self, delta: Vec3) {
         self.focal_point += delta;
+        self.focal_point_target = self.focal_point;
     }
 
     /// Frame entity (set focal point and distance to nicely view entity)
@@ -240,9 +273,8 @@ impl OrbitCamera {
     ///
     /// Sets focal point to entity center and distance to 2.5× radius for nice framing.
     pub fn frame_entity(&mut self, entity_pos: Vec3, entity_radius: f32) {
-        self.focal_point = entity_pos;
-        self.distance = (entity_radius * 2.5).clamp(self.min_distance, self.max_distance);
-        self.zoom_target = self.distance;
+        self.focal_point_target = entity_pos;
+        self.zoom_target = (entity_radius * 2.5).clamp(self.min_distance, self.max_distance);
     }
 
     /// Adjust the camera so generated terrain is visible.
@@ -250,14 +282,15 @@ impl OrbitCamera {
     /// Sets focal_point.y to the average terrain height and pulls the camera
     /// back far enough to see the full height range.
     pub fn frame_terrain(&mut self, min_height: f32, max_height: f32, avg_height: f32) {
-        // Center on terrain origin (chunks are generated symmetrically around 0,0)
-        self.focal_point = Vec3::new(0.0, avg_height, 0.0);
+        // Animate toward terrain view instead of snapping instantly.
+        // The update() tick lerps focal_point/pitch toward these targets.
+        self.focal_point_target = Vec3::new(0.0, avg_height, 0.0);
         let height_range = (max_height - min_height).max(10.0);
-        self.distance = (height_range * 1.8).clamp(self.min_distance, self.max_distance);
-        self.zoom_target = self.distance;
-        // Set pitch to ~30° above horizontal so the camera is well above the terrain
-        // looking down. This prevents the initial view from being below/inside the mesh.
-        self.pitch = std::f32::consts::PI / 6.0;
+        let target_dist = (height_range * 1.8).clamp(self.min_distance, self.max_distance);
+        self.zoom_target = target_dist;
+        // Set pitch target to ~30° above horizontal so the camera ends up well
+        // above the terrain looking down.
+        self.pitch_target = std::f32::consts::PI / 6.0;
     }
 
     /// Reset camera to default starting position
@@ -273,10 +306,12 @@ impl OrbitCamera {
     /// - Pitch: 30° (looking slightly down)
     pub fn reset_to_origin(&mut self) {
         self.focal_point = Vec3::ZERO;
+        self.focal_point_target = Vec3::ZERO;
         self.distance = 25.0;
         self.zoom_target = 25.0;
         self.yaw = std::f32::consts::PI / 4.0; // 45°
         self.pitch = std::f32::consts::PI / 6.0; // 30°
+        self.pitch_target = self.pitch;
     }
 
     /// Set camera to front view (looking along -Z axis)
@@ -360,6 +395,7 @@ impl OrbitCamera {
     /// Set focal point (for bookmark restore)
     pub fn set_focal_point(&mut self, focal_point: Vec3) {
         self.focal_point = focal_point;
+        self.focal_point_target = focal_point;
     }
 
     /// Set distance (for bookmark restore)
@@ -705,7 +741,7 @@ mod tests {
         let camera = OrbitCamera::default();
         assert_eq!(camera.focal_point, Vec3::ZERO);
         assert_eq!(camera.distance, 25.0); // Default is 25.0 for better initial view
-        // Default pitch is PI/6 (30°) for shallower angle to see more horizon/sky
+                                           // Default pitch is PI/6 (30°) for shallower angle to see more horizon/sky
         assert_relative_eq!(camera.pitch, std::f32::consts::PI / 6.0);
     }
 
@@ -779,8 +815,15 @@ mod tests {
 
         camera.frame_entity(entity_pos, entity_radius);
 
-        assert_eq!(camera.focal_point, entity_pos);
-        assert_eq!(camera.distance, 5.0); // 2.0 * 2.5
+        // frame_entity sets targets; run smooth_update to converge
+        for _ in 0..300 {
+            camera.smooth_update(1.0 / 60.0);
+        }
+
+        assert_relative_eq!(camera.focal_point.x, entity_pos.x, epsilon = 0.01);
+        assert_relative_eq!(camera.focal_point.y, entity_pos.y, epsilon = 0.01);
+        assert_relative_eq!(camera.focal_point.z, entity_pos.z, epsilon = 0.01);
+        assert_relative_eq!(camera.distance, 5.0, epsilon = 0.01); // 2.0 * 2.5
     }
 
     #[test]

@@ -47,6 +47,9 @@ pub struct EngineRenderAdapter {
     weather_active: bool,
     /// Whether water rendering is enabled.
     water_enabled: bool,
+    /// Cached index buffers per terrain chunk for incremental vertex updates.
+    /// Brush strokes only change heights/normals, not topology.
+    terrain_cached_indices: Vec<Vec<u32>>,
 }
 
 impl EngineRenderAdapter {
@@ -86,6 +89,7 @@ impl EngineRenderAdapter {
             scatter_draw_call_count: 0,
             weather_active: false,
             water_enabled: false,
+            terrain_cached_indices: Vec::new(),
         })
     }
 
@@ -409,6 +413,9 @@ impl EngineRenderAdapter {
             self.renderer.clear_model(&name);
         }
 
+        // Cache indices for incremental brush updates (topology doesn't change)
+        self.terrain_cached_indices = chunks.iter().map(|(_, idx)| idx.clone()).collect();
+
         for (i, (vertices, indices)) in chunks.iter().enumerate() {
             if vertices.is_empty() || indices.is_empty() {
                 continue;
@@ -420,6 +427,12 @@ impl EngineRenderAdapter {
             // preserving biome information for the engine's terrain shader.
             let engine_verts: Vec<astraweave_render::TerrainVertex> =
                 vertices.iter().map(|v| v.to_engine_vertex()).collect();
+
+            // Determine dominant biome for this chunk to tint the instance color.
+            // The PBR shader multiplies input.color.rgb into base_color (pbr.wgsl:125),
+            // so the biome tint modulates the albedo texture per-chunk.
+            let biome_tint = Self::dominant_biome_tint(&engine_verts);
+
             let positions: Vec<[f32; 3]> = engine_verts.iter().map(|v| v.position).collect();
             let normals: Vec<[f32; 3]> = engine_verts.iter().map(|v| v.normal).collect();
             let uvs: Vec<[f32; 2]> = engine_verts.iter().map(|v| v.uv).collect();
@@ -438,6 +451,15 @@ impl EngineRenderAdapter {
                 })
                 .collect();
 
+            // Compute world-space AABB for frustum culling
+            let (mut aabb_min, mut aabb_max) = ([f32::MAX; 3], [f32::MIN; 3]);
+            for p in &positions {
+                for j in 0..3 {
+                    aabb_min[j] = aabb_min[j].min(p[j]);
+                    aabb_max[j] = aabb_max[j].max(p[j]);
+                }
+            }
+
             let mesh = self
                 .renderer
                 .create_mesh_from_full_arrays(&positions, &normals, &tangents, &uvs, indices);
@@ -445,10 +467,11 @@ impl EngineRenderAdapter {
             let instance = astraweave_render::Instance::from_pos_scale_color(
                 glam::Vec3::ZERO,
                 glam::Vec3::ONE,
-                [1.0, 1.0, 1.0, 1.0],
+                biome_tint,
             );
 
-            self.renderer.add_model(&name, mesh, &[instance]);
+            self.renderer
+                .add_model_with_bounds(&name, mesh, &[instance], aabb_min, aabb_max);
             self.terrain_model_names.push(name);
         }
 
@@ -461,6 +484,41 @@ impl EngineRenderAdapter {
             self.terrain_model_names.len(),
             self.terrain_total_triangles,
         );
+    }
+
+    /// Compute a biome-appropriate tint color from the dominant biome in a chunk's vertices.
+    ///
+    /// Counts biome_id occurrences across all vertices and maps the most-frequent
+    /// biome to an RGBA tint. The PBR shader multiplies `input.color.rgb` into
+    /// `base_color`, so this tint modulates the albedo texture per-chunk.
+    fn dominant_biome_tint(verts: &[astraweave_render::TerrainVertex]) -> [f32; 4] {
+        let mut counts = [0u32; 8];
+        for v in verts {
+            let idx = (v.biome_id as usize).min(7);
+            counts[idx] += 1;
+        }
+        let dominant = counts
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, &c)| c)
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        Self::biome_id_to_tint(dominant as u32)
+    }
+
+    /// Map a biome ID (0-7) to an instance tint color.
+    fn biome_id_to_tint(biome_id: u32) -> [f32; 4] {
+        match biome_id {
+            0 => [0.45, 0.65, 0.25, 1.0], // Grassland — green
+            1 => [0.85, 0.75, 0.50, 1.0], // Desert — sandy
+            2 => [0.25, 0.45, 0.15, 1.0], // Forest — dark green
+            3 => [0.55, 0.55, 0.50, 1.0], // Mountain — gray-brown
+            4 => [0.90, 0.92, 0.95, 1.0], // Tundra — near-white
+            5 => [0.35, 0.40, 0.20, 1.0], // Swamp — muddy green
+            6 => [0.90, 0.85, 0.65, 1.0], // Beach — light sand
+            7 => [0.40, 0.55, 0.45, 1.0], // River — blue-green
+            _ => [0.50, 0.50, 0.50, 1.0], // Unknown — neutral gray
+        }
     }
 
     /// Clear all terrain data from the engine renderer.
@@ -485,6 +543,57 @@ impl EngineRenderAdapter {
     /// Total terrain indices across all uploaded chunks.
     pub fn terrain_indices(&self) -> usize {
         self.terrain_total_indices
+    }
+
+    /// Incrementally update a single terrain chunk's vertices on the GPU.
+    ///
+    /// Replaces the model named `terrain_chunk_{chunk_index}` with a fresh
+    /// mesh built from the provided vertices. Uses cached indices from the
+    /// initial upload (brush strokes change heights/normals, not topology).
+    pub fn update_terrain_chunk(&mut self, chunk_index: usize, vertices: &[TerrainVertex]) {
+        let name = format!("terrain_chunk_{chunk_index}");
+        if vertices.is_empty() {
+            return;
+        }
+
+        let indices = match self.terrain_cached_indices.get(chunk_index) {
+            Some(idx) => idx,
+            None => {
+                tracing::warn!("update_terrain_chunk: no cached indices for chunk {chunk_index}");
+                return;
+            }
+        };
+
+        let engine_verts: Vec<astraweave_render::TerrainVertex> =
+            vertices.iter().map(|v| v.to_engine_vertex()).collect();
+        let biome_tint = Self::dominant_biome_tint(&engine_verts);
+        let positions: Vec<[f32; 3]> = engine_verts.iter().map(|v| v.position).collect();
+        let normals: Vec<[f32; 3]> = engine_verts.iter().map(|v| v.normal).collect();
+        let uvs: Vec<[f32; 2]> = engine_verts.iter().map(|v| v.uv).collect();
+        let tangents: Vec<[f32; 4]> = normals
+            .iter()
+            .map(|n| {
+                let up = if n[1].abs() > 0.99 {
+                    glam::Vec3::X
+                } else {
+                    glam::Vec3::Y
+                };
+                let t = glam::Vec3::from(*n).cross(up).normalize();
+                [t.x, t.y, t.z, 1.0]
+            })
+            .collect();
+
+        let mesh = self
+            .renderer
+            .create_mesh_from_full_arrays(&positions, &normals, &tangents, &uvs, indices);
+        let instance = astraweave_render::Instance::from_pos_scale_color(
+            glam::Vec3::ZERO,
+            glam::Vec3::ONE,
+            biome_tint,
+        );
+
+        // add_model with the same name replaces the existing entry in the HashMap
+        self.renderer.add_model(&name, mesh, &[instance]);
     }
 
     // ── Scatter / vegetation feeding ────────────────────────────────────

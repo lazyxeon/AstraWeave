@@ -505,6 +505,8 @@ pub struct EditorTabViewer {
     events: Vec<PanelEvent>,
     /// Cached entity list for hierarchy display
     entity_list: Vec<EntityInfo>,
+    /// Number of terrain chunks currently generated (for hierarchy display)
+    terrain_chunk_count: usize,
     /// Cached console logs
     console_logs: std::collections::VecDeque<String>,
     /// Cached console error count (updated when logs change)
@@ -749,6 +751,7 @@ impl EditorTabViewer {
             panels_to_add: Vec::new(),
             events: Vec::new(),
             entity_list: Vec::new(),
+            terrain_chunk_count: 0,
             console_logs: std::collections::VecDeque::new(),
             console_error_count: 0,
             console_warn_count: 0,
@@ -1055,6 +1058,13 @@ impl EditorTabViewer {
     /// Update entity list for hierarchy panel
     pub fn set_entity_list(&mut self, entities: Vec<EntityInfo>) {
         self.entity_list = entities;
+    }
+
+    /// Set the number of terrain chunks for hierarchy display.
+    /// When > 0, the hierarchy shows a "Terrain" group and the scene
+    /// is no longer considered empty.
+    pub fn set_terrain_chunk_count(&mut self, count: usize) {
+        self.terrain_chunk_count = count;
     }
 
     /// Add a console log entry
@@ -1788,7 +1798,7 @@ impl TabViewer for EditorTabViewer {
                 }
             }
             PanelType::Hierarchy => {
-                let count = self.entity_list.len();
+                let count = self.entity_list.len() + self.terrain_chunk_count;
                 let modified = if self.scene_modified { " •" } else { "" };
                 format!("{} ({}){}", tab.title(), count, modified).into()
             }
@@ -2784,7 +2794,20 @@ impl TabViewer for EditorTabViewer {
                     .max_height(hierarchy_h)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        if self.entity_list.is_empty() {
+                        // Show terrain group if chunks exist
+                        if self.terrain_chunk_count > 0 {
+                            let header =
+                                format!("\u{1F3D4} Terrain ({} chunks)", self.terrain_chunk_count);
+                            egui::CollapsingHeader::new(header)
+                                .default_open(false)
+                                .show(ui, |ui| {
+                                    for i in 0..self.terrain_chunk_count {
+                                        ui.label(format!("  Chunk {i}"));
+                                    }
+                                });
+                        }
+
+                        if self.entity_list.is_empty() && self.terrain_chunk_count == 0 {
                             ui.add_space(20.0);
                             ui.vertical_centered(|ui| {
                                 ui.heading("Scene is Empty");

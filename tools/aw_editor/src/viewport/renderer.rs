@@ -921,15 +921,19 @@ impl ViewportRenderer {
     }
 
     /// Incrementally update vertex data for a single terrain chunk on the GPU.
+    ///
+    /// Delegates to the engine adapter's `update_terrain_chunk()` which replaces
+    /// the chunk model with fresh vertex data while reusing cached indices.
     pub fn update_terrain_chunk_vertices(
         &mut self,
-        _chunk_index: usize,
-        _vertices: &[TerrainVertex],
+        chunk_index: usize,
+        vertices: &[TerrainVertex],
     ) {
-        tracing::warn!(
-            "update_terrain_chunk_vertices: incremental update not supported — \
-             re-upload all chunks via upload_terrain_chunks() instead"
-        );
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.update_terrain_chunk(chunk_index, vertices);
+        } else {
+            tracing::warn!("update_terrain_chunk_vertices: engine adapter not initialized");
+        }
     }
 
     // ── Depth Readback for Brush Hit Detection ──────────────────────────
@@ -1250,26 +1254,47 @@ impl ViewportRenderer {
         self.render_mode = mode;
     }
 
-    /// Load the default grassland terrain texture from the bundled glTF asset.
-    /// Called once after engine adapter initialization for terrain rendering.
+    /// Load a terrain albedo texture with a robust fallback chain.
+    ///
+    /// Tries multiple texture paths in order. If all fail, creates a 4x4 white
+    /// fallback texture so terrain never renders black (the biome-tinted instance
+    /// color still provides correct coloring).
     fn load_default_terrain_texture(&mut self) {
-        let grass_path = std::path::Path::new("assets/textures/leafy_grass_diff_4k.jpg");
-        if !grass_path.exists() {
-            tracing::warn!("Default grass texture not found: {grass_path:?}");
-            return;
-        }
-        match image::open(grass_path) {
-            Ok(img) => {
-                let rgba = img.to_rgba8();
-                let (w, h) = (rgba.width(), rgba.height());
-                if let Some(adapter) = &mut self.engine_adapter {
-                    adapter.renderer_mut().set_albedo_from_rgba8(w, h, &rgba);
-                    tracing::info!("Loaded grass terrain texture ({w}x{h}) from {grass_path:?}");
+        let candidates: &[&str] = &[
+            "assets/textures/leafy_grass_diff_4k.jpg",
+            "assets/materials/grass.png",
+            "assets/textures/grass.png",
+        ];
+
+        for path_str in candidates {
+            let path = std::path::Path::new(path_str);
+            if !path.exists() {
+                continue;
+            }
+            match image::open(path) {
+                Ok(img) => {
+                    let rgba = img.to_rgba8();
+                    let (w, h) = (rgba.width(), rgba.height());
+                    if let Some(adapter) = &mut self.engine_adapter {
+                        adapter.renderer_mut().set_albedo_from_rgba8(w, h, &rgba);
+                        tracing::info!("Loaded terrain texture ({w}x{h}) from {path:?}");
+                    }
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load terrain texture {path:?}: {e}");
                 }
             }
-            Err(e) => {
-                tracing::warn!("Failed to load grass texture {grass_path:?}: {e}");
-            }
+        }
+
+        // Ultimate fallback: 4x4 white texture. Biome tint on the instance color
+        // still provides correct coloring; this just prevents black terrain.
+        tracing::warn!("No terrain texture found in any candidate path — using 4x4 white fallback");
+        let white_data = vec![255u8; 4 * 4 * 4]; // 4x4 RGBA white
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter
+                .renderer_mut()
+                .set_albedo_from_rgba8(4, 4, &white_data);
         }
     }
 
@@ -1300,6 +1325,13 @@ impl ViewportRenderer {
     /// Check if engine adapter is initialized
     pub fn engine_adapter_initialized(&self) -> bool {
         self.engine_adapter.is_some()
+    }
+
+    /// Whether terrain chunks are currently loaded in the engine renderer.
+    pub fn has_terrain(&self) -> bool {
+        self.engine_adapter
+            .as_ref()
+            .is_some_and(|a| a.terrain_chunk_count() > 0)
     }
 
     /// Get immutable reference to engine adapter (if initialized)

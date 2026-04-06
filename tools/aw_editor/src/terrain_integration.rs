@@ -1664,7 +1664,9 @@ impl TerrainState {
             } else if vegetation.is_empty() && placements.is_empty() {
                 tracing::debug!(
                     "=== SCATTER GEN: chunk {:?}: 0 instances (veg_types={}, density={:.4})",
-                    chunk_id, veg_count, density,
+                    chunk_id,
+                    veg_count,
+                    density,
                 );
             }
 

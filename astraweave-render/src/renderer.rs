@@ -3,12 +3,12 @@ use crate::post::{WGSL_SSAO, WGSL_SSGI, WGSL_SSR};
 use anyhow::Context;
 use anyhow::Result;
 use glam::Vec4Swizzles;
-use glam::{Mat4, vec3};
+use glam::{vec3, Mat4};
 use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
 use crate::camera::Camera;
-use crate::clustered::{ClusterDims, CpuLight, WGSL_CLUSTER_BIN, bin_lights_cpu};
+use crate::clustered::{bin_lights_cpu, ClusterDims, CpuLight, WGSL_CLUSTER_BIN};
 use crate::depth::Depth;
 use crate::types::SkinnedVertex;
 use crate::types::{Instance, InstanceRaw, Mesh};
@@ -438,6 +438,8 @@ pub struct RenderModel {
     pub instance_buf: wgpu::Buffer,
     /// Number of instances.
     pub instance_count: u32,
+    /// World-space AABB for frustum culling (None = always visible).
+    pub aabb: Option<([f32; 3], [f32; 3])>,
 }
 
 pub struct Renderer {
@@ -3564,24 +3566,32 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         let (min1, max1) = aabb_in_view_space(&view1, &frustum1);
         let margin = 5.0f32;
         let proj0 = glam::Mat4::orthographic_rh(
-            min0.x - margin, max0.x + margin,
-            min0.y - margin, max0.y + margin,
-            (-max0.z + 0.1).max(0.1), (-min0.z + margin + 0.1).max(1.0),
+            min0.x - margin,
+            max0.x + margin,
+            min0.y - margin,
+            max0.y + margin,
+            (-max0.z + 0.1).max(0.1),
+            (-min0.z + margin + 0.1).max(1.0),
         );
         let proj1 = glam::Mat4::orthographic_rh(
-            min1.x - margin, max1.x + margin,
-            min1.y - margin, max1.y + margin,
-            (-max1.z + 0.1).max(0.1), (-min1.z + margin + 0.1).max(1.0),
+            min1.x - margin,
+            max1.x + margin,
+            min1.y - margin,
+            max1.y + margin,
+            (-max1.z + 0.1).max(0.1),
+            (-min1.z + margin + 0.1).max(1.0),
         );
         self.cascade0 = proj0 * view0;
         self.cascade1 = proj1 * view1;
 
         self.queue.write_buffer(
-            &self.shadow_cascade_bufs[0], 0,
+            &self.shadow_cascade_bufs[0],
+            0,
             bytemuck::cast_slice(&self.cascade0.to_cols_array()),
         );
         self.queue.write_buffer(
-            &self.shadow_cascade_bufs[1], 0,
+            &self.shadow_cascade_bufs[1],
+            0,
             bytemuck::cast_slice(&self.cascade1.to_cols_array()),
         );
 
@@ -3590,7 +3600,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         data.extend_from_slice(&self.cascade1.to_cols_array());
         data.push(self.split0);
         data.push(self.split1);
-        let extras_x = if self.force_shadow_override { -1.0 } else { self.shadow_pcf_radius_px };
+        let extras_x = if self.force_shadow_override {
+            -1.0
+        } else {
+            self.shadow_pcf_radius_px
+        };
         data.push(extras_x);
         data.push(self.shadow_depth_bias);
         self.queue
@@ -4150,9 +4164,29 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 }
             }
 
-            // Render all named models (terrain, trees, rocks, etc.) — aligned with draw_into
-            for model in self.models.values() {
-                if model.instance_count > 0 {
+            // Render all named models (terrain, trees, rocks, etc.) with frustum culling
+            {
+                let vp = self.cached_proj * self.cached_view;
+                let frustum = crate::culling::FrustumPlanes::from_view_proj(&vp);
+                for model in self.models.values() {
+                    if model.instance_count == 0 {
+                        continue;
+                    }
+                    if let Some((aabb_min, aabb_max)) = &model.aabb {
+                        let center = glam::Vec3::new(
+                            (aabb_min[0] + aabb_max[0]) * 0.5,
+                            (aabb_min[1] + aabb_max[1]) * 0.5,
+                            (aabb_min[2] + aabb_max[2]) * 0.5,
+                        );
+                        let extent = glam::Vec3::new(
+                            (aabb_max[0] - aabb_min[0]) * 0.5,
+                            (aabb_max[1] - aabb_min[1]) * 0.5,
+                            (aabb_max[2] - aabb_min[2]) * 0.5,
+                        );
+                        if !frustum.test_aabb(center, extent) {
+                            continue;
+                        }
+                    }
                     rp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
                     rp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
                     rp.set_vertex_buffer(1, model.instance_buf.slice(..));
@@ -4514,9 +4548,30 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 }
             }
 
-            // Render all named models (terrain, trees, rocks, etc.)
-            for model in self.models.values() {
-                if model.instance_count > 0 {
+            // Render all named models (terrain, trees, rocks, etc.) with frustum culling
+            {
+                let vp = self.cached_proj * self.cached_view;
+                let frustum = crate::culling::FrustumPlanes::from_view_proj(&vp);
+                for model in self.models.values() {
+                    if model.instance_count == 0 {
+                        continue;
+                    }
+                    // Skip models whose AABB is entirely outside the frustum
+                    if let Some((aabb_min, aabb_max)) = &model.aabb {
+                        let center = glam::Vec3::new(
+                            (aabb_min[0] + aabb_max[0]) * 0.5,
+                            (aabb_min[1] + aabb_max[1]) * 0.5,
+                            (aabb_min[2] + aabb_max[2]) * 0.5,
+                        );
+                        let extent = glam::Vec3::new(
+                            (aabb_max[0] - aabb_min[0]) * 0.5,
+                            (aabb_max[1] - aabb_min[1]) * 0.5,
+                            (aabb_max[2] - aabb_min[2]) * 0.5,
+                        );
+                        if !frustum.test_aabb(center, extent) {
+                            continue;
+                        }
+                    }
                     rp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
                     rp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
                     rp.set_vertex_buffer(1, model.instance_buf.slice(..));
@@ -5127,6 +5182,29 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     // --- Multi-Model API ---
     /// Add or replace a named model with the given mesh and instances.
     pub fn add_model(&mut self, name: impl Into<String>, mesh: Mesh, instances: &[Instance]) {
+        self.add_model_impl(name, mesh, instances, None);
+    }
+
+    /// Add or replace a named model with an explicit world-space AABB for
+    /// frustum culling. Models outside the camera frustum are skipped.
+    pub fn add_model_with_bounds(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        aabb_min: [f32; 3],
+        aabb_max: [f32; 3],
+    ) {
+        self.add_model_impl(name, mesh, instances, Some((aabb_min, aabb_max)));
+    }
+
+    fn add_model_impl(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        aabb: Option<([f32; 3], [f32; 3])>,
+    ) {
         let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
         let instance_buf = self
             .device
@@ -5139,6 +5217,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             mesh,
             instance_buf,
             instance_count: instances.len() as u32,
+            aabb,
         };
         self.models.insert(name.into(), model);
     }
@@ -5279,7 +5358,7 @@ fn aabb_in_view_space(view: &glam::Mat4, corners_ws: &[glam::Vec3; 8]) -> (glam:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::{Mat4, Vec3, vec3};
+    use glam::{vec3, Mat4, Vec3};
 
     #[test]
     fn test_inside_frustum_sphere() {

@@ -1733,8 +1733,16 @@ pub struct AddComponentCommand {
 }
 
 impl AddComponentCommand {
-    pub fn new(entity_id: u64, component_type: String, data: serde_json::Value) -> Box<dyn EditorCommand> {
-        Box::new(Self { entity_id, component_type, data })
+    pub fn new(
+        entity_id: u64,
+        component_type: String,
+        data: serde_json::Value,
+    ) -> Box<dyn EditorCommand> {
+        Box::new(Self {
+            entity_id,
+            component_type,
+            data,
+        })
     }
 }
 
@@ -1742,7 +1750,8 @@ impl EditorCommand for AddComponentCommand {
     fn execute(&mut self, _world: &mut World, entities: Option<&mut EntityManager>) -> Result<()> {
         if let Some(em) = entities {
             if let Some(e) = em.get_mut(self.entity_id) {
-                e.components.insert(self.component_type.clone(), self.data.clone());
+                e.components
+                    .insert(self.component_type.clone(), self.data.clone());
             }
         }
         Ok(())
@@ -1772,7 +1781,11 @@ pub struct RemoveComponentCommand {
 
 impl RemoveComponentCommand {
     pub fn new(entity_id: u64, component_type: String) -> Box<dyn EditorCommand> {
-        Box::new(Self { entity_id, component_type, old_data: None })
+        Box::new(Self {
+            entity_id,
+            component_type,
+            old_data: None,
+        })
     }
 }
 
@@ -1790,7 +1803,8 @@ impl EditorCommand for RemoveComponentCommand {
         if let Some(em) = entities {
             if let Some(e) = em.get_mut(self.entity_id) {
                 if let Some(data) = &self.old_data {
-                    e.components.insert(self.component_type.clone(), data.clone());
+                    e.components
+                        .insert(self.component_type.clone(), data.clone());
                 }
             }
         }
@@ -1798,7 +1812,10 @@ impl EditorCommand for RemoveComponentCommand {
     }
 
     fn describe(&self) -> String {
-        format!("Remove {} from entity {}", self.component_type, self.entity_id)
+        format!(
+            "Remove {} from entity {}",
+            self.component_type, self.entity_id
+        )
     }
 }
 
@@ -1812,8 +1829,17 @@ pub struct ComponentDataChangedCommand {
 }
 
 impl ComponentDataChangedCommand {
-    pub fn new(entity_id: u64, component_type: String, new_data: serde_json::Value) -> Box<dyn EditorCommand> {
-        Box::new(Self { entity_id, component_type, old_data: None, new_data })
+    pub fn new(
+        entity_id: u64,
+        component_type: String,
+        new_data: serde_json::Value,
+    ) -> Box<dyn EditorCommand> {
+        Box::new(Self {
+            entity_id,
+            component_type,
+            old_data: None,
+            new_data,
+        })
     }
 }
 
@@ -1822,7 +1848,8 @@ impl EditorCommand for ComponentDataChangedCommand {
         if let Some(em) = entities {
             if let Some(e) = em.get_mut(self.entity_id) {
                 self.old_data = e.components.get(&self.component_type).cloned();
-                e.components.insert(self.component_type.clone(), self.new_data.clone());
+                e.components
+                    .insert(self.component_type.clone(), self.new_data.clone());
             }
         }
         Ok(())
@@ -1832,7 +1859,8 @@ impl EditorCommand for ComponentDataChangedCommand {
         if let Some(em) = entities {
             if let Some(e) = em.get_mut(self.entity_id) {
                 if let Some(data) = &self.old_data {
-                    e.components.insert(self.component_type.clone(), data.clone());
+                    e.components
+                        .insert(self.component_type.clone(), data.clone());
                 } else {
                     e.components.remove(&self.component_type);
                 }
@@ -1856,8 +1884,17 @@ pub struct MaterialPropertyChangedCommand {
 }
 
 impl MaterialPropertyChangedCommand {
-    pub fn new(entity_id: u64, property: String, new_value: serde_json::Value) -> Box<dyn EditorCommand> {
-        Box::new(Self { entity_id, property, old_value: serde_json::Value::Null, new_value })
+    pub fn new(
+        entity_id: u64,
+        property: String,
+        new_value: serde_json::Value,
+    ) -> Box<dyn EditorCommand> {
+        Box::new(Self {
+            entity_id,
+            property,
+            old_value: serde_json::Value::Null,
+            new_value,
+        })
     }
 }
 
@@ -1869,8 +1906,17 @@ impl EditorCommand for MaterialPropertyChangedCommand {
                 self.old_value = match self.property.as_str() {
                     "metallic" => serde_json::json!(e.material.metallic),
                     "roughness" => serde_json::json!(e.material.roughness),
-                    "base_color" => serde_json::json!([e.material.base_color.x, e.material.base_color.y, e.material.base_color.z, e.material.base_color.w]),
-                    "emissive" => serde_json::json!([e.material.emissive.x, e.material.emissive.y, e.material.emissive.z]),
+                    "base_color" => serde_json::json!([
+                        e.material.base_color.x,
+                        e.material.base_color.y,
+                        e.material.base_color.z,
+                        e.material.base_color.w
+                    ]),
+                    "emissive" => serde_json::json!([
+                        e.material.emissive.x,
+                        e.material.emissive.y,
+                        e.material.emissive.z
+                    ]),
                     _ => serde_json::Value::Null,
                 };
                 // Apply new value
@@ -1905,7 +1951,12 @@ pub struct MaterialTextureChangedCommand {
 
 impl MaterialTextureChangedCommand {
     pub fn new(entity_id: u64, slot: String, new_path: String) -> Box<dyn EditorCommand> {
-        Box::new(Self { entity_id, slot, old_path: None, new_path })
+        Box::new(Self {
+            entity_id,
+            slot,
+            old_path: None,
+            new_path,
+        })
     }
 }
 
@@ -1914,11 +1965,17 @@ impl EditorCommand for MaterialTextureChangedCommand {
         if let Some(em) = entities {
             if let Some(e) = em.get_mut(self.entity_id) {
                 if let Some(slot_key) = parse_material_slot(&self.slot) {
-                    self.old_path = e.material.texture_slots.get(&slot_key).map(|p| p.to_string_lossy().to_string());
+                    self.old_path = e
+                        .material
+                        .texture_slots
+                        .get(&slot_key)
+                        .map(|p| p.to_string_lossy().to_string());
                     if self.new_path.is_empty() {
                         e.material.texture_slots.remove(&slot_key);
                     } else {
-                        e.material.texture_slots.insert(slot_key, std::path::PathBuf::from(&self.new_path));
+                        e.material
+                            .texture_slots
+                            .insert(slot_key, std::path::PathBuf::from(&self.new_path));
                     }
                 }
             }
@@ -1931,7 +1988,9 @@ impl EditorCommand for MaterialTextureChangedCommand {
             if let Some(e) = em.get_mut(self.entity_id) {
                 if let Some(slot_key) = parse_material_slot(&self.slot) {
                     if let Some(old) = &self.old_path {
-                        e.material.texture_slots.insert(slot_key, std::path::PathBuf::from(old));
+                        e.material
+                            .texture_slots
+                            .insert(slot_key, std::path::PathBuf::from(old));
                     } else {
                         e.material.texture_slots.remove(&slot_key);
                     }
@@ -1947,7 +2006,11 @@ impl EditorCommand for MaterialTextureChangedCommand {
 }
 
 /// Helper: apply a material property value to an entity's material.
-fn apply_material_property(entity: &mut crate::entity_manager::EditorEntity, property: &str, value: &serde_json::Value) {
+fn apply_material_property(
+    entity: &mut crate::entity_manager::EditorEntity,
+    property: &str,
+    value: &serde_json::Value,
+) {
     match property {
         "base_color" => {
             if let Some(arr) = value.as_array() {
@@ -1959,8 +2022,12 @@ fn apply_material_property(entity: &mut crate::entity_manager::EditorEntity, pro
                 );
             }
         }
-        "metallic" => { entity.material.metallic = value.as_f64().unwrap_or(0.0) as f32; }
-        "roughness" => { entity.material.roughness = value.as_f64().unwrap_or(0.5) as f32; }
+        "metallic" => {
+            entity.material.metallic = value.as_f64().unwrap_or(0.0) as f32;
+        }
+        "roughness" => {
+            entity.material.roughness = value.as_f64().unwrap_or(0.5) as f32;
+        }
         "emissive" => {
             if let Some(arr) = value.as_array() {
                 entity.material.emissive = glam::Vec3::new(

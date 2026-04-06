@@ -627,11 +627,13 @@ impl ViewportWidget {
         if let Some(texture) = self.render_texture.clone() {
             // Render in separate scope to drop MutexGuard early
             {
-                let show_grid = self.toolbar.show_grid && self.toolbar.grid_type != GridType::None;
+                let grid_pref = self.toolbar.show_grid && self.toolbar.grid_type != GridType::None;
                 let crosshair_mode = self.toolbar.grid_type == GridType::Crosshair;
                 let shading_mode = self.toolbar.shading_mode.to_u32();
 
                 self.with_renderer("render", |renderer| {
+                    // Auto-hide grid when terrain is loaded to prevent z-fighting
+                    let show_grid = grid_pref && !renderer.has_terrain();
                     if let Err(e) = renderer.render(
                         &texture,
                         &self.camera,

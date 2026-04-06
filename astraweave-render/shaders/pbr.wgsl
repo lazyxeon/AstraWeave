@@ -63,7 +63,23 @@ struct MainLightUbo {
 @group(3) @binding(4) var normal_tex: texture_2d<f32>;  // tangent-space normal in RGB
 @group(3) @binding(5) var normal_samp: sampler;
 
-
+// Scene environment (fog, ambient, tint) — matches SceneEnvironmentUBO (96 bytes)
+struct SceneEnv {
+    fog_color: vec3<f32>,
+    fog_density: f32,
+    fog_start: f32,
+    fog_end: f32,
+    _pad0: vec2<f32>,
+    ambient_color: vec3<f32>,
+    ambient_intensity: f32,
+    tint_color: vec3<f32>,
+    tint_alpha: f32,
+    blend_factor: f32,
+    _pad_align: vec3<f32>,
+    _pad1: vec3<f32>,
+    _pad_struct: f32,
+};
+@group(4) @binding(0) var<uniform> uScene: SceneEnv;
 
 @vertex
 fn vs(input: VSIn) -> VSOut {
@@ -222,6 +238,18 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     // Combine with AO if available (currently AO is separate post-pass)
     // Multiply by albedo for diffuse reflection
     lit_color = lit_color + (vxgi_light * base_color * 1.0);
-    
+
+    // Distance fog — uses SceneEnvironmentUBO parameters.
+    // Combines linear ramp (start/end) with exponential density for soft falloff.
+    let view_dist = length(input.world_pos - uCamera.camera_pos);
+    let linear_fog = clamp(
+        (view_dist - uScene.fog_start) / max(uScene.fog_end - uScene.fog_start, 1.0),
+        0.0,
+        1.0,
+    );
+    let exp_fog = 1.0 - exp(-uScene.fog_density * view_dist);
+    let fog_amount = max(linear_fog, exp_fog);
+    lit_color = mix(lit_color, uScene.fog_color, fog_amount);
+
     return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
 }
