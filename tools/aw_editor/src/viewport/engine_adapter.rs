@@ -94,8 +94,18 @@ impl EngineRenderAdapter {
     }
 
     pub fn update_camera(&mut self, camera: &OrbitCamera) {
-        let engine_camera = camera.to_engine_camera();
-        self.renderer.update_camera(&engine_camera);
+        // Pass the OrbitCamera's own view/proj matrices directly to the renderer.
+        // This avoids yaw/pitch conversion issues between the orbit camera and
+        // the engine camera's direction conventions.
+        self.renderer.update_camera_matrices(
+            camera.view_matrix(),
+            camera.projection_matrix(),
+            camera.position(),
+            camera.near,
+            camera.far,
+            camera.fov.to_radians(),
+            camera.aspect,
+        );
     }
 
     pub fn render_to_texture(

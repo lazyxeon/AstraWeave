@@ -255,6 +255,9 @@ impl OrbitCamera {
         let height_range = (max_height - min_height).max(10.0);
         self.distance = (height_range * 1.8).clamp(self.min_distance, self.max_distance);
         self.zoom_target = self.distance;
+        // Set pitch to ~30° above horizontal so the camera is well above the terrain
+        // looking down. This prevents the initial view from being below/inside the mesh.
+        self.pitch = std::f32::consts::PI / 6.0;
     }
 
     /// Reset camera to default starting position
@@ -566,10 +569,14 @@ impl OrbitCamera {
     }
 
     pub fn to_engine_camera(&self) -> astraweave_render::camera::Camera {
+        // The engine's Camera::dir(yaw, pitch) computes a forward vector that
+        // points in the SAME direction as the orbit offset (away from focal point).
+        // The orbit camera needs to look TOWARD the focal point, so we reverse the
+        // direction by rotating yaw by π and negating pitch.
         astraweave_render::camera::Camera {
             position: self.position(),
-            yaw: self.yaw,
-            pitch: self.pitch,
+            yaw: self.yaw + std::f32::consts::PI,
+            pitch: -self.pitch,
             fovy: self.fov.to_radians(),
             aspect: self.aspect,
             znear: self.near,

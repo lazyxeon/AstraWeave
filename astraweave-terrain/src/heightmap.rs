@@ -293,7 +293,10 @@ impl Heightmap {
         vertices
     }
 
-    /// Generate triangle indices for rendering
+    /// Generate triangle indices for rendering.
+    ///
+    /// Winding order is counter-clockwise when viewed from above (+Y),
+    /// matching wgpu's default `FrontFace::Ccw` with `cull_mode: Back`.
     pub fn generate_indices(&self) -> Vec<u32> {
         let mut indices = Vec::new();
 
@@ -301,15 +304,15 @@ impl Heightmap {
             for x in 0..(self.resolution - 1) {
                 let base = z * self.resolution + x;
 
-                // First triangle
+                // First triangle (CCW from above: base → base+res → base+1)
                 indices.push(base);
-                indices.push(base + 1);
                 indices.push(base + self.resolution);
+                indices.push(base + 1);
 
-                // Second triangle
+                // Second triangle (CCW from above: base+1 → base+res → base+res+1)
                 indices.push(base + 1);
-                indices.push(base + self.resolution + 1);
                 indices.push(base + self.resolution);
+                indices.push(base + self.resolution + 1);
             }
         }
 

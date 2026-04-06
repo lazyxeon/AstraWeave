@@ -242,7 +242,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let radiance = vec3<f32>(2.0, 1.96, 1.8); // sun radiance (HDR, ACES compresses)
         // Shadow sampling
         // Cascaded shadow mapping (2 cascades)
-    let dist = length(input.world_pos);
+        // Use distance from camera (not origin) for correct cascade selection.
+    let dist = length(input.world_pos - uCamera.camera_pos);
     let use_c0 = dist < uLight.splits.x;
     var lvp: mat4x4<f32>;
     if (use_c0) { lvp = uLight.view_proj0; } else { lvp = uLight.view_proj1; }
@@ -294,8 +295,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         // Clustered point lights accumulation (Lambert + simple attenuation)
     // Clustered lighting disabled for this example build; use lit_color directly
 
-    // Apply distance-based fog from biome scene environment
-    let frag_dist = length(input.world_pos);
+    // Apply distance-based fog from biome scene environment.
+    // Use distance from camera (not origin) for correct view-dependent fog.
+    let frag_dist = length(input.world_pos - uCamera.camera_pos);
     lit_color = apply_scene_fog(lit_color, frag_dist);
 
     // Apply screen tint overlay (peaks during biome transitions)
@@ -477,9 +479,12 @@ pub struct Renderer {
     shadow_pipeline: wgpu::RenderPipeline,
     light_buf: wgpu::Buffer,
     light_bg: wgpu::BindGroup,
-    // Bind group used only during shadow depth passes (binds light buffer only) to avoid sampling the
-    // shadow depth texture while it's being written.
-    light_bg_shadow: wgpu::BindGroup,
+    // Per-cascade uniform buffers for shadow depth passes.
+    // Using separate buffers avoids the queue.write_buffer race where all
+    // writes resolve before the command buffer executes, causing both shadow
+    // passes to read the same (last-written) cascade matrix.
+    shadow_cascade_bufs: [wgpu::Buffer; 2],
+    shadow_cascade_bgs: [wgpu::BindGroup; 2],
     #[allow(dead_code)]
     shadow_bgl: wgpu::BindGroupLayout,
     // Cascade data cached on CPU for shadow passes
@@ -1971,14 +1976,42 @@ struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
                 count: None,
             }],
         });
-        let light_bg_shadow = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("light bg shadow-only"),
-            layout: &shadow_bgl_light,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: light_buf.as_entire_binding(),
-            }],
-        });
+        // Per-cascade uniform buffers: each holds a single mat4x4 (64 bytes)
+        // that the shadow vertex shader reads as its view_proj. Written once per
+        // frame in update_camera(), avoiding the queue.write_buffer race that
+        // previously caused both shadow passes to use the same cascade matrix.
+        let shadow_cascade_bufs = [
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("shadow cascade0 ubo"),
+                size: 64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("shadow cascade1 ubo"),
+                size: 64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+        ];
+        let shadow_cascade_bgs = [
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("shadow cascade0 bg"),
+                layout: &shadow_bgl_light,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: shadow_cascade_bufs[0].as_entire_binding(),
+                }],
+            }),
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("shadow cascade1 bg"),
+                layout: &shadow_bgl_light,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: shadow_cascade_bufs[1].as_entire_binding(),
+                }],
+            }),
+        ];
 
         // Shadow map pipeline (depth-only)
         let shadow_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -2390,7 +2423,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let diffuse = kd * base_color / 3.14159;
     let radiance = vec3<f32>(2.0, 1.96, 1.8); // sun radiance (HDR, ACES compresses)
     // Cascaded shadow sampling (same as static path)
-    let dist = length(input.world_pos);
+    let dist = length(input.world_pos - uCamera.camera_pos);
     let use_c0 = dist < uLight.splits.x;
     var lvp: mat4x4<f32>;
     if (use_c0) { lvp = uLight.view_proj0; } else { lvp = uLight.view_proj1; }
@@ -2852,7 +2885,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             light_buf,
             light_bg,
             shadow_bgl,
-            light_bg_shadow,
+            shadow_cascade_bufs,
+            shadow_cascade_bgs,
             cascade0: glam::Mat4::IDENTITY,
             cascade1: glam::Mat4::IDENTITY,
             split0: 60.0,
@@ -3455,22 +3489,62 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             .write_buffer(&self.clustered_params_buf, 0, bytemuck::bytes_of(&data));
     }
 
+    /// Update camera from pre-computed view and projection matrices.
+    /// Use this when the caller already has correct matrices (e.g., editor orbit camera).
+    pub fn update_camera_matrices(
+        &mut self,
+        view: glam::Mat4,
+        proj: glam::Mat4,
+        position: glam::Vec3,
+        znear: f32,
+        zfar: f32,
+        fovy: f32,
+        aspect: f32,
+    ) {
+        self.cached_view = view;
+        self.cached_proj = proj;
+        let vp = proj * view;
+        self.camera_ubo.view_proj = vp.to_cols_array_2d();
+        let light_dir = self.sky.time_of_day().get_light_direction();
+        self.camera_ubo.light_dir_pad = [light_dir.x, light_dir.y, light_dir.z, 0.0];
+        self.camera_ubo.camera_pos_pad = [position.x, position.y, position.z, 0.0];
+        self.queue
+            .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&self.camera_ubo));
+
+        // Build a temporary Camera for cascade computation
+        // Extract forward direction from the view matrix (negative Z row)
+        let fwd = -glam::Vec3::new(view.x_axis.z, view.y_axis.z, view.z_axis.z);
+        let (yaw, pitch) = (fwd.z.atan2(fwd.x), fwd.y.asin());
+        let tmp_cam = Camera {
+            position,
+            yaw,
+            pitch,
+            fovy,
+            aspect,
+            znear,
+            zfar,
+        };
+        self.update_cascade_splits(&tmp_cam, light_dir);
+    }
+
     pub fn update_camera(&mut self, camera: &Camera) {
         self.cached_view = camera.view_matrix();
         self.cached_proj = camera.proj_matrix();
         self.camera_ubo.view_proj = camera.vp().to_cols_array_2d();
-        // Update light dir from time-of-day system (simple linkage for Phase 0)
         let light_dir = self.sky.time_of_day().get_light_direction();
         self.camera_ubo.light_dir_pad = [light_dir.x, light_dir.y, light_dir.z, 0.0];
         let cam_pos = camera.position;
         self.camera_ubo.camera_pos_pad = [cam_pos.x, cam_pos.y, cam_pos.z, 0.0];
         self.queue
             .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&self.camera_ubo));
-        // Compute splits from camera frustum with lambda blend
+        self.update_cascade_splits(camera, light_dir);
+    }
+
+    fn update_cascade_splits(&mut self, camera: &Camera, light_dir: glam::Vec3) {
         let n = camera.znear.max(0.01);
         let f = camera.zfar.max(n + 0.1);
-        let c = 2.0; // cascades count (fixed to 2)
-        let i = 1.0f32; // boundary between 0 and 1
+        let c = 2.0;
+        let i = 1.0f32;
         let u = n + (f - n) * (i / c);
         let l = n * (f / n).powf(i / c);
         let lambda = self.cascade_lambda.clamp(0.0, 1.0);
@@ -3478,51 +3552,45 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         self.split0 = split;
         self.split1 = f;
 
-        // Build frustum corners per range in world space
         let frustum0 = frustum_corners_ws(camera, n, self.split0);
         let frustum1 = frustum_corners_ws(camera, self.split0, f);
-        // Build a light view looking towards the cascade centers
         let up = glam::Vec3::Y;
         let center0 = frustum_center(&frustum0);
         let center1 = frustum_center(&frustum1);
         let light_dist = 80.0f32;
         let view0 = glam::Mat4::look_to_rh(center0 - light_dir * light_dist, light_dir, up);
         let view1 = glam::Mat4::look_to_rh(center1 - light_dir * light_dist, light_dir, up);
-        // Fit orthographic bounds to cascade frusta in light space
         let (min0, max0) = aabb_in_view_space(&view0, &frustum0);
         let (min1, max1) = aabb_in_view_space(&view1, &frustum1);
         let margin = 5.0f32;
         let proj0 = glam::Mat4::orthographic_rh(
-            min0.x - margin,
-            max0.x + margin,
-            min0.y - margin,
-            max0.y + margin,
-            (-max0.z + 0.1).max(0.1),
-            (-min0.z + margin + 0.1).max(1.0),
+            min0.x - margin, max0.x + margin,
+            min0.y - margin, max0.y + margin,
+            (-max0.z + 0.1).max(0.1), (-min0.z + margin + 0.1).max(1.0),
         );
         let proj1 = glam::Mat4::orthographic_rh(
-            min1.x - margin,
-            max1.x + margin,
-            min1.y - margin,
-            max1.y + margin,
-            (-max1.z + 0.1).max(0.1),
-            (-min1.z + margin + 0.1).max(1.0),
+            min1.x - margin, max1.x + margin,
+            min1.y - margin, max1.y + margin,
+            (-max1.z + 0.1).max(0.1), (-min1.z + margin + 0.1).max(1.0),
         );
         self.cascade0 = proj0 * view0;
         self.cascade1 = proj1 * view1;
-        // Pack data for main pass buffer: [mat0, mat1, vec2(splits), vec2(extras)]
+
+        self.queue.write_buffer(
+            &self.shadow_cascade_bufs[0], 0,
+            bytemuck::cast_slice(&self.cascade0.to_cols_array()),
+        );
+        self.queue.write_buffer(
+            &self.shadow_cascade_bufs[1], 0,
+            bytemuck::cast_slice(&self.cascade1.to_cols_array()),
+        );
+
         let mut data: Vec<f32> = Vec::with_capacity(36);
         data.extend_from_slice(&self.cascade0.to_cols_array());
         data.extend_from_slice(&self.cascade1.to_cols_array());
         data.push(self.split0);
         data.push(self.split1);
-        // extras: pack pcf radius in x, depth_bias in y
-        // If force_shadow_override is set, use -1.0 sentinel to disable shadows in shader.
-        let extras_x = if self.force_shadow_override {
-            -1.0
-        } else {
-            self.shadow_pcf_radius_px
-        };
+        let extras_x = if self.force_shadow_override { -1.0 } else { self.shadow_pcf_radius_px };
         data.push(extras_x);
         data.push(self.shadow_depth_bias);
         self.queue
@@ -3923,20 +3991,12 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             self.queue
                 .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&vis_raws));
         }
-        // Shadow passes (depth only) - one per cascade layer
-        // Write cascade0 matrix, render to layer0; then cascade1, render to layer1
+        // Shadow passes (depth only) - one per cascade layer.
+        // Each pass uses its own pre-written cascade buffer (shadow_cascade_bgs).
         for (idx, layer_view) in [&self.shadow_layer0_view, &self.shadow_layer1_view]
             .iter()
             .enumerate()
         {
-            let mat = if idx == 0 {
-                self.cascade0
-            } else {
-                self.cascade1
-            };
-            let arr = mat.to_cols_array();
-            self.queue
-                .write_buffer(&self.light_buf, 0, bytemuck::cast_slice(&arr));
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
@@ -3952,9 +4012,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 occlusion_query_set: None,
             });
             sp.set_pipeline(&self.shadow_pipeline);
-            // Use the shadow-only bind group here so the shadow depth texture
-            // isn't bound for sampling while we're writing to it.
-            sp.set_bind_group(0, &self.light_bg_shadow, &[]);
+            sp.set_bind_group(0, &self.shadow_cascade_bgs[idx], &[]);
             // Draw plane
             sp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
             sp.set_index_buffer(
@@ -3993,23 +4051,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 }
             }
         }
-        // After rendering shadow layers, restore full light buffer for main pass usage
-        {
-            let mut data: Vec<f32> = Vec::with_capacity(36);
-            data.extend_from_slice(&self.cascade0.to_cols_array());
-            data.extend_from_slice(&self.cascade1.to_cols_array());
-            data.push(self.split0);
-            data.push(self.split1);
-            let extras_x = if self.force_shadow_override {
-                -1.0
-            } else {
-                self.shadow_pcf_radius_px
-            };
-            data.push(extras_x);
-            data.push(self.shadow_depth_bias);
-            self.queue
-                .write_buffer(&self.light_buf, 0, bytemuck::cast_slice(&data));
-        }
+        // light_buf already contains the full [cascade0, cascade1, splits, extras]
+        // data from update_camera(); no restore needed since shadow passes now use
+        // their own per-cascade buffers (shadow_cascade_bufs).
 
         // Render sky first into HDR target so we can layer geometry on top
         // Construct rotation-only VP for skybox (aligned with draw_into path)
@@ -4306,19 +4350,13 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         // Skip built-in ground plane when terrain chunks are loaded (prevents Z-fighting)
         let has_terrain = self.models.keys().any(|k| k.starts_with("terrain_chunk_"));
 
-        // Shadow passes - TEST 5 (suspected crash source!)
+        // Shadow passes — one per cascade layer.
+        // Each pass uses its own pre-written cascade buffer (shadow_cascade_bgs)
+        // so both passes read the correct view-projection matrix.
         for (idx, layer_view) in [&self.shadow_layer0_view, &self.shadow_layer1_view]
             .iter()
             .enumerate()
         {
-            let mat = if idx == 0 {
-                self.cascade0
-            } else {
-                self.cascade1
-            };
-            let arr = mat.to_cols_array();
-            self.queue
-                .write_buffer(&self.light_buf, 0, bytemuck::cast_slice(&arr));
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
@@ -4334,7 +4372,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 occlusion_query_set: None,
             });
             sp.set_pipeline(&self.shadow_pipeline);
-            sp.set_bind_group(0, &self.light_bg_shadow, &[]);
+            sp.set_bind_group(0, &self.shadow_cascade_bgs[idx], &[]);
             if !has_terrain {
                 sp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
                 sp.set_index_buffer(
@@ -4374,23 +4412,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 }
             }
         }
-        // Restore light buffer for main pass
-        {
-            let mut data: Vec<f32> = Vec::with_capacity(36);
-            data.extend_from_slice(&self.cascade0.to_cols_array());
-            data.extend_from_slice(&self.cascade1.to_cols_array());
-            data.push(self.split0);
-            data.push(self.split1);
-            let extras_x = if self.force_shadow_override {
-                -1.0
-            } else {
-                self.shadow_pcf_radius_px
-            };
-            data.push(extras_x);
-            data.push(self.shadow_depth_bias);
-            self.queue
-                .write_buffer(&self.light_buf, 0, bytemuck::cast_slice(&data));
-        }
+        // light_buf already contains the full [cascade0, cascade1, splits, extras]
+        // data from update_camera(); no restore needed since shadow passes now use
+        // their own per-cascade buffers (shadow_cascade_bufs).
 
         // Render procedural skybox (time-of-day gradient)
         // Use view-only matrix (no translation) constructed on CPU for reliability

@@ -13,8 +13,11 @@ pub struct Camera {
 impl Camera {
     pub fn view_matrix(&self) -> Mat4 {
         let dir = Self::dir(self.yaw, self.pitch);
-        // Use -Y as up to flip the world (fixes upside-down rendering)
-        Mat4::look_to_rh(self.position, dir, -Vec3::Y)
+        // Standard right-handed view: camera looks along `dir` with world +Y up.
+        // Previous `-Vec3::Y` caused clip-space w to go negative for all
+        // visible geometry when the editor's OrbitCamera fed its yaw/pitch
+        // directly, producing chunk-aligned rectangular voids in terrain.
+        Mat4::look_to_rh(self.position, dir, Vec3::Y)
     }
 
     pub fn proj_matrix(&self) -> Mat4 {
@@ -250,14 +253,13 @@ impl CameraController {
         match self.mode {
             CameraMode::FreeFly => {
                 let dir = Camera::dir(camera.yaw, camera.pitch);
-                // Use -Y to match flipped up vector in view matrix
-                let right = dir.cross(-Vec3::Y).normalize();
-                let up = -Vec3::Y;
+                let right = dir.cross(Vec3::Y).normalize();
+                let up = Vec3::Y;
 
                 let mut vel = Vec3::ZERO;
                 vel += dir * (self.fwd - self.back);
                 vel += right * (self.right - self.left);
-                vel += up * (self.down - self.up); // Swap: with -Y up, down key = positive Y
+                vel += up * (self.up - self.down);
                 if vel.length_squared() > 0.0 {
                     camera.position += vel.normalize() * eff_speed * dt;
                 }
@@ -265,15 +267,14 @@ impl CameraController {
             CameraMode::Orbit => {
                 // In orbit mode, WASD moves the orbit target
                 let dir = Camera::dir(camera.yaw, camera.pitch);
-                // Use -Y to match flipped up vector in view matrix
-                let right = dir.cross(-Vec3::Y).normalize();
+                let right = dir.cross(Vec3::Y).normalize();
                 let forward = Vec3::new(dir.x, 0.0, dir.z).normalize(); // Horizontal movement only
-                let up = -Vec3::Y;
+                let up = Vec3::Y;
 
                 let mut target_vel = Vec3::ZERO;
                 target_vel += forward * (self.fwd - self.back);
                 target_vel += right * (self.right - self.left);
-                target_vel += up * (self.down - self.up); // Swap: with -Y up, down key = positive Y
+                target_vel += up * (self.up - self.down);
 
                 if target_vel.length_squared() > 0.0 {
                     self.orbit_target += target_vel.normalize() * eff_speed * dt;

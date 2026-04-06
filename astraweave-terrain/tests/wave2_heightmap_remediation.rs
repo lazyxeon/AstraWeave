@@ -619,20 +619,20 @@ fn indices_in_valid_range() {
 fn indices_first_triangle_pattern() {
     let hm = make_heightmap(4);
     let idx = hm.generate_indices();
-    // First quad, first triangle: base, base+1, base+resolution
+    // First quad, first triangle (CCW from above): base, base+resolution, base+1
     assert_eq!(idx[0], 0);
-    assert_eq!(idx[1], 1);
-    assert_eq!(idx[2], 4); // resolution = 4
+    assert_eq!(idx[1], 4); // base + resolution = 4
+    assert_eq!(idx[2], 1); // base + 1
 }
 
 #[test]
 fn indices_second_triangle_pattern() {
     let hm = make_heightmap(4);
     let idx = hm.generate_indices();
-    // First quad, second triangle: base+1, base+resolution+1, base+resolution
+    // First quad, second triangle (CCW from above): base+1, base+resolution, base+resolution+1
     assert_eq!(idx[3], 1);
-    assert_eq!(idx[4], 5); // 1 + 4
-    assert_eq!(idx[5], 4); // 0 + 4
+    assert_eq!(idx[4], 4); // base + resolution = 0 + 4
+    assert_eq!(idx[5], 5); // base + resolution + 1 = 0 + 4 + 1
 }
 
 // ─── smooth ───────────────────────────────────────────────────────────────

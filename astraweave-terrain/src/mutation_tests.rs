@@ -2549,40 +2549,40 @@ mod heightmap_generate_indices_targeted {
 
     #[test]
     fn first_quad_indices_correct() {
-        // For 3x3: base = 0*3+0 = 0
-        // Triangle 1: 0, 1, 3 (base, base+1, base+resolution)
-        // Triangle 2: 1, 4, 3 (base+1, base+resolution+1, base+resolution)
+        // For 3x3: base = 0*3+0 = 0 (CCW from above)
+        // Triangle 1: 0, 3, 1 (base, base+resolution, base+1)
+        // Triangle 2: 1, 3, 4 (base+1, base+resolution, base+resolution+1)
         let data = vec![0.0; 9];
         let hm = Heightmap::from_data(data, 3).unwrap();
         let indices = hm.generate_indices();
         assert_eq!(indices[0], 0, "tri1[0]");
-        assert_eq!(indices[1], 1, "tri1[1]");
-        assert_eq!(indices[2], 3, "tri1[2]"); // base + resolution = 0 + 3
+        assert_eq!(indices[1], 3, "tri1[1]"); // base + resolution = 0 + 3
+        assert_eq!(indices[2], 1, "tri1[2]"); // base + 1
         assert_eq!(indices[3], 1, "tri2[0]");
-        assert_eq!(indices[4], 4, "tri2[1]"); // base + resolution + 1 = 0 + 3 + 1
-        assert_eq!(indices[5], 3, "tri2[2]"); // base + resolution
+        assert_eq!(indices[4], 3, "tri2[1]"); // base + resolution
+        assert_eq!(indices[5], 4, "tri2[2]"); // base + resolution + 1 = 0 + 3 + 1
     }
 
     #[test]
     fn second_quad_x_indices_correct() {
-        // For 3x3, quad at (1,0): base = 0*3+1 = 1
-        // Triangle 1: 1, 2, 4
-        // Triangle 2: 2, 5, 4
+        // For 3x3, quad at (1,0): base = 0*3+1 = 1 (CCW from above)
+        // Triangle 1: 1, 4, 2
+        // Triangle 2: 2, 4, 5
         let data = vec![0.0; 9];
         let hm = Heightmap::from_data(data, 3).unwrap();
         let indices = hm.generate_indices();
         // Second quad starts at index 6
         assert_eq!(indices[6], 1, "quad2 tri1[0]");
-        assert_eq!(indices[7], 2, "quad2 tri1[1]");
-        assert_eq!(indices[8], 4, "quad2 tri1[2]");
+        assert_eq!(indices[7], 4, "quad2 tri1[1]");
+        assert_eq!(indices[8], 2, "quad2 tri1[2]");
         assert_eq!(indices[9], 2, "quad2 tri2[0]");
-        assert_eq!(indices[10], 5, "quad2 tri2[1]");
-        assert_eq!(indices[11], 4, "quad2 tri2[2]");
+        assert_eq!(indices[10], 4, "quad2 tri2[1]");
+        assert_eq!(indices[11], 5, "quad2 tri2[2]");
     }
 
     #[test]
     fn z1_quad_indices_correct() {
-        // For 3x3, quad at (0,1): base = 1*3+0 = 3
+        // For 3x3, quad at (0,1): base = 1*3+0 = 3 (CCW from above)
         // Kills L302 `* → /` where base = z/resolution+x
         // With mutation: base = 1/3+0 = 0 (integer div), wrong!
         let data = vec![0.0; 9];
@@ -2590,11 +2590,11 @@ mod heightmap_generate_indices_targeted {
         let indices = hm.generate_indices();
         // Quad (0,1) is the 3rd quad (after (0,0) and (1,0)), indices 12..17
         assert_eq!(indices[12], 3, "quad(0,1) tri1[0]: base=3");
-        assert_eq!(indices[13], 4, "quad(0,1) tri1[1]: base+1=4");
-        assert_eq!(indices[14], 6, "quad(0,1) tri1[2]: base+res=6");
+        assert_eq!(indices[13], 6, "quad(0,1) tri1[1]: base+res=6");
+        assert_eq!(indices[14], 4, "quad(0,1) tri1[2]: base+1=4");
         assert_eq!(indices[15], 4, "quad(0,1) tri2[0]: base+1=4");
-        assert_eq!(indices[16], 7, "quad(0,1) tri2[1]: base+res+1=7");
-        assert_eq!(indices[17], 6, "quad(0,1) tri2[2]: base+res=6");
+        assert_eq!(indices[16], 6, "quad(0,1) tri2[1]: base+res=6");
+        assert_eq!(indices[17], 7, "quad(0,1) tri2[2]: base+res+1=7");
     }
 }
 

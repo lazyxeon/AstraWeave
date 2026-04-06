@@ -317,14 +317,14 @@ fn indices_2x2_exact() {
     let idx = hm.generate_indices();
     assert_eq!(idx.len(), 6);
     // Quad at (x=0,z=0): base = 0*2+0 = 0, resolution = 2
-    // tri1: 0, 1, 2
-    // tri2: 1, 3, 2
+    // tri1: 0, 2, 1  (CCW from above)
+    // tri2: 1, 2, 3
     assert_eq!(idx[0], 0);
-    assert_eq!(idx[1], 1);
-    assert_eq!(idx[2], 2); // base + resolution
+    assert_eq!(idx[1], 2); // base + resolution
+    assert_eq!(idx[2], 1); // base + 1
     assert_eq!(idx[3], 1);
-    assert_eq!(idx[4], 3); // base + resolution + 1
-    assert_eq!(idx[5], 2);
+    assert_eq!(idx[4], 2); // base + resolution
+    assert_eq!(idx[5], 3); // base + resolution + 1
 }
 
 #[test]
@@ -335,21 +335,21 @@ fn indices_3x3_count_and_quad_pattern() {
     let idx = hm.generate_indices();
     assert_eq!(idx.len(), 24);
 
-    // Check first quad (0,0): base=0, res=3
+    // Check first quad (0,0): base=0, res=3 (CCW from above)
     assert_eq!(idx[0], 0);
-    assert_eq!(idx[1], 1);
-    assert_eq!(idx[2], 3); // base + resolution
+    assert_eq!(idx[1], 3); // base + resolution
+    assert_eq!(idx[2], 1); // base + 1
     assert_eq!(idx[3], 1);
-    assert_eq!(idx[4], 4); // base + resolution + 1
-    assert_eq!(idx[5], 3);
+    assert_eq!(idx[4], 3); // base + resolution
+    assert_eq!(idx[5], 4); // base + resolution + 1
 
-    // Check second quad (1,0): base=1
+    // Check second quad (1,0): base=1 (CCW from above)
     assert_eq!(idx[6], 1);
-    assert_eq!(idx[7], 2);
-    assert_eq!(idx[8], 4); // 1 + 3
+    assert_eq!(idx[7], 4); // 1 + 3
+    assert_eq!(idx[8], 2); // 1 + 1
     assert_eq!(idx[9], 2);
-    assert_eq!(idx[10], 5); // 1 + 3 + 1
-    assert_eq!(idx[11], 4);
+    assert_eq!(idx[10], 4); // 1 + 3
+    assert_eq!(idx[11], 5); // 1 + 3 + 1
 }
 
 #[test]

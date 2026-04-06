@@ -35,8 +35,8 @@ fn generate_indices_2x2_grid() {
         6,
         "2x2 grid → 1 cell → 2 triangles → 6 indices"
     );
-    // base = 0*2+0 = 0
-    assert_eq!(&indices[..], &[0, 1, 2, 1, 3, 2]);
+    // base = 0*2+0 = 0  (CCW winding from above: base, base+res, base+1)
+    assert_eq!(&indices[..], &[0, 2, 1, 1, 2, 3]);
 }
 
 #[test]
@@ -87,24 +87,24 @@ fn generate_indices_3x3_specific_values() {
     let hm = make_heightmap(3);
     let indices = hm.generate_indices();
 
-    // Cell (x=0,z=0): base = 0*3+0 = 0
+    // Cell (x=0,z=0): base = 0*3+0 = 0  (CCW winding from above)
     assert_eq!(indices[0], 0); // base
-    assert_eq!(indices[1], 1); // base+1
-    assert_eq!(indices[2], 3); // base+resolution
+    assert_eq!(indices[1], 3); // base+resolution
+    assert_eq!(indices[2], 1); // base+1
 
     assert_eq!(indices[3], 1); // base+1
-    assert_eq!(indices[4], 4); // base+resolution+1
-    assert_eq!(indices[5], 3); // base+resolution
+    assert_eq!(indices[4], 3); // base+resolution
+    assert_eq!(indices[5], 4); // base+resolution+1
 
-    // Cell (x=1,z=0): base = 0*3+1 = 1
+    // Cell (x=1,z=0): base = 0*3+1 = 1  (CCW: base, base+res, base+1)
     assert_eq!(indices[6], 1);
-    assert_eq!(indices[7], 2);
-    assert_eq!(indices[8], 4);
+    assert_eq!(indices[7], 4);
+    assert_eq!(indices[8], 2);
 
-    // Cell (x=0,z=1): base = 1*3+0 = 3
+    // Cell (x=0,z=1): base = 1*3+0 = 3  (CCW: base, base+res, base+1)
     assert_eq!(indices[12], 3);
-    assert_eq!(indices[13], 4);
-    assert_eq!(indices[14], 6);
+    assert_eq!(indices[13], 6);
+    assert_eq!(indices[14], 4);
 }
 
 #[test]
@@ -122,8 +122,8 @@ fn generate_indices_row_offset_uses_multiplication() {
         "base for z=2,x=0 should be 8 (not {})",
         indices[cell_offset]
     );
-    assert_eq!(indices[cell_offset + 1], 9);
-    assert_eq!(indices[cell_offset + 2], 12); // base + resolution = 8+4
+    assert_eq!(indices[cell_offset + 1], 12); // base + resolution = 8+4
+    assert_eq!(indices[cell_offset + 2], 9);  // base + 1
 }
 
 #[test]
