@@ -4546,6 +4546,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/mesh/struct.CpuImage.html</loc>
+    <lastmod>2026-04-07</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/mesh/struct.MeshVertex.html</loc>
     <lastmod>2026-04-07</lastmod>
     <changefreq>weekly</changefreq>

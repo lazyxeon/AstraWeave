@@ -1469,9 +1469,13 @@
 <a href=#1469 id=1469 data-nosnippet>1469</a>
 <a href=#1470 id=1470 data-nosnippet>1470</a>@fragment
 <a href=#1471 id=1471 data-nosnippet>1471</a>fn fs_main(input: VertexOutput) -&gt; @location(0) vec4&lt;f32&gt; {
-<a href=#1472 id=1472 data-nosnippet>1472</a>    // Standard logic
-<a href=#1473 id=1473 data-nosnippet>1473</a>    let dir = normalize(input.world_position);
-<a href=#1474 id=1474 data-nosnippet>1474</a>    let uv = dir_to_equirect_uv(dir);
-<a href=#1475 id=1475 data-nosnippet>1475</a>    return textureSample(sky_tex, sky_samp, uv);
-<a href=#1476 id=1476 data-nosnippet>1476</a>}
-<a href=#1477 id=1477 data-nosnippet>1477</a>"#</span>;</code></pre></div></section></main></body></html>
+<a href=#1472 id=1472 data-nosnippet>1472</a>    let dir = normalize(input.world_position);
+<a href=#1473 id=1473 data-nosnippet>1473</a>    let uv = dir_to_equirect_uv(dir);
+<a href=#1474 id=1474 data-nosnippet>1474</a>    var color = textureSample(sky_tex, sky_samp, uv);
+<a href=#1475 id=1475 data-nosnippet>1475</a>    // Fade to black below/near horizon to eliminate the hard geometric
+<a href=#1476 id=1476 data-nosnippet>1476</a>    // edge of the sky sphere. The ground fill plane renders on top anyway.
+<a href=#1477 id=1477 data-nosnippet>1477</a>    let horizon_fade = smoothstep(-0.05, 0.1, dir.y);
+<a href=#1478 id=1478 data-nosnippet>1478</a>    color = vec4(color.rgb * horizon_fade, color.a);
+<a href=#1479 id=1479 data-nosnippet>1479</a>    return color;
+<a href=#1480 id=1480 data-nosnippet>1480</a>}
+<a href=#1481 id=1481 data-nosnippet>1481</a>"#</span>;</code></pre></div></section></main></body></html>

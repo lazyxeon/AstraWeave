@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["compute_tangents"],"struct":["CpuMesh","MeshVertex","MeshVertexLayout"]};
+window.SIDEBAR_ITEMS = {"fn":["compute_tangents"],"struct":["CpuImage","CpuMesh","MeshVertex","MeshVertexLayout"]};
