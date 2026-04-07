@@ -1064,17 +1064,32 @@ impl ViewportRenderer {
         false
     }
 
-    /// Load an HDRI file and apply it as the skybox background.
-    /// Not supported: skybox is handled by the engine adapter's procedural sky.
-    pub fn load_hdri(&mut self, _path: &std::path::Path) -> Result<()> {
-        Err(anyhow::anyhow!(
-            "HDRI loading not supported — use engine adapter sky presets instead"
-        ))
+    /// Load an HDRI file as the skybox background via the engine adapter.
+    pub fn load_hdri(&mut self, path: &std::path::Path) -> Result<()> {
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.load_hdri(path)
+        } else {
+            Err(anyhow::anyhow!(
+                "Engine adapter not initialized — cannot load HDRI"
+            ))
+        }
     }
 
-    /// Remove the HDRI skybox and revert to procedural gradient.
-    /// No-op: skybox is now handled by the engine adapter.
-    pub fn clear_hdri(&mut self) {}
+    /// Remove the HDRI skybox and revert to procedural sky.
+    pub fn clear_hdri(&mut self) {
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.renderer_mut().ibl_mut().mode = astraweave_render::ibl::SkyMode::Procedural {
+                last_capture_time: 0.0,
+                recapture_interval: 5.0,
+            };
+            if let Err(e) = adapter
+                .renderer_mut()
+                .bake_environment(astraweave_render::ibl::IblQuality::Medium)
+            {
+                tracing::warn!("Failed to rebake environment after HDRI clear: {e}");
+            }
+        }
+    }
 
     /// Set environment sky colors (for skybox presets, time-of-day, weather)
     pub fn set_sky_colors(
@@ -1260,13 +1275,48 @@ impl ViewportRenderer {
     /// fallback texture so terrain never renders black (the biome-tinted instance
     /// color still provides correct coloring).
     fn load_default_terrain_texture(&mut self) {
-        let candidates: &[&str] = &[
-            "assets/textures/leafy_grass_diff_4k.jpg",
-            "assets/materials/grass.png",
-            "assets/textures/grass.png",
-        ];
+        self.load_biome_terrain_texture("Grassland");
+    }
 
-        for path_str in candidates {
+    /// Load the primary albedo texture for a specific biome.
+    ///
+    /// Each biome maps to its dominant ground material texture. If the
+    /// biome-specific texture isn't found, falls back to the generic material
+    /// PNG, then to a 4x4 white texture.
+    pub fn load_biome_terrain_texture(&mut self, biome: &str) {
+        // Per-biome texture candidates: first high-res, then material PNG fallback
+        let candidates: Vec<&str> = match biome {
+            "Desert" => vec![
+                "assets/textures/aerial_beach_01_diff_4k.jpg",
+                "assets/materials/sand.png",
+            ],
+            "Mountain" => vec![
+                "assets/textures/aerial_rocks_01_diff_4k.jpg",
+                "assets/materials/mountain_rock.png",
+                "assets/materials/rock_slate.png",
+            ],
+            "Tundra" => vec!["assets/materials/snow.png", "assets/materials/ice.png"],
+            "Forest" => vec![
+                "assets/materials/forest_floor.png",
+                "assets/materials/moss.png",
+            ],
+            "Swamp" => vec!["assets/materials/mud.png", "assets/materials/dirt.png"],
+            "Beach" => vec![
+                "assets/textures/aerial_beach_01_diff_4k.jpg",
+                "assets/materials/sand.png",
+            ],
+            "River" => vec![
+                "assets/materials/gravel.png",
+                "assets/materials/cobblestone.png",
+            ],
+            _ => vec![
+                // Grassland default
+                "assets/textures/leafy_grass_diff_4k.jpg",
+                "assets/materials/grass.png",
+            ],
+        };
+
+        for path_str in &candidates {
             let path = std::path::Path::new(path_str);
             if !path.exists() {
                 continue;
@@ -1277,7 +1327,7 @@ impl ViewportRenderer {
                     let (w, h) = (rgba.width(), rgba.height());
                     if let Some(adapter) = &mut self.engine_adapter {
                         adapter.renderer_mut().set_albedo_from_rgba8(w, h, &rgba);
-                        tracing::info!("Loaded terrain texture ({w}x{h}) from {path:?}");
+                        tracing::info!("Loaded {biome} terrain texture ({w}x{h}) from {path:?}");
                     }
                     return;
                 }
@@ -1287,10 +1337,9 @@ impl ViewportRenderer {
             }
         }
 
-        // Ultimate fallback: 4x4 white texture. Biome tint on the instance color
-        // still provides correct coloring; this just prevents black terrain.
-        tracing::warn!("No terrain texture found in any candidate path — using 4x4 white fallback");
-        let white_data = vec![255u8; 4 * 4 * 4]; // 4x4 RGBA white
+        // Ultimate fallback: 4x4 white texture
+        tracing::warn!("No {biome} terrain texture found — using 4x4 white fallback");
+        let white_data = vec![255u8; 4 * 4 * 4];
         if let Some(adapter) = &mut self.engine_adapter {
             adapter
                 .renderer_mut()

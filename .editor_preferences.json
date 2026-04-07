@@ -1,7 +1,7 @@
 {
   "show_grid": true,
   "auto_save_enabled": false,
-  "auto_save_interval_secs": 3600.0,
+  "auto_save_interval_secs": 300.0,
   "auto_save_keep_count": 3,
   "auto_save_to_separate_dir": true,
   "show_hierarchy_panel": true,
@@ -9,22 +9,28 @@
   "show_console_panel": true,
   "camera": {
     "focal_point": [
-      279.31595,
-      165.46736,
-      33.56405
+      0.0,
+      11.27171,
+      0.0
     ],
-    "distance": 46.431446,
-    "yaw": 0.045398325,
-    "pitch": 0.24479632,
+    "distance": 83.62475,
+    "yaw": 0.7853982,
+    "pitch": 0.5235988,
     "fov": 60.0,
-    "aspect": 2.2076457,
-    "near": 0.01,
-    "far": 1000.0,
+    "aspect": 1.8022448,
+    "near": 0.1,
+    "far": 50000.0,
     "min_distance": 0.02,
-    "max_distance": 500.0,
+    "max_distance": 20000.0,
     "min_pitch": -1.5607964,
     "max_pitch": 1.5607964,
-    "zoom_target": 46.431446
+    "zoom_target": 83.62475,
+    "focal_point_target": [
+      0.0,
+      11.27171,
+      0.0
+    ],
+    "pitch_target": 0.5235988
   },
   "snapping": {
     "grid_size": 1.0,
@@ -32,6 +38,10 @@
     "grid_enabled": true,
     "angle_enabled": true
   },
-  "layout_json": "{\n  \"panels\": [\n    \"Console\",\n    \"Profiler\",\n    \"SceneStats\",\n    \"Performance\",\n    \"ProjectSettings\",\n    \"Hierarchy\",\n    \"Viewport\"\n  ]\n}",
-  "tutorial_completed": true
+  "layout_json": "{\n  \"panels\": [\n    \"Console\",\n    \"Profiler\",\n    \"SceneStats\",\n    \"Inspector\",\n    \"Transform\",\n    \"Hierarchy\",\n    \"AssetBrowser\",\n    \"Viewport\"\n  ]\n}",
+  "tutorial_completed": true,
+  "blend_asset_directories": [
+    "assets/blends",
+    "assets/scenes"
+  ]
 }

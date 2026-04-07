@@ -2712,6 +2712,24 @@ impl ViewportWidget {
         self.with_renderer("set_lighting_params", |r| r.set_lighting_params(params));
     }
 
+    /// Set weather type for particle effects
+    pub fn set_weather(&self, kind: astraweave_render::WeatherKind) {
+        self.with_renderer("set_weather", |r| {
+            if let Some(adapter) = r.engine_adapter_mut() {
+                adapter.set_weather(kind);
+            }
+        });
+    }
+
+    /// Tick weather particle simulation
+    pub fn tick_weather(&self, dt: f32) {
+        self.with_renderer("tick_weather", |r| {
+            if let Some(adapter) = r.engine_adapter_mut() {
+                adapter.tick_weather(dt);
+            }
+        });
+    }
+
     /// Set water level for volumetric water plane
     pub fn set_water_level(&self, level: f32) {
         self.with_renderer("set_water_level", |r| r.set_water_level(level));

@@ -3861,6 +3861,11 @@ impl EditorApp {
             let lighting_params = self.dock_tab_viewer.lighting_params();
             viewport.set_lighting_params(lighting_params);
 
+            // Sync weather type and tick particles
+            let weather_kind = self.dock_tab_viewer.weather_kind();
+            viewport.set_weather(weather_kind);
+            viewport.tick_weather(ctx.input(|i| i.stable_dt));
+
             // Only enable water plane for water-related biomes
             let biome = self.dock_tab_viewer.terrain_primary_biome();
             let water_biome = matches!(biome, "swamp" | "beach" | "river");
@@ -4756,6 +4761,25 @@ impl EditorApp {
                     let src_chunks = self.dock_tab_viewer.terrain_gpu_chunks();
                     if let Some(viewport) = &self.viewport {
                         viewport.upload_terrain_chunks_raw(&src_chunks);
+                    }
+
+                    // Load biome-appropriate albedo texture (sand for desert, snow
+                    // for tundra, etc.) instead of always using the grass default.
+                    let biome_name = self.dock_tab_viewer.terrain_primary_biome();
+                    let biome_label = match biome_name {
+                        "desert" => "Desert",
+                        "mountain" => "Mountain",
+                        "tundra" => "Tundra",
+                        "forest" => "Forest",
+                        "swamp" => "Swamp",
+                        "beach" => "Beach",
+                        "river" => "River",
+                        _ => "Grassland",
+                    };
+                    if let Some(viewport) = &self.viewport {
+                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                            renderer.load_biome_terrain_texture(biome_label);
+                        }
                     }
 
                     // Use pre-computed scatter placements from background thread

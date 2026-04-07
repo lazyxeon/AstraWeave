@@ -28,7 +28,7 @@ struct VSOut {
 struct Camera {
   view_proj: mat4x4<f32>,
   light_dir: vec3<f32>,
-  _pad: f32,
+  sun_intensity: f32,
   camera_pos: vec3<f32>,
   _pad2: f32,
 };
@@ -63,7 +63,7 @@ struct MainLightUbo {
 @group(3) @binding(4) var normal_tex: texture_2d<f32>;  // tangent-space normal in RGB
 @group(3) @binding(5) var normal_samp: sampler;
 
-// Scene environment (fog, ambient, tint) — matches SceneEnvironmentUBO (96 bytes)
+// Scene environment (fog, ambient, sun) — matches SceneEnvironmentUBO (96 bytes)
 struct SceneEnv {
     fog_color: vec3<f32>,
     fog_density: f32,
@@ -76,8 +76,8 @@ struct SceneEnv {
     tint_alpha: f32,
     blend_factor: f32,
     _pad_align: vec3<f32>,
-    _pad1: vec3<f32>,
-    _pad_struct: f32,
+    sun_color: vec3<f32>,
+    sun_intensity: f32,
 };
 @group(4) @binding(0) var<uniform> uScene: SceneEnv;
 
@@ -159,7 +159,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let kd = (vec3<f32>(1.0,1.0,1.0) - F) * (1.0 - metallic);
     let diffuse = kd * base_color / 3.14159;
 
-    let radiance = vec3<f32>(1.0, 0.98, 0.9); // dir light color
+    // Sun color and intensity from SceneEnvironment UBO (set by world panel).
+    let radiance = uScene.sun_color * uScene.sun_intensity;
         // Shadow sampling
         // Cascaded shadow mapping (2 cascades)
     let dist = length(input.world_pos);
@@ -212,8 +213,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             else { tint = vec3<f32>(1.0, 1.0, 0.0); }                        // Yellow
             base_color = mix(base_color, tint, 0.35);
         }
-    // Add a modest ambient lift to avoid overly dark scene when sun is low
-    var lit_color = (diffuse + specular) * radiance * NdotL * shadow + base_color * 0.08;
+    // Ambient lighting from scene environment.
+    let ambient_term = uScene.ambient_color * uScene.ambient_intensity;
+    var lit_color = (diffuse + specular) * radiance * NdotL * shadow + base_color * ambient_term;
     
     // Clustered point lights accumulation
     let ndc = input.clip_pos.xy / input.clip_pos.w;
@@ -239,16 +241,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     // Multiply by albedo for diffuse reflection
     lit_color = lit_color + (vxgi_light * base_color * 1.0);
 
-    // Distance fog — uses SceneEnvironmentUBO parameters.
-    // Combines linear ramp (start/end) with exponential density for soft falloff.
+    // Distance fog — exponential with start distance threshold.
+    // Only applies beyond fog_start to keep near geometry crisp.
     let view_dist = length(input.world_pos - uCamera.camera_pos);
-    let linear_fog = clamp(
-        (view_dist - uScene.fog_start) / max(uScene.fog_end - uScene.fog_start, 1.0),
-        0.0,
-        1.0,
-    );
-    let exp_fog = 1.0 - exp(-uScene.fog_density * view_dist);
-    let fog_amount = max(linear_fog, exp_fog);
+    let effective_dist = max(view_dist - uScene.fog_start, 0.0);
+    let fog_amount = 1.0 - exp(-uScene.fog_density * effective_dist);
     lit_color = mix(lit_color, uScene.fog_color, fog_amount);
 
     return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);

@@ -319,7 +319,8 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
     );
     var out: VSOut;
     out.pos = vec4<f32>(pos[vid], 0.0, 1.0);
-    out.uv = (pos[vid] + vec2<f32>(1.0,1.0)) * 0.5;
+    // Flip UV.y: wgpu NDC Y+ is screen-top, texture V=0 is top.
+    out.uv = vec2<f32>((pos[vid].x + 1.0) * 0.5, (1.0 - pos[vid].y) * 0.5);
     return out;
 }
 
@@ -374,7 +375,8 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
     );
     var out: VSOut;
     out.pos = vec4<f32>(pos[vid], 0.0, 1.0);
-    out.uv = (pos[vid] + vec2<f32>(1.0,1.0)) * 0.5;
+    // Flip UV.y: wgpu NDC Y+ is screen-top, texture V=0 is top.
+    out.uv = vec2<f32>((pos[vid].x + 1.0) * 0.5, (1.0 - pos[vid].y) * 0.5);
     return out;
 }
 
@@ -540,6 +542,10 @@ pub struct Renderer {
     models: std::collections::HashMap<String, RenderModel>,
 
     instances: Vec<Instance>,
+
+    /// Optional light direction/intensity override from the editor's world panel.
+    /// When Some, `update_camera_matrices` uses this instead of TimeOfDay.
+    light_override: Option<([f32; 3], f32)>,
     instance_buf: wgpu::Buffer,
 
     #[allow(dead_code)]
@@ -1801,7 +1807,9 @@ struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
     var p = array<vec2<f32>, 3>(vec2(-1.0,-3.0), vec2(3.0,1.0), vec2(-1.0,1.0));
     var out: VSOut;
     out.pos = vec4<f32>(p[vid], 0.0, 1.0);
-    out.uv = (p[vid] + vec2(1.0,1.0)) * 0.5;
+    // Flip UV.y: wgpu NDC Y+ is top, but texture V=0 is top.
+    // Without the flip the blit renders the scene upside-down.
+    out.uv = vec2((p[vid].x + 1.0) * 0.5, (1.0 - p[vid].y) * 0.5);
     return out;
 }
 @group(0) @binding(0) var hdr_tex: texture_2d<f32>;
@@ -2926,6 +2934,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             mesh_external: None,
             models: std::collections::HashMap::new(),
             instances: Vec::new(),
+            light_override: None,
             instance_buf,
             overlay,
             overlay_params,
@@ -3278,6 +3287,14 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         &mut self.scene_env
     }
 
+    /// Override the directional light direction and sun intensity.
+    ///
+    /// Used by the editor to apply the world panel's sun settings instead of the
+    /// internal TimeOfDay system. The intensity is packed into `light_dir_pad[3]`.
+    pub fn set_light_direction_override(&mut self, dir: glam::Vec3, intensity: f32) {
+        self.light_override = Some(([dir.x, dir.y, dir.z], intensity));
+    }
+
     /// Get the GPU-ready scene environment UBO for the current frame.
     ///
     /// This applies weather multipliers and returns the final uniform buffer
@@ -3507,8 +3524,15 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         self.cached_proj = proj;
         let vp = proj * view;
         self.camera_ubo.view_proj = vp.to_cols_array_2d();
-        let light_dir = self.sky.time_of_day().get_light_direction();
-        self.camera_ubo.light_dir_pad = [light_dir.x, light_dir.y, light_dir.z, 0.0];
+
+        // Use the editor's light override if set, otherwise fall back to TimeOfDay.
+        let (light_dir, sun_intensity) = if let Some((dir, intensity)) = self.light_override {
+            (glam::Vec3::from(dir), intensity)
+        } else {
+            (self.sky.time_of_day().get_light_direction(), 1.0)
+        };
+        self.camera_ubo.light_dir_pad = [light_dir.x, light_dir.y, light_dir.z, sun_intensity];
+
         self.camera_ubo.camera_pos_pad = [position.x, position.y, position.z, 0.0];
         self.queue
             .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&self.camera_ubo));
@@ -4381,9 +4405,6 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&vis_raws));
         }
 
-        // Skip built-in ground plane when terrain chunks are loaded (prevents Z-fighting)
-        let has_terrain = self.models.keys().any(|k| k.starts_with("terrain_chunk_"));
-
         // Shadow passes — one per cascade layer.
         // Each pass uses its own pre-written cascade buffer (shadow_cascade_bgs)
         // so both passes read the correct view-projection matrix.
@@ -4407,15 +4428,14 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             });
             sp.set_pipeline(&self.shadow_pipeline);
             sp.set_bind_group(0, &self.shadow_cascade_bgs[idx], &[]);
-            if !has_terrain {
-                sp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
-                sp.set_index_buffer(
-                    self.mesh_plane.index_buf.slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
-                sp.set_vertex_buffer(1, self.plane_inst_buf.slice(..));
-                sp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
-            }
+            // Ground fill plane always renders in shadow pass
+            sp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
+            sp.set_index_buffer(
+                self.mesh_plane.index_buf.slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
+            sp.set_vertex_buffer(1, self.plane_inst_buf.slice(..));
+            sp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
             // Draw sphere instances into shadow map (aligned with render() path)
             sp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
             sp.set_index_buffer(
@@ -4515,16 +4535,16 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             rp.set_bind_group(4, &self.scene_env_bg, &[]);
             rp.set_bind_group(5, &self.ibl_bind_group, &[]);
 
-            // Ground plane — skip when terrain chunks are loaded to prevent Z-fighting
-            if !has_terrain {
-                rp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
-                rp.set_index_buffer(
-                    self.mesh_plane.index_buf.slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
-                rp.set_vertex_buffer(1, plane_buf.slice(..));
-                rp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
-            }
+            // Ground fill plane — always rendered.
+            // When terrain is loaded, set_terrain_ground_plane() repositions it
+            // below the terrain to block sky bleed-through.
+            rp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
+            rp.set_index_buffer(
+                self.mesh_plane.index_buf.slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
+            rp.set_vertex_buffer(1, plane_buf.slice(..));
+            rp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
 
             // Tokens as spheres - TEST 6
             rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
@@ -4582,6 +4602,19 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             // Render water (transparent, after all opaque objects) — aligned with render()
             if let Some(ref water) = self.water_renderer {
                 water.render(&mut rp);
+            }
+
+            // Weather particles — render as instanced spheres after transparent objects.
+            // Uses the same pipeline and mesh_sphere as regular instances.
+            let weather_count = self.weather.particle_count() as u32;
+            if weather_count > 0 {
+                rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
+                rp.set_index_buffer(
+                    self.mesh_sphere.index_buf.slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                rp.set_vertex_buffer(1, self.weather.buffer().slice(..));
+                rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
             }
         }
 
@@ -5225,6 +5258,38 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     /// Remove a named model.
     pub fn clear_model(&mut self, name: &str) {
         self.models.remove(name);
+    }
+
+    /// Reposition the ground fill plane for terrain mode.
+    ///
+    /// Places the plane at `y_offset` (below terrain minimum) with a large
+    /// scale to block the sky dome from showing through gaps. A dark ground
+    /// color prevents the "inverted sky" appearance.
+    pub fn set_terrain_ground_plane(&mut self, y_offset: f32, half_extent: f32) {
+        let xform = glam::Mat4::from_translation(glam::vec3(0.0, y_offset, 0.0))
+            * glam::Mat4::from_scale(glam::vec3(half_extent, 1.0, half_extent));
+        let inst = Instance {
+            transform: xform,
+            color: [0.08, 0.09, 0.07, 1.0], // dark earth tone
+            material_id: 0,
+        }
+        .raw();
+        self.queue
+            .write_buffer(&self.plane_inst_buf, 0, bytemuck::bytes_of(&inst));
+    }
+
+    /// Reset the ground fill plane to its default position and scale.
+    pub fn reset_ground_plane(&mut self) {
+        let xform = glam::Mat4::from_translation(glam::vec3(0.0, -0.2, 0.0))
+            * glam::Mat4::from_scale(glam::vec3(50.0, 1.0, 50.0));
+        let inst = Instance {
+            transform: xform,
+            color: [0.1, 0.12, 0.14, 1.0],
+            material_id: 0,
+        }
+        .raw();
+        self.queue
+            .write_buffer(&self.plane_inst_buf, 0, bytemuck::bytes_of(&inst));
     }
 
     /// Check if a named model exists.

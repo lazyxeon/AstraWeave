@@ -1433,6 +1433,16 @@ impl EditorTabViewer {
         )
     }
 
+    /// Map the world weather preset index to an engine WeatherKind.
+    pub fn weather_kind(&self) -> astraweave_render::WeatherKind {
+        match self.world_weather_preset {
+            2 | 3 => astraweave_render::WeatherKind::Rain, // Rain, Storm
+            4 => astraweave_render::WeatherKind::Snow,
+            6 => astraweave_render::WeatherKind::Sandstorm,
+            _ => astraweave_render::WeatherKind::None, // Clear, Cloudy, Fog
+        }
+    }
+
     /// Returns lighting parameters for the terrain shader.
     pub fn lighting_params(&self) -> crate::viewport::types::TerrainLightingParams {
         sky_colors::lighting_params(
@@ -4475,7 +4485,7 @@ impl TabViewer for EditorTabViewer {
                         ui.horizontal(|ui| {
                             ui.label("Sun Elevation:");
                             ui.add(
-                                egui::Slider::new(&mut self.world_sun_elevation, 5.0..=90.0)
+                                egui::Slider::new(&mut self.world_sun_elevation, 15.0..=85.0)
                                     .suffix("°")
                                     .text(""),
                             );
@@ -4530,7 +4540,7 @@ impl TabViewer for EditorTabViewer {
                             }
                             if ui.small_button("Golden Hour").clicked() {
                                 self.world_sun_intensity = 1.2;
-                                self.world_sun_elevation = 15.0;
+                                self.world_sun_elevation = 20.0;
                                 self.world_sun_azimuth = 260.0;
                                 self.world_ambient_intensity = 0.30;
                                 self.world_exposure = 0.85;

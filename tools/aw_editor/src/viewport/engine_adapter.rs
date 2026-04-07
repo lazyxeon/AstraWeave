@@ -479,6 +479,36 @@ impl EngineRenderAdapter {
         self.terrain_total_indices = chunks.iter().map(|(_, idx)| idx.len()).sum();
         self.terrain_total_triangles = self.terrain_total_indices / 3;
 
+        // Position ground fill plane below all terrain to block sky bleed-through.
+        // Compute global min Y and max XZ extent across all chunks.
+        let mut global_min_y = f32::MAX;
+        let mut global_max_extent: f32 = 50.0;
+        for (verts, _) in chunks {
+            for v in verts {
+                global_min_y = global_min_y.min(v.position[1]);
+                global_max_extent = global_max_extent
+                    .max(v.position[0].abs())
+                    .max(v.position[2].abs());
+            }
+        }
+        if global_min_y < f32::MAX {
+            let ground_y = global_min_y - 5.0; // 5 units below lowest terrain point
+            let extent = global_max_extent + 100.0; // generous overshoot
+            self.renderer.set_terrain_ground_plane(ground_y, extent);
+
+            // Scale fog parameters for the terrain extent so distant chunks
+            // fade gently rather than disappearing into a wall of white.
+            let env = self.renderer.scene_environment_mut();
+            env.visuals.fog_start = extent * 0.4; // fog begins at 40% of terrain extent
+            env.visuals.fog_density = 0.5 / extent; // ~50% fog at the far edge
+            tracing::debug!(
+                "Ground fill plane set at Y={ground_y:.1}, extent={extent:.0}, \
+                 fog_start={:.0}, fog_density={:.5}",
+                env.visuals.fog_start,
+                env.visuals.fog_density,
+            );
+        }
+
         tracing::debug!(
             "Uploaded {} terrain chunks ({} triangles) to engine renderer",
             self.terrain_model_names.len(),
@@ -507,17 +537,20 @@ impl EngineRenderAdapter {
     }
 
     /// Map a biome ID (0-7) to an instance tint color.
+    ///
+    /// These multiply with the albedo texture (PBR shader: `base_color *= input.color`),
+    /// so values should be near 1.0 with a slight color bias — not dark colors.
     fn biome_id_to_tint(biome_id: u32) -> [f32; 4] {
         match biome_id {
-            0 => [0.45, 0.65, 0.25, 1.0], // Grassland — green
-            1 => [0.85, 0.75, 0.50, 1.0], // Desert — sandy
-            2 => [0.25, 0.45, 0.15, 1.0], // Forest — dark green
-            3 => [0.55, 0.55, 0.50, 1.0], // Mountain — gray-brown
-            4 => [0.90, 0.92, 0.95, 1.0], // Tundra — near-white
-            5 => [0.35, 0.40, 0.20, 1.0], // Swamp — muddy green
-            6 => [0.90, 0.85, 0.65, 1.0], // Beach — light sand
-            7 => [0.40, 0.55, 0.45, 1.0], // River — blue-green
-            _ => [0.50, 0.50, 0.50, 1.0], // Unknown — neutral gray
+            0 => [0.80, 1.00, 0.70, 1.0], // Grassland — warm green boost
+            1 => [1.10, 1.00, 0.75, 1.0], // Desert — warm sandy shift
+            2 => [0.60, 0.85, 0.50, 1.0], // Forest — deeper green
+            3 => [0.85, 0.85, 0.80, 1.0], // Mountain — cool gray
+            4 => [1.05, 1.05, 1.10, 1.0], // Tundra — cool bright
+            5 => [0.70, 0.80, 0.55, 1.0], // Swamp — olive
+            6 => [1.10, 1.05, 0.85, 1.0], // Beach — warm sand
+            7 => [0.75, 0.90, 0.85, 1.0], // River — cool blue-green
+            _ => [0.90, 0.90, 0.90, 1.0], // Unknown — neutral
         }
     }
 
@@ -528,6 +561,9 @@ impl EngineRenderAdapter {
         }
         self.terrain_total_triangles = 0;
         self.terrain_total_indices = 0;
+        self.terrain_cached_indices.clear();
+        // Restore default ground plane position
+        self.renderer.reset_ground_plane();
     }
 
     /// Get the number of terrain chunks currently loaded in the engine.
@@ -618,7 +654,15 @@ impl EngineRenderAdapter {
             groups.entry(p.mesh_key.clone()).or_default().push(p);
         }
 
+        let mut loaded_groups = 0u32;
         for (key, items) in &groups {
+            // Only render scatter groups that have real glTF mesh assets on disk.
+            let mesh_path = &items[0].mesh_path;
+            if !std::path::Path::new(mesh_path).exists() {
+                tracing::debug!("Scatter: skipping '{key}' — mesh not found: {mesh_path}");
+                continue;
+            }
+
             let name = format!("scatter_{key}");
 
             // Build instances from placements
@@ -638,56 +682,42 @@ impl EngineRenderAdapter {
                 })
                 .collect();
 
-            // If the model doesn't exist yet, create a placeholder mesh.
-            // In the full pipeline, the mesh would be loaded from the glTF path.
-            if !self.renderer.has_model(&name) {
-                // Use a unit cube as placeholder — the actual glTF loading happens
-                // through load_gltf_model when assets are available.
-                let mesh = self.renderer.create_mesh_from_arrays(
-                    &[
-                        [-0.5, -0.5, -0.5],
-                        [0.5, -0.5, -0.5],
-                        [0.5, 0.5, -0.5],
-                        [-0.5, 0.5, -0.5],
-                        [-0.5, -0.5, 0.5],
-                        [0.5, -0.5, 0.5],
-                        [0.5, 0.5, 0.5],
-                        [-0.5, 0.5, 0.5],
-                    ],
-                    &[
-                        [0.0, 0.0, -1.0],
-                        [0.0, 0.0, -1.0],
-                        [0.0, 0.0, -1.0],
-                        [0.0, 0.0, -1.0],
-                        [0.0, 0.0, 1.0],
-                        [0.0, 0.0, 1.0],
-                        [0.0, 0.0, 1.0],
-                        [0.0, 0.0, 1.0],
-                    ],
-                    &[
-                        0, 1, 2, 2, 3, 0, // front
-                        4, 6, 5, 6, 4, 7, // back
-                        0, 3, 7, 7, 4, 0, // left
-                        1, 5, 6, 6, 2, 1, // right
-                        3, 2, 6, 6, 7, 3, // top
-                        0, 4, 5, 5, 1, 0, // bottom
-                    ],
-                );
-                self.renderer.add_model(&name, mesh, &instances);
-            } else {
-                self.renderer.update_instances(&instances);
+            // Load glTF mesh and add as instanced model with all placements.
+            // Wrapped in catch_unwind to prevent a single bad asset from
+            // crashing the entire editor (some .gltf files reference missing
+            // textures or have incompatible formats).
+            let path = std::path::Path::new(mesh_path);
+            let load_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let opts = astraweave_render::mesh_gltf::GltfOptions::default();
+                astraweave_render::mesh_gltf::load_gltf(path, &opts)
+            }));
+            match load_result {
+                Ok(Ok(cpu_meshes)) if !cpu_meshes.is_empty() => {
+                    let mesh = self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0]);
+                    self.renderer.add_model(&name, mesh, &instances);
+                    self.scatter_model_names.push(name);
+                    loaded_groups += 1;
+                }
+                Ok(Ok(_)) => {
+                    tracing::debug!("Scatter: '{key}' glTF has no meshes: {mesh_path}");
+                }
+                Ok(Err(e)) => {
+                    tracing::debug!("Scatter: skipping '{key}' — glTF load failed: {e}");
+                }
+                Err(_) => {
+                    tracing::warn!("Scatter: '{key}' glTF load panicked — skipping: {mesh_path}");
+                }
             }
-
-            self.scatter_model_names.push(name);
         }
 
         self.scatter_placement_count = placements.len();
-        self.scatter_draw_call_count = groups.len() as u32;
+        self.scatter_draw_call_count = loaded_groups;
 
         tracing::debug!(
-            "Uploaded {} scatter groups ({} total placements) to engine renderer",
+            "Scatter: {loaded_groups}/{} groups loaded ({} placements, {} skipped without mesh)",
             groups.len(),
-            placements.len()
+            placements.len(),
+            groups.len() as u32 - loaded_groups,
         );
     }
 
@@ -715,6 +745,21 @@ impl EngineRenderAdapter {
     /// Set the sky configuration on the engine renderer.
     pub fn set_sky_config(&mut self, cfg: astraweave_render::SkyConfig) {
         self.renderer.set_sky_config(cfg);
+    }
+
+    /// Load an HDRI file as the skybox and rebake IBL environment maps.
+    pub fn load_hdri(&mut self, path: &std::path::Path) -> Result<()> {
+        let path_str = path.to_string_lossy().to_string();
+        tracing::info!("Loading HDRI skybox from: {path_str}");
+        self.renderer.ibl_mut().mode = astraweave_render::ibl::SkyMode::HdrPath {
+            biome: "editor".to_string(),
+            path: path_str,
+        };
+        self.renderer
+            .bake_environment(astraweave_render::ibl::IblQuality::Medium)
+            .context("Failed to bake HDRI environment")?;
+        tracing::info!("HDRI skybox loaded and IBL baked successfully");
+        Ok(())
     }
 
     /// Get the current sky configuration.
@@ -756,12 +801,23 @@ impl EngineRenderAdapter {
         }
     }
 
-    /// Apply lighting parameters to the engine's scene environment.
+    /// Apply lighting parameters to the engine's scene environment and camera UBO.
+    ///
+    /// Updates ambient lighting in the SceneEnvironment, and overrides the
+    /// sun direction + intensity in the CameraUBO so the PBR shader uses
+    /// the world panel's lighting settings instead of the internal TimeOfDay.
     pub fn set_lighting_params(&mut self, params: &TerrainLightingParams) {
         let env = self.renderer.scene_environment_mut();
         env.visuals.ambient_color = glam::Vec3::from(params.ambient_color);
         env.visuals.ambient_intensity = params.ambient_intensity;
-        // Fog color can also be influenced by lighting for consistency
+        env.sun_color = params.sun_color;
+        env.sun_intensity = params.sun_intensity;
+
+        // Override the camera UBO's light direction so the PBR shader uses the
+        // world panel's sun settings instead of the internal TimeOfDay system.
+        let dir = glam::Vec3::from(params.sun_dir).normalize();
+        self.renderer
+            .set_light_direction_override(dir, params.sun_intensity);
     }
 
     /// Set water configuration on the engine renderer.

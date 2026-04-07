@@ -107,6 +107,11 @@ impl WeatherFx {
         self.wind_dir
     }
 
+    /// Number of active particles for instanced drawing.
+    pub fn particle_count(&self) -> usize {
+        self.particles.len()
+    }
+
     pub fn update(&mut self, queue: &wgpu::Queue, dt: f32) {
         let effective_max = ((self.max as f32) * self.density).max(1.0) as usize;
         match self.kind {

@@ -67,10 +67,10 @@ pub struct SceneEnvironmentUBO {
     /// Padding to align `_pad1` to 16-byte boundary (WGSL vec3 alignment).
     pub _pad_align: [f32; 3],
 
-    /// Matches `_pad1: vec3<f32>` in WGSL shader.
-    pub _pad1: [f32; 3],
-    /// Padding to round struct size to 96 bytes (multiple of 16).
-    pub _pad_struct: f32,
+    /// Sun color (linear RGB) for directional light in PBR shader.
+    pub sun_color: [f32; 3],
+    /// Sun intensity multiplier for directional light.
+    pub sun_intensity: f32,
 }
 
 impl Default for SceneEnvironmentUBO {
@@ -99,8 +99,8 @@ impl SceneEnvironmentUBO {
             tint_alpha,
             blend_factor,
             _pad_align: [0.0; 3],
-            _pad1: [0.0; 3],
-            _pad_struct: 0.0,
+            sun_color: [1.0, 0.98, 0.9], // warm white default
+            sun_intensity: 1.0,
         }
     }
 
@@ -147,6 +147,10 @@ pub struct SceneEnvironment {
     pub weather_fog_multiplier: f32,
     /// Optional weather ambient override (multiplied with biome ambient).
     pub weather_ambient_multiplier: f32,
+    /// Directional sun color (set by editor world panel).
+    pub sun_color: [f32; 3],
+    /// Directional sun intensity (set by editor world panel).
+    pub sun_intensity: f32,
 }
 
 impl Default for SceneEnvironment {
@@ -158,6 +162,8 @@ impl Default for SceneEnvironment {
             tint_alpha: 0.0,
             weather_fog_multiplier: 1.0,
             weather_ambient_multiplier: 1.0,
+            sun_color: [1.0, 0.98, 0.9],
+            sun_intensity: 1.0,
         }
     }
 }
@@ -184,12 +190,15 @@ impl SceneEnvironment {
         let mut visuals = self.visuals;
         visuals.fog_density *= self.weather_fog_multiplier;
         visuals.ambient_intensity *= self.weather_ambient_multiplier;
-        SceneEnvironmentUBO::from_visuals(
+        let mut ubo = SceneEnvironmentUBO::from_visuals(
             &visuals,
             self.blend_factor,
             self.tint_color,
             self.tint_alpha,
-        )
+        );
+        ubo.sun_color = self.sun_color;
+        ubo.sun_intensity = self.sun_intensity;
+        ubo
     }
 
     /// Apply weather-driven fog and ambient multipliers from a [`WeatherKind`].

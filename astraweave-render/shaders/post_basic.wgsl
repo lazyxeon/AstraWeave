@@ -8,7 +8,7 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
     );
     var out: VSOut;
     out.pos = vec4<f32>(pos[vid], 0.0, 1.0);
-    out.uv = (pos[vid] + vec2<f32>(1.0,1.0)) * 0.5;
+    out.uv = vec2<f32>((pos[vid].x + 1.0) * 0.5, (1.0 - pos[vid].y) * 0.5);
     return out;
 }
 

@@ -385,12 +385,14 @@ impl TerrainState {
         for z in 0..resolution {
             for x in 0..resolution {
                 let biome_idx = z * resolution + x;
-                let height = heights[biome_idx];
+                // Bounds-safe access: fall back to 0 height / up normal
+                // if vectors are unexpectedly short (defensive against biome edge cases).
+                let height = heights.get(biome_idx).copied().unwrap_or(0.0);
 
                 let world_x = world_offset.x + x as f32 * cell_size;
                 let world_z = world_offset.z + z as f32 * cell_size;
 
-                let normal = normals[biome_idx];
+                let normal = normals.get(biome_idx).copied().unwrap_or(Vec3::Y);
 
                 // Fallback uses the primary biome (e.g., Desert=index 1) not Grassland
                 let primary_biome_id = Self::biome_to_id(primary_biome) as usize;
@@ -442,6 +444,70 @@ impl TerrainState {
                 indices.push(bottom_right);
             }
         }
+
+        // ── Edge skirts ────────────────────────────────────────────────
+        // Drop each boundary vertex downward to create a "curtain" that
+        // hides gaps between adjacent chunks and prevents the sky dome
+        // from showing through the thin heightmap surface edges.
+        let skirt_drop = chunk_size * 0.15; // 15% of chunk size
+        let surface_vert_count = vertices.len() as u32;
+
+        // Helper: duplicate a surface vertex with Y lowered by skirt_drop
+        // and normal pointing outward along the edge.
+        let add_skirt = |vertices: &mut Vec<TerrainVertex>,
+                         indices: &mut Vec<u32>,
+                         edge_indices: &[u32],
+                         outward_normal: [f32; 3]| {
+            let base = vertices.len() as u32;
+            for &ei in edge_indices {
+                let sv = vertices[ei as usize];
+                vertices.push(TerrainVertex::new(
+                    [sv.position[0], sv.position[1] - skirt_drop, sv.position[2]],
+                    outward_normal,
+                    sv.uv,
+                    sv.biome_weights_0,
+                    sv.biome_weights_1,
+                    sv.material_ids,
+                    sv.material_weights,
+                ));
+            }
+            // Create quad strip: surface[i] → skirt[i] → surface[i+1] → skirt[i+1]
+            for i in 0..(edge_indices.len() - 1) {
+                let s0 = edge_indices[i];
+                let s1 = edge_indices[i + 1];
+                let k0 = base + i as u32;
+                let k1 = base + i as u32 + 1;
+                // Two triangles per quad segment
+                indices.push(s0);
+                indices.push(k0);
+                indices.push(s1);
+                indices.push(s1);
+                indices.push(k0);
+                indices.push(k1);
+            }
+        };
+
+        // Bottom edge (z=0): normal points -Z
+        let bottom_edge: Vec<u32> = (0..resolution).map(|x| x as u32).collect();
+        add_skirt(&mut vertices, &mut indices, &bottom_edge, [0.0, 0.0, -1.0]);
+
+        // Top edge (z=resolution-1): normal points +Z
+        let top_edge: Vec<u32> = (0..resolution)
+            .map(|x| ((resolution - 1) * resolution + x) as u32)
+            .collect();
+        add_skirt(&mut vertices, &mut indices, &top_edge, [0.0, 0.0, 1.0]);
+
+        // Left edge (x=0): normal points -X
+        let left_edge: Vec<u32> = (0..resolution).map(|z| (z * resolution) as u32).collect();
+        add_skirt(&mut vertices, &mut indices, &left_edge, [-1.0, 0.0, 0.0]);
+
+        // Right edge (x=resolution-1): normal points +X
+        let right_edge: Vec<u32> = (0..resolution)
+            .map(|z| (z * resolution + resolution - 1) as u32)
+            .collect();
+        add_skirt(&mut vertices, &mut indices, &right_edge, [1.0, 0.0, 0.0]);
+
+        let _ = surface_vert_count; // suppress unused warning
 
         (vertices, indices)
     }
