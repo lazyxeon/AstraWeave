@@ -599,6 +599,7 @@ mod tests {
                 height: 2048,
             }],
             materials: vec!["Boulder_Mat".to_string()],
+            material_descs: vec![],
             collections: vec!["Rocks".to_string()],
         };
 

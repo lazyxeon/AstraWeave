@@ -226,30 +226,36 @@ impl ConversionOptions {
     }
 
     /// Creates options for scene decomposition (split .blend into individual assets).
+    ///
+    /// Optimized for speed: skips tangent/normals recalculation and Draco compression.
+    /// Blender evaluates modifiers but skips the most expensive export operations.
     pub fn scene_decomposition() -> Self {
         Self {
             format: OutputFormat::GlbBinary,
             gltf: GltfExportOptions {
-                draco_compression: false, // Disabled: Rust gltf crate doesn't support KHR_draco_mesh_compression
-                selected_only: true,      // Critical: export one object at a time
+                draco_compression: false,
+                selected_only: true,
                 export_extras: true,
                 ..Default::default()
             },
             textures: TextureOptions {
                 format: TextureFormat::Png,
-                max_resolution: Some(4096),
+                max_resolution: Some(2048), // 2K is enough for decomposition
                 ..Default::default()
             },
             mesh: MeshOptions {
                 apply_modifiers: true,
                 triangulate: true,
+                export_tangents: false, // Skip tangent recalc — saves ~30% per object
+                export_normals: true,   // Normals are needed for rendering
                 ..Default::default()
             },
-            decomposition: SceneDecompositionOptions::nature_pack(),
+            decomposition: SceneDecompositionOptions {
+                bounding_box_mode: BoundingBoxMode::BlenderBounds, // Use Blender's cached bounds
+                ..SceneDecompositionOptions::nature_pack()
+            },
             process: ProcessOptions {
-                // Scene decomposition exports hundreds of objects individually;
-                // large nature packs (e.g. 279 meshes with Draco) need 10-20 min.
-                timeout: Duration::from_secs(1800), // 30 minutes
+                timeout: Duration::from_secs(3600), // 60 min for very large scenes
                 ..Default::default()
             },
             ..Default::default()

@@ -990,15 +990,14 @@ def should_exclude(name):
 
 
 def get_vertex_count(obj):
-    """Get the vertex count of a mesh object."""
+    """Get the vertex count of a mesh object.
+
+    Uses the mesh data directly (without depsgraph evaluation) for speed.
+    Falls back to 0 if the mesh has no data.
+    """
     if obj.type != 'MESH' or obj.data is None:
         return 0
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    eval_obj = obj.evaluated_get(depsgraph)
-    mesh = eval_obj.to_mesh()
-    count = len(mesh.vertices) if mesh else 0
-    eval_obj.to_mesh_clear()
-    return count
+    return len(obj.data.vertices)
 
 
 def main():
@@ -1080,10 +1079,9 @@ def main():
 
             vert_count = get_vertex_count(obj)
             if vert_count < MIN_VERTEX_COUNT:
-                print(f"Skipping {obj.name}: only {vert_count} vertices")
                 continue
 
-            objects_to_export.append(obj)
+            objects_to_export.append((obj, vert_count))
 
         print(f"Found {len(objects_to_export)} mesh objects to export")
 
@@ -1097,7 +1095,7 @@ def main():
         export_errors = []
         skipped_instances = 0
         export_start = time.time()
-        for idx, obj in enumerate(objects_to_export):
+        for idx, (obj, vert_count) in enumerate(objects_to_export):
             safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in obj.name)
             ext = "glb" if OUTPUT_FORMAT == "GLB" else "gltf"
             mesh_filename = f"{safe_name}.{ext}"
@@ -1142,7 +1140,8 @@ def main():
 
             obj_start = time.time()
             elapsed = obj_start - export_start
-            print(f"[{idx+1}/{len(objects_to_export)}] Exporting: {obj.name} -> {mesh_filename} ({elapsed:.0f}s elapsed)")
+            pct = int(100 * (idx + 1) / len(objects_to_export))
+            print(f"[{idx+1}/{len(objects_to_export)}] ({pct}%) Exporting: {obj.name} -> {mesh_filename} ({elapsed:.0f}s elapsed)")
 
             try:
                 export_single_object(obj, mesh_path)
@@ -1162,7 +1161,6 @@ def main():
             print(f"  -> {file_size/1024/1024:.1f} MB in {obj_elapsed:.1f}s")
 
             # Register this mesh datablock as exported
-            vert_count = get_vertex_count(obj)
             if mesh_data_name:
                 exported_meshdata[mesh_data_name] = (f"meshes/{mesh_filename}", file_size, vert_count)
 

@@ -725,6 +725,7 @@ mod tests {
                     height: 256,
                 }],
                 materials: vec!["TestMaterial".to_string()],
+                material_descs: vec![],
                 collections: vec![],
             }],
             empties: vec![],

@@ -13,6 +13,7 @@ AstraWeave is a **scientific proof of concept**: a production-grade AI-native ga
 3. **Exhaustive Testing**: "It compiles" is insufficient. Verify through tests, benchmarks, and validation.
 4. **Production Ready**: No toy code. All systems must be scalable, performant, and secure.
 5. **Maintain Context**: Read `docs/current/PROJECT_STATUS.md` at the start of every session before doing any work.
+6. **Pre-Existing Issues**: Never Ignore or defer pre-existing issues when found, fix all issues found to production ready standards.
 
 ### Scope Discipline
 
