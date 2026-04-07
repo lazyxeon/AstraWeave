@@ -694,7 +694,19 @@ impl EngineRenderAdapter {
             match load_result {
                 Ok(Ok(cpu_meshes)) if !cpu_meshes.is_empty() => {
                     let mesh = self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0]);
-                    self.renderer.add_model(&name, mesh, &instances);
+                    // Use per-model texture if the glTF had an embedded albedo
+                    if let Some(ref img) = cpu_meshes[0].albedo_image {
+                        self.renderer.add_model_with_texture(
+                            &name,
+                            mesh,
+                            &instances,
+                            img.width,
+                            img.height,
+                            &img.pixels,
+                        );
+                    } else {
+                        self.renderer.add_model(&name, mesh, &instances);
+                    }
                     self.scatter_model_names.push(name);
                     loaded_groups += 1;
                 }
@@ -791,13 +803,15 @@ impl EngineRenderAdapter {
     // ── Fog / lighting ──────────────────────────────────────────────────
 
     /// Apply fog parameters to the engine's scene environment.
+    ///
+    /// Only overwrites fog when the world panel's fog toggle is enabled.
+    /// When disabled, terrain-scaled fog values (set by `upload_terrain_chunks`)
+    /// are preserved.
     pub fn set_fog_params(&mut self, params: &TerrainFogParams) {
-        let env = self.renderer.scene_environment_mut();
         if params.fog_enabled {
+            let env = self.renderer.scene_environment_mut();
             env.visuals.fog_density = params.fog_density;
             env.visuals.fog_color = glam::Vec3::from(params.fog_color);
-        } else {
-            env.visuals.fog_density = 0.0;
         }
     }
 

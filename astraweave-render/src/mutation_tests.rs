@@ -1186,7 +1186,11 @@ mod mesh_tests {
         ];
         let indices = vec![0, 1, 2];
 
-        let mesh = CpuMesh { vertices, indices };
+        let mesh = CpuMesh {
+            vertices,
+            indices,
+            albedo_image: None,
+        };
         assert_eq!(mesh.vertices.len(), 3);
         assert_eq!(mesh.indices.len(), 3);
     }
@@ -1215,7 +1219,11 @@ mod mesh_tests {
         ];
         let indices = vec![0, 1, 2];
 
-        let mut mesh = CpuMesh { vertices, indices };
+        let mut mesh = CpuMesh {
+            vertices,
+            indices,
+            albedo_image: None,
+        };
         compute_tangents(&mut mesh);
 
         // Tangents should be computed (not zero)
@@ -1251,7 +1259,11 @@ mod mesh_tests {
         ];
         let indices = vec![0, 1, 2];
 
-        let mut mesh = CpuMesh { vertices, indices };
+        let mut mesh = CpuMesh {
+            vertices,
+            indices,
+            albedo_image: None,
+        };
         compute_tangents(&mut mesh);
 
         // Tangents should be roughly orthogonal to normals
@@ -1291,7 +1303,11 @@ mod mesh_tests {
         ];
         let indices = vec![0, 1, 2];
 
-        let mut mesh = CpuMesh { vertices, indices };
+        let mut mesh = CpuMesh {
+            vertices,
+            indices,
+            albedo_image: None,
+        };
         compute_tangents(&mut mesh);
 
         // Handedness (w component) should be +1 or -1

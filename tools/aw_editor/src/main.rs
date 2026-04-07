@@ -4763,8 +4763,9 @@ impl EditorApp {
                         viewport.upload_terrain_chunks_raw(&src_chunks);
                     }
 
-                    // Load biome-appropriate albedo texture (sand for desert, snow
-                    // for tundra, etc.) instead of always using the grass default.
+                    // Load biome-appropriate albedo texture.
+                    // For BiomePack biomes, try to load the pack's diffuse textures.
+                    // For standard biomes, use the material library.
                     let biome_name = self.dock_tab_viewer.terrain_primary_biome();
                     let biome_label = match biome_name {
                         "desert" => "Desert",
@@ -4774,7 +4775,15 @@ impl EditorApp {
                         "swamp" => "Swamp",
                         "beach" => "Beach",
                         "river" => "River",
-                        _ => "Grassland",
+                        _ => {
+                            // Check if this is a BiomePack (name contains "Pack" or
+                            // "(Pack)") — try to load the pack's first diffuse texture.
+                            if biome_name.contains("Pack") || biome_name.contains("pack") {
+                                "BiomePack"
+                            } else {
+                                "Grassland"
+                            }
+                        }
                     };
                     if let Some(viewport) = &self.viewport {
                         if let Ok(mut renderer) = viewport.renderer().lock() {

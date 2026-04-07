@@ -52,10 +52,20 @@ impl MeshVertexLayout {
     }
 }
 
+/// Raw RGBA8 image data extracted from a glTF material.
+#[derive(Clone, Debug)]
+pub struct CpuImage {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>, // RGBA8
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct CpuMesh {
     pub vertices: Vec<MeshVertex>,
     pub indices: Vec<u32>,
+    /// Base color texture from the glTF material (if present).
+    pub albedo_image: Option<CpuImage>,
 }
 
 impl CpuMesh {

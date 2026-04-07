@@ -112,16 +112,16 @@ impl WeatherFx {
         self.particles.len()
     }
 
-    pub fn update(&mut self, queue: &wgpu::Queue, dt: f32) {
+    pub fn update(&mut self, queue: &wgpu::Queue, dt: f32, camera_pos: Vec3) {
         let effective_max = ((self.max as f32) * self.density).max(1.0) as usize;
         match self.kind {
             WeatherKind::None => {
                 self.particles.clear();
             }
-            WeatherKind::Rain => self.tick_rain(dt, effective_max),
-            WeatherKind::Snow => self.tick_snow(dt, effective_max),
-            WeatherKind::Sandstorm => self.tick_sandstorm(dt, effective_max),
-            WeatherKind::WindTrails => self.tick_wind(dt, effective_max),
+            WeatherKind::Rain => self.tick_rain(dt, effective_max, camera_pos),
+            WeatherKind::Snow => self.tick_snow(dt, effective_max, camera_pos),
+            WeatherKind::Sandstorm => self.tick_sandstorm(dt, effective_max, camera_pos),
+            WeatherKind::WindTrails => self.tick_wind(dt, effective_max, camera_pos),
         }
         // Apply biome tint and upload
         let tint = self.biome_tint;
@@ -153,17 +153,15 @@ impl WeatherFx {
         queue.write_buffer(&self.buf, 0, bytemuck::cast_slice(&raws));
     }
 
-    fn tick_rain(&mut self, dt: f32, max: usize) {
+    fn tick_rain(&mut self, dt: f32, max: usize, cam: Vec3) {
         let mut rng = rand::rng();
-        // Wind affects rain angle
         let wind_offset = self.wind_dir * (self.wind_strength * 5.0);
-        // spawn up to max
         while self.particles.len() < max {
             self.particles.push(Particle {
                 pos: vec3(
-                    rng.random_range(-25.0..25.0),
-                    rng.random_range(8.0..18.0),
-                    rng.random_range(-25.0..25.0),
+                    cam.x + rng.random_range(-30.0..30.0),
+                    cam.y + rng.random_range(8.0..25.0),
+                    cam.z + rng.random_range(-30.0..30.0),
                 ),
                 vel: vec3(wind_offset.x, -20.0, wind_offset.z),
                 life: rng.random_range(0.5..1.5),
@@ -171,89 +169,82 @@ impl WeatherFx {
                 scale: vec3(0.02, 0.5, 0.02),
             });
         }
-        // update
         self.particles.retain_mut(|p| {
             p.life -= dt;
             p.pos += p.vel * dt;
-            p.pos.y > 0.0 && p.life > 0.0
+            let dist_sq = (p.pos - cam).length_squared();
+            p.life > 0.0 && dist_sq < 3600.0 // 60m radius
         });
     }
 
-    fn tick_snow(&mut self, dt: f32, max: usize) {
+    fn tick_snow(&mut self, dt: f32, max: usize, cam: Vec3) {
         let mut rng = rand::rng();
-        let wind_offset = self.wind_dir * (self.wind_strength * 2.0); // Snow drifts slower
+        let wind_offset = self.wind_dir * (self.wind_strength * 2.0);
         while self.particles.len() < max {
-            // Snowflakes fall slower and drift more
             self.particles.push(Particle {
                 pos: vec3(
-                    rng.random_range(-30.0..30.0),
-                    rng.random_range(10.0..20.0),
-                    rng.random_range(-30.0..30.0),
+                    cam.x + rng.random_range(-35.0..35.0),
+                    cam.y + rng.random_range(10.0..25.0),
+                    cam.z + rng.random_range(-35.0..35.0),
                 ),
                 vel: vec3(
                     wind_offset.x + rng.random_range(-0.5..0.5),
-                    rng.random_range(-2.5..-1.5), // Gentle fall
+                    rng.random_range(-2.5..-1.5),
                     wind_offset.z + rng.random_range(-0.5..0.5),
                 ),
-                life: rng.random_range(3.0..6.0), // Longer life
-                color: [1.0, 1.0, 1.0, 0.85],     // White, slightly transparent
-                scale: vec3(0.08, 0.08, 0.08),    // Small spheres
+                life: rng.random_range(3.0..6.0),
+                color: [1.0, 1.0, 1.0, 0.85],
+                scale: vec3(0.08, 0.08, 0.08),
             });
         }
         self.particles.retain_mut(|p| {
             p.life -= dt;
-            // Add gentle swaying motion
             let sway = (p.life * 2.0).sin() * 0.3;
             p.vel.x += sway * dt;
             p.pos += p.vel * dt;
-            p.pos.y > 0.0 && p.life > 0.0
+            let dist_sq = (p.pos - cam).length_squared();
+            p.life > 0.0 && dist_sq < 4900.0 // 70m radius
         });
     }
 
-    fn tick_sandstorm(&mut self, dt: f32, max: usize) {
+    fn tick_sandstorm(&mut self, dt: f32, max: usize, cam: Vec3) {
         let mut rng = rand::rng();
-        let wind_speed = self.wind_strength * 15.0; // Fast horizontal movement
+        let wind_speed = self.wind_strength * 15.0;
         while self.particles.len() < max {
-            // Sand particles: small, fast, low to ground
             self.particles.push(Particle {
                 pos: vec3(
-                    rng.random_range(-40.0..40.0),
-                    rng.random_range(0.2..8.0), // Low to ground, some high
-                    rng.random_range(-40.0..40.0),
+                    cam.x + rng.random_range(-50.0..50.0),
+                    cam.y + rng.random_range(-2.0..8.0),
+                    cam.z + rng.random_range(-50.0..50.0),
                 ),
                 vel: vec3(
                     self.wind_dir.x * wind_speed + rng.random_range(-2.0..2.0),
-                    rng.random_range(-1.0..2.0), // Turbulent vertical
+                    rng.random_range(-1.0..2.0),
                     self.wind_dir.z * wind_speed + rng.random_range(-2.0..2.0),
                 ),
                 life: rng.random_range(0.8..2.5),
-                color: [0.85, 0.75, 0.55, 0.7], // Sandy tan
-                scale: vec3(0.03, 0.03, 0.15),  // Elongated streaks
+                color: [0.85, 0.75, 0.55, 0.7],
+                scale: vec3(0.03, 0.03, 0.15),
             });
         }
         self.particles.retain_mut(|p| {
             p.life -= dt;
-            // Turbulent motion
             p.vel.y += (rng.random_range(-1.0..1.0) as f32) * dt * 5.0;
             p.pos += p.vel * dt;
-            // Keep in bounds
-            if p.pos.y < 0.0 {
-                p.pos.y = 0.1;
-                p.vel.y = rng.random_range(0.5..2.0);
-            }
-            p.life > 0.0
+            let dist_sq = (p.pos - cam).length_squared();
+            p.life > 0.0 && dist_sq < 6400.0 // 80m radius
         });
     }
 
-    fn tick_wind(&mut self, dt: f32, max: usize) {
+    fn tick_wind(&mut self, dt: f32, max: usize, cam: Vec3) {
         let mut rng = rand::rng();
         let wind_vel = self.wind_dir * (self.wind_strength * 8.0);
         while self.particles.len() < max {
             self.particles.push(Particle {
                 pos: vec3(
-                    rng.random_range(-25.0..25.0),
-                    rng.random_range(0.5..4.0),
-                    rng.random_range(-25.0..25.0),
+                    cam.x + rng.random_range(-30.0..30.0),
+                    cam.y + rng.random_range(-1.0..4.0),
+                    cam.z + rng.random_range(-30.0..30.0),
                 ),
                 vel: vec3(wind_vel.x + 2.0, 0.0, wind_vel.z + 0.5),
                 life: rng.random_range(1.0..3.0),
@@ -339,7 +330,7 @@ mod tests {
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::None);
-            fx.update(&queue, 0.016); // One frame
+            fx.update(&queue, 0.016, Vec3::ZERO); // One frame
 
             assert_eq!(fx.count(), 0, "None weather should have no particles");
         });
@@ -352,7 +343,7 @@ mod tests {
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Rain);
-            fx.update(&queue, 0.016);
+            fx.update(&queue, 0.016, Vec3::ZERO);
 
             assert!(fx.count() > 0, "Rain should spawn particles");
             assert!(fx.count() <= 100, "Should not exceed max particles");
@@ -366,7 +357,7 @@ mod tests {
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::WindTrails);
-            fx.update(&queue, 0.016);
+            fx.update(&queue, 0.016, Vec3::ZERO);
 
             assert!(fx.count() > 0, "Wind should spawn particles");
             assert!(fx.count() <= 100, "Should not exceed max particles");
@@ -384,7 +375,7 @@ mod tests {
 
             // Update multiple times to fill particles
             for _ in 0..10 {
-                fx.update(&queue, 0.016);
+                fx.update(&queue, 0.016, Vec3::ZERO);
             }
 
             assert_eq!(fx.count(), max as u32, "Should fill to max capacity");
@@ -398,11 +389,11 @@ mod tests {
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Rain);
-            fx.update(&queue, 0.016);
+            fx.update(&queue, 0.016, Vec3::ZERO);
 
             // Update with large dt to age out particles
             for _ in 0..100 {
-                fx.update(&queue, 1.0); // 1 second per frame
+                fx.update(&queue, 1.0, Vec3::ZERO); // 1 second per frame
             }
 
             // Rain continuously spawns, so should maintain particles
@@ -419,11 +410,11 @@ mod tests {
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Rain);
-            fx.update(&queue, 0.016);
+            fx.update(&queue, 0.016, Vec3::ZERO);
             assert!(fx.count() > 0, "Rain should spawn particles");
 
             fx.set_kind(WeatherKind::None);
-            fx.update(&queue, 0.016);
+            fx.update(&queue, 0.016, Vec3::ZERO);
             assert_eq!(fx.count(), 0, "None should clear all particles");
         });
     }
@@ -484,7 +475,7 @@ mod tests {
             // Set tint and spawn particles
             fx.set_biome_tint(vec3(0.5, 1.0, 0.5)); // greenish
             fx.set_kind(WeatherKind::Rain);
-            fx.update(&queue, 0.016);
+            fx.update(&queue, 0.016, Vec3::ZERO);
 
             // Particles should have spawned
             assert!(fx.count() > 0, "Should have rain particles");
@@ -500,7 +491,7 @@ mod tests {
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Snow);
-            fx.update(&queue, 0.016);
+            fx.update(&queue, 0.016, Vec3::ZERO);
 
             assert!(fx.count() > 0, "Snow should spawn particles");
             assert!(fx.count() <= 100, "Should not exceed max particles");
@@ -514,7 +505,7 @@ mod tests {
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Sandstorm);
-            fx.update(&queue, 0.016);
+            fx.update(&queue, 0.016, Vec3::ZERO);
 
             assert!(fx.count() > 0, "Sandstorm should spawn particles");
             assert!(fx.count() <= 100, "Should not exceed max particles");
@@ -566,7 +557,7 @@ mod tests {
 
             // Update several times to fill
             for _ in 0..10 {
-                fx.update(&queue, 0.016);
+                fx.update(&queue, 0.016, Vec3::ZERO);
             }
 
             // Should have roughly half the max

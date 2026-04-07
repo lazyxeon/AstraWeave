@@ -1309,6 +1309,14 @@ impl ViewportRenderer {
                 "assets/materials/gravel.png",
                 "assets/materials/cobblestone.png",
             ],
+            "BiomePack" => vec![
+                // Namaqualand and other decomposed blend biome packs
+                "assets/imported/Namaqualand/textures/gravelly_sand_diff_4k.jpg.png",
+                "assets/imported/Namaqualand/textures/damp_sand_diff.png.png",
+                "assets/imported/Namaqualand/textures/cliff_side_diff_4k.jpg.png",
+                "assets/textures/aerial_beach_01_diff_4k.jpg",
+                "assets/materials/sand.png",
+            ],
             _ => vec![
                 // Grassland default
                 "assets/textures/leafy_grass_diff_4k.jpg",

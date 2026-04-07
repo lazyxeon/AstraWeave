@@ -442,6 +442,10 @@ pub struct RenderModel {
     pub instance_count: u32,
     /// World-space AABB for frustum culling (None = always visible).
     pub aabb: Option<([f32; 3], [f32; 3])>,
+    /// Per-model texture bind group (group 3). When Some, overrides global tex_bg.
+    pub tex_bind_group: Option<wgpu::BindGroup>,
+    /// Retained GPU texture to keep the bind group's texture view alive.
+    pub _retained_tex: Option<wgpu::Texture>,
 }
 
 pub struct Renderer {
@@ -3831,7 +3835,17 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     }
 
     pub fn tick_weather(&mut self, dt: f32) {
-        self.weather.update(&self.queue, dt);
+        let cam_pos = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        self.weather.update(&self.queue, dt, cam_pos);
+    }
+
+    /// Mutable access to the weather particle system (e.g. to set wind).
+    pub fn weather_mut(&mut self) -> &mut crate::effects::WeatherFx {
+        &mut self.weather
     }
 
     pub fn tick_environment(&mut self, dt: f32) {
@@ -4211,10 +4225,18 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                             continue;
                         }
                     }
+                    // Bind per-model texture if available
+                    if let Some(ref mtex) = model.tex_bind_group {
+                        rp.set_bind_group(3, mtex, &[]);
+                    }
                     rp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
                     rp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
                     rp.set_vertex_buffer(1, model.instance_buf.slice(..));
                     rp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
+                    // Restore global texture after per-model draw
+                    if model.tex_bind_group.is_some() {
+                        rp.set_bind_group(3, &self.tex_bg, &[]);
+                    }
                 }
             }
 
@@ -4592,10 +4614,16 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                             continue;
                         }
                     }
+                    if let Some(ref mtex) = model.tex_bind_group {
+                        rp.set_bind_group(3, mtex, &[]);
+                    }
                     rp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
                     rp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
                     rp.set_vertex_buffer(1, model.instance_buf.slice(..));
                     rp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
+                    if model.tex_bind_group.is_some() {
+                        rp.set_bind_group(3, &self.tex_bg, &[]);
+                    }
                 }
             }
 
@@ -5251,6 +5279,114 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             instance_buf,
             instance_count: instances.len() as u32,
             aabb,
+            tex_bind_group: None,
+            _retained_tex: None,
+        };
+        self.models.insert(name.into(), model);
+    }
+
+    /// Add a model with its own albedo texture (extracted from glTF).
+    ///
+    /// Creates a per-model texture bind group so the model renders with its
+    /// own albedo instead of the global terrain texture. The texture is
+    /// retained in the `RenderModel` to keep the bind group valid.
+    pub fn add_model_with_texture(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        albedo_width: u32,
+        albedo_height: u32,
+        albedo_rgba: &[u8],
+    ) {
+        let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
+        let instance_buf = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("model-inst-buf"),
+                contents: bytemuck::cast_slice(&raw),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+        // Create per-model albedo texture
+        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("model albedo"),
+            size: wgpu::Extent3d {
+                width: albedo_width,
+                height: albedo_height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            albedo_rgba,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * albedo_width),
+                rows_per_image: Some(albedo_height),
+            },
+            wgpu::Extent3d {
+                width: albedo_width,
+                height: albedo_height,
+                depth_or_array_layers: 1,
+            },
+        );
+        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Build bind group matching tex_bgl (group 3): albedo, MR, normal, skin palette
+        let tex_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("model tex bg"),
+            layout: &self.tex_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.albedo_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&self.mr_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.mr_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&self.normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&self.normal_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: self.skin_palette_buf.as_entire_binding(),
+                },
+            ],
+        });
+
+        let model = RenderModel {
+            mesh,
+            instance_buf,
+            instance_count: instances.len() as u32,
+            aabb: None,
+            tex_bind_group: Some(tex_bg),
+            _retained_tex: Some(tex),
         };
         self.models.insert(name.into(), model);
     }

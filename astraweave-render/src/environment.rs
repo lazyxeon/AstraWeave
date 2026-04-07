@@ -1469,9 +1469,13 @@ fn dir_to_equirect_uv(dir: vec3<f32>) -> vec2<f32> {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Standard logic
     let dir = normalize(input.world_position);
     let uv = dir_to_equirect_uv(dir);
-    return textureSample(sky_tex, sky_samp, uv);
+    var color = textureSample(sky_tex, sky_samp, uv);
+    // Fade to black below/near horizon to eliminate the hard geometric
+    // edge of the sky sphere. The ground fill plane renders on top anyway.
+    let horizon_fade = smoothstep(-0.05, 0.1, dir.y);
+    color = vec4(color.rgb * horizon_fade, color.a);
+    return color;
 }
 "#;

@@ -148,6 +148,7 @@ mod tests {
                 ),
             ],
             indices: vec![0, 1, 1],
+            albedo_image: None,
         };
         let (min, max) = m.aabb().unwrap();
         assert_eq!(min, Vec3::new(-1.0, -2.0, -1.0));
