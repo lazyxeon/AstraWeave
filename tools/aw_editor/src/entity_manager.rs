@@ -369,6 +369,9 @@ impl EntityValidation {
 pub struct EntityManager {
     entities: HashMap<EntityId, EditorEntity>,
     next_id: EntityId,
+    /// Monotonically increasing counter bumped on any mutation (add, remove, update).
+    /// Used by the editor's entity list cache to detect changes beyond count mismatches.
+    mutation_generation: u64,
 }
 
 impl Default for EntityManager {
@@ -383,7 +386,14 @@ impl EntityManager {
         Self {
             entities: HashMap::new(),
             next_id: 1,
+            mutation_generation: 0,
         }
+    }
+
+    /// Get the current mutation generation counter.
+    /// Increments on any add, remove, or update operation.
+    pub fn mutation_generation(&self) -> u64 {
+        self.mutation_generation
     }
 
     /// Create a new entity with auto-generated ID.
@@ -398,6 +408,7 @@ impl EntityManager {
         self.next_id += 1;
         let entity = EditorEntity::new(id, name);
         self.entities.insert(id, entity);
+        self.mutation_generation = self.mutation_generation.wrapping_add(1);
         id
     }
 
@@ -408,6 +419,7 @@ impl EntityManager {
         if id >= self.next_id {
             self.next_id = id + 1;
         }
+        self.mutation_generation = self.mutation_generation.wrapping_add(1);
     }
 
     /// Get entity by ID
@@ -415,13 +427,15 @@ impl EntityManager {
         self.entities.get(&id)
     }
 
-    /// Get mutable entity by ID
+    /// Get mutable entity by ID (bumps mutation generation)
     pub fn get_mut(&mut self, id: EntityId) -> Option<&mut EditorEntity> {
+        self.mutation_generation = self.mutation_generation.wrapping_add(1);
         self.entities.get_mut(&id)
     }
 
     /// Remove entity by ID
     pub fn remove(&mut self, id: EntityId) -> Option<EditorEntity> {
+        self.mutation_generation = self.mutation_generation.wrapping_add(1);
         self.entities.remove(&id)
     }
 
@@ -439,6 +453,7 @@ impl EntityManager {
     pub fn update_transform(&mut self, id: EntityId, position: Vec3, rotation: Quat, scale: Vec3) {
         if let Some(entity) = self.entities.get_mut(&id) {
             entity.set_transform(position, rotation, scale);
+            self.mutation_generation = self.mutation_generation.wrapping_add(1);
         }
     }
 
@@ -446,6 +461,7 @@ impl EntityManager {
     pub fn update_position(&mut self, id: EntityId, position: Vec3) {
         if let Some(entity) = self.entities.get_mut(&id) {
             entity.position = position;
+            self.mutation_generation = self.mutation_generation.wrapping_add(1);
         }
     }
 
@@ -453,6 +469,7 @@ impl EntityManager {
     pub fn update_rotation(&mut self, id: EntityId, rotation: Quat) {
         if let Some(entity) = self.entities.get_mut(&id) {
             entity.rotation = rotation;
+            self.mutation_generation = self.mutation_generation.wrapping_add(1);
         }
     }
 
@@ -460,12 +477,14 @@ impl EntityManager {
     pub fn update_scale(&mut self, id: EntityId, scale: Vec3) {
         if let Some(entity) = self.entities.get_mut(&id) {
             entity.scale = scale;
+            self.mutation_generation = self.mutation_generation.wrapping_add(1);
         }
     }
 
     /// Clear all entities
     pub fn clear(&mut self) {
         self.entities.clear();
+        self.mutation_generation = self.mutation_generation.wrapping_add(1);
         self.next_id = 1;
     }
 

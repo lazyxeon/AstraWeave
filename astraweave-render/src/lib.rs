@@ -167,6 +167,7 @@ pub use distance_field::{DfaoConfig, DfaoParams, DfaoPass, SdfBox, SdfConfig, Sd
 pub use effects::{WeatherFx, WeatherKind};
 pub use final_gather::{FinalGatherConfig, FinalGatherParams, FinalGatherPass};
 pub use god_rays::{sun_to_screen, GodRayConfig, GodRayParams, GodRayPass};
+pub use gpu_memory::{GpuMemoryBudget, MemoryCategory};
 pub use gpu_particles::{EmitterParams, GpuParticle, GpuParticleSystem};
 pub use hdri_catalog::{DayPeriod, HdriCatalog, HdriEntry};
 pub use ibl::{IblManager, IblQuality, IblResources, SkyMode};

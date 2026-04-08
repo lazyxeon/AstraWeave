@@ -195,6 +195,17 @@ pub struct FileWatcher {
 
     /// Receiver for reload events (debounced)
     pub receiver: Receiver<ReloadEvent>,
+
+    /// Shutdown signal for the debounce thread
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Drop for FileWatcher {
+    fn drop(&mut self) {
+        // Signal the debounce thread to exit
+        self.shutdown
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl FileWatcher {
@@ -239,13 +250,16 @@ impl FileWatcher {
             .context("Failed to watch directory")?;
 
         // Spawn debounce thread (processes buffered events after 500ms)
+        let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let shutdown_clone = std::sync::Arc::clone(&shutdown);
         std::thread::spawn(move || {
-            Self::debounce_loop(debounce_state_clone, tx_clone);
+            Self::debounce_loop(debounce_state_clone, tx_clone, shutdown_clone);
         });
 
         Ok(FileWatcher {
             _watcher: watcher,
             receiver: rx,
+            shutdown,
         })
     }
 
@@ -393,10 +407,17 @@ impl FileWatcher {
     }
 
     /// Debounce loop (runs in separate thread)
-    fn debounce_loop(debounce_state: Arc<Mutex<DebounceState>>, tx: Sender<ReloadEvent>) {
+    fn debounce_loop(
+        debounce_state: Arc<Mutex<DebounceState>>,
+        tx: Sender<ReloadEvent>,
+        shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) {
         const DEBOUNCE_DURATION: Duration = Duration::from_millis(500);
 
         loop {
+            if shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
             std::thread::sleep(Duration::from_millis(100));
 
             let mut state = debounce_state

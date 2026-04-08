@@ -1,0 +1,7436 @@
+{
+  "name": "verdant_trail",
+  "description": "Auto-generated biome pack from D:\\\\AstraWeave-AI-Native-Gaming-Engine\\\\assets\\\\verdant_trail.blend (162 assets)",
+  "root_dir": "D:\\AstraWeave-AI-Native-Gaming-Engine\\assets\\imported\\verdant_trail",
+  "blend_hash": "1099755db10b036aae9a92db1b1d774b054cf3896dc0ada9bb99d6cca2644f28",
+  "assets": [
+    {
+      "name": "bacground_ground",
+      "mesh_path": "meshes/bacground_ground.glb",
+      "category": "terrain",
+      "weight": 0.0,
+      "scale_range": [
+        1.0,
+        1.0
+      ],
+      "slope_tolerance": 90.0,
+      "dimensions": [
+        60.97164249420166,
+        58.3157958984375,
+        5.270024418830872
+      ],
+      "vertex_count": 2337,
+      "textures": [
+        {
+          "filename": "rocks_ground_01_disp_4k.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rocks_ground_01_diff_4k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rocks_ground_01_nor_4k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rocks_ground_01_rough_4k.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "forest_leaves_04_rough_8k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "forest_leaves_04_nor_gl_8k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "forest_leaves_04_diff_8k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "forest_leaves_04_disp_8k.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "ground_mask_01.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "background_cliff_b",
+      "mesh_path": "meshes/background_cliff_b.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        19.930036902427673,
+        19.267242431640625,
+        16.665510416030884
+      ],
+      "vertex_count": 156890,
+      "textures": [
+        {
+          "filename": "rock_face_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_disp.png.png",
+          "channel": "displacement",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "background_cliff_c",
+      "mesh_path": "meshes/background_cliff_c.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        22.43000030517578,
+        16.273117065429688,
+        16.686870485544205
+      ],
+      "vertex_count": 156890,
+      "textures": [
+        {
+          "filename": "rock_face_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_disp.png.png",
+          "channel": "displacement",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "background_cliff_d",
+      "mesh_path": "meshes/background_cliff_d.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        19.930036932229996,
+        19.267242431640625,
+        16.665510416030884
+      ],
+      "vertex_count": 156890,
+      "textures": [
+        {
+          "filename": "rock_face_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_disp.png.png",
+          "channel": "displacement",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "background_cliff_e",
+      "mesh_path": "meshes/background_cliff_e.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        15.468755722045898,
+        13.94346809387207,
+        9.731675863265991
+      ],
+      "vertex_count": 156890,
+      "textures": [
+        {
+          "filename": "rock_face_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_01_disp.png.png",
+          "channel": "displacement",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "background_water",
+      "mesh_path": "meshes/background_water.glb",
+      "category": "terrain",
+      "weight": 0.0,
+      "scale_range": [
+        1.0,
+        1.0
+      ],
+      "slope_tolerance": 90.0,
+      "dimensions": [
+        41.48518943786621,
+        41.65693759918213,
+        0.0
+      ],
+      "vertex_count": 25,
+      "textures": []
+    },
+    {
+      "name": "boulder_01.001",
+      "mesh_path": "meshes/boulder_01.001.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        5.245882153511047,
+        6.832976371049881,
+        4.420345783233643
+      ],
+      "vertex_count": 33063,
+      "textures": [
+        {
+          "filename": "boulder_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "boulder_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "boulder_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "boulder_01.002",
+      "mesh_path": "meshes/boulder_01.002.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        4.887615442276001,
+        5.054669380187988,
+        5.440895318984985
+      ],
+      "vertex_count": 33063,
+      "textures": [
+        {
+          "filename": "boulder_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "boulder_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "boulder_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "boulder_01.003",
+      "mesh_path": "meshes/boulder_01.003.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        2.9301382303237915,
+        3.5638058185577393,
+        3.25660789012909
+      ],
+      "vertex_count": 33063,
+      "textures": [
+        {
+          "filename": "boulder_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "boulder_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "boulder_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "boulder_01.004",
+      "mesh_path": "meshes/boulder_01.004.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        3.428581327199936,
+        2.359187126159668,
+        3.4775929749011993
+      ],
+      "vertex_count": 33063,
+      "textures": [
+        {
+          "filename": "boulder_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "boulder_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "boulder_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "coast_rocks_05_LOD0.002",
+      "mesh_path": "meshes/coast_rocks_05_LOD0.002.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.912247896194458,
+        2.0263944268226624,
+        0.6022738516330719
+      ],
+      "vertex_count": 386400,
+      "textures": [
+        {
+          "filename": "coast_rocks_05_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "coast_rocks_05_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "coast_rocks_05_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "coastal_cliff_02_LOD1.001",
+      "mesh_path": "meshes/coastal_cliff_02_LOD1.001.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        9.399109601974487,
+        9.90827989578247,
+        6.659196972846985
+      ],
+      "vertex_count": 86866,
+      "textures": [
+        {
+          "filename": "coastal_cliff_02_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "coastal_cliff_02_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "coastal_cliff_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "coastal_cliff_02_LOD1.002",
+      "mesh_path": "meshes/coastal_cliff_02_LOD1.002.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        4.134639799594879,
+        8.140356481075287,
+        6.459085941314697
+      ],
+      "vertex_count": 86866,
+      "textures": [
+        {
+          "filename": "coastal_cliff_02_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "coastal_cliff_02_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "coastal_cliff_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "coastal_cliff_04_LOD1.001",
+      "mesh_path": "meshes/coastal_cliff_04_LOD1.001.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        3.3442087173461914,
+        2.3566341400146484,
+        2.187052935361862
+      ],
+      "vertex_count": 26043,
+      "textures": [
+        {
+          "filename": "coastal_cliff_04_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "coastal_cliff_04_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "coastal_cliff_04_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "coastal_cliff_04_LOD1.002",
+      "mesh_path": "meshes/coastal_cliff_04_LOD1.002.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.6985223293304443,
+        1.5796356201171875,
+        0.8089315593242645
+      ],
+      "vertex_count": 13421,
+      "textures": [
+        {
+          "filename": "coastal_cliff_04_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "coastal_cliff_04_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "coastal_cliff_04_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dead_tree_trunk.001",
+      "mesh_path": "meshes/dead_tree_trunk.001.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        2.725714921951294,
+        0.4941520690917969,
+        0.8745393753051758
+      ],
+      "vertex_count": 50900,
+      "textures": [
+        {
+          "filename": "dead_tree_trunk_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dead_tree_trunk_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dead_tree_trunk_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dead_tree_trunk_02",
+      "mesh_path": "meshes/dead_tree_trunk_02.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        2.065113067626953,
+        0.9767532348632812,
+        1.3586034774780271
+      ],
+      "vertex_count": 41538,
+      "textures": [
+        {
+          "filename": "dead_tree_trunk_02_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "dead_tree_trunk_02_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "dead_tree_trunk_02_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "dead_tree_trunk_02.002",
+      "mesh_path": "meshes/dead_tree_trunk_02.002.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        2.189294323325157,
+        1.1537117958068848,
+        2.4188984632492065
+      ],
+      "vertex_count": 41538,
+      "textures": [
+        {
+          "filename": "dead_tree_trunk_02_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "dead_tree_trunk_02_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "dead_tree_trunk_02_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "dirt_01",
+      "mesh_path": "meshes/dirt_01.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        2.5390559434890747,
+        6.909060716629028,
+        3.665165662765503
+      ],
+      "vertex_count": 41250,
+      "textures": [
+        {
+          "filename": "forest_ground_04_disp_8k.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_diff_8k.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_rough_8k.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_nor_gl_8k.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dirt_02",
+      "mesh_path": "meshes/dirt_02.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        4.269314765930176,
+        4.074350357055664,
+        2.413902759552002
+      ],
+      "vertex_count": 27650,
+      "textures": [
+        {
+          "filename": "forest_ground_04_disp_8k.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_diff_8k.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_rough_8k.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_nor_gl_8k.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dirt_bank",
+      "mesh_path": "meshes/dirt_bank.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        2.203690528869629,
+        3.974681854248047,
+        1.6523156762123108
+      ],
+      "vertex_count": 4060,
+      "textures": [
+        {
+          "filename": "forest_ground_04_disp_8k.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_diff_8k.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_rough_8k.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_nor_gl_8k.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dirt_bank_01",
+      "mesh_path": "meshes/dirt_bank_01.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        7.925788640975952,
+        6.149621963500977,
+        2.707357883453369
+      ],
+      "vertex_count": 31234,
+      "textures": [
+        {
+          "filename": "forest_ground_04_disp_8k.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_diff_8k.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_rough_8k.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "forest_ground_04_nor_gl_8k.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_a.002",
+      "mesh_path": "meshes/dry_branches_medium_01_a.002.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.3578415513038635,
+        0.8374214172363281,
+        0.7131873965263367
+      ],
+      "vertex_count": 2969,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_a.003",
+      "mesh_path": "meshes/dry_branches_medium_01_a.003.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.365830659866333,
+        0.9179620742797852,
+        0.25711689889431
+      ],
+      "vertex_count": 2969,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_a.004",
+      "mesh_path": "meshes/dry_branches_medium_01_a.004.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.34800785779953003,
+        0.916396141052246,
+        0.237989604473114
+      ],
+      "vertex_count": 2969,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_a.005",
+      "mesh_path": "meshes/dry_branches_medium_01_a.005.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.2082202434539795,
+        0.5824339389801025,
+        1.2812843322753906
+      ],
+      "vertex_count": 2969,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_a.006",
+      "mesh_path": "meshes/dry_branches_medium_01_a.006.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.4485868439078331,
+        1.3027405738830566,
+        0.8303974568843842
+      ],
+      "vertex_count": 2969,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_a.007",
+      "mesh_path": "meshes/dry_branches_medium_01_a.007.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.16144108772277832,
+        0.4185361862182617,
+        0.1659340858459473
+      ],
+      "vertex_count": 2969,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.002",
+      "mesh_path": "meshes/dry_branches_medium_01_b.002.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.2060684561729431,
+        0.3858606815338135,
+        0.3436799645423889
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.003",
+      "mesh_path": "meshes/dry_branches_medium_01_b.003.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.9946969151496888,
+        0.25587940216064453,
+        0.6107393950223923
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.004",
+      "mesh_path": "meshes/dry_branches_medium_01_b.004.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.3670996427536011,
+        0.7042322158813477,
+        0.14184384793043137
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.005",
+      "mesh_path": "meshes/dry_branches_medium_01_b.005.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.20009884238243103,
+        0.38153934478759766,
+        0.07295637018978596
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.006",
+      "mesh_path": "meshes/dry_branches_medium_01_b.006.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.33712469413876534,
+        0.27252960205078125,
+        0.21528557687997815
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.007",
+      "mesh_path": "meshes/dry_branches_medium_01_b.007.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.569843053817749,
+        0.988082654774189,
+        0.5265583992004395
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.008",
+      "mesh_path": "meshes/dry_branches_medium_01_b.008.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.6474299430847168,
+        0.6411080621182919,
+        0.3331865072250366
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.009",
+      "mesh_path": "meshes/dry_branches_medium_01_b.009.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.44041766226291656,
+        0.17502450942993164,
+        0.43274975940585136
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.010",
+      "mesh_path": "meshes/dry_branches_medium_01_b.010.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.4614412784576416,
+        0.3767451047897339,
+        0.26832314766943455
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_b.011",
+      "mesh_path": "meshes/dry_branches_medium_01_b.011.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.4710286855697632,
+        0.2458171844482422,
+        0.1620965600013733
+      ],
+      "vertex_count": 2629,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "dry_branches_medium_01_c.002",
+      "mesh_path": "meshes/dry_branches_medium_01_c.002.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.5152850151062012,
+        0.4172494411468506,
+        0.674894317984581
+      ],
+      "vertex_count": 2810,
+      "textures": [
+        {
+          "filename": "dry_branches_medium_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "dry_branches_medium_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "fog_volume",
+      "mesh_path": "meshes/fog_volume.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        18.88085985183716,
+        25.09619379043579,
+        9.168699264526367
+      ],
+      "vertex_count": 16,
+      "textures": []
+    },
+    {
+      "name": "grass_debris_a",
+      "mesh_path": "meshes/grass_debris_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.20220088958740232,
+        0.15014076232910156,
+        0.0359274186193943
+      ],
+      "vertex_count": 295,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "grass_debris_b",
+      "mesh_path": "meshes/grass_debris_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.19230318069458008,
+        0.09411239624023438,
+        0.06881096586585045
+      ],
+      "vertex_count": 227,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "grass_medium_02_a",
+      "mesh_path": "meshes/grass_medium_02_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.11912187933921814,
+        0.11976242065429688,
+        0.1569303795695305
+      ],
+      "vertex_count": 645,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "grass_medium_02_b",
+      "mesh_path": "meshes/grass_medium_02_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.179127037525177,
+        0.19926834106445312,
+        0.17956401780247688
+      ],
+      "vertex_count": 1575,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "grass_medium_02_c",
+      "mesh_path": "meshes/grass_medium_02_c.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.2616771459579468,
+        0.24951171875,
+        0.2316614966839552
+      ],
+      "vertex_count": 1072,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "grass_medium_02_d",
+      "mesh_path": "meshes/grass_medium_02_d.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.3173760175704956,
+        0.3619270324707031,
+        0.2603765055537224
+      ],
+      "vertex_count": 2197,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "grass_medium_02_e",
+      "mesh_path": "meshes/grass_medium_02_e.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.3555692434310913,
+        0.4332466125488281,
+        0.4032361060380936
+      ],
+      "vertex_count": 1542,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "ground",
+      "mesh_path": "meshes/ground.glb",
+      "category": "terrain",
+      "weight": 0.0,
+      "scale_range": [
+        1.0,
+        1.0
+      ],
+      "slope_tolerance": 90.0,
+      "dimensions": [
+        13.890783309936523,
+        25.897314071655273,
+        2.6234179735183716
+      ],
+      "vertex_count": 7961,
+      "textures": [
+        {
+          "filename": "rocks_ground_01_disp_4k.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rocks_ground_01_diff_4k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rocks_ground_01_nor_4k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rocks_ground_01_rough_4k.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "forest_leaves_04_rough_8k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "forest_leaves_04_nor_gl_8k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "forest_leaves_04_diff_8k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "forest_leaves_04_disp_8k.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "ground_mask_01.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "hanging_grass_a",
+      "mesh_path": "meshes/hanging_grass_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.2206706404685974,
+        0.26503753662109375,
+        0.4709568619728088
+      ],
+      "vertex_count": 2751,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "hanging_grass_b",
+      "mesh_path": "meshes/hanging_grass_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.23817135021090508,
+        0.2146434783935547,
+        0.48180925101041794
+      ],
+      "vertex_count": 2751,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "hanging_grass_c",
+      "mesh_path": "meshes/hanging_grass_c.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.2141781561076641,
+        0.2140979766845703,
+        0.38575660437345505
+      ],
+      "vertex_count": 2404,
+      "textures": [
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "island_tree_01_a",
+      "mesh_path": "meshes/island_tree_01_a.glb",
+      "category": "vegetation",
+      "weight": 0.05,
+      "scale_range": [
+        0.9,
+        1.15
+      ],
+      "slope_tolerance": 25.0,
+      "dimensions": [
+        5.662415236234665,
+        6.040938377380371,
+        6.140044689178467
+      ],
+      "vertex_count": 17444,
+      "textures": [
+        {
+          "filename": "island_tree_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "island_tree_01_b",
+      "mesh_path": "meshes/island_tree_01_b.glb",
+      "category": "vegetation",
+      "weight": 0.05,
+      "scale_range": [
+        0.9,
+        1.15
+      ],
+      "slope_tolerance": 25.0,
+      "dimensions": [
+        6.29595422744751,
+        5.125482082366943,
+        5.671747446060181
+      ],
+      "vertex_count": 17444,
+      "textures": [
+        {
+          "filename": "island_tree_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "island_tree_01_branches_a",
+      "mesh_path": "meshes/island_tree_01_branches_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.24086380004882812,
+        0.11318588256835938,
+        0.4129997121344786
+      ],
+      "vertex_count": 308,
+      "textures": [
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "island_tree_01_branches_b",
+      "mesh_path": "meshes/island_tree_01_branches_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.14922285079956055,
+        0.2027263641357422,
+        0.3033132622949779
+      ],
+      "vertex_count": 246,
+      "textures": [
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "island_tree_01_branches_c",
+      "mesh_path": "meshes/island_tree_01_branches_c.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.2844533920288086,
+        0.16936302185058594,
+        0.3623676293063909
+      ],
+      "vertex_count": 477,
+      "textures": [
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "island_tree_01_branches_d",
+      "mesh_path": "meshes/island_tree_01_branches_d.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.258614182472229,
+        0.3206748962402344,
+        0.36548244289588183
+      ],
+      "vertex_count": 462,
+      "textures": [
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "island_tree_01_leaves_a",
+      "mesh_path": "meshes/island_tree_01_leaves_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.1352750062942505,
+        0.08138656616210938,
+        0.1922563575208187
+      ],
+      "vertex_count": 985,
+      "textures": [
+        {
+          "filename": "island_tree_01_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "island_tree_01_leaves_b",
+      "mesh_path": "meshes/island_tree_01_leaves_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.26540207862854004,
+        0.2128868103027344,
+        0.27449186332523823
+      ],
+      "vertex_count": 1191,
+      "textures": [
+        {
+          "filename": "island_tree_01_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "island_tree_01_leaves_c",
+      "mesh_path": "meshes/island_tree_01_leaves_c.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.3211348056793213,
+        0.2205066680908203,
+        0.3215904273092747
+      ],
+      "vertex_count": 2295,
+      "textures": [
+        {
+          "filename": "island_tree_01_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "IvyLeaves",
+      "mesh_path": "meshes/IvyLeaves.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        2.1559647917747498,
+        1.4072352647781372,
+        2.1145571917295456
+      ],
+      "vertex_count": 29912,
+      "textures": [
+        {
+          "filename": "ivy_disp.png.png",
+          "channel": "displacement",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "ivy_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "ivy_rough.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "ivy_alpha.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "ivy_normal.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "jacaranda_tree_branches",
+      "mesh_path": "meshes/jacaranda_tree_branches.glb",
+      "category": "vegetation",
+      "weight": 0.05,
+      "scale_range": [
+        0.9,
+        1.15
+      ],
+      "slope_tolerance": 25.0,
+      "dimensions": [
+        12.220364034175873,
+        8.170217514038086,
+        10.09680199623108
+      ],
+      "vertex_count": 151320,
+      "textures": [
+        {
+          "filename": "jacaranda_tree_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "jacaranda_tree_leaves_a",
+      "mesh_path": "meshes/jacaranda_tree_leaves_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.4170333445072174,
+        0.4026412963867187,
+        0.1693868786096573
+      ],
+      "vertex_count": 294,
+      "textures": [
+        {
+          "filename": "jacaranda_tree_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "jacaranda_tree_leaves_b",
+      "mesh_path": "meshes/jacaranda_tree_leaves_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.3116624355316162,
+        0.35669708251953125,
+        0.14770716428756714
+      ],
+      "vertex_count": 239,
+      "textures": [
+        {
+          "filename": "jacaranda_tree_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "jacaranda_tree_leaves_c",
+      "mesh_path": "meshes/jacaranda_tree_leaves_c.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.09579640626907349,
+        0.12222671508789062,
+        0.05254098027944565
+      ],
+      "vertex_count": 36,
+      "textures": [
+        {
+          "filename": "jacaranda_tree_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "jacaranda_tree_leaves_d",
+      "mesh_path": "meshes/jacaranda_tree_leaves_d.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.10823166370391846,
+        0.21787261962890625,
+        0.04222310334444046
+      ],
+      "vertex_count": 37,
+      "textures": [
+        {
+          "filename": "jacaranda_tree_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "jacaranda_tree_leaves_e",
+      "mesh_path": "meshes/jacaranda_tree_leaves_e.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.09544128179550172,
+        0.2009258270263672,
+        0.08422188833355904
+      ],
+      "vertex_count": 40,
+      "textures": [
+        {
+          "filename": "jacaranda_tree_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "jacaranda_tree_trunk",
+      "mesh_path": "meshes/jacaranda_tree_trunk.glb",
+      "category": "vegetation",
+      "weight": 0.05,
+      "scale_range": [
+        0.9,
+        1.15
+      ],
+      "slope_tolerance": 25.0,
+      "dimensions": [
+        5.005799770355225,
+        3.0055923461914062,
+        5.421899080276489
+      ],
+      "vertex_count": 14439,
+      "textures": [
+        {
+          "filename": "jacaranda_tree_trunk_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_trunk_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_trunk_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "jacaranda_tree_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "main_dead_tree_trunk",
+      "mesh_path": "meshes/main_dead_tree_trunk.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        2.9114975929260254,
+        0.9788319617509842,
+        2.3977713584899902
+      ],
+      "vertex_count": 41538,
+      "textures": [
+        {
+          "filename": "dead_tree_trunk_02_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "dead_tree_trunk_02_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "dead_tree_trunk_02_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "monster",
+      "mesh_path": "meshes/monster.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        4.666770935058594,
+        4.428923606872559,
+        4.010746359825134
+      ],
+      "vertex_count": 2146,
+      "textures": [
+        {
+          "filename": "rubber_duck_toy_metal.png.003.png",
+          "channel": "metallic",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "rubber_duck_toy_diff.png.003.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "rubber_duck_toy_rough.png.003.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "rubber_duck_toy_nor_gl.png.003.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "particle_01",
+      "mesh_path": "meshes/particle_01.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.19999999552965164,
+        0.20000000298023224,
+        0.0
+      ],
+      "vertex_count": 4,
+      "textures": []
+    },
+    {
+      "name": "particle_02",
+      "mesh_path": "meshes/particle_02.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.20000000298023224,
+        0.20000000298023224,
+        0.0
+      ],
+      "vertex_count": 4,
+      "textures": []
+    },
+    {
+      "name": "particle_03",
+      "mesh_path": "meshes/particle_03.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.20000000298023224,
+        0.20000000298023224,
+        0.0
+      ],
+      "vertex_count": 4,
+      "textures": []
+    },
+    {
+      "name": "particle_04",
+      "mesh_path": "meshes/particle_04.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.20000000298023224,
+        0.20000000298023224,
+        0.0
+      ],
+      "vertex_count": 4,
+      "textures": []
+    },
+    {
+      "name": "particle_05",
+      "mesh_path": "meshes/particle_05.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.20000000298023224,
+        0.20000000298023224,
+        0.0
+      ],
+      "vertex_count": 4,
+      "textures": []
+    },
+    {
+      "name": "particles_volume",
+      "mesh_path": "meshes/particles_volume.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        14.888952255249023,
+        23.567498207092285,
+        10.326629281044006
+      ],
+      "vertex_count": 30,
+      "textures": []
+    },
+    {
+      "name": "rock_07.001",
+      "mesh_path": "meshes/rock_07.001.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.37990403175354,
+        0.7570433616638184,
+        0.33774176239967346
+      ],
+      "vertex_count": 1485,
+      "textures": [
+        {
+          "filename": "rock_07_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_07_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 8192,
+          "height": 8192
+        },
+        {
+          "filename": "rock_07_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_07.002",
+      "mesh_path": "meshes/rock_07.002.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.26624274253845215,
+        0.5305476188659668,
+        0.2366946712136269
+      ],
+      "vertex_count": 1485,
+      "textures": [
+        {
+          "filename": "rock_07_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_07_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 8192,
+          "height": 8192
+        },
+        {
+          "filename": "rock_07_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_07.003",
+      "mesh_path": "meshes/rock_07.003.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.41264788806438446,
+        0.4018540382385254,
+        0.17122524976730347
+      ],
+      "vertex_count": 1485,
+      "textures": [
+        {
+          "filename": "rock_07_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_07_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 8192,
+          "height": 8192
+        },
+        {
+          "filename": "rock_07_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_07.004",
+      "mesh_path": "meshes/rock_07.004.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.27476267516613007,
+        0.430255651473999,
+        0.3210379481315613
+      ],
+      "vertex_count": 1485,
+      "textures": [
+        {
+          "filename": "rock_07_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_07_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 8192,
+          "height": 8192
+        },
+        {
+          "filename": "rock_07_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_07.005",
+      "mesh_path": "meshes/rock_07.005.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.3607689142227173,
+        0.34735094755887985,
+        0.2902735322713852
+      ],
+      "vertex_count": 1485,
+      "textures": [
+        {
+          "filename": "rock_07_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_07_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 8192,
+          "height": 8192
+        },
+        {
+          "filename": "rock_07_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_07.006",
+      "mesh_path": "meshes/rock_07.006.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.6058265566825867,
+        0.39285972714424133,
+        0.511326514184475
+      ],
+      "vertex_count": 1485,
+      "textures": [
+        {
+          "filename": "rock_07_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_07_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 8192,
+          "height": 8192
+        },
+        {
+          "filename": "rock_07_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_07.007",
+      "mesh_path": "meshes/rock_07.007.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.34866440296173096,
+        0.41978156566619873,
+        0.2553353123366833
+      ],
+      "vertex_count": 1485,
+      "textures": [
+        {
+          "filename": "rock_07_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_07_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 8192,
+          "height": 8192
+        },
+        {
+          "filename": "rock_07_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_07.008",
+      "mesh_path": "meshes/rock_07.008.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.2895052433013916,
+        0.41965508460998535,
+        0.29993409663438797
+      ],
+      "vertex_count": 1485,
+      "textures": [
+        {
+          "filename": "rock_07_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_07_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 8192,
+          "height": 8192
+        },
+        {
+          "filename": "rock_07_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_08.001",
+      "mesh_path": "meshes/rock_08.001.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.1537435054779053,
+        1.5246272683143616,
+        0.9641456007957458
+      ],
+      "vertex_count": 594,
+      "textures": [
+        {
+          "filename": "rock_08_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_08.002",
+      "mesh_path": "meshes/rock_08.002.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.3246532678604126,
+        1.1924412846565249,
+        1.3961169719696045
+      ],
+      "vertex_count": 594,
+      "textures": [
+        {
+          "filename": "rock_08_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_08.003",
+      "mesh_path": "meshes/rock_08.003.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.9629128575325012,
+        0.5712039470672607,
+        0.5522267818450928
+      ],
+      "vertex_count": 594,
+      "textures": [
+        {
+          "filename": "rock_08_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_08.004",
+      "mesh_path": "meshes/rock_08.004.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.6142051815986633,
+        0.4199497699737549,
+        0.503611221909523
+      ],
+      "vertex_count": 594,
+      "textures": [
+        {
+          "filename": "rock_08_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_08.005",
+      "mesh_path": "meshes/rock_08.005.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.5514546036720276,
+        0.5661994814872742,
+        0.22086744755506516
+      ],
+      "vertex_count": 594,
+      "textures": [
+        {
+          "filename": "rock_08_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_08.006",
+      "mesh_path": "meshes/rock_08.006.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.649032473564148,
+        0.5914347171783447,
+        0.23010355606675148
+      ],
+      "vertex_count": 594,
+      "textures": [
+        {
+          "filename": "rock_08_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_08.007",
+      "mesh_path": "meshes/rock_08.007.glb",
+      "category": "rock",
+      "weight": 0.5,
+      "scale_range": [
+        0.8,
+        2.0
+      ],
+      "slope_tolerance": 40.0,
+      "dimensions": [
+        0.4565229415893554,
+        0.5450737476348877,
+        0.1987517774105072
+      ],
+      "vertex_count": 594,
+      "textures": [
+        {
+          "filename": "rock_08_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_08_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_face",
+      "mesh_path": "meshes/rock_face.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        4.238091707229614,
+        5.002580881118774,
+        3.9575365781784058
+      ],
+      "vertex_count": 10684,
+      "textures": [
+        {
+          "filename": "rock_face_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_rough.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_face.001",
+      "mesh_path": "meshes/rock_face.001.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        5.332047700881958,
+        5.820610523223877,
+        3.9323713406920433
+      ],
+      "vertex_count": 10684,
+      "textures": [
+        {
+          "filename": "rock_face_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_rough.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_face.002",
+      "mesh_path": "meshes/rock_face.002.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        6.180964231491089,
+        6.088263988494873,
+        4.354890704154968
+      ],
+      "vertex_count": 10684,
+      "textures": [
+        {
+          "filename": "rock_face_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_rough.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_face.003",
+      "mesh_path": "meshes/rock_face.003.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        5.461078882217407,
+        4.12979793548584,
+        6.451617002487183
+      ],
+      "vertex_count": 10684,
+      "textures": [
+        {
+          "filename": "rock_face_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_rough.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_face_2",
+      "mesh_path": "meshes/rock_face_2.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        4.838472366333008,
+        4.7091304063797,
+        3.794953465461731
+      ],
+      "vertex_count": 15205,
+      "textures": [
+        {
+          "filename": "rock_face_2_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_2_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_2_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_face_2.001",
+      "mesh_path": "meshes/rock_face_2.001.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        7.2088634967803955,
+        7.273545742034912,
+        5.902779281139374
+      ],
+      "vertex_count": 15203,
+      "textures": [
+        {
+          "filename": "rock_face_2_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_2_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_2_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "shrub_04_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "rock_face_2.002",
+      "mesh_path": "meshes/rock_face_2.002.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        4.494842976331711,
+        4.82774019241333,
+        3.6460523307323456
+      ],
+      "vertex_count": 15205,
+      "textures": [
+        {
+          "filename": "rock_face_2_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_2_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_2_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "rock_face_2.003",
+      "mesh_path": "meshes/rock_face_2.003.glb",
+      "category": "rock",
+      "weight": 0.02,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 20.0,
+      "dimensions": [
+        7.876388192176819,
+        7.354856967926025,
+        6.342147707939148
+      ],
+      "vertex_count": 15205,
+      "textures": [
+        {
+          "filename": "rock_face_2_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_2_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "rock_face_2_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_disp.png.png",
+          "channel": "displacement",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "grass_medium_02_dry_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "root_cluster_01",
+      "mesh_path": "meshes/root_cluster_01.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.0673409700393677,
+        1.6096234321594238,
+        0.5032834783196449
+      ],
+      "vertex_count": 113095,
+      "textures": [
+        {
+          "filename": "root_cluster_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "root_cluster_01.001",
+      "mesh_path": "meshes/root_cluster_01.001.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.9697535037994384,
+        1.2751216888427734,
+        0.4232455603778362
+      ],
+      "vertex_count": 113095,
+      "textures": [
+        {
+          "filename": "root_cluster_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "root_cluster_2_01_lod0",
+      "mesh_path": "meshes/root_cluster_2_01_lod0.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.9368797242641448,
+        0.892791211605072,
+        0.19955378770828247
+      ],
+      "vertex_count": 15592,
+      "textures": [
+        {
+          "filename": "root_cluster_2_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_disp.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "root_cluster_2_04_lod0",
+      "mesh_path": "meshes/root_cluster_2_04_lod0.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.5157825946807861,
+        0.5134469270706177,
+        0.2011663168668747
+      ],
+      "vertex_count": 5209,
+      "textures": [
+        {
+          "filename": "root_cluster_2_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_disp.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "root_cluster_2_06_lod0",
+      "mesh_path": "meshes/root_cluster_2_06_lod0.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.6858392469584942,
+        0.27660226821899414,
+        0.1821260005235672
+      ],
+      "vertex_count": 6404,
+      "textures": [
+        {
+          "filename": "root_cluster_2_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_disp.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "root_cluster_2_07_lod0",
+      "mesh_path": "meshes/root_cluster_2_07_lod0.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.8398636654019356,
+        0.4880955219268799,
+        0.19141747057437897
+      ],
+      "vertex_count": 9249,
+      "textures": [
+        {
+          "filename": "root_cluster_2_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "root_cluster_2_disp.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "sand",
+      "mesh_path": "meshes/sand.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        5.663157343864441,
+        9.347005367279053,
+        1.3637447357177734
+      ],
+      "vertex_count": 13520,
+      "textures": [
+        {
+          "filename": "dirt_floor_disp_4k.png.png",
+          "channel": "displacement",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "dirt_floor_diff_4k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "dirt_floor_rough_4k.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "dirt_floor_nor_gl_4k.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "sand_rocks_small_01_LOD0",
+      "mesh_path": "meshes/sand_rocks_small_01_LOD0.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.968171000480652,
+        1.9911735653877256,
+        0.6748028099536896
+      ],
+      "vertex_count": 370290,
+      "textures": [
+        {
+          "filename": "sand_rocks_small_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "sand_rocks_small_01_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "sand_rocks_small_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "sand_rocks_small_01_LOD0.001",
+      "mesh_path": "meshes/sand_rocks_small_01_LOD0.001.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.8432338237762451,
+        1.7201502323150637,
+        0.6434846818447113
+      ],
+      "vertex_count": 370290,
+      "textures": [
+        {
+          "filename": "sand_rocks_small_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "sand_rocks_small_01_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "sand_rocks_small_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "shadow_cubes",
+      "mesh_path": "meshes/shadow_cubes.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        4.4742419719696045,
+        4.387384414672852,
+        4.6376214027404785
+      ],
+      "vertex_count": 48,
+      "textures": []
+    },
+    {
+      "name": "shadow_tree",
+      "mesh_path": "meshes/shadow_tree.glb",
+      "category": "vegetation",
+      "weight": 0.05,
+      "scale_range": [
+        0.9,
+        1.15
+      ],
+      "slope_tolerance": 25.0,
+      "dimensions": [
+        5.662415236234665,
+        6.040938377380371,
+        6.140044689178467
+      ],
+      "vertex_count": 17444,
+      "textures": [
+        {
+          "filename": "island_tree_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_nor_gl.png.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_alpha.png.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_leaves_diff.png.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_rough.png.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "island_tree_01_branches_diff.png.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "shrub_01_a",
+      "mesh_path": "meshes/shrub_01_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.23079752922058103,
+        0.2057399749755859,
+        0.3719060346484184
+      ],
+      "vertex_count": 1649,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_01_b",
+      "mesh_path": "meshes/shrub_01_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.18182373046875,
+        0.1750354766845703,
+        0.33232809688168174
+      ],
+      "vertex_count": 1134,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_01_c",
+      "mesh_path": "meshes/shrub_01_c.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.16057634353637695,
+        0.17507553100585938,
+        0.2939496927571952
+      ],
+      "vertex_count": 995,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_01_d",
+      "mesh_path": "meshes/shrub_01_d.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.1353747844696045,
+        0.1523303985595703,
+        0.20057439256925136
+      ],
+      "vertex_count": 769,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_01_e",
+      "mesh_path": "meshes/shrub_01_e.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.09445273876190186,
+        0.10892677307128906,
+        0.1828492822824046
+      ],
+      "vertex_count": 732,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_01_f",
+      "mesh_path": "meshes/shrub_01_f.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.09177541732788086,
+        0.09764289855957033,
+        0.11552232774556614
+      ],
+      "vertex_count": 513,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_01_g",
+      "mesh_path": "meshes/shrub_01_g.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.11363369226455688,
+        0.11417579650878906,
+        0.24923217669129372
+      ],
+      "vertex_count": 18365,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_01_h",
+      "mesh_path": "meshes/shrub_01_h.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.23209816217422485,
+        0.20168113708496097,
+        0.3951091729104519
+      ],
+      "vertex_count": 33573,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_01_i",
+      "mesh_path": "meshes/shrub_01_i.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.1765086054801941,
+        0.17505455017089844,
+        0.3460131585597992
+      ],
+      "vertex_count": 21147,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_a",
+      "mesh_path": "meshes/shrub_02_a.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.4005484580993652,
+        1.536528706550598,
+        1.7711749076843262
+      ],
+      "vertex_count": 5035,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_b",
+      "mesh_path": "meshes/shrub_02_b.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.8208222389221191,
+        1.1036357879638672,
+        1.1696590185165403
+      ],
+      "vertex_count": 5035,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_c",
+      "mesh_path": "meshes/shrub_02_c.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.8223428726196289,
+        1.0995960235595703,
+        1.1772122383117676
+      ],
+      "vertex_count": 5035,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_d",
+      "mesh_path": "meshes/shrub_02_d.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.121829390525818,
+        1.116180844604969,
+        1.119105689227581
+      ],
+      "vertex_count": 5035,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_e",
+      "mesh_path": "meshes/shrub_02_e.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.8296794891357422,
+        0.9535017013549804,
+        1.0452947616577148
+      ],
+      "vertex_count": 5035,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_f",
+      "mesh_path": "meshes/shrub_02_f.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.6920042634010315,
+        1.3591713905334473,
+        1.646514430642128
+      ],
+      "vertex_count": 5035,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_g",
+      "mesh_path": "meshes/shrub_02_g.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.4317457675933838,
+        1.1644845604896543,
+        1.1749119758605957
+      ],
+      "vertex_count": 3546,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_h",
+      "mesh_path": "meshes/shrub_02_h.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.2383237928152084,
+        1.2836289405822754,
+        0.8653076142072678
+      ],
+      "vertex_count": 3546,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_i",
+      "mesh_path": "meshes/shrub_02_i.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.488959789276123,
+        1.4227571487426758,
+        1.3406119346618652
+      ],
+      "vertex_count": 3546,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_j",
+      "mesh_path": "meshes/shrub_02_j.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.4773797988891602,
+        1.510207176208496,
+        1.4484539031982422
+      ],
+      "vertex_count": 3546,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_k",
+      "mesh_path": "meshes/shrub_02_k.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.0647424459457395,
+        1.6955564618110657,
+        0.9767913818359376
+      ],
+      "vertex_count": 6256,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_l",
+      "mesh_path": "meshes/shrub_02_l.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.051052808761597,
+        1.284591794013977,
+        0.8134387731552124
+      ],
+      "vertex_count": 6256,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_m",
+      "mesh_path": "meshes/shrub_02_m.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.7677977085113523,
+        1.346313774585724,
+        0.995465226471424
+      ],
+      "vertex_count": 6256,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_n",
+      "mesh_path": "meshes/shrub_02_n.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.9528069496154783,
+        1.5484466552734375,
+        1.0735063552856443
+      ],
+      "vertex_count": 6256,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_o",
+      "mesh_path": "meshes/shrub_02_o.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.472921371459961,
+        1.7648658752441406,
+        1.3563475608825684
+      ],
+      "vertex_count": 6256,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_02_p",
+      "mesh_path": "meshes/shrub_02_p.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        1.1897554397583008,
+        1.09380042552948,
+        1.0899845361709597
+      ],
+      "vertex_count": 3474,
+      "textures": [
+        {
+          "filename": "shrub_02_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_02_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_03_a",
+      "mesh_path": "meshes/shrub_03_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.20062384009361267,
+        0.15120315551757812,
+        0.40278380550444126
+      ],
+      "vertex_count": 1694,
+      "textures": [
+        {
+          "filename": "shrub_03_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_03_b",
+      "mesh_path": "meshes/shrub_03_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.18430304527282715,
+        0.1225605010986328,
+        0.3525038305670023
+      ],
+      "vertex_count": 1522,
+      "textures": [
+        {
+          "filename": "shrub_03_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_03_c",
+      "mesh_path": "meshes/shrub_03_c.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.09581315517425536,
+        0.11315536499023438,
+        0.3043947909027338
+      ],
+      "vertex_count": 1274,
+      "textures": [
+        {
+          "filename": "shrub_03_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_03_d",
+      "mesh_path": "meshes/shrub_03_d.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.11277246475219728,
+        0.08927726745605469,
+        0.2555512264370918
+      ],
+      "vertex_count": 1392,
+      "textures": [
+        {
+          "filename": "shrub_03_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_04_a",
+      "mesh_path": "meshes/shrub_04_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.1061924695968628,
+        0.08488082885742188,
+        0.1524507775902748
+      ],
+      "vertex_count": 2513,
+      "textures": [
+        {
+          "filename": "shrub_04_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_04_b",
+      "mesh_path": "meshes/shrub_04_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.11161093413829803,
+        0.13007545471191406,
+        0.16234078258275986
+      ],
+      "vertex_count": 4420,
+      "textures": [
+        {
+          "filename": "shrub_04_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_04_c",
+      "mesh_path": "meshes/shrub_04_c.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.12204794585704803,
+        0.13175392150878906,
+        0.21919967979192737
+      ],
+      "vertex_count": 4108,
+      "textures": [
+        {
+          "filename": "shrub_04_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "shrub_04_d",
+      "mesh_path": "meshes/shrub_04_d.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.1702706143260002,
+        0.14609718322753906,
+        0.21365737915039065
+      ],
+      "vertex_count": 7246,
+      "textures": [
+        {
+          "filename": "shrub_04_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_04_mask.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "single_root_LOD0",
+      "mesh_path": "meshes/single_root_LOD0.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.6986716985702515,
+        1.681244401494041,
+        0.34253621101379395
+      ],
+      "vertex_count": 30918,
+      "textures": [
+        {
+          "filename": "single_root_rough.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "single_root_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "single_root_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "sticks_debris_a",
+      "mesh_path": "meshes/sticks_debris_a.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.22361576557159424,
+        0.1619873046875,
+        0.029017237946391106
+      ],
+      "vertex_count": 525,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "sticks_debris_b",
+      "mesh_path": "meshes/sticks_debris_b.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.15504640340805054,
+        0.07446861267089844,
+        0.022435972467064857
+      ],
+      "vertex_count": 640,
+      "textures": [
+        {
+          "filename": "shrub_01_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_disp.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_01_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "sticks_debris_c",
+      "mesh_path": "meshes/sticks_debris_c.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.2272697687149048,
+        0.10493278503417967,
+        0.09042101353406906
+      ],
+      "vertex_count": 204,
+      "textures": [
+        {
+          "filename": "shrub_03_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "sticks_debris_d",
+      "mesh_path": "meshes/sticks_debris_d.glb",
+      "category": "prop",
+      "weight": 0.1,
+      "scale_range": [
+        0.8,
+        1.2
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        0.12539219856262207,
+        0.10584068298339844,
+        0.05421217158436775
+      ],
+      "vertex_count": 204,
+      "textures": [
+        {
+          "filename": "shrub_03_diff.png.png",
+          "channel": "unknown",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_rough.png.png",
+          "channel": "roughness",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_nor_gl.png.png",
+          "channel": "normal",
+          "width": 2048,
+          "height": 2048
+        },
+        {
+          "filename": "shrub_03_alpha.png.png",
+          "channel": "alpha",
+          "width": 2048,
+          "height": 2048
+        }
+      ]
+    },
+    {
+      "name": "stone_01_LOD0.001",
+      "mesh_path": "meshes/stone_01_LOD0.001.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        2.0167669355869293,
+        1.8983168601989744,
+        1.8591170907020569
+      ],
+      "vertex_count": 26762,
+      "textures": [
+        {
+          "filename": "stone_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_mask.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "stone_01_LOD0.002",
+      "mesh_path": "meshes/stone_01_LOD0.002.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        2.3411457538604736,
+        1.91133451461792,
+        1.8896947503089905
+      ],
+      "vertex_count": 26762,
+      "textures": [
+        {
+          "filename": "stone_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_mask.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "stone_01_LOD0.003",
+      "mesh_path": "meshes/stone_01_LOD0.003.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.3259954452514648,
+        1.1982760429382324,
+        1.0518273711204529
+      ],
+      "vertex_count": 26762,
+      "textures": [
+        {
+          "filename": "stone_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_mask.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "stone_01_LOD0.004",
+      "mesh_path": "meshes/stone_01_LOD0.004.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.0694420337677002,
+        1.034442901611328,
+        0.7201306819915771
+      ],
+      "vertex_count": 26762,
+      "textures": [
+        {
+          "filename": "stone_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_mask.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "stone_01_LOD0.005",
+      "mesh_path": "meshes/stone_01_LOD0.005.glb",
+      "category": "rock",
+      "weight": 0.15,
+      "scale_range": [
+        0.7,
+        1.5
+      ],
+      "slope_tolerance": 30.0,
+      "dimensions": [
+        1.6291871070861816,
+        1.4641854763031006,
+        1.1887264251708984
+      ],
+      "vertex_count": 26762,
+      "textures": [
+        {
+          "filename": "stone_01_nor_gl.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_diff.png.png",
+          "channel": "diffuse",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_rough.png.png",
+          "channel": "roughness",
+          "width": 4096,
+          "height": 4096
+        },
+        {
+          "filename": "stone_01_mask.png.png",
+          "channel": "unknown",
+          "width": 4096,
+          "height": 4096
+        }
+      ]
+    },
+    {
+      "name": "tree_small_02_a",
+      "mesh_path": "meshes/tree_small_02_a.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        2.3205935955047607,
+        1.739431381225586,
+        3.4399269223213196
+      ],
+      "vertex_count": 14160,
+      "textures": [
+        {
+          "filename": "tree_small_02_disp.png.001.png",
+          "channel": "displacement",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_diff.png.001.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_rough.png.001.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_nor_gl.png.001.png",
+          "channel": "diffuse",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "tree_small_02_b",
+      "mesh_path": "meshes/tree_small_02_a.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        2.4869580268859863,
+        1.940201759338379,
+        3.8525756895542145
+      ],
+      "vertex_count": 14160,
+      "textures": []
+    },
+    {
+      "name": "tree_small_02_c",
+      "mesh_path": "meshes/tree_small_02_a.glb",
+      "category": "vegetation",
+      "weight": 0.3,
+      "scale_range": [
+        0.7,
+        1.3
+      ],
+      "slope_tolerance": 35.0,
+      "dimensions": [
+        3.2611083984375,
+        3.278153419494629,
+        4.437751889228821
+      ],
+      "vertex_count": 14160,
+      "textures": []
+    },
+    {
+      "name": "tree_small_02_leaves_a",
+      "mesh_path": "meshes/tree_small_02_leaves_a.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.24783825874328613,
+        0.30291748046875,
+        0.08389590680599213
+      ],
+      "vertex_count": 627,
+      "textures": [
+        {
+          "filename": "tree_small_02_leaves_diff.png.001.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_rough.png.001.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_nor_gl.png.001.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_alpha.png.001.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "tree_small_02_leaves_b",
+      "mesh_path": "meshes/tree_small_02_leaves_b.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.27161264419555664,
+        0.3723735809326172,
+        0.13825438171625137
+      ],
+      "vertex_count": 922,
+      "textures": [
+        {
+          "filename": "tree_small_02_leaves_diff.png.001.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_rough.png.001.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_nor_gl.png.001.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_alpha.png.001.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "tree_small_02_leaves_c",
+      "mesh_path": "meshes/tree_small_02_leaves_c.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.2583383321762085,
+        0.3402252197265625,
+        0.10288368165493011
+      ],
+      "vertex_count": 885,
+      "textures": [
+        {
+          "filename": "tree_small_02_leaves_diff.png.001.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_rough.png.001.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_nor_gl.png.001.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_alpha.png.001.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "name": "tree_small_02_leaves_d",
+      "mesh_path": "meshes/tree_small_02_leaves_d.glb",
+      "category": "vegetation",
+      "weight": 2.0,
+      "scale_range": [
+        0.6,
+        1.4
+      ],
+      "slope_tolerance": 45.0,
+      "dimensions": [
+        0.15771567821502686,
+        0.14508438110351562,
+        0.09152718633413316
+      ],
+      "vertex_count": 297,
+      "textures": [
+        {
+          "filename": "tree_small_02_leaves_diff.png.001.png",
+          "channel": "unknown",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_rough.png.001.png",
+          "channel": "roughness",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_nor_gl.png.001.png",
+          "channel": "normal",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "filename": "tree_small_02_leaves_alpha.png.001.png",
+          "channel": "alpha",
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    }
+  ],
+  "hdris": [],
+  "ground_textures": [
+    {
+      "name": "ground",
+      "diffuse": "textures/rocks_ground_01_diff_4k.png.png",
+      "normal": "textures/rocks_ground_01_nor_4k.png.png",
+      "roughness": "textures/rocks_ground_01_rough_4k.png.png",
+      "displacement": "textures/rocks_ground_01_disp_4k.png.png"
+    },
+    {
+      "name": "dirt",
+      "diffuse": "textures/dirt_floor_diff_4k.png.png",
+      "normal": "textures/dirt_floor_nor_gl_4k.png.png",
+      "roughness": "textures/dirt_floor_rough_4k.png.png",
+      "displacement": "textures/dirt_floor_disp_4k.png.png"
+    },
+    {
+      "name": "cliff",
+      "diffuse": "textures/coastal_cliff_04_diff.png.png",
+      "normal": "textures/coastal_cliff_04_nor_gl.png.png",
+      "roughness": "textures/coastal_cliff_04_rough.png.png",
+      "displacement": null
+    },
+    {
+      "name": "sand",
+      "diffuse": "textures/sand_rocks_small_01_diff.png.png",
+      "normal": "textures/sand_rocks_small_01_nor_gl.png.png",
+      "roughness": "textures/sand_rocks_small_01_rough.png.png",
+      "displacement": null
+    }
+  ],
+  "scatter": {
+    "density": 0.003,
+    "use_poisson_disk": true,
+    "min_distance": 2.0,
+    "max_slope": 35.0,
+    "size_variation": [
+      0.8,
+      1.5
+    ],
+    "random_rotation": true
+  },
+  "conditions": {
+    "height_range": [
+      0.0,
+      1000.0
+    ],
+    "temperature_range": [
+      0.0,
+      1.0
+    ],
+    "moisture_range": [
+      0.0,
+      1.0
+    ],
+    "max_slope": 90.0
+  },
+  "sky": {
+    "horizon_color": [
+      0.5,
+      0.7,
+      0.9
+    ],
+    "zenith_color": [
+      0.2,
+      0.4,
+      0.8
+    ],
+    "sun_color": [
+      1.0,
+      0.9,
+      0.7
+    ],
+    "fog_density": 0.0,
+    "fog_color": [
+      0.8,
+      0.8,
+      0.9
+    ],
+    "cloud_coverage": 0.3,
+    "precipitation": "None"
+  },
+  "terrain_heightmap_path": null,
+  "fixed_placements_path": "fixed_placements.json",
+  "scene_footprint_area": 450.77765
+}

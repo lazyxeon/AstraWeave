@@ -513,8 +513,8 @@ impl ViewportWidget {
             self.pending_game_input = Some(gi);
         }
 
-        // Request continuous repaint when viewport is hovered, focused, or weather effects are active
-        // This prevents cursor/focus issues when switching windows (alt-tab)
+        // Request continuous repaint when viewport is hovered, focused, or weather
+        // effects are active. This keeps the editor at full frame rate (~120fps idle).
         let effects_active = self
             .renderer
             .lock()

@@ -27,6 +27,29 @@ impl Default for RenderMode {
     }
 }
 
+/// Editor rendering quality preset.
+///
+/// Controls shadow quality and post-processing complexity to balance
+/// visual fidelity vs. frame time in the editor viewport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditorQualityPreset {
+    /// Full game-quality rendering: 2 CSM cascades at full resolution,
+    /// all post-processing effects enabled. Use for final preview.
+    GameQuality,
+    /// Editor default: reduced shadow quality (smaller PCF, narrower cascades),
+    /// only SSAO + Bloom + Tonemap post-processing. Good balance for editing.
+    EditorDefault,
+    /// Minimal: shadows disabled, tonemap only. Maximum performance for
+    /// large scenes or weak GPUs.
+    Minimal,
+}
+
+impl Default for EditorQualityPreset {
+    fn default() -> Self {
+        Self::EditorDefault
+    }
+}
+
 pub struct EngineRenderAdapter {
     renderer: astraweave_render::Renderer,
     initialized: bool,
@@ -50,6 +73,8 @@ pub struct EngineRenderAdapter {
     /// Cached index buffers per terrain chunk for incremental vertex updates.
     /// Brush strokes only change heights/normals, not topology.
     terrain_cached_indices: Vec<Vec<u32>>,
+    /// Current editor quality preset (shadows + post-processing).
+    quality_preset: EditorQualityPreset,
 }
 
 impl EngineRenderAdapter {
@@ -64,7 +89,7 @@ impl EngineRenderAdapter {
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
             width: width.max(1),
             height: height.max(1),
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode: wgpu::PresentMode::AutoVsync,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
@@ -78,7 +103,7 @@ impl EngineRenderAdapter {
                 .await
                 .context("Failed to create engine renderer")?;
 
-        Ok(Self {
+        let mut adapter = Self {
             renderer,
             initialized: true,
             terrain_model_names: Vec::new(),
@@ -90,7 +115,10 @@ impl EngineRenderAdapter {
             weather_active: false,
             water_enabled: false,
             terrain_cached_indices: Vec::new(),
-        })
+            quality_preset: EditorQualityPreset::default(),
+        };
+        adapter.apply_quality_preset(EditorQualityPreset::EditorDefault);
+        Ok(adapter)
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -128,6 +156,97 @@ impl EngineRenderAdapter {
 
     pub fn renderer_mut(&mut self) -> &mut astraweave_render::Renderer {
         &mut self.renderer
+    }
+
+    /// Get the current quality preset.
+    pub fn quality_preset(&self) -> EditorQualityPreset {
+        self.quality_preset
+    }
+
+    /// Get GPU memory usage statistics from the budget tracker.
+    /// Returns (total_used_bytes, total_budget_bytes, usage_percentage).
+    pub fn gpu_memory_stats(&self) -> (u64, u64, f32) {
+        let budget = self.renderer.gpu_memory_budget();
+        (
+            budget.total_usage(),
+            2 * 1024 * 1024 * 1024, // 2GB default
+            budget.usage_percentage(),
+        )
+    }
+
+    /// Get per-category GPU memory snapshot.
+    /// Returns Vec of (category, current_bytes, hard_limit_bytes).
+    pub fn gpu_memory_snapshot(&self) -> Vec<(astraweave_render::MemoryCategory, u64, u64)> {
+        self.renderer.gpu_memory_budget().snapshot()
+    }
+
+    /// Apply an editor quality preset, configuring shadows and post-processing.
+    ///
+    /// - `GameQuality`: Full shadows + all post-processing (for final preview)
+    /// - `EditorDefault`: Reduced shadows + SSAO/Bloom/Tonemap only (balanced)
+    /// - `Minimal`: No shadows + tonemap only (maximum performance)
+    pub fn apply_quality_preset(&mut self, preset: EditorQualityPreset) {
+        self.quality_preset = preset;
+
+        match preset {
+            EditorQualityPreset::GameQuality => {
+                // Full game-quality shadows
+                self.renderer.set_shadows_enabled(true);
+                self.renderer.set_shadow_filter(2.0, 0.005, 1.5);
+                self.renderer.set_cascade_extents(40.0, 120.0);
+                self.renderer.set_cascade_lambda(0.75);
+
+                // Full post-processing chain
+                let chain = astraweave_render::hdr_pipeline::PostProcessChain {
+                    ssao_enabled: true,
+                    ssr_enabled: true,
+                    bloom_enabled: true,
+                    taa_enabled: true,
+                    dof_enabled: false, // DoF off by default even in game quality
+                    motion_blur_enabled: false,
+                    color_grading_enabled: true,
+                    tonemap_operator: astraweave_render::hdr_pipeline::TonemapOperator::Aces,
+                };
+                self.renderer.set_post_process_chain(chain);
+            }
+            EditorQualityPreset::EditorDefault => {
+                // Reduced shadow quality: smaller PCF, narrower cascades
+                self.renderer.set_shadows_enabled(true);
+                self.renderer.set_shadow_filter(1.0, 0.005, 1.5);
+                self.renderer.set_cascade_extents(25.0, 80.0);
+                self.renderer.set_cascade_lambda(0.6);
+
+                // Editor post-processing: only essential effects
+                let chain = astraweave_render::hdr_pipeline::PostProcessChain {
+                    ssao_enabled: true,
+                    ssr_enabled: false,
+                    bloom_enabled: true,
+                    taa_enabled: false,
+                    dof_enabled: false,
+                    motion_blur_enabled: false,
+                    color_grading_enabled: true,
+                    tonemap_operator: astraweave_render::hdr_pipeline::TonemapOperator::Aces,
+                };
+                self.renderer.set_post_process_chain(chain);
+            }
+            EditorQualityPreset::Minimal => {
+                // Shadows disabled
+                self.renderer.set_shadows_enabled(false);
+
+                // Minimal post-processing: tonemap only
+                let chain = astraweave_render::hdr_pipeline::PostProcessChain {
+                    ssao_enabled: false,
+                    ssr_enabled: false,
+                    bloom_enabled: false,
+                    taa_enabled: false,
+                    dof_enabled: false,
+                    motion_blur_enabled: false,
+                    color_grading_enabled: false,
+                    tonemap_operator: astraweave_render::hdr_pipeline::TonemapOperator::Aces,
+                };
+                self.renderer.set_post_process_chain(chain);
+            }
+        }
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -422,43 +541,9 @@ impl EngineRenderAdapter {
             }
             let name = format!("terrain_chunk_{i}");
 
-            // Convert editor TerrainVertex (96 bytes) → engine format.
-            // to_engine_vertex() extracts dominant biome ID from the 8 weight slots,
-            // preserving biome information for the engine's terrain shader.
-            let engine_verts: Vec<astraweave_render::TerrainVertex> =
-                vertices.iter().map(|v| v.to_engine_vertex()).collect();
-
-            // Determine dominant biome for this chunk to tint the instance color.
-            // The PBR shader multiplies input.color.rgb into base_color (pbr.wgsl:125),
-            // so the biome tint modulates the albedo texture per-chunk.
-            let biome_tint = Self::dominant_biome_tint(&engine_verts);
-
-            let positions: Vec<[f32; 3]> = engine_verts.iter().map(|v| v.position).collect();
-            let normals: Vec<[f32; 3]> = engine_verts.iter().map(|v| v.normal).collect();
-            let uvs: Vec<[f32; 2]> = engine_verts.iter().map(|v| v.uv).collect();
-            // Generate tangents from normal (approximate — terrain doesn't need
-            // perfect tangent frames for engine-level rendering).
-            let tangents: Vec<[f32; 4]> = normals
-                .iter()
-                .map(|n| {
-                    let up = if n[1].abs() > 0.99 {
-                        glam::Vec3::X
-                    } else {
-                        glam::Vec3::Y
-                    };
-                    let t = glam::Vec3::from(*n).cross(up).normalize();
-                    [t.x, t.y, t.z, 1.0]
-                })
-                .collect();
-
-            // Compute world-space AABB for frustum culling
-            let (mut aabb_min, mut aabb_max) = ([f32::MAX; 3], [f32::MIN; 3]);
-            for p in &positions {
-                for j in 0..3 {
-                    aabb_min[j] = aabb_min[j].min(p[j]);
-                    aabb_max[j] = aabb_max[j].max(p[j]);
-                }
-            }
+            // Single-pass conversion: editor vertices → engine arrays + biome tint + AABB
+            let (positions, normals, tangents, uvs, biome_tint, aabb_min, aabb_max) =
+                Self::convert_terrain_vertices(vertices);
 
             let mesh = self
                 .renderer
@@ -516,24 +601,84 @@ impl EngineRenderAdapter {
         );
     }
 
-    /// Compute a biome-appropriate tint color from the dominant biome in a chunk's vertices.
+    /// Convert editor terrain vertices to engine mesh arrays in a single pass.
     ///
-    /// Counts biome_id occurrences across all vertices and maps the most-frequent
-    /// biome to an RGBA tint. The PBR shader multiplies `input.color.rgb` into
-    /// `base_color`, so this tint modulates the albedo texture per-chunk.
-    fn dominant_biome_tint(verts: &[astraweave_render::TerrainVertex]) -> [f32; 4] {
-        let mut counts = [0u32; 8];
-        for v in verts {
-            let idx = (v.biome_id as usize).min(7);
-            counts[idx] += 1;
+    /// Avoids the intermediate `Vec<astraweave_render::TerrainVertex>` allocation
+    /// and separates position/normal/tangent/UV in one iteration. Also computes
+    /// the dominant biome tint and world-space AABB for frustum culling.
+    fn convert_terrain_vertices(
+        vertices: &[TerrainVertex],
+    ) -> (
+        Vec<[f32; 3]>,
+        Vec<[f32; 3]>,
+        Vec<[f32; 4]>,
+        Vec<[f32; 2]>,
+        [f32; 4],
+        [f32; 3],
+        [f32; 3],
+    ) {
+        let count = vertices.len();
+        let mut positions = Vec::with_capacity(count);
+        let mut normals = Vec::with_capacity(count);
+        let mut tangents = Vec::with_capacity(count);
+        let mut uvs = Vec::with_capacity(count);
+        let mut biome_counts = [0u32; 8];
+        let mut aabb_min = [f32::MAX; 3];
+        let mut aabb_max = [f32::MIN; 3];
+
+        for v in vertices {
+            positions.push(v.position);
+            normals.push(v.normal);
+            uvs.push(v.uv);
+
+            // Compute tangent from normal
+            let n = glam::Vec3::from(v.normal);
+            let up = if n.y.abs() > 0.99 {
+                glam::Vec3::X
+            } else {
+                glam::Vec3::Y
+            };
+            let t = n.cross(up).normalize();
+            tangents.push([t.x, t.y, t.z, 1.0]);
+
+            // Track dominant biome
+            let weights = [
+                v.biome_weights_0[0],
+                v.biome_weights_0[1],
+                v.biome_weights_0[2],
+                v.biome_weights_0[3],
+                v.biome_weights_1[0],
+                v.biome_weights_1[1],
+                v.biome_weights_1[2],
+                v.biome_weights_1[3],
+            ];
+            let mut best_idx = 0;
+            let mut best_w = weights[0];
+            for (i, &w) in weights.iter().enumerate().skip(1) {
+                if w > best_w {
+                    best_w = w;
+                    best_idx = i;
+                }
+            }
+            biome_counts[best_idx.min(7)] += 1;
+
+            // AABB
+            for j in 0..3 {
+                aabb_min[j] = aabb_min[j].min(v.position[j]);
+                aabb_max[j] = aabb_max[j].max(v.position[j]);
+            }
         }
-        let dominant = counts
+
+        // Dominant biome tint
+        let dominant = biome_counts
             .iter()
             .enumerate()
             .max_by_key(|(_, &c)| c)
             .map(|(i, _)| i)
             .unwrap_or(0);
-        Self::biome_id_to_tint(dominant as u32)
+        let tint = Self::biome_id_to_tint(dominant as u32);
+
+        (positions, normals, tangents, uvs, tint, aabb_min, aabb_max)
     }
 
     /// Map a biome ID (0-7) to an instance tint color.
@@ -600,24 +745,9 @@ impl EngineRenderAdapter {
             }
         };
 
-        let engine_verts: Vec<astraweave_render::TerrainVertex> =
-            vertices.iter().map(|v| v.to_engine_vertex()).collect();
-        let biome_tint = Self::dominant_biome_tint(&engine_verts);
-        let positions: Vec<[f32; 3]> = engine_verts.iter().map(|v| v.position).collect();
-        let normals: Vec<[f32; 3]> = engine_verts.iter().map(|v| v.normal).collect();
-        let uvs: Vec<[f32; 2]> = engine_verts.iter().map(|v| v.uv).collect();
-        let tangents: Vec<[f32; 4]> = normals
-            .iter()
-            .map(|n| {
-                let up = if n[1].abs() > 0.99 {
-                    glam::Vec3::X
-                } else {
-                    glam::Vec3::Y
-                };
-                let t = glam::Vec3::from(*n).cross(up).normalize();
-                [t.x, t.y, t.z, 1.0]
-            })
-            .collect();
+        // Single-pass conversion (avoids intermediate Vec<TerrainVertex> allocation)
+        let (positions, normals, tangents, uvs, biome_tint, _, _) =
+            Self::convert_terrain_vertices(vertices);
 
         let mesh = self
             .renderer

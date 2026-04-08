@@ -113,6 +113,11 @@ impl WeatherFx {
     }
 
     pub fn update(&mut self, queue: &wgpu::Queue, dt: f32, camera_pos: Vec3) {
+        // Early-out: skip all work (including GPU upload) when weather is off and no particles remain
+        if self.kind == WeatherKind::None && self.particles.is_empty() {
+            return;
+        }
+
         let effective_max = ((self.max as f32) * self.density).max(1.0) as usize;
         match self.kind {
             WeatherKind::None => {

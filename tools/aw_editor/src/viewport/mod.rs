@@ -51,9 +51,11 @@ pub mod types;
 mod widget;
 
 // Physics debug types are exported for external configuration
+#[allow(unused_imports)] // Re-exported for external API consumers
+pub use engine_adapter::EditorQualityPreset;
 #[allow(unused_imports)]
 pub use physics_renderer::{PhysicsDebugOptions, PhysicsDebugRenderer};
-#[allow(unused_imports)] // Re-exported for external API consumers
+#[allow(unused_imports)]
 pub use renderer::RenderMode;
 // Shared types — canonical exports
 #[allow(unused_imports)]

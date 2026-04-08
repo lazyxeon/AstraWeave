@@ -364,6 +364,7 @@ impl ViewportRenderer {
         crosshair_mode: bool,
         _shading_mode: u32,
     ) -> Result<()> {
+        astraweave_profiling::span!("viewport_render");
         // Ensure depth buffer matches target size
         let target_size = target.size();
         if self.size != (target_size.width, target_size.height) {
@@ -406,44 +407,48 @@ impl ViewportRenderer {
         // The engine renderer handles: sky, shadows, terrain, scatter,
         // water, entities, weather particles, post-processing.
         // Editor overlays (grid, gizmo, physics debug) render on top.
-        if let Some(adapter) = self.engine_adapter.as_mut() {
-            adapter.update_camera(camera);
-            adapter.feed_entities(world, &self.entity_mesh_map, &self.selected_entities);
-            adapter
-                .render_to_texture(scene_target_view, &mut encoder)
-                .context("Engine render failed")?;
-        } else {
-            // Headless/fallback: clear to dark background when engine adapter unavailable
-            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Headless Clear Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: scene_target_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.12,
-                            g: 0.12,
-                            b: 0.15,
-                            a: 1.0,
+        {
+            astraweave_profiling::span!("engine_render");
+            if let Some(adapter) = self.engine_adapter.as_mut() {
+                adapter.update_camera(camera);
+                adapter.feed_entities(world, &self.entity_mesh_map, &self.selected_entities);
+                adapter
+                    .render_to_texture(scene_target_view, &mut encoder)
+                    .context("Engine render failed")?;
+            } else {
+                // Headless/fallback: clear to dark background when engine adapter unavailable
+                let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Headless Clear Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: scene_target_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.12,
+                                g: 0.12,
+                                b: 0.15,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: depth_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
                         }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
+                        stencil_ops: None,
                     }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-        }
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+            }
+        } // end engine_render span
 
         // Grid overlay (on top of engine scene)
         if show_grid {
+            astraweave_profiling::span!("grid_render");
             self.grid_renderer
                 .render(
                     &mut encoder,
@@ -817,6 +822,29 @@ impl ViewportRenderer {
     /// Get the current tonemapper mode: 0=ACES, 1=PBR Neutral, 2=Reinhard
     pub fn tonemap_mode(&self) -> u32 {
         self.tonemap_mode
+    }
+
+    /// Set the editor quality preset (shadows + post-processing).
+    pub fn set_quality_preset(&mut self, preset: super::engine_adapter::EditorQualityPreset) {
+        if let Some(adapter) = self.engine_adapter.as_mut() {
+            adapter.apply_quality_preset(preset);
+        }
+    }
+
+    /// Get the current editor quality preset.
+    pub fn quality_preset(&self) -> super::engine_adapter::EditorQualityPreset {
+        self.engine_adapter
+            .as_ref()
+            .map(|a| a.quality_preset())
+            .unwrap_or_default()
+    }
+
+    /// Get GPU memory usage: (used_bytes, budget_bytes, percentage).
+    pub fn gpu_memory_stats(&self) -> (u64, u64, f32) {
+        self.engine_adapter
+            .as_ref()
+            .map(|a| a.gpu_memory_stats())
+            .unwrap_or((0, 0, 0.0))
     }
 
     pub fn handle_device_lost(&mut self) -> Result<()> {

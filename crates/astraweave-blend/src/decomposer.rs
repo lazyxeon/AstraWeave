@@ -327,21 +327,35 @@ impl SceneDecomposer {
         self.progress
             .set_message("Starting Blender for scene decomposition...");
 
-        self.run_blender(&script_path).await?;
+        let blender_err = self.run_blender(&script_path).await.err();
 
-        // Parse result
+        // Parse result — the Python script writes this even on failure,
+        // so we can get structured error info and any partial results.
         let result_path = self.output_dir.join("decomposition_result.json");
-        let raw = self.parse_result(&result_path).await?;
+        let raw = match self.parse_result(&result_path).await {
+            Ok(raw) => raw,
+            Err(_) if blender_err.is_some() => {
+                // No result file AND Blender failed — return the Blender error
+                return Err(blender_err.unwrap());
+            }
+            Err(e) => return Err(e),
+        };
 
         if !raw.success {
             let msg = raw.error.unwrap_or_else(|| "Unknown error".to_string());
             let tb = raw.traceback.unwrap_or_default();
+            let stderr = self.stderr_buffer.lock().await.clone();
             return Err(BlendError::ConversionFailed {
                 message: msg,
                 exit_code: None,
-                stderr: String::new(),
+                stderr,
                 blender_output: Some(tb),
             });
+        }
+
+        // If Blender exited non-zero but the result says success, log warning
+        if let Some(ref e) = blender_err {
+            warn!("Blender exited with error but result JSON reports success: {e}");
         }
 
         // Log per-object export errors from Python

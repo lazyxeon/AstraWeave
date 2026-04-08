@@ -71,6 +71,7 @@ engine-optimized settings.
 
 fn generate_imports() -> String {
     r#"import bpy
+import mathutils
 import os
 import sys
 import json
@@ -522,6 +523,7 @@ BLEND_HASH = "{blend_hash}"
 DRACO_COMPRESSION = {draco}
 DRACO_LEVEL = {draco_level}
 MIN_VERTEX_COUNT = {min_verts}
+MAX_VERTEX_COUNT = {max_verts}
 EXCLUDE_PATTERNS = [{excludes}]
 GROUP_BY = "{group_by}"
 EXTRACT_TEXTURES = {extract_tex}
@@ -533,6 +535,7 @@ GENERATE_MANIFEST = {gen_manifest}
         draco = python_bool(options.gltf.draco_compression),
         draco_level = options.gltf.draco_compression_level,
         min_verts = options.decomposition.min_vertex_count,
+        max_verts = options.decomposition.max_vertex_count,
         excludes = exclude_list.join(", "),
         group_by = match options.decomposition.group_by {
             DecompositionGrouping::ByObject => "OBJECT",
@@ -899,14 +902,31 @@ fn generate_per_object_exporter(options: &ConversionOptions) -> String {
     let gltf = &options.gltf;
     let mesh = &options.mesh;
     let materials = &options.materials;
+    let is_decomp = options.decomposition.enabled;
+
+    // In decomposition mode: modifiers are pre-applied before the loop,
+    // materials are extracted separately, and we skip expensive features.
+    let apply_mods = if is_decomp {
+        false
+    } else {
+        mesh.apply_modifiers
+    };
+    let export_mats = if is_decomp && options.decomposition.extract_textures {
+        "NONE"
+    } else if materials.export_materials {
+        "EXPORT"
+    } else {
+        "NONE"
+    };
 
     format!(
         r#"
 def export_single_object(obj, output_path):
     """Export a single object as a GLB/glTF with use_selection=True."""
 
-    # Deselect all, then select only this object
-    bpy.ops.object.select_all(action='DESELECT')
+    # Fast deselect: direct property access avoids operator overhead
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
 
@@ -929,9 +949,6 @@ def export_single_object(obj, output_path):
 
         # Material
         'export_materials': '{export_materials}',
-
-        # KHR material extensions (Blender 3.6+)
-        # These are passed through; unsupported params are silently ignored by Blender
 
         # No animations for static assets
         'export_animations': False,
@@ -960,19 +977,11 @@ def export_single_object(obj, output_path):
     obj.select_set(False)
 
 "#,
-        apply_modifiers = python_bool(mesh.apply_modifiers),
+        apply_modifiers = python_bool(apply_mods),
         export_tangents = python_bool(mesh.export_tangents),
         export_normals = python_bool(mesh.export_normals),
         export_vertex_colors = python_bool(mesh.export_vertex_colors),
-        export_materials = if materials.export_materials {
-            {
-                "EXPORT"
-            }
-        } else {
-            {
-                "NONE"
-            }
-        },
+        export_materials = export_mats,
         export_extras = python_bool(gltf.export_extras),
         y_up = python_bool(gltf.y_up),
     )
@@ -1080,10 +1089,86 @@ def main():
             vert_count = get_vertex_count(obj)
             if vert_count < MIN_VERTEX_COUNT:
                 continue
+            if MAX_VERTEX_COUNT > 0 and vert_count > MAX_VERTEX_COUNT:
+                print(f"Skipping {obj.name}: {vert_count} vertices exceeds limit ({MAX_VERTEX_COUNT})")
+                continue
 
             objects_to_export.append((obj, vert_count))
 
         print(f"Found {len(objects_to_export)} mesh objects to export")
+
+        # Pre-apply modifiers once before the export loop.
+        # This avoids per-object modifier re-evaluation during glTF export
+        # (export_apply=False in the exporter relies on modifiers already applied).
+        mod_start = time.time()
+        mod_count = 0
+        for obj, _ in objects_to_export:
+            if obj.modifiers:
+                bpy.context.view_layer.objects.active = obj
+                for mod in list(obj.modifiers):
+                    try:
+                        bpy.ops.object.modifier_apply(modifier=mod.name)
+                        mod_count += 1
+                    except Exception:
+                        pass  # Some modifiers can't be applied (e.g. driven, multiresolution)
+        if mod_count > 0:
+            print(f"Pre-applied {mod_count} modifiers in {time.time() - mod_start:.1f}s")
+
+        # Extract ALL textures globally before the per-object loop.
+        # This deduplicates shared textures (e.g. same rock texture on 20 boulders)
+        # and eliminates per-object material node traversal.
+        global_texture_map = {}  # material_name -> list of texture dicts
+        if EXTRACT_TEXTURES:
+            tex_start = time.time()
+            textures_dir = output_dir / "textures"
+            textures_dir.mkdir(parents=True, exist_ok=True)
+            for mat in bpy.data.materials:
+                if mat is None or not mat.use_nodes:
+                    continue
+                mat_textures = []
+                for node in mat.node_tree.nodes:
+                    if node.type != 'TEX_IMAGE' or node.image is None:
+                        continue
+                    image = node.image
+                    safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in image.name)
+                    ext = Path(image.filepath_raw).suffix if image.filepath_raw else '.png'
+                    if not ext:
+                        ext = '.png'
+                    tex_filename = f"{safe_name}{ext}"
+                    tex_path = textures_dir / tex_filename
+                    channel = 'unknown'
+                    for link in node.outputs[0].links:
+                        to_socket = link.to_socket.name.lower()
+                        if 'color' in to_socket or 'base' in to_socket:
+                            channel = 'diffuse'
+                        elif 'normal' in to_socket:
+                            channel = 'normal'
+                        elif 'rough' in to_socket:
+                            channel = 'roughness'
+                        elif 'metal' in to_socket:
+                            channel = 'metallic'
+                        elif 'alpha' in to_socket:
+                            channel = 'alpha'
+                        elif 'displace' in to_socket or 'height' in to_socket:
+                            channel = 'displacement'
+                        elif 'emit' in to_socket or 'emission' in to_socket:
+                            channel = 'emission'
+                    if not tex_path.exists():
+                        try:
+                            image.save_render(str(tex_path))
+                        except Exception as e:
+                            print(f"Warning: Failed to save texture {image.name}: {e}")
+                            continue
+                    mat_textures.append({
+                        'filename': tex_filename,
+                        'channel': channel,
+                        'original_name': image.name,
+                        'width': image.size[0],
+                        'height': image.size[1],
+                    })
+                if mat_textures:
+                    global_texture_map[mat.name] = mat_textures
+            print(f"Global texture extraction: {sum(len(v) for v in global_texture_map.values())} textures from {len(global_texture_map)} materials in {time.time() - tex_start:.1f}s")
 
         # Deduplicate by mesh datablock — objects sharing the same mesh data
         # (e.g. boulder instances) are exported once; subsequent instances
@@ -1160,14 +1245,24 @@ def main():
             file_size = mesh_path.stat().st_size
             print(f"  -> {file_size/1024/1024:.1f} MB in {obj_elapsed:.1f}s")
 
+            # Guard: delete oversized exports (>500 MB per object is likely a
+            # particle system or dense foliage that evaluated into geometry)
+            if file_size > 500 * 1024 * 1024:
+                print(f"  WARNING: {obj.name} exported as {file_size/1024/1024:.0f} MB — deleting oversized file")
+                mesh_path.unlink(missing_ok=True)
+                export_errors.append({'name': obj.name, 'error': f'Oversized export ({file_size/1024/1024:.0f} MB)'})
+                continue
+
             # Register this mesh datablock as exported
             if mesh_data_name:
                 exported_meshdata[mesh_data_name] = (f"meshes/{mesh_filename}", file_size, vert_count)
 
-            # Collect textures for this object
+            # Look up textures from the global pre-extracted texture map
             object_textures = []
             if EXTRACT_TEXTURES:
-                object_textures = collect_textures_for_object(obj, output_dir)
+                for ms in obj.material_slots:
+                    if ms.material and ms.material.name in global_texture_map:
+                        object_textures.extend(global_texture_map[ms.material.name])
 
             # Compute bounds
             bounds = compute_bounds(obj)
@@ -1237,20 +1332,25 @@ def main():
         result['traceback'] = traceback.format_exc()
         print(f"Decomposition failed: {e}", file=sys.stderr)
         traceback.print_exc()
-        sys.exit(1)
 
-    # Write result JSON for parsing by Rust
+    # Always write result JSON — even on failure, so Rust can read the error.
     result_file = str(Path(OUTPUT_DIR) / "decomposition_result.json")
-    with open(result_file, 'w') as f:
-        json.dump(result, f, indent=2)
+    try:
+        Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+        with open(result_file, 'w') as f:
+            json.dump(result, f, indent=2)
+        print(f"Result written to: {result_file}")
+    except Exception as write_err:
+        print(f"FATAL: Could not write result file: {write_err}", file=sys.stderr)
 
-    print(f"Result written to: {result_file}")
     sys.stdout.flush()
     sys.stderr.flush()
 
-    # Force-exit to skip Blender's slow scene cleanup.  All output files
-    # have been written and flushed; the normal Python/Blender teardown
-    # can take minutes on large scenes (freeing 7 GB+ of mesh data).
+    if result.get('error'):
+        # Exit with code 1 to signal failure to Rust, but AFTER writing the result file
+        os._exit(1)
+
+    # Force-exit to skip Blender's slow scene cleanup.
     os._exit(0)
 
 if __name__ == '__main__':

@@ -68,6 +68,7 @@ mod scene_serialization; // Phase 2.2 - Scene Save/Load
 mod scene_state; // Week 1 - Canonical edit-mode world owner
 #[allow(dead_code)]
 mod splash; // Startup splash screen with logo + cinematic video
+mod subsystems;
 #[allow(dead_code)]
 mod terrain_integration; // Terrain generation integration
 #[allow(dead_code)]
@@ -77,7 +78,7 @@ mod ui; // Phase 3 - UI components (StatusBar, etc.)
 #[allow(dead_code)]
 mod viewport; // Phase 1.1 - 3D Viewport
 #[allow(dead_code)]
-mod voxel_tools; // Phase 10: Voxel editing tools // Phase 2: Asset packaging and compression
+mod voxel_tools; // Phase 10: Voxel editing tools // Phase 2: Asset packaging and compression // Phase 2: Extracted subsystem methods (hotkeys, audio, scene stats)
 
 use anyhow::{Context as _, Result};
 use astraweave_asset::AssetDatabase;
@@ -96,8 +97,7 @@ use material_inspector::MaterialInspector;
 use panels::{
     AdvancedWidgetsPanel, AnimationPanel, AssetAction, AssetBrowser, BuildManagerPanel,
     ChartsPanel, ConsolePanel, EntityPanel, GraphPanel, HierarchyPanel, Panel, PerformancePanel,
-    ProfilerPanel, SceneStats, SceneStatsPanel, TextureType, ThemeManagerPanel, TransformPanel,
-    WorldPanel,
+    ProfilerPanel, SceneStatsPanel, TextureType, ThemeManagerPanel, TransformPanel, WorldPanel,
 };
 #[allow(dead_code)]
 mod dock_layout;
@@ -140,105 +140,8 @@ fn entity_id_to_world(id: u64) -> Option<Entity> {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct LevelDoc {
-    title: String,
-    biome: String,
-    seed: u64,
-    sky: Sky,
-    biome_paints: Vec<BiomePaint>,
-    obstacles: Vec<Obstacle>,
-    npcs: Vec<NpcSpawn>,
-    fate_threads: Vec<FateThread>,
-    boss: BossCfg,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct Sky {
-    time_of_day: String,
-    weather: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-enum BiomePaint {
-    #[serde(rename = "grass_dense")]
-    GrassDense { area: Circle },
-    #[serde(rename = "moss_path")]
-    MossPath { polyline: Vec<[i32; 2]> },
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct Circle {
-    cx: i32,
-    cz: i32,
-    radius: i32,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct Obstacle {
-    id: String,
-    pos: [f32; 3],
-    yaw: f32,
-    tags: Vec<String>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct NpcSpawn {
-    archetype: String,
-    count: u32,
-    spawn: Spawn,
-    behavior: String,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct Spawn {
-    pos: [f32; 3],
-    radius: f32,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct FateThread {
-    name: String,
-    triggers: Vec<Trigger>,
-    ops: Vec<DirectorOp>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-enum Trigger {
-    #[serde(rename = "enter_area")]
-    EnterArea { center: [f32; 3], radius: f32 },
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "op")]
-enum DirectorOp {
-    Fortify {
-        area: FortRegion,
-    },
-    Collapse {
-        area: FortRegion,
-    },
-    SpawnWave {
-        archetype: String,
-        count: u32,
-        scatter: f32,
-    },
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct FortRegion {
-    cx: i32,
-    cz: i32,
-    r: i32,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct BossCfg {
-    director_budget_script: String,
-    phase_script: String,
-}
+// Level document types — canonical definitions in level_doc.rs
+use level_doc::{BiomePaint, Circle, LevelDoc, Sky};
 
 #[derive(Clone, Debug)]
 struct BehaviorGraphBinding {
@@ -430,6 +333,8 @@ struct EditorApp {
     /// Cached environment params to avoid redundant GPU updates each frame
     cached_fog_params: Option<crate::viewport::types::TerrainFogParams>,
     cached_sky_colors: Option<([f32; 4], [f32; 4], [f32; 4])>,
+    cached_lighting_params: Option<crate::viewport::types::TerrainLightingParams>,
+    cached_weather_kind: Option<astraweave_render::WeatherKind>,
     /// Measured subsystem timings (from previous frame, in ms)
     measured_render_ms: f32,
     measured_tick_ms: f32,
@@ -454,6 +359,23 @@ struct EditorApp {
     tutorial: tutorial::Tutorial,
     /// Background blend decomposition receiver
     decomp_receiver: Option<std::sync::mpsc::Receiver<DecompThreadMsg>>,
+    /// Generation counter for entity list cache invalidation.
+    /// Incremented whenever entities are added, removed, or modified.
+    entity_list_generation: u64,
+    /// The last generation at which we synced the entity list to the dock tab viewer.
+    entity_list_synced_generation: u64,
+    /// Cache guard: last synced selected entity ID + generation.
+    selected_entity_synced_id: Option<u64>,
+    selected_entity_synced_generation: u64,
+    /// Cache guard: last synced console log count.
+    console_logs_synced_len: usize,
+    /// Whether egui style has been applied (avoids cloning Style every frame).
+    style_applied: bool,
+    /// Cached window title inputs to avoid format!() every frame.
+    cached_title_dirty: bool,
+    cached_title_entity_count: usize,
+    cached_title_path: Option<std::path::PathBuf>,
+    cached_window_title: String,
 }
 
 impl Default for EditorApp {
@@ -625,6 +547,8 @@ impl Default for EditorApp {
             last_resource_sample: std::time::Instant::now(),
             splash: Some(splash::SplashScreen::new()),
             cached_fog_params: None,
+            cached_lighting_params: None,
+            cached_weather_kind: None,
             cached_sky_colors: None,
             measured_render_ms: 0.0,
             measured_tick_ms: 0.0,
@@ -645,12 +569,28 @@ impl Default for EditorApp {
                 t
             },
             decomp_receiver: None,
+            entity_list_generation: 0,
+            entity_list_synced_generation: u64::MAX, // force initial sync
+            selected_entity_synced_id: None,
+            selected_entity_synced_generation: u64::MAX,
+            console_logs_synced_len: usize::MAX,
+            style_applied: false,
+            cached_title_dirty: false,
+            cached_title_entity_count: usize::MAX,
+            cached_title_path: None,
+            cached_window_title: String::new(),
         }
     }
 }
 
 #[allow(dead_code)] // Helper methods for toast/progress/world access — used as editor features grow
 impl EditorApp {
+    /// Mark the entity list as needing re-sync to the dock tab viewer.
+    /// Call this when entities are added, removed, or their properties change.
+    fn invalidate_entity_list(&mut self) {
+        self.entity_list_generation = self.entity_list_generation.wrapping_add(1);
+    }
+
     fn edit_world(&self) -> Option<&World> {
         self.scene_state.as_ref().map(|state| state.world())
     }
@@ -3396,6 +3336,7 @@ impl EditorApp {
     }
 
     fn show_docking_layout(&mut self, ctx: &egui::Context) {
+        astraweave_profiling::span!("show_docking_layout");
         // Phase 11: Professional Docking System
         // Sync selected entity to tab viewer
         self.dock_tab_viewer
@@ -3404,120 +3345,60 @@ impl EditorApp {
             .set_is_playing(!self.editor_mode.is_editing());
         self.dock_tab_viewer.begin_frame();
 
-        // Sync entity list for hierarchy panel
-        // Read World component values for entity list
-        let world_ref = self.scene_state.as_ref().map(|s| s.world());
-        let entity_list: Vec<EntityInfo> = self
-            .entity_manager
-            .entities()
-            .iter()
-            .map(|(id, entity)| {
-                let eid = entity_id_to_world(*id);
-                let (hp, team_id, ammo, pos_x, pos_y, rotation, scale) =
-                    if let (Some(eid), Some(w)) = (eid, &world_ref) {
-                        (
-                            w.health(eid).map(|h| h.hp),
-                            w.team(eid).map(|t| t.id),
-                            w.ammo(eid).map(|a| a.rounds),
-                            w.pose(eid).map(|p| p.pos.x),
-                            w.pose(eid).map(|p| p.pos.y),
-                            w.pose(eid).map(|p| p.rotation),
-                            w.pose(eid).map(|p| p.scale),
-                        )
-                    } else {
-                        (None, None, None, None, None, None, None)
-                    };
-                EntityInfo {
-                    id: *id,
-                    name: entity.name.clone(),
-                    components: entity.components.keys().cloned().collect(),
-                    entity_type: if entity.components.contains_key("Camera") {
-                        "Camera".to_string()
-                    } else if entity.components.contains_key("Light") {
-                        "Light".to_string()
-                    } else if entity.components.contains_key("Mesh") {
-                        "Mesh".to_string()
-                    } else {
-                        "Entity".to_string()
-                    },
-                    hp,
-                    team_id,
-                    ammo,
-                    pos_x,
-                    pos_y,
-                    rotation,
-                    scale,
-                    component_data: entity.components.clone(),
-                    material_base_color: [
-                        entity.material.base_color.x,
-                        entity.material.base_color.y,
-                        entity.material.base_color.z,
-                        entity.material.base_color.w,
-                    ],
-                    material_metallic: entity.material.metallic,
-                    material_roughness: entity.material.roughness,
-                    material_emissive: [
-                        entity.material.emissive.x,
-                        entity.material.emissive.y,
-                        entity.material.emissive.z,
-                    ],
-                    material_textures: entity
-                        .material
-                        .texture_slots
-                        .iter()
-                        .map(|(k, v)| (format!("{:?}", k), v.to_string_lossy().to_string()))
-                        .collect(),
-                }
-            })
-            .collect();
-        self.dock_tab_viewer.set_entity_list(entity_list);
+        // Sync entity list for hierarchy panel (only when entities change)
+        // Use EntityManager's mutation_generation for precise change detection
+        let em_gen = self.entity_manager.mutation_generation();
+        if em_gen != self.entity_list_generation || self.entity_list_synced_generation == u64::MAX {
+            self.entity_list_generation = em_gen;
+        }
 
-        // Sync selected entity transform for inspector
-        if let Some(entity_id) = self.selected_entity {
-            if let Some(entity) = self.entity_manager.get(entity_id) {
-                let (pos, rot, scale) = entity.transform();
-                // Convert to 3D format: x, y, z, rotation_z, scale_x, scale_y, scale_z
-                let angle = rot.to_euler(glam::EulerRot::ZXY).0;
-                self.dock_tab_viewer.set_selected_transform(Some((
-                    pos.x, pos.y, pos.z, angle, scale.x, scale.y, scale.z,
-                )));
-                let entity_type = if entity.components.contains_key("Camera") {
-                    "Camera".to_string()
-                } else if entity.components.contains_key("Light") {
-                    "Light".to_string()
-                } else if entity.components.contains_key("Mesh") {
-                    "Mesh".to_string()
-                } else {
-                    "Entity".to_string()
-                };
-                let eid = entity_id_to_world(entity_id);
-                let (hp, tid, ammo_v, px, py, rot_v, sc_v) =
-                    if let (Some(eid), Some(w)) = (eid, &world_ref) {
-                        (
-                            w.health(eid).map(|h| h.hp),
-                            w.team(eid).map(|t| t.id),
-                            w.ammo(eid).map(|a| a.rounds),
-                            w.pose(eid).map(|p| p.pos.x),
-                            w.pose(eid).map(|p| p.pos.y),
-                            w.pose(eid).map(|p| p.rotation),
-                            w.pose(eid).map(|p| p.scale),
-                        )
-                    } else {
-                        (None, None, None, None, None, None, None)
-                    };
-                self.dock_tab_viewer
-                    .set_selected_entity_info(Some(EntityInfo {
-                        id: entity_id,
+        // Read World reference (used by both entity list sync and selected entity sync)
+        let world_ref = self.scene_state.as_ref().map(|s| s.world());
+
+        // Only rebuild the full entity list when the generation changed
+        if self.entity_list_generation != self.entity_list_synced_generation {
+            astraweave_profiling::span!("entity_list_sync");
+            self.entity_list_synced_generation = self.entity_list_generation;
+            let entity_list: Vec<EntityInfo> = self
+                .entity_manager
+                .entities()
+                .iter()
+                .map(|(id, entity)| {
+                    let eid = entity_id_to_world(*id);
+                    let (hp, team_id, ammo, pos_x, pos_y, rotation, scale) =
+                        if let (Some(eid), Some(w)) = (eid, &world_ref) {
+                            (
+                                w.health(eid).map(|h| h.hp),
+                                w.team(eid).map(|t| t.id),
+                                w.ammo(eid).map(|a| a.rounds),
+                                w.pose(eid).map(|p| p.pos.x),
+                                w.pose(eid).map(|p| p.pos.y),
+                                w.pose(eid).map(|p| p.rotation),
+                                w.pose(eid).map(|p| p.scale),
+                            )
+                        } else {
+                            (None, None, None, None, None, None, None)
+                        };
+                    EntityInfo {
+                        id: *id,
                         name: entity.name.clone(),
                         components: entity.components.keys().cloned().collect(),
-                        entity_type,
+                        entity_type: if entity.components.contains_key("Camera") {
+                            "Camera".to_string()
+                        } else if entity.components.contains_key("Light") {
+                            "Light".to_string()
+                        } else if entity.components.contains_key("Mesh") {
+                            "Mesh".to_string()
+                        } else {
+                            "Entity".to_string()
+                        },
                         hp,
-                        team_id: tid,
-                        ammo: ammo_v,
-                        pos_x: px,
-                        pos_y: py,
-                        rotation: rot_v,
-                        scale: sc_v,
+                        team_id,
+                        ammo,
+                        pos_x,
+                        pos_y,
+                        rotation,
+                        scale,
                         component_data: entity.components.clone(),
                         material_base_color: [
                             entity.material.base_color.x,
@@ -3538,42 +3419,125 @@ impl EditorApp {
                             .iter()
                             .map(|(k, v)| (format!("{:?}", k), v.to_string_lossy().to_string()))
                             .collect(),
-                    }));
-            } else if let Some(w) = &world_ref {
-                // Entity exists in World but not in entity_manager — read directly
-                if let Some((eid, pose)) =
-                    entity_id_to_world(entity_id).and_then(|e| w.pose(e).map(|p| (e, p)))
-                {
-                    let name = w.name(eid).unwrap_or("Entity").to_string();
+                    }
+                })
+                .collect();
+            self.dock_tab_viewer.set_entity_list(entity_list);
+        } // end entity_list_sync guard
+
+        // Sync selected entity transform for inspector (skip if unchanged)
+        let sel_changed = self.selected_entity != self.selected_entity_synced_id
+            || self.entity_list_generation != self.selected_entity_synced_generation;
+        if sel_changed {
+            self.selected_entity_synced_id = self.selected_entity;
+            self.selected_entity_synced_generation = self.entity_list_generation;
+        }
+        if sel_changed {
+            if let Some(entity_id) = self.selected_entity {
+                if let Some(entity) = self.entity_manager.get(entity_id) {
+                    let (pos, rot, scale) = entity.transform();
+                    // Convert to 3D format: x, y, z, rotation_z, scale_x, scale_y, scale_z
+                    let angle = rot.to_euler(glam::EulerRot::ZXY).0;
                     self.dock_tab_viewer.set_selected_transform(Some((
-                        pose.pos.x as f32,
-                        pose.height,
-                        pose.pos.y as f32,
-                        pose.rotation,
-                        pose.scale,
-                        pose.scale,
-                        pose.scale,
+                        pos.x, pos.y, pos.z, angle, scale.x, scale.y, scale.z,
                     )));
+                    let entity_type = if entity.components.contains_key("Camera") {
+                        "Camera".to_string()
+                    } else if entity.components.contains_key("Light") {
+                        "Light".to_string()
+                    } else if entity.components.contains_key("Mesh") {
+                        "Mesh".to_string()
+                    } else {
+                        "Entity".to_string()
+                    };
+                    let eid = entity_id_to_world(entity_id);
+                    let (hp, tid, ammo_v, px, py, rot_v, sc_v) =
+                        if let (Some(eid), Some(w)) = (eid, &world_ref) {
+                            (
+                                w.health(eid).map(|h| h.hp),
+                                w.team(eid).map(|t| t.id),
+                                w.ammo(eid).map(|a| a.rounds),
+                                w.pose(eid).map(|p| p.pos.x),
+                                w.pose(eid).map(|p| p.pos.y),
+                                w.pose(eid).map(|p| p.rotation),
+                                w.pose(eid).map(|p| p.scale),
+                            )
+                        } else {
+                            (None, None, None, None, None, None, None)
+                        };
                     self.dock_tab_viewer
                         .set_selected_entity_info(Some(EntityInfo {
                             id: entity_id,
-                            name,
-                            components: Vec::new(),
-                            entity_type: "Entity".to_string(),
-                            hp: w.health(eid).map(|h| h.hp),
-                            team_id: w.team(eid).map(|t| t.id),
-                            ammo: w.ammo(eid).map(|a| a.rounds),
-                            pos_x: Some(pose.pos.x),
-                            pos_y: Some(pose.pos.y),
-                            rotation: Some(pose.rotation),
-                            scale: Some(pose.scale),
-                            component_data: std::collections::HashMap::new(),
-                            material_base_color: [1.0, 1.0, 1.0, 1.0],
-                            material_metallic: 0.0,
-                            material_roughness: 0.5,
-                            material_emissive: [0.0, 0.0, 0.0],
-                            material_textures: std::collections::HashMap::new(),
+                            name: entity.name.clone(),
+                            components: entity.components.keys().cloned().collect(),
+                            entity_type,
+                            hp,
+                            team_id: tid,
+                            ammo: ammo_v,
+                            pos_x: px,
+                            pos_y: py,
+                            rotation: rot_v,
+                            scale: sc_v,
+                            component_data: entity.components.clone(),
+                            material_base_color: [
+                                entity.material.base_color.x,
+                                entity.material.base_color.y,
+                                entity.material.base_color.z,
+                                entity.material.base_color.w,
+                            ],
+                            material_metallic: entity.material.metallic,
+                            material_roughness: entity.material.roughness,
+                            material_emissive: [
+                                entity.material.emissive.x,
+                                entity.material.emissive.y,
+                                entity.material.emissive.z,
+                            ],
+                            material_textures: entity
+                                .material
+                                .texture_slots
+                                .iter()
+                                .map(|(k, v)| (format!("{:?}", k), v.to_string_lossy().to_string()))
+                                .collect(),
                         }));
+                } else if let Some(w) = &world_ref {
+                    // Entity exists in World but not in entity_manager — read directly
+                    if let Some((eid, pose)) =
+                        entity_id_to_world(entity_id).and_then(|e| w.pose(e).map(|p| (e, p)))
+                    {
+                        let name = w.name(eid).unwrap_or("Entity").to_string();
+                        self.dock_tab_viewer.set_selected_transform(Some((
+                            pose.pos.x as f32,
+                            pose.height,
+                            pose.pos.y as f32,
+                            pose.rotation,
+                            pose.scale,
+                            pose.scale,
+                            pose.scale,
+                        )));
+                        self.dock_tab_viewer
+                            .set_selected_entity_info(Some(EntityInfo {
+                                id: entity_id,
+                                name,
+                                components: Vec::new(),
+                                entity_type: "Entity".to_string(),
+                                hp: w.health(eid).map(|h| h.hp),
+                                team_id: w.team(eid).map(|t| t.id),
+                                ammo: w.ammo(eid).map(|a| a.rounds),
+                                pos_x: Some(pose.pos.x),
+                                pos_y: Some(pose.pos.y),
+                                rotation: Some(pose.rotation),
+                                scale: Some(pose.scale),
+                                component_data: std::collections::HashMap::new(),
+                                material_base_color: [1.0, 1.0, 1.0, 1.0],
+                                material_metallic: 0.0,
+                                material_roughness: 0.5,
+                                material_emissive: [0.0, 0.0, 0.0],
+                                material_textures: std::collections::HashMap::new(),
+                            }));
+                    } else {
+                        self.dock_tab_viewer.set_selected_transform(None);
+                        self.dock_tab_viewer.set_selected_entity_info(None);
+                    }
                 } else {
                     self.dock_tab_viewer.set_selected_transform(None);
                     self.dock_tab_viewer.set_selected_entity_info(None);
@@ -3582,159 +3546,11 @@ impl EditorApp {
                 self.dock_tab_viewer.set_selected_transform(None);
                 self.dock_tab_viewer.set_selected_entity_info(None);
             }
-        } else {
-            self.dock_tab_viewer.set_selected_transform(None);
-            self.dock_tab_viewer.set_selected_entity_info(None);
-        }
+        } // end sel_changed guard
 
-        // Sync console logs
-        self.dock_tab_viewer
-            .set_console_logs(self.console_logs.clone());
-
-        // Sync runtime stats for profiler panel
-        let entity_count = self.entity_manager.entities().len();
-
-        // Get real render stats from viewport if available
-        let (vp_draw_calls, vp_triangles, vp_memory_mb) = if let Some(viewport) = &self.viewport {
-            let stats = &viewport.toolbar().stats;
-            // Query actual draw calls and triangle counts from terrain + scatter renderers
-            if let Ok(renderer) = viewport.renderer().lock() {
-                // Base draw calls: skybox(1) + grid(1) + entity_instances + gizmos(1)
-                let base_draw_calls = if entity_count > 0 { 4 } else { 2 };
-                let terrain_draw_calls = renderer.terrain_triangles().min(1); // 0 or 1 terrain pass
-                let scatter_draw_calls = renderer.scatter_draw_calls() as usize;
-                let draw_calls = base_draw_calls + terrain_draw_calls + scatter_draw_calls;
-                // Real triangle counts from terrain and scatter renderers
-                let entity_tris = entity_count * 12; // cubes
-                let terrain_tris = renderer.terrain_triangles();
-                let scatter_tris = renderer.scatter_triangles();
-                let triangles = entity_tris + terrain_tris + scatter_tris + 4; // +4 for grid+skybox
-                drop(renderer);
-                (draw_calls, triangles, stats.memory_usage_mb)
-            } else {
-                (0, 0, stats.memory_usage_mb)
-            }
-        } else {
-            (0, 0, 0.0)
-        };
-
-        // Real memory: use process working set from resource_usage if available
-        let gpu_memory_bytes = if self.resource_usage.memory_used > 0 {
-            self.resource_usage.memory_used as usize
-        } else {
-            (vp_memory_mb * 1024.0 * 1024.0) as usize
-        };
-
-        let runtime_stats = tab_viewer::RuntimeStatsInfo {
-            frame_time_ms: self.runtime.stats().frame_time_ms,
-            fps: self.current_fps,
-            entity_count,
-            tick_count: self.runtime.stats().tick_count,
-            is_playing: self.runtime.is_playing(),
-            is_paused: self.runtime.is_paused(),
-            // Subsystem timings measured from previous frame
-            render_time_ms: self.measured_render_ms,
-            physics_time_ms: self.measured_tick_ms,
-            ai_time_ms: 0.0,
-            script_time_ms: 0.0,
-            audio_time_ms: self.audio_bridge.last_tick_ms,
-            draw_calls: vp_draw_calls,
-            triangles: vp_triangles,
-            gpu_memory_bytes,
-        };
-        self.dock_tab_viewer.set_runtime_stats(runtime_stats);
-        self.dock_tab_viewer.update_play_session();
-
-        // Sync scene stats - count actual component types from entities
-        let entities = self.entity_manager.entities();
-        let total_components: usize = entities.values().map(|e| e.components.len()).sum();
-        let entity_count = entities.len();
-
-        // Count actual component types by inspecting entity data
-        let mut light_count = 0usize;
-        let mut mesh_count = 0usize;
-        let mut physics_bodies = 0usize;
-        let mut audio_sources = 0usize;
-        let mut particle_systems = 0usize;
-        let mut camera_count = 0usize;
-        let mut collider_count = 0usize;
-        let mut script_count = 0usize;
-
-        for entity in entities.values() {
-            if entity.mesh.is_some() {
-                mesh_count += 1;
-            }
-            for key in entity.components.keys() {
-                let key_lower = key.to_lowercase();
-                if key_lower.contains("light") {
-                    light_count += 1;
-                } else if key_lower.contains("rigidbody") || key_lower.contains("physics") {
-                    physics_bodies += 1;
-                } else if key_lower.contains("audio") || key_lower.contains("sound") {
-                    audio_sources += 1;
-                } else if key_lower.contains("particle") {
-                    particle_systems += 1;
-                } else if key_lower.contains("camera") {
-                    camera_count += 1;
-                } else if key_lower.contains("collider") {
-                    collider_count += 1;
-                } else if key_lower.contains("script") || key_lower.contains("behavior") {
-                    script_count += 1;
-                }
-            }
-        }
-
-        // Always at least 1 camera (the editor camera)
-        if camera_count == 0 {
-            camera_count = 1;
-        }
-
-        let scene_stats = tab_viewer::SceneStatsInfo {
-            total_entities: entity_count,
-            total_components,
-            prefab_instances: 0,
-            selected_count: self.selection_set.count(),
-            memory_usage_bytes: entity_count * 1024 + total_components * 256,
-            active_systems: if self.runtime.is_playing() { 12 } else { 0 },
-            loaded_assets: self.asset_registry.count(),
-            light_count,
-            mesh_count,
-            physics_bodies,
-            is_modified: self.is_dirty,
-            audio_sources,
-            particle_systems,
-            camera_count,
-            collider_count,
-            script_count,
-            ui_element_count: 0,
-            scene_path: self
-                .current_scene_path
-                .as_ref()
-                .map(|p| p.display().to_string()),
-            last_save_time: self.last_save_time.clone(),
-        };
-        self.dock_tab_viewer.set_scene_stats(scene_stats);
-
-        // Sync undo/redo counts
-        self.dock_tab_viewer.set_undo_redo_counts(
-            self.undo_stack.len(),
-            0, // Redo count would come from redo stack
-        );
-
-        // Update frame time history for profiler graph
-        self.dock_tab_viewer
-            .push_frame_time(self.runtime.stats().frame_time_ms);
-
-        // Feed frame debugger with render timing data
-        {
-            let entity_count = self.entity_manager.entities().len();
-            let terrain_active = self.dock_tab_viewer.is_terrain_active();
-            self.dock_tab_viewer.update_frame_debugger(
-                self.measured_render_ms,
-                entity_count,
-                terrain_active,
-            );
-        }
+        // Sync console logs + runtime stats (extracted to subsystems/docking_sync.rs)
+        self.sync_console_logs_to_dock();
+        self.sync_runtime_stats_to_dock();
 
         // Render the docking layout with EditorDrawContext for viewport integration
         // We need to carefully structure borrows to avoid conflicts
@@ -3857,14 +3673,22 @@ impl EditorApp {
                 self.cached_fog_params = Some(fog_params);
             }
 
-            // Sync lighting parameters from world panel to terrain shader
+            // Sync lighting parameters (cached — only update GPU when values change)
             let lighting_params = self.dock_tab_viewer.lighting_params();
-            viewport.set_lighting_params(lighting_params);
+            if self.cached_lighting_params.as_ref() != Some(&lighting_params) {
+                viewport.set_lighting_params(lighting_params);
+                self.cached_lighting_params = Some(lighting_params);
+            }
 
-            // Sync weather type and tick particles
+            // Sync weather type (cached) and tick particles only when active
             let weather_kind = self.dock_tab_viewer.weather_kind();
-            viewport.set_weather(weather_kind);
-            viewport.tick_weather(ctx.input(|i| i.stable_dt));
+            if self.cached_weather_kind != Some(weather_kind) {
+                viewport.set_weather(weather_kind);
+                self.cached_weather_kind = Some(weather_kind);
+            }
+            if weather_kind != astraweave_render::WeatherKind::None {
+                viewport.tick_weather(ctx.input(|i| i.stable_dt));
+            }
 
             // Only enable water plane for water-related biomes
             let biome = self.dock_tab_viewer.terrain_primary_biome();
@@ -6308,13 +6132,11 @@ impl EditorApp {
                                         }));
                                     }
                                     Err(e) => {
-                                        // Send Display message for the UI error box
-                                        let display_msg = format!("{e}");
-                                        // Send Debug representation to console for full diagnostics
-                                        let debug_msg = format!("{e:?}");
-                                        let _ = tx.send(DecompThreadMsg::Failed(display_msg));
-                                        // Log Debug details — these include stderr, blender_output, etc.
-                                        tracing::warn!("[Blend Import] Decomposition error: {debug_msg}");
+                                        // Use Debug formatting to get all error details
+                                        // (stderr, blender_output, traceback etc.)
+                                        let detail = format!("{e:#}");
+                                        let _ = tx.send(DecompThreadMsg::Failed(detail.clone()));
+                                        tracing::error!("[Blend Import] {detail}");
                                     }
                                 }
                             });
@@ -8578,13 +8400,18 @@ impl MenuActionHandler for EditorApp {
 
 impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Tighten spacing for a compact professional look without crushing readability
-        let mut style = (*ctx.style()).clone();
-        style.spacing.item_spacing = egui::vec2(4.0, 3.0);
-        style.spacing.window_margin = egui::Margin::same(2);
-        ctx.set_style(style);
+        astraweave_profiling::span!("editor_update");
 
-        // Apply persisted theme on first frame
+        // Apply editor style once (avoids cloning egui::Style every frame)
+        if !self.style_applied {
+            let mut style = (*ctx.style()).clone();
+            style.spacing.item_spacing = egui::vec2(4.0, 3.0);
+            style.spacing.window_margin = egui::Margin::same(2);
+            ctx.set_style(style);
+            self.style_applied = true;
+        }
+
+        // Apply persisted theme on first frame (resets style_applied if theme changes)
         self.theme_manager.apply_theme(ctx);
 
         // --- Startup splash screen (logo + cinematic video) ---
@@ -8616,60 +8443,66 @@ impl eframe::App for EditorApp {
         }
 
         // Week 4: Handle drag-drop file imports
-        self.handle_dropped_files(ctx);
-
-        // Week 5 Day 3-4: Process hierarchy panel actions and sync prefab instances
-        self.process_hierarchy_actions();
-        self.sync_hierarchy_prefab_instances();
-
-        // Drain entity panel mesh assignments (from archetype spawns)
         {
-            let assignments = std::mem::take(&mut self.entity_panel.pending_mesh_assignments);
-            for (entity_id, mesh_path) in assignments {
-                let em_id: u64 = entity_id.into();
-                if let Some(em_entity) = self.entity_manager.get_mut(em_id) {
-                    em_entity.set_mesh(mesh_path);
-                } else {
-                    let name = self
-                        .scene_state
-                        .as_ref()
-                        .and_then(|s| s.world().name(entity_id))
-                        .unwrap_or("Entity")
-                        .to_string();
-                    let mut em_entity = entity_manager::EditorEntity::new(em_id, name);
-                    em_entity.set_mesh(mesh_path);
-                    if let Some(s) = self.scene_state.as_ref() {
-                        if let Some(pose) = s.world().pose(entity_id) {
-                            em_entity.position =
-                                glam::Vec3::new(pose.pos.x as f32, pose.height, pose.pos.y as f32);
+            astraweave_profiling::span!("input_processing");
+            self.handle_dropped_files(ctx);
+
+            // Week 5 Day 3-4: Process hierarchy panel actions and sync prefab instances
+            self.process_hierarchy_actions();
+            self.sync_hierarchy_prefab_instances();
+
+            // Drain entity panel mesh assignments (from archetype spawns)
+            {
+                let assignments = std::mem::take(&mut self.entity_panel.pending_mesh_assignments);
+                for (entity_id, mesh_path) in assignments {
+                    let em_id: u64 = entity_id.into();
+                    if let Some(em_entity) = self.entity_manager.get_mut(em_id) {
+                        em_entity.set_mesh(mesh_path);
+                    } else {
+                        let name = self
+                            .scene_state
+                            .as_ref()
+                            .and_then(|s| s.world().name(entity_id))
+                            .unwrap_or("Entity")
+                            .to_string();
+                        let mut em_entity = entity_manager::EditorEntity::new(em_id, name);
+                        em_entity.set_mesh(mesh_path);
+                        if let Some(s) = self.scene_state.as_ref() {
+                            if let Some(pose) = s.world().pose(entity_id) {
+                                em_entity.position = glam::Vec3::new(
+                                    pose.pos.x as f32,
+                                    pose.height,
+                                    pose.pos.y as f32,
+                                );
+                            }
                         }
+                        self.entity_manager.add(em_entity);
                     }
-                    self.entity_manager.add(em_entity);
                 }
             }
-        }
 
-        // Update cursor ground position for position-aware asset dropping
-        if let Some(viewport) = &self.viewport {
-            let hover_pos = ctx.input(|i| i.pointer.hover_pos());
-            if let Some(pos) = hover_pos {
-                if let Some((gx, gz)) = viewport.ground_position_at_screen_pos(pos) {
-                    self.last_cursor_ground_pos = Some((gx.round() as i32, gz.round() as i32));
+            // Update cursor ground position for position-aware asset dropping
+            if let Some(viewport) = &self.viewport {
+                let hover_pos = ctx.input(|i| i.pointer.hover_pos());
+                if let Some(pos) = hover_pos {
+                    if let Some((gx, gz)) = viewport.ground_position_at_screen_pos(pos) {
+                        self.last_cursor_ground_pos = Some((gx.round() as i32, gz.round() as i32));
+                    }
                 }
             }
-        }
 
-        // Process asset browser actions (drag-drop, double-click, context actions)
-        self.process_asset_browser_actions();
+            // Process asset browser actions (drag-drop, double-click, context actions)
+            self.process_asset_browser_actions();
 
-        // Process blend import panel actions (decomposition, pack gen, browse)
-        self.process_blend_import_actions();
+            // Process blend import panel actions (decomposition, pack gen, browse)
+            self.process_blend_import_actions();
 
-        // Poll background blend decomposition
-        self.poll_blend_decomposition();
+            // Poll background blend decomposition
+            self.poll_blend_decomposition();
 
-        // Process blueprint zone panel actions (generate, save, load)
-        self.process_blueprint_actions();
+            // Process blueprint zone panel actions (generate, save, load)
+            self.process_blueprint_actions();
+        } // end input_processing span
 
         let now = std::time::Instant::now();
         let frame_time = now.duration_since(self.last_frame_time).as_secs_f32();
@@ -8752,94 +8585,35 @@ impl eframe::App for EditorApp {
             }
         }
 
-        let selected_count = self.selection_set.entities.len();
-        let scene_entity_count = self
-            .scene_state
-            .as_ref()
-            .map(|s| s.world().entities().len())
-            .unwrap_or(0);
+        // Scene statistics (extracted to subsystems/scene_stats.rs)
+        self.update_scene_stats();
 
-        // Enhanced scene statistics: pull real data from terrain + scatter renderers
-        let (real_triangles, real_vertices, real_draw_calls, scatter_instances) =
-            if let Some(viewport) = &self.viewport {
-                if let Ok(renderer) = viewport.renderer().lock() {
-                    let terrain_tris = renderer.terrain_triangles();
-                    let terrain_indices = renderer.terrain_indices();
-                    let scatter_tris = renderer.scatter_triangles();
-                    let scatter_verts = renderer.scatter_vertices();
-                    let scatter_dc = renderer.scatter_draw_calls() as usize;
-                    let scatter_inst = renderer.scatter_instance_count() as usize;
-                    (
-                        terrain_tris + scatter_tris + scene_entity_count * 12,
-                        terrain_indices + scatter_verts + scene_entity_count * 8,
-                        scatter_dc + scene_entity_count + 2, // +2 for terrain+grid
-                        scatter_inst,
-                    )
-                } else {
-                    let est_tris = scene_entity_count * 500;
-                    let est_verts = scene_entity_count * 300;
-                    (est_tris, est_verts, scene_entity_count, 0)
-                }
-            } else {
-                let est_tris = scene_entity_count * 500;
-                let est_verts = scene_entity_count * 300;
-                (est_tris, est_verts, scene_entity_count, 0)
-            };
-
-        let mesh_count = scene_entity_count + scatter_instances;
-        let mesh_memory_kb = (real_vertices * 32 + real_triangles * 12) / 1024;
-
-        // Texture estimates (could be replaced with actual tracking later)
-        let texture_count = (scene_entity_count / 5).max(1) + 10; // +10 for terrain biome textures
-        let avg_texture_size_kb = 256; // 512x512 RGBA compressed
-        let texture_memory_kb = texture_count * avg_texture_size_kb;
-
-        // Material and draw call estimates
-        let material_count = (scene_entity_count / 3).max(1) + 2; // +2 for terrain+scatter shaders
-        let unique_shader_count = 4; // PBR, unlit, terrain, scatter
-        let estimated_state_changes = material_count + unique_shader_count;
-
-        self.scene_stats_panel.update_stats(SceneStats {
-            entity_count: scene_entity_count,
-            selected_count,
-            component_count: scene_entity_count * 3,
-            prefab_count: self.prefab_manager.instance_count(),
-            undo_stack_size: self.undo_stack.undo_count(),
-            redo_stack_size: self.undo_stack.redo_count(),
-            memory_estimate_kb: scene_entity_count * 2 + mesh_memory_kb + texture_memory_kb,
-            scene_path: self
-                .current_scene_path
-                .as_ref()
-                .map(|p| p.display().to_string()),
-            is_dirty: self.is_dirty,
-            mesh_count,
-            total_triangles: real_triangles,
-            total_vertices: real_vertices,
-            mesh_memory_kb,
-            texture_count,
-            texture_memory_kb,
-            max_texture_resolution: (2048, 2048), // Terrain biome textures
-            material_count,
-            unique_shader_count,
-            estimated_draw_calls: real_draw_calls,
-            estimated_state_changes,
-            performance_warning: None, // Calculated by panel
-        });
-
-        // Phase 7: Dynamic window title with file name and dirty state
-        let file_name = self
-            .current_scene_path
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .unwrap_or("Untitled");
-        let dirty_marker = if self.is_dirty { "*" } else { "" };
-        let entity_count = self.entity_manager.count();
-        let title = format!(
-            "AstraWeave Editor - {}{} ({} entities)",
-            file_name, dirty_marker, entity_count
-        );
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        // Phase 7: Dynamic window title — only rebuild when inputs change
+        {
+            let entity_count = self.entity_manager.count();
+            if self.is_dirty != self.cached_title_dirty
+                || entity_count != self.cached_title_entity_count
+                || self.current_scene_path != self.cached_title_path
+            {
+                self.cached_title_dirty = self.is_dirty;
+                self.cached_title_entity_count = entity_count;
+                self.cached_title_path = self.current_scene_path.clone();
+                let file_name = self
+                    .current_scene_path
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Untitled");
+                let dirty_marker = if self.is_dirty { "*" } else { "" };
+                self.cached_window_title = format!(
+                    "AstraWeave Editor - {}{} ({} entities)",
+                    file_name, dirty_marker, entity_count
+                );
+            }
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(
+                self.cached_window_title.clone(),
+            ));
+        }
 
         // Week 7: Enhanced Auto-save with timestamped backups
         if self.auto_save_enabled
@@ -8863,588 +8637,76 @@ impl eframe::App for EditorApp {
             }
         });
 
-        // Phase 2.1 & 2.2: Global hotkeys for undo/redo and scene save/load
-        ctx.input(|i| {
-            // Ctrl+Z: Undo
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::Z) && !i.modifiers.shift {
-                if let Some(scene_state) = self.scene_state.as_mut() {
-                    let undo_error = self
-                        .undo_stack
-                        .undo(scene_state.world_mut(), Some(&mut self.entity_manager))
-                        .err();
-
-                    if let Some(e) = undo_error {
-                        self.console_logs.push(format!("Undo failed: {}", e));
-                    } else if let Some(desc) = self.undo_stack.redo_description() {
-                        self.status = format!("Undid: {}", desc);
-                        self.console_logs.push(format!("Undo: {}", desc));
-                        self.is_dirty = true;
-                    }
-                }
-            }
-
-            // Ctrl+Y or Ctrl+Shift+Z: Redo
-            if (i.modifiers.ctrl && i.key_pressed(egui::Key::Y))
-                || (i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::Z))
-            {
-                if let Some(scene_state) = self.scene_state.as_mut() {
-                    let redo_error = self
-                        .undo_stack
-                        .redo(scene_state.world_mut(), Some(&mut self.entity_manager))
-                        .err();
-
-                    if let Some(e) = redo_error {
-                        self.console_logs.push(format!("Redo failed: {}", e));
-                    } else if let Some(desc) = self.undo_stack.undo_description() {
-                        self.status = format!("Redid: {}", desc);
-                        self.console_logs.push(format!("Redo: {}", desc));
-                        self.is_dirty = true;
-                    }
-                }
-            }
-
-            // Ctrl+S: Save Scene
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::S) {
-                if let Some(world) = self.edit_world() {
-                    let path = if let Some(p) = &self.current_scene_path {
-                        p.clone()
-                    } else {
-                        let dir = self.content_root.join("scenes");
-                        let _ = fs::create_dir_all(&dir);
-                        dir.join("untitled.scene.ron")
-                    };
-
-                    match scene_serialization::save_scene(world, &path) {
-                        Ok(()) => {
-                            self.current_scene_path = Some(path.clone());
-                            self.recent_files.add_file(path.clone());
-                            self.status = format!("Saved scene to {:?}", path);
-                            self.console_logs.push(format!("Scene saved: {:?}", path));
-                            self.last_auto_save = std::time::Instant::now();
-                            self.is_dirty = false;
-                            self.toast_manager.success("Scene saved successfully");
-                        }
-                        Err(e) => {
-                            self.status = format!("Scene save failed: {}", e);
-                            self.console_logs
-                                .push(format!("Failed to save scene: {}", e));
-                            self.toast_manager.error(format!("Save failed: {}", e));
-                        }
-                    }
-                } else {
-                    self.console_logs.push("No world to save".into());
-                }
-            }
-
-            // Ctrl+O: Load Scene (Week 7: with unsaved changes confirmation)
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::O) {
-                // Open file dialog to select scene
-                let scenes_dir = self.content_root.join("scenes");
-                if let Some(path) = rfd::FileDialog::new()
-                    .set_title("Open Scene")
-                    .set_directory(&scenes_dir)
-                    .add_filter("Scene Files", &["ron"])
-                    .add_filter("All Files", &["*"])
-                    .pick_file()
-                {
-                    self.request_open_scene(path);
-                }
-            }
-
-            // Ctrl+C: Copy selected entities
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::C) && !i.modifiers.shift {
-                if let Some(world) = self.edit_world() {
-                    let selected = self.hierarchy_panel.get_all_selected();
-                    if !selected.is_empty() {
-                        self.clipboard =
-                            Some(clipboard::ClipboardData::from_entities(world, &selected));
-                        self.status = format!("Copied {} entities", selected.len());
-                        self.console_logs
-                            .push(format!("Copied {} entities to clipboard", selected.len()));
-                    } else {
-                        self.console_logs
-                            .push("No entities selected to copy".into());
-                    }
-                }
-            }
-
-            // Ctrl+V: Paste entities
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::V) {
-                if let Some(clipboard) = &self.clipboard {
-                    if let Some(scene_state) = self.scene_state.as_mut() {
-                        let clipboard_data = clipboard.clone();
-                        let offset = IVec2 { x: 1, y: 1 };
-                        let cmd =
-                            command::SpawnEntitiesCommand::new(clipboard_data.clone(), offset);
-                        let paste_result = self.undo_stack.execute(
-                            cmd,
-                            scene_state.world_mut(),
-                            Some(&mut self.entity_manager),
-                        );
-
-                        match paste_result {
-                            Ok(()) => {
-                                let count = clipboard_data.entities.len();
-                                self.status = format!("Pasted {} entities", count);
-                                self.console_logs.push(format!("Pasted {} entities", count));
-                            }
-                            Err(e) => {
-                                self.status = format!("Paste failed: {}", e);
-                                self.console_logs.push(format!("Paste failed: {}", e));
-                            }
-                        }
-                    }
-                } else {
-                    self.console_logs.push("Clipboard is empty".into());
-                }
-            }
-
-            // Ctrl+D: Duplicate selected entities
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::D) {
-                if let Some(scene_state) = self.scene_state.as_mut() {
-                    let selected = self.hierarchy_panel.get_all_selected();
-                    if !selected.is_empty() {
-                        let offset = IVec2 { x: 1, y: 1 };
-                        let cmd = command::DuplicateEntitiesCommand::new(selected.clone(), offset);
-                        let duplicate_result = self.undo_stack.execute(
-                            cmd,
-                            scene_state.world_mut(),
-                            Some(&mut self.entity_manager),
-                        );
-
-                        match duplicate_result {
-                            Ok(()) => {
-                                self.status = format!("Duplicated {} entities", selected.len());
-                                self.console_logs
-                                    .push(format!("Duplicated {} entities", selected.len()));
-                            }
-                            Err(e) => {
-                                self.status = format!("Duplicate failed: {}", e);
-                                self.console_logs.push(format!("Duplicate failed: {}", e));
-                            }
-                        }
-                    } else {
-                        self.console_logs
-                            .push("No entities selected to duplicate".into());
-                    }
-                }
-            }
-
-            // F5: Play / Resume
-            if i.key_pressed(egui::Key::F5) {
-                self.request_play();
-            }
-
-            // F6: Pause/Unpause
-            if i.key_pressed(egui::Key::F6) {
-                if self.editor_mode.is_playing() {
-                    self.request_pause();
-                } else if self.editor_mode.is_paused() {
-                    self.request_play();
-                }
-            }
-
-            // F7: Stop (restore snapshot)
-            if i.key_pressed(egui::Key::F7) {
-                self.request_stop();
-            }
-
-            // F8: Step one frame
-            if i.key_pressed(egui::Key::F8) {
-                self.request_step();
-            }
-
-            // Delete: Delete selected entities
-            if i.key_pressed(egui::Key::Delete) && self.editor_mode.can_edit() {
-                if let Some(scene_state) = self.scene_state.as_mut() {
-                    let selected = self.hierarchy_panel.get_all_selected();
-                    if !selected.is_empty() {
-                        let cmd = command::DeleteEntitiesCommand::new(selected.clone());
-                        let delete_result = self.undo_stack.execute(
-                            cmd,
-                            scene_state.world_mut(),
-                            Some(&mut self.entity_manager),
-                        );
-
-                        match delete_result {
-                            Ok(()) => {
-                                self.hierarchy_panel.set_selected(None);
-                                self.selected_entity = None;
-                                self.status = format!(" Deleted {} entities", selected.len());
-                                self.console_logs
-                                    .push(format!("Deleted {} entities", selected.len()));
-                            }
-                            Err(e) => {
-                                self.status = format!("Delete failed: {}", e);
-                                self.console_logs.push(format!("Delete failed: {}", e));
-                            }
-                        }
-                    } else {
-                        self.console_logs
-                            .push("No entities selected to delete".into());
-                    }
-                }
-            }
-
-            // Ctrl+N: New Scene
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::N) && !i.modifiers.shift {
-                if self.is_dirty {
-                    self.show_new_confirm_dialog = true;
-                } else {
-                    self.create_new_scene();
-                }
-            }
-
-            // Ctrl+Shift+N: New Entity
-            if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::N) {
-                if let Some(scene_state) = self.scene_state.as_mut() {
-                    let world = scene_state.world_mut();
-                    let entity_id = world.spawn(
-                        "New Entity",
-                        astraweave_core::IVec2 { x: 0, y: 0 },
-                        astraweave_core::Team { id: 0 },
-                        0,
-                        0,
-                    );
-                    self.selected_entity = Some(u64::from(entity_id));
-                    self.hierarchy_panel.set_selected(Some(entity_id));
-                    self.is_dirty = true;
-                    self.status = format!("Created entity {}", entity_id);
-                    self.toast_success("New entity created");
-                }
-            }
-
-            // Ctrl+Shift+S: Save As
-            if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::S) {
-                if let Some(world) = self.edit_world() {
-                    let dir = self.content_root.join("scenes");
-                    let _ = fs::create_dir_all(&dir);
-                    let timestamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-                    let path = dir.join(format!("scene_{}.scene.ron", timestamp));
-
-                    match scene_serialization::save_scene(world, &path) {
-                        Ok(()) => {
-                            self.current_scene_path = Some(path.clone());
-                            self.recent_files.add_file(path.clone());
-                            self.status = format!("Saved scene as {:?}", path);
-                            self.console_logs
-                                .push(format!("Scene saved as: {:?}", path));
-                        }
-                        Err(e) => {
-                            self.status = format!("Save As failed: {}", e);
-                            self.console_logs.push(format!("Save As failed: {}", e));
-                        }
-                    }
-                }
-            }
-
-            // Ctrl+A: Select All entities
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::A) && !i.modifiers.shift {
-                if let Some(world) = self.edit_world() {
-                    let all_entities = world.entities();
-                    if !all_entities.is_empty() {
-                        self.hierarchy_panel.set_selected_multiple(&all_entities);
-                        self.status = format!("Selected {} entities", all_entities.len());
-                    }
-                }
-            }
-
-            // Ctrl+I: Import .blend Scene
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::I) && !i.modifiers.shift {
-                self.on_import_blend_scene();
-            }
-
-            // Ctrl+B: Toggle Blueprint Mode
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::B) && !i.modifiers.shift {
-                self.on_toggle_blueprint_mode();
-            }
-
-            // Ctrl+G: Group selected entities
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::G) && !i.modifiers.shift {
-                self.group_selection();
-            }
-
-            // Ctrl+Shift+G: Ungroup selected entity
-            if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::G) {
-                self.ungroup_selection();
-            }
-
-            // Escape: Deselect all (when not in gizmo mode)
-            if i.key_pressed(egui::Key::Escape) && self.editor_mode.can_edit() {
-                self.hierarchy_panel.set_selected(None);
-                self.selected_entity = None;
-                self.selection_set.primary = None;
-                // Clear viewport selection to stay in sync
-                if let Some(viewport) = &mut self.viewport {
-                    viewport.clear_selection();
-                }
-                self.status = "Selection cleared".to_string();
-            }
-
-            // F: Focus camera on selected entity
-            if i.key_pressed(egui::Key::F) && !i.modifiers.ctrl {
-                if let Some(selected_id) = self.selected_entity {
-                    if let Some(entity) = self.entity_manager.get(selected_id) {
-                        if let Some(viewport) = &mut self.viewport {
-                            let entity_pos = glam::Vec3::new(
-                                entity.position.x,
-                                entity.position.y,
-                                entity.position.z,
-                            );
-                            viewport.camera_mut().frame_entity(entity_pos, 2.0);
-                            self.status = format!("Focused on entity {}", selected_id);
-                        }
-                    }
-                } else {
-                    self.status = "No entity selected to focus".to_string();
-                }
-            }
-
-            // Home: Reset camera to origin
-            if i.key_pressed(egui::Key::Home) {
-                if let Some(viewport) = &mut self.viewport {
-                    viewport.camera_mut().reset_to_origin();
-                    self.status = "Camera reset to origin".to_string();
-                }
-            }
-
-            // Numpad 1: Front view
-            if i.key_pressed(egui::Key::Num1) && i.modifiers.alt {
-                if let Some(viewport) = &mut self.viewport {
-                    viewport.camera_mut().set_view_front();
-                    self.status = "Front view".to_string();
-                }
-            }
-
-            // Numpad 3: Right view
-            if i.key_pressed(egui::Key::Num3) && i.modifiers.alt {
-                if let Some(viewport) = &mut self.viewport {
-                    viewport.camera_mut().set_view_right();
-                    self.status = "Right view".to_string();
-                }
-            }
-
-            // Numpad 7: Top view
-            if i.key_pressed(egui::Key::Num7) && i.modifiers.alt {
-                if let Some(viewport) = &mut self.viewport {
-                    viewport.camera_mut().set_view_top();
-                    self.status = "Top view".to_string();
-                }
-            }
-
-            // Numpad 0 / Alt+0: Perspective view
-            if i.key_pressed(egui::Key::Num0) && i.modifiers.alt {
-                if let Some(viewport) = &mut self.viewport {
-                    viewport.camera_mut().set_view_perspective();
-                    self.status = "Perspective view".to_string();
-                }
-            }
-
-            // F1: Show keyboard shortcuts help
-            if i.key_pressed(egui::Key::F1) {
-                self.show_help_dialog = !self.show_help_dialog;
-            }
-
-            // G: Toggle grid visibility
-            if i.key_pressed(egui::Key::G) && !i.modifiers.ctrl {
-                self.show_grid = !self.show_grid;
-                self.status = if self.show_grid {
-                    "Grid enabled".to_string()
-                } else {
-                    "Grid disabled".to_string()
-                };
-            }
-
-            // Escape: Close dialogs (Week 7: Added open confirm and quit dialogs)
-            if i.key_pressed(egui::Key::Escape) {
-                if self.show_quit_dialog {
-                    self.show_quit_dialog = false;
-                } else if self.show_new_confirm_dialog {
-                    self.show_new_confirm_dialog = false;
-                } else if self.show_open_confirm_dialog {
-                    self.pending_open_path = None;
-                    self.show_open_confirm_dialog = false;
-                } else if self.show_settings_dialog {
-                    self.save_preferences();
-                    self.show_settings_dialog = false;
-                } else if self.show_help_dialog {
-                    self.show_help_dialog = false;
-                }
-            }
-
-            // Ctrl+1..6: Layout presets
-            let layout_keys = [
-                (egui::Key::Num1, dock_layout::LayoutPreset::Default),
-                (egui::Key::Num2, dock_layout::LayoutPreset::Wide),
-                (egui::Key::Num3, dock_layout::LayoutPreset::Compact),
-                (egui::Key::Num4, dock_layout::LayoutPreset::Modeling),
-                (egui::Key::Num5, dock_layout::LayoutPreset::Animation),
-                (egui::Key::Num6, dock_layout::LayoutPreset::Debug),
-            ];
-            for (key, preset) in layout_keys {
-                if i.modifiers.ctrl && !i.modifiers.alt && i.key_pressed(key) {
-                    self.dock_layout.apply_preset(preset);
-                    self.status = format!("Layout: {:?}", preset);
-                }
-            }
-
-            // Ctrl+D duplicate is handled by the clipboard-based DuplicateEntitiesCommand above.
-            // (Legacy shallow-copy handler removed — it created ghost entities in EntityManager
-            //  without corresponding World entities, corrupting selection state.)
-        });
+        // Global hotkeys (extracted to subsystems/hotkeys.rs)
+        self.handle_global_hotkeys(ctx);
 
         // Phase 2.2 legacy autosave removed — handled by Week 7 enhanced autosave
 
-        let stats = self.runtime.stats().clone();
-        self.performance_panel.set_frame_time(frame_time * 1000.0);
-        if !self.editor_mode.is_editing() {
-            self.performance_panel.push_runtime_stats(&stats);
+        {
+            astraweave_profiling::span!("panel_updates");
+            let stats = self.runtime.stats();
+            self.performance_panel.set_frame_time(frame_time * 1000.0);
+            if !self.editor_mode.is_editing() {
+                self.performance_panel.push_runtime_stats(stats);
 
-            if self.last_runtime_log.elapsed().as_millis() >= 500 {
-                self.profiler_data.push(format!(
-                    "Tick {:05} | {:>4} ents | {:>5.2} ms | {:>3.0} FPS",
-                    stats.tick_count, stats.entity_count, stats.frame_time_ms, stats.fps
-                ));
-                if self.profiler_data.len() > 60 {
-                    self.profiler_data.remove(0);
+                if self.last_runtime_log.elapsed().as_millis() >= 500 {
+                    self.profiler_data.push(format!(
+                        "Tick {:05} | {:>4} ents | {:>5.2} ms | {:>3.0} FPS",
+                        stats.tick_count, stats.entity_count, stats.frame_time_ms, stats.fps
+                    ));
+                    if self.profiler_data.len() > 60 {
+                        self.profiler_data.remove(0);
+                    }
+                    self.last_runtime_log = std::time::Instant::now();
                 }
-                self.last_runtime_log = std::time::Instant::now();
             }
-        }
-        self.performance_panel.update();
-        self.charts_panel.update();
-        self.world_panel.update();
-        self.animation_panel.update(frame_time);
+            self.performance_panel.update();
+            self.charts_panel.update();
+            self.world_panel.update();
+            self.animation_panel.update(frame_time);
+        } // end panel_updates span
 
         self.measured_ui_setup_ms = ui_setup_start.elapsed().as_secs_f32() * 1000.0;
 
         let render_start = std::time::Instant::now();
 
-        self.show_top_panel(ctx);
+        {
+            astraweave_profiling::span!("ui_layout_render");
 
-        self.show_status_bar(ctx);
+            self.show_top_panel(ctx);
 
-        // LEFT PANEL - Only show in legacy mode (pruned for docking)
-        if !self.use_docking {
-            self.show_legacy_left_panel(ctx);
-        }
+            self.show_status_bar(ctx);
 
-        // Render main content area - either docking layout or legacy panels
-        if self.use_docking {
-            self.show_docking_layout(ctx);
-        } else {
-            self.show_legacy_central_panel(ctx);
-        }
+            // LEFT PANEL - Only show in legacy mode (pruned for docking)
+            if !self.use_docking {
+                self.show_legacy_left_panel(ctx);
+            }
 
-        self.render_toasts(ctx);
+            // Render main content area - either docking layout or legacy panels
+            if self.use_docking {
+                astraweave_profiling::span!("docking_layout");
+                self.show_docking_layout(ctx);
+            } else {
+                self.show_legacy_central_panel(ctx);
+            }
+
+            self.render_toasts(ctx);
+        } // end ui_layout_render span
 
         self.measured_render_ms = render_start.elapsed().as_secs_f32() * 1000.0;
 
-        // --- Audio subsystem: process panel actions and tick engine ---
-        let audio_start = std::time::Instant::now();
-        let audio_actions = self.dock_tab_viewer.take_audio_actions();
-        if !audio_actions.is_empty() {
-            self.audio_bridge.process_actions(audio_actions);
-        }
-        self.audio_bridge.tick(frame_time);
-        // Push live stats back into the audio panel
-        self.dock_tab_viewer
-            .set_audio_stats(self.audio_bridge.stats());
-        let measured_audio_ms = audio_start.elapsed().as_secs_f32() * 1000.0;
-
-        // Update listener position to match the camera
-        if let Some(viewport) = &self.viewport {
-            let cam = viewport.camera();
-            self.audio_bridge
-                .update_listener(cam.position(), cam.forward(), cam.up());
-        }
-
-        // --- Animation subsystem: sync panel playback state to bridge ---
-        {
-            let panel = &self.animation_panel;
-            // If the panel's editor is actively playing, bridge that to the entity
-            if panel.playback_state == panels::animation::PlaybackState::Playing {
-                if let Some(entity_id) = panel.selected_entity {
-                    self.animation_bridge
-                        .assign_clip(u64::from(entity_id), panel.selected_clip_idx.unwrap_or(0));
-                }
-            }
-        }
-        self.animation_bridge.tick(frame_time);
-
-        // --- Skinning: apply CPU skinning for entities with active skeleton animations ---
-        {
-            let entities_with_meshes: Vec<(u64, String)> = self
-                .entity_manager
-                .entities()
-                .iter()
-                .filter_map(|(&id, entity)| entity.mesh.as_ref().map(|path| (id, path.clone())))
-                .collect();
-
-            // Sync skeleton/animation data from loaded meshes → animation bridge
-            if let Some(viewport) = &self.viewport {
-                if let Ok(renderer) = viewport.renderer().lock() {
-                    for (entity_id, mesh_path) in &entities_with_meshes {
-                        if !self.animation_bridge.has_skeleton(*entity_id) {
-                            if let Some(skel) = renderer.get_mesh_skeleton(mesh_path) {
-                                self.animation_bridge
-                                    .set_entity_skeleton(*entity_id, skel.clone());
-                                let clips = renderer.get_mesh_animations(mesh_path);
-                                if !clips.is_empty() {
-                                    self.animation_bridge
-                                        .set_entity_clips(*entity_id, clips.to_vec());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Apply CPU skinning for entities with active animations
-            for (entity_id, mesh_path) in &entities_with_meshes {
-                if let Some(joint_matrices) =
-                    self.animation_bridge.compute_joint_matrices(*entity_id)
-                {
-                    if let Some(viewport) = &self.viewport {
-                        if let Ok(mut renderer) = viewport.renderer().lock() {
-                            renderer.apply_cpu_skinning(mesh_path, &joint_matrices);
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- Movement scripts: tick entity movement in play mode ---
-        if self.runtime.is_playing() {
-            let mut scripted: Vec<(
-                u64,
-                movement_scripts::MovementScript,
-                glam::Vec3,
-                glam::Quat,
-            )> = Vec::new();
-            for entity in self.entity_manager.entities().values() {
-                if let Some(script_val) = entity.components.get("MovementScript") {
-                    if let Some(script) = movement_scripts::MovementScript::from_json(script_val) {
-                        scripted.push((entity.id, script, entity.position, entity.rotation));
-                    }
-                }
-            }
-            if !scripted.is_empty() {
-                let results = self.movement_system.tick_all(&scripted, frame_time);
-                for (id, new_pos, new_rot) in results {
-                    self.entity_manager
-                        .update_transform(id, new_pos, new_rot, glam::Vec3::ONE);
-                }
-            }
-        }
+        // Audio, animation, and movement subsystems (extracted to subsystems/audio_animation.rs)
+        let measured_audio_ms = self.tick_audio_subsystem(frame_time);
+        self.tick_animation_subsystem(frame_time);
+        self.tick_movement_scripts(frame_time);
 
         let tick_start = std::time::Instant::now();
-        if let Err(e) = self.runtime.tick(frame_time) {
-            self.console_logs
-                .push(format!("Runtime tick failed: {}", e));
+        {
+            astraweave_profiling::span!("runtime_tick");
+            if let Err(e) = self.runtime.tick(frame_time) {
+                self.console_logs
+                    .push(format!("Runtime tick failed: {}", e));
+            }
         }
         self.measured_tick_ms = tick_start.elapsed().as_secs_f32() * 1000.0;
 
@@ -9466,6 +8728,13 @@ impl eframe::App for EditorApp {
                 o.cursor_icon = egui::CursorIcon::Default;
             }
         });
+
+        // Publish key metrics to profiler (Tracy plots when profiling feature enabled)
+        astraweave_profiling::plot!("render_ms", self.measured_render_ms as f64);
+        astraweave_profiling::plot!("tick_ms", self.measured_tick_ms as f64);
+        astraweave_profiling::plot!("ui_setup_ms", self.measured_ui_setup_ms as f64);
+        astraweave_profiling::plot!("fps", self.current_fps as f64);
+        astraweave_profiling::frame_mark!();
     }
 }
 
@@ -9486,6 +8755,9 @@ fn main() -> Result<()> {
             .with_maximized(true)
             .with_title("AstraWeave Level & Encounter Editor"),
         wgpu_options: egui_wgpu::WgpuConfiguration {
+            // Use Mailbox (low-latency, no tearing) with AutoVsync fallback
+            // for responsive editor interaction
+            present_mode: wgpu::PresentMode::AutoVsync,
             wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(egui_wgpu::WgpuSetupCreateNew {
                 device_descriptor: std::sync::Arc::new(|adapter| {
                     let base_limits = if adapter.get_info().backend == wgpu::Backend::Gl {

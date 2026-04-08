@@ -173,7 +173,8 @@ impl GpuMemoryBudget {
         let mut budgets = self.budgets.write().unwrap_or_else(|e| e.into_inner());
 
         if let Some(budget) = budgets.get_mut(&category) {
-            let new_total = budget.current + bytes;
+            // Use checked_add to prevent u64 overflow bypassing the hard limit
+            let new_total = budget.current.checked_add(bytes).unwrap_or(u64::MAX);
 
             // Check hard limit
             if new_total > budget.hard_limit {
@@ -213,7 +214,10 @@ impl GpuMemoryBudget {
 
         if let Some(budget) = budgets.get_mut(&category) {
             budget.current = budget.current.saturating_sub(bytes);
-            self.total_used.fetch_sub(bytes, Ordering::SeqCst);
+            // Use saturating_sub to prevent u64 underflow on AtomicU64
+            let prev = self.total_used.load(Ordering::SeqCst);
+            self.total_used
+                .store(prev.saturating_sub(bytes), Ordering::SeqCst);
         }
     }
 
@@ -367,5 +371,30 @@ mod tests {
             .find(|(cat, _, _)| *cat == MemoryCategory::Textures);
         assert!(tex_entry.is_some());
         assert_eq!(tex_entry.unwrap().1, 1000);
+    }
+
+    #[test]
+    fn test_overflow_allocation_blocked() {
+        let budget = GpuMemoryBudget::new();
+        // Allocate a moderate amount first
+        assert!(budget.try_allocate(MemoryCategory::Textures, 100));
+        // Attempt to allocate near u64::MAX — should be blocked, not wrap around
+        let huge = u64::MAX - 50;
+        assert!(!budget.try_allocate(MemoryCategory::Textures, huge));
+        // Original allocation should remain intact
+        assert_eq!(budget.get_usage(MemoryCategory::Textures), 100);
+        assert_eq!(budget.total_usage(), 100);
+    }
+
+    #[test]
+    fn test_underflow_deallocation_safe() {
+        let budget = GpuMemoryBudget::new();
+        // Allocate 100 bytes
+        assert!(budget.try_allocate(MemoryCategory::Geometry, 100));
+        assert_eq!(budget.total_usage(), 100);
+        // Deallocate more than allocated — should saturate to 0, not wrap
+        budget.deallocate(MemoryCategory::Geometry, 500);
+        assert_eq!(budget.get_usage(MemoryCategory::Geometry), 0);
+        assert_eq!(budget.total_usage(), 0);
     }
 }

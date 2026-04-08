@@ -626,6 +626,12 @@ pub struct Renderer {
 
     // Terrain material manager — loads biome texture arrays onto GPU
     pub material_manager: crate::material::MaterialManager,
+
+    /// Post-processing chain configuration (controls which effects are active).
+    post_chain: crate::hdr_pipeline::PostProcessChain,
+
+    /// GPU memory budget tracker (editor-specific budgets).
+    gpu_memory_budget: std::sync::Arc<crate::gpu_memory::GpuMemoryBudget>,
 }
 
 impl Renderer {
@@ -2992,6 +2998,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             scene_env_bgl,
             scene_env_bg,
             material_manager: crate::material::MaterialManager::new(),
+            post_chain: crate::hdr_pipeline::PostProcessChain::default(),
+            gpu_memory_budget: std::sync::Arc::new(crate::gpu_memory::GpuMemoryBudget::new()),
         })
     }
 
@@ -3420,12 +3428,27 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         if new_w == 0 || new_h == 0 {
             return;
         }
+
+        // Deallocate old render target memory from budget
+        let old_rt_bytes = (self.config.width as u64) * (self.config.height as u64) * (8 + 4); // HDR(8) + Depth(4)
+        self.gpu_memory_budget.deallocate(
+            crate::gpu_memory::MemoryCategory::RenderTargets,
+            old_rt_bytes,
+        );
+
         self.config.width = new_w;
         self.config.height = new_h;
         if let Some(surface) = &self.surface {
             surface.configure(&self.device, &self.config);
         }
         self.depth = crate::depth::Depth::create(&self.device, &self.config);
+
+        // Allocate new render target memory in budget
+        let new_rt_bytes = (new_w as u64) * (new_h as u64) * (8 + 4); // HDR(8) + Depth(4)
+        self.gpu_memory_budget.try_allocate(
+            crate::gpu_memory::MemoryCategory::RenderTargets,
+            new_rt_bytes,
+        );
 
         // Recreate HDR target and refresh the post-processing bind group.
         self.hdr_tex = self.device.create_texture(&wgpu::TextureDescriptor {
@@ -3883,6 +3906,25 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         self.shadows_enabled = enabled;
     }
 
+    /// Set the post-processing chain configuration.
+    ///
+    /// Controls which post-processing effects are active (SSAO, SSR, Bloom, TAA,
+    /// DoF, Motion Blur, Color Grading) and the tonemapping operator.
+    /// Disabled effects are skipped entirely with zero GPU cost.
+    pub fn set_post_process_chain(&mut self, chain: crate::hdr_pipeline::PostProcessChain) {
+        self.post_chain = chain;
+    }
+
+    /// Get the current post-processing chain configuration.
+    pub fn post_process_chain(&self) -> &crate::hdr_pipeline::PostProcessChain {
+        &self.post_chain
+    }
+
+    /// Get a shared reference to the GPU memory budget tracker.
+    pub fn gpu_memory_budget(&self) -> &std::sync::Arc<crate::gpu_memory::GpuMemoryBudget> {
+        &self.gpu_memory_budget
+    }
+
     /// Set the water renderer for ocean rendering
     pub fn set_water_renderer(&mut self, water: crate::water::WaterRenderer) {
         self.water_renderer = Some(water);
@@ -3960,18 +4002,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         // TODO: Replace with the correct color target view for sky rendering (e.g., main color target or postprocess output)
         // self.sky.render(&mut enc, &self.main_color_view, &self.depth.view, Mat4::from_cols_array_2d(&self.camera_ubo.view_proj), &self.queue)?;
 
-        {
-            // Prepare clustered lighting for this frame: simple demo lights around origin
-            if self.point_lights.is_empty() {
-                self.point_lights.push(CpuLight {
-                    pos: glam::Vec3::new(2.0, 2.0, 3.0),
-                    radius: 6.0,
-                });
-                self.point_lights.push(CpuLight {
-                    pos: glam::Vec3::new(-3.0, 1.0, 8.0),
-                    radius: 5.0,
-                });
-            }
+        if !self.point_lights.is_empty() {
             // CPU pre-pass builds offsets array (exclusive scan) we share to GPU
             let (_counts_cpu, _indices_cpu, offsets_cpu) = bin_lights_cpu(
                 &self.point_lights,
@@ -4043,12 +4074,17 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             self.queue
                 .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&vis_raws));
         }
-        // Shadow passes (depth only) - one per cascade layer.
-        // Each pass uses its own pre-written cascade buffer (shadow_cascade_bgs).
+        // Shadow passes (depth only) — skip when no shadow-casting geometry.
+        let has_shadow_casters_r =
+            vis_count > 0 || self.mesh_external.is_some() || !self.models.is_empty();
+
         for (idx, layer_view) in [&self.shadow_layer0_view, &self.shadow_layer1_view]
             .iter()
             .enumerate()
         {
+            if !has_shadow_casters_r {
+                continue;
+            }
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
@@ -4246,65 +4282,49 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             }
         }
 
-        // Optional feature-gated post chain
+        // Optional feature-gated post chain — gated by post_chain flags
         #[cfg(feature = "postfx")]
         {
-            let mut ssp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("ssr pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.hdr_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            ssp.set_pipeline(&self.post_pipeline);
-            ssp.set_bind_group(0, &self.post_bind_group, &[]);
-            ssp.draw(0..3, 0..1);
-            drop(ssp);
-            // SSAO
-            let mut ao = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("ssao pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.hdr_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            ao.set_pipeline(&self.post_pipeline);
-            ao.set_bind_group(0, &self.post_bind_group, &[]);
-            ao.draw(0..3, 0..1);
-            drop(ao);
-            // SSGI
-            let mut gi = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("ssgi pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.hdr_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            gi.set_pipeline(&self.post_pipeline);
-            gi.set_bind_group(0, &self.post_bind_group, &[]);
-            gi.draw(0..3, 0..1);
-            drop(gi);
+            // SSR pass (only when enabled in post_chain)
+            if self.post_chain.ssr_enabled {
+                let mut ssp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("ssr pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.hdr_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                ssp.set_pipeline(&self.post_pipeline);
+                ssp.set_bind_group(0, &self.post_bind_group, &[]);
+                ssp.draw(0..3, 0..1);
+            }
+            // SSAO pass (only when enabled in post_chain)
+            if self.post_chain.ssao_enabled {
+                let mut ao = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("ssao pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.hdr_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                ao.set_pipeline(&self.post_pipeline);
+                ao.set_bind_group(0, &self.post_bind_group, &[]);
+                ao.draw(0..3, 0..1);
+            }
         }
 
         // Postprocess HDR to surface
@@ -4403,7 +4423,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             cpass.dispatch_workgroups(glights.len() as u32, 1, 1);
         }
 
-        // Plane instance buffer
+        // Update pre-allocated plane instance buffer (no per-frame allocation)
         let plane_xform = glam::Mat4::from_translation(vec3(0.0, -0.2, 0.0))
             * glam::Mat4::from_scale(vec3(50.0, 1.0, 50.0));
         let plane_inst = Instance {
@@ -4412,13 +4432,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             material_id: 0,
         }
         .raw();
-        let plane_buf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("plane inst"),
-                contents: bytemuck::bytes_of(&plane_inst),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
+        self.queue
+            .write_buffer(&self.plane_inst_buf, 0, bytemuck::bytes_of(&plane_inst));
 
         // Frustum cull - TEST 4
         let (vis_raws, vis_count) = self.build_visible_instances();
@@ -4427,13 +4442,18 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&vis_raws));
         }
 
-        // Shadow passes — one per cascade layer.
-        // Each pass uses its own pre-written cascade buffer (shadow_cascade_bgs)
-        // so both passes read the correct view-projection matrix.
+        // Shadow passes — skip entirely when shadows disabled or no geometry visible.
+        // Each shadow pass costs ~2-3ms even for an empty scene.
+        let has_shadow_casters = self.shadows_enabled
+            && (vis_count > 0 || self.mesh_external.is_some() || !self.models.is_empty());
+
         for (idx, layer_view) in [&self.shadow_layer0_view, &self.shadow_layer1_view]
             .iter()
             .enumerate()
         {
+            if !has_shadow_casters {
+                continue;
+            }
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
@@ -4565,7 +4585,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 self.mesh_plane.index_buf.slice(..),
                 wgpu::IndexFormat::Uint32,
             );
-            rp.set_vertex_buffer(1, plane_buf.slice(..));
+            rp.set_vertex_buffer(1, self.plane_inst_buf.slice(..));
             rp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
 
             // Tokens as spheres - TEST 6

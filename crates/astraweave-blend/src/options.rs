@@ -106,10 +106,17 @@ pub struct SceneDecompositionOptions {
     pub bounding_box_mode: BoundingBoxMode,
     /// Minimum vertex count to include an object (filters degenerate geometry).
     pub min_vertex_count: u32,
+    /// Maximum vertex count to include an object. Objects exceeding this are
+    /// skipped to prevent Blender from running out of memory on particle systems
+    /// and dense foliage meshes. 0 = no limit.
+    pub max_vertex_count: u32,
     /// Asset category assignment mode.
     pub asset_category: AssetCategory,
     /// Object name patterns to exclude (matched case-insensitively against Blender object names).
     pub exclude_patterns: Vec<String>,
+    /// Enable multi-instance parallel decomposition.
+    /// When true, the decomposer spawns multiple Blender processes to export objects in parallel.
+    pub parallel: bool,
 }
 
 impl Default for SceneDecompositionOptions {
@@ -124,8 +131,10 @@ impl Default for SceneDecompositionOptions {
             include_empties: false,
             bounding_box_mode: BoundingBoxMode::Aabb,
             min_vertex_count: 3,
+            max_vertex_count: 0,
             asset_category: AssetCategory::Auto,
             exclude_patterns: Vec::new(),
+            parallel: false,
         }
     }
 }
@@ -136,15 +145,17 @@ impl SceneDecompositionOptions {
         Self {
             enabled: true,
             group_by: DecompositionGrouping::ByObject,
+            output_dir: None,
             generate_manifest: true,
             extract_textures: true,
             extract_hdris: true,
             include_empties: true,
             bounding_box_mode: BoundingBoxMode::Aabb,
             min_vertex_count: 3,
+            max_vertex_count: 5_000_000,
             asset_category: AssetCategory::Auto,
             exclude_patterns: vec!["Camera".to_string(), "Light".to_string()],
-            ..Default::default()
+            parallel: true,
         }
     }
 }
@@ -567,6 +578,8 @@ pub struct ProcessOptions {
     pub capture_output: bool,
     /// Number of threads Blender should use (0 = auto).
     pub threads: u32,
+    /// Number of parallel Blender worker processes for decomposition (0 = auto from CPU count).
+    pub parallel_workers: u32,
 }
 
 impl Default for ProcessOptions {
@@ -578,7 +591,8 @@ impl Default for ProcessOptions {
             extra_blender_args: Vec::new(),
             environment: Vec::new(),
             capture_output: true,
-            threads: 0, // Auto-detect
+            threads: 0,
+            parallel_workers: 0, // Auto-detect from CPU count
         }
     }
 }

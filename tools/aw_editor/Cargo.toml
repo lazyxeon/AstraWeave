@@ -84,6 +84,11 @@ name = "gizmo_benchmarks"
 harness = false
 path = "benches/gizmo_benchmarks_simple.rs"
 
+[[bench]]
+name = "editor_performance"
+harness = false
+path = "benches/editor_performance.rs"
+
 [lib]
 name = "aw_editor_lib"
 path = "src/lib.rs"
