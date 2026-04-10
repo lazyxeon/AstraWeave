@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["GpuErosionRequest","GpuHeightmapRequest","GpuHeightmapResult","GpuNoiseRequest"],"trait":["TerrainGpuAccelerator"]};

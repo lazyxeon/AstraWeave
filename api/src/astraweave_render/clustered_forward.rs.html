@@ -618,177 +618,175 @@
 <a href=#618 id=618 data-nosnippet>618</a>    }
 <a href=#619 id=619 data-nosnippet>619</a>}
 <a href=#620 id=620 data-nosnippet>620</a>
-<a href=#621 id=621 data-nosnippet>621</a><span class="doccomment">/// WGSL shader code for clustered forward rendering
-<a href=#622 id=622 data-nosnippet>622</a></span><span class="kw">pub const </span>CLUSTERED_LIGHTING_SHADER: <span class="kw-2">&amp;</span>str = <span class="string">r#"
-<a href=#623 id=623 data-nosnippet>623</a>struct Light {
-<a href=#624 id=624 data-nosnippet>624</a>    position: vec4&lt;f32&gt;,  // w = radius
-<a href=#625 id=625 data-nosnippet>625</a>    color: vec4&lt;f32&gt;,     // w = intensity
-<a href=#626 id=626 data-nosnippet>626</a>}
-<a href=#627 id=627 data-nosnippet>627</a>
-<a href=#628 id=628 data-nosnippet>628</a>struct Cluster {
-<a href=#629 id=629 data-nosnippet>629</a>    min_bounds: vec4&lt;f32&gt;,
-<a href=#630 id=630 data-nosnippet>630</a>    max_bounds: vec4&lt;f32&gt;,
-<a href=#631 id=631 data-nosnippet>631</a>    light_offset: u32,
-<a href=#632 id=632 data-nosnippet>632</a>    light_count: u32,
-<a href=#633 id=633 data-nosnippet>633</a>    padding: vec2&lt;u32&gt;,
-<a href=#634 id=634 data-nosnippet>634</a>}
-<a href=#635 id=635 data-nosnippet>635</a>
-<a href=#636 id=636 data-nosnippet>636</a>@group(2) @binding(0) var&lt;storage, read&gt; lights: array&lt;Light&gt;;
-<a href=#637 id=637 data-nosnippet>637</a>@group(2) @binding(1) var&lt;storage, read&gt; clusters: array&lt;Cluster&gt;;
-<a href=#638 id=638 data-nosnippet>638</a>@group(2) @binding(2) var&lt;storage, read&gt; light_indices: array&lt;u32&gt;;
-<a href=#639 id=639 data-nosnippet>639</a>
-<a href=#640 id=640 data-nosnippet>640</a>struct ClusterConfig {
-<a href=#641 id=641 data-nosnippet>641</a>    cluster_x: u32,
-<a href=#642 id=642 data-nosnippet>642</a>    cluster_y: u32,
-<a href=#643 id=643 data-nosnippet>643</a>    cluster_z: u32,
-<a href=#644 id=644 data-nosnippet>644</a>    near: f32,
-<a href=#645 id=645 data-nosnippet>645</a>    far: f32,
-<a href=#646 id=646 data-nosnippet>646</a>}
-<a href=#647 id=647 data-nosnippet>647</a>
-<a href=#648 id=648 data-nosnippet>648</a>fn get_cluster_index(frag_coord: vec3&lt;f32&gt;, config: ClusterConfig) -&gt; u32 {
-<a href=#649 id=649 data-nosnippet>649</a>    let x = u32(frag_coord.x / config.cluster_x);
-<a href=#650 id=650 data-nosnippet>650</a>    let y = u32(frag_coord.y / config.cluster_y);
-<a href=#651 id=651 data-nosnippet>651</a>    
-<a href=#652 id=652 data-nosnippet>652</a>    // Exponential depth mapping
-<a href=#653 id=653 data-nosnippet>653</a>    let depth = frag_coord.z;
-<a href=#654 id=654 data-nosnippet>654</a>    let z_slice = log2(depth / config.near) / log2(config.far / config.near);
-<a href=#655 id=655 data-nosnippet>655</a>    let z = u32(z_slice * f32(config.cluster_z));
-<a href=#656 id=656 data-nosnippet>656</a>    
-<a href=#657 id=657 data-nosnippet>657</a>    return x + y * config.cluster_x + z * config.cluster_x * config.cluster_y;
-<a href=#658 id=658 data-nosnippet>658</a>}
-<a href=#659 id=659 data-nosnippet>659</a>
-<a href=#660 id=660 data-nosnippet>660</a>fn calculate_clustered_lighting(
-<a href=#661 id=661 data-nosnippet>661</a>    world_pos: vec3&lt;f32&gt;,
-<a href=#662 id=662 data-nosnippet>662</a>    normal: vec3&lt;f32&gt;,
-<a href=#663 id=663 data-nosnippet>663</a>    view_pos: vec3&lt;f32&gt;,
-<a href=#664 id=664 data-nosnippet>664</a>    albedo: vec3&lt;f32&gt;,
-<a href=#665 id=665 data-nosnippet>665</a>    metallic: f32,
-<a href=#666 id=666 data-nosnippet>666</a>    roughness: f32,
-<a href=#667 id=667 data-nosnippet>667</a>    frag_coord: vec3&lt;f32&gt;,
-<a href=#668 id=668 data-nosnippet>668</a>    config: ClusterConfig
-<a href=#669 id=669 data-nosnippet>669</a>) -&gt; vec3&lt;f32&gt; {
-<a href=#670 id=670 data-nosnippet>670</a>    let cluster_idx = get_cluster_index(frag_coord, config);
-<a href=#671 id=671 data-nosnippet>671</a>    let cluster = clusters[cluster_idx];
-<a href=#672 id=672 data-nosnippet>672</a>    
-<a href=#673 id=673 data-nosnippet>673</a>    var total_light = vec3&lt;f32&gt;(0.0);
-<a href=#674 id=674 data-nosnippet>674</a>    
-<a href=#675 id=675 data-nosnippet>675</a>    // Iterate through lights in this cluster
-<a href=#676 id=676 data-nosnippet>676</a>    for (var i = 0u; i &lt; cluster.light_count; i = i + 1u) {
-<a href=#677 id=677 data-nosnippet>677</a>        let light_idx = light_indices[cluster.light_offset + i];
-<a href=#678 id=678 data-nosnippet>678</a>        let light = lights[light_idx];
-<a href=#679 id=679 data-nosnippet>679</a>        
-<a href=#680 id=680 data-nosnippet>680</a>        let light_dir = light.position.xyz - world_pos;
-<a href=#681 id=681 data-nosnippet>681</a>        let distance = length(light_dir);
-<a href=#682 id=682 data-nosnippet>682</a>        let radius = light.position.w;
-<a href=#683 id=683 data-nosnippet>683</a>        
-<a href=#684 id=684 data-nosnippet>684</a>        // Skip if outside light radius
-<a href=#685 id=685 data-nosnippet>685</a>        if (distance &gt; radius) {
-<a href=#686 id=686 data-nosnippet>686</a>            continue;
-<a href=#687 id=687 data-nosnippet>687</a>        }
-<a href=#688 id=688 data-nosnippet>688</a>        
-<a href=#689 id=689 data-nosnippet>689</a>        let L = normalize(light_dir);
-<a href=#690 id=690 data-nosnippet>690</a>        let V = normalize(view_pos - world_pos);
-<a href=#691 id=691 data-nosnippet>691</a>        let H = normalize(L + V);
+<a href=#621 id=621 data-nosnippet>621</a><span class="doccomment">/// WGSL shader code for clustered forward rendering.
+<a href=#622 id=622 data-nosnippet>622</a>/// Consuming shaders must prepend `brdf_common.wgsl` before this code.
+<a href=#623 id=623 data-nosnippet>623</a></span><span class="kw">pub const </span>CLUSTERED_LIGHTING_SHADER: <span class="kw-2">&amp;</span>str = <span class="string">r#"
+<a href=#624 id=624 data-nosnippet>624</a>struct Light {
+<a href=#625 id=625 data-nosnippet>625</a>    position: vec4&lt;f32&gt;,  // w = radius
+<a href=#626 id=626 data-nosnippet>626</a>    color: vec4&lt;f32&gt;,     // w = intensity
+<a href=#627 id=627 data-nosnippet>627</a>}
+<a href=#628 id=628 data-nosnippet>628</a>
+<a href=#629 id=629 data-nosnippet>629</a>struct Cluster {
+<a href=#630 id=630 data-nosnippet>630</a>    min_bounds: vec4&lt;f32&gt;,
+<a href=#631 id=631 data-nosnippet>631</a>    max_bounds: vec4&lt;f32&gt;,
+<a href=#632 id=632 data-nosnippet>632</a>    light_offset: u32,
+<a href=#633 id=633 data-nosnippet>633</a>    light_count: u32,
+<a href=#634 id=634 data-nosnippet>634</a>    padding: vec2&lt;u32&gt;,
+<a href=#635 id=635 data-nosnippet>635</a>}
+<a href=#636 id=636 data-nosnippet>636</a>
+<a href=#637 id=637 data-nosnippet>637</a>@group(2) @binding(0) var&lt;storage, read&gt; lights: array&lt;Light&gt;;
+<a href=#638 id=638 data-nosnippet>638</a>@group(2) @binding(1) var&lt;storage, read&gt; clusters: array&lt;Cluster&gt;;
+<a href=#639 id=639 data-nosnippet>639</a>@group(2) @binding(2) var&lt;storage, read&gt; light_indices: array&lt;u32&gt;;
+<a href=#640 id=640 data-nosnippet>640</a>
+<a href=#641 id=641 data-nosnippet>641</a>struct ClusterConfig {
+<a href=#642 id=642 data-nosnippet>642</a>    cluster_x: u32,
+<a href=#643 id=643 data-nosnippet>643</a>    cluster_y: u32,
+<a href=#644 id=644 data-nosnippet>644</a>    cluster_z: u32,
+<a href=#645 id=645 data-nosnippet>645</a>    near: f32,
+<a href=#646 id=646 data-nosnippet>646</a>    far: f32,
+<a href=#647 id=647 data-nosnippet>647</a>}
+<a href=#648 id=648 data-nosnippet>648</a>
+<a href=#649 id=649 data-nosnippet>649</a>fn get_cluster_index(frag_coord: vec3&lt;f32&gt;, config: ClusterConfig) -&gt; u32 {
+<a href=#650 id=650 data-nosnippet>650</a>    let x = u32(frag_coord.x / config.cluster_x);
+<a href=#651 id=651 data-nosnippet>651</a>    let y = u32(frag_coord.y / config.cluster_y);
+<a href=#652 id=652 data-nosnippet>652</a>    
+<a href=#653 id=653 data-nosnippet>653</a>    // Exponential depth mapping
+<a href=#654 id=654 data-nosnippet>654</a>    let depth = frag_coord.z;
+<a href=#655 id=655 data-nosnippet>655</a>    let z_slice = log2(depth / config.near) / log2(config.far / config.near);
+<a href=#656 id=656 data-nosnippet>656</a>    let z = u32(z_slice * f32(config.cluster_z));
+<a href=#657 id=657 data-nosnippet>657</a>    
+<a href=#658 id=658 data-nosnippet>658</a>    return x + y * config.cluster_x + z * config.cluster_x * config.cluster_y;
+<a href=#659 id=659 data-nosnippet>659</a>}
+<a href=#660 id=660 data-nosnippet>660</a>
+<a href=#661 id=661 data-nosnippet>661</a>fn calculate_clustered_lighting(
+<a href=#662 id=662 data-nosnippet>662</a>    world_pos: vec3&lt;f32&gt;,
+<a href=#663 id=663 data-nosnippet>663</a>    normal: vec3&lt;f32&gt;,
+<a href=#664 id=664 data-nosnippet>664</a>    view_pos: vec3&lt;f32&gt;,
+<a href=#665 id=665 data-nosnippet>665</a>    albedo: vec3&lt;f32&gt;,
+<a href=#666 id=666 data-nosnippet>666</a>    metallic: f32,
+<a href=#667 id=667 data-nosnippet>667</a>    roughness: f32,
+<a href=#668 id=668 data-nosnippet>668</a>    frag_coord: vec3&lt;f32&gt;,
+<a href=#669 id=669 data-nosnippet>669</a>    config: ClusterConfig
+<a href=#670 id=670 data-nosnippet>670</a>) -&gt; vec3&lt;f32&gt; {
+<a href=#671 id=671 data-nosnippet>671</a>    let cluster_idx = get_cluster_index(frag_coord, config);
+<a href=#672 id=672 data-nosnippet>672</a>    let cluster = clusters[cluster_idx];
+<a href=#673 id=673 data-nosnippet>673</a>    
+<a href=#674 id=674 data-nosnippet>674</a>    var total_light = vec3&lt;f32&gt;(0.0);
+<a href=#675 id=675 data-nosnippet>675</a>    
+<a href=#676 id=676 data-nosnippet>676</a>    // Iterate through lights in this cluster
+<a href=#677 id=677 data-nosnippet>677</a>    for (var i = 0u; i &lt; cluster.light_count; i = i + 1u) {
+<a href=#678 id=678 data-nosnippet>678</a>        let light_idx = light_indices[cluster.light_offset + i];
+<a href=#679 id=679 data-nosnippet>679</a>        let light = lights[light_idx];
+<a href=#680 id=680 data-nosnippet>680</a>        
+<a href=#681 id=681 data-nosnippet>681</a>        let light_dir = light.position.xyz - world_pos;
+<a href=#682 id=682 data-nosnippet>682</a>        let distance = length(light_dir);
+<a href=#683 id=683 data-nosnippet>683</a>        let radius = light.position.w;
+<a href=#684 id=684 data-nosnippet>684</a>        
+<a href=#685 id=685 data-nosnippet>685</a>        // Skip if outside light radius
+<a href=#686 id=686 data-nosnippet>686</a>        if (distance &gt; radius) {
+<a href=#687 id=687 data-nosnippet>687</a>            continue;
+<a href=#688 id=688 data-nosnippet>688</a>        }
+<a href=#689 id=689 data-nosnippet>689</a>        
+<a href=#690 id=690 data-nosnippet>690</a>        let L = normalize(light_dir);
+<a href=#691 id=691 data-nosnippet>691</a>        let V = normalize(view_pos - world_pos);
 <a href=#692 id=692 data-nosnippet>692</a>        
 <a href=#693 id=693 data-nosnippet>693</a>        let NdotL = max(dot(normal, L), 0.0);
-<a href=#694 id=694 data-nosnippet>694</a>        let NdotV = max(dot(normal, V), 0.0);
-<a href=#695 id=695 data-nosnippet>695</a>        let NdotH = max(dot(normal, H), 0.0);
-<a href=#696 id=696 data-nosnippet>696</a>        
-<a href=#697 id=697 data-nosnippet>697</a>        // Attenuation
-<a href=#698 id=698 data-nosnippet>698</a>        let attenuation = 1.0 - pow(distance / radius, 4.0);
-<a href=#699 id=699 data-nosnippet>699</a>        let attenuation_clamped = max(attenuation, 0.0);
-<a href=#700 id=700 data-nosnippet>700</a>        
-<a href=#701 id=701 data-nosnippet>701</a>        // Simple Blinn-Phong for now (can be extended to PBR)
-<a href=#702 id=702 data-nosnippet>702</a>        let diffuse = albedo * NdotL;
-<a href=#703 id=703 data-nosnippet>703</a>        let specular = pow(NdotH, 32.0) * (1.0 - roughness);
-<a href=#704 id=704 data-nosnippet>704</a>        
-<a href=#705 id=705 data-nosnippet>705</a>        let light_contribution = (diffuse + specular) * light.color.rgb * light.color.w * attenuation_clamped;
-<a href=#706 id=706 data-nosnippet>706</a>        total_light = total_light + light_contribution;
-<a href=#707 id=707 data-nosnippet>707</a>    }
-<a href=#708 id=708 data-nosnippet>708</a>    
-<a href=#709 id=709 data-nosnippet>709</a>    return total_light;
-<a href=#710 id=710 data-nosnippet>710</a>}
-<a href=#711 id=711 data-nosnippet>711</a>"#</span>;
-<a href=#712 id=712 data-nosnippet>712</a>
-<a href=#713 id=713 data-nosnippet>713</a><span class="attr">#[cfg(test)]
-<a href=#714 id=714 data-nosnippet>714</a></span><span class="kw">mod </span>tests {
-<a href=#715 id=715 data-nosnippet>715</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#716 id=716 data-nosnippet>716</a>    <span class="kw">use </span>bytemuck::Zeroable;
-<a href=#717 id=717 data-nosnippet>717</a>
-<a href=#718 id=718 data-nosnippet>718</a>    <span class="attr">#[test]
-<a href=#719 id=719 data-nosnippet>719</a>    </span><span class="kw">fn </span>test_cluster_config_default() {
-<a href=#720 id=720 data-nosnippet>720</a>        <span class="kw">let </span>config = ClusterConfig::default();
-<a href=#721 id=721 data-nosnippet>721</a>        <span class="macro">assert_eq!</span>(config.cluster_x, <span class="number">16</span>);
-<a href=#722 id=722 data-nosnippet>722</a>        <span class="macro">assert_eq!</span>(config.cluster_y, <span class="number">9</span>);
-<a href=#723 id=723 data-nosnippet>723</a>        <span class="macro">assert_eq!</span>(config.cluster_z, <span class="number">24</span>);
-<a href=#724 id=724 data-nosnippet>724</a>    }
-<a href=#725 id=725 data-nosnippet>725</a>
-<a href=#726 id=726 data-nosnippet>726</a>    <span class="attr">#[test]
-<a href=#727 id=727 data-nosnippet>727</a>    </span><span class="kw">fn </span>test_gpu_light_creation() {
-<a href=#728 id=728 data-nosnippet>728</a>        <span class="kw">let </span>light = GpuLight::new(
-<a href=#729 id=729 data-nosnippet>729</a>            Vec3::new(<span class="number">1.0</span>, <span class="number">2.0</span>, <span class="number">3.0</span>),
-<a href=#730 id=730 data-nosnippet>730</a>            <span class="number">10.0</span>,
-<a href=#731 id=731 data-nosnippet>731</a>            Vec3::new(<span class="number">1.0</span>, <span class="number">0.5</span>, <span class="number">0.0</span>),
-<a href=#732 id=732 data-nosnippet>732</a>            <span class="number">2.0</span>,
-<a href=#733 id=733 data-nosnippet>733</a>        );
-<a href=#734 id=734 data-nosnippet>734</a>
-<a href=#735 id=735 data-nosnippet>735</a>        <span class="macro">assert_eq!</span>(light.position[<span class="number">0</span>], <span class="number">1.0</span>);
-<a href=#736 id=736 data-nosnippet>736</a>        <span class="macro">assert_eq!</span>(light.position[<span class="number">3</span>], <span class="number">10.0</span>);
-<a href=#737 id=737 data-nosnippet>737</a>        <span class="macro">assert_eq!</span>(light.color[<span class="number">3</span>], <span class="number">2.0</span>);
-<a href=#738 id=738 data-nosnippet>738</a>    }
+<a href=#694 id=694 data-nosnippet>694</a>        
+<a href=#695 id=695 data-nosnippet>695</a>        // Attenuation
+<a href=#696 id=696 data-nosnippet>696</a>        let attenuation = 1.0 - pow(distance / radius, 4.0);
+<a href=#697 id=697 data-nosnippet>697</a>        let attenuation_clamped = max(attenuation, 0.0);
+<a href=#698 id=698 data-nosnippet>698</a>        
+<a href=#699 id=699 data-nosnippet>699</a>        // PBR Cook-Torrance + Burley diffuse (from brdf_common.wgsl)
+<a href=#700 id=700 data-nosnippet>700</a>        let F0 = mix(vec3&lt;f32&gt;(0.04), albedo, metallic);
+<a href=#701 id=701 data-nosnippet>701</a>        let brdf = evaluate_brdf(normal, V, L, albedo, metallic, roughness, F0);
+<a href=#702 id=702 data-nosnippet>702</a>
+<a href=#703 id=703 data-nosnippet>703</a>        let light_contribution = brdf * light.color.rgb * light.color.w * attenuation_clamped;
+<a href=#704 id=704 data-nosnippet>704</a>        total_light = total_light + light_contribution;
+<a href=#705 id=705 data-nosnippet>705</a>    }
+<a href=#706 id=706 data-nosnippet>706</a>    
+<a href=#707 id=707 data-nosnippet>707</a>    return total_light;
+<a href=#708 id=708 data-nosnippet>708</a>}
+<a href=#709 id=709 data-nosnippet>709</a>"#</span>;
+<a href=#710 id=710 data-nosnippet>710</a>
+<a href=#711 id=711 data-nosnippet>711</a><span class="attr">#[cfg(test)]
+<a href=#712 id=712 data-nosnippet>712</a></span><span class="kw">mod </span>tests {
+<a href=#713 id=713 data-nosnippet>713</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#714 id=714 data-nosnippet>714</a>    <span class="kw">use </span>bytemuck::Zeroable;
+<a href=#715 id=715 data-nosnippet>715</a>
+<a href=#716 id=716 data-nosnippet>716</a>    <span class="attr">#[test]
+<a href=#717 id=717 data-nosnippet>717</a>    </span><span class="kw">fn </span>test_cluster_config_default() {
+<a href=#718 id=718 data-nosnippet>718</a>        <span class="kw">let </span>config = ClusterConfig::default();
+<a href=#719 id=719 data-nosnippet>719</a>        <span class="macro">assert_eq!</span>(config.cluster_x, <span class="number">16</span>);
+<a href=#720 id=720 data-nosnippet>720</a>        <span class="macro">assert_eq!</span>(config.cluster_y, <span class="number">9</span>);
+<a href=#721 id=721 data-nosnippet>721</a>        <span class="macro">assert_eq!</span>(config.cluster_z, <span class="number">24</span>);
+<a href=#722 id=722 data-nosnippet>722</a>    }
+<a href=#723 id=723 data-nosnippet>723</a>
+<a href=#724 id=724 data-nosnippet>724</a>    <span class="attr">#[test]
+<a href=#725 id=725 data-nosnippet>725</a>    </span><span class="kw">fn </span>test_gpu_light_creation() {
+<a href=#726 id=726 data-nosnippet>726</a>        <span class="kw">let </span>light = GpuLight::new(
+<a href=#727 id=727 data-nosnippet>727</a>            Vec3::new(<span class="number">1.0</span>, <span class="number">2.0</span>, <span class="number">3.0</span>),
+<a href=#728 id=728 data-nosnippet>728</a>            <span class="number">10.0</span>,
+<a href=#729 id=729 data-nosnippet>729</a>            Vec3::new(<span class="number">1.0</span>, <span class="number">0.5</span>, <span class="number">0.0</span>),
+<a href=#730 id=730 data-nosnippet>730</a>            <span class="number">2.0</span>,
+<a href=#731 id=731 data-nosnippet>731</a>        );
+<a href=#732 id=732 data-nosnippet>732</a>
+<a href=#733 id=733 data-nosnippet>733</a>        <span class="macro">assert_eq!</span>(light.position[<span class="number">0</span>], <span class="number">1.0</span>);
+<a href=#734 id=734 data-nosnippet>734</a>        <span class="macro">assert_eq!</span>(light.position[<span class="number">3</span>], <span class="number">10.0</span>);
+<a href=#735 id=735 data-nosnippet>735</a>        <span class="macro">assert_eq!</span>(light.color[<span class="number">3</span>], <span class="number">2.0</span>);
+<a href=#736 id=736 data-nosnippet>736</a>    }
+<a href=#737 id=737 data-nosnippet>737</a>
+<a href=#738 id=738 data-nosnippet>738</a>    <span class="comment">// --- Mutation-resistant tests ---
 <a href=#739 id=739 data-nosnippet>739</a>
-<a href=#740 id=740 data-nosnippet>740</a>    <span class="comment">// --- Mutation-resistant tests ---
-<a href=#741 id=741 data-nosnippet>741</a>
-<a href=#742 id=742 data-nosnippet>742</a>    </span><span class="attr">#[test]
-<a href=#743 id=743 data-nosnippet>743</a>    </span><span class="kw">fn </span>cluster_config_default_near_far() {
-<a href=#744 id=744 data-nosnippet>744</a>        <span class="kw">let </span>c = ClusterConfig::default();
-<a href=#745 id=745 data-nosnippet>745</a>        <span class="macro">assert!</span>((c.near - <span class="number">0.1</span>).abs() &lt; f32::EPSILON);
-<a href=#746 id=746 data-nosnippet>746</a>        <span class="macro">assert!</span>((c.far - <span class="number">100.0</span>).abs() &lt; f32::EPSILON);
-<a href=#747 id=747 data-nosnippet>747</a>        <span class="macro">assert_eq!</span>(c._pad, [<span class="number">0</span>; <span class="number">3</span>]);
-<a href=#748 id=748 data-nosnippet>748</a>    }
-<a href=#749 id=749 data-nosnippet>749</a>
-<a href=#750 id=750 data-nosnippet>750</a>    <span class="attr">#[test]
-<a href=#751 id=751 data-nosnippet>751</a>    </span><span class="kw">fn </span>cluster_config_total_clusters() {
-<a href=#752 id=752 data-nosnippet>752</a>        <span class="kw">let </span>c = ClusterConfig::default();
-<a href=#753 id=753 data-nosnippet>753</a>        <span class="kw">let </span>total = c.cluster_x * c.cluster_y * c.cluster_z;
-<a href=#754 id=754 data-nosnippet>754</a>        <span class="macro">assert_eq!</span>(total, <span class="number">16 </span>* <span class="number">9 </span>* <span class="number">24</span>);
-<a href=#755 id=755 data-nosnippet>755</a>        <span class="macro">assert_eq!</span>(total, <span class="number">3456</span>);
-<a href=#756 id=756 data-nosnippet>756</a>    }
-<a href=#757 id=757 data-nosnippet>757</a>
-<a href=#758 id=758 data-nosnippet>758</a>    <span class="attr">#[test]
-<a href=#759 id=759 data-nosnippet>759</a>    </span><span class="kw">fn </span>cluster_config_struct_size() {
-<a href=#760 id=760 data-nosnippet>760</a>        <span class="comment">// 5 fields × 4 bytes + 3 padding × 4 bytes = 32 bytes
-<a href=#761 id=761 data-nosnippet>761</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;ClusterConfig&gt;(), <span class="number">32</span>);
-<a href=#762 id=762 data-nosnippet>762</a>    }
-<a href=#763 id=763 data-nosnippet>763</a>
-<a href=#764 id=764 data-nosnippet>764</a>    <span class="attr">#[test]
-<a href=#765 id=765 data-nosnippet>765</a>    </span><span class="kw">fn </span>gpu_light_stores_all_fields() {
-<a href=#766 id=766 data-nosnippet>766</a>        <span class="kw">let </span>light = GpuLight::new(
-<a href=#767 id=767 data-nosnippet>767</a>            Vec3::new(<span class="number">10.0</span>, <span class="number">20.0</span>, <span class="number">30.0</span>),
-<a href=#768 id=768 data-nosnippet>768</a>            <span class="number">5.0</span>,
-<a href=#769 id=769 data-nosnippet>769</a>            Vec3::new(<span class="number">0.1</span>, <span class="number">0.2</span>, <span class="number">0.3</span>),
-<a href=#770 id=770 data-nosnippet>770</a>            <span class="number">7.5</span>,
-<a href=#771 id=771 data-nosnippet>771</a>        );
-<a href=#772 id=772 data-nosnippet>772</a>        <span class="macro">assert_eq!</span>(light.position, [<span class="number">10.0</span>, <span class="number">20.0</span>, <span class="number">30.0</span>, <span class="number">5.0</span>]);
-<a href=#773 id=773 data-nosnippet>773</a>        <span class="macro">assert_eq!</span>(light.color, [<span class="number">0.1</span>, <span class="number">0.2</span>, <span class="number">0.3</span>, <span class="number">7.5</span>]);
-<a href=#774 id=774 data-nosnippet>774</a>    }
-<a href=#775 id=775 data-nosnippet>775</a>
-<a href=#776 id=776 data-nosnippet>776</a>    <span class="attr">#[test]
-<a href=#777 id=777 data-nosnippet>777</a>    </span><span class="kw">fn </span>gpu_light_struct_size() {
-<a href=#778 id=778 data-nosnippet>778</a>        <span class="comment">// 2 × vec4&lt;f32&gt; = 32 bytes
-<a href=#779 id=779 data-nosnippet>779</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;GpuLight&gt;(), <span class="number">32</span>);
-<a href=#780 id=780 data-nosnippet>780</a>    }
-<a href=#781 id=781 data-nosnippet>781</a>
-<a href=#782 id=782 data-nosnippet>782</a>    <span class="attr">#[test]
-<a href=#783 id=783 data-nosnippet>783</a>    </span><span class="kw">fn </span>gpu_cluster_struct_size() {
-<a href=#784 id=784 data-nosnippet>784</a>        <span class="comment">// min_bounds(16) + max_bounds(16) + offset(4) + count(4) + pad(8) = 48 bytes
-<a href=#785 id=785 data-nosnippet>785</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;GpuCluster&gt;(), <span class="number">48</span>);
-<a href=#786 id=786 data-nosnippet>786</a>    }
-<a href=#787 id=787 data-nosnippet>787</a>
-<a href=#788 id=788 data-nosnippet>788</a>    <span class="attr">#[test]
-<a href=#789 id=789 data-nosnippet>789</a>    </span><span class="kw">fn </span>gpu_light_zeroed_is_valid() {
-<a href=#790 id=790 data-nosnippet>790</a>        <span class="kw">let </span>light = GpuLight::zeroed();
-<a href=#791 id=791 data-nosnippet>791</a>        <span class="macro">assert_eq!</span>(light.position, [<span class="number">0.0</span>; <span class="number">4</span>]);
-<a href=#792 id=792 data-nosnippet>792</a>        <span class="macro">assert_eq!</span>(light.color, [<span class="number">0.0</span>; <span class="number">4</span>]);
-<a href=#793 id=793 data-nosnippet>793</a>    }
-<a href=#794 id=794 data-nosnippet>794</a>}</code></pre></div></section></main></body></html>
+<a href=#740 id=740 data-nosnippet>740</a>    </span><span class="attr">#[test]
+<a href=#741 id=741 data-nosnippet>741</a>    </span><span class="kw">fn </span>cluster_config_default_near_far() {
+<a href=#742 id=742 data-nosnippet>742</a>        <span class="kw">let </span>c = ClusterConfig::default();
+<a href=#743 id=743 data-nosnippet>743</a>        <span class="macro">assert!</span>((c.near - <span class="number">0.1</span>).abs() &lt; f32::EPSILON);
+<a href=#744 id=744 data-nosnippet>744</a>        <span class="macro">assert!</span>((c.far - <span class="number">100.0</span>).abs() &lt; f32::EPSILON);
+<a href=#745 id=745 data-nosnippet>745</a>        <span class="macro">assert_eq!</span>(c._pad, [<span class="number">0</span>; <span class="number">3</span>]);
+<a href=#746 id=746 data-nosnippet>746</a>    }
+<a href=#747 id=747 data-nosnippet>747</a>
+<a href=#748 id=748 data-nosnippet>748</a>    <span class="attr">#[test]
+<a href=#749 id=749 data-nosnippet>749</a>    </span><span class="kw">fn </span>cluster_config_total_clusters() {
+<a href=#750 id=750 data-nosnippet>750</a>        <span class="kw">let </span>c = ClusterConfig::default();
+<a href=#751 id=751 data-nosnippet>751</a>        <span class="kw">let </span>total = c.cluster_x * c.cluster_y * c.cluster_z;
+<a href=#752 id=752 data-nosnippet>752</a>        <span class="macro">assert_eq!</span>(total, <span class="number">16 </span>* <span class="number">9 </span>* <span class="number">24</span>);
+<a href=#753 id=753 data-nosnippet>753</a>        <span class="macro">assert_eq!</span>(total, <span class="number">3456</span>);
+<a href=#754 id=754 data-nosnippet>754</a>    }
+<a href=#755 id=755 data-nosnippet>755</a>
+<a href=#756 id=756 data-nosnippet>756</a>    <span class="attr">#[test]
+<a href=#757 id=757 data-nosnippet>757</a>    </span><span class="kw">fn </span>cluster_config_struct_size() {
+<a href=#758 id=758 data-nosnippet>758</a>        <span class="comment">// 5 fields × 4 bytes + 3 padding × 4 bytes = 32 bytes
+<a href=#759 id=759 data-nosnippet>759</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;ClusterConfig&gt;(), <span class="number">32</span>);
+<a href=#760 id=760 data-nosnippet>760</a>    }
+<a href=#761 id=761 data-nosnippet>761</a>
+<a href=#762 id=762 data-nosnippet>762</a>    <span class="attr">#[test]
+<a href=#763 id=763 data-nosnippet>763</a>    </span><span class="kw">fn </span>gpu_light_stores_all_fields() {
+<a href=#764 id=764 data-nosnippet>764</a>        <span class="kw">let </span>light = GpuLight::new(
+<a href=#765 id=765 data-nosnippet>765</a>            Vec3::new(<span class="number">10.0</span>, <span class="number">20.0</span>, <span class="number">30.0</span>),
+<a href=#766 id=766 data-nosnippet>766</a>            <span class="number">5.0</span>,
+<a href=#767 id=767 data-nosnippet>767</a>            Vec3::new(<span class="number">0.1</span>, <span class="number">0.2</span>, <span class="number">0.3</span>),
+<a href=#768 id=768 data-nosnippet>768</a>            <span class="number">7.5</span>,
+<a href=#769 id=769 data-nosnippet>769</a>        );
+<a href=#770 id=770 data-nosnippet>770</a>        <span class="macro">assert_eq!</span>(light.position, [<span class="number">10.0</span>, <span class="number">20.0</span>, <span class="number">30.0</span>, <span class="number">5.0</span>]);
+<a href=#771 id=771 data-nosnippet>771</a>        <span class="macro">assert_eq!</span>(light.color, [<span class="number">0.1</span>, <span class="number">0.2</span>, <span class="number">0.3</span>, <span class="number">7.5</span>]);
+<a href=#772 id=772 data-nosnippet>772</a>    }
+<a href=#773 id=773 data-nosnippet>773</a>
+<a href=#774 id=774 data-nosnippet>774</a>    <span class="attr">#[test]
+<a href=#775 id=775 data-nosnippet>775</a>    </span><span class="kw">fn </span>gpu_light_struct_size() {
+<a href=#776 id=776 data-nosnippet>776</a>        <span class="comment">// 2 × vec4&lt;f32&gt; = 32 bytes
+<a href=#777 id=777 data-nosnippet>777</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;GpuLight&gt;(), <span class="number">32</span>);
+<a href=#778 id=778 data-nosnippet>778</a>    }
+<a href=#779 id=779 data-nosnippet>779</a>
+<a href=#780 id=780 data-nosnippet>780</a>    <span class="attr">#[test]
+<a href=#781 id=781 data-nosnippet>781</a>    </span><span class="kw">fn </span>gpu_cluster_struct_size() {
+<a href=#782 id=782 data-nosnippet>782</a>        <span class="comment">// min_bounds(16) + max_bounds(16) + offset(4) + count(4) + pad(8) = 48 bytes
+<a href=#783 id=783 data-nosnippet>783</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;GpuCluster&gt;(), <span class="number">48</span>);
+<a href=#784 id=784 data-nosnippet>784</a>    }
+<a href=#785 id=785 data-nosnippet>785</a>
+<a href=#786 id=786 data-nosnippet>786</a>    <span class="attr">#[test]
+<a href=#787 id=787 data-nosnippet>787</a>    </span><span class="kw">fn </span>gpu_light_zeroed_is_valid() {
+<a href=#788 id=788 data-nosnippet>788</a>        <span class="kw">let </span>light = GpuLight::zeroed();
+<a href=#789 id=789 data-nosnippet>789</a>        <span class="macro">assert_eq!</span>(light.position, [<span class="number">0.0</span>; <span class="number">4</span>]);
+<a href=#790 id=790 data-nosnippet>790</a>        <span class="macro">assert_eq!</span>(light.color, [<span class="number">0.0</span>; <span class="number">4</span>]);
+<a href=#791 id=791 data-nosnippet>791</a>    }
+<a href=#792 id=792 data-nosnippet>792</a>}</code></pre></div></section></main></body></html>

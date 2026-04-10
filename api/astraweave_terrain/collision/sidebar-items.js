@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["collision_mesh_from_chunk","collision_mesh_from_heightmap"],"struct":["CollisionMesh"]};

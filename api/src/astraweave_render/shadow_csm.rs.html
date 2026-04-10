@@ -454,9 +454,9 @@
 <a href=#454 id=454 data-nosnippet>454</a>    /// ```
 <a href=#455 id=455 data-nosnippet>455</a>    </span><span class="kw">pub fn </span>update_cascades(
 <a href=#456 id=456 data-nosnippet>456</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-<a href=#457 id=457 data-nosnippet>457</a>        _camera_pos: Vec3,
-<a href=#458 id=458 data-nosnippet>458</a>        _camera_view: Mat4,
-<a href=#459 id=459 data-nosnippet>459</a>        _camera_proj: Mat4,
+<a href=#457 id=457 data-nosnippet>457</a>        camera_pos: Vec3,
+<a href=#458 id=458 data-nosnippet>458</a>        camera_view: Mat4,
+<a href=#459 id=459 data-nosnippet>459</a>        camera_proj: Mat4,
 <a href=#460 id=460 data-nosnippet>460</a>        light_dir: Vec3,
 <a href=#461 id=461 data-nosnippet>461</a>        near: f32,
 <a href=#462 id=462 data-nosnippet>462</a>        far: f32,
@@ -486,388 +486,468 @@
 <a href=#486 id=486 data-nosnippet>486</a>            </span><span class="kw-2">*</span>split = lambda * log_split + (<span class="number">1.0 </span>- lambda) * uniform_split;
 <a href=#487 id=487 data-nosnippet>487</a>        }
 <a href=#488 id=488 data-nosnippet>488</a>
-<a href=#489 id=489 data-nosnippet>489</a>        <span class="comment">// Update each cascade
-<a href=#490 id=490 data-nosnippet>490</a>        </span><span class="kw">for </span>(i, cascade) <span class="kw">in </span><span class="self">self</span>.cascades.iter_mut().enumerate() {
-<a href=#491 id=491 data-nosnippet>491</a>            cascade.near = split_distances[i];
-<a href=#492 id=492 data-nosnippet>492</a>            cascade.far = split_distances[i + <span class="number">1</span>];
-<a href=#493 id=493 data-nosnippet>493</a>
-<a href=#494 id=494 data-nosnippet>494</a>            <span class="comment">// 🎯 BEVY-STYLE: Compute light view matrix from direction
-<a href=#495 id=495 data-nosnippet>495</a>            // Directional lights need a view matrix that looks FROM light TO scene
-<a href=#496 id=496 data-nosnippet>496</a>            </span><span class="kw">let </span>light_distance = <span class="number">50.0</span>; <span class="comment">// How far back to place the light
-<a href=#497 id=497 data-nosnippet>497</a>            </span><span class="kw">let </span>scene_center = Vec3::ZERO; <span class="comment">// Look at origin
-<a href=#498 id=498 data-nosnippet>498</a>            </span><span class="kw">let </span>light_pos = scene_center - (light_dir.normalize() * light_distance);
-<a href=#499 id=499 data-nosnippet>499</a>
-<a href=#500 id=500 data-nosnippet>500</a>            <span class="comment">// Choose up vector perpendicular to light direction
-<a href=#501 id=501 data-nosnippet>501</a>            // If light is mostly vertical (|light_dir.y| &gt; 0.9), use X as up
-<a href=#502 id=502 data-nosnippet>502</a>            // Otherwise use Y as up (standard)
-<a href=#503 id=503 data-nosnippet>503</a>            </span><span class="kw">let </span>up = <span class="kw">if </span>light_dir.y.abs() &gt; <span class="number">0.9 </span>{
-<a href=#504 id=504 data-nosnippet>504</a>                Vec3::X
-<a href=#505 id=505 data-nosnippet>505</a>            } <span class="kw">else </span>{
-<a href=#506 id=506 data-nosnippet>506</a>                Vec3::Y
-<a href=#507 id=507 data-nosnippet>507</a>            };
-<a href=#508 id=508 data-nosnippet>508</a>
-<a href=#509 id=509 data-nosnippet>509</a>            cascade.view_matrix = Mat4::look_at_rh(light_pos, scene_center, up);
-<a href=#510 id=510 data-nosnippet>510</a>
-<a href=#511 id=511 data-nosnippet>511</a>            <span class="comment">// FIXED: Use large enough orthographic bounds to cover entire test scene
-<a href=#512 id=512 data-nosnippet>512</a>            // Scene bounds: Ground is 20×20 at origin, cubes at ±5, ±15, ±25
-<a href=#513 id=513 data-nosnippet>513</a>            // Need at least -30 to +30 to capture everything
-<a href=#514 id=514 data-nosnippet>514</a>            </span><span class="kw">let </span>ortho_size = <span class="number">35.0</span>; <span class="comment">// Large enough for test scene (can optimize per-cascade later)
-<a href=#515 id=515 data-nosnippet>515</a>
-<a href=#516 id=516 data-nosnippet>516</a>            // Log ortho_size on first call for diagnostics
-<a href=#517 id=517 data-nosnippet>517</a>            </span><span class="kw">if </span>i == <span class="number">0 </span>{
-<a href=#518 id=518 data-nosnippet>518</a>                <span class="kw">static </span>FIRST_UPDATE: std::sync::atomic::AtomicBool =
-<a href=#519 id=519 data-nosnippet>519</a>                    std::sync::atomic::AtomicBool::new(<span class="bool-val">true</span>);
-<a href=#520 id=520 data-nosnippet>520</a>                <span class="kw">if </span>FIRST_UPDATE.swap(<span class="bool-val">false</span>, std::sync::atomic::Ordering::Relaxed) {
-<a href=#521 id=521 data-nosnippet>521</a>                    <span class="macro">log::debug!</span>(
-<a href=#522 id=522 data-nosnippet>522</a>                        <span class="string">"Light frustum: ortho_size = {}, covers [{}, {}] in X and Z"</span>,
-<a href=#523 id=523 data-nosnippet>523</a>                        ortho_size,
-<a href=#524 id=524 data-nosnippet>524</a>                        -ortho_size,
-<a href=#525 id=525 data-nosnippet>525</a>                        ortho_size
-<a href=#526 id=526 data-nosnippet>526</a>                    );
-<a href=#527 id=527 data-nosnippet>527</a>                }
+<a href=#489 id=489 data-nosnippet>489</a>        <span class="comment">// Compute inverse view-projection to get frustum corners in world space
+<a href=#490 id=490 data-nosnippet>490</a>        </span><span class="kw">let </span>inv_proj = camera_proj.inverse();
+<a href=#491 id=491 data-nosnippet>491</a>        <span class="kw">let </span>inv_view = camera_view.inverse();
+<a href=#492 id=492 data-nosnippet>492</a>
+<a href=#493 id=493 data-nosnippet>493</a>        <span class="comment">// Update each cascade
+<a href=#494 id=494 data-nosnippet>494</a>        </span><span class="kw">for </span>(i, cascade) <span class="kw">in </span><span class="self">self</span>.cascades.iter_mut().enumerate() {
+<a href=#495 id=495 data-nosnippet>495</a>            cascade.near = split_distances[i];
+<a href=#496 id=496 data-nosnippet>496</a>            cascade.far = split_distances[i + <span class="number">1</span>];
+<a href=#497 id=497 data-nosnippet>497</a>
+<a href=#498 id=498 data-nosnippet>498</a>            <span class="comment">// Map cascade near/far to NDC z range [0, 1] (reverse-Z convention)
+<a href=#499 id=499 data-nosnippet>499</a>            // For a perspective projection, ndc_z = (split - near) / (far - near)
+<a href=#500 id=500 data-nosnippet>500</a>            </span><span class="kw">let </span>ndc_near = (split_distances[i] - near) / (far - near);
+<a href=#501 id=501 data-nosnippet>501</a>            <span class="kw">let </span>ndc_far = (split_distances[i + <span class="number">1</span>] - near) / (far - near);
+<a href=#502 id=502 data-nosnippet>502</a>
+<a href=#503 id=503 data-nosnippet>503</a>            <span class="comment">// Compute 8 frustum corners for this cascade slice in NDC space
+<a href=#504 id=504 data-nosnippet>504</a>            // NDC: x,y in [-1,1], z in [0,1] for wgpu
+<a href=#505 id=505 data-nosnippet>505</a>            </span><span class="kw">let </span>ndc_corners = [
+<a href=#506 id=506 data-nosnippet>506</a>                <span class="comment">// Near plane
+<a href=#507 id=507 data-nosnippet>507</a>                </span>Vec3::new(-<span class="number">1.0</span>, -<span class="number">1.0</span>, ndc_near),
+<a href=#508 id=508 data-nosnippet>508</a>                Vec3::new( <span class="number">1.0</span>, -<span class="number">1.0</span>, ndc_near),
+<a href=#509 id=509 data-nosnippet>509</a>                Vec3::new(-<span class="number">1.0</span>,  <span class="number">1.0</span>, ndc_near),
+<a href=#510 id=510 data-nosnippet>510</a>                Vec3::new( <span class="number">1.0</span>,  <span class="number">1.0</span>, ndc_near),
+<a href=#511 id=511 data-nosnippet>511</a>                <span class="comment">// Far plane
+<a href=#512 id=512 data-nosnippet>512</a>                </span>Vec3::new(-<span class="number">1.0</span>, -<span class="number">1.0</span>, ndc_far),
+<a href=#513 id=513 data-nosnippet>513</a>                Vec3::new( <span class="number">1.0</span>, -<span class="number">1.0</span>, ndc_far),
+<a href=#514 id=514 data-nosnippet>514</a>                Vec3::new(-<span class="number">1.0</span>,  <span class="number">1.0</span>, ndc_far),
+<a href=#515 id=515 data-nosnippet>515</a>                Vec3::new( <span class="number">1.0</span>,  <span class="number">1.0</span>, ndc_far),
+<a href=#516 id=516 data-nosnippet>516</a>            ];
+<a href=#517 id=517 data-nosnippet>517</a>
+<a href=#518 id=518 data-nosnippet>518</a>            <span class="comment">// Unproject NDC corners to world space
+<a href=#519 id=519 data-nosnippet>519</a>            </span><span class="kw">let </span><span class="kw-2">mut </span>world_corners = [Vec3::ZERO; <span class="number">8</span>];
+<a href=#520 id=520 data-nosnippet>520</a>            <span class="kw">let </span><span class="kw-2">mut </span>center = Vec3::ZERO;
+<a href=#521 id=521 data-nosnippet>521</a>            <span class="kw">for </span>(j, ndc) <span class="kw">in </span>ndc_corners.iter().enumerate() {
+<a href=#522 id=522 data-nosnippet>522</a>                <span class="kw">let </span>clip = glam::Vec4::new(ndc.x, ndc.y, ndc.z, <span class="number">1.0</span>);
+<a href=#523 id=523 data-nosnippet>523</a>                <span class="kw">let </span>view_pos = inv_proj * clip;
+<a href=#524 id=524 data-nosnippet>524</a>                <span class="kw">let </span>view_pos = view_pos / view_pos.w; <span class="comment">// perspective divide
+<a href=#525 id=525 data-nosnippet>525</a>                </span><span class="kw">let </span>world_pos = inv_view * view_pos;
+<a href=#526 id=526 data-nosnippet>526</a>                world_corners[j] = Vec3::new(world_pos.x, world_pos.y, world_pos.z);
+<a href=#527 id=527 data-nosnippet>527</a>                center += world_corners[j];
 <a href=#528 id=528 data-nosnippet>528</a>            }
-<a href=#529 id=529 data-nosnippet>529</a>
-<a href=#530 id=530 data-nosnippet>530</a>            cascade.proj_matrix = Mat4::orthographic_rh(
-<a href=#531 id=531 data-nosnippet>531</a>                -ortho_size,
-<a href=#532 id=532 data-nosnippet>532</a>                ortho_size,
-<a href=#533 id=533 data-nosnippet>533</a>                -ortho_size,
-<a href=#534 id=534 data-nosnippet>534</a>                ortho_size,
-<a href=#535 id=535 data-nosnippet>535</a>                <span class="number">0.1</span>,   <span class="comment">// Near (light space)
-<a href=#536 id=536 data-nosnippet>536</a>                </span><span class="number">100.0</span>, <span class="comment">// Far (light space)
-<a href=#537 id=537 data-nosnippet>537</a>            </span>);
-<a href=#538 id=538 data-nosnippet>538</a>
-<a href=#539 id=539 data-nosnippet>539</a>            cascade.view_proj_matrix = cascade.proj_matrix * cascade.view_matrix;
-<a href=#540 id=540 data-nosnippet>540</a>        }
-<a href=#541 id=541 data-nosnippet>541</a>    }
-<a href=#542 id=542 data-nosnippet>542</a>
-<a href=#543 id=543 data-nosnippet>543</a>    <span class="doccomment">/// Upload cascade data to GPU
-<a href=#544 id=544 data-nosnippet>544</a>    ///
-<a href=#545 id=545 data-nosnippet>545</a>    /// Call this after `update_cascades()` and before rendering.
-<a href=#546 id=546 data-nosnippet>546</a>    </span><span class="kw">pub fn </span>upload_to_gpu(<span class="kw-2">&amp;mut </span><span class="self">self</span>, queue: <span class="kw-2">&amp;</span>wgpu::Queue, device: <span class="kw-2">&amp;</span>wgpu::Device) {
-<a href=#547 id=547 data-nosnippet>547</a>        <span class="comment">// Convert to GPU format
-<a href=#548 id=548 data-nosnippet>548</a>        </span><span class="kw">let </span>gpu_cascades: Vec&lt;GpuShadowCascade&gt; =
-<a href=#549 id=549 data-nosnippet>549</a>            <span class="self">self</span>.cascades.iter().map(GpuShadowCascade::from).collect();
+<a href=#529 id=529 data-nosnippet>529</a>            center /= <span class="number">8.0</span>;
+<a href=#530 id=530 data-nosnippet>530</a>
+<a href=#531 id=531 data-nosnippet>531</a>            <span class="comment">// Choose up vector perpendicular to light direction
+<a href=#532 id=532 data-nosnippet>532</a>            </span><span class="kw">let </span>up = <span class="kw">if </span>light_dir.y.abs() &gt; <span class="number">0.9 </span>{
+<a href=#533 id=533 data-nosnippet>533</a>                Vec3::X
+<a href=#534 id=534 data-nosnippet>534</a>            } <span class="kw">else </span>{
+<a href=#535 id=535 data-nosnippet>535</a>                Vec3::Y
+<a href=#536 id=536 data-nosnippet>536</a>            };
+<a href=#537 id=537 data-nosnippet>537</a>
+<a href=#538 id=538 data-nosnippet>538</a>            <span class="comment">// Compute light view matrix looking at the cascade center
+<a href=#539 id=539 data-nosnippet>539</a>            </span><span class="kw">let </span>light_norm = light_dir.normalize();
+<a href=#540 id=540 data-nosnippet>540</a>
+<a href=#541 id=541 data-nosnippet>541</a>            <span class="comment">// Compute the bounding sphere radius of the frustum slice to determine
+<a href=#542 id=542 data-nosnippet>542</a>            // how far back to place the light (ensures all geometry is captured)
+<a href=#543 id=543 data-nosnippet>543</a>            </span><span class="kw">let </span><span class="kw-2">mut </span>max_radius = <span class="number">0.0f32</span>;
+<a href=#544 id=544 data-nosnippet>544</a>            <span class="kw">for </span>corner <span class="kw">in </span><span class="kw-2">&amp;</span>world_corners {
+<a href=#545 id=545 data-nosnippet>545</a>                <span class="kw">let </span>dist = (<span class="kw-2">*</span>corner - center).length();
+<a href=#546 id=546 data-nosnippet>546</a>                <span class="kw">if </span>dist &gt; max_radius {
+<a href=#547 id=547 data-nosnippet>547</a>                    max_radius = dist;
+<a href=#548 id=548 data-nosnippet>548</a>                }
+<a href=#549 id=549 data-nosnippet>549</a>            }
 <a href=#550 id=550 data-nosnippet>550</a>
-<a href=#551 id=551 data-nosnippet>551</a>        <span class="comment">// Upload buffer
-<a href=#552 id=552 data-nosnippet>552</a>        </span>queue.write_buffer(<span class="kw-2">&amp;</span><span class="self">self</span>.cascade_buffer, <span class="number">0</span>, bytemuck::cast_slice(<span class="kw-2">&amp;</span>gpu_cascades));
-<a href=#553 id=553 data-nosnippet>553</a>
-<a href=#554 id=554 data-nosnippet>554</a>        <span class="comment">// Create/update bind group
-<a href=#555 id=555 data-nosnippet>555</a>        </span><span class="self">self</span>.bind_group = <span class="prelude-val">Some</span>(device.create_bind_group(<span class="kw-2">&amp;</span>wgpu::BindGroupDescriptor {
-<a href=#556 id=556 data-nosnippet>556</a>            label: <span class="prelude-val">Some</span>(<span class="string">"CSM Bind Group"</span>),
-<a href=#557 id=557 data-nosnippet>557</a>            layout: <span class="kw-2">&amp;</span><span class="self">self</span>.bind_group_layout,
-<a href=#558 id=558 data-nosnippet>558</a>            entries: <span class="kw-2">&amp;</span>[
-<a href=#559 id=559 data-nosnippet>559</a>                wgpu::BindGroupEntry {
-<a href=#560 id=560 data-nosnippet>560</a>                    binding: <span class="number">0</span>,
-<a href=#561 id=561 data-nosnippet>561</a>                    resource: wgpu::BindingResource::TextureView(<span class="kw-2">&amp;</span><span class="self">self</span>.atlas_view),
-<a href=#562 id=562 data-nosnippet>562</a>                },
-<a href=#563 id=563 data-nosnippet>563</a>                wgpu::BindGroupEntry {
-<a href=#564 id=564 data-nosnippet>564</a>                    binding: <span class="number">1</span>,
-<a href=#565 id=565 data-nosnippet>565</a>                    resource: wgpu::BindingResource::Sampler(<span class="kw-2">&amp;</span><span class="self">self</span>.shadow_sampler),
-<a href=#566 id=566 data-nosnippet>566</a>                },
-<a href=#567 id=567 data-nosnippet>567</a>                wgpu::BindGroupEntry {
-<a href=#568 id=568 data-nosnippet>568</a>                    binding: <span class="number">2</span>,
-<a href=#569 id=569 data-nosnippet>569</a>                    resource: <span class="self">self</span>.cascade_buffer.as_entire_binding(),
-<a href=#570 id=570 data-nosnippet>570</a>                },
-<a href=#571 id=571 data-nosnippet>571</a>            ],
-<a href=#572 id=572 data-nosnippet>572</a>        }));
-<a href=#573 id=573 data-nosnippet>573</a>
-<a href=#574 id=574 data-nosnippet>574</a>        <span class="comment">// Create/update shadow-only bind group (just cascades for depth pass)
-<a href=#575 id=575 data-nosnippet>575</a>        </span><span class="self">self</span>.shadow_bind_group = <span class="prelude-val">Some</span>(device.create_bind_group(<span class="kw-2">&amp;</span>wgpu::BindGroupDescriptor {
-<a href=#576 id=576 data-nosnippet>576</a>            label: <span class="prelude-val">Some</span>(<span class="string">"Shadow Depth Bind Group"</span>),
-<a href=#577 id=577 data-nosnippet>577</a>            layout: <span class="kw-2">&amp;</span><span class="self">self</span>.shadow_bind_group_layout,
-<a href=#578 id=578 data-nosnippet>578</a>            entries: <span class="kw-2">&amp;</span>[wgpu::BindGroupEntry {
-<a href=#579 id=579 data-nosnippet>579</a>                binding: <span class="number">0</span>,
-<a href=#580 id=580 data-nosnippet>580</a>                resource: <span class="self">self</span>.cascade_buffer.as_entire_binding(),
-<a href=#581 id=581 data-nosnippet>581</a>            }],
-<a href=#582 id=582 data-nosnippet>582</a>        }));
-<a href=#583 id=583 data-nosnippet>583</a>    }
-<a href=#584 id=584 data-nosnippet>584</a>
-<a href=#585 id=585 data-nosnippet>585</a>    <span class="doccomment">/// Get cascade view for rendering (for shadow pass)
-<a href=#586 id=586 data-nosnippet>586</a>    ///
-<a href=#587 id=587 data-nosnippet>587</a>    /// # Returns
-<a href=#588 id=588 data-nosnippet>588</a>    ///
-<a href=#589 id=589 data-nosnippet>589</a>    /// Texture view for the specified cascade index (0-3)
-<a href=#590 id=590 data-nosnippet>590</a>    </span><span class="kw">pub fn </span>get_cascade_view(<span class="kw-2">&amp;</span><span class="self">self</span>, cascade_index: usize) -&gt; <span class="kw-2">&amp;</span>wgpu::TextureView {
-<a href=#591 id=591 data-nosnippet>591</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.cascade_views[cascade_index]
-<a href=#592 id=592 data-nosnippet>592</a>    }
-<a href=#593 id=593 data-nosnippet>593</a>
-<a href=#594 id=594 data-nosnippet>594</a>    <span class="doccomment">/// Render shadow maps for all cascades
-<a href=#595 id=595 data-nosnippet>595</a>    ///
-<a href=#596 id=596 data-nosnippet>596</a>    /// # Arguments
-<a href=#597 id=597 data-nosnippet>597</a>    ///
-<a href=#598 id=598 data-nosnippet>598</a>    /// - `encoder`: Command encoder for recording render passes
-<a href=#599 id=599 data-nosnippet>599</a>    /// - `vertex_buffer`: Vertex buffer containing scene geometry (position-only)
-<a href=#600 id=600 data-nosnippet>600</a>    /// - `index_buffer`: Index buffer for indexed drawing
-<a href=#601 id=601 data-nosnippet>601</a>    /// - `index_count`: Number of indices to draw
-<a href=#602 id=602 data-nosnippet>602</a>    ///
-<a href=#603 id=603 data-nosnippet>603</a>    /// # Notes
-<a href=#604 id=604 data-nosnippet>604</a>    ///
-<a href=#605 id=605 data-nosnippet>605</a>    /// This creates 4 render passes (one per cascade) to populate the shadow atlas.
-<a href=#606 id=606 data-nosnippet>606</a>    /// Call this before your main render pass.
-<a href=#607 id=607 data-nosnippet>607</a>    </span><span class="kw">pub fn </span>render_shadow_maps(
-<a href=#608 id=608 data-nosnippet>608</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
-<a href=#609 id=609 data-nosnippet>609</a>        encoder: <span class="kw-2">&amp;mut </span>wgpu::CommandEncoder,
-<a href=#610 id=610 data-nosnippet>610</a>        vertex_buffer: <span class="kw-2">&amp;</span>wgpu::Buffer,
-<a href=#611 id=611 data-nosnippet>611</a>        index_buffer: <span class="kw-2">&amp;</span>wgpu::Buffer,
-<a href=#612 id=612 data-nosnippet>612</a>        index_count: u32,
-<a href=#613 id=613 data-nosnippet>613</a>    ) {
-<a href=#614 id=614 data-nosnippet>614</a>        <span class="comment">// Log cascade matrices on first call for diagnostics
-<a href=#615 id=615 data-nosnippet>615</a>        </span><span class="kw">static </span>FIRST_CALL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(<span class="bool-val">true</span>);
-<a href=#616 id=616 data-nosnippet>616</a>        <span class="kw">if </span>FIRST_CALL.swap(<span class="bool-val">false</span>, std::sync::atomic::Ordering::Relaxed) {
-<a href=#617 id=617 data-nosnippet>617</a>            <span class="macro">log::debug!</span>(<span class="string">"Shadow rendering debug:"</span>);
-<a href=#618 id=618 data-nosnippet>618</a>            <span class="macro">log::debug!</span>(<span class="string">"  - Index count: {}"</span>, index_count);
-<a href=#619 id=619 data-nosnippet>619</a>            <span class="kw">for </span>(i, cascade) <span class="kw">in </span><span class="self">self</span>.cascades.iter().enumerate() {
-<a href=#620 id=620 data-nosnippet>620</a>                <span class="macro">log::debug!</span>(
-<a href=#621 id=621 data-nosnippet>621</a>                    <span class="string">"  - Cascade {}: near={:.1}, far={:.1}"</span>,
-<a href=#622 id=622 data-nosnippet>622</a>                    i,
-<a href=#623 id=623 data-nosnippet>623</a>                    cascade.near,
-<a href=#624 id=624 data-nosnippet>624</a>                    cascade.far
-<a href=#625 id=625 data-nosnippet>625</a>                );
-<a href=#626 id=626 data-nosnippet>626</a>                <span class="macro">log::debug!</span>(<span class="string">"    view_proj = {:#?}"</span>, cascade.view_proj_matrix);
-<a href=#627 id=627 data-nosnippet>627</a>            }
-<a href=#628 id=628 data-nosnippet>628</a>        }
-<a href=#629 id=629 data-nosnippet>629</a>
-<a href=#630 id=630 data-nosnippet>630</a>        <span class="kw">for </span>cascade_idx <span class="kw">in </span><span class="number">0</span>..CASCADE_COUNT {
-<a href=#631 id=631 data-nosnippet>631</a>            <span class="kw">let </span><span class="kw-2">mut </span>render_pass = encoder.begin_render_pass(<span class="kw-2">&amp;</span>wgpu::RenderPassDescriptor {
-<a href=#632 id=632 data-nosnippet>632</a>                label: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"Shadow Cascade {} Render Pass"</span>, cascade_idx)),
-<a href=#633 id=633 data-nosnippet>633</a>                color_attachments: <span class="kw-2">&amp;</span>[], <span class="comment">// Depth-only pass
-<a href=#634 id=634 data-nosnippet>634</a>                </span>depth_stencil_attachment: <span class="prelude-val">Some</span>(wgpu::RenderPassDepthStencilAttachment {
-<a href=#635 id=635 data-nosnippet>635</a>                    view: <span class="kw-2">&amp;</span><span class="self">self</span>.cascade_views[cascade_idx], <span class="comment">// Render to individual layer
-<a href=#636 id=636 data-nosnippet>636</a>                    </span>depth_ops: <span class="prelude-val">Some</span>(wgpu::Operations {
-<a href=#637 id=637 data-nosnippet>637</a>                        load: wgpu::LoadOp::Clear(<span class="number">1.0</span>), <span class="comment">// Clear to far plane
-<a href=#638 id=638 data-nosnippet>638</a>                        </span>store: wgpu::StoreOp::Store,
-<a href=#639 id=639 data-nosnippet>639</a>                    }),
-<a href=#640 id=640 data-nosnippet>640</a>                    stencil_ops: <span class="prelude-val">None</span>,
-<a href=#641 id=641 data-nosnippet>641</a>                }),
-<a href=#642 id=642 data-nosnippet>642</a>                timestamp_writes: <span class="prelude-val">None</span>,
-<a href=#643 id=643 data-nosnippet>643</a>                occlusion_query_set: <span class="prelude-val">None</span>,
-<a href=#644 id=644 data-nosnippet>644</a>            });
-<a href=#645 id=645 data-nosnippet>645</a>
-<a href=#646 id=646 data-nosnippet>646</a>            render_pass.set_pipeline(<span class="kw-2">&amp;</span><span class="self">self</span>.shadow_pipeline);
-<a href=#647 id=647 data-nosnippet>647</a>
-<a href=#648 id=648 data-nosnippet>648</a>            <span class="comment">// Bind cascade data (group 0 for shadow pipeline)
-<a href=#649 id=649 data-nosnippet>649</a>            </span><span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw-2">ref </span>bind_group) = <span class="self">self</span>.shadow_bind_group {
-<a href=#650 id=650 data-nosnippet>650</a>                render_pass.set_bind_group(<span class="number">0</span>, bind_group, <span class="kw-2">&amp;</span>[]);
-<a href=#651 id=651 data-nosnippet>651</a>            }
-<a href=#652 id=652 data-nosnippet>652</a>
-<a href=#653 id=653 data-nosnippet>653</a>            render_pass.set_vertex_buffer(<span class="number">0</span>, vertex_buffer.slice(..));
-<a href=#654 id=654 data-nosnippet>654</a>            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-<a href=#655 id=655 data-nosnippet>655</a>
-<a href=#656 id=656 data-nosnippet>656</a>            <span class="comment">// Draw with instance_index = cascade_idx (for shader cascade selection)
-<a href=#657 id=657 data-nosnippet>657</a>            </span>render_pass.draw_indexed(
-<a href=#658 id=658 data-nosnippet>658</a>                <span class="number">0</span>..index_count,
-<a href=#659 id=659 data-nosnippet>659</a>                <span class="number">0</span>,
-<a href=#660 id=660 data-nosnippet>660</a>                cascade_idx <span class="kw">as </span>u32..(cascade_idx <span class="kw">as </span>u32 + <span class="number">1</span>),
-<a href=#661 id=661 data-nosnippet>661</a>            );
-<a href=#662 id=662 data-nosnippet>662</a>        }
+<a href=#551 id=551 data-nosnippet>551</a>            <span class="comment">// Place light far enough behind the frustum center to capture everything
+<a href=#552 id=552 data-nosnippet>552</a>            </span><span class="kw">let </span>light_distance = max_radius + <span class="number">50.0</span>;
+<a href=#553 id=553 data-nosnippet>553</a>            <span class="kw">let </span>light_pos = center - light_norm * light_distance;
+<a href=#554 id=554 data-nosnippet>554</a>
+<a href=#555 id=555 data-nosnippet>555</a>            cascade.view_matrix = Mat4::look_at_rh(light_pos, center, up);
+<a href=#556 id=556 data-nosnippet>556</a>
+<a href=#557 id=557 data-nosnippet>557</a>            <span class="comment">// Transform frustum corners to light space and compute tight AABB
+<a href=#558 id=558 data-nosnippet>558</a>            </span><span class="kw">let </span><span class="kw-2">mut </span>ls_min = Vec3::splat(f32::MAX);
+<a href=#559 id=559 data-nosnippet>559</a>            <span class="kw">let </span><span class="kw-2">mut </span>ls_max = Vec3::splat(f32::MIN);
+<a href=#560 id=560 data-nosnippet>560</a>            <span class="kw">for </span>corner <span class="kw">in </span><span class="kw-2">&amp;</span>world_corners {
+<a href=#561 id=561 data-nosnippet>561</a>                <span class="kw">let </span>ls = cascade.view_matrix.transform_point3(<span class="kw-2">*</span>corner);
+<a href=#562 id=562 data-nosnippet>562</a>                ls_min = ls_min.min(ls);
+<a href=#563 id=563 data-nosnippet>563</a>                ls_max = ls_max.max(ls);
+<a href=#564 id=564 data-nosnippet>564</a>            }
+<a href=#565 id=565 data-nosnippet>565</a>
+<a href=#566 id=566 data-nosnippet>566</a>            <span class="comment">// Also include camera position itself to avoid popping
+<a href=#567 id=567 data-nosnippet>567</a>            </span><span class="kw">let </span>ls_cam = cascade.view_matrix.transform_point3(camera_pos);
+<a href=#568 id=568 data-nosnippet>568</a>            ls_min = ls_min.min(ls_cam);
+<a href=#569 id=569 data-nosnippet>569</a>            ls_max = ls_max.max(ls_cam);
+<a href=#570 id=570 data-nosnippet>570</a>
+<a href=#571 id=571 data-nosnippet>571</a>            <span class="kw">let </span>ortho_half_x = (ls_max.x - ls_min.x) * <span class="number">0.5</span>;
+<a href=#572 id=572 data-nosnippet>572</a>            <span class="kw">let </span>ortho_half_y = (ls_max.y - ls_min.y) * <span class="number">0.5</span>;
+<a href=#573 id=573 data-nosnippet>573</a>            <span class="comment">// Use the larger of x/y for a square ortho (simplifies sampling)
+<a href=#574 id=574 data-nosnippet>574</a>            </span><span class="kw">let </span>ortho_size = ortho_half_x.max(ortho_half_y);
+<a href=#575 id=575 data-nosnippet>575</a>
+<a href=#576 id=576 data-nosnippet>576</a>            <span class="comment">// Texel-snapping: round light-space center to texel increments to prevent
+<a href=#577 id=577 data-nosnippet>577</a>            // shadow shimmer as the camera moves
+<a href=#578 id=578 data-nosnippet>578</a>            </span><span class="kw">let </span>shadow_map_size = <span class="number">2048.0</span>; <span class="comment">// per-cascade resolution
+<a href=#579 id=579 data-nosnippet>579</a>            </span><span class="kw">let </span>texel_size = (ortho_size * <span class="number">2.0</span>) / shadow_map_size;
+<a href=#580 id=580 data-nosnippet>580</a>            <span class="kw">let </span>ls_center_x = (ls_min.x + ls_max.x) * <span class="number">0.5</span>;
+<a href=#581 id=581 data-nosnippet>581</a>            <span class="kw">let </span>ls_center_y = (ls_min.y + ls_max.y) * <span class="number">0.5</span>;
+<a href=#582 id=582 data-nosnippet>582</a>            <span class="kw">let </span>snapped_x = (ls_center_x / texel_size).floor() * texel_size;
+<a href=#583 id=583 data-nosnippet>583</a>            <span class="kw">let </span>snapped_y = (ls_center_y / texel_size).floor() * texel_size;
+<a href=#584 id=584 data-nosnippet>584</a>            <span class="kw">let </span>snap_offset_x = snapped_x - ls_center_x;
+<a href=#585 id=585 data-nosnippet>585</a>            <span class="kw">let </span>snap_offset_y = snapped_y - ls_center_y;
+<a href=#586 id=586 data-nosnippet>586</a>
+<a href=#587 id=587 data-nosnippet>587</a>            <span class="comment">// Apply texel-snap offset to the view matrix (translate in light space)
+<a href=#588 id=588 data-nosnippet>588</a>            </span>cascade.view_matrix = Mat4::from_translation(Vec3::new(snap_offset_x, snap_offset_y, <span class="number">0.0</span>))
+<a href=#589 id=589 data-nosnippet>589</a>                * cascade.view_matrix;
+<a href=#590 id=590 data-nosnippet>590</a>
+<a href=#591 id=591 data-nosnippet>591</a>            <span class="comment">// Light-space depth range: ensure we capture geometry in front of and behind
+<a href=#592 id=592 data-nosnippet>592</a>            </span><span class="kw">let </span>ls_depth_range = ls_max.z - ls_min.z;
+<a href=#593 id=593 data-nosnippet>593</a>            <span class="kw">let </span>light_near = <span class="number">0.1</span>;
+<a href=#594 id=594 data-nosnippet>594</a>            <span class="kw">let </span>light_far = ls_depth_range + light_distance * <span class="number">2.0</span>;
+<a href=#595 id=595 data-nosnippet>595</a>
+<a href=#596 id=596 data-nosnippet>596</a>            <span class="comment">// Log diagnostics on first call
+<a href=#597 id=597 data-nosnippet>597</a>            </span><span class="kw">if </span>i == <span class="number">0 </span>{
+<a href=#598 id=598 data-nosnippet>598</a>                <span class="kw">static </span>FIRST_UPDATE: std::sync::atomic::AtomicBool =
+<a href=#599 id=599 data-nosnippet>599</a>                    std::sync::atomic::AtomicBool::new(<span class="bool-val">true</span>);
+<a href=#600 id=600 data-nosnippet>600</a>                <span class="kw">if </span>FIRST_UPDATE.swap(<span class="bool-val">false</span>, std::sync::atomic::Ordering::Relaxed) {
+<a href=#601 id=601 data-nosnippet>601</a>                    <span class="macro">log::debug!</span>(
+<a href=#602 id=602 data-nosnippet>602</a>                        <span class="string">"CSM cascade 0: ortho_size={:.1}, center=({:.1},{:.1},{:.1}), light_far={:.1}"</span>,
+<a href=#603 id=603 data-nosnippet>603</a>                        ortho_size,
+<a href=#604 id=604 data-nosnippet>604</a>                        center.x, center.y, center.z,
+<a href=#605 id=605 data-nosnippet>605</a>                        light_far,
+<a href=#606 id=606 data-nosnippet>606</a>                    );
+<a href=#607 id=607 data-nosnippet>607</a>                }
+<a href=#608 id=608 data-nosnippet>608</a>            }
+<a href=#609 id=609 data-nosnippet>609</a>
+<a href=#610 id=610 data-nosnippet>610</a>            cascade.proj_matrix = Mat4::orthographic_rh(
+<a href=#611 id=611 data-nosnippet>611</a>                -ortho_size,
+<a href=#612 id=612 data-nosnippet>612</a>                ortho_size,
+<a href=#613 id=613 data-nosnippet>613</a>                -ortho_size,
+<a href=#614 id=614 data-nosnippet>614</a>                ortho_size,
+<a href=#615 id=615 data-nosnippet>615</a>                light_near,
+<a href=#616 id=616 data-nosnippet>616</a>                light_far,
+<a href=#617 id=617 data-nosnippet>617</a>            );
+<a href=#618 id=618 data-nosnippet>618</a>
+<a href=#619 id=619 data-nosnippet>619</a>            cascade.view_proj_matrix = cascade.proj_matrix * cascade.view_matrix;
+<a href=#620 id=620 data-nosnippet>620</a>        }
+<a href=#621 id=621 data-nosnippet>621</a>    }
+<a href=#622 id=622 data-nosnippet>622</a>
+<a href=#623 id=623 data-nosnippet>623</a>    <span class="doccomment">/// Upload cascade data to GPU
+<a href=#624 id=624 data-nosnippet>624</a>    ///
+<a href=#625 id=625 data-nosnippet>625</a>    /// Call this after `update_cascades()` and before rendering.
+<a href=#626 id=626 data-nosnippet>626</a>    </span><span class="kw">pub fn </span>upload_to_gpu(<span class="kw-2">&amp;mut </span><span class="self">self</span>, queue: <span class="kw-2">&amp;</span>wgpu::Queue, device: <span class="kw-2">&amp;</span>wgpu::Device) {
+<a href=#627 id=627 data-nosnippet>627</a>        <span class="comment">// Convert to GPU format
+<a href=#628 id=628 data-nosnippet>628</a>        </span><span class="kw">let </span>gpu_cascades: Vec&lt;GpuShadowCascade&gt; =
+<a href=#629 id=629 data-nosnippet>629</a>            <span class="self">self</span>.cascades.iter().map(GpuShadowCascade::from).collect();
+<a href=#630 id=630 data-nosnippet>630</a>
+<a href=#631 id=631 data-nosnippet>631</a>        <span class="comment">// Upload buffer
+<a href=#632 id=632 data-nosnippet>632</a>        </span>queue.write_buffer(<span class="kw-2">&amp;</span><span class="self">self</span>.cascade_buffer, <span class="number">0</span>, bytemuck::cast_slice(<span class="kw-2">&amp;</span>gpu_cascades));
+<a href=#633 id=633 data-nosnippet>633</a>
+<a href=#634 id=634 data-nosnippet>634</a>        <span class="comment">// Create/update bind group
+<a href=#635 id=635 data-nosnippet>635</a>        </span><span class="self">self</span>.bind_group = <span class="prelude-val">Some</span>(device.create_bind_group(<span class="kw-2">&amp;</span>wgpu::BindGroupDescriptor {
+<a href=#636 id=636 data-nosnippet>636</a>            label: <span class="prelude-val">Some</span>(<span class="string">"CSM Bind Group"</span>),
+<a href=#637 id=637 data-nosnippet>637</a>            layout: <span class="kw-2">&amp;</span><span class="self">self</span>.bind_group_layout,
+<a href=#638 id=638 data-nosnippet>638</a>            entries: <span class="kw-2">&amp;</span>[
+<a href=#639 id=639 data-nosnippet>639</a>                wgpu::BindGroupEntry {
+<a href=#640 id=640 data-nosnippet>640</a>                    binding: <span class="number">0</span>,
+<a href=#641 id=641 data-nosnippet>641</a>                    resource: wgpu::BindingResource::TextureView(<span class="kw-2">&amp;</span><span class="self">self</span>.atlas_view),
+<a href=#642 id=642 data-nosnippet>642</a>                },
+<a href=#643 id=643 data-nosnippet>643</a>                wgpu::BindGroupEntry {
+<a href=#644 id=644 data-nosnippet>644</a>                    binding: <span class="number">1</span>,
+<a href=#645 id=645 data-nosnippet>645</a>                    resource: wgpu::BindingResource::Sampler(<span class="kw-2">&amp;</span><span class="self">self</span>.shadow_sampler),
+<a href=#646 id=646 data-nosnippet>646</a>                },
+<a href=#647 id=647 data-nosnippet>647</a>                wgpu::BindGroupEntry {
+<a href=#648 id=648 data-nosnippet>648</a>                    binding: <span class="number">2</span>,
+<a href=#649 id=649 data-nosnippet>649</a>                    resource: <span class="self">self</span>.cascade_buffer.as_entire_binding(),
+<a href=#650 id=650 data-nosnippet>650</a>                },
+<a href=#651 id=651 data-nosnippet>651</a>            ],
+<a href=#652 id=652 data-nosnippet>652</a>        }));
+<a href=#653 id=653 data-nosnippet>653</a>
+<a href=#654 id=654 data-nosnippet>654</a>        <span class="comment">// Create/update shadow-only bind group (just cascades for depth pass)
+<a href=#655 id=655 data-nosnippet>655</a>        </span><span class="self">self</span>.shadow_bind_group = <span class="prelude-val">Some</span>(device.create_bind_group(<span class="kw-2">&amp;</span>wgpu::BindGroupDescriptor {
+<a href=#656 id=656 data-nosnippet>656</a>            label: <span class="prelude-val">Some</span>(<span class="string">"Shadow Depth Bind Group"</span>),
+<a href=#657 id=657 data-nosnippet>657</a>            layout: <span class="kw-2">&amp;</span><span class="self">self</span>.shadow_bind_group_layout,
+<a href=#658 id=658 data-nosnippet>658</a>            entries: <span class="kw-2">&amp;</span>[wgpu::BindGroupEntry {
+<a href=#659 id=659 data-nosnippet>659</a>                binding: <span class="number">0</span>,
+<a href=#660 id=660 data-nosnippet>660</a>                resource: <span class="self">self</span>.cascade_buffer.as_entire_binding(),
+<a href=#661 id=661 data-nosnippet>661</a>            }],
+<a href=#662 id=662 data-nosnippet>662</a>        }));
 <a href=#663 id=663 data-nosnippet>663</a>    }
-<a href=#664 id=664 data-nosnippet>664</a>}
-<a href=#665 id=665 data-nosnippet>665</a>
-<a href=#666 id=666 data-nosnippet>666</a><span class="attr">#[cfg(test)]
-<a href=#667 id=667 data-nosnippet>667</a></span><span class="kw">mod </span>tests {
-<a href=#668 id=668 data-nosnippet>668</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#669 id=669 data-nosnippet>669</a>
-<a href=#670 id=670 data-nosnippet>670</a>    <span class="attr">#[test]
-<a href=#671 id=671 data-nosnippet>671</a>    </span><span class="kw">fn </span>test_gpu_shadow_cascade_size() {
-<a href=#672 id=672 data-nosnippet>672</a>        <span class="comment">// Ensure struct is properly aligned for GPU
-<a href=#673 id=673 data-nosnippet>673</a>        </span><span class="macro">assert_eq!</span>(
-<a href=#674 id=674 data-nosnippet>674</a>            std::mem::size_of::&lt;GpuShadowCascade&gt;(),
-<a href=#675 id=675 data-nosnippet>675</a>            std::mem::size_of::&lt;[[f32; <span class="number">4</span>]; <span class="number">4</span>]&gt;() + <span class="comment">// view_proj (64 bytes)
-<a href=#676 id=676 data-nosnippet>676</a>            </span>std::mem::size_of::&lt;[f32; <span class="number">4</span>]&gt;() +      <span class="comment">// split_distances (16 bytes)
-<a href=#677 id=677 data-nosnippet>677</a>            </span>std::mem::size_of::&lt;[f32; <span class="number">4</span>]&gt;() <span class="comment">// atlas_transform (16 bytes)
-<a href=#678 id=678 data-nosnippet>678</a>        </span>);
-<a href=#679 id=679 data-nosnippet>679</a>    }
-<a href=#680 id=680 data-nosnippet>680</a>
-<a href=#681 id=681 data-nosnippet>681</a>    <span class="attr">#[test]
-<a href=#682 id=682 data-nosnippet>682</a>    </span><span class="kw">fn </span>test_cascade_split_distribution() {
-<a href=#683 id=683 data-nosnippet>683</a>        <span class="comment">// Test logarithmic split calculation
-<a href=#684 id=684 data-nosnippet>684</a>        </span><span class="kw">let </span>near = <span class="number">0.1f32</span>;
-<a href=#685 id=685 data-nosnippet>685</a>        <span class="kw">let </span>far = <span class="number">1000.0f32</span>;
-<a href=#686 id=686 data-nosnippet>686</a>        <span class="kw">let </span>lambda = <span class="number">0.5</span>;
-<a href=#687 id=687 data-nosnippet>687</a>
-<a href=#688 id=688 data-nosnippet>688</a>        <span class="kw">let </span><span class="kw-2">mut </span>splits = [<span class="number">0.0f32</span>; CASCADE_COUNT + <span class="number">1</span>];
-<a href=#689 id=689 data-nosnippet>689</a>        splits[<span class="number">0</span>] = near;
-<a href=#690 id=690 data-nosnippet>690</a>        splits[CASCADE_COUNT] = far;
-<a href=#691 id=691 data-nosnippet>691</a>
-<a href=#692 id=692 data-nosnippet>692</a>        <span class="kw">for </span>(i, split) <span class="kw">in </span>splits.iter_mut().enumerate().take(CASCADE_COUNT).skip(<span class="number">1</span>) {
-<a href=#693 id=693 data-nosnippet>693</a>            <span class="kw">let </span>i_f = i <span class="kw">as </span>f32;
-<a href=#694 id=694 data-nosnippet>694</a>            <span class="kw">let </span>n_f = CASCADE_COUNT <span class="kw">as </span>f32;
-<a href=#695 id=695 data-nosnippet>695</a>            <span class="kw">let </span>log_split = near * (far / near).powf(i_f / n_f);
-<a href=#696 id=696 data-nosnippet>696</a>            <span class="kw">let </span>uniform_split = near + (far - near) * (i_f / n_f);
-<a href=#697 id=697 data-nosnippet>697</a>            <span class="kw-2">*</span>split = lambda * log_split + (<span class="number">1.0 </span>- lambda) * uniform_split;
-<a href=#698 id=698 data-nosnippet>698</a>        }
-<a href=#699 id=699 data-nosnippet>699</a>
-<a href=#700 id=700 data-nosnippet>700</a>        <span class="comment">// Verify splits are monotonically increasing
-<a href=#701 id=701 data-nosnippet>701</a>        </span><span class="kw">for </span>pair <span class="kw">in </span>splits.windows(<span class="number">2</span>) {
-<a href=#702 id=702 data-nosnippet>702</a>            <span class="macro">assert!</span>(pair[<span class="number">0</span>] &lt; pair[<span class="number">1</span>]);
-<a href=#703 id=703 data-nosnippet>703</a>        }
-<a href=#704 id=704 data-nosnippet>704</a>
-<a href=#705 id=705 data-nosnippet>705</a>        <span class="comment">// Verify first and last splits
-<a href=#706 id=706 data-nosnippet>706</a>        </span><span class="macro">assert_eq!</span>(splits[<span class="number">0</span>], near);
-<a href=#707 id=707 data-nosnippet>707</a>        <span class="macro">assert_eq!</span>(splits[CASCADE_COUNT], far);
-<a href=#708 id=708 data-nosnippet>708</a>    }
+<a href=#664 id=664 data-nosnippet>664</a>
+<a href=#665 id=665 data-nosnippet>665</a>    <span class="doccomment">/// Get cascade view for rendering (for shadow pass)
+<a href=#666 id=666 data-nosnippet>666</a>    ///
+<a href=#667 id=667 data-nosnippet>667</a>    /// # Returns
+<a href=#668 id=668 data-nosnippet>668</a>    ///
+<a href=#669 id=669 data-nosnippet>669</a>    /// Texture view for the specified cascade index (0-3)
+<a href=#670 id=670 data-nosnippet>670</a>    </span><span class="kw">pub fn </span>get_cascade_view(<span class="kw-2">&amp;</span><span class="self">self</span>, cascade_index: usize) -&gt; <span class="kw-2">&amp;</span>wgpu::TextureView {
+<a href=#671 id=671 data-nosnippet>671</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.cascade_views[cascade_index]
+<a href=#672 id=672 data-nosnippet>672</a>    }
+<a href=#673 id=673 data-nosnippet>673</a>
+<a href=#674 id=674 data-nosnippet>674</a>    <span class="doccomment">/// Render shadow maps for all cascades
+<a href=#675 id=675 data-nosnippet>675</a>    ///
+<a href=#676 id=676 data-nosnippet>676</a>    /// # Arguments
+<a href=#677 id=677 data-nosnippet>677</a>    ///
+<a href=#678 id=678 data-nosnippet>678</a>    /// - `encoder`: Command encoder for recording render passes
+<a href=#679 id=679 data-nosnippet>679</a>    /// - `vertex_buffer`: Vertex buffer containing scene geometry (position-only)
+<a href=#680 id=680 data-nosnippet>680</a>    /// - `index_buffer`: Index buffer for indexed drawing
+<a href=#681 id=681 data-nosnippet>681</a>    /// - `index_count`: Number of indices to draw
+<a href=#682 id=682 data-nosnippet>682</a>    ///
+<a href=#683 id=683 data-nosnippet>683</a>    /// # Notes
+<a href=#684 id=684 data-nosnippet>684</a>    ///
+<a href=#685 id=685 data-nosnippet>685</a>    /// This creates 4 render passes (one per cascade) to populate the shadow atlas.
+<a href=#686 id=686 data-nosnippet>686</a>    /// Call this before your main render pass.
+<a href=#687 id=687 data-nosnippet>687</a>    </span><span class="kw">pub fn </span>render_shadow_maps(
+<a href=#688 id=688 data-nosnippet>688</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#689 id=689 data-nosnippet>689</a>        encoder: <span class="kw-2">&amp;mut </span>wgpu::CommandEncoder,
+<a href=#690 id=690 data-nosnippet>690</a>        vertex_buffer: <span class="kw-2">&amp;</span>wgpu::Buffer,
+<a href=#691 id=691 data-nosnippet>691</a>        index_buffer: <span class="kw-2">&amp;</span>wgpu::Buffer,
+<a href=#692 id=692 data-nosnippet>692</a>        index_count: u32,
+<a href=#693 id=693 data-nosnippet>693</a>    ) {
+<a href=#694 id=694 data-nosnippet>694</a>        <span class="comment">// Log cascade matrices on first call for diagnostics
+<a href=#695 id=695 data-nosnippet>695</a>        </span><span class="kw">static </span>FIRST_CALL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(<span class="bool-val">true</span>);
+<a href=#696 id=696 data-nosnippet>696</a>        <span class="kw">if </span>FIRST_CALL.swap(<span class="bool-val">false</span>, std::sync::atomic::Ordering::Relaxed) {
+<a href=#697 id=697 data-nosnippet>697</a>            <span class="macro">log::debug!</span>(<span class="string">"Shadow rendering debug:"</span>);
+<a href=#698 id=698 data-nosnippet>698</a>            <span class="macro">log::debug!</span>(<span class="string">"  - Index count: {}"</span>, index_count);
+<a href=#699 id=699 data-nosnippet>699</a>            <span class="kw">for </span>(i, cascade) <span class="kw">in </span><span class="self">self</span>.cascades.iter().enumerate() {
+<a href=#700 id=700 data-nosnippet>700</a>                <span class="macro">log::debug!</span>(
+<a href=#701 id=701 data-nosnippet>701</a>                    <span class="string">"  - Cascade {}: near={:.1}, far={:.1}"</span>,
+<a href=#702 id=702 data-nosnippet>702</a>                    i,
+<a href=#703 id=703 data-nosnippet>703</a>                    cascade.near,
+<a href=#704 id=704 data-nosnippet>704</a>                    cascade.far
+<a href=#705 id=705 data-nosnippet>705</a>                );
+<a href=#706 id=706 data-nosnippet>706</a>                <span class="macro">log::debug!</span>(<span class="string">"    view_proj = {:#?}"</span>, cascade.view_proj_matrix);
+<a href=#707 id=707 data-nosnippet>707</a>            }
+<a href=#708 id=708 data-nosnippet>708</a>        }
 <a href=#709 id=709 data-nosnippet>709</a>
-<a href=#710 id=710 data-nosnippet>710</a>    <span class="attr">#[test]
-<a href=#711 id=711 data-nosnippet>711</a>    </span><span class="kw">fn </span>test_atlas_offset_calculation() {
-<a href=#712 id=712 data-nosnippet>712</a>        <span class="comment">// Verify atlas quadrants are correctly mapped
-<a href=#713 id=713 data-nosnippet>713</a>        </span><span class="kw">let </span>cascades = [
-<a href=#714 id=714 data-nosnippet>714</a>            Vec4::new(<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">0.5</span>, <span class="number">0.5</span>), <span class="comment">// Top-left
-<a href=#715 id=715 data-nosnippet>715</a>            </span>Vec4::new(<span class="number">0.5</span>, <span class="number">0.0</span>, <span class="number">0.5</span>, <span class="number">0.5</span>), <span class="comment">// Top-right
-<a href=#716 id=716 data-nosnippet>716</a>            </span>Vec4::new(<span class="number">0.0</span>, <span class="number">0.5</span>, <span class="number">0.5</span>, <span class="number">0.5</span>), <span class="comment">// Bottom-left
-<a href=#717 id=717 data-nosnippet>717</a>            </span>Vec4::new(<span class="number">0.5</span>, <span class="number">0.5</span>, <span class="number">0.5</span>, <span class="number">0.5</span>), <span class="comment">// Bottom-right
-<a href=#718 id=718 data-nosnippet>718</a>        </span>];
-<a href=#719 id=719 data-nosnippet>719</a>
-<a href=#720 id=720 data-nosnippet>720</a>        <span class="kw">for </span>offset <span class="kw">in </span><span class="kw-2">&amp;</span>cascades {
-<a href=#721 id=721 data-nosnippet>721</a>            <span class="comment">// All scales should be 0.5 (half atlas)
-<a href=#722 id=722 data-nosnippet>722</a>            </span><span class="macro">assert_eq!</span>(offset.z, <span class="number">0.5</span>);
-<a href=#723 id=723 data-nosnippet>723</a>            <span class="macro">assert_eq!</span>(offset.w, <span class="number">0.5</span>);
-<a href=#724 id=724 data-nosnippet>724</a>
-<a href=#725 id=725 data-nosnippet>725</a>            <span class="comment">// Offsets should be 0.0 or 0.5
-<a href=#726 id=726 data-nosnippet>726</a>            </span><span class="macro">assert!</span>(offset.x == <span class="number">0.0 </span>|| offset.x == <span class="number">0.5</span>);
-<a href=#727 id=727 data-nosnippet>727</a>            <span class="macro">assert!</span>(offset.y == <span class="number">0.0 </span>|| offset.y == <span class="number">0.5</span>);
-<a href=#728 id=728 data-nosnippet>728</a>        }
-<a href=#729 id=729 data-nosnippet>729</a>    }
-<a href=#730 id=730 data-nosnippet>730</a>
-<a href=#731 id=731 data-nosnippet>731</a>    <span class="comment">// --- Mutation-resistant tests ---
+<a href=#710 id=710 data-nosnippet>710</a>        <span class="kw">for </span>cascade_idx <span class="kw">in </span><span class="number">0</span>..CASCADE_COUNT {
+<a href=#711 id=711 data-nosnippet>711</a>            <span class="kw">let </span><span class="kw-2">mut </span>render_pass = encoder.begin_render_pass(<span class="kw-2">&amp;</span>wgpu::RenderPassDescriptor {
+<a href=#712 id=712 data-nosnippet>712</a>                label: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"Shadow Cascade {} Render Pass"</span>, cascade_idx)),
+<a href=#713 id=713 data-nosnippet>713</a>                color_attachments: <span class="kw-2">&amp;</span>[], <span class="comment">// Depth-only pass
+<a href=#714 id=714 data-nosnippet>714</a>                </span>depth_stencil_attachment: <span class="prelude-val">Some</span>(wgpu::RenderPassDepthStencilAttachment {
+<a href=#715 id=715 data-nosnippet>715</a>                    view: <span class="kw-2">&amp;</span><span class="self">self</span>.cascade_views[cascade_idx], <span class="comment">// Render to individual layer
+<a href=#716 id=716 data-nosnippet>716</a>                    </span>depth_ops: <span class="prelude-val">Some</span>(wgpu::Operations {
+<a href=#717 id=717 data-nosnippet>717</a>                        load: wgpu::LoadOp::Clear(<span class="number">1.0</span>), <span class="comment">// Clear to far plane
+<a href=#718 id=718 data-nosnippet>718</a>                        </span>store: wgpu::StoreOp::Store,
+<a href=#719 id=719 data-nosnippet>719</a>                    }),
+<a href=#720 id=720 data-nosnippet>720</a>                    stencil_ops: <span class="prelude-val">None</span>,
+<a href=#721 id=721 data-nosnippet>721</a>                }),
+<a href=#722 id=722 data-nosnippet>722</a>                timestamp_writes: <span class="prelude-val">None</span>,
+<a href=#723 id=723 data-nosnippet>723</a>                occlusion_query_set: <span class="prelude-val">None</span>,
+<a href=#724 id=724 data-nosnippet>724</a>            });
+<a href=#725 id=725 data-nosnippet>725</a>
+<a href=#726 id=726 data-nosnippet>726</a>            render_pass.set_pipeline(<span class="kw-2">&amp;</span><span class="self">self</span>.shadow_pipeline);
+<a href=#727 id=727 data-nosnippet>727</a>
+<a href=#728 id=728 data-nosnippet>728</a>            <span class="comment">// Bind cascade data (group 0 for shadow pipeline)
+<a href=#729 id=729 data-nosnippet>729</a>            </span><span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw-2">ref </span>bind_group) = <span class="self">self</span>.shadow_bind_group {
+<a href=#730 id=730 data-nosnippet>730</a>                render_pass.set_bind_group(<span class="number">0</span>, bind_group, <span class="kw-2">&amp;</span>[]);
+<a href=#731 id=731 data-nosnippet>731</a>            }
 <a href=#732 id=732 data-nosnippet>732</a>
-<a href=#733 id=733 data-nosnippet>733</a>    </span><span class="attr">#[test]
-<a href=#734 id=734 data-nosnippet>734</a>    </span><span class="kw">fn </span>cascade_count_is_four() {
-<a href=#735 id=735 data-nosnippet>735</a>        <span class="macro">assert_eq!</span>(CASCADE_COUNT, <span class="number">4</span>);
-<a href=#736 id=736 data-nosnippet>736</a>    }
-<a href=#737 id=737 data-nosnippet>737</a>
-<a href=#738 id=738 data-nosnippet>738</a>    <span class="attr">#[test]
-<a href=#739 id=739 data-nosnippet>739</a>    </span><span class="kw">fn </span>cascade_resolution_is_2048() {
-<a href=#740 id=740 data-nosnippet>740</a>        <span class="macro">assert_eq!</span>(CASCADE_RESOLUTION, <span class="number">2048</span>);
-<a href=#741 id=741 data-nosnippet>741</a>    }
-<a href=#742 id=742 data-nosnippet>742</a>
-<a href=#743 id=743 data-nosnippet>743</a>    <span class="attr">#[test]
-<a href=#744 id=744 data-nosnippet>744</a>    #[allow(clippy::assertions_on_constants)]
-<a href=#745 id=745 data-nosnippet>745</a>    </span><span class="kw">fn </span>depth_bias_is_positive() {
-<a href=#746 id=746 data-nosnippet>746</a>        <span class="macro">assert!</span>(
-<a href=#747 id=747 data-nosnippet>747</a>            DEPTH_BIAS &gt; <span class="number">0.0</span>,
-<a href=#748 id=748 data-nosnippet>748</a>            <span class="string">"depth bias must be positive to prevent shadow acne"
-<a href=#749 id=749 data-nosnippet>749</a>        </span>);
-<a href=#750 id=750 data-nosnippet>750</a>        <span class="macro">assert!</span>(DEPTH_BIAS &lt; <span class="number">0.1</span>, <span class="string">"depth bias should be small"</span>);
-<a href=#751 id=751 data-nosnippet>751</a>    }
-<a href=#752 id=752 data-nosnippet>752</a>
-<a href=#753 id=753 data-nosnippet>753</a>    <span class="attr">#[test]
-<a href=#754 id=754 data-nosnippet>754</a>    </span><span class="kw">fn </span>gpu_shadow_cascade_from_shadow_cascade() {
-<a href=#755 id=755 data-nosnippet>755</a>        <span class="kw">let </span>cascade = ShadowCascade {
-<a href=#756 id=756 data-nosnippet>756</a>            near: <span class="number">0.5</span>,
-<a href=#757 id=757 data-nosnippet>757</a>            far: <span class="number">25.0</span>,
-<a href=#758 id=758 data-nosnippet>758</a>            view_matrix: Mat4::IDENTITY,
-<a href=#759 id=759 data-nosnippet>759</a>            proj_matrix: Mat4::IDENTITY,
-<a href=#760 id=760 data-nosnippet>760</a>            view_proj_matrix: Mat4::look_at_rh(Vec3::new(<span class="number">0.0</span>, <span class="number">50.0</span>, <span class="number">0.0</span>), Vec3::ZERO, Vec3::X),
-<a href=#761 id=761 data-nosnippet>761</a>            atlas_offset: Vec4::new(<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>, <span class="number">1.0</span>),
-<a href=#762 id=762 data-nosnippet>762</a>        };
-<a href=#763 id=763 data-nosnippet>763</a>        <span class="kw">let </span>gpu: GpuShadowCascade = (<span class="kw-2">&amp;</span>cascade).into();
-<a href=#764 id=764 data-nosnippet>764</a>        <span class="macro">assert_eq!</span>(gpu.split_distances[<span class="number">0</span>], <span class="number">0.5</span>);
-<a href=#765 id=765 data-nosnippet>765</a>        <span class="macro">assert_eq!</span>(gpu.split_distances[<span class="number">1</span>], <span class="number">25.0</span>);
-<a href=#766 id=766 data-nosnippet>766</a>        <span class="macro">assert_eq!</span>(gpu.split_distances[<span class="number">2</span>], <span class="number">0.0</span>);
-<a href=#767 id=767 data-nosnippet>767</a>        <span class="macro">assert_eq!</span>(gpu.split_distances[<span class="number">3</span>], <span class="number">0.0</span>);
-<a href=#768 id=768 data-nosnippet>768</a>        <span class="macro">assert_eq!</span>(gpu.atlas_transform, [<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>, <span class="number">1.0</span>]);
-<a href=#769 id=769 data-nosnippet>769</a>        <span class="comment">// view_proj should match cascade.view_proj_matrix
-<a href=#770 id=770 data-nosnippet>770</a>        </span><span class="kw">let </span>expected = cascade.view_proj_matrix.to_cols_array_2d();
-<a href=#771 id=771 data-nosnippet>771</a>        <span class="macro">assert_eq!</span>(gpu.view_proj, expected);
-<a href=#772 id=772 data-nosnippet>772</a>    }
-<a href=#773 id=773 data-nosnippet>773</a>
-<a href=#774 id=774 data-nosnippet>774</a>    <span class="attr">#[test]
-<a href=#775 id=775 data-nosnippet>775</a>    </span><span class="kw">fn </span>cascade_splits_are_monotonic_for_various_ranges() {
-<a href=#776 id=776 data-nosnippet>776</a>        <span class="kw">let </span>test_cases = [
-<a href=#777 id=777 data-nosnippet>777</a>            (<span class="number">0.1f32</span>, <span class="number">100.0f32</span>),
-<a href=#778 id=778 data-nosnippet>778</a>            (<span class="number">0.1</span>, <span class="number">1000.0</span>),
-<a href=#779 id=779 data-nosnippet>779</a>            (<span class="number">1.0</span>, <span class="number">50.0</span>),
-<a href=#780 id=780 data-nosnippet>780</a>            (<span class="number">0.01</span>, <span class="number">10000.0</span>),
-<a href=#781 id=781 data-nosnippet>781</a>        ];
-<a href=#782 id=782 data-nosnippet>782</a>        <span class="kw">let </span>lambda = <span class="number">0.5</span>;
-<a href=#783 id=783 data-nosnippet>783</a>        <span class="kw">for </span>(near, far) <span class="kw">in </span>test_cases {
-<a href=#784 id=784 data-nosnippet>784</a>            <span class="kw">let </span><span class="kw-2">mut </span>splits = [<span class="number">0.0f32</span>; CASCADE_COUNT + <span class="number">1</span>];
-<a href=#785 id=785 data-nosnippet>785</a>            splits[<span class="number">0</span>] = near;
-<a href=#786 id=786 data-nosnippet>786</a>            splits[CASCADE_COUNT] = far;
-<a href=#787 id=787 data-nosnippet>787</a>            <span class="kw">for </span>(i, split) <span class="kw">in </span>splits.iter_mut().enumerate().take(CASCADE_COUNT).skip(<span class="number">1</span>) {
-<a href=#788 id=788 data-nosnippet>788</a>                <span class="kw">let </span>i_f = i <span class="kw">as </span>f32;
-<a href=#789 id=789 data-nosnippet>789</a>                <span class="kw">let </span>n_f = CASCADE_COUNT <span class="kw">as </span>f32;
-<a href=#790 id=790 data-nosnippet>790</a>                <span class="kw">let </span>log_split = near * (far / near).powf(i_f / n_f);
-<a href=#791 id=791 data-nosnippet>791</a>                <span class="kw">let </span>uniform_split = near + (far - near) * (i_f / n_f);
-<a href=#792 id=792 data-nosnippet>792</a>                <span class="kw-2">*</span>split = lambda * log_split + (<span class="number">1.0 </span>- lambda) * uniform_split;
-<a href=#793 id=793 data-nosnippet>793</a>            }
-<a href=#794 id=794 data-nosnippet>794</a>            <span class="kw">for </span>pair <span class="kw">in </span>splits.windows(<span class="number">2</span>) {
-<a href=#795 id=795 data-nosnippet>795</a>                <span class="macro">assert!</span>(
-<a href=#796 id=796 data-nosnippet>796</a>                    pair[<span class="number">0</span>] &lt; pair[<span class="number">1</span>],
-<a href=#797 id=797 data-nosnippet>797</a>                    <span class="string">"splits must be monotonic for near={near}, far={far}"
-<a href=#798 id=798 data-nosnippet>798</a>                </span>);
-<a href=#799 id=799 data-nosnippet>799</a>            }
-<a href=#800 id=800 data-nosnippet>800</a>            <span class="macro">assert_eq!</span>(splits[<span class="number">0</span>], near);
-<a href=#801 id=801 data-nosnippet>801</a>            <span class="macro">assert_eq!</span>(splits[CASCADE_COUNT], far);
-<a href=#802 id=802 data-nosnippet>802</a>        }
-<a href=#803 id=803 data-nosnippet>803</a>    }
+<a href=#733 id=733 data-nosnippet>733</a>            render_pass.set_vertex_buffer(<span class="number">0</span>, vertex_buffer.slice(..));
+<a href=#734 id=734 data-nosnippet>734</a>            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+<a href=#735 id=735 data-nosnippet>735</a>
+<a href=#736 id=736 data-nosnippet>736</a>            <span class="comment">// Draw with instance_index = cascade_idx (for shader cascade selection)
+<a href=#737 id=737 data-nosnippet>737</a>            </span>render_pass.draw_indexed(
+<a href=#738 id=738 data-nosnippet>738</a>                <span class="number">0</span>..index_count,
+<a href=#739 id=739 data-nosnippet>739</a>                <span class="number">0</span>,
+<a href=#740 id=740 data-nosnippet>740</a>                cascade_idx <span class="kw">as </span>u32..(cascade_idx <span class="kw">as </span>u32 + <span class="number">1</span>),
+<a href=#741 id=741 data-nosnippet>741</a>            );
+<a href=#742 id=742 data-nosnippet>742</a>        }
+<a href=#743 id=743 data-nosnippet>743</a>    }
+<a href=#744 id=744 data-nosnippet>744</a>}
+<a href=#745 id=745 data-nosnippet>745</a>
+<a href=#746 id=746 data-nosnippet>746</a><span class="attr">#[cfg(test)]
+<a href=#747 id=747 data-nosnippet>747</a></span><span class="kw">mod </span>tests {
+<a href=#748 id=748 data-nosnippet>748</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#749 id=749 data-nosnippet>749</a>
+<a href=#750 id=750 data-nosnippet>750</a>    <span class="attr">#[test]
+<a href=#751 id=751 data-nosnippet>751</a>    </span><span class="kw">fn </span>test_gpu_shadow_cascade_size() {
+<a href=#752 id=752 data-nosnippet>752</a>        <span class="comment">// Ensure struct is properly aligned for GPU
+<a href=#753 id=753 data-nosnippet>753</a>        </span><span class="macro">assert_eq!</span>(
+<a href=#754 id=754 data-nosnippet>754</a>            std::mem::size_of::&lt;GpuShadowCascade&gt;(),
+<a href=#755 id=755 data-nosnippet>755</a>            std::mem::size_of::&lt;[[f32; <span class="number">4</span>]; <span class="number">4</span>]&gt;() + <span class="comment">// view_proj (64 bytes)
+<a href=#756 id=756 data-nosnippet>756</a>            </span>std::mem::size_of::&lt;[f32; <span class="number">4</span>]&gt;() +      <span class="comment">// split_distances (16 bytes)
+<a href=#757 id=757 data-nosnippet>757</a>            </span>std::mem::size_of::&lt;[f32; <span class="number">4</span>]&gt;() <span class="comment">// atlas_transform (16 bytes)
+<a href=#758 id=758 data-nosnippet>758</a>        </span>);
+<a href=#759 id=759 data-nosnippet>759</a>    }
+<a href=#760 id=760 data-nosnippet>760</a>
+<a href=#761 id=761 data-nosnippet>761</a>    <span class="attr">#[test]
+<a href=#762 id=762 data-nosnippet>762</a>    </span><span class="kw">fn </span>test_cascade_split_distribution() {
+<a href=#763 id=763 data-nosnippet>763</a>        <span class="comment">// Test logarithmic split calculation
+<a href=#764 id=764 data-nosnippet>764</a>        </span><span class="kw">let </span>near = <span class="number">0.1f32</span>;
+<a href=#765 id=765 data-nosnippet>765</a>        <span class="kw">let </span>far = <span class="number">1000.0f32</span>;
+<a href=#766 id=766 data-nosnippet>766</a>        <span class="kw">let </span>lambda = <span class="number">0.5</span>;
+<a href=#767 id=767 data-nosnippet>767</a>
+<a href=#768 id=768 data-nosnippet>768</a>        <span class="kw">let </span><span class="kw-2">mut </span>splits = [<span class="number">0.0f32</span>; CASCADE_COUNT + <span class="number">1</span>];
+<a href=#769 id=769 data-nosnippet>769</a>        splits[<span class="number">0</span>] = near;
+<a href=#770 id=770 data-nosnippet>770</a>        splits[CASCADE_COUNT] = far;
+<a href=#771 id=771 data-nosnippet>771</a>
+<a href=#772 id=772 data-nosnippet>772</a>        <span class="kw">for </span>(i, split) <span class="kw">in </span>splits.iter_mut().enumerate().take(CASCADE_COUNT).skip(<span class="number">1</span>) {
+<a href=#773 id=773 data-nosnippet>773</a>            <span class="kw">let </span>i_f = i <span class="kw">as </span>f32;
+<a href=#774 id=774 data-nosnippet>774</a>            <span class="kw">let </span>n_f = CASCADE_COUNT <span class="kw">as </span>f32;
+<a href=#775 id=775 data-nosnippet>775</a>            <span class="kw">let </span>log_split = near * (far / near).powf(i_f / n_f);
+<a href=#776 id=776 data-nosnippet>776</a>            <span class="kw">let </span>uniform_split = near + (far - near) * (i_f / n_f);
+<a href=#777 id=777 data-nosnippet>777</a>            <span class="kw-2">*</span>split = lambda * log_split + (<span class="number">1.0 </span>- lambda) * uniform_split;
+<a href=#778 id=778 data-nosnippet>778</a>        }
+<a href=#779 id=779 data-nosnippet>779</a>
+<a href=#780 id=780 data-nosnippet>780</a>        <span class="comment">// Verify splits are monotonically increasing
+<a href=#781 id=781 data-nosnippet>781</a>        </span><span class="kw">for </span>pair <span class="kw">in </span>splits.windows(<span class="number">2</span>) {
+<a href=#782 id=782 data-nosnippet>782</a>            <span class="macro">assert!</span>(pair[<span class="number">0</span>] &lt; pair[<span class="number">1</span>]);
+<a href=#783 id=783 data-nosnippet>783</a>        }
+<a href=#784 id=784 data-nosnippet>784</a>
+<a href=#785 id=785 data-nosnippet>785</a>        <span class="comment">// Verify first and last splits
+<a href=#786 id=786 data-nosnippet>786</a>        </span><span class="macro">assert_eq!</span>(splits[<span class="number">0</span>], near);
+<a href=#787 id=787 data-nosnippet>787</a>        <span class="macro">assert_eq!</span>(splits[CASCADE_COUNT], far);
+<a href=#788 id=788 data-nosnippet>788</a>    }
+<a href=#789 id=789 data-nosnippet>789</a>
+<a href=#790 id=790 data-nosnippet>790</a>    <span class="attr">#[test]
+<a href=#791 id=791 data-nosnippet>791</a>    </span><span class="kw">fn </span>test_atlas_offset_calculation() {
+<a href=#792 id=792 data-nosnippet>792</a>        <span class="comment">// Verify atlas quadrants are correctly mapped
+<a href=#793 id=793 data-nosnippet>793</a>        </span><span class="kw">let </span>cascades = [
+<a href=#794 id=794 data-nosnippet>794</a>            Vec4::new(<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">0.5</span>, <span class="number">0.5</span>), <span class="comment">// Top-left
+<a href=#795 id=795 data-nosnippet>795</a>            </span>Vec4::new(<span class="number">0.5</span>, <span class="number">0.0</span>, <span class="number">0.5</span>, <span class="number">0.5</span>), <span class="comment">// Top-right
+<a href=#796 id=796 data-nosnippet>796</a>            </span>Vec4::new(<span class="number">0.0</span>, <span class="number">0.5</span>, <span class="number">0.5</span>, <span class="number">0.5</span>), <span class="comment">// Bottom-left
+<a href=#797 id=797 data-nosnippet>797</a>            </span>Vec4::new(<span class="number">0.5</span>, <span class="number">0.5</span>, <span class="number">0.5</span>, <span class="number">0.5</span>), <span class="comment">// Bottom-right
+<a href=#798 id=798 data-nosnippet>798</a>        </span>];
+<a href=#799 id=799 data-nosnippet>799</a>
+<a href=#800 id=800 data-nosnippet>800</a>        <span class="kw">for </span>offset <span class="kw">in </span><span class="kw-2">&amp;</span>cascades {
+<a href=#801 id=801 data-nosnippet>801</a>            <span class="comment">// All scales should be 0.5 (half atlas)
+<a href=#802 id=802 data-nosnippet>802</a>            </span><span class="macro">assert_eq!</span>(offset.z, <span class="number">0.5</span>);
+<a href=#803 id=803 data-nosnippet>803</a>            <span class="macro">assert_eq!</span>(offset.w, <span class="number">0.5</span>);
 <a href=#804 id=804 data-nosnippet>804</a>
-<a href=#805 id=805 data-nosnippet>805</a>    <span class="attr">#[test]
-<a href=#806 id=806 data-nosnippet>806</a>    </span><span class="kw">fn </span>cascade_splits_first_is_near_and_last_is_far() {
-<a href=#807 id=807 data-nosnippet>807</a>        <span class="kw">let </span>near = <span class="number">0.5f32</span>;
-<a href=#808 id=808 data-nosnippet>808</a>        <span class="kw">let </span>far = <span class="number">500.0f32</span>;
-<a href=#809 id=809 data-nosnippet>809</a>        <span class="kw">let </span>lambda = <span class="number">0.5</span>;
-<a href=#810 id=810 data-nosnippet>810</a>        <span class="kw">let </span><span class="kw-2">mut </span>splits = [<span class="number">0.0f32</span>; CASCADE_COUNT + <span class="number">1</span>];
-<a href=#811 id=811 data-nosnippet>811</a>        splits[<span class="number">0</span>] = near;
-<a href=#812 id=812 data-nosnippet>812</a>        splits[CASCADE_COUNT] = far;
-<a href=#813 id=813 data-nosnippet>813</a>        <span class="kw">for </span>(i, split) <span class="kw">in </span>splits.iter_mut().enumerate().take(CASCADE_COUNT).skip(<span class="number">1</span>) {
-<a href=#814 id=814 data-nosnippet>814</a>            <span class="kw">let </span>i_f = i <span class="kw">as </span>f32;
-<a href=#815 id=815 data-nosnippet>815</a>            <span class="kw">let </span>n_f = CASCADE_COUNT <span class="kw">as </span>f32;
-<a href=#816 id=816 data-nosnippet>816</a>            <span class="kw-2">*</span>split = lambda * (near * (far / near).powf(i_f / n_f))
-<a href=#817 id=817 data-nosnippet>817</a>                + (<span class="number">1.0 </span>- lambda) * (near + (far - near) * (i_f / n_f));
-<a href=#818 id=818 data-nosnippet>818</a>        }
-<a href=#819 id=819 data-nosnippet>819</a>        <span class="macro">assert_eq!</span>(splits[<span class="number">0</span>], near, <span class="string">"first split must equal near"</span>);
-<a href=#820 id=820 data-nosnippet>820</a>        <span class="macro">assert_eq!</span>(splits[CASCADE_COUNT], far, <span class="string">"last split must equal far"</span>);
+<a href=#805 id=805 data-nosnippet>805</a>            <span class="comment">// Offsets should be 0.0 or 0.5
+<a href=#806 id=806 data-nosnippet>806</a>            </span><span class="macro">assert!</span>(offset.x == <span class="number">0.0 </span>|| offset.x == <span class="number">0.5</span>);
+<a href=#807 id=807 data-nosnippet>807</a>            <span class="macro">assert!</span>(offset.y == <span class="number">0.0 </span>|| offset.y == <span class="number">0.5</span>);
+<a href=#808 id=808 data-nosnippet>808</a>        }
+<a href=#809 id=809 data-nosnippet>809</a>    }
+<a href=#810 id=810 data-nosnippet>810</a>
+<a href=#811 id=811 data-nosnippet>811</a>    <span class="comment">// --- Mutation-resistant tests ---
+<a href=#812 id=812 data-nosnippet>812</a>
+<a href=#813 id=813 data-nosnippet>813</a>    </span><span class="attr">#[test]
+<a href=#814 id=814 data-nosnippet>814</a>    </span><span class="kw">fn </span>cascade_count_is_four() {
+<a href=#815 id=815 data-nosnippet>815</a>        <span class="macro">assert_eq!</span>(CASCADE_COUNT, <span class="number">4</span>);
+<a href=#816 id=816 data-nosnippet>816</a>    }
+<a href=#817 id=817 data-nosnippet>817</a>
+<a href=#818 id=818 data-nosnippet>818</a>    <span class="attr">#[test]
+<a href=#819 id=819 data-nosnippet>819</a>    </span><span class="kw">fn </span>cascade_resolution_is_2048() {
+<a href=#820 id=820 data-nosnippet>820</a>        <span class="macro">assert_eq!</span>(CASCADE_RESOLUTION, <span class="number">2048</span>);
 <a href=#821 id=821 data-nosnippet>821</a>    }
 <a href=#822 id=822 data-nosnippet>822</a>
 <a href=#823 id=823 data-nosnippet>823</a>    <span class="attr">#[test]
-<a href=#824 id=824 data-nosnippet>824</a>    </span><span class="kw">fn </span>light_view_matrix_up_vector_selection() {
-<a href=#825 id=825 data-nosnippet>825</a>        <span class="comment">// Light mostly vertical (|y| &gt; 0.9) should use X as up
-<a href=#826 id=826 data-nosnippet>826</a>        </span><span class="kw">let </span>vertical_dir = Vec3::new(<span class="number">0.0</span>, -<span class="number">0.95</span>, <span class="number">0.1</span>).normalize();
-<a href=#827 id=827 data-nosnippet>827</a>        <span class="kw">let </span>up = <span class="kw">if </span>vertical_dir.y.abs() &gt; <span class="number">0.9 </span>{
-<a href=#828 id=828 data-nosnippet>828</a>            Vec3::X
-<a href=#829 id=829 data-nosnippet>829</a>        } <span class="kw">else </span>{
-<a href=#830 id=830 data-nosnippet>830</a>            Vec3::Y
-<a href=#831 id=831 data-nosnippet>831</a>        };
-<a href=#832 id=832 data-nosnippet>832</a>        <span class="macro">assert_eq!</span>(up, Vec3::X, <span class="string">"vertical light should use X as up"</span>);
-<a href=#833 id=833 data-nosnippet>833</a>
-<a href=#834 id=834 data-nosnippet>834</a>        <span class="comment">// Light horizontal should use Y as up
-<a href=#835 id=835 data-nosnippet>835</a>        </span><span class="kw">let </span>horizontal_dir = Vec3::new(<span class="number">0.5</span>, -<span class="number">0.3</span>, <span class="number">0.8</span>).normalize();
-<a href=#836 id=836 data-nosnippet>836</a>        <span class="kw">let </span>up2 = <span class="kw">if </span>horizontal_dir.y.abs() &gt; <span class="number">0.9 </span>{
-<a href=#837 id=837 data-nosnippet>837</a>            Vec3::X
-<a href=#838 id=838 data-nosnippet>838</a>        } <span class="kw">else </span>{
-<a href=#839 id=839 data-nosnippet>839</a>            Vec3::Y
-<a href=#840 id=840 data-nosnippet>840</a>        };
-<a href=#841 id=841 data-nosnippet>841</a>        <span class="macro">assert_eq!</span>(up2, Vec3::Y, <span class="string">"horizontal light should use Y as up"</span>);
-<a href=#842 id=842 data-nosnippet>842</a>    }
-<a href=#843 id=843 data-nosnippet>843</a>
-<a href=#844 id=844 data-nosnippet>844</a>    <span class="attr">#[test]
-<a href=#845 id=845 data-nosnippet>845</a>    </span><span class="kw">fn </span>shadow_depth_shader_parses() {
-<a href=#846 id=846 data-nosnippet>846</a>        <span class="kw">let </span>module = naga::front::wgsl::parse_str(SHADOW_DEPTH_SHADER)
-<a href=#847 id=847 data-nosnippet>847</a>            .expect(<span class="string">"SHADOW_DEPTH_SHADER WGSL should parse"</span>);
-<a href=#848 id=848 data-nosnippet>848</a>        <span class="kw">let </span>entry_names: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = module
-<a href=#849 id=849 data-nosnippet>849</a>            .entry_points
-<a href=#850 id=850 data-nosnippet>850</a>            .iter()
-<a href=#851 id=851 data-nosnippet>851</a>            .map(|e| e.name.as_str())
-<a href=#852 id=852 data-nosnippet>852</a>            .collect();
-<a href=#853 id=853 data-nosnippet>853</a>        <span class="macro">assert!</span>(
-<a href=#854 id=854 data-nosnippet>854</a>            entry_names.contains(<span class="kw-2">&amp;</span><span class="string">"shadow_vertex_main"</span>),
-<a href=#855 id=855 data-nosnippet>855</a>            <span class="string">"must have vertex entry"
-<a href=#856 id=856 data-nosnippet>856</a>        </span>);
-<a href=#857 id=857 data-nosnippet>857</a>        <span class="macro">assert!</span>(
-<a href=#858 id=858 data-nosnippet>858</a>            entry_names.contains(<span class="kw-2">&amp;</span><span class="string">"shadow_fragment_main"</span>),
-<a href=#859 id=859 data-nosnippet>859</a>            <span class="string">"must have fragment entry"
-<a href=#860 id=860 data-nosnippet>860</a>        </span>);
-<a href=#861 id=861 data-nosnippet>861</a>    }
-<a href=#862 id=862 data-nosnippet>862</a>
-<a href=#863 id=863 data-nosnippet>863</a>    <span class="attr">#[test]
-<a href=#864 id=864 data-nosnippet>864</a>    </span><span class="kw">fn </span>gpu_shadow_cascade_struct_size() {
-<a href=#865 id=865 data-nosnippet>865</a>        <span class="comment">// 64 (mat4) + 16 (split_distances) + 16 (atlas_transform) = 96 bytes
-<a href=#866 id=866 data-nosnippet>866</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;GpuShadowCascade&gt;(), <span class="number">96</span>);
-<a href=#867 id=867 data-nosnippet>867</a>    }
-<a href=#868 id=868 data-nosnippet>868</a>
-<a href=#869 id=869 data-nosnippet>869</a>    <span class="attr">#[test]
-<a href=#870 id=870 data-nosnippet>870</a>    </span><span class="kw">fn </span>atlas_resolution_equals_cascade_resolution() {
-<a href=#871 id=871 data-nosnippet>871</a>        <span class="macro">assert_eq!</span>(ATLAS_RESOLUTION, CASCADE_RESOLUTION);
-<a href=#872 id=872 data-nosnippet>872</a>    }
-<a href=#873 id=873 data-nosnippet>873</a>}</code></pre></div></section></main></body></html>
+<a href=#824 id=824 data-nosnippet>824</a>    #[allow(clippy::assertions_on_constants)]
+<a href=#825 id=825 data-nosnippet>825</a>    </span><span class="kw">fn </span>depth_bias_is_positive() {
+<a href=#826 id=826 data-nosnippet>826</a>        <span class="macro">assert!</span>(
+<a href=#827 id=827 data-nosnippet>827</a>            DEPTH_BIAS &gt; <span class="number">0.0</span>,
+<a href=#828 id=828 data-nosnippet>828</a>            <span class="string">"depth bias must be positive to prevent shadow acne"
+<a href=#829 id=829 data-nosnippet>829</a>        </span>);
+<a href=#830 id=830 data-nosnippet>830</a>        <span class="macro">assert!</span>(DEPTH_BIAS &lt; <span class="number">0.1</span>, <span class="string">"depth bias should be small"</span>);
+<a href=#831 id=831 data-nosnippet>831</a>    }
+<a href=#832 id=832 data-nosnippet>832</a>
+<a href=#833 id=833 data-nosnippet>833</a>    <span class="attr">#[test]
+<a href=#834 id=834 data-nosnippet>834</a>    </span><span class="kw">fn </span>gpu_shadow_cascade_from_shadow_cascade() {
+<a href=#835 id=835 data-nosnippet>835</a>        <span class="kw">let </span>cascade = ShadowCascade {
+<a href=#836 id=836 data-nosnippet>836</a>            near: <span class="number">0.5</span>,
+<a href=#837 id=837 data-nosnippet>837</a>            far: <span class="number">25.0</span>,
+<a href=#838 id=838 data-nosnippet>838</a>            view_matrix: Mat4::IDENTITY,
+<a href=#839 id=839 data-nosnippet>839</a>            proj_matrix: Mat4::IDENTITY,
+<a href=#840 id=840 data-nosnippet>840</a>            view_proj_matrix: Mat4::look_at_rh(Vec3::new(<span class="number">0.0</span>, <span class="number">50.0</span>, <span class="number">0.0</span>), Vec3::ZERO, Vec3::X),
+<a href=#841 id=841 data-nosnippet>841</a>            atlas_offset: Vec4::new(<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>, <span class="number">1.0</span>),
+<a href=#842 id=842 data-nosnippet>842</a>        };
+<a href=#843 id=843 data-nosnippet>843</a>        <span class="kw">let </span>gpu: GpuShadowCascade = (<span class="kw-2">&amp;</span>cascade).into();
+<a href=#844 id=844 data-nosnippet>844</a>        <span class="macro">assert_eq!</span>(gpu.split_distances[<span class="number">0</span>], <span class="number">0.5</span>);
+<a href=#845 id=845 data-nosnippet>845</a>        <span class="macro">assert_eq!</span>(gpu.split_distances[<span class="number">1</span>], <span class="number">25.0</span>);
+<a href=#846 id=846 data-nosnippet>846</a>        <span class="macro">assert_eq!</span>(gpu.split_distances[<span class="number">2</span>], <span class="number">0.0</span>);
+<a href=#847 id=847 data-nosnippet>847</a>        <span class="macro">assert_eq!</span>(gpu.split_distances[<span class="number">3</span>], <span class="number">0.0</span>);
+<a href=#848 id=848 data-nosnippet>848</a>        <span class="macro">assert_eq!</span>(gpu.atlas_transform, [<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>, <span class="number">1.0</span>]);
+<a href=#849 id=849 data-nosnippet>849</a>        <span class="comment">// view_proj should match cascade.view_proj_matrix
+<a href=#850 id=850 data-nosnippet>850</a>        </span><span class="kw">let </span>expected = cascade.view_proj_matrix.to_cols_array_2d();
+<a href=#851 id=851 data-nosnippet>851</a>        <span class="macro">assert_eq!</span>(gpu.view_proj, expected);
+<a href=#852 id=852 data-nosnippet>852</a>    }
+<a href=#853 id=853 data-nosnippet>853</a>
+<a href=#854 id=854 data-nosnippet>854</a>    <span class="attr">#[test]
+<a href=#855 id=855 data-nosnippet>855</a>    </span><span class="kw">fn </span>cascade_splits_are_monotonic_for_various_ranges() {
+<a href=#856 id=856 data-nosnippet>856</a>        <span class="kw">let </span>test_cases = [
+<a href=#857 id=857 data-nosnippet>857</a>            (<span class="number">0.1f32</span>, <span class="number">100.0f32</span>),
+<a href=#858 id=858 data-nosnippet>858</a>            (<span class="number">0.1</span>, <span class="number">1000.0</span>),
+<a href=#859 id=859 data-nosnippet>859</a>            (<span class="number">1.0</span>, <span class="number">50.0</span>),
+<a href=#860 id=860 data-nosnippet>860</a>            (<span class="number">0.01</span>, <span class="number">10000.0</span>),
+<a href=#861 id=861 data-nosnippet>861</a>        ];
+<a href=#862 id=862 data-nosnippet>862</a>        <span class="kw">let </span>lambda = <span class="number">0.5</span>;
+<a href=#863 id=863 data-nosnippet>863</a>        <span class="kw">for </span>(near, far) <span class="kw">in </span>test_cases {
+<a href=#864 id=864 data-nosnippet>864</a>            <span class="kw">let </span><span class="kw-2">mut </span>splits = [<span class="number">0.0f32</span>; CASCADE_COUNT + <span class="number">1</span>];
+<a href=#865 id=865 data-nosnippet>865</a>            splits[<span class="number">0</span>] = near;
+<a href=#866 id=866 data-nosnippet>866</a>            splits[CASCADE_COUNT] = far;
+<a href=#867 id=867 data-nosnippet>867</a>            <span class="kw">for </span>(i, split) <span class="kw">in </span>splits.iter_mut().enumerate().take(CASCADE_COUNT).skip(<span class="number">1</span>) {
+<a href=#868 id=868 data-nosnippet>868</a>                <span class="kw">let </span>i_f = i <span class="kw">as </span>f32;
+<a href=#869 id=869 data-nosnippet>869</a>                <span class="kw">let </span>n_f = CASCADE_COUNT <span class="kw">as </span>f32;
+<a href=#870 id=870 data-nosnippet>870</a>                <span class="kw">let </span>log_split = near * (far / near).powf(i_f / n_f);
+<a href=#871 id=871 data-nosnippet>871</a>                <span class="kw">let </span>uniform_split = near + (far - near) * (i_f / n_f);
+<a href=#872 id=872 data-nosnippet>872</a>                <span class="kw-2">*</span>split = lambda * log_split + (<span class="number">1.0 </span>- lambda) * uniform_split;
+<a href=#873 id=873 data-nosnippet>873</a>            }
+<a href=#874 id=874 data-nosnippet>874</a>            <span class="kw">for </span>pair <span class="kw">in </span>splits.windows(<span class="number">2</span>) {
+<a href=#875 id=875 data-nosnippet>875</a>                <span class="macro">assert!</span>(
+<a href=#876 id=876 data-nosnippet>876</a>                    pair[<span class="number">0</span>] &lt; pair[<span class="number">1</span>],
+<a href=#877 id=877 data-nosnippet>877</a>                    <span class="string">"splits must be monotonic for near={near}, far={far}"
+<a href=#878 id=878 data-nosnippet>878</a>                </span>);
+<a href=#879 id=879 data-nosnippet>879</a>            }
+<a href=#880 id=880 data-nosnippet>880</a>            <span class="macro">assert_eq!</span>(splits[<span class="number">0</span>], near);
+<a href=#881 id=881 data-nosnippet>881</a>            <span class="macro">assert_eq!</span>(splits[CASCADE_COUNT], far);
+<a href=#882 id=882 data-nosnippet>882</a>        }
+<a href=#883 id=883 data-nosnippet>883</a>    }
+<a href=#884 id=884 data-nosnippet>884</a>
+<a href=#885 id=885 data-nosnippet>885</a>    <span class="attr">#[test]
+<a href=#886 id=886 data-nosnippet>886</a>    </span><span class="kw">fn </span>cascade_splits_first_is_near_and_last_is_far() {
+<a href=#887 id=887 data-nosnippet>887</a>        <span class="kw">let </span>near = <span class="number">0.5f32</span>;
+<a href=#888 id=888 data-nosnippet>888</a>        <span class="kw">let </span>far = <span class="number">500.0f32</span>;
+<a href=#889 id=889 data-nosnippet>889</a>        <span class="kw">let </span>lambda = <span class="number">0.5</span>;
+<a href=#890 id=890 data-nosnippet>890</a>        <span class="kw">let </span><span class="kw-2">mut </span>splits = [<span class="number">0.0f32</span>; CASCADE_COUNT + <span class="number">1</span>];
+<a href=#891 id=891 data-nosnippet>891</a>        splits[<span class="number">0</span>] = near;
+<a href=#892 id=892 data-nosnippet>892</a>        splits[CASCADE_COUNT] = far;
+<a href=#893 id=893 data-nosnippet>893</a>        <span class="kw">for </span>(i, split) <span class="kw">in </span>splits.iter_mut().enumerate().take(CASCADE_COUNT).skip(<span class="number">1</span>) {
+<a href=#894 id=894 data-nosnippet>894</a>            <span class="kw">let </span>i_f = i <span class="kw">as </span>f32;
+<a href=#895 id=895 data-nosnippet>895</a>            <span class="kw">let </span>n_f = CASCADE_COUNT <span class="kw">as </span>f32;
+<a href=#896 id=896 data-nosnippet>896</a>            <span class="kw-2">*</span>split = lambda * (near * (far / near).powf(i_f / n_f))
+<a href=#897 id=897 data-nosnippet>897</a>                + (<span class="number">1.0 </span>- lambda) * (near + (far - near) * (i_f / n_f));
+<a href=#898 id=898 data-nosnippet>898</a>        }
+<a href=#899 id=899 data-nosnippet>899</a>        <span class="macro">assert_eq!</span>(splits[<span class="number">0</span>], near, <span class="string">"first split must equal near"</span>);
+<a href=#900 id=900 data-nosnippet>900</a>        <span class="macro">assert_eq!</span>(splits[CASCADE_COUNT], far, <span class="string">"last split must equal far"</span>);
+<a href=#901 id=901 data-nosnippet>901</a>    }
+<a href=#902 id=902 data-nosnippet>902</a>
+<a href=#903 id=903 data-nosnippet>903</a>    <span class="attr">#[test]
+<a href=#904 id=904 data-nosnippet>904</a>    </span><span class="kw">fn </span>light_view_matrix_up_vector_selection() {
+<a href=#905 id=905 data-nosnippet>905</a>        <span class="comment">// Light mostly vertical (|y| &gt; 0.9) should use X as up
+<a href=#906 id=906 data-nosnippet>906</a>        </span><span class="kw">let </span>vertical_dir = Vec3::new(<span class="number">0.0</span>, -<span class="number">0.95</span>, <span class="number">0.1</span>).normalize();
+<a href=#907 id=907 data-nosnippet>907</a>        <span class="kw">let </span>up = <span class="kw">if </span>vertical_dir.y.abs() &gt; <span class="number">0.9 </span>{
+<a href=#908 id=908 data-nosnippet>908</a>            Vec3::X
+<a href=#909 id=909 data-nosnippet>909</a>        } <span class="kw">else </span>{
+<a href=#910 id=910 data-nosnippet>910</a>            Vec3::Y
+<a href=#911 id=911 data-nosnippet>911</a>        };
+<a href=#912 id=912 data-nosnippet>912</a>        <span class="macro">assert_eq!</span>(up, Vec3::X, <span class="string">"vertical light should use X as up"</span>);
+<a href=#913 id=913 data-nosnippet>913</a>
+<a href=#914 id=914 data-nosnippet>914</a>        <span class="comment">// Light horizontal should use Y as up
+<a href=#915 id=915 data-nosnippet>915</a>        </span><span class="kw">let </span>horizontal_dir = Vec3::new(<span class="number">0.5</span>, -<span class="number">0.3</span>, <span class="number">0.8</span>).normalize();
+<a href=#916 id=916 data-nosnippet>916</a>        <span class="kw">let </span>up2 = <span class="kw">if </span>horizontal_dir.y.abs() &gt; <span class="number">0.9 </span>{
+<a href=#917 id=917 data-nosnippet>917</a>            Vec3::X
+<a href=#918 id=918 data-nosnippet>918</a>        } <span class="kw">else </span>{
+<a href=#919 id=919 data-nosnippet>919</a>            Vec3::Y
+<a href=#920 id=920 data-nosnippet>920</a>        };
+<a href=#921 id=921 data-nosnippet>921</a>        <span class="macro">assert_eq!</span>(up2, Vec3::Y, <span class="string">"horizontal light should use Y as up"</span>);
+<a href=#922 id=922 data-nosnippet>922</a>    }
+<a href=#923 id=923 data-nosnippet>923</a>
+<a href=#924 id=924 data-nosnippet>924</a>    <span class="attr">#[test]
+<a href=#925 id=925 data-nosnippet>925</a>    </span><span class="kw">fn </span>shadow_depth_shader_parses() {
+<a href=#926 id=926 data-nosnippet>926</a>        <span class="kw">let </span>module = naga::front::wgsl::parse_str(SHADOW_DEPTH_SHADER)
+<a href=#927 id=927 data-nosnippet>927</a>            .expect(<span class="string">"SHADOW_DEPTH_SHADER WGSL should parse"</span>);
+<a href=#928 id=928 data-nosnippet>928</a>        <span class="kw">let </span>entry_names: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = module
+<a href=#929 id=929 data-nosnippet>929</a>            .entry_points
+<a href=#930 id=930 data-nosnippet>930</a>            .iter()
+<a href=#931 id=931 data-nosnippet>931</a>            .map(|e| e.name.as_str())
+<a href=#932 id=932 data-nosnippet>932</a>            .collect();
+<a href=#933 id=933 data-nosnippet>933</a>        <span class="macro">assert!</span>(
+<a href=#934 id=934 data-nosnippet>934</a>            entry_names.contains(<span class="kw-2">&amp;</span><span class="string">"shadow_vertex_main"</span>),
+<a href=#935 id=935 data-nosnippet>935</a>            <span class="string">"must have vertex entry"
+<a href=#936 id=936 data-nosnippet>936</a>        </span>);
+<a href=#937 id=937 data-nosnippet>937</a>        <span class="macro">assert!</span>(
+<a href=#938 id=938 data-nosnippet>938</a>            entry_names.contains(<span class="kw-2">&amp;</span><span class="string">"shadow_fragment_main"</span>),
+<a href=#939 id=939 data-nosnippet>939</a>            <span class="string">"must have fragment entry"
+<a href=#940 id=940 data-nosnippet>940</a>        </span>);
+<a href=#941 id=941 data-nosnippet>941</a>    }
+<a href=#942 id=942 data-nosnippet>942</a>
+<a href=#943 id=943 data-nosnippet>943</a>    <span class="attr">#[test]
+<a href=#944 id=944 data-nosnippet>944</a>    </span><span class="kw">fn </span>gpu_shadow_cascade_struct_size() {
+<a href=#945 id=945 data-nosnippet>945</a>        <span class="comment">// 64 (mat4) + 16 (split_distances) + 16 (atlas_transform) = 96 bytes
+<a href=#946 id=946 data-nosnippet>946</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;GpuShadowCascade&gt;(), <span class="number">96</span>);
+<a href=#947 id=947 data-nosnippet>947</a>    }
+<a href=#948 id=948 data-nosnippet>948</a>
+<a href=#949 id=949 data-nosnippet>949</a>    <span class="attr">#[test]
+<a href=#950 id=950 data-nosnippet>950</a>    </span><span class="kw">fn </span>atlas_resolution_equals_cascade_resolution() {
+<a href=#951 id=951 data-nosnippet>951</a>        <span class="macro">assert_eq!</span>(ATLAS_RESOLUTION, CASCADE_RESOLUTION);
+<a href=#952 id=952 data-nosnippet>952</a>    }
+<a href=#953 id=953 data-nosnippet>953</a>}</code></pre></div></section></main></body></html>

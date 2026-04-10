@@ -482,252 +482,265 @@
 <a href=#482 id=482 data-nosnippet>482</a>    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0));
 <a href=#483 id=483 data-nosnippet>483</a>}
 <a href=#484 id=484 data-nosnippet>484</a>
-<a href=#485 id=485 data-nosnippet>485</a>// AgX tonemapping (attempt at a neutral look that preserves hue in highlights)
-<a href=#486 id=486 data-nosnippet>486</a>fn agx_default_contrast_approx(x: vec3&lt;f32&gt;) -&gt; vec3&lt;f32&gt; {
-<a href=#487 id=487 data-nosnippet>487</a>    let x2 = x * x;
-<a href=#488 id=488 data-nosnippet>488</a>    let x4 = x2 * x2;
-<a href=#489 id=489 data-nosnippet>489</a>    return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
-<a href=#490 id=490 data-nosnippet>490</a>}
-<a href=#491 id=491 data-nosnippet>491</a>
-<a href=#492 id=492 data-nosnippet>492</a>fn tonemap_agx(color: vec3&lt;f32&gt;) -&gt; vec3&lt;f32&gt; {
-<a href=#493 id=493 data-nosnippet>493</a>    // AGX log encoding
-<a href=#494 id=494 data-nosnippet>494</a>    let min_ev = -12.47393;
-<a href=#495 id=495 data-nosnippet>495</a>    let max_ev = 4.026069;
-<a href=#496 id=496 data-nosnippet>496</a>    let clamped = clamp(color, vec3&lt;f32&gt;(1e-10), vec3&lt;f32&gt;(65504.0));
-<a href=#497 id=497 data-nosnippet>497</a>    var x = (log2(clamped) - min_ev) / (max_ev - min_ev);
-<a href=#498 id=498 data-nosnippet>498</a>    x = clamp(x, vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0));
-<a href=#499 id=499 data-nosnippet>499</a>    return agx_default_contrast_approx(x);
-<a href=#500 id=500 data-nosnippet>500</a>}
-<a href=#501 id=501 data-nosnippet>501</a>
-<a href=#502 id=502 data-nosnippet>502</a>// Reinhard tonemapping (extended, per-channel)
-<a href=#503 id=503 data-nosnippet>503</a>fn tonemap_reinhard(x: vec3&lt;f32&gt;) -&gt; vec3&lt;f32&gt; {
-<a href=#504 id=504 data-nosnippet>504</a>    return x / (vec3&lt;f32&gt;(1.0) + x);
-<a href=#505 id=505 data-nosnippet>505</a>}
-<a href=#506 id=506 data-nosnippet>506</a>
-<a href=#507 id=507 data-nosnippet>507</a>// Color temperature shift (approximate Planckian locus)
-<a href=#508 id=508 data-nosnippet>508</a>fn apply_temperature(color: vec3&lt;f32&gt;, temp: f32) -&gt; vec3&lt;f32&gt; {
-<a href=#509 id=509 data-nosnippet>509</a>    // Warm shifts toward red/yellow, cool shifts toward blue
-<a href=#510 id=510 data-nosnippet>510</a>    let warm = vec3&lt;f32&gt;(1.0 + temp * 0.1, 1.0, 1.0 - temp * 0.1);
-<a href=#511 id=511 data-nosnippet>511</a>    return color * warm;
-<a href=#512 id=512 data-nosnippet>512</a>}
-<a href=#513 id=513 data-nosnippet>513</a>
-<a href=#514 id=514 data-nosnippet>514</a>// Color tint shift (green-magenta axis)
-<a href=#515 id=515 data-nosnippet>515</a>fn apply_tint(color: vec3&lt;f32&gt;, t: f32) -&gt; vec3&lt;f32&gt; {
-<a href=#516 id=516 data-nosnippet>516</a>    let shift = vec3&lt;f32&gt;(1.0 + t * 0.05, 1.0 - abs(t) * 0.02, 1.0 - t * 0.05);
-<a href=#517 id=517 data-nosnippet>517</a>    return color * shift;
+<a href=#485 id=485 data-nosnippet>485</a>// AgX tonemapping — sRGB → AgX log space via 3×3 inset matrix, log2 encoding,
+<a href=#486 id=486 data-nosnippet>486</a>// 6th-order polynomial contrast curve. Reference: Troy Sobotka, Blender AgX.
+<a href=#487 id=487 data-nosnippet>487</a>fn agx_default_contrast_approx(x: vec3&lt;f32&gt;) -&gt; vec3&lt;f32&gt; {
+<a href=#488 id=488 data-nosnippet>488</a>    let x2 = x * x;
+<a href=#489 id=489 data-nosnippet>489</a>    let x4 = x2 * x2;
+<a href=#490 id=490 data-nosnippet>490</a>    return 15.5     * x4 * x2
+<a href=#491 id=491 data-nosnippet>491</a>         - 40.14    * x4 * x
+<a href=#492 id=492 data-nosnippet>492</a>         + 31.96    * x4
+<a href=#493 id=493 data-nosnippet>493</a>         -  6.868   * x2 * x
+<a href=#494 id=494 data-nosnippet>494</a>         +  0.4298  * x2
+<a href=#495 id=495 data-nosnippet>495</a>         +  0.1191  * x
+<a href=#496 id=496 data-nosnippet>496</a>         -  0.00232;
+<a href=#497 id=497 data-nosnippet>497</a>}
+<a href=#498 id=498 data-nosnippet>498</a>
+<a href=#499 id=499 data-nosnippet>499</a>fn tonemap_agx(color: vec3&lt;f32&gt;) -&gt; vec3&lt;f32&gt; {
+<a href=#500 id=500 data-nosnippet>500</a>    // 3×3 AgX inset matrix: maps sRGB linear primaries into the AgX log encoding
+<a href=#501 id=501 data-nosnippet>501</a>    // gamut. Without this, log encoding operates on raw sRGB values and produces
+<a href=#502 id=502 data-nosnippet>502</a>    // incorrect hue shifts, especially in saturated highlights.
+<a href=#503 id=503 data-nosnippet>503</a>    let agx_mat = mat3x3&lt;f32&gt;(
+<a href=#504 id=504 data-nosnippet>504</a>        0.842479062253094,  0.0423282422610123, 0.0423756549057051,
+<a href=#505 id=505 data-nosnippet>505</a>        0.0784335999999992, 0.878468636469772,  0.0784336,
+<a href=#506 id=506 data-nosnippet>506</a>        0.0792237451477643, 0.0791661274605434, 0.879142973793104
+<a href=#507 id=507 data-nosnippet>507</a>    );
+<a href=#508 id=508 data-nosnippet>508</a>    var val = agx_mat * max(color, vec3&lt;f32&gt;(1e-10));
+<a href=#509 id=509 data-nosnippet>509</a>    // Log2 encoding into [min_ev, max_ev] range, then normalize to [0,1]
+<a href=#510 id=510 data-nosnippet>510</a>    val = clamp(log2(val), vec3&lt;f32&gt;(-12.47393), vec3&lt;f32&gt;(4.026069));
+<a href=#511 id=511 data-nosnippet>511</a>    val = (val - vec3&lt;f32&gt;(-12.47393)) / (vec3&lt;f32&gt;(4.026069) - vec3&lt;f32&gt;(-12.47393));
+<a href=#512 id=512 data-nosnippet>512</a>    return agx_default_contrast_approx(val);
+<a href=#513 id=513 data-nosnippet>513</a>}
+<a href=#514 id=514 data-nosnippet>514</a>
+<a href=#515 id=515 data-nosnippet>515</a>// Reinhard tonemapping (extended, per-channel)
+<a href=#516 id=516 data-nosnippet>516</a>fn tonemap_reinhard(x: vec3&lt;f32&gt;) -&gt; vec3&lt;f32&gt; {
+<a href=#517 id=517 data-nosnippet>517</a>    return x / (vec3&lt;f32&gt;(1.0) + x);
 <a href=#518 id=518 data-nosnippet>518</a>}
 <a href=#519 id=519 data-nosnippet>519</a>
-<a href=#520 id=520 data-nosnippet>520</a>// sRGB gamma encoding
-<a href=#521 id=521 data-nosnippet>521</a>fn linear_to_srgb(linear: vec3&lt;f32&gt;) -&gt; vec3&lt;f32&gt; {
-<a href=#522 id=522 data-nosnippet>522</a>    let cutoff = step(linear, vec3&lt;f32&gt;(0.0031308));
-<a href=#523 id=523 data-nosnippet>523</a>    let low = linear * 12.92;
-<a href=#524 id=524 data-nosnippet>524</a>    let high = 1.055 * pow(linear, vec3&lt;f32&gt;(1.0 / 2.4)) - 0.055;
-<a href=#525 id=525 data-nosnippet>525</a>    return mix(high, low, cutoff);
-<a href=#526 id=526 data-nosnippet>526</a>}
-<a href=#527 id=527 data-nosnippet>527</a>
-<a href=#528 id=528 data-nosnippet>528</a>@fragment
-<a href=#529 id=529 data-nosnippet>529</a>fn fs_main(input: VSOut) -&gt; @location(0) vec4&lt;f32&gt; {
-<a href=#530 id=530 data-nosnippet>530</a>    var color = textureSampleLevel(hdr_tex, samp, input.uv, 0.0).rgb;
-<a href=#531 id=531 data-nosnippet>531</a>
-<a href=#532 id=532 data-nosnippet>532</a>    // 1. Exposure
-<a href=#533 id=533 data-nosnippet>533</a>    color = color * exp2(u.exposure);
-<a href=#534 id=534 data-nosnippet>534</a>
-<a href=#535 id=535 data-nosnippet>535</a>    // 2. Color temperature &amp; tint (in linear HDR space)
-<a href=#536 id=536 data-nosnippet>536</a>    color = apply_temperature(color, u.temperature);
-<a href=#537 id=537 data-nosnippet>537</a>    color = apply_tint(color, u.tint);
-<a href=#538 id=538 data-nosnippet>538</a>
-<a href=#539 id=539 data-nosnippet>539</a>    // 3. Tonemapping
-<a href=#540 id=540 data-nosnippet>540</a>    if (u.tonemap_op == 0u) {
-<a href=#541 id=541 data-nosnippet>541</a>        color = tonemap_aces(color);
-<a href=#542 id=542 data-nosnippet>542</a>    } else if (u.tonemap_op == 1u) {
-<a href=#543 id=543 data-nosnippet>543</a>        color = tonemap_agx(color);
-<a href=#544 id=544 data-nosnippet>544</a>    } else if (u.tonemap_op == 2u) {
-<a href=#545 id=545 data-nosnippet>545</a>        color = tonemap_reinhard(color);
-<a href=#546 id=546 data-nosnippet>546</a>    }
-<a href=#547 id=547 data-nosnippet>547</a>    // op == 3: no tonemapping (linear passthrough, clamp to 0..1)
-<a href=#548 id=548 data-nosnippet>548</a>    color = clamp(color, vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0));
-<a href=#549 id=549 data-nosnippet>549</a>
-<a href=#550 id=550 data-nosnippet>550</a>    // 4. Contrast (applied in gamma-ish space for perceptual correctness)
-<a href=#551 id=551 data-nosnippet>551</a>    color = (color - 0.5) * u.contrast + 0.5;
-<a href=#552 id=552 data-nosnippet>552</a>    color = clamp(color, vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0));
-<a href=#553 id=553 data-nosnippet>553</a>
-<a href=#554 id=554 data-nosnippet>554</a>    // 5. Saturation
-<a href=#555 id=555 data-nosnippet>555</a>    let luma = dot(color, vec3&lt;f32&gt;(0.2126, 0.7152, 0.0722));
-<a href=#556 id=556 data-nosnippet>556</a>    color = mix(vec3&lt;f32&gt;(luma), color, u.saturation);
-<a href=#557 id=557 data-nosnippet>557</a>
-<a href=#558 id=558 data-nosnippet>558</a>    // 6. Vignette
-<a href=#559 id=559 data-nosnippet>559</a>    if (u.vignette_intensity &gt; 0.0) {
-<a href=#560 id=560 data-nosnippet>560</a>        let center = input.uv - vec2&lt;f32&gt;(0.5);
-<a href=#561 id=561 data-nosnippet>561</a>        let dist = length(center) * 1.414; // normalize to corners
-<a href=#562 id=562 data-nosnippet>562</a>        let vig = 1.0 - u.vignette_intensity * dist * dist;
-<a href=#563 id=563 data-nosnippet>563</a>        color = color * max(vig, 0.0);
-<a href=#564 id=564 data-nosnippet>564</a>    }
-<a href=#565 id=565 data-nosnippet>565</a>
-<a href=#566 id=566 data-nosnippet>566</a>    // 7. Film grain (simple noise)
-<a href=#567 id=567 data-nosnippet>567</a>    if (u.grain_intensity &gt; 0.0) {
-<a href=#568 id=568 data-nosnippet>568</a>        let noise = fract(sin(dot(input.uv * 1000.0, vec2&lt;f32&gt;(12.9898, 78.233))) * 43758.5453) - 0.5;
-<a href=#569 id=569 data-nosnippet>569</a>        color = color + vec3&lt;f32&gt;(noise * u.grain_intensity);
-<a href=#570 id=570 data-nosnippet>570</a>    }
-<a href=#571 id=571 data-nosnippet>571</a>
-<a href=#572 id=572 data-nosnippet>572</a>    return vec4&lt;f32&gt;(clamp(color, vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0)), 1.0);
-<a href=#573 id=573 data-nosnippet>573</a>}
-<a href=#574 id=574 data-nosnippet>574</a>"#</span>;
-<a href=#575 id=575 data-nosnippet>575</a>
-<a href=#576 id=576 data-nosnippet>576</a><span class="attr">#[cfg(test)]
-<a href=#577 id=577 data-nosnippet>577</a></span><span class="kw">mod </span>tests {
-<a href=#578 id=578 data-nosnippet>578</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#579 id=579 data-nosnippet>579</a>
-<a href=#580 id=580 data-nosnippet>580</a>    <span class="attr">#[test]
-<a href=#581 id=581 data-nosnippet>581</a>    </span><span class="kw">fn </span>tonemap_operator_indices() {
-<a href=#582 id=582 data-nosnippet>582</a>        <span class="macro">assert_eq!</span>(TonemapOperator::Aces.to_u32(), <span class="number">0</span>);
-<a href=#583 id=583 data-nosnippet>583</a>        <span class="macro">assert_eq!</span>(TonemapOperator::AgX.to_u32(), <span class="number">1</span>);
-<a href=#584 id=584 data-nosnippet>584</a>        <span class="macro">assert_eq!</span>(TonemapOperator::Reinhard.to_u32(), <span class="number">2</span>);
-<a href=#585 id=585 data-nosnippet>585</a>        <span class="macro">assert_eq!</span>(TonemapOperator::None.to_u32(), <span class="number">3</span>);
-<a href=#586 id=586 data-nosnippet>586</a>    }
-<a href=#587 id=587 data-nosnippet>587</a>
-<a href=#588 id=588 data-nosnippet>588</a>    <span class="attr">#[test]
-<a href=#589 id=589 data-nosnippet>589</a>    </span><span class="kw">fn </span>tonemap_uniforms_default() {
-<a href=#590 id=590 data-nosnippet>590</a>        <span class="kw">let </span>u = TonemapUniforms::default();
-<a href=#591 id=591 data-nosnippet>591</a>        <span class="macro">assert_eq!</span>(u.exposure, <span class="number">0.0</span>);
-<a href=#592 id=592 data-nosnippet>592</a>        <span class="macro">assert_eq!</span>(u.tonemap_op, <span class="number">0</span>); <span class="comment">// ACES
-<a href=#593 id=593 data-nosnippet>593</a>        </span><span class="macro">assert_eq!</span>(u.contrast, <span class="number">1.0</span>);
-<a href=#594 id=594 data-nosnippet>594</a>        <span class="macro">assert_eq!</span>(u.saturation, <span class="number">1.0</span>);
-<a href=#595 id=595 data-nosnippet>595</a>        <span class="macro">assert_eq!</span>(u.temperature, <span class="number">0.0</span>);
-<a href=#596 id=596 data-nosnippet>596</a>        <span class="macro">assert_eq!</span>(u.tint, <span class="number">0.0</span>);
-<a href=#597 id=597 data-nosnippet>597</a>        <span class="macro">assert_eq!</span>(u.vignette_intensity, <span class="number">0.0</span>);
-<a href=#598 id=598 data-nosnippet>598</a>        <span class="macro">assert_eq!</span>(u.grain_intensity, <span class="number">0.0</span>);
+<a href=#520 id=520 data-nosnippet>520</a>// Color temperature shift (approximate Planckian locus)
+<a href=#521 id=521 data-nosnippet>521</a>fn apply_temperature(color: vec3&lt;f32&gt;, temp: f32) -&gt; vec3&lt;f32&gt; {
+<a href=#522 id=522 data-nosnippet>522</a>    // Warm shifts toward red/yellow, cool shifts toward blue
+<a href=#523 id=523 data-nosnippet>523</a>    let warm = vec3&lt;f32&gt;(1.0 + temp * 0.1, 1.0, 1.0 - temp * 0.1);
+<a href=#524 id=524 data-nosnippet>524</a>    return color * warm;
+<a href=#525 id=525 data-nosnippet>525</a>}
+<a href=#526 id=526 data-nosnippet>526</a>
+<a href=#527 id=527 data-nosnippet>527</a>// Color tint shift (green-magenta axis)
+<a href=#528 id=528 data-nosnippet>528</a>fn apply_tint(color: vec3&lt;f32&gt;, t: f32) -&gt; vec3&lt;f32&gt; {
+<a href=#529 id=529 data-nosnippet>529</a>    let shift = vec3&lt;f32&gt;(1.0 + t * 0.05, 1.0 - abs(t) * 0.02, 1.0 - t * 0.05);
+<a href=#530 id=530 data-nosnippet>530</a>    return color * shift;
+<a href=#531 id=531 data-nosnippet>531</a>}
+<a href=#532 id=532 data-nosnippet>532</a>
+<a href=#533 id=533 data-nosnippet>533</a>// sRGB gamma encoding
+<a href=#534 id=534 data-nosnippet>534</a>fn linear_to_srgb(linear: vec3&lt;f32&gt;) -&gt; vec3&lt;f32&gt; {
+<a href=#535 id=535 data-nosnippet>535</a>    let cutoff = step(linear, vec3&lt;f32&gt;(0.0031308));
+<a href=#536 id=536 data-nosnippet>536</a>    let low = linear * 12.92;
+<a href=#537 id=537 data-nosnippet>537</a>    let high = 1.055 * pow(linear, vec3&lt;f32&gt;(1.0 / 2.4)) - 0.055;
+<a href=#538 id=538 data-nosnippet>538</a>    return mix(high, low, cutoff);
+<a href=#539 id=539 data-nosnippet>539</a>}
+<a href=#540 id=540 data-nosnippet>540</a>
+<a href=#541 id=541 data-nosnippet>541</a>@fragment
+<a href=#542 id=542 data-nosnippet>542</a>fn fs_main(input: VSOut) -&gt; @location(0) vec4&lt;f32&gt; {
+<a href=#543 id=543 data-nosnippet>543</a>    var color = textureSampleLevel(hdr_tex, samp, input.uv, 0.0).rgb;
+<a href=#544 id=544 data-nosnippet>544</a>
+<a href=#545 id=545 data-nosnippet>545</a>    // 1. Exposure
+<a href=#546 id=546 data-nosnippet>546</a>    color = color * exp2(u.exposure);
+<a href=#547 id=547 data-nosnippet>547</a>
+<a href=#548 id=548 data-nosnippet>548</a>    // 2. Color temperature &amp; tint (in linear HDR space)
+<a href=#549 id=549 data-nosnippet>549</a>    color = apply_temperature(color, u.temperature);
+<a href=#550 id=550 data-nosnippet>550</a>    color = apply_tint(color, u.tint);
+<a href=#551 id=551 data-nosnippet>551</a>
+<a href=#552 id=552 data-nosnippet>552</a>    // 3. Tonemapping
+<a href=#553 id=553 data-nosnippet>553</a>    if (u.tonemap_op == 0u) {
+<a href=#554 id=554 data-nosnippet>554</a>        color = tonemap_aces(color);
+<a href=#555 id=555 data-nosnippet>555</a>    } else if (u.tonemap_op == 1u) {
+<a href=#556 id=556 data-nosnippet>556</a>        color = tonemap_agx(color);
+<a href=#557 id=557 data-nosnippet>557</a>    } else if (u.tonemap_op == 2u) {
+<a href=#558 id=558 data-nosnippet>558</a>        color = tonemap_reinhard(color);
+<a href=#559 id=559 data-nosnippet>559</a>    }
+<a href=#560 id=560 data-nosnippet>560</a>    // op == 3: no tonemapping (linear passthrough, clamp to 0..1)
+<a href=#561 id=561 data-nosnippet>561</a>    color = clamp(color, vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0));
+<a href=#562 id=562 data-nosnippet>562</a>
+<a href=#563 id=563 data-nosnippet>563</a>    // 4. Contrast (applied in gamma-ish space for perceptual correctness)
+<a href=#564 id=564 data-nosnippet>564</a>    color = (color - 0.5) * u.contrast + 0.5;
+<a href=#565 id=565 data-nosnippet>565</a>    color = clamp(color, vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0));
+<a href=#566 id=566 data-nosnippet>566</a>
+<a href=#567 id=567 data-nosnippet>567</a>    // 5. Saturation
+<a href=#568 id=568 data-nosnippet>568</a>    let luma = dot(color, vec3&lt;f32&gt;(0.2126, 0.7152, 0.0722));
+<a href=#569 id=569 data-nosnippet>569</a>    color = mix(vec3&lt;f32&gt;(luma), color, u.saturation);
+<a href=#570 id=570 data-nosnippet>570</a>
+<a href=#571 id=571 data-nosnippet>571</a>    // 6. Vignette
+<a href=#572 id=572 data-nosnippet>572</a>    if (u.vignette_intensity &gt; 0.0) {
+<a href=#573 id=573 data-nosnippet>573</a>        let center = input.uv - vec2&lt;f32&gt;(0.5);
+<a href=#574 id=574 data-nosnippet>574</a>        let dist = length(center) * 1.414; // normalize to corners
+<a href=#575 id=575 data-nosnippet>575</a>        let vig = 1.0 - u.vignette_intensity * dist * dist;
+<a href=#576 id=576 data-nosnippet>576</a>        color = color * max(vig, 0.0);
+<a href=#577 id=577 data-nosnippet>577</a>    }
+<a href=#578 id=578 data-nosnippet>578</a>
+<a href=#579 id=579 data-nosnippet>579</a>    // 7. Film grain (simple noise)
+<a href=#580 id=580 data-nosnippet>580</a>    if (u.grain_intensity &gt; 0.0) {
+<a href=#581 id=581 data-nosnippet>581</a>        let noise = fract(sin(dot(input.uv * 1000.0, vec2&lt;f32&gt;(12.9898, 78.233))) * 43758.5453) - 0.5;
+<a href=#582 id=582 data-nosnippet>582</a>        color = color + vec3&lt;f32&gt;(noise * u.grain_intensity);
+<a href=#583 id=583 data-nosnippet>583</a>    }
+<a href=#584 id=584 data-nosnippet>584</a>
+<a href=#585 id=585 data-nosnippet>585</a>    return vec4&lt;f32&gt;(clamp(color, vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0)), 1.0);
+<a href=#586 id=586 data-nosnippet>586</a>}
+<a href=#587 id=587 data-nosnippet>587</a>"#</span>;
+<a href=#588 id=588 data-nosnippet>588</a>
+<a href=#589 id=589 data-nosnippet>589</a><span class="attr">#[cfg(test)]
+<a href=#590 id=590 data-nosnippet>590</a></span><span class="kw">mod </span>tests {
+<a href=#591 id=591 data-nosnippet>591</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#592 id=592 data-nosnippet>592</a>
+<a href=#593 id=593 data-nosnippet>593</a>    <span class="attr">#[test]
+<a href=#594 id=594 data-nosnippet>594</a>    </span><span class="kw">fn </span>tonemap_operator_indices() {
+<a href=#595 id=595 data-nosnippet>595</a>        <span class="macro">assert_eq!</span>(TonemapOperator::Aces.to_u32(), <span class="number">0</span>);
+<a href=#596 id=596 data-nosnippet>596</a>        <span class="macro">assert_eq!</span>(TonemapOperator::AgX.to_u32(), <span class="number">1</span>);
+<a href=#597 id=597 data-nosnippet>597</a>        <span class="macro">assert_eq!</span>(TonemapOperator::Reinhard.to_u32(), <span class="number">2</span>);
+<a href=#598 id=598 data-nosnippet>598</a>        <span class="macro">assert_eq!</span>(TonemapOperator::None.to_u32(), <span class="number">3</span>);
 <a href=#599 id=599 data-nosnippet>599</a>    }
 <a href=#600 id=600 data-nosnippet>600</a>
 <a href=#601 id=601 data-nosnippet>601</a>    <span class="attr">#[test]
-<a href=#602 id=602 data-nosnippet>602</a>    </span><span class="kw">fn </span>tonemap_uniforms_pod_size() {
-<a href=#603 id=603 data-nosnippet>603</a>        <span class="macro">assert_eq!</span>(std::mem::size_of::&lt;TonemapUniforms&gt;(), <span class="number">32</span>);
-<a href=#604 id=604 data-nosnippet>604</a>    }
-<a href=#605 id=605 data-nosnippet>605</a>
-<a href=#606 id=606 data-nosnippet>606</a>    <span class="attr">#[test]
-<a href=#607 id=607 data-nosnippet>607</a>    </span><span class="kw">fn </span>tonemap_uniforms_from_config() {
-<a href=#608 id=608 data-nosnippet>608</a>        <span class="kw">let </span>config = ColorGradingConfig {
-<a href=#609 id=609 data-nosnippet>609</a>            enabled: <span class="bool-val">true</span>,
-<a href=#610 id=610 data-nosnippet>610</a>            exposure: <span class="number">1.5</span>,
-<a href=#611 id=611 data-nosnippet>611</a>            contrast: <span class="number">1.2</span>,
-<a href=#612 id=612 data-nosnippet>612</a>            saturation: <span class="number">0.8</span>,
-<a href=#613 id=613 data-nosnippet>613</a>            temperature: -<span class="number">0.3</span>,
-<a href=#614 id=614 data-nosnippet>614</a>            tint: <span class="number">0.1</span>,
-<a href=#615 id=615 data-nosnippet>615</a>        };
-<a href=#616 id=616 data-nosnippet>616</a>        <span class="kw">let </span>u = TonemapUniforms::from_config(<span class="kw-2">&amp;</span>config, TonemapOperator::AgX);
-<a href=#617 id=617 data-nosnippet>617</a>        <span class="macro">assert_eq!</span>(u.exposure, <span class="number">1.5</span>);
-<a href=#618 id=618 data-nosnippet>618</a>        <span class="macro">assert_eq!</span>(u.tonemap_op, <span class="number">1</span>); <span class="comment">// AgX
-<a href=#619 id=619 data-nosnippet>619</a>        </span><span class="macro">assert_eq!</span>(u.contrast, <span class="number">1.2</span>);
-<a href=#620 id=620 data-nosnippet>620</a>        <span class="macro">assert_eq!</span>(u.saturation, <span class="number">0.8</span>);
-<a href=#621 id=621 data-nosnippet>621</a>    }
-<a href=#622 id=622 data-nosnippet>622</a>
-<a href=#623 id=623 data-nosnippet>623</a>    <span class="attr">#[test]
-<a href=#624 id=624 data-nosnippet>624</a>    </span><span class="kw">fn </span>post_process_chain_default() {
-<a href=#625 id=625 data-nosnippet>625</a>        <span class="kw">let </span>chain = PostProcessChain::default();
-<a href=#626 id=626 data-nosnippet>626</a>        <span class="macro">assert!</span>(!chain.bloom_enabled);
-<a href=#627 id=627 data-nosnippet>627</a>        <span class="macro">assert!</span>(chain.taa_enabled);
-<a href=#628 id=628 data-nosnippet>628</a>        <span class="macro">assert!</span>(chain.color_grading_enabled);
-<a href=#629 id=629 data-nosnippet>629</a>        <span class="macro">assert_eq!</span>(chain.tonemap_operator, TonemapOperator::Aces);
-<a href=#630 id=630 data-nosnippet>630</a>    }
-<a href=#631 id=631 data-nosnippet>631</a>
-<a href=#632 id=632 data-nosnippet>632</a>    <span class="attr">#[test]
-<a href=#633 id=633 data-nosnippet>633</a>    </span><span class="kw">fn </span>post_process_chain_active_passes() {
-<a href=#634 id=634 data-nosnippet>634</a>        <span class="kw">let </span>chain = PostProcessChain::default();
-<a href=#635 id=635 data-nosnippet>635</a>        <span class="kw">let </span>passes = chain.active_passes();
-<a href=#636 id=636 data-nosnippet>636</a>        <span class="comment">// With defaults: TAA + Tonemap
-<a href=#637 id=637 data-nosnippet>637</a>        </span><span class="macro">assert!</span>(passes.contains(<span class="kw-2">&amp;</span>PostPass::Taa));
-<a href=#638 id=638 data-nosnippet>638</a>        <span class="macro">assert!</span>(passes.contains(<span class="kw-2">&amp;</span>PostPass::Tonemap));
-<a href=#639 id=639 data-nosnippet>639</a>        <span class="macro">assert!</span>(!passes.contains(<span class="kw-2">&amp;</span>PostPass::Bloom));
-<a href=#640 id=640 data-nosnippet>640</a>    }
-<a href=#641 id=641 data-nosnippet>641</a>
-<a href=#642 id=642 data-nosnippet>642</a>    <span class="attr">#[test]
-<a href=#643 id=643 data-nosnippet>643</a>    </span><span class="kw">fn </span>post_process_chain_all_enabled() {
-<a href=#644 id=644 data-nosnippet>644</a>        <span class="kw">let </span>chain = PostProcessChain {
-<a href=#645 id=645 data-nosnippet>645</a>            bloom_enabled: <span class="bool-val">true</span>,
-<a href=#646 id=646 data-nosnippet>646</a>            ssao_enabled: <span class="bool-val">true</span>,
-<a href=#647 id=647 data-nosnippet>647</a>            ssr_enabled: <span class="bool-val">true</span>,
-<a href=#648 id=648 data-nosnippet>648</a>            taa_enabled: <span class="bool-val">true</span>,
-<a href=#649 id=649 data-nosnippet>649</a>            motion_blur_enabled: <span class="bool-val">true</span>,
-<a href=#650 id=650 data-nosnippet>650</a>            dof_enabled: <span class="bool-val">true</span>,
-<a href=#651 id=651 data-nosnippet>651</a>            color_grading_enabled: <span class="bool-val">true</span>,
-<a href=#652 id=652 data-nosnippet>652</a>            tonemap_operator: TonemapOperator::Aces,
-<a href=#653 id=653 data-nosnippet>653</a>        };
-<a href=#654 id=654 data-nosnippet>654</a>        <span class="kw">let </span>passes = chain.active_passes();
-<a href=#655 id=655 data-nosnippet>655</a>        <span class="macro">assert_eq!</span>(passes.len(), <span class="number">7</span>);
-<a href=#656 id=656 data-nosnippet>656</a>        <span class="comment">// Order: SSAO → SSR → Bloom → TAA → DoF → MotionBlur → Tonemap
-<a href=#657 id=657 data-nosnippet>657</a>        </span><span class="macro">assert_eq!</span>(passes[<span class="number">0</span>], PostPass::Ssao);
-<a href=#658 id=658 data-nosnippet>658</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">1</span>], PostPass::Ssr);
-<a href=#659 id=659 data-nosnippet>659</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">2</span>], PostPass::Bloom);
-<a href=#660 id=660 data-nosnippet>660</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">3</span>], PostPass::Taa);
-<a href=#661 id=661 data-nosnippet>661</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">4</span>], PostPass::Dof);
-<a href=#662 id=662 data-nosnippet>662</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">5</span>], PostPass::MotionBlur);
-<a href=#663 id=663 data-nosnippet>663</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">6</span>], PostPass::Tonemap);
-<a href=#664 id=664 data-nosnippet>664</a>    }
-<a href=#665 id=665 data-nosnippet>665</a>
-<a href=#666 id=666 data-nosnippet>666</a>    <span class="attr">#[test]
-<a href=#667 id=667 data-nosnippet>667</a>    </span><span class="kw">fn </span>intermediate_targets_needed() {
-<a href=#668 id=668 data-nosnippet>668</a>        <span class="kw">let </span>chain = PostProcessChain::default();
-<a href=#669 id=669 data-nosnippet>669</a>        <span class="comment">// TAA is enabled, so we need 2 targets for ping-pong
-<a href=#670 id=670 data-nosnippet>670</a>        </span><span class="macro">assert_eq!</span>(chain.intermediate_targets_needed(), <span class="number">2</span>);
-<a href=#671 id=671 data-nosnippet>671</a>
-<a href=#672 id=672 data-nosnippet>672</a>        <span class="kw">let </span>minimal = PostProcessChain {
-<a href=#673 id=673 data-nosnippet>673</a>            bloom_enabled: <span class="bool-val">false</span>,
-<a href=#674 id=674 data-nosnippet>674</a>            ssao_enabled: <span class="bool-val">false</span>,
-<a href=#675 id=675 data-nosnippet>675</a>            ssr_enabled: <span class="bool-val">false</span>,
-<a href=#676 id=676 data-nosnippet>676</a>            taa_enabled: <span class="bool-val">false</span>,
-<a href=#677 id=677 data-nosnippet>677</a>            motion_blur_enabled: <span class="bool-val">false</span>,
-<a href=#678 id=678 data-nosnippet>678</a>            dof_enabled: <span class="bool-val">false</span>,
-<a href=#679 id=679 data-nosnippet>679</a>            color_grading_enabled: <span class="bool-val">false</span>,
-<a href=#680 id=680 data-nosnippet>680</a>            tonemap_operator: TonemapOperator::Aces,
-<a href=#681 id=681 data-nosnippet>681</a>        };
-<a href=#682 id=682 data-nosnippet>682</a>        <span class="comment">// Only tonemap, no pre-tonemap passes
-<a href=#683 id=683 data-nosnippet>683</a>        </span><span class="macro">assert_eq!</span>(minimal.intermediate_targets_needed(), <span class="number">1</span>);
-<a href=#684 id=684 data-nosnippet>684</a>    }
-<a href=#685 id=685 data-nosnippet>685</a>
-<a href=#686 id=686 data-nosnippet>686</a>    <span class="attr">#[test]
-<a href=#687 id=687 data-nosnippet>687</a>    </span><span class="kw">fn </span>tonemap_shader_parses() {
-<a href=#688 id=688 data-nosnippet>688</a>        <span class="kw">let </span>module =
-<a href=#689 id=689 data-nosnippet>689</a>            naga::front::wgsl::parse_str(TONEMAP_SHADER).expect(<span class="string">"tonemap WGSL should parse"</span>);
-<a href=#690 id=690 data-nosnippet>690</a>        <span class="kw">let </span>names: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = module
-<a href=#691 id=691 data-nosnippet>691</a>            .entry_points
-<a href=#692 id=692 data-nosnippet>692</a>            .iter()
-<a href=#693 id=693 data-nosnippet>693</a>            .map(|e| e.name.as_str())
-<a href=#694 id=694 data-nosnippet>694</a>            .collect();
-<a href=#695 id=695 data-nosnippet>695</a>        <span class="macro">assert!</span>(names.contains(<span class="kw-2">&amp;</span><span class="string">"vs_main"</span>));
-<a href=#696 id=696 data-nosnippet>696</a>        <span class="macro">assert!</span>(names.contains(<span class="kw-2">&amp;</span><span class="string">"fs_main"</span>));
+<a href=#602 id=602 data-nosnippet>602</a>    </span><span class="kw">fn </span>tonemap_uniforms_default() {
+<a href=#603 id=603 data-nosnippet>603</a>        <span class="kw">let </span>u = TonemapUniforms::default();
+<a href=#604 id=604 data-nosnippet>604</a>        <span class="macro">assert_eq!</span>(u.exposure, <span class="number">0.0</span>);
+<a href=#605 id=605 data-nosnippet>605</a>        <span class="macro">assert_eq!</span>(u.tonemap_op, <span class="number">0</span>); <span class="comment">// ACES
+<a href=#606 id=606 data-nosnippet>606</a>        </span><span class="macro">assert_eq!</span>(u.contrast, <span class="number">1.0</span>);
+<a href=#607 id=607 data-nosnippet>607</a>        <span class="macro">assert_eq!</span>(u.saturation, <span class="number">1.0</span>);
+<a href=#608 id=608 data-nosnippet>608</a>        <span class="macro">assert_eq!</span>(u.temperature, <span class="number">0.0</span>);
+<a href=#609 id=609 data-nosnippet>609</a>        <span class="macro">assert_eq!</span>(u.tint, <span class="number">0.0</span>);
+<a href=#610 id=610 data-nosnippet>610</a>        <span class="macro">assert_eq!</span>(u.vignette_intensity, <span class="number">0.0</span>);
+<a href=#611 id=611 data-nosnippet>611</a>        <span class="macro">assert_eq!</span>(u.grain_intensity, <span class="number">0.0</span>);
+<a href=#612 id=612 data-nosnippet>612</a>    }
+<a href=#613 id=613 data-nosnippet>613</a>
+<a href=#614 id=614 data-nosnippet>614</a>    <span class="attr">#[test]
+<a href=#615 id=615 data-nosnippet>615</a>    </span><span class="kw">fn </span>tonemap_uniforms_pod_size() {
+<a href=#616 id=616 data-nosnippet>616</a>        <span class="macro">assert_eq!</span>(std::mem::size_of::&lt;TonemapUniforms&gt;(), <span class="number">32</span>);
+<a href=#617 id=617 data-nosnippet>617</a>    }
+<a href=#618 id=618 data-nosnippet>618</a>
+<a href=#619 id=619 data-nosnippet>619</a>    <span class="attr">#[test]
+<a href=#620 id=620 data-nosnippet>620</a>    </span><span class="kw">fn </span>tonemap_uniforms_from_config() {
+<a href=#621 id=621 data-nosnippet>621</a>        <span class="kw">let </span>config = ColorGradingConfig {
+<a href=#622 id=622 data-nosnippet>622</a>            enabled: <span class="bool-val">true</span>,
+<a href=#623 id=623 data-nosnippet>623</a>            exposure: <span class="number">1.5</span>,
+<a href=#624 id=624 data-nosnippet>624</a>            contrast: <span class="number">1.2</span>,
+<a href=#625 id=625 data-nosnippet>625</a>            saturation: <span class="number">0.8</span>,
+<a href=#626 id=626 data-nosnippet>626</a>            temperature: -<span class="number">0.3</span>,
+<a href=#627 id=627 data-nosnippet>627</a>            tint: <span class="number">0.1</span>,
+<a href=#628 id=628 data-nosnippet>628</a>        };
+<a href=#629 id=629 data-nosnippet>629</a>        <span class="kw">let </span>u = TonemapUniforms::from_config(<span class="kw-2">&amp;</span>config, TonemapOperator::AgX);
+<a href=#630 id=630 data-nosnippet>630</a>        <span class="macro">assert_eq!</span>(u.exposure, <span class="number">1.5</span>);
+<a href=#631 id=631 data-nosnippet>631</a>        <span class="macro">assert_eq!</span>(u.tonemap_op, <span class="number">1</span>); <span class="comment">// AgX
+<a href=#632 id=632 data-nosnippet>632</a>        </span><span class="macro">assert_eq!</span>(u.contrast, <span class="number">1.2</span>);
+<a href=#633 id=633 data-nosnippet>633</a>        <span class="macro">assert_eq!</span>(u.saturation, <span class="number">0.8</span>);
+<a href=#634 id=634 data-nosnippet>634</a>    }
+<a href=#635 id=635 data-nosnippet>635</a>
+<a href=#636 id=636 data-nosnippet>636</a>    <span class="attr">#[test]
+<a href=#637 id=637 data-nosnippet>637</a>    </span><span class="kw">fn </span>post_process_chain_default() {
+<a href=#638 id=638 data-nosnippet>638</a>        <span class="kw">let </span>chain = PostProcessChain::default();
+<a href=#639 id=639 data-nosnippet>639</a>        <span class="macro">assert!</span>(!chain.bloom_enabled);
+<a href=#640 id=640 data-nosnippet>640</a>        <span class="macro">assert!</span>(chain.taa_enabled);
+<a href=#641 id=641 data-nosnippet>641</a>        <span class="macro">assert!</span>(chain.color_grading_enabled);
+<a href=#642 id=642 data-nosnippet>642</a>        <span class="macro">assert_eq!</span>(chain.tonemap_operator, TonemapOperator::Aces);
+<a href=#643 id=643 data-nosnippet>643</a>    }
+<a href=#644 id=644 data-nosnippet>644</a>
+<a href=#645 id=645 data-nosnippet>645</a>    <span class="attr">#[test]
+<a href=#646 id=646 data-nosnippet>646</a>    </span><span class="kw">fn </span>post_process_chain_active_passes() {
+<a href=#647 id=647 data-nosnippet>647</a>        <span class="kw">let </span>chain = PostProcessChain::default();
+<a href=#648 id=648 data-nosnippet>648</a>        <span class="kw">let </span>passes = chain.active_passes();
+<a href=#649 id=649 data-nosnippet>649</a>        <span class="comment">// With defaults: TAA + Tonemap
+<a href=#650 id=650 data-nosnippet>650</a>        </span><span class="macro">assert!</span>(passes.contains(<span class="kw-2">&amp;</span>PostPass::Taa));
+<a href=#651 id=651 data-nosnippet>651</a>        <span class="macro">assert!</span>(passes.contains(<span class="kw-2">&amp;</span>PostPass::Tonemap));
+<a href=#652 id=652 data-nosnippet>652</a>        <span class="macro">assert!</span>(!passes.contains(<span class="kw-2">&amp;</span>PostPass::Bloom));
+<a href=#653 id=653 data-nosnippet>653</a>    }
+<a href=#654 id=654 data-nosnippet>654</a>
+<a href=#655 id=655 data-nosnippet>655</a>    <span class="attr">#[test]
+<a href=#656 id=656 data-nosnippet>656</a>    </span><span class="kw">fn </span>post_process_chain_all_enabled() {
+<a href=#657 id=657 data-nosnippet>657</a>        <span class="kw">let </span>chain = PostProcessChain {
+<a href=#658 id=658 data-nosnippet>658</a>            bloom_enabled: <span class="bool-val">true</span>,
+<a href=#659 id=659 data-nosnippet>659</a>            ssao_enabled: <span class="bool-val">true</span>,
+<a href=#660 id=660 data-nosnippet>660</a>            ssr_enabled: <span class="bool-val">true</span>,
+<a href=#661 id=661 data-nosnippet>661</a>            taa_enabled: <span class="bool-val">true</span>,
+<a href=#662 id=662 data-nosnippet>662</a>            motion_blur_enabled: <span class="bool-val">true</span>,
+<a href=#663 id=663 data-nosnippet>663</a>            dof_enabled: <span class="bool-val">true</span>,
+<a href=#664 id=664 data-nosnippet>664</a>            color_grading_enabled: <span class="bool-val">true</span>,
+<a href=#665 id=665 data-nosnippet>665</a>            tonemap_operator: TonemapOperator::Aces,
+<a href=#666 id=666 data-nosnippet>666</a>        };
+<a href=#667 id=667 data-nosnippet>667</a>        <span class="kw">let </span>passes = chain.active_passes();
+<a href=#668 id=668 data-nosnippet>668</a>        <span class="macro">assert_eq!</span>(passes.len(), <span class="number">7</span>);
+<a href=#669 id=669 data-nosnippet>669</a>        <span class="comment">// Order: SSAO → SSR → Bloom → TAA → DoF → MotionBlur → Tonemap
+<a href=#670 id=670 data-nosnippet>670</a>        </span><span class="macro">assert_eq!</span>(passes[<span class="number">0</span>], PostPass::Ssao);
+<a href=#671 id=671 data-nosnippet>671</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">1</span>], PostPass::Ssr);
+<a href=#672 id=672 data-nosnippet>672</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">2</span>], PostPass::Bloom);
+<a href=#673 id=673 data-nosnippet>673</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">3</span>], PostPass::Taa);
+<a href=#674 id=674 data-nosnippet>674</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">4</span>], PostPass::Dof);
+<a href=#675 id=675 data-nosnippet>675</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">5</span>], PostPass::MotionBlur);
+<a href=#676 id=676 data-nosnippet>676</a>        <span class="macro">assert_eq!</span>(passes[<span class="number">6</span>], PostPass::Tonemap);
+<a href=#677 id=677 data-nosnippet>677</a>    }
+<a href=#678 id=678 data-nosnippet>678</a>
+<a href=#679 id=679 data-nosnippet>679</a>    <span class="attr">#[test]
+<a href=#680 id=680 data-nosnippet>680</a>    </span><span class="kw">fn </span>intermediate_targets_needed() {
+<a href=#681 id=681 data-nosnippet>681</a>        <span class="kw">let </span>chain = PostProcessChain::default();
+<a href=#682 id=682 data-nosnippet>682</a>        <span class="comment">// TAA is enabled, so we need 2 targets for ping-pong
+<a href=#683 id=683 data-nosnippet>683</a>        </span><span class="macro">assert_eq!</span>(chain.intermediate_targets_needed(), <span class="number">2</span>);
+<a href=#684 id=684 data-nosnippet>684</a>
+<a href=#685 id=685 data-nosnippet>685</a>        <span class="kw">let </span>minimal = PostProcessChain {
+<a href=#686 id=686 data-nosnippet>686</a>            bloom_enabled: <span class="bool-val">false</span>,
+<a href=#687 id=687 data-nosnippet>687</a>            ssao_enabled: <span class="bool-val">false</span>,
+<a href=#688 id=688 data-nosnippet>688</a>            ssr_enabled: <span class="bool-val">false</span>,
+<a href=#689 id=689 data-nosnippet>689</a>            taa_enabled: <span class="bool-val">false</span>,
+<a href=#690 id=690 data-nosnippet>690</a>            motion_blur_enabled: <span class="bool-val">false</span>,
+<a href=#691 id=691 data-nosnippet>691</a>            dof_enabled: <span class="bool-val">false</span>,
+<a href=#692 id=692 data-nosnippet>692</a>            color_grading_enabled: <span class="bool-val">false</span>,
+<a href=#693 id=693 data-nosnippet>693</a>            tonemap_operator: TonemapOperator::Aces,
+<a href=#694 id=694 data-nosnippet>694</a>        };
+<a href=#695 id=695 data-nosnippet>695</a>        <span class="comment">// Only tonemap, no pre-tonemap passes
+<a href=#696 id=696 data-nosnippet>696</a>        </span><span class="macro">assert_eq!</span>(minimal.intermediate_targets_needed(), <span class="number">1</span>);
 <a href=#697 id=697 data-nosnippet>697</a>    }
 <a href=#698 id=698 data-nosnippet>698</a>
 <a href=#699 id=699 data-nosnippet>699</a>    <span class="attr">#[test]
-<a href=#700 id=700 data-nosnippet>700</a>    </span><span class="kw">fn </span>hdr_pipeline_creation() {
-<a href=#701 id=701 data-nosnippet>701</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
-<a href=#702 id=702 data-nosnippet>702</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
-<a href=#703 id=703 data-nosnippet>703</a>            power_preference: wgpu::PowerPreference::LowPower,
-<a href=#704 id=704 data-nosnippet>704</a>            compatible_surface: <span class="prelude-val">None</span>,
-<a href=#705 id=705 data-nosnippet>705</a>            force_fallback_adapter: <span class="bool-val">false</span>,
-<a href=#706 id=706 data-nosnippet>706</a>        }))
-<a href=#707 id=707 data-nosnippet>707</a>        .expect(<span class="string">"adapter"</span>);
-<a href=#708 id=708 data-nosnippet>708</a>        <span class="kw">let </span>(device, _queue) =
-<a href=#709 id=709 data-nosnippet>709</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
-<a href=#710 id=710 data-nosnippet>710</a>                .expect(<span class="string">"device"</span>);
+<a href=#700 id=700 data-nosnippet>700</a>    </span><span class="kw">fn </span>tonemap_shader_parses() {
+<a href=#701 id=701 data-nosnippet>701</a>        <span class="kw">let </span>module =
+<a href=#702 id=702 data-nosnippet>702</a>            naga::front::wgsl::parse_str(TONEMAP_SHADER).expect(<span class="string">"tonemap WGSL should parse"</span>);
+<a href=#703 id=703 data-nosnippet>703</a>        <span class="kw">let </span>names: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = module
+<a href=#704 id=704 data-nosnippet>704</a>            .entry_points
+<a href=#705 id=705 data-nosnippet>705</a>            .iter()
+<a href=#706 id=706 data-nosnippet>706</a>            .map(|e| e.name.as_str())
+<a href=#707 id=707 data-nosnippet>707</a>            .collect();
+<a href=#708 id=708 data-nosnippet>708</a>        <span class="macro">assert!</span>(names.contains(<span class="kw-2">&amp;</span><span class="string">"vs_main"</span>));
+<a href=#709 id=709 data-nosnippet>709</a>        <span class="macro">assert!</span>(names.contains(<span class="kw-2">&amp;</span><span class="string">"fs_main"</span>));
+<a href=#710 id=710 data-nosnippet>710</a>    }
 <a href=#711 id=711 data-nosnippet>711</a>
-<a href=#712 id=712 data-nosnippet>712</a>        <span class="kw">let </span>pipeline = HdrPipeline::new(<span class="kw-2">&amp;</span>device, <span class="number">1920</span>, <span class="number">1080</span>, wgpu::TextureFormat::Bgra8UnormSrgb);
-<a href=#713 id=713 data-nosnippet>713</a>        <span class="macro">assert_eq!</span>(pipeline.dimensions(), (<span class="number">1920</span>, <span class="number">1080</span>));
-<a href=#714 id=714 data-nosnippet>714</a>    }
-<a href=#715 id=715 data-nosnippet>715</a>
-<a href=#716 id=716 data-nosnippet>716</a>    <span class="attr">#[test]
-<a href=#717 id=717 data-nosnippet>717</a>    </span><span class="kw">fn </span>hdr_pipeline_resize() {
-<a href=#718 id=718 data-nosnippet>718</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
-<a href=#719 id=719 data-nosnippet>719</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
-<a href=#720 id=720 data-nosnippet>720</a>            power_preference: wgpu::PowerPreference::LowPower,
-<a href=#721 id=721 data-nosnippet>721</a>            compatible_surface: <span class="prelude-val">None</span>,
-<a href=#722 id=722 data-nosnippet>722</a>            force_fallback_adapter: <span class="bool-val">false</span>,
-<a href=#723 id=723 data-nosnippet>723</a>        }))
-<a href=#724 id=724 data-nosnippet>724</a>        .expect(<span class="string">"adapter"</span>);
-<a href=#725 id=725 data-nosnippet>725</a>        <span class="kw">let </span>(device, _queue) =
-<a href=#726 id=726 data-nosnippet>726</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
-<a href=#727 id=727 data-nosnippet>727</a>                .expect(<span class="string">"device"</span>);
+<a href=#712 id=712 data-nosnippet>712</a>    <span class="attr">#[test]
+<a href=#713 id=713 data-nosnippet>713</a>    </span><span class="kw">fn </span>hdr_pipeline_creation() {
+<a href=#714 id=714 data-nosnippet>714</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
+<a href=#715 id=715 data-nosnippet>715</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#716 id=716 data-nosnippet>716</a>            power_preference: wgpu::PowerPreference::LowPower,
+<a href=#717 id=717 data-nosnippet>717</a>            compatible_surface: <span class="prelude-val">None</span>,
+<a href=#718 id=718 data-nosnippet>718</a>            force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#719 id=719 data-nosnippet>719</a>        }))
+<a href=#720 id=720 data-nosnippet>720</a>        .expect(<span class="string">"adapter"</span>);
+<a href=#721 id=721 data-nosnippet>721</a>        <span class="kw">let </span>(device, _queue) =
+<a href=#722 id=722 data-nosnippet>722</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#723 id=723 data-nosnippet>723</a>                .expect(<span class="string">"device"</span>);
+<a href=#724 id=724 data-nosnippet>724</a>
+<a href=#725 id=725 data-nosnippet>725</a>        <span class="kw">let </span>pipeline = HdrPipeline::new(<span class="kw-2">&amp;</span>device, <span class="number">1920</span>, <span class="number">1080</span>, wgpu::TextureFormat::Bgra8UnormSrgb);
+<a href=#726 id=726 data-nosnippet>726</a>        <span class="macro">assert_eq!</span>(pipeline.dimensions(), (<span class="number">1920</span>, <span class="number">1080</span>));
+<a href=#727 id=727 data-nosnippet>727</a>    }
 <a href=#728 id=728 data-nosnippet>728</a>
-<a href=#729 id=729 data-nosnippet>729</a>        <span class="kw">let </span><span class="kw-2">mut </span>pipeline = HdrPipeline::new(<span class="kw-2">&amp;</span>device, <span class="number">800</span>, <span class="number">600</span>, wgpu::TextureFormat::Bgra8UnormSrgb);
-<a href=#730 id=730 data-nosnippet>730</a>        pipeline.resize(<span class="kw-2">&amp;</span>device, <span class="number">1920</span>, <span class="number">1080</span>);
-<a href=#731 id=731 data-nosnippet>731</a>        <span class="macro">assert_eq!</span>(pipeline.dimensions(), (<span class="number">1920</span>, <span class="number">1080</span>));
-<a href=#732 id=732 data-nosnippet>732</a>    }
-<a href=#733 id=733 data-nosnippet>733</a>}</code></pre></div></section></main></body></html>
+<a href=#729 id=729 data-nosnippet>729</a>    <span class="attr">#[test]
+<a href=#730 id=730 data-nosnippet>730</a>    </span><span class="kw">fn </span>hdr_pipeline_resize() {
+<a href=#731 id=731 data-nosnippet>731</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
+<a href=#732 id=732 data-nosnippet>732</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#733 id=733 data-nosnippet>733</a>            power_preference: wgpu::PowerPreference::LowPower,
+<a href=#734 id=734 data-nosnippet>734</a>            compatible_surface: <span class="prelude-val">None</span>,
+<a href=#735 id=735 data-nosnippet>735</a>            force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#736 id=736 data-nosnippet>736</a>        }))
+<a href=#737 id=737 data-nosnippet>737</a>        .expect(<span class="string">"adapter"</span>);
+<a href=#738 id=738 data-nosnippet>738</a>        <span class="kw">let </span>(device, _queue) =
+<a href=#739 id=739 data-nosnippet>739</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#740 id=740 data-nosnippet>740</a>                .expect(<span class="string">"device"</span>);
+<a href=#741 id=741 data-nosnippet>741</a>
+<a href=#742 id=742 data-nosnippet>742</a>        <span class="kw">let </span><span class="kw-2">mut </span>pipeline = HdrPipeline::new(<span class="kw-2">&amp;</span>device, <span class="number">800</span>, <span class="number">600</span>, wgpu::TextureFormat::Bgra8UnormSrgb);
+<a href=#743 id=743 data-nosnippet>743</a>        pipeline.resize(<span class="kw-2">&amp;</span>device, <span class="number">1920</span>, <span class="number">1080</span>);
+<a href=#744 id=744 data-nosnippet>744</a>        <span class="macro">assert_eq!</span>(pipeline.dimensions(), (<span class="number">1920</span>, <span class="number">1080</span>));
+<a href=#745 id=745 data-nosnippet>745</a>    }
+<a href=#746 id=746 data-nosnippet>746</a>}</code></pre></div></section></main></body></html>
