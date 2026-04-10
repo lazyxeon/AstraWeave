@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PARALLAX_WGSL"],"struct":["PomConfig"]};

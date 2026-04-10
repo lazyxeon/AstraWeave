@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["COMPUTE_NOISE_WGSL"],"enum":["GpuNoiseType"],"struct":["GpuNoiseConfig","GpuNoiseParams","GpuNoisePipeline"]};

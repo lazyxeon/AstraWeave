@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_CACHE_SIZE","DEFAULT_PAGE_SIZE","MAX_FEEDBACK_ENTRIES","VIRTUAL_TEXTURE_WGSL"],"fn":["pack_page_id","process_feedback","unpack_mip","unpack_page_x","unpack_page_y"],"struct":["FeedbackParams","PageCache","PageRequest","PageTableEntry","VirtualTextureConfig","VirtualTextureFeedback"]};

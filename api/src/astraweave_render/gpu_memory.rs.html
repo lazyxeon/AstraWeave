@@ -174,7 +174,7 @@
 <a href=#174 id=174 data-nosnippet>174</a>
 <a href=#175 id=175 data-nosnippet>175</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(budget) = budgets.get_mut(<span class="kw-2">&amp;</span>category) {
 <a href=#176 id=176 data-nosnippet>176</a>            <span class="comment">// Use checked_add to prevent u64 overflow bypassing the hard limit
-<a href=#177 id=177 data-nosnippet>177</a>            </span><span class="kw">let </span>new_total = budget.current.checked_add(bytes).unwrap_or(u64::MAX);
+<a href=#177 id=177 data-nosnippet>177</a>            </span><span class="kw">let </span>new_total = budget.current.saturating_add(bytes);
 <a href=#178 id=178 data-nosnippet>178</a>
 <a href=#179 id=179 data-nosnippet>179</a>            <span class="comment">// Check hard limit
 <a href=#180 id=180 data-nosnippet>180</a>            </span><span class="kw">if </span>new_total &gt; budget.hard_limit {

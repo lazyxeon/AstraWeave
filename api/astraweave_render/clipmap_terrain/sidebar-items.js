@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CLIPMAP_TERRAIN_WGSL","MAX_CLIPMAP_LEVELS"],"fn":["generate_clipmap_rings"],"struct":["ClipmapConfig","ClipmapTerrain","ClipmapUniforms","ClipmapVertex","RingMesh"]};

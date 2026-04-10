@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAT_FLAG_HAS_ALBEDO","MAT_FLAG_HAS_EMISSIVE","MAT_FLAG_HAS_NORMAL","MAT_FLAG_HAS_ORM"],"fn":["required_features","required_limits","supports_bindless"],"struct":["BindlessMaterialConfig","BindlessMaterialSystem","GpuMaterialEntry"]};

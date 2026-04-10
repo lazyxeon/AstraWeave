@@ -377,7 +377,7 @@
 <a href=#377 id=377 data-nosnippet>377</a>            })
 <a href=#378 id=378 data-nosnippet>378</a>        });
 <a href=#379 id=379 data-nosnippet>379</a>
-<a href=#380 id=380 data-nosnippet>380</a>        <span class="kw">let </span>workgroups = (update_count + <span class="number">63</span>) / <span class="number">64</span>;
+<a href=#380 id=380 data-nosnippet>380</a>        <span class="kw">let </span>workgroups = update_count.div_ceil(<span class="number">64</span>);
 <a href=#381 id=381 data-nosnippet>381</a>        <span class="kw">let </span><span class="kw-2">mut </span>pass = encoder.begin_compute_pass(<span class="kw-2">&amp;</span>wgpu::ComputePassDescriptor {
 <a href=#382 id=382 data-nosnippet>382</a>            label: <span class="prelude-val">Some</span>(<span class="string">"surface_cache_update"</span>),
 <a href=#383 id=383 data-nosnippet>383</a>            timestamp_writes: <span class="prelude-val">None</span>,
@@ -446,9 +446,9 @@
 <a href=#446 id=446 data-nosnippet>446</a>    ];
 <a href=#447 id=447 data-nosnippet>447</a>
 <a href=#448 id=448 data-nosnippet>448</a>    <span class="kw">let </span><span class="kw-2">mut </span>result = Vec3::ZERO;
-<a href=#449 id=449 data-nosnippet>449</a>    <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">9 </span>{
+<a href=#449 id=449 data-nosnippet>449</a>    <span class="kw">for </span>(i, <span class="kw-2">&amp;</span>bi) <span class="kw">in </span>b.iter().enumerate() {
 <a href=#450 id=450 data-nosnippet>450</a>        <span class="kw">let </span>c = probe.c[i];
-<a href=#451 id=451 data-nosnippet>451</a>        result += Vec3::new(c[<span class="number">0</span>], c[<span class="number">1</span>], c[<span class="number">2</span>]) * b[i];
+<a href=#451 id=451 data-nosnippet>451</a>        result += Vec3::new(c[<span class="number">0</span>], c[<span class="number">1</span>], c[<span class="number">2</span>]) * bi;
 <a href=#452 id=452 data-nosnippet>452</a>    }
 <a href=#453 id=453 data-nosnippet>453</a>    result
 <a href=#454 id=454 data-nosnippet>454</a>}

@@ -165,7 +165,7 @@
 <a href=#165 id=165 data-nosnippet>165</a>        device: <span class="kw-2">&amp;</span>wgpu::Device,
 <a href=#166 id=166 data-nosnippet>166</a>        queue: <span class="kw-2">&amp;</span>wgpu::Queue,
 <a href=#167 id=167 data-nosnippet>167</a>        encoder: <span class="kw-2">&amp;mut </span>wgpu::CommandEncoder,
-<a href=#168 id=168 data-nosnippet>168</a>        num_particles: u32,
+<a href=#168 id=168 data-nosnippet>168</a>        _num_particles: u32,
 <a href=#169 id=169 data-nosnippet>169</a>        camera_pos: Vec3,
 <a href=#170 id=170 data-nosnippet>170</a>    ) {
 <a href=#171 id=171 data-nosnippet>171</a>        <span class="kw">let </span>n = <span class="self">self</span>.max_particles;
@@ -188,7 +188,7 @@
 <a href=#188 id=188 data-nosnippet>188</a>            ],
 <a href=#189 id=189 data-nosnippet>189</a>        });
 <a href=#190 id=190 data-nosnippet>190</a>
-<a href=#191 id=191 data-nosnippet>191</a>        <span class="kw">let </span>workgroups = (n + <span class="number">255</span>) / <span class="number">256</span>;
+<a href=#191 id=191 data-nosnippet>191</a>        <span class="kw">let </span>workgroups = n.div_ceil(<span class="number">256</span>);
 <a href=#192 id=192 data-nosnippet>192</a>
 <a href=#193 id=193 data-nosnippet>193</a>        <span class="comment">// Bitonic sort: iterate over stages
 <a href=#194 id=194 data-nosnippet>194</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>stage = <span class="number">2u32</span>;

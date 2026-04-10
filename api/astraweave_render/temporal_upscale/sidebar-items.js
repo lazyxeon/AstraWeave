@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["UpscaleQuality"],"struct":["TemporalUpscalePass","UpscaleConfig","UpscaleParams"]};

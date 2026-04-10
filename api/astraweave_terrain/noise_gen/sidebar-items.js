@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["NoiseType"],"mod":["utils"],"struct":["NoiseConfig","NoiseLayer","TerrainNoise"]};
+window.SIDEBAR_ITEMS = {"enum":["NoiseType"],"fn":["domain_warped_fbm"],"mod":["utils"],"struct":["DomainWarpConfig","NoiseConfig","NoiseLayer","TerrainNoise"]};

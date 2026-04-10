@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["LTC_AREA_LIGHTS_WGSL","LTC_LUT_SIZE"],"enum":["AreaLightType"],"fn":["generate_ltc_amplitude_lut","generate_ltc_matrix_lut"],"struct":["AreaLight","AreaLightManager","AreaLightParams","GpuAreaLight"]};

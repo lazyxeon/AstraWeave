@@ -13,7 +13,7 @@ and fill the entries buffer. Called once per frame before sort passes.</p>
     device: &amp;Device,
     queue: &amp;Queue,
     encoder: &amp;mut CommandEncoder,
-    num_particles: <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.u32.html">u32</a>,
+    _num_particles: <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.u32.html">u32</a>,
     camera_pos: <a class="struct" href="https://docs.rs/glam/0.30.8/glam/f32/vec3/struct.Vec3.html" title="struct glam::f32::vec3::Vec3">Vec3</a>,
 )</h4></section></summary><div class="docblock"><p>Execute the full bitonic sort. Dispatches O(log²n) passes.</p>
 </div></details><details class="toggle method-toggle" open><summary><section id="method.pass_count" class="method"><a class="src rightside" href="../../src/astraweave_render/particle_sort.rs.html#224-230">Source</a><h4 class="code-header">pub fn <a href="#method.pass_count" class="fn">pass_count</a>(n: <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.u32.html">u32</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.u32.html">u32</a></h4></section></summary><div class="docblock"><p>Compute the number of sort passes needed for n particles.</p>

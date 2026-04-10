@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ACCUM_FORMAT","REVEALAGE_FORMAT"],"fn":["accum_blend_state","composite_blend_state","oit_weight","revealage_blend_state"],"struct":["OitBuffers","WboitRenderer"]};

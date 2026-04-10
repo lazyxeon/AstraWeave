@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ErosionPreset"],"struct":["ErosionParams","GpuErosionConfig","GpuErosionPipeline"]};

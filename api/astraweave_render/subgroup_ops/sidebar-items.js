@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["AUTO_EXPOSURE_SUBGROUP_WGSL","BITONIC_SORT_SUBGROUP_WGSL","PREFIX_SUM_SUBGROUP_WGSL"],"fn":["select_auto_exposure_shader","select_bitonic_sort_shader","select_prefix_sum_shader"],"struct":["SubgroupCapabilities"]};

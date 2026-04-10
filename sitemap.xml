@@ -4174,6 +4174,54 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/subgroup_ops/constant.BITONIC_SORT_SUBGROUP_WGSL.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/subgroup_ops/fn.select_bitonic_sort_shader.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/subgroup_ops/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/subgroup_ops/fn.select_prefix_sum_shader.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/subgroup_ops/constant.PREFIX_SUM_SUBGROUP_WGSL.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/subgroup_ops/fn.select_auto_exposure_shader.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/subgroup_ops/constant.AUTO_EXPOSURE_SUBGROUP_WGSL.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/subgroup_ops/struct.SubgroupCapabilities.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/volumetric_fog/struct.VolumetricFogConfig.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
@@ -4480,6 +4528,24 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/parallax/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/parallax/struct.PomConfig.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/parallax/constant.PARALLAX_WGSL.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/gpu_profiler/index.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
@@ -4690,6 +4756,60 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/clipmap_terrain/constant.CLIPMAP_TERRAIN_WGSL.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/clipmap_terrain/struct.ClipmapTerrain.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/clipmap_terrain/struct.ClipmapUniforms.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/clipmap_terrain/struct.ClipmapVertex.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/clipmap_terrain/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/clipmap_terrain/constant.MAX_CLIPMAP_LEVELS.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/clipmap_terrain/fn.generate_clipmap_rings.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/clipmap_terrain/struct.RingMesh.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/clipmap_terrain/struct.ClipmapConfig.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/distance_field/struct.DfaoConfig.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
@@ -4775,6 +4895,60 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/error/enum.RenderError.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/oit/struct.OitBuffers.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/oit/fn.revealage_blend_state.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/oit/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/oit/fn.oit_weight.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/oit/struct.WboitRenderer.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/oit/constant.ACCUM_FORMAT.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/oit/fn.composite_blend_state.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/oit/fn.accum_blend_state.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/oit/constant.REVEALAGE_FORMAT.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -5165,6 +5339,72 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ibl/struct.IblResources.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/fn.required_limits.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/constant.MAT_FLAG_HAS_NORMAL.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/constant.MAT_FLAG_HAS_ALBEDO.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/struct.BindlessMaterialSystem.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/struct.BindlessMaterialConfig.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/struct.GpuMaterialEntry.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/fn.supports_bindless.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/constant.MAT_FLAG_HAS_ORM.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/fn.required_features.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material_bindless/constant.MAT_FLAG_HAS_EMISSIVE.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -5602,6 +5842,42 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/compute_noise/constant.COMPUTE_NOISE_WGSL.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/compute_noise/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/compute_noise/struct.GpuNoisePipeline.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/compute_noise/enum.GpuNoiseType.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/compute_noise/struct.GpuNoiseParams.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/compute_noise/struct.GpuNoiseConfig.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/types/struct.Instance.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
@@ -5711,6 +5987,36 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/material/struct.MaterialPackDesc.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/gpu_erosion/struct.GpuErosionConfig.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/gpu_erosion/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/gpu_erosion/struct.GpuErosionPipeline.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/gpu_erosion/struct.ErosionParams.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/gpu_erosion/enum.ErosionPreset.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -6034,6 +6340,42 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/volumetric_clouds/struct.CloudCompositeParams.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/volumetric_clouds/struct.CloudConfig.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/volumetric_clouds/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/volumetric_clouds/struct.CloudParams.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/volumetric_clouds/struct.VolumetricCloudsPass.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/volumetric_clouds/enum.CloudQuality.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/hdri_catalog/index.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
@@ -6083,6 +6425,66 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/scene_environment/struct.SceneEnvironment.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/struct.AreaLight.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/fn.generate_ltc_amplitude_lut.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/struct.AreaLightManager.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/enum.AreaLightType.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/constant.LTC_AREA_LIGHTS_WGSL.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/fn.generate_ltc_matrix_lut.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/struct.GpuAreaLight.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/struct.AreaLightParams.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/ltc_area_lights/constant.LTC_LUT_SIZE.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -6275,6 +6677,24 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/post/constant.WGSL_SSGI.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/shader_manager/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/shader_manager/struct.ShaderKey.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/shader_manager/struct.ShaderManager.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -6508,6 +6928,36 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/temporal_upscale/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/temporal_upscale/struct.UpscaleConfig.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/temporal_upscale/struct.TemporalUpscalePass.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/temporal_upscale/enum.UpscaleQuality.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/temporal_upscale/struct.UpscaleParams.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/atmosphere/struct.AtmosphereConfig.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
@@ -6665,6 +7115,102 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/bloom/struct.BloomUpsampleParams.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/fn.process_feedback.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/constant.VIRTUAL_TEXTURE_WGSL.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/constant.MAX_FEEDBACK_ENTRIES.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/fn.pack_page_id.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/constant.DEFAULT_PAGE_SIZE.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/constant.DEFAULT_CACHE_SIZE.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/fn.unpack_page_y.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/struct.PageRequest.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/struct.VirtualTextureConfig.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/struct.PageTableEntry.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/fn.unpack_mip.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/struct.VirtualTextureFeedback.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/struct.PageCache.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/fn.unpack_page_x.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_render/virtual_texture/struct.FeedbackParams.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -6982,6 +7528,54 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/compressed_voxels/struct.CompressedVoxelChunk.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/compressed_voxels/index.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/compressed_voxels/struct.RleRun.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/compressed_voxels/fn.rle_decode.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/compressed_voxels/struct.VoxelPalette.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/compressed_voxels/constant.CHUNK_VOLUME.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/compressed_voxels/fn.rle_encode.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/compressed_voxels/struct.PaletteEntry.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/structures/struct.StructureResult.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
@@ -7234,6 +7828,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/noise_gen/struct.DomainWarpConfig.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/noise_gen/index.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
@@ -7271,6 +7871,12 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/noise_gen/enum.NoiseType.html</loc>
+    <lastmod>2026-04-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/noise_gen/fn.domain_warped_fbm.html</loc>
     <lastmod>2026-04-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
