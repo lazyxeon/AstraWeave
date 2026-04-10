@@ -1,0 +1,106 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Compute shader that performs per-batch frustum culling and writes `DrawIndexedIndirectCommand` entries.  Invisible batches get `instance_count = 0` so the GPU skips them at zero cost."><title>INDIRECT_CULLING_SHADER in astraweave_render::culling - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="astraweave_render" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0 (29483883e 2025-08-04)" data-channel="1.89.0" data-search-js="search-92309212.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc constant"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../astraweave_render/index.html">astraweave_<wbr>render</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><div id="rustdoc-modnav"><h2><a href="index.html">In astraweave_<wbr>render::<wbr>culling</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">astraweave_render</a>::<wbr><a href="index.html">culling</a></div><h1>Constant <span class="constant">INDIRECT_CULLING_SHADER</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/astraweave_render/culling.rs.html#704-806">Source</a> </span></div><pre class="rust item-decl"><code>pub const INDIRECT_CULLING_SHADER: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.str.html">str</a> = r#&quot;
+struct FrustumPlanes {
+    planes: array&lt;vec4&lt;f32&gt;, 6&gt;,
+}
+
+struct BatchAABB {
+    center: vec3&lt;f32&gt;,
+    _pad0: u32,
+    extent: vec3&lt;f32&gt;,
+    _pad1: u32,
+}
+
+// Must match DrawIndexedIndirectCommand (20 bytes per element)
+struct DrawCmd {
+    index_count: u32,
+    instance_count: u32,
+    first_index: u32,
+    base_vertex: i32,
+    first_instance: u32,
+}
+
+@group(0) @binding(0) var&lt;uniform&gt; frustum: FrustumPlanes;
+@group(0) @binding(1) var&lt;storage, read&gt; batch_aabbs: array&lt;BatchAABB&gt;;
+@group(0) @binding(2) var&lt;storage, read&gt; draw_templates: array&lt;DrawCmd&gt;;
+@group(0) @binding(3) var&lt;storage, read_write&gt; draw_commands: array&lt;DrawCmd&gt;;
+@group(0) @binding(4) var&lt;storage, read_write&gt; visible_batch_count: atomic&lt;u32&gt;;
+
+fn is_batch_visible(center: vec3&lt;f32&gt;, extent: vec3&lt;f32&gt;) -&gt; bool {
+    // Plane 0 (left)
+    var plane = frustum.planes[0];
+    var normal = plane.xyz;
+    var d = plane.w;
+    var dist = dot(center, normal) + d;
+    var radius = abs(extent.x) * abs(normal.x)
+               + abs(extent.y) * abs(normal.y)
+               + abs(extent.z) * abs(normal.z);
+    if (dist &lt; -radius) { return false; }
+
+    // Plane 1 (right)
+    plane = frustum.planes[1];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist &lt; -radius) { return false; }
+
+    // Plane 2 (bottom)
+    plane = frustum.planes[2];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist &lt; -radius) { return false; }
+
+    // Plane 3 (top)
+    plane = frustum.planes[3];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist &lt; -radius) { return false; }
+
+    // Plane 4 (near)
+    plane = frustum.planes[4];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist &lt; -radius) { return false; }
+
+    // Plane 5 (far)
+    plane = frustum.planes[5];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist &lt; -radius) { return false; }
+
+    return true;
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3&lt;u32&gt;) {
+    let idx = gid.x;
+    if (idx &gt;= arrayLength(&amp;batch_aabbs)) { return; }
+
+    let aabb = batch_aabbs[idx];
+    var cmd = draw_templates[idx];
+
+    if (is_batch_visible(aabb.center, aabb.extent)) {
+        atomicAdd(&amp;visible_batch_count, 1u);
+    } else {
+        cmd.instance_count = 0u;
+    }
+
+    draw_commands[idx] = cmd;
+}
+&quot;#;</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Compute shader that performs per-batch frustum culling and writes
+<code>DrawIndexedIndirectCommand</code> entries.  Invisible batches get
+<code>instance_count = 0</code> so the GPU skips them at zero cost.</p>
+</div></details></section></div></main></body></html>

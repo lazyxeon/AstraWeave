@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["LodLevel"],"struct":["ChunkLodCache","ChunkLodState","LodConfig","LodManager","LodStats"]};
+window.SIDEBAR_ITEMS = {"enum":["LodLevel"],"fn":["compute_pixel_error"],"struct":["ChunkLodCache","ChunkLodState","LodConfig","LodManager","LodStats","ViewParams"]};

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["CullingNode"]};
+window.SIDEBAR_ITEMS = {"struct":["CullingNode","IndirectCullingNode"]};

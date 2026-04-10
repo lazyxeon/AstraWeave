@@ -385,116 +385,149 @@
 <a href=#385 id=385 data-nosnippet>385</a><span class="doccomment">/// LOD (Level of Detail) configuration
 <a href=#386 id=386 data-nosnippet>386</a></span><span class="attr">#[derive(Debug, Clone, Copy)]
 <a href=#387 id=387 data-nosnippet>387</a></span><span class="kw">pub struct </span>LodConfig {
-<a href=#388 id=388 data-nosnippet>388</a>    <span class="doccomment">/// Distance thresholds for each LOD level
+<a href=#388 id=388 data-nosnippet>388</a>    <span class="doccomment">/// Distance thresholds for each LOD level (fallback when no view params)
 <a href=#389 id=389 data-nosnippet>389</a>    </span><span class="kw">pub </span>distances: [f32; <span class="number">4</span>],
 <a href=#390 id=390 data-nosnippet>390</a>    <span class="doccomment">/// Simplification factors for each LOD level
 <a href=#391 id=391 data-nosnippet>391</a>    </span><span class="kw">pub </span>simplification: [f32; <span class="number">4</span>],
-<a href=#392 id=392 data-nosnippet>392</a>}
-<a href=#393 id=393 data-nosnippet>393</a>
-<a href=#394 id=394 data-nosnippet>394</a><span class="kw">impl </span>Default <span class="kw">for </span>LodConfig {
-<a href=#395 id=395 data-nosnippet>395</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
-<a href=#396 id=396 data-nosnippet>396</a>        <span class="self">Self </span>{
-<a href=#397 id=397 data-nosnippet>397</a>            distances: [<span class="number">100.0</span>, <span class="number">250.0</span>, <span class="number">500.0</span>, <span class="number">1000.0</span>],
-<a href=#398 id=398 data-nosnippet>398</a>            simplification: [<span class="number">1.0</span>, <span class="number">0.5</span>, <span class="number">0.25</span>, <span class="number">0.125</span>],
-<a href=#399 id=399 data-nosnippet>399</a>        }
-<a href=#400 id=400 data-nosnippet>400</a>    }
-<a href=#401 id=401 data-nosnippet>401</a>}
-<a href=#402 id=402 data-nosnippet>402</a>
-<a href=#403 id=403 data-nosnippet>403</a><span class="doccomment">/// LOD mesh generator
-<a href=#404 id=404 data-nosnippet>404</a></span><span class="kw">pub struct </span>LodMeshGenerator {
-<a href=#405 id=405 data-nosnippet>405</a>    config: LodConfig,
-<a href=#406 id=406 data-nosnippet>406</a>    generators: Vec&lt;DualContouring&gt;,
-<a href=#407 id=407 data-nosnippet>407</a>}
-<a href=#408 id=408 data-nosnippet>408</a>
-<a href=#409 id=409 data-nosnippet>409</a><span class="kw">impl </span>LodMeshGenerator {
-<a href=#410 id=410 data-nosnippet>410</a>    <span class="doccomment">/// Create a new LOD mesh generator
-<a href=#411 id=411 data-nosnippet>411</a>    </span><span class="kw">pub fn </span>new(config: LodConfig) -&gt; <span class="self">Self </span>{
-<a href=#412 id=412 data-nosnippet>412</a>        <span class="self">Self </span>{
-<a href=#413 id=413 data-nosnippet>413</a>            config,
-<a href=#414 id=414 data-nosnippet>414</a>            generators: <span class="macro">vec!</span>[DualContouring::new(); <span class="number">4</span>],
-<a href=#415 id=415 data-nosnippet>415</a>        }
-<a href=#416 id=416 data-nosnippet>416</a>    }
-<a href=#417 id=417 data-nosnippet>417</a>
-<a href=#418 id=418 data-nosnippet>418</a>    <span class="doccomment">/// Generate mesh with appropriate LOD based on distance
-<a href=#419 id=419 data-nosnippet>419</a>    </span><span class="kw">pub fn </span>generate_mesh_lod(<span class="kw-2">&amp;mut </span><span class="self">self</span>, chunk: <span class="kw-2">&amp;</span>VoxelChunk, distance: f32) -&gt; ChunkMesh {
-<a href=#420 id=420 data-nosnippet>420</a>        <span class="kw">let </span>lod_level = <span class="self">self</span>.select_lod_level(distance);
-<a href=#421 id=421 data-nosnippet>421</a>        <span class="self">self</span>.generators[lod_level].generate_mesh(chunk)
-<a href=#422 id=422 data-nosnippet>422</a>    }
-<a href=#423 id=423 data-nosnippet>423</a>
-<a href=#424 id=424 data-nosnippet>424</a>    <span class="doccomment">/// Select LOD level based on distance
-<a href=#425 id=425 data-nosnippet>425</a>    </span><span class="kw">fn </span>select_lod_level(<span class="kw-2">&amp;</span><span class="self">self</span>, distance: f32) -&gt; usize {
-<a href=#426 id=426 data-nosnippet>426</a>        <span class="kw">for </span>(i, <span class="kw-2">&amp;</span>threshold) <span class="kw">in </span><span class="self">self</span>.config.distances.iter().enumerate() {
-<a href=#427 id=427 data-nosnippet>427</a>            <span class="kw">if </span>distance &lt; threshold {
-<a href=#428 id=428 data-nosnippet>428</a>                <span class="kw">return </span>i;
-<a href=#429 id=429 data-nosnippet>429</a>            }
-<a href=#430 id=430 data-nosnippet>430</a>        }
-<a href=#431 id=431 data-nosnippet>431</a>        <span class="number">3 </span><span class="comment">// Furthest LOD
-<a href=#432 id=432 data-nosnippet>432</a>    </span>}
-<a href=#433 id=433 data-nosnippet>433</a>}
-<a href=#434 id=434 data-nosnippet>434</a>
-<a href=#435 id=435 data-nosnippet>435</a><span class="attr">#[cfg(test)]
-<a href=#436 id=436 data-nosnippet>436</a></span><span class="kw">mod </span>tests {
-<a href=#437 id=437 data-nosnippet>437</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#438 id=438 data-nosnippet>438</a>    <span class="kw">use </span><span class="kw">crate</span>::voxel_data::Voxel;
+<a href=#392 id=392 data-nosnippet>392</a>    <span class="doccomment">/// World-space geometric error introduced at each LOD level.
+<a href=#393 id=393 data-nosnippet>393</a>    /// Used with screen-space error metric when view params are available.
+<a href=#394 id=394 data-nosnippet>394</a>    </span><span class="kw">pub </span>geometric_errors: [f32; <span class="number">4</span>],
+<a href=#395 id=395 data-nosnippet>395</a>    <span class="doccomment">/// Maximum acceptable screen-space pixel error. LOD increases when the
+<a href=#396 id=396 data-nosnippet>396</a>    /// projected pixel error of the *next* coarser level exceeds this budget.
+<a href=#397 id=397 data-nosnippet>397</a>    </span><span class="kw">pub </span>pixel_error_budget: f32,
+<a href=#398 id=398 data-nosnippet>398</a>}
+<a href=#399 id=399 data-nosnippet>399</a>
+<a href=#400 id=400 data-nosnippet>400</a><span class="kw">impl </span>Default <span class="kw">for </span>LodConfig {
+<a href=#401 id=401 data-nosnippet>401</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+<a href=#402 id=402 data-nosnippet>402</a>        <span class="self">Self </span>{
+<a href=#403 id=403 data-nosnippet>403</a>            distances: [<span class="number">100.0</span>, <span class="number">250.0</span>, <span class="number">500.0</span>, <span class="number">1000.0</span>],
+<a href=#404 id=404 data-nosnippet>404</a>            simplification: [<span class="number">1.0</span>, <span class="number">0.5</span>, <span class="number">0.25</span>, <span class="number">0.125</span>],
+<a href=#405 id=405 data-nosnippet>405</a>            geometric_errors: [<span class="number">0.0</span>, <span class="number">0.5</span>, <span class="number">1.5</span>, <span class="number">4.0</span>],
+<a href=#406 id=406 data-nosnippet>406</a>            pixel_error_budget: <span class="number">2.0</span>,
+<a href=#407 id=407 data-nosnippet>407</a>        }
+<a href=#408 id=408 data-nosnippet>408</a>    }
+<a href=#409 id=409 data-nosnippet>409</a>}
+<a href=#410 id=410 data-nosnippet>410</a>
+<a href=#411 id=411 data-nosnippet>411</a><span class="doccomment">/// LOD mesh generator
+<a href=#412 id=412 data-nosnippet>412</a></span><span class="kw">pub struct </span>LodMeshGenerator {
+<a href=#413 id=413 data-nosnippet>413</a>    config: LodConfig,
+<a href=#414 id=414 data-nosnippet>414</a>    generators: Vec&lt;DualContouring&gt;,
+<a href=#415 id=415 data-nosnippet>415</a>}
+<a href=#416 id=416 data-nosnippet>416</a>
+<a href=#417 id=417 data-nosnippet>417</a><span class="kw">impl </span>LodMeshGenerator {
+<a href=#418 id=418 data-nosnippet>418</a>    <span class="doccomment">/// Create a new LOD mesh generator
+<a href=#419 id=419 data-nosnippet>419</a>    </span><span class="kw">pub fn </span>new(config: LodConfig) -&gt; <span class="self">Self </span>{
+<a href=#420 id=420 data-nosnippet>420</a>        <span class="self">Self </span>{
+<a href=#421 id=421 data-nosnippet>421</a>            config,
+<a href=#422 id=422 data-nosnippet>422</a>            generators: <span class="macro">vec!</span>[DualContouring::new(); <span class="number">4</span>],
+<a href=#423 id=423 data-nosnippet>423</a>        }
+<a href=#424 id=424 data-nosnippet>424</a>    }
+<a href=#425 id=425 data-nosnippet>425</a>
+<a href=#426 id=426 data-nosnippet>426</a>    <span class="doccomment">/// Generate mesh with appropriate LOD based on distance and optional view params.
+<a href=#427 id=427 data-nosnippet>427</a>    ///
+<a href=#428 id=428 data-nosnippet>428</a>    /// When `view` is `Some`, uses screen-space pixel error to select LOD level.
+<a href=#429 id=429 data-nosnippet>429</a>    /// When `view` is `None`, falls back to fixed distance thresholds.
+<a href=#430 id=430 data-nosnippet>430</a>    </span><span class="kw">pub fn </span>generate_mesh_lod(
+<a href=#431 id=431 data-nosnippet>431</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+<a href=#432 id=432 data-nosnippet>432</a>        chunk: <span class="kw-2">&amp;</span>VoxelChunk,
+<a href=#433 id=433 data-nosnippet>433</a>        distance: f32,
+<a href=#434 id=434 data-nosnippet>434</a>        view: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span><span class="kw">crate</span>::lod_manager::ViewParams&gt;,
+<a href=#435 id=435 data-nosnippet>435</a>    ) -&gt; ChunkMesh {
+<a href=#436 id=436 data-nosnippet>436</a>        <span class="kw">let </span>lod_level = <span class="self">self</span>.select_lod_level(distance, view);
+<a href=#437 id=437 data-nosnippet>437</a>        <span class="self">self</span>.generators[lod_level].generate_mesh(chunk)
+<a href=#438 id=438 data-nosnippet>438</a>    }
 <a href=#439 id=439 data-nosnippet>439</a>
-<a href=#440 id=440 data-nosnippet>440</a>    <span class="attr">#[test]
-<a href=#441 id=441 data-nosnippet>441</a>    </span><span class="kw">fn </span>test_dual_contouring_empty_chunk() {
-<a href=#442 id=442 data-nosnippet>442</a>        <span class="kw">let </span>coord = ChunkCoord::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);
-<a href=#443 id=443 data-nosnippet>443</a>        <span class="kw">let </span>chunk = VoxelChunk::new(coord);
-<a href=#444 id=444 data-nosnippet>444</a>
-<a href=#445 id=445 data-nosnippet>445</a>        <span class="kw">let </span><span class="kw-2">mut </span>dc = DualContouring::new();
-<a href=#446 id=446 data-nosnippet>446</a>        <span class="kw">let </span>mesh = dc.generate_mesh(<span class="kw-2">&amp;</span>chunk);
-<a href=#447 id=447 data-nosnippet>447</a>
-<a href=#448 id=448 data-nosnippet>448</a>        <span class="macro">assert!</span>(mesh.is_empty());
-<a href=#449 id=449 data-nosnippet>449</a>    }
-<a href=#450 id=450 data-nosnippet>450</a>
-<a href=#451 id=451 data-nosnippet>451</a>    <span class="attr">#[test]
-<a href=#452 id=452 data-nosnippet>452</a>    </span><span class="kw">fn </span>test_dual_contouring_single_voxel() {
-<a href=#453 id=453 data-nosnippet>453</a>        <span class="kw">let </span>coord = ChunkCoord::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);
-<a href=#454 id=454 data-nosnippet>454</a>        <span class="kw">let </span><span class="kw-2">mut </span>chunk = VoxelChunk::new(coord);
-<a href=#455 id=455 data-nosnippet>455</a>
-<a href=#456 id=456 data-nosnippet>456</a>        <span class="comment">// Set a single solid voxel
-<a href=#457 id=457 data-nosnippet>457</a>        </span>chunk.set_voxel(IVec3::new(<span class="number">5</span>, <span class="number">5</span>, <span class="number">5</span>), Voxel::new(<span class="number">1.0</span>, <span class="number">1</span>));
-<a href=#458 id=458 data-nosnippet>458</a>
-<a href=#459 id=459 data-nosnippet>459</a>        <span class="kw">let </span><span class="kw-2">mut </span>dc = DualContouring::new();
-<a href=#460 id=460 data-nosnippet>460</a>        <span class="kw">let </span>mesh = dc.generate_mesh(<span class="kw-2">&amp;</span>chunk);
-<a href=#461 id=461 data-nosnippet>461</a>
-<a href=#462 id=462 data-nosnippet>462</a>        <span class="comment">// Should generate some vertices
-<a href=#463 id=463 data-nosnippet>463</a>        </span><span class="macro">assert!</span>(!mesh.vertices.is_empty());
-<a href=#464 id=464 data-nosnippet>464</a>    }
-<a href=#465 id=465 data-nosnippet>465</a>
-<a href=#466 id=466 data-nosnippet>466</a>    <span class="attr">#[test]
-<a href=#467 id=467 data-nosnippet>467</a>    </span><span class="kw">fn </span>test_mesh_vertex_creation() {
-<a href=#468 id=468 data-nosnippet>468</a>        <span class="kw">let </span>vertex = MeshVertex {
-<a href=#469 id=469 data-nosnippet>469</a>            position: Vec3::new(<span class="number">1.0</span>, <span class="number">2.0</span>, <span class="number">3.0</span>),
-<a href=#470 id=470 data-nosnippet>470</a>            normal: Vec3::Y,
-<a href=#471 id=471 data-nosnippet>471</a>            material: <span class="number">5</span>,
-<a href=#472 id=472 data-nosnippet>472</a>        };
-<a href=#473 id=473 data-nosnippet>473</a>
-<a href=#474 id=474 data-nosnippet>474</a>        <span class="macro">assert_eq!</span>(vertex.position.x, <span class="number">1.0</span>);
-<a href=#475 id=475 data-nosnippet>475</a>        <span class="macro">assert_eq!</span>(vertex.normal, Vec3::Y);
-<a href=#476 id=476 data-nosnippet>476</a>        <span class="macro">assert_eq!</span>(vertex.material, <span class="number">5</span>);
-<a href=#477 id=477 data-nosnippet>477</a>    }
-<a href=#478 id=478 data-nosnippet>478</a>
-<a href=#479 id=479 data-nosnippet>479</a>    <span class="attr">#[test]
-<a href=#480 id=480 data-nosnippet>480</a>    </span><span class="kw">fn </span>test_lod_selection() {
-<a href=#481 id=481 data-nosnippet>481</a>        <span class="kw">let </span>config = LodConfig::default();
-<a href=#482 id=482 data-nosnippet>482</a>        <span class="kw">let </span>lod_gen = LodMeshGenerator::new(config);
+<a href=#440 id=440 data-nosnippet>440</a>    <span class="doccomment">/// Select LOD level based on screen-space error (preferred) or distance (fallback).
+<a href=#441 id=441 data-nosnippet>441</a>    </span><span class="kw">fn </span>select_lod_level(
+<a href=#442 id=442 data-nosnippet>442</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#443 id=443 data-nosnippet>443</a>        distance: f32,
+<a href=#444 id=444 data-nosnippet>444</a>        view: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span><span class="kw">crate</span>::lod_manager::ViewParams&gt;,
+<a href=#445 id=445 data-nosnippet>445</a>    ) -&gt; usize {
+<a href=#446 id=446 data-nosnippet>446</a>        <span class="kw">if let </span><span class="prelude-val">Some</span>(vp) = view {
+<a href=#447 id=447 data-nosnippet>447</a>            <span class="comment">// Screen-space error: walk from coarsest LOD toward finest.
+<a href=#448 id=448 data-nosnippet>448</a>            // Pick the coarsest level whose pixel error is within budget.
+<a href=#449 id=449 data-nosnippet>449</a>            </span><span class="kw">for </span>level <span class="kw">in </span>(<span class="number">0</span>..<span class="number">4</span>).rev() {
+<a href=#450 id=450 data-nosnippet>450</a>                <span class="kw">let </span>geo_err = <span class="self">self</span>.config.geometric_errors[level];
+<a href=#451 id=451 data-nosnippet>451</a>                <span class="kw">let </span>px = <span class="kw">crate</span>::lod_manager::compute_pixel_error(geo_err, distance, vp);
+<a href=#452 id=452 data-nosnippet>452</a>                <span class="kw">if </span>px &lt;= <span class="self">self</span>.config.pixel_error_budget {
+<a href=#453 id=453 data-nosnippet>453</a>                    <span class="kw">return </span>level;
+<a href=#454 id=454 data-nosnippet>454</a>                }
+<a href=#455 id=455 data-nosnippet>455</a>            }
+<a href=#456 id=456 data-nosnippet>456</a>            <span class="number">0 </span><span class="comment">// All levels exceed budget — use finest
+<a href=#457 id=457 data-nosnippet>457</a>        </span>} <span class="kw">else </span>{
+<a href=#458 id=458 data-nosnippet>458</a>            <span class="kw">for </span>(i, <span class="kw-2">&amp;</span>threshold) <span class="kw">in </span><span class="self">self</span>.config.distances.iter().enumerate() {
+<a href=#459 id=459 data-nosnippet>459</a>                <span class="kw">if </span>distance &lt; threshold {
+<a href=#460 id=460 data-nosnippet>460</a>                    <span class="kw">return </span>i;
+<a href=#461 id=461 data-nosnippet>461</a>                }
+<a href=#462 id=462 data-nosnippet>462</a>            }
+<a href=#463 id=463 data-nosnippet>463</a>            <span class="number">3 </span><span class="comment">// Furthest LOD
+<a href=#464 id=464 data-nosnippet>464</a>        </span>}
+<a href=#465 id=465 data-nosnippet>465</a>    }
+<a href=#466 id=466 data-nosnippet>466</a>}
+<a href=#467 id=467 data-nosnippet>467</a>
+<a href=#468 id=468 data-nosnippet>468</a><span class="attr">#[cfg(test)]
+<a href=#469 id=469 data-nosnippet>469</a></span><span class="kw">mod </span>tests {
+<a href=#470 id=470 data-nosnippet>470</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#471 id=471 data-nosnippet>471</a>    <span class="kw">use </span><span class="kw">crate</span>::voxel_data::Voxel;
+<a href=#472 id=472 data-nosnippet>472</a>
+<a href=#473 id=473 data-nosnippet>473</a>    <span class="attr">#[test]
+<a href=#474 id=474 data-nosnippet>474</a>    </span><span class="kw">fn </span>test_dual_contouring_empty_chunk() {
+<a href=#475 id=475 data-nosnippet>475</a>        <span class="kw">let </span>coord = ChunkCoord::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);
+<a href=#476 id=476 data-nosnippet>476</a>        <span class="kw">let </span>chunk = VoxelChunk::new(coord);
+<a href=#477 id=477 data-nosnippet>477</a>
+<a href=#478 id=478 data-nosnippet>478</a>        <span class="kw">let </span><span class="kw-2">mut </span>dc = DualContouring::new();
+<a href=#479 id=479 data-nosnippet>479</a>        <span class="kw">let </span>mesh = dc.generate_mesh(<span class="kw-2">&amp;</span>chunk);
+<a href=#480 id=480 data-nosnippet>480</a>
+<a href=#481 id=481 data-nosnippet>481</a>        <span class="macro">assert!</span>(mesh.is_empty());
+<a href=#482 id=482 data-nosnippet>482</a>    }
 <a href=#483 id=483 data-nosnippet>483</a>
-<a href=#484 id=484 data-nosnippet>484</a>        <span class="macro">assert_eq!</span>(lod_gen.select_lod_level(<span class="number">50.0</span>), <span class="number">0</span>);
-<a href=#485 id=485 data-nosnippet>485</a>        <span class="macro">assert_eq!</span>(lod_gen.select_lod_level(<span class="number">200.0</span>), <span class="number">1</span>);
-<a href=#486 id=486 data-nosnippet>486</a>        <span class="macro">assert_eq!</span>(lod_gen.select_lod_level(<span class="number">400.0</span>), <span class="number">2</span>);
-<a href=#487 id=487 data-nosnippet>487</a>        <span class="macro">assert_eq!</span>(lod_gen.select_lod_level(<span class="number">1500.0</span>), <span class="number">3</span>);
-<a href=#488 id=488 data-nosnippet>488</a>    }
-<a href=#489 id=489 data-nosnippet>489</a>
-<a href=#490 id=490 data-nosnippet>490</a>    <span class="attr">#[test]
-<a href=#491 id=491 data-nosnippet>491</a>    </span><span class="kw">fn </span>test_edge_key_ordering() {
-<a href=#492 id=492 data-nosnippet>492</a>        <span class="kw">let </span>p1 = IVec3::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);
-<a href=#493 id=493 data-nosnippet>493</a>        <span class="kw">let </span>p2 = IVec3::new(<span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>);
+<a href=#484 id=484 data-nosnippet>484</a>    <span class="attr">#[test]
+<a href=#485 id=485 data-nosnippet>485</a>    </span><span class="kw">fn </span>test_dual_contouring_single_voxel() {
+<a href=#486 id=486 data-nosnippet>486</a>        <span class="kw">let </span>coord = ChunkCoord::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);
+<a href=#487 id=487 data-nosnippet>487</a>        <span class="kw">let </span><span class="kw-2">mut </span>chunk = VoxelChunk::new(coord);
+<a href=#488 id=488 data-nosnippet>488</a>
+<a href=#489 id=489 data-nosnippet>489</a>        <span class="comment">// Set a single solid voxel
+<a href=#490 id=490 data-nosnippet>490</a>        </span>chunk.set_voxel(IVec3::new(<span class="number">5</span>, <span class="number">5</span>, <span class="number">5</span>), Voxel::new(<span class="number">1.0</span>, <span class="number">1</span>));
+<a href=#491 id=491 data-nosnippet>491</a>
+<a href=#492 id=492 data-nosnippet>492</a>        <span class="kw">let </span><span class="kw-2">mut </span>dc = DualContouring::new();
+<a href=#493 id=493 data-nosnippet>493</a>        <span class="kw">let </span>mesh = dc.generate_mesh(<span class="kw-2">&amp;</span>chunk);
 <a href=#494 id=494 data-nosnippet>494</a>
-<a href=#495 id=495 data-nosnippet>495</a>        <span class="kw">let </span>key1 = EdgeKey::new(p1, p2);
-<a href=#496 id=496 data-nosnippet>496</a>        <span class="kw">let </span>key2 = EdgeKey::new(p2, p1);
-<a href=#497 id=497 data-nosnippet>497</a>
-<a href=#498 id=498 data-nosnippet>498</a>        <span class="macro">assert_eq!</span>(key1, key2);
-<a href=#499 id=499 data-nosnippet>499</a>    }
-<a href=#500 id=500 data-nosnippet>500</a>}</code></pre></div></section></main></body></html>
+<a href=#495 id=495 data-nosnippet>495</a>        <span class="comment">// Should generate some vertices
+<a href=#496 id=496 data-nosnippet>496</a>        </span><span class="macro">assert!</span>(!mesh.vertices.is_empty());
+<a href=#497 id=497 data-nosnippet>497</a>    }
+<a href=#498 id=498 data-nosnippet>498</a>
+<a href=#499 id=499 data-nosnippet>499</a>    <span class="attr">#[test]
+<a href=#500 id=500 data-nosnippet>500</a>    </span><span class="kw">fn </span>test_mesh_vertex_creation() {
+<a href=#501 id=501 data-nosnippet>501</a>        <span class="kw">let </span>vertex = MeshVertex {
+<a href=#502 id=502 data-nosnippet>502</a>            position: Vec3::new(<span class="number">1.0</span>, <span class="number">2.0</span>, <span class="number">3.0</span>),
+<a href=#503 id=503 data-nosnippet>503</a>            normal: Vec3::Y,
+<a href=#504 id=504 data-nosnippet>504</a>            material: <span class="number">5</span>,
+<a href=#505 id=505 data-nosnippet>505</a>        };
+<a href=#506 id=506 data-nosnippet>506</a>
+<a href=#507 id=507 data-nosnippet>507</a>        <span class="macro">assert_eq!</span>(vertex.position.x, <span class="number">1.0</span>);
+<a href=#508 id=508 data-nosnippet>508</a>        <span class="macro">assert_eq!</span>(vertex.normal, Vec3::Y);
+<a href=#509 id=509 data-nosnippet>509</a>        <span class="macro">assert_eq!</span>(vertex.material, <span class="number">5</span>);
+<a href=#510 id=510 data-nosnippet>510</a>    }
+<a href=#511 id=511 data-nosnippet>511</a>
+<a href=#512 id=512 data-nosnippet>512</a>    <span class="attr">#[test]
+<a href=#513 id=513 data-nosnippet>513</a>    </span><span class="kw">fn </span>test_lod_selection() {
+<a href=#514 id=514 data-nosnippet>514</a>        <span class="kw">let </span>config = LodConfig::default();
+<a href=#515 id=515 data-nosnippet>515</a>        <span class="kw">let </span>lod_gen = LodMeshGenerator::new(config);
+<a href=#516 id=516 data-nosnippet>516</a>
+<a href=#517 id=517 data-nosnippet>517</a>        <span class="macro">assert_eq!</span>(lod_gen.select_lod_level(<span class="number">50.0</span>, <span class="prelude-val">None</span>), <span class="number">0</span>);
+<a href=#518 id=518 data-nosnippet>518</a>        <span class="macro">assert_eq!</span>(lod_gen.select_lod_level(<span class="number">200.0</span>, <span class="prelude-val">None</span>), <span class="number">1</span>);
+<a href=#519 id=519 data-nosnippet>519</a>        <span class="macro">assert_eq!</span>(lod_gen.select_lod_level(<span class="number">400.0</span>, <span class="prelude-val">None</span>), <span class="number">2</span>);
+<a href=#520 id=520 data-nosnippet>520</a>        <span class="macro">assert_eq!</span>(lod_gen.select_lod_level(<span class="number">1500.0</span>, <span class="prelude-val">None</span>), <span class="number">3</span>);
+<a href=#521 id=521 data-nosnippet>521</a>    }
+<a href=#522 id=522 data-nosnippet>522</a>
+<a href=#523 id=523 data-nosnippet>523</a>    <span class="attr">#[test]
+<a href=#524 id=524 data-nosnippet>524</a>    </span><span class="kw">fn </span>test_edge_key_ordering() {
+<a href=#525 id=525 data-nosnippet>525</a>        <span class="kw">let </span>p1 = IVec3::new(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);
+<a href=#526 id=526 data-nosnippet>526</a>        <span class="kw">let </span>p2 = IVec3::new(<span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>);
+<a href=#527 id=527 data-nosnippet>527</a>
+<a href=#528 id=528 data-nosnippet>528</a>        <span class="kw">let </span>key1 = EdgeKey::new(p1, p2);
+<a href=#529 id=529 data-nosnippet>529</a>        <span class="kw">let </span>key2 = EdgeKey::new(p2, p1);
+<a href=#530 id=530 data-nosnippet>530</a>
+<a href=#531 id=531 data-nosnippet>531</a>        <span class="macro">assert_eq!</span>(key1, key2);
+<a href=#532 id=532 data-nosnippet>532</a>    }
+<a href=#533 id=533 data-nosnippet>533</a>}</code></pre></div></section></main></body></html>
