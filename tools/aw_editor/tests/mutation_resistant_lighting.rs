@@ -124,7 +124,7 @@ mod light_type_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", LightType::Directional);
-        assert!(display.contains("☀️"));
+        assert!(display.contains("[Sun]"));
     }
 
     #[test]
@@ -250,7 +250,7 @@ mod shadow_quality_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", ShadowQuality::High);
-        assert!(display.contains("💎"));
+        assert!(display.contains("[Gem]"));
     }
 
     #[test]
@@ -348,7 +348,7 @@ mod shadow_type_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", ShadowType::PCSS);
-        assert!(display.contains("🟢"));
+        assert!(display.contains("[G]"));
     }
 
     #[test]
@@ -474,7 +474,7 @@ mod light_unit_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", LightUnit::Lumen);
-        assert!(display.contains("💡"));
+        assert!(display.contains("[Lgt]"));
     }
 
     #[test]

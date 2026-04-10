@@ -139,7 +139,7 @@ fn dist_icon_windows_installer() {
 
 #[test]
 fn dist_icon_windows_portable() {
-    assert_eq!(DistributionFormat::WindowsPortable.icon(), "📦");
+    assert_eq!(DistributionFormat::WindowsPortable.icon(), "[Pkg]");
 }
 
 #[test]
@@ -149,7 +149,7 @@ fn dist_icon_macos_bundle() {
 
 #[test]
 fn dist_icon_macos_dmg() {
-    assert_eq!(DistributionFormat::MacOSDmg.icon(), "💾");
+    assert_eq!(DistributionFormat::MacOSDmg.icon(), "[Save]");
 }
 
 #[test]
@@ -159,12 +159,12 @@ fn dist_icon_linux_appimage() {
 
 #[test]
 fn dist_icon_linux_tarball() {
-    assert_eq!(DistributionFormat::LinuxTarball.icon(), "📁");
+    assert_eq!(DistributionFormat::LinuxTarball.icon(), "[Dir]");
 }
 
 #[test]
 fn dist_icon_steam_depot() {
-    assert_eq!(DistributionFormat::SteamDepot.icon(), "🎮");
+    assert_eq!(DistributionFormat::SteamDepot.icon(), "[Gp]");
 }
 
 // ============================================================================
@@ -592,7 +592,7 @@ fn loading_style_name_artwork_with_tips() {
 
 #[test]
 fn loading_style_icon_spinner() {
-    assert_eq!(LoadingStyle::Spinner.icon(), "🔄");
+    assert_eq!(LoadingStyle::Spinner.icon(), "[Sync]");
 }
 
 #[test]
@@ -602,7 +602,7 @@ fn loading_style_icon_progress_bar() {
 
 #[test]
 fn loading_style_icon_full_screen() {
-    assert_eq!(LoadingStyle::FullScreen.icon(), "🖼️");
+    assert_eq!(LoadingStyle::FullScreen.icon(), "[Img]");
 }
 
 #[test]
@@ -612,7 +612,7 @@ fn loading_style_icon_dots() {
 
 #[test]
 fn loading_style_icon_artwork_with_tips() {
-    assert_eq!(LoadingStyle::ArtworkWithTips.icon(), "🎨");
+    assert_eq!(LoadingStyle::ArtworkWithTips.icon(), "[Art]");
 }
 
 // ============================================================================

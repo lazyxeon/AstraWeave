@@ -433,7 +433,11 @@ impl FileWatcher {
                     state
                         .last_event_time
                         .get(*path)
-                        .map(|&time| now.duration_since(time) >= DEBOUNCE_DURATION)
+                        .map(|&time| {
+                            now.checked_duration_since(time)
+                                .map(|d| d >= DEBOUNCE_DURATION)
+                                .unwrap_or(true) // clock skew: treat as ready
+                        })
                         .unwrap_or(true)
                 })
                 .cloned()

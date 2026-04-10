@@ -34,17 +34,17 @@ fn playback_state_paused_name() {
 
 #[test]
 fn playback_state_stopped_icon() {
-    assert_eq!(PlaybackState::Stopped.icon(), "⏹");
+    assert_eq!(PlaybackState::Stopped.icon(), "[]");
 }
 
 #[test]
 fn playback_state_playing_icon() {
-    assert_eq!(PlaybackState::Playing.icon(), "▶");
+    assert_eq!(PlaybackState::Playing.icon(), ">");
 }
 
 #[test]
 fn playback_state_paused_icon() {
-    assert_eq!(PlaybackState::Paused.icon(), "⏸");
+    assert_eq!(PlaybackState::Paused.icon(), "||");
 }
 
 #[test]
@@ -83,21 +83,21 @@ fn playback_state_default_is_stopped() {
 #[test]
 fn playback_state_display_stopped() {
     let s = format!("{}", PlaybackState::Stopped);
-    assert!(s.contains("⏹"));
+    assert!(s.contains("[]"));
     assert!(s.contains("Stopped"));
 }
 
 #[test]
 fn playback_state_display_playing() {
     let s = format!("{}", PlaybackState::Playing);
-    assert!(s.contains("▶"));
+    assert!(s.contains(">"));
     assert!(s.contains("Playing"));
 }
 
 #[test]
 fn playback_state_display_paused() {
     let s = format!("{}", PlaybackState::Paused);
-    assert!(s.contains("⏸"));
+    assert!(s.contains("||"));
     assert!(s.contains("Paused"));
 }
 
@@ -163,12 +163,12 @@ fn animated_property_position_z_icon() {
 
 #[test]
 fn animated_property_rotation_y_icon() {
-    assert_eq!(AnimatedProperty::RotationY.icon(), "🔄");
+    assert_eq!(AnimatedProperty::RotationY.icon(), "[Sync]");
 }
 
 #[test]
 fn animated_property_scale_icon() {
-    assert_eq!(AnimatedProperty::Scale.icon(), "📐");
+    assert_eq!(AnimatedProperty::Scale.icon(), "[Sq]");
 }
 
 #[test]
@@ -241,7 +241,7 @@ fn animated_property_display_position_x() {
 #[test]
 fn animated_property_display_scale() {
     let s = format!("{}", AnimatedProperty::Scale);
-    assert!(s.contains("📐"));
+    assert!(s.contains("[Sq]"));
     assert!(s.contains("Scale"));
 }
 

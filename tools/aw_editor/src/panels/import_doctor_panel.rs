@@ -13,6 +13,7 @@
 
 use egui::{Color32, RichText, Ui, Vec2};
 use std::path::PathBuf;
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -935,6 +936,7 @@ impl ImportDoctorPanel {
                         if issue.can_auto_fix && !issue.fix_applied {
                             if ui.small_button("Fix").clicked() {
                                 if let Some(fix) = issue.issue_type.suggested_fix() {
+                                    info!(fix = ?fix, issue = %issue.message, "Import Doctor: applying fix");
                                     issues_to_fix.push((idx, fix));
                                 }
                             }
@@ -1178,6 +1180,7 @@ impl ImportDoctorPanel {
         // Process actions after UI rendering to avoid borrow issues
         if should_import {
             if let Some(path) = &asset_path {
+                info!(path = %path.display(), "Import Doctor: importing asset");
                 self.queue_action(ImportAction::ImportAsset {
                     asset_path: path.clone(),
                     settings: self.settings.clone(),
@@ -1187,6 +1190,10 @@ impl ImportDoctorPanel {
         }
 
         if should_fix_all {
+            info!(
+                fixable = self.fixable_count(),
+                "Import Doctor: applying all fixes"
+            );
             // Mark all fixable issues as fixed
             for issue in &mut self.issues {
                 if issue.can_auto_fix && !issue.fix_applied {

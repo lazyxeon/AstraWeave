@@ -7,6 +7,7 @@
 use egui::{Color32, ColorImage, ImageData, Sense, TextureHandle, Ui, Vec2};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use tracing::info;
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -1106,11 +1107,13 @@ impl EntityCatalogState {
                         .selectable_label(self.selected_pack.is_none(), "All Packs")
                         .clicked()
                     {
+                        info!("entity_catalog: pack filter cleared");
                         self.selected_pack = None;
                     }
                     for pack in &self.packs {
                         let selected = self.selected_pack.as_ref() == Some(pack);
                         if ui.selectable_label(selected, pack).clicked() {
+                            info!(pack = %pack, "entity_catalog: pack filter set");
                             self.selected_pack = Some(pack.clone());
                         }
                     }
@@ -1297,6 +1300,9 @@ impl EntityCatalogState {
             ui.add_space(2.0);
         }
 
+        for (name, path) in &new_spawns {
+            info!(name = %name, path = %path, "entity_catalog: spawn requested");
+        }
         self.pending_spawns.extend(new_spawns);
     }
 }

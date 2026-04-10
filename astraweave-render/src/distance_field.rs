@@ -206,6 +206,10 @@ pub struct DfaoPass {
     ao_view: wgpu::TextureView,
     width: u32,
     height: u32,
+    /// Cached linear+clamp sampler (reused across frames).
+    sampler: wgpu::Sampler,
+    /// Cached bind group (generation-tracked).
+    cached_bg: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl DfaoPass {
@@ -354,6 +358,17 @@ impl DfaoPass {
             cache: None,
         });
 
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("dfao_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
+
         Self {
             config,
             sdf_config,
@@ -366,6 +381,8 @@ impl DfaoPass {
             ao_view,
             width,
             height,
+            sampler,
+            cached_bg: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -441,56 +458,48 @@ impl DfaoPass {
 
     /// Dispatch the DFAO compute pass.
     pub fn execute(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         depth_view: &wgpu::TextureView,
         normal_view: &wgpu::TextureView,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled {
             return;
         }
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("dfao_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            ..Default::default()
-        });
-
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("dfao_bg"),
-            layout: &self.bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.params_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(depth_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(normal_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&self.sdf_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::TextureView(&self.ao_view),
-                },
-            ],
+        let bg = self.cached_bg.get_or_rebuild(resource_gen, || {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("dfao_bg"),
+                layout: &self.bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(normal_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(&self.sdf_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(&self.ao_view),
+                    },
+                ],
+            })
         });
 
         let wg_x = (self.width + 7) / 8;
@@ -501,7 +510,7 @@ impl DfaoPass {
             timestamp_writes: None,
         });
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &bg, &[]);
+        pass.set_bind_group(0, bg, &[]);
         pass.dispatch_workgroups(wg_x, wg_y, 1);
     }
 

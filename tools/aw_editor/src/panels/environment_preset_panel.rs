@@ -9,6 +9,7 @@
 //! Presets can be applied instantly or blended for smooth transitions.
 
 use egui::{Color32, RichText, Ui};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -872,6 +873,7 @@ impl EnvironmentPresetPanel {
             for time in TimeOfDay::all() {
                 let selected = self.settings.time_of_day == *time;
                 if ui.selectable_label(selected, format!("{}", time)).clicked() {
+                    info!(time = time.name(), "environment: time-of-day changed");
                     self.settings.apply_time(*time);
                 }
             }
@@ -1129,11 +1131,13 @@ impl Panel for EnvironmentPresetPanel {
 
         // Apply actions outside UI context
         if should_apply {
+            info!("environment: settings applied");
             self.queue_action(EnvironmentAction::ApplySettings {
                 settings: self.settings.clone(),
             });
         }
         if should_reset {
+            info!("environment: reset to defaults");
             self.settings = EnvironmentSettings::default();
             self.queue_action(EnvironmentAction::ResetToDefault);
         }

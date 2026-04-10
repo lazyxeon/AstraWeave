@@ -78,16 +78,39 @@ fn calculate_clustered_lighting(
         
         let NdotL = max(dot(normal, L), 0.0);
         let NdotH = max(dot(normal, H), 0.0);
+        let NdotV = max(dot(normal, V), 0.001);
+        let VdotH = max(dot(V, H), 0.0);
         
-        // Attenuation
+        // Attenuation (UE4-style inverse-square falloff with radius)
         let attenuation = 1.0 - pow(distance / radius, 4.0);
-        let attenuation_clamped = max(attenuation, 0.0);
+        let attenuation_clamped = max(attenuation, 0.0) / (distance * distance + 1.0);
         
-        // Simple Blinn-Phong for now (can be extended to PBR)
-        let diffuse = albedo * NdotL;
-        let specular = pow(NdotH, 32.0) * (1.0 - roughness);
+        // Cook-Torrance GGX BRDF
+        let a = roughness * roughness;
+        let a2 = a * a;
+
+        // GGX/Trowbridge-Reitz NDF
+        let denom_d = NdotH * NdotH * (a2 - 1.0) + 1.0;
+        let D = a2 / (3.14159265 * denom_d * denom_d + 0.00001);
+
+        // Schlick-GGX geometry (Smith method)
+        let k = (roughness + 1.0) * (roughness + 1.0) / 8.0;
+        let G1_V = NdotV / (NdotV * (1.0 - k) + k);
+        let G1_L = NdotL / (NdotL * (1.0 - k) + k);
+        let G = G1_V * G1_L;
+
+        // Fresnel-Schlick
+        let F0 = mix(vec3<f32>(0.04), albedo, metallic);
+        let F = F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
+
+        // Specular BRDF: DGF / (4 * NdotV * NdotL)
+        let spec = (D * G * F) / (4.0 * NdotV * NdotL + 0.0001);
+
+        // Diffuse (energy-conserving Lambertian)
+        let kD = (vec3<f32>(1.0) - F) * (1.0 - metallic);
+        let diffuse = kD * albedo / 3.14159265;
         
-        let light_contribution = (diffuse + specular) * light.color.rgb * light.color.w * attenuation_clamped;
+        let light_contribution = (diffuse + spec) * light.color.rgb * light.color.w * NdotL * attenuation_clamped;
         total_light = total_light + light_contribution;
     }
     

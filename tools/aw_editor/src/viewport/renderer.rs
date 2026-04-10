@@ -23,7 +23,7 @@
 
 use anyhow::{Context, Result};
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, info};
 use wgpu::util::DeviceExt;
 
 /// Color format used for the HDR scene render target.
@@ -31,7 +31,7 @@ use wgpu::util::DeviceExt;
 const HDR_COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
 /// Color format used for the final LDR output (egui display surface).
-const LDR_COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
+const LDR_COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 use super::camera::OrbitCamera;
 use super::gizmo_renderer::GizmoRendererWgpu;
@@ -134,6 +134,9 @@ pub struct ViewportRenderer {
 
     /// Zone overlay lines (blueprint zone wireframes)
     zone_overlay_lines: Vec<astraweave_physics::DebugLine>,
+
+    /// Cached LDR target view (avoids per-frame GPU view creation)
+    cached_ldr_view: Option<wgpu::TextureView>,
 }
 
 impl ViewportRenderer {
@@ -156,6 +159,7 @@ impl ViewportRenderer {
         let gizmo_renderer = GizmoRendererWgpu::new((*device).clone(), (*queue).clone(), 10000)
             .context("Failed to create gizmo renderer")?;
 
+        info!(target: "aw_editor::viewport", "ViewportRenderer initialized (grid + gizmo sub-renderers)");
         Ok(Self {
             device,
             queue,
@@ -184,6 +188,7 @@ impl ViewportRenderer {
             component_gizmo_lines: Vec::new(),
             brush_cursor_lines: Vec::new(),
             zone_overlay_lines: Vec::new(),
+            cached_ldr_view: None,
         })
     }
 
@@ -250,6 +255,9 @@ impl ViewportRenderer {
     ///
     /// Returns error if depth buffer creation fails.
     pub fn resize(&mut self, width: u32, height: u32) -> Result<()> {
+        // Invalidate cached LDR view (new texture will be provided)
+        self.cached_ldr_view = None;
+
         if width == 0 || height == 0 {
             // Invalid size, clear render targets
             self.depth_texture = None;
@@ -372,7 +380,11 @@ impl ViewportRenderer {
                 .context("Failed to resize depth buffer")?;
         }
 
-        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
+        // Reuse cached LDR view when target hasn't changed (avoids per-frame GPU view creation)
+        if self.cached_ldr_view.is_none() {
+            self.cached_ldr_view =
+                Some(target.create_view(&wgpu::TextureViewDescriptor::default()));
+        }
 
         // Eagerly init physics renderer if component gizmo lines, physics lines, brush cursor, or zone overlay exist
         if (!self.component_gizmo_lines.is_empty()
@@ -381,8 +393,17 @@ impl ViewportRenderer {
             || !self.zone_overlay_lines.is_empty())
             && self.physics_renderer.is_none()
         {
-            let _ = self.ensure_physics_renderer();
+            if let Err(e) = self.ensure_physics_renderer() {
+                tracing::warn!("Failed to initialize physics debug renderer: {e}");
+            }
         }
+
+        // Take immutable reference after all &mut self calls above.
+        // Guaranteed Some: the is_none() check + insertion above ensures this.
+        let target_view = self
+            .cached_ldr_view
+            .as_ref()
+            .expect("cached_ldr_view must be Some after initialization block");
 
         // All scene passes render to the HDR target (Rgba16Float).
         // After scene rendering + post-processing, a tonemap blit converts
@@ -548,8 +569,17 @@ impl ViewportRenderer {
             }
         }
 
-        // Submit all commands
-        self.queue.submit(std::iter::once(encoder.finish()));
+        // Submit all commands (recover gracefully if GPU device is lost)
+        let commands = encoder.finish();
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.queue.submit(std::iter::once(commands));
+        }))
+        .is_err()
+        {
+            tracing::error!("GPU device lost during command submission — viewport render aborted");
+            let _ = self.handle_device_lost();
+            return Err(anyhow::anyhow!("GPU device lost during render submission"));
+        }
 
         Ok(())
     }
@@ -707,11 +737,10 @@ impl ViewportRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
         }))
     }
 
@@ -831,6 +860,14 @@ impl ViewportRenderer {
         }
     }
 
+    /// Force entity instance buffers to be rebuilt on next render.
+    /// Call when entity transforms change (gizmo drag, undo, etc.)
+    pub fn invalidate_entity_cache(&mut self) {
+        if let Some(adapter) = self.engine_adapter.as_mut() {
+            adapter.invalidate_entity_cache();
+        }
+    }
+
     /// Get the current editor quality preset.
     pub fn quality_preset(&self) -> super::engine_adapter::EditorQualityPreset {
         self.engine_adapter
@@ -848,16 +885,39 @@ impl ViewportRenderer {
     }
 
     pub fn handle_device_lost(&mut self) -> Result<()> {
-        tracing::error!("GPU device lost in ViewportRenderer - cleaning up resources for recovery");
+        tracing::error!("GPU device lost in ViewportRenderer - cleaning up ALL resources for recovery");
 
-        // Clear resources that depend on the old device
+        // Clear depth resources
         self.depth_texture = None;
         self.depth_view = None;
+        self.depth_staging_buffer = None;
+        self.depth_read_pending = false;
+        self.depth_map_ready
+            .store(false, std::sync::atomic::Ordering::Release);
+        self.cached_depth_value = None;
 
+        // Clear HDR / tonemap pipeline
+        self.hdr_texture = None;
+        self.hdr_view = None;
+        self.tonemap_pipeline = None;
+        self.tonemap_bind_group_layout = None;
+        self.tonemap_bind_group = None;
+        self.tonemap_params_buffer = None;
+
+        // Clear cached LDR view
+        self.cached_ldr_view = None;
+
+        // Clear engine adapter (holds its own GPU resources)
         self.engine_adapter = None;
 
-        // Sub-renderers may need to be recreated with a new device too
-        // but that usually happens by recreating the ViewportRenderer itself.
+        // Clear optional sub-renderer (physics debug lines)
+        self.physics_renderer = None;
+
+        // NOTE: grid_renderer and gizmo_renderer are non-optional and will
+        // be stale. The caller must recreate the entire ViewportRenderer
+        // with a new device to restore full functionality.
+
+        self.size = (0, 0);
 
         Ok(())
     }
@@ -1013,35 +1073,43 @@ impl ViewportRenderer {
 
         // Submit a new async copy for THIS frame's pixel (result available next frame)
         if !self.depth_read_pending {
-            let mut encoder = self
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Depth Readback Encoder"),
-                });
+            // Wrap encoder creation + submission in catch_unwind for device-lost safety
+            let encoder_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut encoder = self
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Depth Readback Encoder"),
+                    });
 
-            encoder.copy_texture_to_buffer(
-                wgpu::TexelCopyTextureInfo {
-                    texture: depth_tex,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d { x: px, y: py, z: 0 },
-                    aspect: wgpu::TextureAspect::DepthOnly,
-                },
-                wgpu::TexelCopyBufferInfo {
-                    buffer: staging,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(256),
-                        rows_per_image: None,
+                encoder.copy_texture_to_buffer(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: depth_tex,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d { x: px, y: py, z: 0 },
+                        aspect: wgpu::TextureAspect::DepthOnly,
                     },
-                },
-                wgpu::Extent3d {
-                    width: 1,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-            );
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: staging,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(256),
+                            rows_per_image: None,
+                        },
+                    },
+                    wgpu::Extent3d {
+                        width: 1,
+                        height: 1,
+                        depth_or_array_layers: 1,
+                    },
+                );
 
-            self.queue.submit(std::iter::once(encoder.finish()));
+                self.queue.submit(std::iter::once(encoder.finish()));
+            }));
+
+            if encoder_result.is_err() {
+                tracing::error!("GPU device lost during depth readback — skipping");
+                return cached_depth;
+            }
             // Request async map — callback sets the atomic flag only on success
             let flag = self.depth_map_ready.clone();
             staging
@@ -1181,25 +1249,21 @@ impl ViewportRenderer {
         0
     }
 
-    pub fn set_scatter_placements(&mut self, placements: Vec<ScatterPlacement>) {
-        tracing::info!(
-            "Renderer: set_scatter_placements({} items)",
-            placements.len()
-        );
-        if let Some(sample) = placements.first() {
-            tracing::info!(
-                "Renderer scatter sample: key='{}' path='{}'",
-                sample.mesh_key,
-                sample.mesh_path
-            );
-        }
-
+    /// Upload scatter placements. Returns (loaded, total, not_found, load_failed).
+    pub fn set_scatter_placements(
+        &mut self,
+        placements: Vec<ScatterPlacement>,
+        diffuse_textures: &std::collections::HashMap<String, std::path::PathBuf>,
+    ) -> (u32, u32, u32, u32) {
         // Forward scatter to engine adapter
-        if let Some(adapter) = &mut self.engine_adapter {
-            adapter.upload_scatter_placements(&placements);
-        }
+        let result = if let Some(adapter) = &mut self.engine_adapter {
+            adapter.upload_scatter_placements(&placements, diffuse_textures)
+        } else {
+            (0, 0, 0, 0)
+        };
 
         self.scatter_placements = placements;
+        result
     }
 
     // ── Terrain texture management ────────────────────────────────────

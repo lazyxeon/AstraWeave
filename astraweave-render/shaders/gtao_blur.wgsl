@@ -19,42 +19,72 @@ struct BlurParams {
 // Gaussian weights for 7-tap filter
 const WEIGHTS: array<f32, 4> = array<f32, 4>(0.3829, 0.2417, 0.0606, 0.0060);
 
+// Shared memory tile: 8×8 output + 3-pixel apron per side = 14×14
+const TILE: u32 = 8u;
+const BLUR_APRON: u32 = 3u;
+const TILE_PAD: u32 = TILE + 2u * BLUR_APRON;
+const SHM_SIZE: u32 = TILE_PAD * TILE_PAD;
+
+var<workgroup> s_ao: array<f32, 196>;
+var<workgroup> s_depth: array<f32, 196>;
+
 @compute @workgroup_size(8, 8, 1)
-fn blur_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let pixel = vec2<i32>(gid.xy);
+fn blur_main(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(local_invocation_index) li: u32,
+    @builtin(workgroup_id) wid: vec3<u32>,
+) {
     let dims = textureDimensions(ao_input);
+    let base_x = i32(wid.x * TILE) - i32(BLUR_APRON);
+    let base_y = i32(wid.y * TILE) - i32(BLUR_APRON);
+
+    // Cooperative tile load: 64 threads load 196 entries (3-4 each)
+    for (var i = li; i < SHM_SIZE; i += 64u) {
+        let tx = i % TILE_PAD;
+        let ty = i / TILE_PAD;
+        let px = clamp(base_x + i32(tx), 0, i32(dims.x) - 1);
+        let py = clamp(base_y + i32(ty), 0, i32(dims.y) - 1);
+        let coord = vec2<i32>(px, py);
+        s_ao[i] = textureLoad(ao_input, coord, 0).r;
+        s_depth[i] = textureLoad(depth_tex, coord, 0);
+    }
+    workgroupBarrier();
+
+    let pixel = vec2<i32>(gid.xy);
     if (pixel.x >= i32(dims.x) || pixel.y >= i32(dims.y)) {
         return;
     }
 
-    let uv = (vec2<f32>(pixel) + 0.5) * params.inv_resolution;
-    let center_depth = textureLoad(depth_tex, pixel, 0);
-    let center_ao = textureSampleLevel(ao_input, samp, uv, 0.0).r;
+    // Center in tile coordinates (offset by apron)
+    let cx = lid.x + BLUR_APRON;
+    let cy = lid.y + BLUR_APRON;
+    let center_idx = cy * TILE_PAD + cx;
+    let center_ao_val = s_ao[center_idx];
+    let center_depth_val = s_depth[center_idx];
 
-    var total_ao = center_ao * WEIGHTS[0];
+    var total_ao = center_ao_val * WEIGHTS[0];
     var total_weight = WEIGHTS[0];
 
-    // Bilateral filter: 7-tap (3 each side)
-    for (var i = 1; i < 4; i++) {
-        let offset = params.direction * params.inv_resolution * f32(i);
+    // Step direction in tile space: (1,0) for horizontal, (0,1) for vertical
+    let step_x = i32(params.direction.x);
+    let step_y = i32(params.direction.y);
 
+    // Bilateral filter: 7-tap (3 each side) from shared memory
+    for (var i = 1; i < 4; i++) {
         // Positive direction
-        let uv_p = uv + offset;
-        let pixel_p = vec2<i32>(uv_p / params.inv_resolution);
-        let depth_p = textureLoad(depth_tex, pixel_p, 0);
-        let ao_p = textureSampleLevel(ao_input, samp, uv_p, 0.0).r;
-        let depth_diff_p = abs(depth_p - center_depth);
-        let weight_p = WEIGHTS[i] * step(depth_diff_p, params.depth_threshold);
+        let pi_idx = u32(i32(cy) + step_y * i) * TILE_PAD + u32(i32(cx) + step_x * i);
+        let ao_p = s_ao[pi_idx];
+        let depth_p = s_depth[pi_idx];
+        let weight_p = WEIGHTS[i] * step(abs(depth_p - center_depth_val), params.depth_threshold);
         total_ao += ao_p * weight_p;
         total_weight += weight_p;
 
         // Negative direction
-        let uv_n = uv - offset;
-        let pixel_n = vec2<i32>(uv_n / params.inv_resolution);
-        let depth_n = textureLoad(depth_tex, pixel_n, 0);
-        let ao_n = textureSampleLevel(ao_input, samp, uv_n, 0.0).r;
-        let depth_diff_n = abs(depth_n - center_depth);
-        let weight_n = WEIGHTS[i] * step(depth_diff_n, params.depth_threshold);
+        let ni_idx = u32(i32(cy) - step_y * i) * TILE_PAD + u32(i32(cx) - step_x * i);
+        let ao_n = s_ao[ni_idx];
+        let depth_n = s_depth[ni_idx];
+        let weight_n = WEIGHTS[i] * step(abs(depth_n - center_depth_val), params.depth_threshold);
         total_ao += ao_n * weight_n;
         total_weight += weight_n;
     }

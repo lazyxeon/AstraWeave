@@ -205,7 +205,7 @@ mod tonemapper_tests {
     #[test]
     fn tonemapper_filmic_display_contains_icon_and_name() {
         let display = format!("{}", Tonemapper::Filmic);
-        assert!(display.contains("🎬"));
+        assert!(display.contains("[Anim]"));
         assert!(display.contains("Filmic"));
     }
 
@@ -228,12 +228,12 @@ mod tonemapper_tests {
 
     #[test]
     fn tonemapper_filmic_icon_returns_clapper() {
-        assert_eq!(Tonemapper::Filmic.icon(), "🎬");
+        assert_eq!(Tonemapper::Filmic.icon(), "[Anim]");
     }
 
     #[test]
     fn tonemapper_agx_icon_returns_framed_picture() {
-        assert_eq!(Tonemapper::AgX.icon(), "🖼️");
+        assert_eq!(Tonemapper::AgX.icon(), "[Img]");
     }
 
     #[test]
@@ -607,12 +607,12 @@ mod dof_mode_tests {
 
     #[test]
     fn dof_gaussian_icon_returns_fog() {
-        assert_eq!(DofMode::Gaussian.icon(), "🌫️");
+        assert_eq!(DofMode::Gaussian.icon(), "[Fog]");
     }
 
     #[test]
     fn dof_bokeh_icon_returns_sparkles() {
-        assert_eq!(DofMode::Bokeh.icon(), "✨");
+        assert_eq!(DofMode::Bokeh.icon(), "[Fx]");
     }
 
     #[test]
@@ -731,7 +731,7 @@ mod dof_mode_tests {
     #[test]
     fn dof_bokeh_display_contains_icon_and_name() {
         let display = format!("{}", DofMode::Bokeh);
-        assert!(display.contains("✨"));
+        assert!(display.contains("[Fx]"));
         assert!(display.contains("Bokeh"));
     }
 
@@ -1019,12 +1019,12 @@ mod post_process_tab_tests {
 
     #[test]
     fn pptab_overview_icon_returns_clipboard() {
-        assert_eq!(PostProcessTab::Overview.icon(), "📋");
+        assert_eq!(PostProcessTab::Overview.icon(), "[List]");
     }
 
     #[test]
     fn pptab_bloom_icon_returns_sparkles() {
-        assert_eq!(PostProcessTab::Bloom.icon(), "✨");
+        assert_eq!(PostProcessTab::Bloom.icon(), "[Fx]");
     }
 
     #[test]
@@ -1039,7 +1039,7 @@ mod post_process_tab_tests {
 
     #[test]
     fn pptab_color_grading_icon_returns_palette() {
-        assert_eq!(PostProcessTab::ColorGrading.icon(), "🎨");
+        assert_eq!(PostProcessTab::ColorGrading.icon(), "[Art]");
     }
 
     #[test]
@@ -1049,7 +1049,7 @@ mod post_process_tab_tests {
 
     #[test]
     fn pptab_presets_icon_returns_floppy() {
-        assert_eq!(PostProcessTab::Presets.icon(), "💾");
+        assert_eq!(PostProcessTab::Presets.icon(), "[Save]");
     }
 
     // --- Variant identity tests ---
@@ -1175,14 +1175,14 @@ mod post_process_tab_tests {
     #[test]
     fn pptab_overview_display_contains_icon_and_name() {
         let display = format!("{}", PostProcessTab::Overview);
-        assert!(display.contains("📋"));
+        assert!(display.contains("[List]"));
         assert!(display.contains("Overview"));
     }
 
     #[test]
     fn pptab_bloom_display_contains_icon_and_name() {
         let display = format!("{}", PostProcessTab::Bloom);
-        assert!(display.contains("✨"));
+        assert!(display.contains("[Fx]"));
         assert!(display.contains("Bloom"));
     }
 

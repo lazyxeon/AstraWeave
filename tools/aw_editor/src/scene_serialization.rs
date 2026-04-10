@@ -1,4 +1,4 @@
-﻿use anyhow::{Context, Result};
+use anyhow::{Context, Result};
 use astraweave_behavior::BehaviorGraph;
 use astraweave_core::{Entity, IVec2, World};
 use astraweave_security::path::{safe_under, validate_extension};
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EntityData {
@@ -178,7 +178,7 @@ impl SceneData {
         fs::rename(&tmp_path, &safe_path)
             .context(format!("Failed to rename temp file to {:?}", safe_path))?;
 
-        debug!("Saved scene to {:?}", safe_path);
+        info!(target: "aw_editor::scene_serialization", "Scene saved: {:?} ({} entities, {} bytes)", safe_path, self.entities.len(), ron_string.len());
         Ok(())
     }
 
@@ -201,7 +201,7 @@ impl SceneData {
         let scene: SceneData = ron::from_str(&contents)
             .context(format!("Failed to deserialize scene from {:?}", safe_path))?;
 
-        debug!("Loaded scene from {:?}", safe_path);
+        info!(target: "aw_editor::scene_serialization", "Scene loaded: {:?} ({} entities)", safe_path, scene.entities.len());
         Ok(scene)
     }
 
@@ -289,6 +289,25 @@ impl SceneData {
                 "next_entity_id ({}) is not greater than max existing ID ({})",
                 self.next_entity_id, max_id
             )));
+        }
+
+        if !issues.is_empty() {
+            let errors = issues
+                .iter()
+                .filter(|i| matches!(i, SceneValidationIssue::Error(_)))
+                .count();
+            let warnings = issues.len() - errors;
+            warn!(target: "aw_editor::scene_serialization", "Scene validation: {} errors, {} warnings across {} entities", errors, warnings, self.entities.len());
+            for issue in &issues {
+                match issue {
+                    SceneValidationIssue::Error(msg) => {
+                        warn!(target: "aw_editor::scene_serialization", "  [ERR] {}", msg)
+                    }
+                    SceneValidationIssue::Warning(msg) => {
+                        debug!(target: "aw_editor::scene_serialization", "  [WARN] {}", msg)
+                    }
+                }
+            }
         }
 
         issues

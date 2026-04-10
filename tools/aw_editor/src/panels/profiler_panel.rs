@@ -1,6 +1,7 @@
 use super::Panel;
 use egui::Ui;
 use std::collections::VecDeque;
+use tracing::debug;
 
 /// Subsystem timing data for detailed breakdown
 #[derive(Debug, Clone, Default)]
@@ -1031,6 +1032,7 @@ impl Panel for ProfilerPanel {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("Reset Peaks").clicked() {
+                    debug!("profiler: peaks reset");
                     self.reset_peaks();
                 }
 

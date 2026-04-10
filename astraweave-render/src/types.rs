@@ -176,7 +176,7 @@ impl InstanceRaw {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Mesh {
     pub vertex_buf: wgpu::Buffer,
     pub index_buf: wgpu::Buffer,

@@ -401,7 +401,7 @@ fn gizmo_mode_name_exact() {
 
 #[test]
 fn gizmo_mode_icon_exact() {
-    assert_eq!(GizmoMode::Inactive.icon(), "⏸");
+    assert_eq!(GizmoMode::Inactive.icon(), "||");
     assert_eq!(
         GizmoMode::Translate {
             constraint: AxisConstraint::None

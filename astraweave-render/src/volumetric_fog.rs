@@ -207,6 +207,14 @@ pub struct VolumetricFogPass {
     time: f32,
     width: u32,
     height: u32,
+    // Cached samplers (static, created once)
+    linear_sampler: wgpu::Sampler,
+    shadow_sampler: wgpu::Sampler,
+    // Cached bind groups — rebuilt only when resource generation changes.
+    cached_density_bg: crate::bind_group_cache::CachedBindGroup,
+    cached_scatter_bg: crate::bind_group_cache::CachedBindGroup,
+    cached_integrate_bg: crate::bind_group_cache::CachedBindGroup,
+    cached_apply_bg: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl VolumetricFogPass {
@@ -393,6 +401,26 @@ impl VolumetricFogPass {
             time: 0.0,
             width,
             height,
+            linear_sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("vol_linear_sampler"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                ..Default::default()
+            }),
+            shadow_sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("vol_shadow_sampler"),
+                compare: Some(wgpu::CompareFunction::LessEqual),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            }),
+            cached_density_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            cached_scatter_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            cached_integrate_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            cached_apply_bg: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -528,41 +556,29 @@ impl VolumetricFogPass {
     }
 
     /// Execute the full volumetric fog pipeline.
+    ///
+    /// `resource_gen` is the renderer's current generation counter; bind groups
+    /// are rebuilt only when it changes (e.g., after a resize).
     #[allow(clippy::too_many_arguments)]
     pub fn execute(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         depth_view: &wgpu::TextureView,
         shadow_view: &wgpu::TextureView,
         scene_color_view: &wgpu::TextureView,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled {
             return;
         }
 
-        let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("vol_linear_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            ..Default::default()
-        });
-
-        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("vol_shadow_sampler"),
-            compare: Some(wgpu::CompareFunction::LessEqual),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
         let [fx, fy, fz] = self.config.froxel_dims;
 
-        // --- Pass 1: Density ---
-        {
+        // --- Rebuild cached bind groups when resource generation changes ---
+
+        // Density (only internal resources — could be gen 0, but keep uniform for simplicity)
+        if !self.cached_density_bg.is_valid(resource_gen) {
             let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("vol_density_bg"),
                 layout: &self.density_bgl,
@@ -577,17 +593,12 @@ impl VolumetricFogPass {
                     },
                 ],
             });
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("vol_density"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&self.density_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
-            pass.dispatch_workgroups((fx + 3) / 4, (fy + 3) / 4, (fz + 3) / 4);
+            self.cached_density_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
 
-        // --- Pass 2: Scatter ---
-        {
+        // Scatter (references external shadow_view)
+        if !self.cached_scatter_bg.is_valid(resource_gen) {
             let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("vol_scatter_bg"),
                 layout: &self.scatter_bgl,
@@ -610,11 +621,11 @@ impl VolumetricFogPass {
                     },
                     wgpu::BindGroupEntry {
                         binding: 4,
-                        resource: wgpu::BindingResource::Sampler(&linear_sampler),
+                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
                     },
                     wgpu::BindGroupEntry {
                         binding: 5,
-                        resource: wgpu::BindingResource::Sampler(&shadow_sampler),
+                        resource: wgpu::BindingResource::Sampler(&self.shadow_sampler),
                     },
                     wgpu::BindGroupEntry {
                         binding: 6,
@@ -626,17 +637,12 @@ impl VolumetricFogPass {
                     },
                 ],
             });
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("vol_scatter"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&self.scatter_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
-            pass.dispatch_workgroups((fx + 3) / 4, (fy + 3) / 4, (fz + 3) / 4);
+            self.cached_scatter_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
 
-        // --- Pass 3: Integrate ---
-        {
+        // Integrate (references external depth_view)
+        if !self.cached_integrate_bg.is_valid(resource_gen) {
             let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("vol_integrate_bg"),
                 layout: &self.integrate_bgl,
@@ -655,7 +661,7 @@ impl VolumetricFogPass {
                     },
                     wgpu::BindGroupEntry {
                         binding: 3,
-                        resource: wgpu::BindingResource::Sampler(&linear_sampler),
+                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
                     },
                     wgpu::BindGroupEntry {
                         binding: 4,
@@ -663,17 +669,12 @@ impl VolumetricFogPass {
                     },
                 ],
             });
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("vol_integrate"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&self.integrate_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
-            pass.dispatch_workgroups((self.width + 7) / 8, (self.height + 7) / 8, 1);
+            self.cached_integrate_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
 
-        // --- Pass 4: Apply ---
-        {
+        // Apply (references external scene_color_view)
+        if !self.cached_apply_bg.is_valid(resource_gen) {
             let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("vol_apply_bg"),
                 layout: &self.apply_bgl,
@@ -692,7 +693,7 @@ impl VolumetricFogPass {
                     },
                     wgpu::BindGroupEntry {
                         binding: 3,
-                        resource: wgpu::BindingResource::Sampler(&linear_sampler),
+                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
                     },
                     wgpu::BindGroupEntry {
                         binding: 4,
@@ -700,12 +701,65 @@ impl VolumetricFogPass {
                     },
                 ],
             });
+            self.cached_apply_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+        }
+
+        // --- Dispatch compute passes using cached bind groups ---
+
+        // Pass 1: Density
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("vol_density"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.density_pipeline);
+            let bg = self
+                .cached_density_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, bg, &[]);
+            pass.dispatch_workgroups((fx + 3) / 4, (fy + 3) / 4, (fz + 3) / 4);
+        }
+
+        // Pass 2: Scatter
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("vol_scatter"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.scatter_pipeline);
+            let bg = self
+                .cached_scatter_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, bg, &[]);
+            pass.dispatch_workgroups((fx + 3) / 4, (fy + 3) / 4, (fz + 3) / 4);
+        }
+
+        // Pass 3: Integrate
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("vol_integrate"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.integrate_pipeline);
+            let bg = self
+                .cached_integrate_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, bg, &[]);
+            pass.dispatch_workgroups((self.width + 7) / 8, (self.height + 7) / 8, 1);
+        }
+
+        // Pass 4: Apply
+        {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("vol_apply"),
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.apply_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
+            let bg = self
+                .cached_apply_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, bg, &[]);
             pass.dispatch_workgroups((self.width + 7) / 8, (self.height + 7) / 8, 1);
         }
     }

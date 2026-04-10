@@ -10,6 +10,7 @@
 
 use egui::{Color32, RichText, Ui};
 use std::collections::HashMap;
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -714,8 +715,10 @@ impl LocalizationPanel {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Strings").strong());
                     if ui.button("+ New").clicked() {
+                        let key = format!("new.string_{}", self.strings.len());
+                        info!(key = %key, "Localization: added string key");
                         self.strings.push(LocalizedString {
-                            key: format!("new.string_{}", self.strings.len()),
+                            key,
                             ..Default::default()
                         });
                     }
@@ -877,6 +880,7 @@ impl LocalizationPanel {
                         }
 
                         if ui.button("[Del]").clicked() {
+                            info!(language = %lang.name(), "Localization: removed language");
                             self.enabled_languages.retain(|l| l != lang);
                         }
                     });
@@ -1111,9 +1115,11 @@ impl LocalizationPanel {
 
             ui.horizontal(|ui| {
                 if ui.button("📤 Export").clicked() {
+                    info!(format = ?self.export_format, "Localization: exporting strings");
                     // Export strings
                 }
                 if ui.button("📤 Export Missing Only").clicked() {
+                    info!(format = ?self.export_format, "Localization: exporting missing translations");
                     // Export only missing translations
                 }
             });
@@ -1137,9 +1143,11 @@ impl LocalizationPanel {
 
             ui.horizontal(|ui| {
                 if ui.button("Import").clicked() {
+                    info!(path = %self.import_path, "Localization: importing strings");
                     // Import strings
                 }
                 if ui.button("Merge").clicked() {
+                    info!(path = %self.import_path, "Localization: merging strings");
                     // Merge with existing strings
                 }
             });
@@ -1188,6 +1196,7 @@ impl LocalizationPanel {
 
     pub fn add_language(&mut self, lang: Language) {
         if !self.enabled_languages.contains(&lang) {
+            info!(language = %lang.name(), "Localization: added language");
             self.enabled_languages.push(lang);
         }
     }

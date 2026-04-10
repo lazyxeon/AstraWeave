@@ -10,6 +10,7 @@
 #![allow(clippy::upper_case_acronyms)] // ACES, FXAA, SMAA, TAA, SSAO, HBAO, GTAO are standard graphics acronyms
 
 use egui::{Color32, RichText, Ui};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -843,6 +844,7 @@ impl PostProcessPanel {
 
             if ui.button("+ New").clicked() {
                 let id = self.next_id();
+                info!(profile_id = id, "PostProcess: created profile");
                 let new_profile = PostProcessProfile {
                     id,
                     name: format!("Profile {}", id),
@@ -983,7 +985,14 @@ impl PostProcessPanel {
         ui.heading("Bloom");
         ui.add_space(10.0);
 
+        let bloom_was_enabled = self.current_profile.bloom.enabled;
         ui.checkbox(&mut self.current_profile.bloom.enabled, "Enabled");
+        if self.current_profile.bloom.enabled != bloom_was_enabled {
+            info!(
+                enabled = self.current_profile.bloom.enabled,
+                "PostProcess: bloom toggled"
+            );
+        }
 
         if self.current_profile.bloom.enabled {
             ui.add_space(10.0);
@@ -1144,7 +1153,14 @@ impl PostProcessPanel {
         ui.heading("[Dash] Motion Blur");
         ui.add_space(10.0);
 
+        let mb_was = self.current_profile.motion_blur.enabled;
         ui.checkbox(&mut self.current_profile.motion_blur.enabled, "Enabled");
+        if self.current_profile.motion_blur.enabled != mb_was {
+            info!(
+                enabled = self.current_profile.motion_blur.enabled,
+                "PostProcess: motion blur toggled"
+            );
+        }
 
         if self.current_profile.motion_blur.enabled {
             ui.add_space(10.0);

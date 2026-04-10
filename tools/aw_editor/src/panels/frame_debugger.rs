@@ -1,5 +1,6 @@
 use egui::Ui;
 use std::collections::VecDeque;
+use tracing::info;
 
 /// Single render pass record captured by the frame debugger.
 #[derive(Debug, Clone)]
@@ -211,9 +212,11 @@ impl FrameDebuggerPanel {
         ui.horizontal(|ui| {
             if self.capturing {
                 if ui.button("Pause").clicked() {
+                    info!("frame_debugger: capture paused");
                     self.capturing = false;
                 }
             } else if ui.button("Resume").clicked() {
+                info!("frame_debugger: capture resumed");
                 self.capturing = true;
             }
 

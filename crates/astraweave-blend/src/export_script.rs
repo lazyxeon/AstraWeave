@@ -688,12 +688,21 @@ def collect_textures_for_object(obj, output_dir):
             tex_filename = f"{safe_name}{ext}"
             tex_path = output_dir / "textures" / tex_filename
 
-            # Determine which PBR channel this texture maps to
+            # Determine which PBR channel this texture maps to.
+            # Check the destination *node type* first — this catches Normal Map
+            # and Bump nodes whose input socket is confusingly named "Color".
             channel = 'unknown'
             for link in node.outputs[0].links:
                 to_node = link.to_node
                 to_socket = link.to_socket.name.lower()
-                if 'color' in to_socket or 'base' in to_socket:
+                # Node-type checks take priority over socket-name checks
+                if to_node.type == 'NORMAL_MAP':
+                    channel = 'normal'
+                elif to_node.type == 'BUMP':
+                    channel = 'displacement'
+                elif to_node.type == 'DISPLACEMENT' or to_node.type == 'VECTOR_DISPLACEMENT':
+                    channel = 'displacement'
+                elif 'color' in to_socket or 'base' in to_socket:
                     channel = 'diffuse'
                 elif 'normal' in to_socket:
                     channel = 'normal'

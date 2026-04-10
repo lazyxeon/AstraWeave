@@ -8,6 +8,7 @@
 //! - Material library management
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -715,6 +716,7 @@ impl MaterialEditorPanel {
 
     /// Queue an action for later processing
     pub fn queue_action(&mut self, action: MaterialEditorAction) {
+        info!(target: "aw_editor::panels::material_editor_panel", action = %action, "Material editor action queued");
         self.actions.push(action);
     }
 
@@ -870,6 +872,7 @@ impl MaterialEditorPanel {
 
             if ui.button("+ New").clicked() {
                 let id = self.next_id();
+                info!(target: "aw_editor::panels::material_editor_panel", material_id = id, "New material created");
                 let new_mat = Material {
                     id,
                     name: format!("Material {}", id),
@@ -1031,6 +1034,7 @@ impl MaterialEditorPanel {
         // Add texture slot
         ui.horizontal(|ui| {
             if ui.button("+ Add Texture Slot").clicked() {
+                info!(target: "aw_editor::panels::material_editor_panel", material = %self.current_material.name, "Texture slot added");
                 self.current_material
                     .texture_slots
                     .push(TextureSlot::default());
@@ -1054,6 +1058,7 @@ impl MaterialEditorPanel {
                                 ui.label(RichText::new(slot.channel.name()).strong());
 
                                 if ui.button("[Del]").clicked() {
+                                    info!(target: "aw_editor::panels::material_editor_panel", slot_index = idx, channel = %slot.channel.name(), "Texture slot removed");
                                     to_remove = Some(idx);
                                 }
                             });
@@ -1316,6 +1321,7 @@ impl MaterialEditorPanel {
                         ui.label(format!("{} {}", preset.material_type.icon(), preset.name));
 
                         if ui.button("Apply").clicked() {
+                            info!(target: "aw_editor::panels::material_editor_panel", preset = %preset.name, material = %self.current_material.name, "Material preset applied");
                             self.current_material.material_type = preset.material_type;
                             self.current_material.base_color = preset.base_color;
                             self.current_material.metallic = preset.metallic;
@@ -1432,12 +1438,15 @@ impl MaterialEditorPanel {
         // Actions
         ui.horizontal(|ui| {
             if ui.button("Save Current").clicked() {
+                info!(target: "aw_editor::panels::material_editor_panel", material = %self.current_material.name, "Material saved to library");
                 // Save current material
             }
             if ui.button("Load").clicked() {
+                info!(target: "aw_editor::panels::material_editor_panel", "Material load requested");
                 // Load material
             }
             if ui.button("Duplicate").clicked() {
+                info!(target: "aw_editor::panels::material_editor_panel", material = %self.current_material.name, "Material duplicated");
                 // Duplicate material
             }
         });

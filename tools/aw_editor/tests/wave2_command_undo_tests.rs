@@ -281,6 +281,7 @@ fn undo_stack_single_execute_increments_cursor() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     assert_eq!(stack.cursor(), 1);
@@ -297,17 +298,19 @@ fn undo_decrements_cursor_by_one() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(1, 1), IVec2::new(2, 2)),
             &mut w,
+            None,
         )
         .unwrap();
     assert_eq!(stack.cursor(), 2);
 
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(stack.cursor(), 1);
 }
 
@@ -321,12 +324,13 @@ fn redo_increments_cursor_by_one() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(stack.cursor(), 0);
 
-    stack.redo(&mut w).unwrap();
+    stack.redo(&mut w, None).unwrap();
     assert_eq!(stack.cursor(), 1);
 }
 
@@ -336,7 +340,7 @@ fn undo_at_zero_cursor_is_noop() {
     let mut stack = UndoStack::new(10);
 
     // Undo with empty stack should be OK, no crash
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(stack.cursor(), 0);
 }
 
@@ -350,10 +354,11 @@ fn redo_at_end_is_noop() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     // Cursor is at end, redo should do nothing
-    stack.redo(&mut w).unwrap();
+    stack.redo(&mut w, None).unwrap();
     assert_eq!(stack.cursor(), 1);
 }
 
@@ -367,24 +372,27 @@ fn execute_after_undo_discards_redo_history() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(1, 1), IVec2::new(2, 2)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(2, 2), IVec2::new(3, 3)),
             &mut w,
+            None,
         )
         .unwrap();
 
     // Undo twice
-    stack.undo(&mut w).unwrap();
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(stack.cursor(), 1);
     assert_eq!(stack.len(), 3); // All 3 still in stack
 
@@ -393,6 +401,7 @@ fn execute_after_undo_discards_redo_history() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(1, 1), IVec2::new(99, 99)),
             &mut w,
+            None,
         )
         .unwrap();
     assert_eq!(stack.cursor(), 2);
@@ -411,6 +420,7 @@ fn max_size_pruning_removes_oldest() {
             .execute(
                 MoveEntityCommand::new(e, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                 &mut w,
+                None,
             )
             .unwrap();
     }
@@ -434,12 +444,14 @@ fn max_size_one_always_keeps_latest() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(1, 1), IVec2::new(2, 2)),
             &mut w,
+            None,
         )
         .unwrap();
 
@@ -450,7 +462,7 @@ fn max_size_one_always_keeps_latest() {
         format!("Move Entity {:?}", e)
     );
 
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(w.pose(e).unwrap().pos, IVec2::new(1, 1));
 }
 
@@ -465,6 +477,7 @@ fn undo_count_and_redo_count_are_complementary() {
             .execute(
                 MoveEntityCommand::new(e, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                 &mut w,
+                None,
             )
             .unwrap();
     }
@@ -472,8 +485,8 @@ fn undo_count_and_redo_count_are_complementary() {
     assert_eq!(stack.undo_count(), 5);
     assert_eq!(stack.redo_count(), 0);
 
-    stack.undo(&mut w).unwrap();
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(stack.undo_count(), 3);
     assert_eq!(stack.redo_count(), 2);
     assert_eq!(stack.undo_count() + stack.redo_count(), stack.len());
@@ -512,12 +525,14 @@ fn validate_at_full_capacity_reports_at_capacity() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(1, 1), IVec2::new(2, 2)),
             &mut w,
+            None,
         )
         .unwrap();
 
@@ -539,6 +554,7 @@ fn validate_near_capacity_threshold_is_80_percent() {
             .execute(
                 MoveEntityCommand::new(e, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                 &mut w,
+                None,
             )
             .unwrap();
     }
@@ -555,6 +571,7 @@ fn validate_near_capacity_threshold_is_80_percent() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(8, 8), IVec2::new(9, 9)),
             &mut w,
+            None,
         )
         .unwrap();
 
@@ -573,6 +590,7 @@ fn is_valid_means_no_error_issues() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     assert!(stack.is_valid()); // Has commands, auto-merge on, not at capacity
@@ -588,6 +606,7 @@ fn is_valid_false_when_at_capacity() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     // At capacity → AtCapacity issue → is_error → is_valid returns false
@@ -609,6 +628,7 @@ fn recent_commands_returns_last_n() {
             .execute(
                 MoveEntityCommand::new(e, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                 &mut w,
+                None,
             )
             .unwrap();
     }
@@ -638,13 +658,14 @@ fn upcoming_redos_returns_correct_count() {
             .execute(
                 MoveEntityCommand::new(e, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                 &mut w,
+                None,
             )
             .unwrap();
     }
 
     // Undo all 5
     for _ in 0..5 {
-        stack.undo(&mut w).unwrap();
+        stack.undo(&mut w, None).unwrap();
     }
 
     let redos = stack.upcoming_redos(3);
@@ -668,6 +689,7 @@ fn redo_description_is_none_when_at_end() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     assert!(stack.redo_description().is_none());
@@ -683,6 +705,7 @@ fn undo_description_returns_last_command_desc() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     let desc = stack.undo_description().unwrap();
@@ -699,9 +722,10 @@ fn redo_description_returns_next_command_desc() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
 
     let desc = stack.redo_description().unwrap();
     assert!(desc.contains("Move"));
@@ -715,7 +739,7 @@ fn redo_description_returns_next_command_desc() {
 fn move_execute_sets_new_pos() {
     let (mut w, e) = make_world_and_entity();
     let mut cmd = MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(42, 99));
-    cmd.execute(&mut w).unwrap();
+    cmd.execute(&mut w, None).unwrap();
     assert_eq!(w.pose(e).unwrap().pos, IVec2::new(42, 99));
 }
 
@@ -723,8 +747,8 @@ fn move_execute_sets_new_pos() {
 fn move_undo_restores_old_pos() {
     let (mut w, e) = make_world_and_entity();
     let mut cmd = MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(42, 99));
-    cmd.execute(&mut w).unwrap();
-    cmd.undo(&mut w).unwrap();
+    cmd.execute(&mut w, None).unwrap();
+    cmd.undo(&mut w, None).unwrap();
     assert_eq!(w.pose(e).unwrap().pos, IVec2::new(0, 0));
 }
 
@@ -747,18 +771,21 @@ fn move_merge_same_entity_updates_new_pos_keeps_old() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(1, 1), IVec2::new(5, 5)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(5, 5), IVec2::new(10, 10)),
             &mut w,
+            None,
         )
         .unwrap();
 
@@ -767,7 +794,7 @@ fn move_merge_same_entity_updates_new_pos_keeps_old() {
     assert_eq!(w.pose(e).unwrap().pos, IVec2::new(10, 10));
 
     // Undo should go back to original (0,0) not intermediate
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(w.pose(e).unwrap().pos, IVec2::new(0, 0));
 }
 
@@ -781,12 +808,14 @@ fn move_no_merge_different_entities() {
         .execute(
             MoveEntityCommand::new(es[0], IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(es[1], IVec2::new(1, 1), IVec2::new(2, 2)),
             &mut w,
+            None,
         )
         .unwrap();
 
@@ -799,7 +828,7 @@ fn move_execute_missing_entity_returns_error() {
     let mut w = World::new();
     let fake_entity = 9999;
     let mut cmd = MoveEntityCommand::new(fake_entity, IVec2::new(0, 0), IVec2::new(1, 1));
-    assert!(cmd.execute(&mut w).is_err());
+    assert!(cmd.execute(&mut w, None).is_err());
 }
 
 #[test]
@@ -807,7 +836,7 @@ fn move_undo_missing_entity_returns_error() {
     let mut w = World::new();
     let fake_entity = 9999;
     let mut cmd = MoveEntityCommand::new(fake_entity, IVec2::new(0, 0), IVec2::new(1, 1));
-    assert!(cmd.undo(&mut w).is_err());
+    assert!(cmd.undo(&mut w, None).is_err());
 }
 
 // ============================================================================
@@ -818,7 +847,7 @@ fn move_undo_missing_entity_returns_error() {
 fn rotate_execute_sets_all_three_axes() {
     let (mut w, e) = make_world_and_entity();
     let mut cmd = RotateEntityCommand::new(e, (0.0, 0.0, 0.0), (0.5, 1.0, 1.5));
-    cmd.execute(&mut w).unwrap();
+    cmd.execute(&mut w, None).unwrap();
 
     let pose = w.pose(e).unwrap();
     assert!((pose.rotation_x - 0.5).abs() < 0.001);
@@ -837,8 +866,8 @@ fn rotate_undo_restores_all_three_axes() {
     }
 
     let mut cmd = RotateEntityCommand::new(e, (0.1, 0.2, 0.3), (1.0, 2.0, 3.0));
-    cmd.execute(&mut w).unwrap();
-    cmd.undo(&mut w).unwrap();
+    cmd.execute(&mut w, None).unwrap();
+    cmd.undo(&mut w, None).unwrap();
 
     let pose = w.pose(e).unwrap();
     assert!((pose.rotation_x - 0.1).abs() < 0.001);
@@ -863,12 +892,14 @@ fn rotate_merge_same_entity() {
         .execute(
             RotateEntityCommand::new(e, (0.0, 0.0, 0.0), (0.5, 0.5, 0.5)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             RotateEntityCommand::new(e, (0.5, 0.5, 0.5), (1.0, 1.0, 1.0)),
             &mut w,
+            None,
         )
         .unwrap();
 
@@ -885,12 +916,14 @@ fn rotate_no_merge_different_entities() {
         .execute(
             RotateEntityCommand::new(es[0], (0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             RotateEntityCommand::new(es[1], (0.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
             &mut w,
+            None,
         )
         .unwrap();
 
@@ -905,7 +938,7 @@ fn rotate_no_merge_different_entities() {
 fn scale_execute_sets_scale() {
     let (mut w, e) = make_world_and_entity();
     let mut cmd = ScaleEntityCommand::new(e, 1.0, 3.5);
-    cmd.execute(&mut w).unwrap();
+    cmd.execute(&mut w, None).unwrap();
     assert!((w.pose(e).unwrap().scale - 3.5).abs() < 0.001);
 }
 
@@ -913,8 +946,8 @@ fn scale_execute_sets_scale() {
 fn scale_undo_restores_scale() {
     let (mut w, e) = make_world_and_entity();
     let mut cmd = ScaleEntityCommand::new(e, 1.0, 3.5);
-    cmd.execute(&mut w).unwrap();
-    cmd.undo(&mut w).unwrap();
+    cmd.execute(&mut w, None).unwrap();
+    cmd.undo(&mut w, None).unwrap();
     assert!((w.pose(e).unwrap().scale - 1.0).abs() < 0.001);
 }
 
@@ -932,13 +965,13 @@ fn scale_merge_same_entity() {
     stack.set_auto_merge(true);
 
     stack
-        .execute(ScaleEntityCommand::new(e, 1.0, 1.5), &mut w)
+        .execute(ScaleEntityCommand::new(e, 1.0, 1.5), &mut w, None)
         .unwrap();
     stack
-        .execute(ScaleEntityCommand::new(e, 1.5, 2.0), &mut w)
+        .execute(ScaleEntityCommand::new(e, 1.5, 2.0), &mut w, None)
         .unwrap();
     stack
-        .execute(ScaleEntityCommand::new(e, 2.0, 3.0), &mut w)
+        .execute(ScaleEntityCommand::new(e, 2.0, 3.0), &mut w, None)
         .unwrap();
 
     assert_eq!(stack.len(), 1);
@@ -956,7 +989,7 @@ fn edit_health_push_and_undo_restores_old_hp() {
     let mut stack = UndoStack::new(10);
     stack.push_executed(EditHealthCommand::new(e, 100, 50));
 
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(w.health(e).unwrap().hp, 100);
 }
 
@@ -968,8 +1001,8 @@ fn edit_health_redo_applies_new_hp() {
     let mut stack = UndoStack::new(10);
     stack.push_executed(EditHealthCommand::new(e, 100, 50));
 
-    stack.undo(&mut w).unwrap();
-    stack.redo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
+    stack.redo(&mut w, None).unwrap();
     assert_eq!(w.health(e).unwrap().hp, 50);
 }
 
@@ -989,7 +1022,7 @@ fn edit_team_undo_restores_old_team() {
     let mut stack = UndoStack::new(10);
     stack.push_executed(EditTeamCommand::new(e, Team { id: 2 }, Team { id: 0 }));
 
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(w.team(e).unwrap().id, 2);
 }
 
@@ -1001,8 +1034,8 @@ fn edit_team_redo_applies_new_team() {
     let mut stack = UndoStack::new(10);
     stack.push_executed(EditTeamCommand::new(e, Team { id: 2 }, Team { id: 0 }));
 
-    stack.undo(&mut w).unwrap();
-    stack.redo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
+    stack.redo(&mut w, None).unwrap();
     assert_eq!(w.team(e).unwrap().id, 0);
 }
 
@@ -1021,7 +1054,7 @@ fn edit_ammo_undo_restores_old_rounds() {
     let mut stack = UndoStack::new(10);
     stack.push_executed(EditAmmoCommand::new(e, 30, 10));
 
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(w.ammo(e).unwrap().rounds, 30);
 }
 
@@ -1033,8 +1066,8 @@ fn edit_ammo_redo_applies_new_rounds() {
     let mut stack = UndoStack::new(10);
     stack.push_executed(EditAmmoCommand::new(e, 30, 10));
 
-    stack.undo(&mut w).unwrap();
-    stack.redo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
+    stack.redo(&mut w, None).unwrap();
     assert_eq!(w.ammo(e).unwrap().rounds, 10);
 }
 
@@ -1060,7 +1093,7 @@ fn batch_command_executes_all_in_order() {
     ];
 
     let mut batch = BatchCommand::new(commands, "Move 3".to_string());
-    batch.execute(&mut w).unwrap();
+    batch.execute(&mut w, None).unwrap();
 
     assert_eq!(w.pose(es[0]).unwrap().pos, IVec2::new(10, 0));
     assert_eq!(w.pose(es[1]).unwrap().pos, IVec2::new(0, 20));
@@ -1078,8 +1111,8 @@ fn batch_command_undo_reverts_in_reverse_order() {
     ];
 
     let mut batch = BatchCommand::new(commands, "Move 3".to_string());
-    batch.execute(&mut w).unwrap();
-    batch.undo(&mut w).unwrap();
+    batch.execute(&mut w, None).unwrap();
+    batch.undo(&mut w, None).unwrap();
 
     assert_eq!(w.pose(es[0]).unwrap().pos, IVec2::new(0, 0));
     assert_eq!(w.pose(es[1]).unwrap().pos, IVec2::new(1, 1));
@@ -1095,8 +1128,8 @@ fn batch_command_empty_is_noop() {
     assert!(batch.is_empty());
     assert_eq!(batch.len(), 0);
 
-    batch.execute(&mut w).unwrap();
-    batch.undo(&mut w).unwrap();
+    batch.execute(&mut w, None).unwrap();
+    batch.undo(&mut w, None).unwrap();
 }
 
 #[test]
@@ -1132,11 +1165,11 @@ fn execute_batch_on_stack_is_one_entry() {
     ];
 
     stack
-        .execute_batch(commands, &mut w, "Batch".to_string())
+        .execute_batch(commands, &mut w, "Batch".to_string(), None)
         .unwrap();
     assert_eq!(stack.len(), 1);
 
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(w.pose(es[0]).unwrap().pos, IVec2::new(0, 0));
     assert_eq!(w.pose(es[1]).unwrap().pos, IVec2::new(1, 1));
 }
@@ -1147,7 +1180,7 @@ fn execute_batch_empty_does_not_add_to_stack() {
     let mut stack = UndoStack::new(10);
 
     stack
-        .execute_batch(vec![], &mut w, "Empty batch".to_string())
+        .execute_batch(vec![], &mut w, "Empty batch".to_string(), None)
         .unwrap();
     assert_eq!(stack.len(), 0);
 }
@@ -1174,7 +1207,7 @@ fn push_executed_does_not_re_execute_command() {
     assert_eq!(w.pose(e).unwrap().pos, IVec2::new(5, 5));
 
     // But undo should work
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert_eq!(w.pose(e).unwrap().pos, IVec2::new(0, 0));
 }
 
@@ -1209,17 +1242,19 @@ fn push_executed_truncates_redo_history() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(1, 1), IVec2::new(2, 2)),
             &mut w,
+            None,
         )
         .unwrap();
 
     // Undo once → can redo
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
     assert!(stack.can_redo());
 
     // push_executed discards redo history
@@ -1280,12 +1315,14 @@ fn clear_resets_everything() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(1, 1), IVec2::new(2, 2)),
             &mut w,
+            None,
         )
         .unwrap();
 
@@ -1307,22 +1344,25 @@ fn stats_reflect_current_state() {
         .execute(
             MoveEntityCommand::new(e, IVec2::new(0, 0), IVec2::new(1, 1)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(1, 1), IVec2::new(2, 2)),
             &mut w,
+            None,
         )
         .unwrap();
     stack
         .execute(
             MoveEntityCommand::new(e, IVec2::new(2, 2), IVec2::new(3, 3)),
             &mut w,
+            None,
         )
         .unwrap();
 
-    stack.undo(&mut w).unwrap();
+    stack.undo(&mut w, None).unwrap();
 
     let stats = stack.stats();
     assert_eq!(stats.total_commands, 3);

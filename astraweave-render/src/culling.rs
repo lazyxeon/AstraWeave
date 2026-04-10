@@ -452,7 +452,7 @@ impl CullingPipeline {
         &self.bind_group_layout
     }
 
-    /// Create buffers and bind group for culling
+    /// Create buffers and bind group for culling (allocates fresh resources).
     pub fn create_culling_resources(
         &self,
         device: &wgpu::Device,
@@ -469,13 +469,13 @@ impl CullingPipeline {
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("culling_instance_buffer"),
             contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
         let frustum_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("culling_frustum_buffer"),
             contents: bytemuck::bytes_of(frustum),
-            usage: wgpu::BufferUsages::UNIFORM,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         // Allocate buffer for visible instances (max size = input size, min 1 element)
@@ -529,6 +529,98 @@ impl CullingPipeline {
         }
     }
 
+    /// Reuse existing buffers when large enough, only reallocating on growth.
+    /// Falls back to fresh allocation when `existing` is `None`.
+    pub fn update_or_create_resources(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        instances: &[InstanceAABB],
+        frustum: &FrustumPlanes,
+        existing: Option<CullingResources>,
+    ) -> CullingResources {
+        let existing = match existing {
+            Some(e) => e,
+            None => return self.create_culling_resources(device, instances, frustum),
+        };
+
+        let instance_data = if instances.is_empty() {
+            vec![InstanceAABB::new(Vec3::ZERO, Vec3::ZERO, 0)]
+        } else {
+            instances.to_vec()
+        };
+
+        let instance_bytes: &[u8] = bytemuck::cast_slice(&instance_data);
+        let required_instance_size = instance_bytes.len() as u64;
+        let visible_size = (instances.len().max(1) * std::mem::size_of::<u32>()) as u64;
+
+        let instance_grew = existing.instance_buffer.size() < required_instance_size;
+        let visible_grew = existing.visible_buffer.size() < visible_size;
+        let needs_rebind = instance_grew || visible_grew;
+
+        let instance_buffer = if instance_grew {
+            let alloc = required_instance_size.next_power_of_two().max(256);
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("culling_instance_buffer"),
+                size: alloc,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        } else {
+            existing.instance_buffer
+        };
+        queue.write_buffer(&instance_buffer, 0, instance_bytes);
+
+        queue.write_buffer(&existing.frustum_buffer, 0, bytemuck::bytes_of(frustum));
+
+        let visible_buffer = if visible_grew {
+            let alloc = visible_size.next_power_of_two().max(256);
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("culling_visible_buffer"),
+                size: alloc,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            })
+        } else {
+            existing.visible_buffer
+        };
+
+        let bind_group = if needs_rebind {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("culling_bind_group"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: instance_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: existing.frustum_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: visible_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: existing.count_buffer.as_entire_binding(),
+                    },
+                ],
+            })
+        } else {
+            existing.bind_group
+        };
+
+        CullingResources {
+            instance_buffer,
+            frustum_buffer: existing.frustum_buffer,
+            visible_buffer,
+            count_buffer: existing.count_buffer,
+            bind_group,
+        }
+    }
+
     /// Execute culling compute pass
     /// Note: Caller must ensure count_buffer is cleared to 0 before calling this
     pub fn execute(
@@ -569,6 +661,548 @@ pub struct CullingResources {
     pub visible_buffer: wgpu::Buffer,
     pub count_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
+}
+
+// ---------------------------------------------------------------------------
+// P2-6: Multi-Draw-Indirect — GPU-driven draw command generation
+// ---------------------------------------------------------------------------
+
+/// Indexed indirect draw command matching `wgpu::RenderPass::draw_indexed_indirect()`.
+///
+/// 20 bytes, `#[repr(C)]` so the layout matches what the GPU expects.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable, Default)]
+pub struct DrawIndexedIndirectCommand {
+    pub index_count: u32,
+    pub instance_count: u32,
+    pub first_index: u32,
+    pub base_vertex: i32,
+    pub first_instance: u32,
+}
+
+impl DrawIndexedIndirectCommand {
+    pub fn new(
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        base_vertex: i32,
+        first_instance: u32,
+    ) -> Self {
+        Self {
+            index_count,
+            instance_count,
+            first_index,
+            base_vertex,
+            first_instance,
+        }
+    }
+}
+
+/// Compute shader that performs per-batch frustum culling and writes
+/// `DrawIndexedIndirectCommand` entries.  Invisible batches get
+/// `instance_count = 0` so the GPU skips them at zero cost.
+pub const INDIRECT_CULLING_SHADER: &str = r#"
+struct FrustumPlanes {
+    planes: array<vec4<f32>, 6>,
+}
+
+struct BatchAABB {
+    center: vec3<f32>,
+    _pad0: u32,
+    extent: vec3<f32>,
+    _pad1: u32,
+}
+
+// Must match DrawIndexedIndirectCommand (20 bytes per element)
+struct DrawCmd {
+    index_count: u32,
+    instance_count: u32,
+    first_index: u32,
+    base_vertex: i32,
+    first_instance: u32,
+}
+
+@group(0) @binding(0) var<uniform> frustum: FrustumPlanes;
+@group(0) @binding(1) var<storage, read> batch_aabbs: array<BatchAABB>;
+@group(0) @binding(2) var<storage, read> draw_templates: array<DrawCmd>;
+@group(0) @binding(3) var<storage, read_write> draw_commands: array<DrawCmd>;
+@group(0) @binding(4) var<storage, read_write> visible_batch_count: atomic<u32>;
+
+fn is_batch_visible(center: vec3<f32>, extent: vec3<f32>) -> bool {
+    // Plane 0 (left)
+    var plane = frustum.planes[0];
+    var normal = plane.xyz;
+    var d = plane.w;
+    var dist = dot(center, normal) + d;
+    var radius = abs(extent.x) * abs(normal.x)
+               + abs(extent.y) * abs(normal.y)
+               + abs(extent.z) * abs(normal.z);
+    if (dist < -radius) { return false; }
+
+    // Plane 1 (right)
+    plane = frustum.planes[1];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist < -radius) { return false; }
+
+    // Plane 2 (bottom)
+    plane = frustum.planes[2];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist < -radius) { return false; }
+
+    // Plane 3 (top)
+    plane = frustum.planes[3];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist < -radius) { return false; }
+
+    // Plane 4 (near)
+    plane = frustum.planes[4];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist < -radius) { return false; }
+
+    // Plane 5 (far)
+    plane = frustum.planes[5];
+    normal = plane.xyz; d = plane.w;
+    dist = dot(center, normal) + d;
+    radius = abs(extent.x) * abs(normal.x)
+           + abs(extent.y) * abs(normal.y)
+           + abs(extent.z) * abs(normal.z);
+    if (dist < -radius) { return false; }
+
+    return true;
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let idx = gid.x;
+    if (idx >= arrayLength(&batch_aabbs)) { return; }
+
+    let aabb = batch_aabbs[idx];
+    var cmd = draw_templates[idx];
+
+    if (is_batch_visible(aabb.center, aabb.extent)) {
+        atomicAdd(&visible_batch_count, 1u);
+    } else {
+        cmd.instance_count = 0u;
+    }
+
+    draw_commands[idx] = cmd;
+}
+"#;
+
+/// GPU buffers for indirect draw command generation.
+pub struct IndirectDrawResources {
+    pub batch_aabb_buffer: wgpu::Buffer,
+    pub template_buffer: wgpu::Buffer,
+    pub draw_commands_buffer: wgpu::Buffer,
+    pub frustum_buffer: wgpu::Buffer,
+    pub batch_count_buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+    pub batch_count: u32,
+}
+
+/// Compute pipeline that generates per-batch `DrawIndexedIndirectCommand`
+/// entries on the GPU.  Each thread handles one batch: it copies the draw
+/// template and zeroes `instance_count` when the batch AABB is outside the
+/// frustum.
+pub struct IndirectDrawPipeline {
+    pipeline: wgpu::ComputePipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+}
+
+impl IndirectDrawPipeline {
+    pub fn new(device: &wgpu::Device) -> Self {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("indirect_culling_shader"),
+            source: wgpu::ShaderSource::Wgsl(INDIRECT_CULLING_SHADER.into()),
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("indirect_draw_bind_group_layout"),
+            entries: &[
+                // 0: Frustum planes (uniform)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // 1: Batch AABBs (storage, read)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // 2: Draw templates (storage, read)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // 3: Draw commands output (storage, read_write + INDIRECT)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // 4: Visible batch count (atomic storage)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("indirect_draw_pipeline_layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("indirect_draw_pipeline"),
+            layout: Some(&pipeline_layout),
+            module: &shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        Self {
+            pipeline,
+            bind_group_layout,
+        }
+    }
+
+    /// Allocate GPU resources for indirect draw command generation.
+    ///
+    /// * `batch_aabbs` – one AABB per draw batch (chunk, mesh group, etc.)
+    /// * `templates`   – one draw-command template per batch (CPU-built once)
+    /// * `frustum`     – current frame frustum planes
+    pub fn create_resources(
+        &self,
+        device: &wgpu::Device,
+        batch_aabbs: &[InstanceAABB],
+        templates: &[DrawIndexedIndirectCommand],
+        frustum: &FrustumPlanes,
+    ) -> IndirectDrawResources {
+        assert_eq!(
+            batch_aabbs.len(),
+            templates.len(),
+            "batch_aabbs and templates must be the same length"
+        );
+
+        let count = batch_aabbs.len().max(1) as u32;
+
+        // Batch AABBs
+        let aabb_data = if batch_aabbs.is_empty() {
+            vec![InstanceAABB::new(Vec3::ZERO, Vec3::ZERO, 0)]
+        } else {
+            batch_aabbs.to_vec()
+        };
+        let batch_aabb_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("indirect_batch_aabb_buffer"),
+            contents: bytemuck::cast_slice(&aabb_data),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Draw templates
+        let tmpl_data = if templates.is_empty() {
+            vec![DrawIndexedIndirectCommand::default()]
+        } else {
+            templates.to_vec()
+        };
+        let template_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("indirect_template_buffer"),
+            contents: bytemuck::cast_slice(&tmpl_data),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Output draw commands — must have INDIRECT usage for draw_indexed_indirect()
+        let cmd_size = (count as usize * std::mem::size_of::<DrawIndexedIndirectCommand>()) as u64;
+        let draw_commands_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("indirect_draw_commands_buffer"),
+            size: cmd_size,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::INDIRECT
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        // Frustum uniform
+        let frustum_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("indirect_frustum_buffer"),
+            contents: bytemuck::bytes_of(frustum),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Visible batch count (atomic)
+        let batch_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("indirect_batch_count_buffer"),
+            size: std::mem::size_of::<u32>() as u64,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("indirect_draw_bind_group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: frustum_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: batch_aabb_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: template_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: draw_commands_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: batch_count_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        IndirectDrawResources {
+            batch_aabb_buffer,
+            template_buffer,
+            draw_commands_buffer,
+            frustum_buffer,
+            batch_count_buffer,
+            bind_group,
+            batch_count: if batch_aabbs.is_empty() { 0 } else { count },
+        }
+    }
+
+    /// Reuse buffers when possible, only reallocating on growth.
+    pub fn update_or_create_resources(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        batch_aabbs: &[InstanceAABB],
+        templates: &[DrawIndexedIndirectCommand],
+        frustum: &FrustumPlanes,
+        existing: Option<IndirectDrawResources>,
+    ) -> IndirectDrawResources {
+        let existing = match existing {
+            Some(e) => e,
+            None => return self.create_resources(device, batch_aabbs, templates, frustum),
+        };
+
+        assert_eq!(batch_aabbs.len(), templates.len());
+
+        let count = batch_aabbs.len().max(1);
+
+        // Check if buffers need reallocation
+        let dummy_aabb = InstanceAABB::new(Vec3::ZERO, Vec3::ZERO, 0);
+        let dummy_tmpl = DrawIndexedIndirectCommand::default();
+        let aabb_bytes: &[u8] = if batch_aabbs.is_empty() {
+            bytemuck::bytes_of(&dummy_aabb)
+        } else {
+            bytemuck::cast_slice(batch_aabbs)
+        };
+        let tmpl_bytes: &[u8] = if templates.is_empty() {
+            bytemuck::bytes_of(&dummy_tmpl)
+        } else {
+            bytemuck::cast_slice(templates)
+        };
+        let cmd_size = (count * std::mem::size_of::<DrawIndexedIndirectCommand>()) as u64;
+
+        let aabb_grew = existing.batch_aabb_buffer.size() < aabb_bytes.len() as u64;
+        let tmpl_grew = existing.template_buffer.size() < tmpl_bytes.len() as u64;
+        let cmd_grew = existing.draw_commands_buffer.size() < cmd_size;
+        let needs_rebind = aabb_grew || tmpl_grew || cmd_grew;
+
+        let batch_aabb_buffer = if aabb_grew {
+            let alloc = (aabb_bytes.len() as u64).next_power_of_two().max(256);
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("indirect_batch_aabb_buffer"),
+                size: alloc,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        } else {
+            existing.batch_aabb_buffer
+        };
+        queue.write_buffer(&batch_aabb_buffer, 0, aabb_bytes);
+
+        let template_buffer = if tmpl_grew {
+            let alloc = (tmpl_bytes.len() as u64).next_power_of_two().max(256);
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("indirect_template_buffer"),
+                size: alloc,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        } else {
+            existing.template_buffer
+        };
+        queue.write_buffer(&template_buffer, 0, tmpl_bytes);
+
+        let draw_commands_buffer = if cmd_grew {
+            let alloc = cmd_size.next_power_of_two().max(256);
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("indirect_draw_commands_buffer"),
+                size: alloc,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::INDIRECT
+                    | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            })
+        } else {
+            existing.draw_commands_buffer
+        };
+
+        // Update frustum uniform (always fits — fixed 96 bytes)
+        queue.write_buffer(&existing.frustum_buffer, 0, bytemuck::bytes_of(frustum));
+
+        // Re-create bind group when any storage buffer was reallocated
+        let bind_group = if needs_rebind {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("indirect_draw_bind_group"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: existing.frustum_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: batch_aabb_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: template_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: draw_commands_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: existing.batch_count_buffer.as_entire_binding(),
+                    },
+                ],
+            })
+        } else {
+            existing.bind_group
+        };
+
+        IndirectDrawResources {
+            batch_aabb_buffer,
+            template_buffer,
+            draw_commands_buffer,
+            frustum_buffer: existing.frustum_buffer,
+            batch_count_buffer: existing.batch_count_buffer,
+            bind_group,
+            batch_count: if batch_aabbs.is_empty() {
+                0
+            } else {
+                count as u32
+            },
+        }
+    }
+
+    /// Dispatch the indirect command builder compute shader.
+    /// Clears visible batch count, then runs one thread per batch.
+    pub fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &IndirectDrawResources) {
+        if resources.batch_count == 0 {
+            return;
+        }
+
+        // Clear visible batch counter
+        encoder.clear_buffer(&resources.batch_count_buffer, 0, None);
+
+        let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("indirect_draw_build_pass"),
+            timestamp_writes: None,
+        });
+        cpass.set_pipeline(&self.pipeline);
+        cpass.set_bind_group(0, &resources.bind_group, &[]);
+        let workgroups = resources.batch_count.div_ceil(64);
+        cpass.dispatch_workgroups(workgroups, 1, 1);
+    }
+}
+
+/// Dispatch `draw_indexed_indirect` per batch from the GPU-generated command
+/// buffer.  The GPU skips batches whose `instance_count` was set to 0 by the
+/// culling shader, so no CPU readback is required.
+///
+/// This is universally supported on all wgpu backends.
+pub fn dispatch_indexed_indirect_draws(
+    render_pass: &mut wgpu::RenderPass<'_>,
+    draw_commands_buffer: &wgpu::Buffer,
+    batch_count: u32,
+) {
+    let stride = std::mem::size_of::<DrawIndexedIndirectCommand>() as u64;
+    for i in 0..batch_count {
+        render_pass.draw_indexed_indirect(draw_commands_buffer, i as u64 * stride);
+    }
+}
+
+/// Dispatch all batches with a single `multi_draw_indexed_indirect` call.
+///
+/// Requires the `MULTI_DRAW_INDIRECT` device feature.  Falls back to per-batch
+/// `draw_indexed_indirect` loop when the feature is unavailable.
+pub fn dispatch_multi_draw_indexed_indirect(
+    render_pass: &mut wgpu::RenderPass<'_>,
+    draw_commands_buffer: &wgpu::Buffer,
+    batch_count: u32,
+) {
+    if batch_count == 0 {
+        return;
+    }
+    render_pass.multi_draw_indexed_indirect(draw_commands_buffer, 0, batch_count);
 }
 
 #[cfg(test)]
@@ -902,5 +1536,43 @@ mod tests {
     fn draw_indirect_command_struct_size() {
         // 4 × u32 = 16 bytes, matches wgpu::DrawIndirect layout
         assert_eq!(std::mem::size_of::<DrawIndirectCommand>(), 16);
+    }
+
+    // --- P2-6 Multi-Draw-Indirect tests ---
+
+    #[test]
+    fn draw_indexed_indirect_command_struct_size() {
+        // index_count(4) + instance_count(4) + first_index(4) + base_vertex(4) + first_instance(4) = 20
+        assert_eq!(std::mem::size_of::<DrawIndexedIndirectCommand>(), 20);
+    }
+
+    #[test]
+    fn draw_indexed_indirect_new_stores_all_fields() {
+        let cmd = DrawIndexedIndirectCommand::new(100, 5, 200, -3, 7);
+        assert_eq!(cmd.index_count, 100);
+        assert_eq!(cmd.instance_count, 5);
+        assert_eq!(cmd.first_index, 200);
+        assert_eq!(cmd.base_vertex, -3);
+        assert_eq!(cmd.first_instance, 7);
+    }
+
+    #[test]
+    fn draw_indexed_indirect_default_is_zeroed() {
+        let cmd = DrawIndexedIndirectCommand::default();
+        assert_eq!(cmd.index_count, 0);
+        assert_eq!(cmd.instance_count, 0);
+        assert_eq!(cmd.first_index, 0);
+        assert_eq!(cmd.base_vertex, 0);
+        assert_eq!(cmd.first_instance, 0);
+    }
+
+    #[test]
+    fn parse_indirect_culling_wgsl_shader() {
+        let module = naga::front::wgsl::parse_str(INDIRECT_CULLING_SHADER)
+            .expect("WGSL indirect culling shader should parse");
+        assert!(
+            module.entry_points.iter().any(|e| e.name == "main"),
+            "indirect culling shader must have 'main' entry point"
+        );
     }
 }

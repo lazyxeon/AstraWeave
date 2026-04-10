@@ -9,6 +9,7 @@
 //! - Sequencer playback controls
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -555,6 +556,7 @@ impl CinematicsPanel {
 
     /// Queue an action for later processing
     pub fn queue_action(&mut self, action: CinematicsAction) {
+        info!(target: "aw_editor::panels::cinematics_panel", action = ?action, "Cinematics action queued");
         self.pending_actions.push(action);
     }
 
@@ -674,6 +676,7 @@ impl CinematicsPanel {
                 } else {
                     PlaybackState::Playing
                 };
+                info!(target: "aw_editor::panels::cinematics_panel", state = %self.playback_state, "Sequence playback toggled");
             }
             if ui.button(">").clicked() {
                 self.current_time = (self.current_time + 1.0).min(self.settings.duration);
@@ -682,6 +685,7 @@ impl CinematicsPanel {
                 self.current_time = self.settings.duration;
             }
             if ui.button("[]").clicked() {
+                info!(target: "aw_editor::panels::cinematics_panel", "Sequence playback stopped");
                 self.playback_state = PlaybackState::Stopped;
                 self.current_time = 0.0;
             }
@@ -948,6 +952,7 @@ impl CinematicsPanel {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Keyframes").strong());
                 if ui.button("+ Add Keyframe").clicked() {
+                    info!(target: "aw_editor::panels::cinematics_panel", time = self.current_time, "Camera keyframe added");
                     self.camera_keyframes.push(CameraKeyframe {
                         time: self.current_time,
                         ..Default::default()
@@ -989,6 +994,7 @@ impl CinematicsPanel {
                     }
 
                     if let Some(idx) = to_remove {
+                        info!(target: "aw_editor::panels::cinematics_panel", keyframe_index = idx, "Camera keyframe removed");
                         self.camera_keyframes.remove(idx);
                         self.selected_keyframe = None;
                     }
@@ -1208,6 +1214,7 @@ impl CinematicsPanel {
 
             if ui.button("+ Create Sample Clip").clicked() {
                 let id = self.next_id();
+                info!(target: "aw_editor::panels::cinematics_panel", clip_id = id, "Sample clip created");
                 let keyframes = self.camera_keyframes.clone();
                 self.clips.push(TrackClip {
                     id,
@@ -1305,12 +1312,15 @@ impl CinematicsPanel {
 
             ui.horizontal(|ui| {
                 if ui.button("JSON Timeline").clicked() {
+                    info!(target: "aw_editor::panels::cinematics_panel", format = "JSON", "Sequence export requested");
                     // Export as JSON
                 }
                 if ui.button("RON Format").clicked() {
+                    info!(target: "aw_editor::panels::cinematics_panel", format = "RON", "Sequence export requested");
                     // Export as RON
                 }
                 if ui.button("Binary Pack").clicked() {
+                    info!(target: "aw_editor::panels::cinematics_panel", format = "Binary", "Sequence export requested");
                     // Export as binary
                 }
             });

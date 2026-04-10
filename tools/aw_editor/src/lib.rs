@@ -11,6 +11,7 @@ pub mod blend_scanner;
 pub mod clipboard;
 pub mod command;
 pub mod component_ui;
+pub mod console_bridge;
 pub mod distribution;
 pub mod dock_layout;
 pub mod editor_mode;

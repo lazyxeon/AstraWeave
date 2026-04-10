@@ -204,14 +204,14 @@ fn lod_mesh_generator_close_uses_full_detail() {
     let mut gen = LodMeshGenerator::new(LodConfig::default());
     let chunk = VoxelChunk::new(ChunkCoord::new(0, 0, 0));
     // Should not panic for any distance
-    let _m = gen.generate_mesh_lod(&chunk, 10.0);
+    let _m = gen.generate_mesh_lod(&chunk, 10.0, None);
 }
 
 #[test]
 fn lod_mesh_generator_far_uses_low_detail() {
     let mut gen = LodMeshGenerator::new(LodConfig::default());
     let chunk = VoxelChunk::new(ChunkCoord::new(0, 0, 0));
-    let _m = gen.generate_mesh_lod(&chunk, 5000.0);
+    let _m = gen.generate_mesh_lod(&chunk, 5000.0, None);
 }
 
 #[test]
@@ -220,7 +220,7 @@ fn lod_mesh_generator_various_distances() {
     let chunk = VoxelChunk::new(ChunkCoord::new(0, 0, 0));
     // All should produce empty meshes from empty chunk
     for dist in [10.0, 150.0, 400.0, 800.0, 5000.0] {
-        let m = gen.generate_mesh_lod(&chunk, dist);
+        let m = gen.generate_mesh_lod(&chunk, dist, None);
         assert!(
             m.is_empty(),
             "empty chunk should always produce empty mesh at dist {}",

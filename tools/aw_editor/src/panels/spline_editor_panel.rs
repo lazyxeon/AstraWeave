@@ -9,6 +9,7 @@
 //! - Spline-based terrain modifications
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -996,6 +997,7 @@ impl SplineEditorPanel {
                 ui.label(RichText::new("Spline List").strong());
                 if ui.button("+ New").clicked() {
                     let id = self.next_spline_id();
+                    info!(spline_id = id, "Spline: created new spline");
                     let new_spline = Spline {
                         id,
                         name: format!("Spline {}", id),
@@ -1046,6 +1048,7 @@ impl SplineEditorPanel {
                     ui.end_row();
 
                     ui.label("Type:");
+                    let prev_type = self.current_spline.spline_type;
                     egui::ComboBox::from_id_salt("spline_type")
                         .selected_text(format!("{:?}", self.current_spline.spline_type))
                         .show_ui(ui, |ui| {
@@ -1057,6 +1060,9 @@ impl SplineEditorPanel {
                                 );
                             }
                         });
+                    if self.current_spline.spline_type != prev_type {
+                        info!(old = ?prev_type, new = ?self.current_spline.spline_type, "Spline: type changed");
+                    }
                     ui.end_row();
 
                     ui.label("Preset:");
@@ -1109,6 +1115,7 @@ impl SplineEditorPanel {
                 ui.label(RichText::new("Points").strong());
                 if ui.button("+ Add").clicked() {
                     let id = self.next_point_id();
+                    info!(point_id = id, "Spline: added control point");
                     let last_pos = self
                         .current_spline
                         .points
@@ -1606,6 +1613,7 @@ impl SplineEditorPanel {
 
     pub fn add_point(&mut self, position: [f32; 3]) -> u32 {
         let id = self.next_point_id();
+        info!(point_id = id, pos = ?position, "Spline: added point");
         self.current_spline.points.push(SplinePoint {
             id,
             position,

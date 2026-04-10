@@ -1231,7 +1231,7 @@ fn panel_type_display_contains_icon_and_title() {
     let p = PanelType::Hierarchy;
     let d = format!("{}", p);
     assert!(d.contains("Hierarchy"));
-    assert!(d.contains("🌳"));
+    assert!(d.contains("[H]"));
 }
 
 #[test]
@@ -1269,5 +1269,5 @@ fn panel_category_icon_nonempty_for_all() {
 fn panel_category_display_contains_icon_and_name() {
     let d = format!("{}", PanelCategory::Scene);
     assert!(d.contains("Scene"));
-    assert!(d.contains("🎬"));
+    assert!(d.contains("[Scn]"));
 }

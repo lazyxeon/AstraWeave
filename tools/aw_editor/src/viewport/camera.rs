@@ -92,6 +92,9 @@ pub struct OrbitCamera {
 
     /// Target pitch for smooth camera framing transitions
     pitch_target: f32,
+
+    /// Target yaw for smooth orbit transitions
+    yaw_target: f32,
 }
 
 impl Default for OrbitCamera {
@@ -103,8 +106,8 @@ impl Default for OrbitCamera {
             pitch: std::f32::consts::PI / 6.0, // 30° pitch (shallower, see more horizon/sky)
             fov: 60.0,
             aspect: 16.0 / 9.0,
-            near: 0.1,
-            far: 50000.0,
+            near: 0.5,
+            far: 5000.0,
             min_distance: 0.02, // Allow camera to get very close (2cm from focal point)
             max_distance: 20000.0, // Allow zooming out to see full terrain from high altitude
             min_pitch: -std::f32::consts::PI / 2.0 + 0.01, // Prevent gimbal lock
@@ -112,6 +115,7 @@ impl Default for OrbitCamera {
             zoom_target: 25.0,
             focal_point_target: Vec3::ZERO,
             pitch_target: std::f32::consts::PI / 6.0,
+            yaw_target: std::f32::consts::PI / 4.0,
         }
     }
 }
@@ -134,6 +138,7 @@ impl OrbitCamera {
             zoom_target: distance,
             focal_point_target: focal_point,
             pitch_target: pitch,
+            yaw_target: yaw,
             ..Default::default()
         }
     }
@@ -151,10 +156,10 @@ impl OrbitCamera {
     pub fn orbit(&mut self, delta_x: f32, delta_y: f32) {
         const SENSITIVITY: f32 = 0.005; // Radians per pixel
 
-        self.yaw -= delta_x * SENSITIVITY;
-        self.pitch = (self.pitch - delta_y * SENSITIVITY).clamp(self.min_pitch, self.max_pitch);
-        // Cancel any in-flight pitch animation so user input takes priority
-        self.pitch_target = self.pitch;
+        // Accumulate into targets; smooth_update() interpolates toward them.
+        self.yaw_target -= delta_x * SENSITIVITY;
+        self.pitch_target =
+            (self.pitch_target - delta_y * SENSITIVITY).clamp(self.min_pitch, self.max_pitch);
     }
 
     /// Pan camera (move focal point in screen space)
@@ -179,10 +184,9 @@ impl OrbitCamera {
 
         // Pan speed scales with distance (more zoom = slower pan)
         let pan_speed = self.distance * SENSITIVITY;
-        self.focal_point -= right * delta_x * pan_speed;
-        self.focal_point += up * delta_y * pan_speed;
-        // Cancel any in-flight focal_point animation so user input takes priority
-        self.focal_point_target = self.focal_point;
+        // Accumulate into target; smooth_update() interpolates toward it.
+        self.focal_point_target -= right * delta_x * pan_speed;
+        self.focal_point_target += up * delta_y * pan_speed;
     }
 
     /// Zoom camera (change distance from focal point)
@@ -246,11 +250,21 @@ impl OrbitCamera {
         // Smooth pitch transition
         let pitch_diff = self.pitch_target - self.pitch;
         if pitch_diff.abs() > 0.0001 {
-            let factor = 1.0 - (-8.0 * dt_clamped).exp();
-            self.pitch += pitch_diff * factor;
+            let orbit_factor = 1.0 - (-20.0 * dt_clamped).exp(); // k=20: snappy ~50ms settle
+            self.pitch += pitch_diff * orbit_factor;
             animating = true;
         } else if pitch_diff.abs() > 0.0 {
             self.pitch = self.pitch_target;
+        }
+
+        // Smooth yaw transition
+        let yaw_diff = self.yaw_target - self.yaw;
+        if yaw_diff.abs() > 0.0001 {
+            let orbit_factor = 1.0 - (-20.0 * dt_clamped).exp();
+            self.yaw += yaw_diff * orbit_factor;
+            animating = true;
+        } else if yaw_diff.abs() > 0.0 {
+            self.yaw = self.yaw_target;
         }
 
         animating
@@ -310,38 +324,39 @@ impl OrbitCamera {
         self.distance = 25.0;
         self.zoom_target = 25.0;
         self.yaw = std::f32::consts::PI / 4.0; // 45°
+        self.yaw_target = self.yaw;
         self.pitch = std::f32::consts::PI / 6.0; // 30°
         self.pitch_target = self.pitch;
     }
 
     /// Set camera to front view (looking along -Z axis)
     pub fn set_view_front(&mut self) {
-        self.yaw = 0.0;
-        self.pitch = 0.0;
+        self.yaw_target = 0.0;
+        self.pitch_target = 0.0;
     }
 
     /// Set camera to right view (looking along -X axis)
     pub fn set_view_right(&mut self) {
-        self.yaw = std::f32::consts::FRAC_PI_2; // 90°
-        self.pitch = 0.0;
+        self.yaw_target = std::f32::consts::FRAC_PI_2; // 90°
+        self.pitch_target = 0.0;
     }
 
     /// Set camera to top view (looking along -Y axis)
     pub fn set_view_top(&mut self) {
-        self.yaw = 0.0;
-        self.pitch = self.max_pitch; // Nearly straight down
+        self.yaw_target = 0.0;
+        self.pitch_target = self.max_pitch; // Nearly straight down
     }
 
     /// Set camera to back view (looking along +Z axis)
     pub fn set_view_back(&mut self) {
-        self.yaw = std::f32::consts::PI; // 180°
-        self.pitch = 0.0;
+        self.yaw_target = std::f32::consts::PI; // 180°
+        self.pitch_target = 0.0;
     }
 
     /// Set camera to perspective view (isometric-like diagonal)
     pub fn set_view_perspective(&mut self) {
-        self.yaw = std::f32::consts::PI / 4.0; // 45°
-        self.pitch = std::f32::consts::PI / 6.0; // 30°
+        self.yaw_target = std::f32::consts::PI / 4.0; // 45°
+        self.pitch_target = std::f32::consts::PI / 6.0; // 30°
     }
 
     /// Update aspect ratio (call when viewport resizes)
@@ -574,10 +589,12 @@ impl OrbitCamera {
             self.pitch = defaults.pitch;
         }
         self.pitch = self.pitch.clamp(self.min_pitch, self.max_pitch);
+        self.pitch_target = self.pitch;
 
         if self.yaw.is_nan() {
             self.yaw = defaults.yaw;
         }
+        self.yaw_target = self.yaw;
 
         // Validate focal point
         if self.focal_point.x.is_nan() || self.focal_point.y.is_nan() || self.focal_point.z.is_nan()
@@ -830,12 +847,23 @@ mod tests {
     fn test_orbit_pitch_clamp() {
         let mut camera = OrbitCamera::default();
 
-        // Try to orbit beyond max pitch
+        // Try to orbit beyond max pitch — orbit now sets pitch_target
         camera.orbit(0.0, -10000.0);
+        assert_relative_eq!(camera.pitch_target, camera.max_pitch, epsilon = 0.01);
+
+        // Settle the animation
+        for _ in 0..60 {
+            camera.smooth_update(1.0 / 60.0);
+        }
         assert_relative_eq!(camera.pitch, camera.max_pitch, epsilon = 0.01);
 
         // Try to orbit below min pitch
         camera.orbit(0.0, 10000.0);
+        assert_relative_eq!(camera.pitch_target, camera.min_pitch, epsilon = 0.01);
+
+        for _ in 0..60 {
+            camera.smooth_update(1.0 / 60.0);
+        }
         assert_relative_eq!(camera.pitch, camera.min_pitch, epsilon = 0.01);
     }
 

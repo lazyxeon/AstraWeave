@@ -10,6 +10,7 @@
 #![allow(clippy::upper_case_acronyms)] // PCSS is industry-standard acronym
 
 use egui::{Color32, RichText, Ui};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -1010,6 +1011,7 @@ impl LightingPanel {
 
     /// Queue an action for external processing
     pub fn queue_action(&mut self, action: LightingAction) {
+        info!(target: "aw_editor::panels::lighting_panel", action = %action, "Lighting action queued");
         self.pending_actions.push(action);
     }
 
@@ -1172,6 +1174,7 @@ impl LightingPanel {
 
             if ui.button("+ Add Light").clicked() {
                 let id = self.next_light_id();
+                info!(target: "aw_editor::panels::lighting_panel", light_id = id, "New light added");
                 let new_light = Light {
                     id,
                     name: format!("Light {}", id),
@@ -1184,6 +1187,7 @@ impl LightingPanel {
 
             if ui.button("[Del]").clicked() && self.lights.len() > 1 {
                 if let Some(sel_id) = self.selected_light {
+                    info!(target: "aw_editor::panels::lighting_panel", light_id = sel_id, "Light removed");
                     self.lights.retain(|l| l.id != sel_id);
                     if !self.lights.is_empty() {
                         self.current_light = self.lights[0].clone();
@@ -1578,6 +1582,7 @@ impl LightingPanel {
                         ui.add_space(5.0);
 
                         if ui.button("🔨 Bake Lightmaps").clicked() {
+                            info!(target: "aw_editor::panels::lighting_panel", "Lightmap bake started");
                             // Start lightmap baking
                         }
                     });
@@ -1659,6 +1664,7 @@ impl LightingPanel {
                 ui.label(RichText::new("Light Probes").strong());
                 if ui.button("+ Add").clicked() {
                     let id = self.next_probe_id();
+                    info!(target: "aw_editor::panels::lighting_panel", probe_id = id, "Light probe added");
                     self.light_probes.push(LightProbe {
                         id,
                         name: format!("Light Probe {}", id),
@@ -1688,6 +1694,7 @@ impl LightingPanel {
                     });
 
                 if ui.button("🔨 Bake All").clicked() {
+                    info!(target: "aw_editor::panels::lighting_panel", count = self.light_probes.len(), "All light probes bake started");
                     for probe in &mut self.light_probes {
                         probe.baked = true;
                     }
@@ -1703,6 +1710,7 @@ impl LightingPanel {
                 ui.label(RichText::new("🪞 Reflection Probes").strong());
                 if ui.button("+ Add").clicked() {
                     let id = self.next_probe_id();
+                    info!(target: "aw_editor::panels::lighting_panel", probe_id = id, "Reflection probe added");
                     self.reflection_probes.push(ReflectionProbe {
                         id,
                         name: format!("Reflection Probe {}", id),

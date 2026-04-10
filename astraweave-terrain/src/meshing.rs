@@ -385,10 +385,16 @@ impl Default for AsyncMeshGenerator {
 /// LOD (Level of Detail) configuration
 #[derive(Debug, Clone, Copy)]
 pub struct LodConfig {
-    /// Distance thresholds for each LOD level
+    /// Distance thresholds for each LOD level (fallback when no view params)
     pub distances: [f32; 4],
     /// Simplification factors for each LOD level
     pub simplification: [f32; 4],
+    /// World-space geometric error introduced at each LOD level.
+    /// Used with screen-space error metric when view params are available.
+    pub geometric_errors: [f32; 4],
+    /// Maximum acceptable screen-space pixel error. LOD increases when the
+    /// projected pixel error of the *next* coarser level exceeds this budget.
+    pub pixel_error_budget: f32,
 }
 
 impl Default for LodConfig {
@@ -396,6 +402,8 @@ impl Default for LodConfig {
         Self {
             distances: [100.0, 250.0, 500.0, 1000.0],
             simplification: [1.0, 0.5, 0.25, 0.125],
+            geometric_errors: [0.0, 0.5, 1.5, 4.0],
+            pixel_error_budget: 2.0,
         }
     }
 }
@@ -415,20 +423,45 @@ impl LodMeshGenerator {
         }
     }
 
-    /// Generate mesh with appropriate LOD based on distance
-    pub fn generate_mesh_lod(&mut self, chunk: &VoxelChunk, distance: f32) -> ChunkMesh {
-        let lod_level = self.select_lod_level(distance);
+    /// Generate mesh with appropriate LOD based on distance and optional view params.
+    ///
+    /// When `view` is `Some`, uses screen-space pixel error to select LOD level.
+    /// When `view` is `None`, falls back to fixed distance thresholds.
+    pub fn generate_mesh_lod(
+        &mut self,
+        chunk: &VoxelChunk,
+        distance: f32,
+        view: Option<&crate::lod_manager::ViewParams>,
+    ) -> ChunkMesh {
+        let lod_level = self.select_lod_level(distance, view);
         self.generators[lod_level].generate_mesh(chunk)
     }
 
-    /// Select LOD level based on distance
-    fn select_lod_level(&self, distance: f32) -> usize {
-        for (i, &threshold) in self.config.distances.iter().enumerate() {
-            if distance < threshold {
-                return i;
+    /// Select LOD level based on screen-space error (preferred) or distance (fallback).
+    fn select_lod_level(
+        &self,
+        distance: f32,
+        view: Option<&crate::lod_manager::ViewParams>,
+    ) -> usize {
+        if let Some(vp) = view {
+            // Screen-space error: walk from coarsest LOD toward finest.
+            // Pick the coarsest level whose pixel error is within budget.
+            for level in (0..4).rev() {
+                let geo_err = self.config.geometric_errors[level];
+                let px = crate::lod_manager::compute_pixel_error(geo_err, distance, vp);
+                if px <= self.config.pixel_error_budget {
+                    return level;
+                }
             }
+            0 // All levels exceed budget — use finest
+        } else {
+            for (i, &threshold) in self.config.distances.iter().enumerate() {
+                if distance < threshold {
+                    return i;
+                }
+            }
+            3 // Furthest LOD
         }
-        3 // Furthest LOD
     }
 }
 
@@ -481,10 +514,10 @@ mod tests {
         let config = LodConfig::default();
         let lod_gen = LodMeshGenerator::new(config);
 
-        assert_eq!(lod_gen.select_lod_level(50.0), 0);
-        assert_eq!(lod_gen.select_lod_level(200.0), 1);
-        assert_eq!(lod_gen.select_lod_level(400.0), 2);
-        assert_eq!(lod_gen.select_lod_level(1500.0), 3);
+        assert_eq!(lod_gen.select_lod_level(50.0, None), 0);
+        assert_eq!(lod_gen.select_lod_level(200.0, None), 1);
+        assert_eq!(lod_gen.select_lod_level(400.0, None), 2);
+        assert_eq!(lod_gen.select_lod_level(1500.0, None), 3);
     }
 
     #[test]

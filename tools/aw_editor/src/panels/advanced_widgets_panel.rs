@@ -1,5 +1,6 @@
 use astract::advanced::{ColorPicker, RangeSlider, TreeNode, TreeView};
 use egui::{Color32, Ui};
+use tracing::debug;
 
 /// Panel demonstrating advanced widgets with game engine use cases
 pub struct AdvancedWidgetsPanel {
@@ -201,6 +202,9 @@ impl AdvancedWidgetsPanel {
 
     /// Update panel state
     pub fn update(&mut self) {
+        if !self.initialized {
+            debug!("advanced_widgets: initializing demo panel");
+        }
         self.initialize_tree_views();
     }
 

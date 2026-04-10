@@ -91,7 +91,7 @@ mod perf_category_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", PerfCategory::Frame);
-        assert!(display.contains("🖼️"));
+        assert!(display.contains("[Img]"));
     }
 
     #[test]
@@ -298,12 +298,12 @@ mod alert_severity_tests {
 
     #[test]
     fn test_warning_icon() {
-        assert_eq!(AlertSeverity::Warning.icon(), "⚠️");
+        assert_eq!(AlertSeverity::Warning.icon(), "[!]");
     }
 
     #[test]
     fn test_critical_icon() {
-        assert_eq!(AlertSeverity::Critical.icon(), "🔴");
+        assert_eq!(AlertSeverity::Critical.icon(), "[R]");
     }
 
     // Test all names unique
@@ -326,7 +326,7 @@ mod alert_severity_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", AlertSeverity::Warning);
-        assert!(display.contains("⚠️"));
+        assert!(display.contains("[!]"));
     }
 
     #[test]

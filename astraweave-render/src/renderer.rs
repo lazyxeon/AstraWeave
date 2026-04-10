@@ -220,6 +220,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
 
     var base_color = (uMaterial.base_color.rgb * input.color.rgb);
     let tex = textureSample(albedo_tex, albedo_samp, input.uv);
+    // Alpha cutoff: discard fully transparent fragments early to avoid
+    // wasted shading and incorrect depth writes (vegetation canopies).
+    if (tex.a < 0.5) { discard; }
     base_color = base_color * tex.rgb;
     var metallic = clamp(uMaterial.metallic, 0.0, 1.0);
     var roughness = clamp(uMaterial.roughness, 0.04, 1.0);
@@ -241,9 +244,10 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
 
     let radiance = vec3<f32>(2.0, 1.96, 1.8); // sun radiance (HDR, ACES compresses)
         // Shadow sampling
-        // Cascaded shadow mapping (2 cascades)
-        // Use distance from camera (not origin) for correct cascade selection.
+        // Cascaded shadow mapping (2 cascades) with edge fade.
+        // Use distance from camera for correct cascade selection.
     let dist = length(input.world_pos - uCamera.camera_pos);
+    let shadow_far = uLight.splits.y;
     let use_c0 = dist < uLight.splits.x;
     var lvp: mat4x4<f32>;
     if (use_c0) { lvp = uLight.view_proj0; } else { lvp = uLight.view_proj1; }
@@ -255,7 +259,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let base_bias = uLight.extras.y;
     let bias = max(base_bias /* + slope_scale * slope */ , 0.00001);
         var shadow: f32 = 1.0;
-        if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+        if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && dist < shadow_far) {
             var layer: i32;
             if (use_c0) { layer = 0; } else { layer = 1; }
             // PCF 3x3 (scaled by pcf radius in texels from extras.x)
@@ -270,17 +274,24 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 }
             }
             shadow = sum / 9.0;
+
+            // Fade shadow to 1.0 at cascade boundary edges to eliminate
+            // the hard square cutoff. Fade in the outer 20% of shadow range.
+            let fade_start = shadow_far * 0.8;
+            if (dist > fade_start) {
+                let fade = (dist - fade_start) / (shadow_far - fade_start);
+                shadow = mix(shadow, 1.0, clamp(fade, 0.0, 1.0));
+            }
+
+            // Also fade at UV edges to soften the ortho projection boundary
+            let edge_fade_x = min(uv.x, 1.0 - uv.x) * 10.0;
+            let edge_fade_y = min(uv.y, 1.0 - uv.y) * 10.0;
+            let edge_fade = clamp(min(edge_fade_x, edge_fade_y), 0.0, 1.0);
+            shadow = mix(1.0, shadow, edge_fade);
         }
         // Debug override: force shadow off when extras.x is negative (sentinel from CPU)
         if (uLight.extras.x < 0.0) {
             shadow = 1.0;
-        }
-
-        // Optional debug visualization: use uMaterial._pad.x > 0.5 to tint by cascade
-        if (uMaterial._pad.x > 0.5) {
-            var tint: vec3<f32>;
-            if (use_c0) { tint = vec3<f32>(1.0, 0.3, 0.0); } else { tint = vec3<f32>(0.0, 0.2, 1.0); }
-            base_color = mix(base_color, tint, 0.35);
         }
     // Direct lighting
     var lit_color = (diffuse + specular) * radiance * NdotL * shadow;
@@ -289,8 +300,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let ibl_color = compute_ibl(N, V, base_color, metallic, roughness, F0);
     lit_color = lit_color + ibl_color;
 
-    // Scene ambient as fallback floor (very low, IBL dominates)
-    let ambient = uScene.ambient_color * uScene.ambient_intensity * 0.1;
+    // Scene ambient as fallback floor (provides fill when IBL is low)
+    let ambient = uScene.ambient_color * uScene.ambient_intensity * 0.35;
     lit_color = lit_color + base_color * ambient;
         // Clustered point lights accumulation (Lambert + simple attenuation)
     // Clustered lighting disabled for this example build; use lit_color directly
@@ -446,12 +457,29 @@ pub struct RenderModel {
     pub tex_bind_group: Option<wgpu::BindGroup>,
     /// Retained GPU texture to keep the bind group's texture view alive.
     pub _retained_tex: Option<wgpu::Texture>,
+    /// GPU memory used by this model's texture (for budget tracking).
+    pub tex_gpu_bytes: u64,
 }
 
 pub struct Renderer {
     surface: Option<wgpu::Surface<'static>>,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    /// Vulkan pipeline cache for faster shader compilation on subsequent launches.
+    pipeline_cache: Option<wgpu::PipelineCache>,
+    /// Per-pass GPU timestamp profiler; `None` when `TIMESTAMP_QUERY` is unsupported.
+    gpu_profiler: Option<crate::gpu_profiler::GpuProfiler>,
+    /// Ring buffer for transient per-frame GPU allocations (uniforms, storage).
+    staging_ring: crate::staging_ring::StagingRing,
+    /// Monotonic counter bumped on resize and resource invalidation; drives
+    /// [`CachedBindGroup`] rebuild decisions across all render passes.
+    resource_generation: crate::bind_group_cache::Generation,
+    /// Double-precision world position of the camera.  When the
+    /// `camera-relative` feature is active the renderer offsets all
+    /// geometry and light positions by this value so the GPU only ever
+    /// works with small camera-relative coordinates.
+    #[cfg(feature = "camera-relative")]
+    camera_world_pos: glam::DVec3,
     config: wgpu::SurfaceConfiguration,
     depth: Depth,
 
@@ -510,6 +538,11 @@ pub struct Renderer {
     shadow_slope_scale: f32,
     /// Whether shadows are enabled for rendering
     shadows_enabled: bool,
+    /// Whether `set_terrain_ground_plane()` has positioned the plane for terrain.
+    /// When true, `draw_into()` skips the default plane overwrite.
+    terrain_ground_set: bool,
+    /// Cached clustered lighting offsets to skip recomputation when lights are static.
+    clustered_offsets_cache: Option<Vec<u32>>,
     /// Debug flag: when true, force shadow factor to 1.0 (shadows off) in the shader.
     /// Defaults to `false` — normal runtime uses computed PCF shadows.
     pub force_shadow_override: bool,
@@ -556,6 +589,8 @@ pub struct Renderer {
     overlay: crate::overlay::OverlayFx,
     pub overlay_params: crate::overlay::OverlayParams,
     pub weather: crate::effects::WeatherFx,
+    /// Material bind group for weather particles (bright white, non-metallic).
+    weather_material_bg: wgpu::BindGroup,
     // Environment & sky
     sky: crate::environment::SkyRenderer,
 
@@ -680,15 +715,18 @@ impl Renderer {
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("device"),
                 required_features: {
-                    let _f = wgpu::Features::empty();
+                    let mut f = wgpu::Features::empty();
                     #[cfg(feature = "gpu-tests")]
                     {
-                        wgpu::Features::TIMESTAMP_QUERY
+                        f |= wgpu::Features::TIMESTAMP_QUERY;
                     }
-                    #[cfg(not(feature = "gpu-tests"))]
-                    {
-                        _f
+                    if adapter.features().contains(wgpu::Features::PIPELINE_CACHE) {
+                        f |= wgpu::Features::PIPELINE_CACHE;
                     }
+                    if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+                        f |= wgpu::Features::TIMESTAMP_QUERY;
+                    }
+                    f
                 },
                 required_limits: wgpu::Limits {
                     max_bind_groups: 8,
@@ -736,7 +774,16 @@ impl Renderer {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("headless device"),
-                required_features: wgpu::Features::empty(),
+                required_features: {
+                    let mut f = wgpu::Features::empty();
+                    if adapter.features().contains(wgpu::Features::PIPELINE_CACHE) {
+                        f |= wgpu::Features::PIPELINE_CACHE;
+                    }
+                    if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+                        f |= wgpu::Features::TIMESTAMP_QUERY;
+                    }
+                    f
+                },
                 required_limits: wgpu::Limits {
                     max_bind_groups: 8,
                     ..wgpu::Limits::default()
@@ -779,6 +826,29 @@ impl Renderer {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
+
+        // Pipeline cache — Vulkan pipeline cache for faster shader compilation.
+        // NOTE: `Device::create_pipeline_cache()` is `unsafe` in wgpu 25, and this crate
+        // uses `#![forbid(unsafe_code)]`. The infrastructure (field, accessor, Drop save,
+        // and `cache: pipeline_cache.as_ref()` in all pipeline descriptors) is wired up
+        // so that enabling this requires only replacing `None` below with the cache
+        // creation call when wgpu stabilizes a safe API or the safety constraint is relaxed.
+        let pipeline_cache: Option<wgpu::PipelineCache> = None;
+
+        // GPU timestamp profiler — created when TIMESTAMP_QUERY is available.
+        let gpu_profiler = if device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+            Some(crate::gpu_profiler::GpuProfiler::new(&device, &queue))
+        } else {
+            None
+        };
+
+        // Per-frame ring buffer for transient uniform/storage uploads.
+        let staging_ring = crate::staging_ring::StagingRing::new(
+            &device,
+            crate::staging_ring::DEFAULT_RING_SIZE,
+            wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::STORAGE,
+        );
+        let resource_generation: crate::bind_group_cache::Generation = 1;
 
         // Depth
         let depth = crate::depth::Depth::create(&device, &config);
@@ -864,6 +934,26 @@ impl Renderer {
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: material_buf.as_entire_binding(),
+            }],
+        });
+
+        // Weather particle material: bright white, non-metallic, fully rough so
+        // rain/snow/sand particles are lit uniformly without dark shadowed streaks.
+        // [base_color.rgba, metallic, roughness, pad, pad]
+        let weather_mat_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("weather material ubo"),
+            size: 32,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let weather_material: [f32; 8] = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0];
+        queue.write_buffer(&weather_mat_buf, 0, bytemuck::cast_slice(&weather_material));
+        let weather_material_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("weather material bg"),
+            layout: &material_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: weather_mat_buf.as_entire_binding(),
             }],
         });
 
@@ -1121,7 +1211,7 @@ impl Renderer {
         });
         #[cfg(feature = "postfx")]
         let _post_pipeline_ssr = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: pipeline_cache.as_ref(),
             label: Some("ssr pipeline"),
             layout: Some(&ssr_pl),
             vertex: wgpu::VertexState {
@@ -1197,7 +1287,7 @@ impl Renderer {
         });
         #[cfg(feature = "postfx")]
         let _post_pipeline_ssao = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: pipeline_cache.as_ref(),
             label: Some("ssao pipeline"),
             layout: Some(&ssao_pl),
             vertex: wgpu::VertexState {
@@ -1287,7 +1377,7 @@ impl Renderer {
         });
         #[cfg(feature = "postfx")]
         let _post_pipeline_ssgi = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: pipeline_cache.as_ref(),
             label: Some("ssgi pipeline"),
             layout: Some(&ssgi_pl),
             vertex: wgpu::VertexState {
@@ -1614,7 +1704,20 @@ impl Renderer {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &[0u8; 4 * 6], // 6 faces, 1 pixel each, RGBA
+            // Moderate sky-fill cubemap (sRGB encoded → GPU decodes to linear).
+            // Provides soft indirect light when no HDRI environment is loaded.
+            // Values tuned to work with the corrected sun direction (NdotL≈0.7):
+            //   Direct ≈ 1.4, IBL ≈ 0.15, Ambient ≈ 0.04 → total ≈ 1.59.
+            //   After exposure(1.35) → ACES(2.15) ≈ 0.90 for sunlit white.
+            //   Mid-tone (0.5) → ACES(1.07) ≈ 0.70 — good contrast.
+            &[
+                100, 115, 140, 255, // +X  (linear ~0.13, 0.17, 0.26)
+                100, 115, 140, 255, // -X
+                140, 160, 200, 255, // +Y  (sky — brighter, linear ~0.26, 0.35, 0.58)
+                70, 65, 50, 255, // -Y  (ground bounce, linear ~0.06, 0.05, 0.03)
+                100, 115, 140, 255, // +Z
+                100, 115, 140, 255, // -Z
+            ],
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4),
@@ -1652,7 +1755,9 @@ impl Renderer {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &[0u8; 4],
+            // Reasonable BRDF LUT fallback: brdf.x ≈ 1.0, brdf.y ≈ 0.0
+            // so specular IBL = prefiltered * F (correct upper bound).
+            &[255u8, 0u8, 0u8, 255u8],
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4),
@@ -1717,7 +1822,7 @@ impl Renderer {
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: pipeline_cache.as_ref(),
             label: Some("pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
@@ -1773,7 +1878,7 @@ impl Renderer {
         let post_pipeline_layout = post_fx_pl;
 
         let post_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: pipeline_cache.as_ref(),
             label: Some("post pipeline"),
             layout: Some(&post_pipeline_layout),
             vertex: wgpu::VertexState {
@@ -1871,7 +1976,7 @@ struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
             push_constant_ranges: &[],
         });
         let hdr_blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: pipeline_cache.as_ref(),
             label: Some("hdr blit pipeline"),
             layout: Some(&hdr_blit_layout),
             vertex: wgpu::VertexState {
@@ -1897,7 +2002,7 @@ struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
         });
 
         // Shadow map resources (2-layer array for CSM)
-        let shadow_size: u32 = 1024;
+        let shadow_size: u32 = 2048;
         let shadow_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("shadow map"),
             size: wgpu::Extent3d {
@@ -2071,7 +2176,7 @@ fn vs(input: VSIn) -> VSOut {
                 push_constant_ranges: &[],
             });
         let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: pipeline_cache.as_ref(),
             label: Some("shadow pipeline"),
             layout: Some(&shadow_pipeline_layout),
             vertex: wgpu::VertexState {
@@ -2126,7 +2231,7 @@ fn vs(input: VSIn) -> VSOut {
             address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
         // Initialize albedo with a 1x1 white texel so sampling yields visible color
@@ -2442,8 +2547,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let kd = (vec3<f32>(1.0,1.0,1.0) - F) * (1.0 - metallic);
     let diffuse = kd * base_color / 3.14159;
     let radiance = vec3<f32>(2.0, 1.96, 1.8); // sun radiance (HDR, ACES compresses)
-    // Cascaded shadow sampling (same as static path)
+    // Cascaded shadow sampling with edge fade (same as static path)
     let dist = length(input.world_pos - uCamera.camera_pos);
+    let shadow_far = uLight.splits.y;
     let use_c0 = dist < uLight.splits.x;
     var lvp: mat4x4<f32>;
     if (use_c0) { lvp = uLight.view_proj0; } else { lvp = uLight.view_proj1; }
@@ -2455,7 +2561,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let base_bias = uLight.extras.y;
     let bias = max(base_bias /* + slope_scale * slope */ , 0.00001);
     var shadow: f32 = 1.0;
-    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && dist < shadow_far) {
         let layer = i32(select(1, 0, use_c0));
         let dims = vec2<f32>(textureDimensions(shadow_tex).xy);
         let texel = 1.0 / dims;
@@ -2467,6 +2573,16 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             }
         }
         shadow = sum / 9.0;
+        // Fade shadow at distance and UV edges
+        let fade_start = shadow_far * 0.8;
+        if (dist > fade_start) {
+            let fade = (dist - fade_start) / (shadow_far - fade_start);
+            shadow = mix(shadow, 1.0, clamp(fade, 0.0, 1.0));
+        }
+        let edge_fade_x = min(uv.x, 1.0 - uv.x) * 10.0;
+        let edge_fade_y = min(uv.y, 1.0 - uv.y) * 10.0;
+        let edge_fade = clamp(min(edge_fade_x, edge_fade_y), 0.0, 1.0);
+        shadow = mix(1.0, shadow, edge_fade);
     }
     // Debug override: force shadow off when extras.x is negative (sentinel from CPU)
     if (uLight.extras.x < 0.0) {
@@ -2479,7 +2595,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
 "#)),
         });
         let skinned_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: pipeline_cache.as_ref(),
             label: Some("skinned pipeline"),
             layout: Some(&skinned_pipeline_layout),
             vertex: wgpu::VertexState {
@@ -2792,7 +2908,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         });
         let clustered_comp_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                cache: None,
+                cache: pipeline_cache.as_ref(),
                 label: Some("clustered comp pipeline"),
                 layout: Some(&clustered_comp_pl),
                 module: &clustered_comp_shader,
@@ -2879,6 +2995,12 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             surface,
             device,
             queue,
+            pipeline_cache,
+            gpu_profiler,
+            staging_ring,
+            resource_generation,
+            #[cfg(feature = "camera-relative")]
+            camera_world_pos: glam::DVec3::ZERO,
             config,
             depth,
             shader,
@@ -2917,8 +3039,10 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             shadow_pcf_radius_px: 1.0,
             shadow_depth_bias: 0.0006,
             shadow_slope_scale: 0.002,
-            shadows_enabled: true,        // Shadows enabled by default
-            force_shadow_override: false, // Normal runtime: use computed PCF shadows
+            shadows_enabled: true,         // Shadows enabled by default
+            terrain_ground_set: false,     // No terrain ground plane set yet
+            clustered_offsets_cache: None, // Force first-frame computation
+            force_shadow_override: false,  // Normal runtime: use computed PCF shadows
             albedo_tex,
             albedo_view,
             albedo_sampler,
@@ -2949,6 +3073,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             overlay,
             overlay_params,
             weather,
+            weather_material_bg,
             sky,
             skin_bgl,
             skin_bg,
@@ -3001,6 +3126,42 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             post_chain: crate::hdr_pipeline::PostProcessChain::default(),
             gpu_memory_budget: std::sync::Arc::new(crate::gpu_memory::GpuMemoryBudget::new()),
         })
+    }
+
+    /// Returns a reference to the pipeline cache, if available (Vulkan backends only).
+    pub fn pipeline_cache(&self) -> Option<&wgpu::PipelineCache> {
+        self.pipeline_cache.as_ref()
+    }
+
+    /// Returns the GPU profiler, if timestamp queries are supported.
+    pub fn gpu_profiler(&self) -> Option<&crate::gpu_profiler::GpuProfiler> {
+        self.gpu_profiler.as_ref()
+    }
+
+    /// Returns a reference to the per-frame staging ring buffer.
+    pub fn staging_ring(&self) -> &crate::staging_ring::StagingRing {
+        &self.staging_ring
+    }
+
+    /// Returns the current resource generation counter (bumped on resize).
+    pub fn resource_generation(&self) -> crate::bind_group_cache::Generation {
+        self.resource_generation
+    }
+
+    /// Persist the pipeline cache to disk so subsequent launches compile shaders faster.
+    pub fn save_pipeline_cache(&self) {
+        if let Some(ref cache) = self.pipeline_cache {
+            if let Some(data) = cache.get_data() {
+                let cache_dir = std::path::Path::new("cache");
+                let _ = std::fs::create_dir_all(cache_dir);
+                // Atomic write: write to temp then rename to avoid corruption on crash.
+                let tmp = cache_dir.join("pipeline_cache.bin.tmp");
+                let dst = cache_dir.join("pipeline_cache.bin");
+                if std::fs::write(&tmp, &data).is_ok() {
+                    let _ = std::fs::rename(&tmp, &dst);
+                }
+            }
+        }
     }
 
     // --- Cinematics wiring ---
@@ -3096,8 +3257,15 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             max_spec_lod: f32,
             _pad: [f32; 2],
         }
+        // Normalise IBL intensity so different HDRIs produce similar terrain
+        // brightness.  Target average luminance ≈ 0.35 (mid-grey).  For
+        // procedural sky (avg_luminance = None) use 1.0.
+        let ibl_intensity = match res.avg_luminance {
+            Some(avg) if avg > 0.01 => (0.35 / avg).clamp(0.3, 3.0),
+            _ => 1.0,
+        };
         let params = IblParamsGpu {
-            ibl_intensity: 1.0,
+            ibl_intensity,
             max_spec_lod: res.mips_specular.saturating_sub(1).max(1) as f32,
             _pad: [0.0; 2],
         };
@@ -3429,6 +3597,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             return;
         }
 
+        // Bump resource generation so all cached bind groups rebuild.
+        self.resource_generation += 1;
+
         // Deallocate old render target memory from budget
         let old_rt_bytes = (self.config.width as u64) * (self.config.height as u64) * (8 + 4); // HDR(8) + Depth(4)
         self.gpu_memory_budget.deallocate(
@@ -3535,8 +3706,29 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             .write_buffer(&self.clustered_params_buf, 0, bytemuck::bytes_of(&data));
     }
 
+    /// Set the camera's true world-space position in double precision.
+    ///
+    /// When the `camera-relative` feature is active this value is subtracted
+    /// from every model matrix and light position before GPU upload, keeping
+    /// all GPU-side coordinates small and free from f32 jitter.  Call this
+    /// **before** [`update_camera`] / [`update_camera_matrices`] each frame.
+    #[cfg(feature = "camera-relative")]
+    pub fn set_camera_world_position(&mut self, pos: glam::DVec3) {
+        self.camera_world_pos = pos;
+    }
+
+    /// Returns the current camera-relative rendering origin.
+    #[cfg(feature = "camera-relative")]
+    pub fn camera_world_position(&self) -> glam::DVec3 {
+        self.camera_world_pos
+    }
+
     /// Update camera from pre-computed view and projection matrices.
     /// Use this when the caller already has correct matrices (e.g., editor orbit camera).
+    ///
+    /// When the `camera-relative` feature is active, the view matrix is
+    /// automatically adjusted to remove translation, and `camera_pos` in the
+    /// GPU UBO is set to zero.  Call [`set_camera_world_position`] first.
     pub fn update_camera_matrices(
         &mut self,
         view: glam::Mat4,
@@ -3547,6 +3739,17 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         fovy: f32,
         aspect: f32,
     ) {
+        // When camera-relative, strip the translation from the view matrix so
+        // that the camera sits at the world origin on the GPU.  All geometry is
+        // offset by `camera_world_pos` during instance upload instead.
+        #[cfg(feature = "camera-relative")]
+        let (view, position) = {
+            let _ = position; // suppress unused-variable warning for the parameter
+            let mut v = view;
+            v.w_axis = glam::Vec4::W; // zero out translation column
+            (v, glam::Vec3::ZERO)
+        };
+
         self.cached_view = view;
         self.cached_proj = proj;
         let vp = proj * view;
@@ -3581,56 +3784,91 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     }
 
     pub fn update_camera(&mut self, camera: &Camera) {
-        self.cached_view = camera.view_matrix();
+        // When camera-relative, use rotation-only view (camera at origin).
+        #[cfg(feature = "camera-relative")]
+        let (view, cam_pos) = { (camera.view_matrix_camera_relative(), glam::Vec3::ZERO) };
+        #[cfg(not(feature = "camera-relative"))]
+        let (view, cam_pos) = (camera.view_matrix(), camera.position);
+
+        self.cached_view = view;
         self.cached_proj = camera.proj_matrix();
-        self.camera_ubo.view_proj = camera.vp().to_cols_array_2d();
+        self.camera_ubo.view_proj = (camera.proj_matrix() * view).to_cols_array_2d();
         let light_dir = self.sky.time_of_day().get_light_direction();
         self.camera_ubo.light_dir_pad = [light_dir.x, light_dir.y, light_dir.z, 0.0];
-        let cam_pos = camera.position;
         self.camera_ubo.camera_pos_pad = [cam_pos.x, cam_pos.y, cam_pos.z, 0.0];
         self.queue
             .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&self.camera_ubo));
+
+        // Cascade computation uses camera-relative position (ZERO when active).
+        #[cfg(feature = "camera-relative")]
+        {
+            let cr_cam = Camera {
+                position: glam::Vec3::ZERO,
+                ..*camera
+            };
+            self.update_cascade_splits(&cr_cam, light_dir);
+        }
+        #[cfg(not(feature = "camera-relative"))]
         self.update_cascade_splits(camera, light_dir);
     }
 
     fn update_cascade_splits(&mut self, camera: &Camera, light_dir: glam::Vec3) {
-        let n = camera.znear.max(0.01);
-        let f = camera.zfar.max(n + 0.1);
+        // Shadow distance: cap at a reasonable range regardless of the camera's
+        // far plane (which can be 50 km for skybox visibility).  Shadows beyond
+        // ~500 units are imperceptible and waste shadow-map resolution.
+        let n = camera.znear.max(0.5);
+        let shadow_far = 500.0_f32.min(camera.zfar);
+
+        // PSSM practical split (lambda blends log vs linear).
+        // With n=0.5, shadow_far=500, lambda=0.75:
+        //   split0 ≈ 16 units — close-up detail
+        //   split1 = 500      — landscape shadows
         let c = 2.0;
         let i = 1.0f32;
-        let u = n + (f - n) * (i / c);
-        let l = n * (f / n).powf(i / c);
+        let u = n + (shadow_far - n) * (i / c);
+        let l = n * (shadow_far / n).powf(i / c);
         let lambda = self.cascade_lambda.clamp(0.0, 1.0);
         let split = l * lambda + u * (1.0 - lambda);
         self.split0 = split;
-        self.split1 = f;
+        self.split1 = shadow_far;
 
         let frustum0 = frustum_corners_ws(camera, n, self.split0);
-        let frustum1 = frustum_corners_ws(camera, self.split0, f);
+        let frustum1 = frustum_corners_ws(camera, self.split0, shadow_far);
         let up = glam::Vec3::Y;
         let center0 = frustum_center(&frustum0);
         let center1 = frustum_center(&frustum1);
-        let light_dist = 80.0f32;
-        let view0 = glam::Mat4::look_to_rh(center0 - light_dir * light_dist, light_dir, up);
-        let view1 = glam::Mat4::look_to_rh(center1 - light_dir * light_dist, light_dir, up);
-        let (min0, max0) = aabb_in_view_space(&view0, &frustum0);
-        let (min1, max1) = aabb_in_view_space(&view1, &frustum1);
-        let margin = 5.0f32;
+
+        // Use sphere-based fitting for stable shadows (rotation-invariant).
+        // The sphere radius determines the ortho projection extent, so shadows
+        // don't shimmer when the camera rotates.
+        let radius0 = sphere_radius(&frustum0, center0);
+        let radius1 = sphere_radius(&frustum1, center1);
+
+        // Position the light far enough behind the sphere to capture tall
+        // shadow casters (trees, buildings) above the frustum.
+        let light_dist0 = radius0 * 2.0 + 50.0;
+        let light_dist1 = radius1 * 2.0 + 50.0;
+
+        let view0 = glam::Mat4::look_to_rh(center0 - light_dir * light_dist0, light_dir, up);
+        let view1 = glam::Mat4::look_to_rh(center1 - light_dir * light_dist1, light_dir, up);
+
+        // Sphere-based orthographic bounds (rotationally stable)
+        let margin = 2.0_f32;
         let proj0 = glam::Mat4::orthographic_rh(
-            min0.x - margin,
-            max0.x + margin,
-            min0.y - margin,
-            max0.y + margin,
-            (-max0.z + 0.1).max(0.1),
-            (-min0.z + margin + 0.1).max(1.0),
+            -radius0 - margin,
+            radius0 + margin,
+            -radius0 - margin,
+            radius0 + margin,
+            0.1,
+            light_dist0 + radius0 + margin,
         );
         let proj1 = glam::Mat4::orthographic_rh(
-            min1.x - margin,
-            max1.x + margin,
-            min1.y - margin,
-            max1.y + margin,
-            (-max1.z + 0.1).max(0.1),
-            (-min1.z + margin + 0.1).max(1.0),
+            -radius1 - margin,
+            radius1 + margin,
+            -radius1 - margin,
+            radius1 + margin,
+            0.1,
+            light_dist1 + radius1 + margin,
         );
         self.cascade0 = proj0 * view0;
         self.cascade1 = proj1 * view1;
@@ -3748,6 +3986,48 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 && positions.len() == tangents.len()
                 && positions.len() == uvs.len()
         );
+
+        let vertex_size = std::mem::size_of::<crate::types::Vertex>();
+        let vbuf_bytes = vertex_size * positions.len();
+        let ibuf_bytes = std::mem::size_of::<u32>() * indices.len();
+        let max_buf = self.device.limits().max_buffer_size as usize;
+
+        if vbuf_bytes > max_buf || ibuf_bytes > max_buf {
+            log::error!(
+                "Mesh buffer exceeds wgpu max_buffer_size ({max_buf} bytes): \
+                 vertex_buf={vbuf_bytes} ({} verts), index_buf={ibuf_bytes} ({} idx). \
+                 Returning empty placeholder.",
+                positions.len(),
+                indices.len(),
+            );
+            let placeholder_verts = [crate::types::Vertex {
+                position: [0.0; 3],
+                normal: [0.0, 1.0, 0.0],
+                tangent: [1.0, 0.0, 0.0, 1.0],
+                uv: [0.0; 2],
+            }; 3];
+            let placeholder_idx: [u32; 3] = [0, 1, 2];
+            let vbuf = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("ext v (full) placeholder"),
+                    contents: bytemuck::cast_slice(&placeholder_verts),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+            let ibuf = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("ext i (full) placeholder"),
+                    contents: bytemuck::cast_slice(&placeholder_idx),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+            return Mesh {
+                vertex_buf: vbuf,
+                index_buf: ibuf,
+                index_count: 3,
+            };
+        }
+
         let verts: Vec<crate::types::Vertex> = positions
             .iter()
             .zip(normals.iter())
@@ -3796,7 +4076,36 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     pub fn update_instances(&mut self, instances: &[Instance]) {
         self.instances.clear();
         self.instances.extend_from_slice(instances);
+
+        // When camera-relative, offset every model matrix so its translation
+        // is relative to the camera origin.  The f64 subtraction preserves
+        // sub-centimetre precision even at 20 000+ km from world origin.
+        #[cfg(feature = "camera-relative")]
+        let raws: Vec<InstanceRaw> = {
+            let cam = self.camera_world_pos;
+            self.instances
+                .iter()
+                .map(|inst| {
+                    let mut model = inst.transform;
+                    let wp = glam::DVec3::new(
+                        model.w_axis.x as f64,
+                        model.w_axis.y as f64,
+                        model.w_axis.z as f64,
+                    );
+                    let rel = (wp - cam).as_vec3();
+                    model.w_axis = glam::Vec4::new(rel.x, rel.y, rel.z, model.w_axis.w);
+                    Instance {
+                        transform: model,
+                        color: inst.color,
+                        material_id: inst.material_id,
+                    }
+                    .raw()
+                })
+                .collect()
+        };
+        #[cfg(not(feature = "camera-relative"))]
         let raws: Vec<InstanceRaw> = self.instances.iter().map(|i| i.raw()).collect();
+
         let size = (raws.len() * std::mem::size_of::<InstanceRaw>()) as u64;
 
         if size > self.instance_buf.size() {
@@ -3869,6 +4178,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     /// Mutable access to the weather particle system (e.g. to set wind).
     pub fn weather_mut(&mut self) -> &mut crate::effects::WeatherFx {
         &mut self.weather
+    }
+
+    /// Set the maximum weather particle count, reallocating the GPU buffer if needed.
+    pub fn set_weather_max(&mut self, max: usize) {
+        self.weather.set_max(&self.device, max);
     }
 
     pub fn tick_environment(&mut self, dt: f32) {
@@ -3984,6 +4298,35 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 label: Some("encoder"),
             });
 
+        // --- GPU timestamp profiling: poll previous frame, begin new frame, pre-allocate ---
+        if let Some(ref mut p) = self.gpu_profiler {
+            p.poll_readback(&self.device);
+            p.begin_frame();
+        }
+        // Advance the staging ring buffer for this frame.
+        self.staging_ring.begin_frame();
+
+        let ts_cluster = self
+            .gpu_profiler
+            .as_mut()
+            .and_then(|p| p.allocate_pass("cluster_bin"));
+        let ts_shadow = [
+            self.gpu_profiler
+                .as_mut()
+                .and_then(|p| p.allocate_pass("shadow_cascade_0")),
+            self.gpu_profiler
+                .as_mut()
+                .and_then(|p| p.allocate_pass("shadow_cascade_1")),
+        ];
+        let ts_main = self
+            .gpu_profiler
+            .as_mut()
+            .and_then(|p| p.allocate_pass("main_pass"));
+        let ts_post = self
+            .gpu_profiler
+            .as_mut()
+            .and_then(|p| p.allocate_pass("post_pass"));
+
         // Update plane buffer (DISABLE to fix interference with TerrainSystem)
         /*
         let plane_xform = glam::Mat4::from_translation(glam::vec3(0.0, -0.2, 0.0))
@@ -4021,8 +4364,17 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             let glights: Vec<GpuLight> = self
                 .point_lights
                 .iter()
-                .map(|l| GpuLight {
-                    pos_radius: [l.pos.x, l.pos.y, l.pos.z, l.radius],
+                .map(|l| {
+                    #[cfg(feature = "camera-relative")]
+                    let pos = {
+                        let wp = glam::DVec3::new(l.pos.x as f64, l.pos.y as f64, l.pos.z as f64);
+                        (wp - self.camera_world_pos).as_vec3()
+                    };
+                    #[cfg(not(feature = "camera-relative"))]
+                    let pos = l.pos;
+                    GpuLight {
+                        pos_radius: [pos.x, pos.y, pos.z, l.radius],
+                    }
                 })
                 .collect();
             if !glights.is_empty() {
@@ -4044,9 +4396,14 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             {
                 enc.write_timestamp(&self.timestamp_query_set, 0);
             }
+            let cluster_ts = ts_cluster.map(|(b, e)| wgpu::ComputePassTimestampWrites {
+                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
+                beginning_of_pass_write_index: Some(b),
+                end_of_pass_write_index: Some(e),
+            });
             let mut cpass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("cluster bin"),
-                timestamp_writes: None,
+                timestamp_writes: cluster_ts,
             });
             cpass.set_pipeline(&self.clustered_comp_pipeline);
             cpass.set_bind_group(0, &self.clustered_comp_bg, &[]);
@@ -4085,6 +4442,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             if !has_shadow_casters_r {
                 continue;
             }
+            let shadow_ts = ts_shadow[idx].map(|(b, e)| wgpu::RenderPassTimestampWrites {
+                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
+                beginning_of_pass_write_index: Some(b),
+                end_of_pass_write_index: Some(e),
+            });
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
@@ -4096,7 +4458,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: shadow_ts,
                 occlusion_query_set: None,
             });
             sp.set_pipeline(&self.shadow_pipeline);
@@ -4129,14 +4491,45 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     sp.draw_indexed(0..mesh.index_count, 0, 0..self.ext_inst_count);
                 }
             }
-            // Named models (terrain, etc.) cast shadows too
-            for model in self.models.values() {
-                if model.instance_count > 0 {
-                    sp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
-                    sp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-                    sp.set_vertex_buffer(1, model.instance_buf.slice(..));
-                    sp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
+            // Named models cast shadows — scatter skipped (negligible
+            // visual contribution), terrain only in cascade 0.
+            // Shadow frustum culling: skip models outside the cascade's
+            // ortho frustum to avoid rendering distant terrain into shadows.
+            let cascade_vp = if idx == 0 {
+                self.cascade0
+            } else {
+                self.cascade1
+            };
+            let shadow_frustum = crate::culling::FrustumPlanes::from_view_proj(&cascade_vp);
+            for (name, model) in &self.models {
+                if model.instance_count == 0 {
+                    continue;
                 }
+                if name.starts_with("scatter_") {
+                    continue;
+                }
+                if idx == 1 && name.starts_with("terrain_c") {
+                    continue;
+                }
+                if let Some((aabb_min, aabb_max)) = &model.aabb {
+                    let center = glam::Vec3::new(
+                        (aabb_min[0] + aabb_max[0]) * 0.5,
+                        (aabb_min[1] + aabb_max[1]) * 0.5,
+                        (aabb_min[2] + aabb_max[2]) * 0.5,
+                    );
+                    let extent = glam::Vec3::new(
+                        (aabb_max[0] - aabb_min[0]) * 0.5,
+                        (aabb_max[1] - aabb_min[1]) * 0.5,
+                        (aabb_max[2] - aabb_min[2]) * 0.5,
+                    );
+                    if !shadow_frustum.test_aabb(center, extent) {
+                        continue;
+                    }
+                }
+                sp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
+                sp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
+                sp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                sp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
             }
         }
         // light_buf already contains the full [cascade0, cascade1, splits, extras]
@@ -4173,6 +4566,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         }
 
         {
+            let main_ts = ts_main.map(|(b, e)| wgpu::RenderPassTimestampWrites {
+                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
+                beginning_of_pass_write_index: Some(b),
+                end_of_pass_write_index: Some(e),
+            });
             let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main pass"),
                 // Render the main scene into the HDR color target; a post-pass will tonemap to the surface.
@@ -4193,7 +4591,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: main_ts,
                 occlusion_query_set: None,
             });
 
@@ -4261,18 +4659,17 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                             continue;
                         }
                     }
-                    // Bind per-model texture if available
+                    // Bind per-model texture if available, otherwise use global fallback
+                    // to prevent bind group bleed from the previous model.
                     if let Some(ref mtex) = model.tex_bind_group {
                         rp.set_bind_group(3, mtex, &[]);
+                    } else {
+                        rp.set_bind_group(3, &self.tex_bg, &[]);
                     }
                     rp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
                     rp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
                     rp.set_vertex_buffer(1, model.instance_buf.slice(..));
                     rp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
-                    // Restore global texture after per-model draw
-                    if model.tex_bind_group.is_some() {
-                        rp.set_bind_group(3, &self.tex_bg, &[]);
-                    }
                 }
             }
 
@@ -4285,50 +4682,22 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         // Optional feature-gated post chain — gated by post_chain flags
         #[cfg(feature = "postfx")]
         {
-            // SSR pass (only when enabled in post_chain)
-            if self.post_chain.ssr_enabled {
-                let mut ssp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("ssr pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &self.hdr_view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-                ssp.set_pipeline(&self.post_pipeline);
-                ssp.set_bind_group(0, &self.post_bind_group, &[]);
-                ssp.draw(0..3, 0..1);
-            }
-            // SSAO pass (only when enabled in post_chain)
-            if self.post_chain.ssao_enabled {
-                let mut ao = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("ssao pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &self.hdr_view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-                ao.set_pipeline(&self.post_pipeline);
-                ao.set_bind_group(0, &self.post_bind_group, &[]);
-                ao.draw(0..3, 0..1);
-            }
+            // NOTE: SSR and SSAO passes are disabled because the current
+            // implementation reuses `post_pipeline` (tonemap shader) and
+            // `post_bind_group` which reads from `hdr_view`.  Writing back
+            // to `hdr_view` with a tonemap pass causes double-tonemapping
+            // (crushing contrast, dark muddy output).  These should be
+            // re-enabled only when proper SSR/SSAO compute shaders and
+            // dedicated render targets are implemented.
         }
 
         // Postprocess HDR to surface
         {
+            let post_ts = ts_post.map(|(b, e)| wgpu::RenderPassTimestampWrites {
+                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
+                beginning_of_pass_write_index: Some(b),
+                end_of_pass_write_index: Some(e),
+            });
             let mut pp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("post pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -4340,7 +4709,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: post_ts,
                 occlusion_query_set: None,
             });
             #[cfg(feature = "postfx")]
@@ -4358,8 +4727,19 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             pp.draw(0..3, 0..1);
         }
 
+        // --- GPU profiler: resolve timestamp queries into readback buffer ---
+        if let Some(ref p) = self.gpu_profiler {
+            p.end_frame(&mut enc);
+        }
+
         self.queue.submit(Some(enc.finish()));
         frame.present();
+
+        // --- GPU profiler: initiate async readback of timestamp data ---
+        if let Some(ref mut p) = self.gpu_profiler {
+            p.request_readback();
+        }
+
         Ok(())
     }
 
@@ -4368,7 +4748,38 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         view: &wgpu::TextureView,
         enc: &mut wgpu::CommandEncoder,
     ) -> Result<()> {
-        // Clustered lighting setup
+        // --- GPU timestamp profiling: poll previous frame, begin new frame, pre-allocate ---
+        if let Some(ref mut p) = self.gpu_profiler {
+            p.poll_readback(&self.device);
+            p.begin_frame();
+        }
+        // Advance the staging ring buffer for this frame.
+        self.staging_ring.begin_frame();
+
+        let di_ts_cluster = self
+            .gpu_profiler
+            .as_mut()
+            .and_then(|p| p.allocate_pass("cluster_bin"));
+        let di_ts_shadow = [
+            self.gpu_profiler
+                .as_mut()
+                .and_then(|p| p.allocate_pass("shadow_cascade_0")),
+            self.gpu_profiler
+                .as_mut()
+                .and_then(|p| p.allocate_pass("shadow_cascade_1")),
+        ];
+        let di_ts_main = self
+            .gpu_profiler
+            .as_mut()
+            .and_then(|p| p.allocate_pass("main_render"));
+        let di_ts_post = self
+            .gpu_profiler
+            .as_mut()
+            .and_then(|p| p.allocate_pass("post_process"));
+
+        // Clustered lighting setup — only recompute when lights change.
+        // The default two hardcoded lights never change, so after the first
+        // frame the cached offsets are reused (saves ~0.5-1ms CPU per frame).
         if self.point_lights.is_empty() {
             self.point_lights.push(CpuLight {
                 pos: glam::Vec3::new(2.0, 2.0, 3.0),
@@ -4378,62 +4789,93 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 pos: glam::Vec3::new(-3.0, 1.0, 8.0),
                 radius: 5.0,
             });
+            // Invalidate cache when lights are first added
+            self.clustered_offsets_cache = None;
         }
-        let (_counts_cpu, _indices_cpu, offsets_cpu) = bin_lights_cpu(
-            &self.point_lights,
-            self.clustered_dims,
-            (self.config.width, self.config.height),
-            0.1,
-            200.0,
-            std::f32::consts::FRAC_PI_3,
-        );
+
         #[repr(C)]
         #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
         struct GpuLight {
             pos_radius: [f32; 4],
         }
-        let glights: Vec<GpuLight> = self
-            .point_lights
-            .iter()
-            .map(|l| GpuLight {
-                pos_radius: [l.pos.x, l.pos.y, l.pos.z, l.radius],
-            })
-            .collect();
-        if !glights.is_empty() {
-            self.queue.write_buffer(
-                &self.clustered_lights_buf,
-                0,
-                bytemuck::cast_slice(&glights),
+
+        let light_count = self.point_lights.len();
+
+        if self.clustered_offsets_cache.is_none() {
+            // Full recomputation: bin lights + upload everything
+            let (_counts_cpu, _indices_cpu, offsets_cpu) = bin_lights_cpu(
+                &self.point_lights,
+                self.clustered_dims,
+                (self.config.width, self.config.height),
+                0.1,
+                200.0,
+                std::f32::consts::FRAC_PI_3,
             );
-        }
-        self.queue.write_buffer(
-            &self.clustered_offsets_buf,
-            0,
-            bytemuck::cast_slice(&offsets_cpu),
-        );
-        // Zero counts — GPU-side clear, no CPU allocation
-        enc.clear_buffer(&self.clustered_counts_buf, 0, None);
-        {
-            let mut cpass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("cluster bin"),
-                timestamp_writes: None,
-            });
-            cpass.set_pipeline(&self.clustered_comp_pipeline);
-            cpass.set_bind_group(0, &self.clustered_comp_bg, &[]);
-            cpass.dispatch_workgroups(glights.len() as u32, 1, 1);
+            let glights: Vec<GpuLight> = self
+                .point_lights
+                .iter()
+                .map(|l| {
+                    #[cfg(feature = "camera-relative")]
+                    let pos = {
+                        let wp = glam::DVec3::new(l.pos.x as f64, l.pos.y as f64, l.pos.z as f64);
+                        (wp - self.camera_world_pos).as_vec3()
+                    };
+                    #[cfg(not(feature = "camera-relative"))]
+                    let pos = l.pos;
+                    GpuLight {
+                        pos_radius: [pos.x, pos.y, pos.z, l.radius],
+                    }
+                })
+                .collect();
+            if !glights.is_empty() {
+                self.queue.write_buffer(
+                    &self.clustered_lights_buf,
+                    0,
+                    bytemuck::cast_slice(&glights),
+                );
+            }
+            self.queue.write_buffer(
+                &self.clustered_offsets_buf,
+                0,
+                bytemuck::cast_slice(&offsets_cpu),
+            );
+            self.clustered_offsets_cache = Some(offsets_cpu);
+
+            // GPU compute pass only needed when lights changed (offsets were recomputed above)
+            enc.clear_buffer(&self.clustered_counts_buf, 0, None);
+            {
+                let cluster_ts = di_ts_cluster.map(|(b, e)| wgpu::ComputePassTimestampWrites {
+                    query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
+                    beginning_of_pass_write_index: Some(b),
+                    end_of_pass_write_index: Some(e),
+                });
+                let mut cpass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("cluster bin"),
+                    timestamp_writes: cluster_ts,
+                });
+                cpass.set_pipeline(&self.clustered_comp_pipeline);
+                cpass.set_bind_group(0, &self.clustered_comp_bg, &[]);
+                cpass.dispatch_workgroups(light_count as u32, 1, 1);
+            }
         }
 
-        // Update pre-allocated plane instance buffer (no per-frame allocation)
-        let plane_xform = glam::Mat4::from_translation(vec3(0.0, -0.2, 0.0))
-            * glam::Mat4::from_scale(vec3(50.0, 1.0, 50.0));
-        let plane_inst = Instance {
-            transform: plane_xform,
-            color: [0.1, 0.12, 0.14, 1.0],
-            material_id: 0,
+        // Update pre-allocated plane instance buffer ONLY if terrain hasn't
+        // positioned it.  `set_terrain_ground_plane()` sets the correct Y and
+        // extent for terrain rendering — overwriting it here would place a
+        // small dark plane at Y=-0.2 right inside the camera's shadow cascade,
+        // producing a massive shadow that follows the camera.
+        if !self.terrain_ground_set {
+            let plane_xform = glam::Mat4::from_translation(vec3(0.0, -0.2, 0.0))
+                * glam::Mat4::from_scale(vec3(50.0, 1.0, 50.0));
+            let plane_inst = Instance {
+                transform: plane_xform,
+                color: [0.1, 0.12, 0.14, 1.0],
+                material_id: 0,
+            }
+            .raw();
+            self.queue
+                .write_buffer(&self.plane_inst_buf, 0, bytemuck::bytes_of(&plane_inst));
         }
-        .raw();
-        self.queue
-            .write_buffer(&self.plane_inst_buf, 0, bytemuck::bytes_of(&plane_inst));
 
         // Frustum cull - TEST 4
         let (vis_raws, vis_count) = self.build_visible_instances();
@@ -4454,6 +4896,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             if !has_shadow_casters {
                 continue;
             }
+            let shadow_ts = di_ts_shadow[idx].map(|(b, e)| wgpu::RenderPassTimestampWrites {
+                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
+                beginning_of_pass_write_index: Some(b),
+                end_of_pass_write_index: Some(e),
+            });
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
@@ -4465,7 +4912,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: shadow_ts,
                 occlusion_query_set: None,
             });
             sp.set_pipeline(&self.shadow_pipeline);
@@ -4498,14 +4945,58 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     sp.draw_indexed(0..mesh.index_count, 0, 0..self.ext_inst_count);
                 }
             }
-            // Named models (terrain, etc.) cast shadows too
-            for model in self.models.values() {
-                if model.instance_count > 0 {
-                    sp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
-                    sp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-                    sp.set_vertex_buffer(1, model.instance_buf.slice(..));
-                    sp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
+            // Named models cast shadows — but only terrain (terrain_c*) in
+            // cascade 0 (near).  Scatter objects (scatter_*) are skipped
+            // entirely because small vegetation/debris shadows are
+            // imperceptible and the draw call cost is severe (~25+ calls ×
+            // 2 cascades at 4M+ triangles total).
+            //
+            // Shadow frustum culling: build frustum planes from the cascade
+            // VP matrix and skip terrain chunks outside the shadow camera's
+            // view. This typically culls ~90% of terrain chunks since the
+            // near cascade covers only ~16 units around the camera.
+            let cascade_vp = if idx == 0 {
+                self.cascade0
+            } else {
+                self.cascade1
+            };
+            let shadow_frustum = crate::culling::FrustumPlanes::from_view_proj(&cascade_vp);
+            for (name, model) in &self.models {
+                if model.instance_count == 0 {
+                    continue;
                 }
+                // Skip scatter models from shadow pass — negligible visual
+                // contribution, significant GPU cost.
+                if name.starts_with("scatter_") {
+                    continue;
+                }
+                // Cascade 1 (far) skips terrain — self-shadows on distant
+                // terrain are invisible and cost millions of triangles.
+                if idx == 1 && name.starts_with("terrain_c") {
+                    continue;
+                }
+                // Frustum cull against the shadow cascade's ortho projection.
+                // Terrain chunks outside the shadow camera's frustum don't
+                // contribute to visible shadows and are expensive to render.
+                if let Some((aabb_min, aabb_max)) = &model.aabb {
+                    let center = glam::Vec3::new(
+                        (aabb_min[0] + aabb_max[0]) * 0.5,
+                        (aabb_min[1] + aabb_max[1]) * 0.5,
+                        (aabb_min[2] + aabb_max[2]) * 0.5,
+                    );
+                    let extent = glam::Vec3::new(
+                        (aabb_max[0] - aabb_min[0]) * 0.5,
+                        (aabb_max[1] - aabb_min[1]) * 0.5,
+                        (aabb_max[2] - aabb_min[2]) * 0.5,
+                    );
+                    if !shadow_frustum.test_aabb(center, extent) {
+                        continue;
+                    }
+                }
+                sp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
+                sp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
+                sp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                sp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
             }
         }
         // light_buf already contains the full [cascade0, cascade1, splits, extras]
@@ -4547,6 +5038,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         }
 
         {
+            let main_ts = di_ts_main.map(|(b, e)| wgpu::RenderPassTimestampWrites {
+                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
+                beginning_of_pass_write_index: Some(b),
+                end_of_pass_write_index: Some(e),
+            });
             let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main render pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -4565,7 +5061,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: main_ts,
                 occlusion_query_set: None,
             });
 
@@ -4636,14 +5132,13 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     }
                     if let Some(ref mtex) = model.tex_bind_group {
                         rp.set_bind_group(3, mtex, &[]);
+                    } else {
+                        rp.set_bind_group(3, &self.tex_bg, &[]);
                     }
                     rp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
                     rp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
                     rp.set_vertex_buffer(1, model.instance_buf.slice(..));
                     rp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
-                    if model.tex_bind_group.is_some() {
-                        rp.set_bind_group(3, &self.tex_bg, &[]);
-                    }
                 }
             }
 
@@ -4653,9 +5148,12 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             }
 
             // Weather particles — render as instanced spheres after transparent objects.
-            // Uses the same pipeline and mesh_sphere as regular instances.
+            // Use dedicated weather material (bright white, non-metallic) and default
+            // textures to prevent inheriting the last model's material/texture state.
             let weather_count = self.weather.particle_count() as u32;
             if weather_count > 0 {
+                rp.set_bind_group(1, &self.weather_material_bg, &[]);
+                rp.set_bind_group(3, &self.tex_bg, &[]);
                 rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
                 rp.set_index_buffer(
                     self.mesh_sphere.index_buf.slice(..),
@@ -4671,6 +5169,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         // the editor has its own tonemap pass.
         // Standalone mode: use the full post pipeline (ACES tonemap + tint).
         {
+            let post_ts = di_ts_post.map(|(b, e)| wgpu::RenderPassTimestampWrites {
+                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
+                beginning_of_pass_write_index: Some(b),
+                end_of_pass_write_index: Some(e),
+            });
             let mut pp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("post pass (external)"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -4682,7 +5185,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: post_ts,
                 occlusion_query_set: None,
             });
             if self.surface.is_none() {
@@ -4697,6 +5200,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 pp.set_bind_group(1, &self.scene_env_bg, &[]);
                 pp.draw(0..3, 0..1);
             }
+        }
+
+        // --- GPU profiler: resolve timestamp queries into readback buffer ---
+        if let Some(ref p) = self.gpu_profiler {
+            p.end_frame(enc);
         }
 
         Ok(())
@@ -4760,6 +5268,12 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
 
         self.queue.submit(std::iter::once(enc.finish()));
         frame.present();
+
+        // --- GPU profiler: initiate async readback of timestamp data ---
+        if let Some(ref mut p) = self.gpu_profiler {
+            p.request_readback();
+        }
+
         Ok(())
     }
 
@@ -4775,6 +5289,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             (u32, u32),
         ),
     {
+        // Poll previous frame's GPU profiler readback even in simple (overlay-only) mode.
+        if let Some(ref mut p) = self.gpu_profiler {
+            p.poll_readback(&self.device);
+        }
+
         let (frame, view) = match self.acquire_surface_texture()? {
             Some(pair) => pair,
             None => return Ok(()),
@@ -4865,7 +5384,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             });
         self.device
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                cache: None,
+                cache: self.pipeline_cache.as_ref(),
                 label: Some("material preview pipeline"),
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
@@ -4906,14 +5425,13 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             r3 + r2, // near
             r3 - r2, // far
         ];
-        let norm_planes: Vec<(glam::Vec3, f32)> = planes
-            .iter()
-            .map(|p| {
-                let n = glam::Vec3::new(p.x, p.y, p.z);
-                let len = n.length().max(1e-6);
-                (n / len, p.w / len)
-            })
-            .collect();
+        // Normalize frustum planes inline (avoids small Vec allocation)
+        let norm_planes: [(glam::Vec3, f32); 6] = std::array::from_fn(|i| {
+            let p = planes[i];
+            let n = glam::Vec3::new(p.x, p.y, p.z);
+            let len = n.length().max(1e-6);
+            (n / len, p.w / len)
+        });
 
         let mut out = Vec::with_capacity(self.instances.len());
         for inst in &self.instances {
@@ -5236,22 +5754,36 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
 
     /// Set instances for external mesh rendering.
     /// Each instance requires a transform and color.
+    /// Uses grow-on-demand: only re-allocates when count exceeds buffer capacity.
     pub fn set_external_instances(&mut self, instances: &[Instance]) {
         if instances.is_empty() {
-            self.ext_inst_buf = None;
             self.ext_inst_count = 0;
             return;
         }
 
         let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
-        let buf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let required_bytes = (raw.len() * std::mem::size_of::<InstanceRaw>()) as u64;
+
+        let needs_realloc = match &self.ext_inst_buf {
+            Some(buf) => buf.size() < required_bytes,
+            None => true,
+        };
+
+        if needs_realloc {
+            let alloc_size = required_bytes.next_power_of_two().max(256);
+            self.ext_inst_buf = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("ext-inst-buf"),
-                contents: bytemuck::cast_slice(&raw),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        self.ext_inst_buf = Some(buf);
+                size: alloc_size,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+
+        self.queue.write_buffer(
+            self.ext_inst_buf.as_ref().unwrap(),
+            0,
+            bytemuck::cast_slice(&raw),
+        );
         self.ext_inst_count = instances.len() as u32;
     }
 
@@ -5287,13 +5819,18 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         aabb: Option<([f32; 3], [f32; 3])>,
     ) {
         let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
-        let instance_buf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("model-inst-buf"),
-                contents: bytemuck::cast_slice(&raw),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
+        let buf_bytes = (raw.len() * std::mem::size_of::<InstanceRaw>()) as u64;
+        let alloc_size = buf_bytes.next_power_of_two().max(256);
+        let instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("model-inst-buf"),
+            size: alloc_size,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !raw.is_empty() {
+            self.queue
+                .write_buffer(&instance_buf, 0, bytemuck::cast_slice(&raw));
+        }
         let model = RenderModel {
             mesh,
             instance_buf,
@@ -5301,6 +5838,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             aabb,
             tex_bind_group: None,
             _retained_tex: None,
+            tex_gpu_bytes: 0,
         };
         self.models.insert(name.into(), model);
     }
@@ -5320,15 +5858,34 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         albedo_rgba: &[u8],
     ) {
         let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
-        let instance_buf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("model-inst-buf"),
-                contents: bytemuck::cast_slice(&raw),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
+        let buf_bytes = (raw.len() * std::mem::size_of::<InstanceRaw>()) as u64;
+        let alloc_size = buf_bytes.next_power_of_two().max(256);
+        let instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("model-inst-buf"),
+            size: alloc_size,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !raw.is_empty() {
+            self.queue
+                .write_buffer(&instance_buf, 0, bytemuck::cast_slice(&raw));
+        }
 
-        // Create per-model albedo texture
+        // Create per-model albedo texture with mipmaps.
+        // Pre-compute GPU memory needed for the full mip chain so we can
+        // track it in the memory budget and log a warning if it's large.
+        let mip_count = (albedo_width.max(albedo_height) as f32).log2().floor() as u32 + 1;
+        {
+            let mut total_bytes: u64 = 0;
+            let (mut mw, mut mh) = (albedo_width as u64, albedo_height as u64);
+            for _ in 0..mip_count {
+                total_bytes += mw * mh * 4;
+                mw = (mw / 2).max(1);
+                mh = (mh / 2).max(1);
+            }
+            self.gpu_memory_budget
+                .try_allocate(crate::gpu_memory::MemoryCategory::Textures, total_bytes);
+        }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("model albedo"),
             size: wgpu::Extent3d {
@@ -5336,13 +5893,15 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 height: albedo_height,
                 depth_or_array_layers: 1,
             },
-            mip_level_count: 1,
+            mip_level_count: mip_count,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+
+        // Upload mip level 0 (full resolution)
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &tex,
@@ -5362,6 +5921,60 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
                 depth_or_array_layers: 1,
             },
         );
+
+        // Generate and upload mip chain via 2×2 box filter
+        {
+            let mut prev = albedo_rgba.to_vec();
+            let mut w = albedo_width;
+            let mut h = albedo_height;
+            for level in 1..mip_count {
+                let nw = (w / 2).max(1);
+                let nh = (h / 2).max(1);
+                let mut mip = vec![0u8; (nw * nh * 4) as usize];
+                for y in 0..nh {
+                    for x in 0..nw {
+                        let sx = (x * 2).min(w - 1);
+                        let sy = (y * 2).min(h - 1);
+                        let sx1 = (sx + 1).min(w - 1);
+                        let sy1 = (sy + 1).min(h - 1);
+                        for c in 0..4u32 {
+                            let i00 = ((sy * w + sx) * 4 + c) as usize;
+                            let i10 = ((sy * w + sx1) * 4 + c) as usize;
+                            let i01 = ((sy1 * w + sx) * 4 + c) as usize;
+                            let i11 = ((sy1 * w + sx1) * 4 + c) as usize;
+                            let avg = (prev[i00] as u16
+                                + prev[i10] as u16
+                                + prev[i01] as u16
+                                + prev[i11] as u16)
+                                / 4;
+                            mip[((y * nw + x) * 4 + c) as usize] = avg as u8;
+                        }
+                    }
+                }
+                self.queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &tex,
+                        mip_level: level,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &mip,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * nw),
+                        rows_per_image: Some(nh),
+                    },
+                    wgpu::Extent3d {
+                        width: nw,
+                        height: nh,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                prev = mip;
+                w = nw;
+                h = nh;
+            }
+        }
         let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Build bind group matching tex_bgl (group 3): albedo, MR, normal, skin palette
@@ -5400,6 +6013,18 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             ],
         });
 
+        // Compute total GPU memory for this texture (all mip levels, 4 bytes per pixel)
+        let tex_gpu_bytes = {
+            let mut total: u64 = 0;
+            let (mut mw, mut mh) = (albedo_width as u64, albedo_height as u64);
+            for _ in 0..mip_count {
+                total += mw * mh * 4;
+                mw = (mw / 2).max(1);
+                mh = (mh / 2).max(1);
+            }
+            total
+        };
+
         let model = RenderModel {
             mesh,
             instance_buf,
@@ -5407,13 +6032,107 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             aabb: None,
             tex_bind_group: Some(tex_bg),
             _retained_tex: Some(tex),
+            tex_gpu_bytes,
         };
         self.models.insert(name.into(), model);
     }
 
-    /// Remove a named model.
+    /// Add a model that shares the texture bind group from an existing model.
+    ///
+    /// This avoids creating duplicate GPU textures when multiple models use
+    /// the same albedo (e.g., scatter quadrants from the same mesh group).
+    /// The texture bind group and retained GPU texture are cloned (wgpu
+    /// resources are reference-counted, so this is cheap).
+    ///
+    /// Returns `true` if the source model was found and the new model was
+    /// created, `false` if the source model does not exist (caller should
+    /// fall back to `add_model`).
+    pub fn add_model_sharing_texture(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        source_model: &str,
+    ) -> bool {
+        let (shared_bg, shared_tex) = match self.models.get(source_model) {
+            Some(src) => (src.tex_bind_group.clone(), src._retained_tex.clone()),
+            None => return false,
+        };
+        let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
+        let buf_bytes = (raw.len() * std::mem::size_of::<InstanceRaw>()) as u64;
+        let alloc_size = buf_bytes.next_power_of_two().max(256);
+        let instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("model-inst-buf"),
+            size: alloc_size,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !raw.is_empty() {
+            self.queue
+                .write_buffer(&instance_buf, 0, bytemuck::cast_slice(&raw));
+        }
+        let model = RenderModel {
+            mesh,
+            instance_buf,
+            instance_count: instances.len() as u32,
+            aabb: None,
+            tex_bind_group: shared_bg,
+            _retained_tex: shared_tex,
+            tex_gpu_bytes: 0, // Don't double-count — source owns the budget
+        };
+        self.models.insert(name.into(), model);
+        true
+    }
+
+    /// Remove a named model and release its GPU resources.
     pub fn clear_model(&mut self, name: &str) {
-        self.models.remove(name);
+        if let Some(model) = self.models.remove(name) {
+            if model.tex_gpu_bytes > 0 {
+                self.gpu_memory_budget.deallocate(
+                    crate::gpu_memory::MemoryCategory::Textures,
+                    model.tex_gpu_bytes,
+                );
+            }
+        }
+    }
+
+    /// Update only the instance buffer for an existing named model.
+    ///
+    /// This is **much** cheaper than `clear_model` + `add_model` because it
+    /// reuses the existing mesh GPU buffers and texture bind group. The
+    /// instance buffer is only reallocated when the new count exceeds the
+    /// current capacity.
+    ///
+    /// Returns `true` if the model existed and was updated, `false` if the
+    /// model name was not found (caller should fall back to `add_model`).
+    pub fn update_model_instances(&mut self, name: &str, instances: &[Instance]) -> bool {
+        let Some(model) = self.models.get_mut(name) else {
+            return false;
+        };
+        let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
+        let needed = (raw.len() * std::mem::size_of::<InstanceRaw>()) as u64;
+        if needed > model.instance_buf.size() {
+            // Reallocate with headroom to avoid repeated resizes
+            model.instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("model-inst-buf (resized)"),
+                size: needed.next_power_of_two(),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        if !raw.is_empty() {
+            self.queue
+                .write_buffer(&model.instance_buf, 0, bytemuck::cast_slice(&raw));
+        }
+        model.instance_count = instances.len() as u32;
+        true
+    }
+
+    /// Set or update the AABB for an existing named model (enables frustum culling).
+    pub fn set_model_bounds(&mut self, name: &str, aabb_min: [f32; 3], aabb_max: [f32; 3]) {
+        if let Some(model) = self.models.get_mut(name) {
+            model.aabb = Some((aabb_min, aabb_max));
+        }
     }
 
     /// Reposition the ground fill plane for terrain mode.
@@ -5432,6 +6151,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         .raw();
         self.queue
             .write_buffer(&self.plane_inst_buf, 0, bytemuck::bytes_of(&inst));
+        self.terrain_ground_set = true;
     }
 
     /// Reset the ground fill plane to its default position and scale.
@@ -5446,6 +6166,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         .raw();
         self.queue
             .write_buffer(&self.plane_inst_buf, 0, bytemuck::bytes_of(&inst));
+        self.terrain_ground_set = false;
     }
 
     /// Check if a named model exists.
@@ -5461,6 +6182,21 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     /// Get names of all loaded models.
     pub fn model_names(&self) -> Vec<String> {
         self.models.keys().cloned().collect()
+    }
+
+    /// Collect names of models matching a prefix, without cloning all keys.
+    pub fn model_names_with_prefix(&self, prefix: &str) -> Vec<String> {
+        self.models
+            .keys()
+            .filter(|k| k.starts_with(prefix))
+            .cloned()
+            .collect()
+    }
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        self.save_pipeline_cache();
     }
 }
 
@@ -5562,6 +6298,15 @@ fn frustum_center(corners: &[glam::Vec3; 8]) -> glam::Vec3 {
         acc += *c;
     }
     acc / 8.0
+}
+
+/// Compute the bounding sphere radius for a set of frustum corners.
+/// Used for rotationally-stable cascade shadow map projections.
+fn sphere_radius(corners: &[glam::Vec3; 8], center: glam::Vec3) -> f32 {
+    corners
+        .iter()
+        .map(|c| (*c - center).length())
+        .fold(0.0_f32, f32::max)
 }
 
 fn aabb_in_view_space(view: &glam::Mat4, corners_ws: &[glam::Vec3; 8]) -> (glam::Vec3, glam::Vec3) {

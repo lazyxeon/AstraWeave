@@ -14,6 +14,7 @@
 //! - Search and refactoring tools
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::{info, warn};
 
 use crate::panels::Panel;
 
@@ -1130,6 +1131,7 @@ impl DialogueEditorPanel {
         ui.horizontal(|ui| {
             if ui.button("+ New Node").clicked() {
                 let id = self.next_id();
+                info!(node_id = id, "Dialogue: added new node from graph tab");
                 self.current_graph.nodes.push(DialogueNode {
                     id,
                     position: (200.0, 200.0),
@@ -1417,6 +1419,7 @@ impl DialogueEditorPanel {
         // Add node button
         if ui.button("+ Add Node").clicked() {
             let id = self.next_id();
+            info!(node_id = id, "Dialogue: added node from nodes tab");
             self.current_graph.nodes.push(DialogueNode {
                 id,
                 position: (100.0, 100.0),
@@ -1540,8 +1543,10 @@ impl DialogueEditorPanel {
 
         // Add variable button
         if ui.button("+ Add Variable").clicked() {
+            let var_name = format!("var_{}", self.current_graph.variables.len() + 1);
+            info!(variable = %var_name, "Dialogue: added condition variable");
             self.current_graph.variables.push(DialogueVariable {
-                name: format!("var_{}", self.current_graph.variables.len() + 1),
+                name: var_name,
                 var_type: VariableType::Boolean,
                 default_value: "false".to_string(),
                 description: String::new(),
@@ -1739,6 +1744,7 @@ impl DialogueEditorPanel {
 
     pub fn add_node(&mut self, node_type: DialogueNodeType) -> u32 {
         let id = self.next_id();
+        info!(node_id = id, node_type = ?node_type, "Dialogue: added node");
         self.current_graph.nodes.push(DialogueNode {
             id,
             node_type,
@@ -1773,6 +1779,7 @@ impl DialogueEditorPanel {
         // Validation controls
         ui.horizontal(|ui| {
             if ui.button("Run Validation").clicked() {
+                info!("Dialogue: running validation");
                 self.validate_graph();
             }
             ui.checkbox(&mut self.auto_validate, "Auto-validate");
@@ -1883,6 +1890,7 @@ impl DialogueEditorPanel {
             ui.text_edit_singleline(&mut self.export_path);
         });
         if ui.button("📤 Export").clicked() {
+            info!(format = ?self.export_format, path = %self.export_path, "Dialogue: exporting");
             self.export_dialogue();
         }
 
@@ -1895,6 +1903,7 @@ impl DialogueEditorPanel {
             ui.text_edit_singleline(&mut self.import_path);
         });
         if ui.button("Import").clicked() {
+            info!(path = %self.import_path, "Dialogue: importing");
             self.import_dialogue();
         }
 
@@ -1990,6 +1999,7 @@ impl DialogueEditorPanel {
 
         // Check for start node
         if self.current_graph.start_node_id.is_none() {
+            warn!("Dialogue validation: no start node defined");
             self.validation_issues.push(ValidationIssue {
                 severity: IssueSeverity::Error,
                 message: "No start node defined".to_string(),

@@ -114,7 +114,7 @@ fn test_spawn_entity_via_clipboard() {
 
     // Spawn using command
     let mut cmd = SpawnEntitiesCommand::new(clipboard, IVec2::new(10, 10));
-    cmd.execute(&mut world).expect("spawn should succeed");
+    cmd.execute(&mut world, None).expect("spawn should succeed");
 
     assert_eq!(
         world.entities().len(),
@@ -129,7 +129,8 @@ fn test_delete_entity_command() {
     let entity = world.spawn("ToDelete", IVec2::new(0, 0), Team { id: 0 }, 100, 30);
 
     let mut cmd = DeleteEntitiesCommand::new(vec![entity]);
-    cmd.execute(&mut world).expect("delete should succeed");
+    cmd.execute(&mut world, None)
+        .expect("delete should succeed");
 
     // Entity should be destroyed (removed from world)
     // Note: destroy_entity removes the entity, so pose() returns None
@@ -145,7 +146,7 @@ fn test_delete_undo() {
     let entity = world.spawn("ToDelete", IVec2::new(5, 5), Team { id: 0 }, 100, 30);
 
     let mut delete_cmd = DeleteEntitiesCommand::new(vec![entity]);
-    delete_cmd.execute(&mut world).expect("delete");
+    delete_cmd.execute(&mut world, None).expect("delete");
 
     // Entity should be destroyed after delete
     assert!(
@@ -154,7 +155,7 @@ fn test_delete_undo() {
     );
 
     // Undo delete - creates a NEW entity with same data (not same ID)
-    delete_cmd.undo(&mut world).expect("undo delete");
+    delete_cmd.undo(&mut world, None).expect("undo delete");
 
     // After undo, there should be an entity with the original position
     // Note: The restored entity may have a different ID
@@ -187,7 +188,7 @@ fn test_move_entity_command() {
     let new_pos = IVec2::new(10, 15);
 
     let mut cmd = MoveEntityCommand::new(entity, old_pos, new_pos);
-    cmd.execute(&mut world).expect("move should succeed");
+    cmd.execute(&mut world, None).expect("move should succeed");
 
     assert_eq!(
         world.pose(entity).unwrap().pos,
@@ -195,7 +196,7 @@ fn test_move_entity_command() {
         "entity should move to new position"
     );
 
-    cmd.undo(&mut world).expect("undo should succeed");
+    cmd.undo(&mut world, None).expect("undo should succeed");
     assert_eq!(
         world.pose(entity).unwrap().pos,
         old_pos,
@@ -212,14 +213,15 @@ fn test_rotate_entity_command() {
     let new_rotation = (0.5, 1.0, 0.25);
 
     let mut cmd = RotateEntityCommand::new(entity, old_rotation, new_rotation);
-    cmd.execute(&mut world).expect("rotate should succeed");
+    cmd.execute(&mut world, None)
+        .expect("rotate should succeed");
 
     let pose = world.pose(entity).unwrap();
     assert_eq!(pose.rotation_x, new_rotation.0);
     assert_eq!(pose.rotation, new_rotation.1);
     assert_eq!(pose.rotation_z, new_rotation.2);
 
-    cmd.undo(&mut world).expect("undo should succeed");
+    cmd.undo(&mut world, None).expect("undo should succeed");
     let pose = world.pose(entity).unwrap();
     assert_eq!(pose.rotation_x, old_rotation.0);
     assert_eq!(pose.rotation, old_rotation.1);
@@ -235,11 +237,11 @@ fn test_scale_entity_command() {
     let new_scale = 2.5;
 
     let mut cmd = ScaleEntityCommand::new(entity, old_scale, new_scale);
-    cmd.execute(&mut world).expect("scale should succeed");
+    cmd.execute(&mut world, None).expect("scale should succeed");
 
     assert_eq!(world.pose(entity).unwrap().scale, new_scale);
 
-    cmd.undo(&mut world).expect("undo should succeed");
+    cmd.undo(&mut world, None).expect("undo should succeed");
     assert_eq!(world.pose(entity).unwrap().scale, old_scale);
 }
 
@@ -256,11 +258,12 @@ fn test_edit_health_command() {
     let new_health = 50;
 
     let mut cmd = EditHealthCommand::new(entity, old_health, new_health);
-    cmd.execute(&mut world).expect("edit health should succeed");
+    cmd.execute(&mut world, None)
+        .expect("edit health should succeed");
 
     assert_eq!(world.health(entity).unwrap().hp, new_health);
 
-    cmd.undo(&mut world).expect("undo should succeed");
+    cmd.undo(&mut world, None).expect("undo should succeed");
     assert_eq!(world.health(entity).unwrap().hp, old_health);
 }
 
@@ -273,11 +276,12 @@ fn test_edit_team_command() {
     let new_team = Team { id: 5 };
 
     let mut cmd = EditTeamCommand::new(entity, old_team, new_team);
-    cmd.execute(&mut world).expect("edit team should succeed");
+    cmd.execute(&mut world, None)
+        .expect("edit team should succeed");
 
     assert_eq!(world.team(entity).unwrap().id, 5);
 
-    cmd.undo(&mut world).expect("undo should succeed");
+    cmd.undo(&mut world, None).expect("undo should succeed");
     assert_eq!(world.team(entity).unwrap().id, old_team.id);
 }
 
@@ -290,11 +294,12 @@ fn test_edit_ammo_command() {
     let new_ammo = 100;
 
     let mut cmd = EditAmmoCommand::new(entity, old_ammo, new_ammo);
-    cmd.execute(&mut world).expect("edit ammo should succeed");
+    cmd.execute(&mut world, None)
+        .expect("edit ammo should succeed");
 
     assert_eq!(world.ammo(entity).unwrap().rounds, new_ammo);
 
-    cmd.undo(&mut world).expect("undo should succeed");
+    cmd.undo(&mut world, None).expect("undo should succeed");
     assert_eq!(world.ammo(entity).unwrap().rounds, old_ammo);
 }
 
@@ -309,7 +314,8 @@ fn test_duplicate_entities_command() {
     let initial_count = world.entities().len();
 
     let mut cmd = DuplicateEntitiesCommand::new(vec![entity], IVec2::new(10, 10));
-    cmd.execute(&mut world).expect("duplicate should succeed");
+    cmd.execute(&mut world, None)
+        .expect("duplicate should succeed");
 
     assert_eq!(
         world.entities().len(),
@@ -317,12 +323,12 @@ fn test_duplicate_entities_command() {
         "duplicate should create new entity"
     );
 
-    cmd.undo(&mut world).expect("undo should succeed");
-    // After undo, duplicated entity should be in graveyard
+    cmd.undo(&mut world, None).expect("undo should succeed");
+    // After undo, duplicated entity should be removed
     assert_eq!(
         world.entities().len(),
-        initial_count + 1,
-        "entity still exists but in graveyard"
+        initial_count,
+        "duplicated entity should be removed after undo"
     );
 }
 
@@ -355,18 +361,22 @@ fn test_undo_stack_basic_operations() {
     let new_pos = IVec2::new(20, 20);
 
     undo_stack
-        .execute(MoveEntityCommand::new(entity, old_pos, new_pos), &mut world)
+        .execute(
+            MoveEntityCommand::new(entity, old_pos, new_pos),
+            &mut world,
+            None,
+        )
         .expect("execute");
 
     assert!(undo_stack.can_undo());
     assert!(!undo_stack.can_redo());
 
-    undo_stack.undo(&mut world).expect("undo");
+    undo_stack.undo(&mut world, None).expect("undo");
     assert_eq!(world.pose(entity).unwrap().pos, old_pos);
     assert!(!undo_stack.can_undo());
     assert!(undo_stack.can_redo());
 
-    undo_stack.redo(&mut world).expect("redo");
+    undo_stack.redo(&mut world, None).expect("redo");
     assert_eq!(world.pose(entity).unwrap().pos, new_pos);
 }
 
@@ -400,6 +410,7 @@ fn test_undo_stack_multiple_operations() {
             .execute(
                 MoveEntityCommand::new(entity, prev_pos, new_pos),
                 &mut world,
+                None,
             )
             .expect("execute");
         prev_pos = new_pos;
@@ -410,7 +421,7 @@ fn test_undo_stack_multiple_operations() {
 
     // Undo all 5 operations
     for _ in 0..5 {
-        undo_stack.undo(&mut world).expect("undo");
+        undo_stack.undo(&mut world, None).expect("undo");
     }
 
     // Should be back to initial position
@@ -428,15 +439,17 @@ fn test_undo_stack_branching() {
         .execute(
             MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(10, 10)),
             &mut world,
+            None,
         )
         .expect("execute 1");
 
-    undo_stack.undo(&mut world).expect("undo");
+    undo_stack.undo(&mut world, None).expect("undo");
 
     undo_stack
         .execute(
             MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(20, 20)),
             &mut world,
+            None,
         )
         .expect("execute 2");
 
@@ -679,12 +692,13 @@ fn test_complex_workflow_edit_save_load() {
         .execute(
             MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(10, 20)),
             &mut world,
+            None,
         )
         .expect("move");
 
     // Edit health
     undo_stack
-        .execute(EditHealthCommand::new(entity, 100, 50), &mut world)
+        .execute(EditHealthCommand::new(entity, 100, 50), &mut world, None)
         .expect("edit health");
 
     // Save scene
@@ -714,33 +728,35 @@ fn test_complex_undo_redo_sequence() {
         .execute(
             MoveEntityCommand::new(entity, IVec2::new(0, 0), IVec2::new(5, 5)),
             &mut world,
+            None,
         )
         .expect("move");
 
     undo_stack
-        .execute(EditHealthCommand::new(entity, 100, 75), &mut world)
+        .execute(EditHealthCommand::new(entity, 100, 75), &mut world, None)
         .expect("health");
 
     undo_stack
         .execute(
             EditTeamCommand::new(entity, Team { id: 0 }, Team { id: 3 }),
             &mut world,
+            None,
         )
         .expect("team");
 
     // Undo all
-    undo_stack.undo(&mut world).expect("undo team");
-    undo_stack.undo(&mut world).expect("undo health");
-    undo_stack.undo(&mut world).expect("undo move");
+    undo_stack.undo(&mut world, None).expect("undo team");
+    undo_stack.undo(&mut world, None).expect("undo health");
+    undo_stack.undo(&mut world, None).expect("undo move");
 
     assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(0, 0));
     assert_eq!(world.health(entity).unwrap().hp, 100);
     assert_eq!(world.team(entity).unwrap().id, 0);
 
     // Redo all
-    undo_stack.redo(&mut world).expect("redo move");
-    undo_stack.redo(&mut world).expect("redo health");
-    undo_stack.redo(&mut world).expect("redo team");
+    undo_stack.redo(&mut world, None).expect("redo move");
+    undo_stack.redo(&mut world, None).expect("redo health");
+    undo_stack.redo(&mut world, None).expect("redo team");
 
     assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(5, 5));
     assert_eq!(world.health(entity).unwrap().hp, 75);
@@ -771,7 +787,7 @@ fn test_invalid_entity_operations() {
     let invalid_entity = 9999;
 
     let mut cmd = MoveEntityCommand::new(invalid_entity, IVec2::new(0, 0), IVec2::new(1, 1));
-    let result = cmd.execute(&mut world);
+    let result = cmd.execute(&mut world, None);
 
     assert!(result.is_err(), "operation on invalid entity should fail");
 }
@@ -788,6 +804,7 @@ fn test_undo_stack_max_size() {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                 &mut world,
+                None,
             )
             .expect("execute");
     }
@@ -842,13 +859,14 @@ fn test_many_undo_operations() {
             .execute(
                 MoveEntityCommand::new(entity, IVec2::new(i, i), IVec2::new(i + 1, i + 1)),
                 &mut world,
+                None,
             )
             .expect("execute");
     }
 
     // Undo all
     for _ in 0..100 {
-        undo_stack.undo(&mut world).expect("undo");
+        undo_stack.undo(&mut world, None).expect("undo");
     }
 
     assert_eq!(world.pose(entity).unwrap().pos, IVec2::new(0, 0));

@@ -13,6 +13,7 @@ use egui::{Color32, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 use glam::Vec2 as GVec2;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use tracing::info;
 
 // ============================================================================
 // BLUEPRINT TOOL — Active drawing/editing tool
@@ -843,8 +844,10 @@ impl BlueprintPanel {
             let count = self.pending_vertices.len();
             ui.label(format!("Pending: {} vertices", count));
             if count >= 3 && ui.button("Close Polygon").clicked() {
+                let zone_name = format!("Zone {}", self.next_zone_id);
+                info!(zone = %zone_name, vertices = count, "Blueprint: created zone");
                 let zone = ZoneState {
-                    name: format!("Zone {}", self.next_zone_id),
+                    name: zone_name,
                     vertices: std::mem::take(&mut self.pending_vertices),
                     ..Default::default()
                 };
@@ -879,6 +882,7 @@ impl BlueprintPanel {
             ui.text_edit_singleline(&mut name);
         });
         if name != old_name {
+            info!(zone_index = idx, new_name = %name, "Blueprint: renamed zone");
             self.execute_cmd(BlueprintCommand::UpdateZoneName {
                 zone_index: idx,
                 old_name,
@@ -1102,6 +1106,7 @@ impl BlueprintPanel {
         // Generate button
         ui.separator();
         if ui.button("Generate Zone").clicked() {
+            info!(zone_index = idx, "Blueprint: generating zone");
             self.pending_actions
                 .push(BlueprintAction::GenerateZone { zone_index: idx });
         }
@@ -1113,16 +1118,23 @@ impl BlueprintPanel {
                 .add_enabled(!self.zones.is_empty(), egui::Button::new("Generate All"))
                 .clicked()
             {
+                info!(
+                    zone_count = self.zones.len(),
+                    "Blueprint: generating all zones"
+                );
                 self.pending_actions.push(BlueprintAction::GenerateAll);
             }
             if ui.button("Clear Generation").clicked() {
+                info!("Blueprint: clearing generation");
                 self.pending_actions.push(BlueprintAction::ClearGeneration);
             }
             ui.separator();
             if ui.button("Save Zones").clicked() {
+                info!("Blueprint: saving zones");
                 self.pending_actions.push(BlueprintAction::SaveZones);
             }
             if ui.button("Load Zones").clicked() {
+                info!("Blueprint: loading zones");
                 self.pending_actions.push(BlueprintAction::LoadZones);
             }
             ui.separator();

@@ -74,6 +74,9 @@ pub struct IblResources {
     pub brdf_lut: wgpu::TextureView,      // 2D LUT
     pub mips_specular: u32,
     pub hdr_equirect: Option<wgpu::TextureView>, // Source HDR image for skybox
+    /// Average luminance of the source HDR (used to normalise IBL intensity).
+    /// `None` for procedural sky.
+    pub avg_luminance: Option<f32>,
 }
 
 /// Internal textures owned by the manager (kept to control lifetime)
@@ -548,6 +551,8 @@ impl IblManager {
         let irr_size = quality.irradiance_size();
         let spec_size = quality.spec_size();
         let spec_mips = quality.spec_mips();
+        // Will be set to Some(lum) for HDR paths so we can normalise IBL intensity
+        let mut hdr_avg_lum: Option<f32> = None;
 
         let env_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("ibl-env-cube"),
@@ -709,6 +714,8 @@ impl IblManager {
                     self.hdr_cache.insert(path.clone(), img.clone());
                     img
                 };
+                // Compute average luminance for IBL intensity normalisation
+                hdr_avg_lum = Some(compute_hdr_avg_luminance(&img));
                 let (hdr_tex, hdr_view, hdr_samp) = create_hdr2d(device, queue, &img)?;
                 let eqr_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("ibl-eqr-bg"),
@@ -971,6 +978,7 @@ impl IblManager {
             brdf_lut: brdf_view,
             mips_specular: spec_mips,
             hdr_equirect: eqr_view_opt,
+            avg_luminance: hdr_avg_lum,
         };
         Ok(resources)
     }
@@ -1243,11 +1251,76 @@ fn dir_to_equirect_uv(dir: vec3<f32>) -> vec2<f32> {
 "#;
 
 // Host-side helpers for HDR equirectangular upload
+
+/// Compute the average luminance of an HDR image using a fast stride-sampled
+/// log-average.  Returns a value suitable for normalising IBL intensity so that
+/// different HDRIs produce consistent terrain lighting.
+#[cfg(feature = "textures")]
+fn compute_hdr_avg_luminance(img: &image::DynamicImage) -> f32 {
+    let rgba = img.to_rgba8();
+    let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+    // Sample every 4th pixel for speed on large HDRIs
+    let stride = 4;
+    let mut sum = 0.0f64;
+    let mut count = 0u64;
+    for y in (0..h).step_by(stride) {
+        for x in (0..w).step_by(stride) {
+            let px = rgba.get_pixel(x as u32, y as u32);
+            // Rec. 709 luminance from sRGB-encoded bytes (approximate)
+            let r = px[0] as f64 / 255.0;
+            let g = px[1] as f64 / 255.0;
+            let b = px[2] as f64 / 255.0;
+            let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            sum += lum;
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return 1.0;
+    }
+    (sum / count as f64) as f32
+}
+
+/// Maximum HDRI dimension allowed.  A 16384×8192 panorama at Rgba16Float
+/// costs ~2 GB of GPU memory — well beyond most GPUs.  We cap at 8192 on
+/// the longest axis, which gives excellent quality while keeping GPU usage
+/// under ~256 MB for the equirectangular source texture.
+#[cfg(feature = "textures")]
+const MAX_HDR_DIMENSION: u32 = 8192;
+
 #[cfg(feature = "textures")]
 fn load_hdr_equirectangular(path: &Path) -> Result<image::DynamicImage> {
     let reader = image::ImageReader::open(path)?;
     let img = reader.decode()?;
-    Ok(img)
+    let (w, h) = img.dimensions();
+    if w > MAX_HDR_DIMENSION || h > MAX_HDR_DIMENSION {
+        log::info!(
+            "HDRI {}x{} exceeds max {}; downsampling",
+            w,
+            h,
+            MAX_HDR_DIMENSION
+        );
+        let aspect = w as f32 / h as f32;
+        let (tw, th) = if w >= h {
+            (
+                MAX_HDR_DIMENSION,
+                (MAX_HDR_DIMENSION as f32 / aspect) as u32,
+            )
+        } else {
+            (
+                (MAX_HDR_DIMENSION as f32 * aspect) as u32,
+                MAX_HDR_DIMENSION,
+            )
+        };
+        Ok(image::DynamicImage::ImageRgba8(image::imageops::resize(
+            &img.to_rgba8(),
+            tw.max(1),
+            th.max(1),
+            image::imageops::FilterType::Lanczos3,
+        )))
+    } else {
+        Ok(img)
+    }
 }
 
 #[cfg(feature = "textures")]
@@ -1483,6 +1556,7 @@ mod tests {
             let _ = res.specular_cube;
             let _ = res.brdf_lut;
             let _ = res.mips_specular;
+            let _ = res.avg_luminance;
         }
     }
 

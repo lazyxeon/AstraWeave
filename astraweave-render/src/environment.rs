@@ -888,15 +888,22 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let direction = normalize(input.world_position);
     
-    // Calculate gradient from horizon to top based on Y component
-    let height_factor = (direction.y + 1.0) * 0.5; // Map -1,1 to 0,1
+    // Non-linear gradient: horizon color at y=0, smoothly transition to
+    // top color at zenith. pow(0.6) biases toward horizon so the band of
+    // horizon color is wider and the transition is natural.
+    let above = max(direction.y, 0.0);
+    let height_factor = pow(above, 0.6);
     let sky_color = mix(uniforms.horizon_color.rgb, uniforms.top_color.rgb, height_factor);
+    
+    // Below horizon: darken toward a pseudo-ground color using smoothstep
+    // so the transition is seamless (no hard line).
+    let below_horizon = smoothstep(0.0, -0.4, direction.y);
+    let ground_color = uniforms.horizon_color.rgb * 0.25;
+    var final_color = mix(sky_color, ground_color, below_horizon);
     
     // Simple sun/moon disc rendering
     let sun_dot = dot(direction, uniforms.sun_position.xyz);
     let moon_dot = dot(direction, uniforms.moon_position.xyz);
-    
-    var final_color = sky_color;
     
     // Add sun disc
     if (sun_dot > 0.999 && uniforms.sun_position.y > 0.0) {
@@ -913,9 +920,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let cloud_noise = sin(cloud_coord.x * 3.14159) * cos(cloud_coord.y * 2.718) * 0.5 + 0.5;
     let cloud_factor = smoothstep(1.0 - uniforms.cloud_coverage, 1.0, cloud_noise);
     
-    if (direction.y > 0.2) { // Only show clouds above horizon
-        final_color = mix(final_color, vec3<f32>(0.9, 0.9, 1.0), cloud_factor * 0.7);
-    }
+    // Gradual cloud visibility (smoothstep instead of hard cutoff)
+    let cloud_visibility = smoothstep(0.0, 0.3, direction.y);
+    final_color = mix(final_color, vec3<f32>(0.9, 0.9, 1.0), cloud_factor * 0.7 * cloud_visibility);
     
     return vec4<f32>(final_color, 1.0);
 }

@@ -250,6 +250,12 @@ pub struct AtmospherePass {
     lut_dirty: bool,
     width: u32,
     height: u32,
+    /// Cached sampler (static — never changes).
+    sampler: wgpu::Sampler,
+    /// Cached bind groups (rebuilt on generation change or lut_dirty).
+    cached_lut_bg: crate::bind_group_cache::CachedBindGroup,
+    cached_sky_bg: crate::bind_group_cache::CachedBindGroup,
+    cached_aerial_bg: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl AtmospherePass {
@@ -366,6 +372,13 @@ impl AtmospherePass {
             "aerial_perspective_main",
         );
 
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("atmo_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         Self {
             config,
             lut_pipeline,
@@ -386,6 +399,10 @@ impl AtmospherePass {
             lut_dirty: true,
             width,
             height,
+            sampler,
+            cached_lut_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            cached_sky_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            cached_aerial_bg: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -395,6 +412,9 @@ impl AtmospherePass {
 
     pub fn set_config(&mut self, config: AtmosphereConfig) {
         self.lut_dirty = true;
+        self.cached_lut_bg.invalidate();
+        self.cached_sky_bg.invalidate();
+        self.cached_aerial_bg.invalidate();
         self.config = config;
     }
 
@@ -520,26 +540,24 @@ impl AtmospherePass {
     }
 
     /// Execute the atmosphere pipeline: LUT (if dirty) → Sky → Aerial Perspective.
+    ///
+    /// `resource_gen` is the renderer's generation counter; bind groups are
+    /// rebuilt only when it changes (e.g., after a resize) or when the LUT is dirty.
     pub fn execute(
         &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         scene_view: &wgpu::TextureView,
         depth_view: &wgpu::TextureView,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled {
             return;
         }
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("atmo_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
         // --- Pass 1: Transmittance LUT (only when dirty) ---
         if self.lut_dirty {
+            // Rebuild LUT bind group unconditionally when dirty
             let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("atmo_lut_bg"),
                 layout: &self.lut_bgl,
@@ -554,6 +572,9 @@ impl AtmospherePass {
                     },
                 ],
             });
+            self.cached_lut_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+
             let wg_x = (self.config.lut_width + 7) / 8;
             let wg_y = (self.config.lut_height + 7) / 8;
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -561,35 +582,47 @@ impl AtmospherePass {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.lut_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
+            let lut_bg = self
+                .cached_lut_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, lut_bg, &[]);
             pass.dispatch_workgroups(wg_x, wg_y, 1);
             self.lut_dirty = false;
+
+            // LUT changed → sky BG depends on transmittance, must rebuild
+            self.cached_sky_bg.invalidate();
+            self.cached_aerial_bg.invalidate();
         }
 
         // --- Pass 2: Sky render ---
         {
-            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("atmo_sky_bg"),
-                layout: &self.sky_bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: self.sky_params_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&self.transmittance_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::TextureView(&self.sky_view),
-                    },
-                ],
-            });
+            if !self.cached_sky_bg.is_valid(resource_gen) {
+                let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("atmo_sky_bg"),
+                    layout: &self.sky_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.sky_params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&self.transmittance_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(&self.sky_view),
+                        },
+                    ],
+                });
+                self.cached_sky_bg =
+                    crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+            }
+
             let wg_x = (self.width + 7) / 8;
             let wg_y = (self.height + 7) / 8;
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -597,42 +630,50 @@ impl AtmospherePass {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.sky_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
+            let sky_bg = self
+                .cached_sky_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, sky_bg, &[]);
             pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
 
         // --- Pass 3: Aerial perspective ---
         {
-            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("atmo_aerial_bg"),
-                layout: &self.aerial_bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: self.aerial_params_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(scene_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(depth_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::TextureView(&self.transmittance_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 5,
-                        resource: wgpu::BindingResource::TextureView(&self.aerial_view),
-                    },
-                ],
-            });
+            if !self.cached_aerial_bg.is_valid(resource_gen) {
+                let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("atmo_aerial_bg"),
+                    layout: &self.aerial_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.aerial_params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(scene_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(depth_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(&self.transmittance_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 5,
+                            resource: wgpu::BindingResource::TextureView(&self.aerial_view),
+                        },
+                    ],
+                });
+                self.cached_aerial_bg =
+                    crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+            }
+
             let wg_x = (self.width + 7) / 8;
             let wg_y = (self.height + 7) / 8;
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -640,7 +681,10 @@ impl AtmospherePass {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.aerial_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
+            let aerial_bg = self
+                .cached_aerial_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, aerial_bg, &[]);
             pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
     }

@@ -279,7 +279,7 @@ fn plugin_error_icon_config_error() {
 
 #[test]
 fn plugin_error_icon_missing_dependency() {
-    assert_eq!(PluginError::MissingDependency("x".into()).icon(), "📦");
+    assert_eq!(PluginError::MissingDependency("x".into()).icon(), "[Pkg]");
 }
 
 #[test]
@@ -296,7 +296,7 @@ fn plugin_error_icon_incompatible_version() {
 
 #[test]
 fn plugin_error_icon_other() {
-    assert_eq!(PluginError::Other("x".into()).icon(), "⚠️");
+    assert_eq!(PluginError::Other("x".into()).icon(), "[!]");
 }
 
 #[test]
@@ -389,22 +389,22 @@ fn plugin_state_name_disabled() {
 
 #[test]
 fn plugin_state_icon_loaded() {
-    assert_eq!(PluginState::Loaded.icon(), "📦");
+    assert_eq!(PluginState::Loaded.icon(), "[Pkg]");
 }
 
 #[test]
 fn plugin_state_icon_active() {
-    assert_eq!(PluginState::Active.icon(), "✅");
+    assert_eq!(PluginState::Active.icon(), "[ok]");
 }
 
 #[test]
 fn plugin_state_icon_error() {
-    assert_eq!(PluginState::Error.icon(), "❌");
+    assert_eq!(PluginState::Error.icon(), "[x]");
 }
 
 #[test]
 fn plugin_state_icon_disabled() {
-    assert_eq!(PluginState::Disabled.icon(), "⏸");
+    assert_eq!(PluginState::Disabled.icon(), "||");
 }
 
 #[test]
@@ -769,7 +769,7 @@ fn scene_issue_error_helpers() {
     assert!(e.is_error());
     assert!(!e.is_warning());
     assert_eq!(e.name(), "Error");
-    assert_eq!(e.icon(), "❌");
+    assert_eq!(e.icon(), "[x]");
     assert_eq!(e.message(), "bad");
 }
 
@@ -779,7 +779,7 @@ fn scene_issue_warning_helpers() {
     assert!(!w.is_error());
     assert!(w.is_warning());
     assert_eq!(w.name(), "Warning");
-    assert_eq!(w.icon(), "⚠️");
+    assert_eq!(w.icon(), "[!]");
     assert_eq!(w.message(), "meh");
 }
 

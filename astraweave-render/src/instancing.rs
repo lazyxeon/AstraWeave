@@ -121,23 +121,40 @@ impl InstanceBatch {
         self.instances.len() as u32
     }
 
-    /// Create or update GPU buffer with current instances
-    pub fn update_buffer(&mut self, device: &wgpu::Device) {
+    /// Create or update GPU buffer with current instances.
+    /// Uses grow-on-demand strategy: only allocates a new buffer when the
+    /// current one is too small, and uses `queue.write_buffer()` otherwise.
+    pub fn update_buffer(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         if self.instances.is_empty() {
-            self.buffer = None;
             return;
         }
 
         let instance_data: Vec<InstanceRaw> =
             self.instances.iter().map(|inst| inst.to_raw()).collect();
 
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Instance Buffer (mesh {})", self.mesh_id)),
-            contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        });
+        let required_bytes = (instance_data.len() * std::mem::size_of::<InstanceRaw>()) as u64;
 
-        self.buffer = Some(buffer);
+        // Grow-on-demand: allocate (with 2× rounding) only when capacity is exceeded.
+        let needs_realloc = match &self.buffer {
+            Some(buf) => buf.size() < required_bytes,
+            None => true,
+        };
+
+        if needs_realloc {
+            let alloc_size = required_bytes.next_power_of_two().max(256);
+            self.buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&format!("Instance Buffer (mesh {})", self.mesh_id)),
+                size: alloc_size,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+
+        queue.write_buffer(
+            self.buffer.as_ref().unwrap(),
+            0,
+            bytemuck::cast_slice(&instance_data),
+        );
     }
 
     /// Clear all instances (does not free GPU buffer immediately)
@@ -189,9 +206,9 @@ impl InstanceManager {
     }
 
     /// Update all GPU buffers (call once per frame before rendering)
-    pub fn update_buffers(&mut self, device: &wgpu::Device) {
+    pub fn update_buffers(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         for batch in self.batches.values_mut() {
-            batch.update_buffer(device);
+            batch.update_buffer(device, queue);
         }
         self.calculate_draw_call_savings();
     }

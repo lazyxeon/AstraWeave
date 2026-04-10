@@ -40,7 +40,7 @@ fn prefab_spawn_command_instantiates_and_undoes() {
     let mut world = World::new();
 
     let mut cmd = PrefabSpawnCommand::new(prefab_path.clone(), manager.clone(), (2, 3));
-    cmd.execute(&mut world)
+    cmd.execute(&mut world, None)
         .expect("prefab spawn command executes");
 
     assert_eq!(world.entities().len(), 1);
@@ -48,7 +48,7 @@ fn prefab_spawn_command_instantiates_and_undoes() {
     let pose = world.pose(entity).expect("spawned entity pose");
     assert_eq!(pose.pos, IVec2::new(2, 3));
 
-    cmd.undo(&mut world).expect("undo removes prefab");
+    cmd.undo(&mut world, None).expect("undo removes prefab");
     let undone_pose = world.pose(entity).expect("entity still exists after undo");
     assert_eq!(
         undone_pose.pos,
@@ -189,11 +189,11 @@ fn prefab_revert_overrides_restores_world_pose_and_supports_undo() {
     };
 
     let mut cmd = PrefabRevertOverridesCommand::new(manager.clone(), root, snapshot);
-    cmd.execute(&mut world).expect("revert overrides");
+    cmd.execute(&mut world, None).expect("revert overrides");
     let reverted = world.pose(root).expect("reverted pose");
     assert_eq!(reverted.pos, IVec2::new(0, 0));
 
-    cmd.undo(&mut world).expect("undo revert");
+    cmd.undo(&mut world, None).expect("undo revert");
     let restored = world.pose(root).expect("restored pose");
     assert_eq!(restored.pos, mutated_pose);
 }

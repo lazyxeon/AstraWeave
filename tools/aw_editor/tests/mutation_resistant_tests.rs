@@ -343,25 +343,25 @@ mod undo_stack_issue_tests {
         let issue = UndoStackIssue::NearCapacity {
             utilization_percent: 85,
         };
-        assert_eq!(issue.icon(), "⚠️");
+        assert_eq!(issue.icon(), "[!]");
     }
 
     #[test]
     fn at_capacity_icon_is_red_circle() {
         let issue = UndoStackIssue::AtCapacity;
-        assert_eq!(issue.icon(), "🔴");
+        assert_eq!(issue.icon(), "[!!]");
     }
 
     #[test]
     fn auto_merge_disabled_icon_is_info() {
         let issue = UndoStackIssue::AutoMergeDisabled;
-        assert_eq!(issue.icon(), "ℹ️");
+        assert_eq!(issue.icon(), "[i]");
     }
 
     #[test]
     fn no_history_icon_is_memo() {
         let issue = UndoStackIssue::NoHistory;
-        assert_eq!(issue.icon(), "📝");
+        assert_eq!(issue.icon(), "[--]");
     }
 
     // -------------------------------------------------------------------------
@@ -397,7 +397,7 @@ mod task_category_tests {
 
     #[test]
     fn scene_loading_icon_is_folder() {
-        assert_eq!(TaskCategory::SceneLoading.icon(), "📂");
+        assert_eq!(TaskCategory::SceneLoading.icon(), "[Open]");
     }
 
     #[test]
@@ -412,7 +412,7 @@ mod task_category_tests {
 
     #[test]
     fn play_mode_icon_is_play() {
-        assert_eq!(TaskCategory::PlayMode.icon(), "▶️");
+        assert_eq!(TaskCategory::PlayMode.icon(), ">");
     }
 
     #[test]

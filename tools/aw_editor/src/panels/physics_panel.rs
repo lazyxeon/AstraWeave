@@ -11,6 +11,7 @@
 
 use egui::{Color32, RichText, Ui, Vec2};
 use std::collections::VecDeque;
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -846,6 +847,7 @@ impl PhysicsPanel {
 
     /// Queue an action for external processing
     pub fn queue_action(&mut self, action: PhysicsAction) {
+        info!(target: "aw_editor::panels::physics_panel", action = %action, "Physics action queued");
         self.pending_actions.push(action);
     }
 
@@ -914,15 +916,18 @@ impl PhysicsPanel {
                     .selectable_label(self.simulation_mode == SimulationMode::Running, "> Run")
                     .clicked()
                 {
+                    info!(target: "aw_editor::panels::physics_panel", "Physics simulation started");
                     self.simulation_mode = SimulationMode::Running;
                 }
                 if ui
                     .selectable_label(self.simulation_mode == SimulationMode::Paused, "|| Pause")
                     .clicked()
                 {
+                    info!(target: "aw_editor::panels::physics_panel", "Physics simulation paused");
                     self.simulation_mode = SimulationMode::Paused;
                 }
                 if ui.button(">| Step").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Physics simulation step");
                     self.simulation_mode = SimulationMode::StepOnce;
                 }
                 if ui
@@ -1143,12 +1148,15 @@ impl PhysicsPanel {
 
             ui.horizontal(|ui| {
                 if ui.button("🦴 Spawn Ragdoll").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Ragdoll spawned");
                     // Spawn test ragdoll
                 }
                 if ui.button("[Dash] Apply Impulse").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", strength = self.test_impulse_strength, "Test impulse applied");
                     // Apply test impulse
                 }
                 if ui.button("Reset All").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "All ragdolls reset");
                     // Reset all ragdolls
                 }
             });
@@ -1228,9 +1236,11 @@ impl PhysicsPanel {
 
             ui.horizontal(|ui| {
                 if ui.button("🚗 Spawn Vehicle").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Test vehicle spawned");
                     // Spawn test vehicle
                 }
                 if ui.button("Reset Position").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Vehicle position reset");
                     // Reset vehicle position
                 }
             });
@@ -1287,12 +1297,15 @@ impl PhysicsPanel {
 
             ui.horizontal(|ui| {
                 if ui.button("🧵 Spawn Cloth").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Cloth simulation spawned");
                     // Spawn test cloth
                 }
                 if ui.button("[Dash] Apply Wind Gust").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Wind gust applied to cloth");
                     // Apply wind gust
                 }
                 if ui.button("[Pin] Pin Corners").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Cloth corners pinned");
                     // Pin cloth corners
                 }
             });
@@ -1361,12 +1374,15 @@ impl PhysicsPanel {
 
             ui.horizontal(|ui| {
                 if ui.button("[Brk] Spawn Destructible").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Destructible object spawned");
                     // Spawn destructible
                 }
                 if ui.button("[Hit] Trigger Explosion").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Explosion triggered");
                     // Trigger explosion
                 }
                 if ui.button("🧹 Clear Debris").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Debris cleared");
                     // Clear all debris
                 }
             });
@@ -1416,6 +1432,7 @@ impl PhysicsPanel {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Gravity Zones").strong());
                 if ui.button("Add").clicked() {
+                    info!(target: "aw_editor::panels::physics_panel", "Gravity zone added");
                     self.gravity_zones.push(GravityZoneConfig::default());
                 }
             });
@@ -1442,6 +1459,7 @@ impl PhysicsPanel {
                                 ui.label(format!("{:.1} m/s²", zone.strength));
 
                                 if ui.small_button("[Del]").clicked() {
+                                    info!(target: "aw_editor::panels::physics_panel", zone_index = i, zone_name = %zone.name, "Gravity zone removed");
                                     to_remove = Some(i);
                                 }
                             });

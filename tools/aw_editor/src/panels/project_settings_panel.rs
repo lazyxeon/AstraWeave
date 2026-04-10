@@ -9,6 +9,7 @@
 //! - Version control integration
 
 use egui::{Color32, RichText, Ui};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -1850,13 +1851,16 @@ impl ProjectSettingsPanel {
                 });
 
                 if ui.add(button).clicked() {
+                    info!(level = i, name = %level.name, "Settings: switched quality level");
                     self.selected_quality = i;
                 }
             }
 
             if ui.button("+ Add Level").clicked() {
+                let level_name = format!("Custom {}", self.quality_levels.len());
+                info!(name = %level_name, "Settings: added quality level");
                 self.quality_levels.push(QualityLevel {
-                    name: format!("Custom {}", self.quality_levels.len()),
+                    name: level_name,
                     ..Default::default()
                 });
             }

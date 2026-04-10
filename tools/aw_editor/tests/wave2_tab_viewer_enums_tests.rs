@@ -56,6 +56,7 @@ fn panel_event_display_transform_position_changed() {
         entity_id: 7,
         x: 1.0,
         y: 2.0,
+        z: 0.0,
     };
     let s = e.to_string();
     assert!(s.contains("Transform Position Changed: 7"));
@@ -77,6 +78,7 @@ fn panel_event_display_transform_scale_changed() {
         entity_id: 9,
         scale_x: 2.0,
         scale_y: 3.0,
+        scale_z: 1.0,
     };
     let s = e.to_string();
     assert!(s.contains("Transform Scale Changed: 9"));
@@ -324,7 +326,8 @@ fn panel_event_category_transform_variants() {
         PanelEvent::TransformPositionChanged {
             entity_id: 1,
             x: 0.0,
-            y: 0.0
+            y: 0.0,
+            z: 0.0,
         }
         .category(),
         "Transform"
@@ -341,7 +344,8 @@ fn panel_event_category_transform_variants() {
         PanelEvent::TransformScaleChanged {
             entity_id: 1,
             scale_x: 1.0,
-            scale_y: 1.0
+            scale_y: 1.0,
+            scale_z: 1.0,
         }
         .category(),
         "Transform"
@@ -535,7 +539,8 @@ fn panel_event_is_entity_event_negative() {
     assert!(!PanelEvent::TransformPositionChanged {
         entity_id: 1,
         x: 0.0,
-        y: 0.0
+        y: 0.0,
+        z: 0.0,
     }
     .is_entity_event());
     assert!(!PanelEvent::ConsoleCleared.is_entity_event());
@@ -550,7 +555,8 @@ fn panel_event_is_transform_event_positive() {
     assert!(PanelEvent::TransformPositionChanged {
         entity_id: 1,
         x: 0.0,
-        y: 0.0
+        y: 0.0,
+        z: 0.0,
     }
     .is_transform_event());
     assert!(PanelEvent::TransformRotationChanged {
@@ -561,7 +567,8 @@ fn panel_event_is_transform_event_positive() {
     assert!(PanelEvent::TransformScaleChanged {
         entity_id: 1,
         scale_x: 1.0,
-        scale_y: 1.0
+        scale_y: 1.0,
+        scale_z: 1.0,
     }
     .is_transform_event());
 }
@@ -605,7 +612,8 @@ fn panel_event_is_viewport_event_negative() {
     assert!(!PanelEvent::TransformPositionChanged {
         entity_id: 1,
         x: 0.0,
-        y: 0.0
+        y: 0.0,
+        z: 0.0,
     }
     .is_viewport_event());
     assert!(!PanelEvent::ResetLayout.is_viewport_event());
@@ -625,7 +633,8 @@ fn panel_event_entity_id_some() {
         PanelEvent::TransformPositionChanged {
             entity_id: 77,
             x: 0.0,
-            y: 0.0
+            y: 0.0,
+            z: 0.0,
         }
         .entity_id(),
         Some(77)
@@ -642,7 +651,8 @@ fn panel_event_entity_id_some() {
         PanelEvent::TransformScaleChanged {
             entity_id: 99,
             scale_x: 1.0,
-            scale_y: 1.0
+            scale_y: 1.0,
+            scale_z: 1.0,
         }
         .entity_id(),
         Some(99)
@@ -863,32 +873,32 @@ fn behavior_node_type_name() {
 
 #[test]
 fn behavior_node_type_icon_root() {
-    assert_eq!(BehaviorNodeType::Root.icon(), "🌳");
+    assert_eq!(BehaviorNodeType::Root.icon(), "R");
 }
 
 #[test]
 fn behavior_node_type_icon_sequence() {
-    assert_eq!(BehaviorNodeType::Sequence.icon(), "➡️");
+    assert_eq!(BehaviorNodeType::Sequence.icon(), ">");
 }
 
 #[test]
 fn behavior_node_type_icon_selector() {
-    assert_eq!(BehaviorNodeType::Selector.icon(), "❓");
+    assert_eq!(BehaviorNodeType::Selector.icon(), "?");
 }
 
 #[test]
 fn behavior_node_type_icon_condition() {
-    assert_eq!(BehaviorNodeType::Condition.icon(), "⁉️");
+    assert_eq!(BehaviorNodeType::Condition.icon(), "?!");
 }
 
 #[test]
 fn behavior_node_type_icon_action() {
-    assert_eq!(BehaviorNodeType::Action.icon(), "⚡");
+    assert_eq!(BehaviorNodeType::Action.icon(), "A");
 }
 
 #[test]
 fn behavior_node_type_icon_decorator() {
-    assert_eq!(BehaviorNodeType::Decorator.icon(), "🎁");
+    assert_eq!(BehaviorNodeType::Decorator.icon(), "D");
 }
 
 #[test]

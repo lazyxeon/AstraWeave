@@ -13,125 +13,236 @@ use std::collections::HashMap;
 pub struct JointPaletteHandle(pub u32);
 
 /// GPU buffer pool for joint palettes
+///
+/// Uses a single large SSBO with dynamic offsets instead of per-skeleton
+/// individual buffers. This eliminates per-skeleton buffer/bind-group
+/// allocation overhead and enables efficient draw-call batching.
 pub struct JointPaletteManager {
     device: wgpu::Device,
     queue: wgpu::Queue,
 
-    /// Active joint palette buffers (handle -> buffer)
-    buffers: HashMap<JointPaletteHandle, wgpu::Buffer>,
+    /// Single pooled storage buffer for all joint palettes
+    pool_buffer: wgpu::Buffer,
+
+    /// Current capacity in palette slots
+    pool_capacity: u32,
+
+    /// Aligned byte stride per palette slot
+    slot_stride: u64,
+
+    /// Handle → pool slot mapping
+    handle_to_slot: HashMap<JointPaletteHandle, u32>,
+
+    /// Free slot indices (LIFO stack)
+    free_slots: Vec<u32>,
 
     /// Next available handle
     next_handle: u32,
 
-    /// Bind group layout for skinning storage buffer
+    /// Bind group layout for skinning storage buffer (has_dynamic_offset = true)
     pub bind_group_layout: wgpu::BindGroupLayout,
 
-    /// Cached bind groups (handle -> bind group)
-    bind_groups: HashMap<JointPaletteHandle, wgpu::BindGroup>,
+    /// Single bind group pointing to the entire pool buffer
+    bind_group: wgpu::BindGroup,
 }
 
+/// Initial pool capacity (number of skeleton slots)
+const INITIAL_POOL_CAPACITY: u32 = 64;
+
 impl JointPaletteManager {
-    /// Create a new joint palette manager
+    /// Create a new joint palette manager with a pooled SSBO
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let raw_size = std::mem::size_of::<JointPalette>() as u64;
+        let alignment = device.limits().min_storage_buffer_offset_alignment as u64;
+        let slot_stride = (raw_size + alignment - 1) / alignment * alignment;
+
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("joint_palette_bind_group_layout"),
+            label: Some("joint_palette_pool_layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+                    has_dynamic_offset: true,
+                    min_binding_size: std::num::NonZeroU64::new(raw_size),
                 },
                 count: None,
             }],
         });
 
-        Self {
-            device: device.clone(),
-            queue: queue.clone(),
-            buffers: HashMap::new(),
-            next_handle: 0,
-            bind_group_layout,
-            bind_groups: HashMap::new(),
-        }
-    }
-
-    /// Allocate a new joint palette buffer
-    pub fn allocate(&mut self) -> JointPaletteHandle {
-        let handle = JointPaletteHandle(self.next_handle);
-        self.next_handle += 1;
-
-        // Create storage buffer for joint matrices
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(&format!("joint_palette_{}", handle.0)),
-            size: std::mem::size_of::<JointPalette>() as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        let pool_capacity = INITIAL_POOL_CAPACITY;
+        let pool_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("joint_palette_pool"),
+            size: slot_stride * pool_capacity as u64,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
-        // Create bind group
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&format!("joint_palette_bind_group_{}", handle.0)),
-            layout: &self.bind_group_layout,
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("joint_palette_pool_bind_group"),
+            layout: &bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: buffer.as_entire_binding(),
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &pool_buffer,
+                    offset: 0,
+                    size: std::num::NonZeroU64::new(raw_size),
+                }),
             }],
         });
 
-        self.buffers.insert(handle, buffer);
-        self.bind_groups.insert(handle, bind_group);
+        let free_slots = (0..pool_capacity).rev().collect();
 
+        Self {
+            device: device.clone(),
+            queue: queue.clone(),
+            pool_buffer,
+            pool_capacity,
+            slot_stride,
+            handle_to_slot: HashMap::new(),
+            free_slots,
+            next_handle: 0,
+            bind_group_layout,
+            bind_group,
+        }
+    }
+
+    /// Allocate a new joint palette slot from the pool
+    pub fn allocate(&mut self) -> JointPaletteHandle {
+        if self.free_slots.is_empty() {
+            self.grow();
+        }
+
+        let slot = self
+            .free_slots
+            .pop()
+            .expect("grow() should have added slots");
+        let handle = JointPaletteHandle(self.next_handle);
+        self.next_handle += 1;
+        self.handle_to_slot.insert(handle, slot);
         handle
     }
 
-    /// Upload joint matrices to GPU buffer (from Mat4 array)
+    /// Upload joint matrices to the pooled GPU buffer (from Mat4 array)
     pub fn upload_matrices(&mut self, handle: JointPaletteHandle, matrices: &[Mat4]) -> Result<()> {
         let palette = JointPalette::from_matrices(matrices);
         self.upload_palette(handle, &palette)
     }
 
-    /// Upload joint palette to GPU buffer (from JointPalette struct)
+    /// Upload joint palette to the pooled GPU buffer (from JointPalette struct)
     pub fn upload_palette(
         &mut self,
         handle: JointPaletteHandle,
         palette: &JointPalette,
     ) -> Result<()> {
-        let buffer = self
-            .buffers
+        let slot = *self
+            .handle_to_slot
             .get(&handle)
             .ok_or_else(|| anyhow::anyhow!("Invalid joint palette handle: {:?}", handle))?;
 
-        // Convert to bytes and upload
+        let offset = slot as u64 * self.slot_stride;
         let binding = [*palette];
         let data = bytemuck::cast_slice(&binding);
-        self.queue.write_buffer(buffer, 0, data);
+        self.queue.write_buffer(&self.pool_buffer, offset, data);
 
         Ok(())
     }
 
-    /// Get bind group for skinning shader
+    /// Get the shared bind group for the pool (use with dynamic_offset)
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    /// Get the dynamic offset for a handle (pass to set_bind_group)
+    pub fn dynamic_offset(&self, handle: JointPaletteHandle) -> Option<u32> {
+        self.handle_to_slot
+            .get(&handle)
+            .map(|&slot| (slot as u64 * self.slot_stride) as u32)
+    }
+
+    /// Backward-compatible bind group accessor.
+    ///
+    /// Returns the pool's shared bind group for valid handles.
+    /// Callers should migrate to `bind_group()` + `dynamic_offset()`.
     pub fn get_bind_group(&self, handle: JointPaletteHandle) -> Option<&wgpu::BindGroup> {
-        self.bind_groups.get(&handle)
+        if self.handle_to_slot.contains_key(&handle) {
+            Some(&self.bind_group)
+        } else {
+            None
+        }
     }
 
-    /// Free a joint palette buffer
+    /// Free a joint palette slot back to the pool
     pub fn free(&mut self, handle: JointPaletteHandle) {
-        self.buffers.remove(&handle);
-        self.bind_groups.remove(&handle);
+        if let Some(slot) = self.handle_to_slot.remove(&handle) {
+            self.free_slots.push(slot);
+        }
     }
 
-    /// Get number of active buffers
+    /// Get number of active palette slots
     pub fn active_count(&self) -> usize {
-        self.buffers.len()
+        self.handle_to_slot.len()
     }
 
-    /// Clear all buffers (for cleanup)
+    /// Return all slots to the pool
     pub fn clear(&mut self) {
-        self.buffers.clear();
-        self.bind_groups.clear();
+        for (_, slot) in self.handle_to_slot.drain() {
+            self.free_slots.push(slot);
+        }
         self.next_handle = 0;
+    }
+
+    /// Double the pool capacity, copying existing data
+    fn grow(&mut self) {
+        let new_capacity = self.pool_capacity * 2;
+        let new_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("joint_palette_pool"),
+            size: self.slot_stride * new_capacity as u64,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        // Copy existing pool data to the new buffer
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("joint_palette_pool_grow"),
+            });
+        encoder.copy_buffer_to_buffer(
+            &self.pool_buffer,
+            0,
+            &new_buffer,
+            0,
+            self.slot_stride * self.pool_capacity as u64,
+        );
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        // Register new free slots
+        for i in self.pool_capacity..new_capacity {
+            self.free_slots.push(i);
+        }
+
+        self.pool_buffer = new_buffer;
+        self.pool_capacity = new_capacity;
+
+        // Recreate bind group for the new buffer
+        let raw_size = std::mem::size_of::<JointPalette>() as u64;
+        self.bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("joint_palette_pool_bind_group"),
+            layout: &self.bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &self.pool_buffer,
+                    offset: 0,
+                    size: std::num::NonZeroU64::new(raw_size),
+                }),
+            }],
+        });
     }
 }
 

@@ -431,7 +431,7 @@ mod asset_type_tests {
 
     #[test]
     fn test_all_count() {
-        assert_eq!(AssetType::all().len(), 9);
+        assert_eq!(AssetType::all().len(), 10);
     }
 
     // Test is_content()
@@ -657,7 +657,7 @@ mod asset_action_tests {
 
     #[test]
     fn test_all_variants_count() {
-        assert_eq!(AssetAction::all_variants().len(), 8);
+        assert_eq!(AssetAction::all_variants().len(), 10);
     }
 
     // Test is_modifying()

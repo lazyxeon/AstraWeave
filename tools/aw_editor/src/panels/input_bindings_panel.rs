@@ -11,6 +11,7 @@
 #![allow(clippy::upper_case_acronyms)] // FPS, RTS are industry-standard acronyms
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -1384,6 +1385,7 @@ impl InputBindingsPanel {
 
                             // Clear button
                             if ui.small_button("[Del]").clicked() {
+                                info!(action_index = idx, "Input: clearing binding");
                                 clear_action_idx = Some(idx);
                             }
                         });
@@ -1675,15 +1677,18 @@ impl InputBindingsPanel {
 
         // Handle deferred actions
         if let Some(preset) = preset_changed {
+            info!(preset = ?preset, "Input: applied binding preset");
             self.current_preset = preset;
             self.apply_preset(preset);
             self.queue_action(InputBindingAction::ApplyPreset { preset });
         }
         if save_bindings {
+            info!("Input: saving bindings");
             self.current_preset = BindingPreset::Custom;
             self.queue_action(InputBindingAction::SaveBindings);
         }
         if load_bindings {
+            info!("Input: loading bindings");
             self.queue_action(InputBindingAction::LoadBindings);
         }
         if reset_defaults {

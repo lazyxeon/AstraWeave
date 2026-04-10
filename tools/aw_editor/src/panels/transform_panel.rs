@@ -8,6 +8,7 @@ use crate::gizmo::{
 use egui::{Color32, RichText, Ui};
 use glam::{Quat, Vec3};
 use std::collections::HashMap;
+use tracing::{debug, info};
 
 /// Scene entity (simple representation for MVP)
 #[derive(Debug, Clone)]
@@ -191,6 +192,7 @@ impl TransformPanel {
 
     /// Confirm transform (apply changes)
     pub fn confirm_transform(&mut self) {
+        info!(entity = ?self.selected_entity_id, mode = ?self.gizmo.mode, "transform: value committed");
         // Apply transform to entity if selected
         if let (Some(id), Some(transform)) = (self.selected_entity_id, &self.selected_transform) {
             if let Some(entity) = self.entities.get_mut(&id) {
@@ -460,8 +462,16 @@ impl Panel for TransformPanel {
         ui.separator();
 
         // Settings
+        let prev_local = self.local_space;
+        let prev_snap = self.snap_enabled;
         ui.checkbox(&mut self.local_space, "Local Space");
         ui.checkbox(&mut self.snap_enabled, "Snap (15° for rotation)");
+        if self.snap_enabled != prev_snap {
+            info!(enabled = self.snap_enabled, "transform: snap toggled");
+        }
+        if self.local_space != prev_local {
+            debug!(local = self.local_space, "transform: space mode changed");
+        }
 
         ui.separator();
 

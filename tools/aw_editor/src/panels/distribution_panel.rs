@@ -8,6 +8,7 @@
 use egui::{Color32, RichText, Ui};
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use tracing::{info, warn};
 
 use crate::panels::Panel;
 use aw_editor_lib::distribution::{
@@ -1010,6 +1011,7 @@ impl DistributionPanel {
                 let selected = self.platform == *platform;
                 let text = format!("{} {}", platform.icon(), platform.name());
                 if ui.selectable_label(selected, text).clicked() {
+                    info!(platform = ?platform, "Distribution: platform selected");
                     self.platform = *platform;
                 }
             }
@@ -1441,6 +1443,7 @@ impl DistributionPanel {
     }
 
     fn start_build(&mut self) {
+        info!(platform = ?self.platform, format = ?self.selected_format, profile = ?self.profile, "Distribution: starting build");
         self.is_building = true;
         self.progress.start();
         self.progress
@@ -1452,12 +1455,14 @@ impl DistributionPanel {
 
         match builder.build() {
             Ok(result) => {
+                info!(output = %result.output_path.display(), size_bytes = result.size_bytes, "Distribution: build complete");
                 self.add_history_entry(&result);
                 self.last_result = Some(Ok(result));
                 self.progress
                     .set_step(BuildStep::Complete, "Build successful!");
             }
             Err(e) => {
+                warn!(error = %e, "Distribution: build failed");
                 self.progress
                     .set_step(BuildStep::Failed, format!("Build failed: {}", e));
                 self.last_result = Some(Err(e.to_string()));

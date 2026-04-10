@@ -77,6 +77,10 @@ pub struct AutoExposurePass {
     bgl: wgpu::BindGroupLayout,
     width: u32,
     height: u32,
+    /// Cached sampler (static — never changes).
+    sampler: wgpu::Sampler,
+    /// Cached bind group (rebuilt on generation change).
+    cached_bg: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl AutoExposurePass {
@@ -206,6 +210,13 @@ impl AutoExposurePass {
             bgl,
             width,
             height,
+            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("exposure_sampler"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            }),
+            cached_bg: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -229,11 +240,14 @@ impl AutoExposurePass {
     ///
     /// Clears histogram, builds luminance bins from the HDR scene, then computes
     /// the percentile-trimmed average exposure.
+    /// `resource_gen` is the renderer's generation counter; the bind group is
+    /// rebuilt only when it changes (e.g., after a resize).
     pub fn execute(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         hdr_view: &wgpu::TextureView,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled {
             return;
@@ -242,39 +256,40 @@ impl AutoExposurePass {
         // Clear histogram to zero
         encoder.clear_buffer(&self.histogram_buf, 0, None);
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("exposure_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        if !self.cached_bg.is_valid(resource_gen) {
+            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("auto_exposure_bg"),
+                layout: &self.bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(hdr_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: self.params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: self.histogram_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: self.exposure_buf.as_entire_binding(),
+                    },
+                ],
+            });
+            self.cached_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+        }
 
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("auto_exposure_bg"),
-            layout: &self.bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(hdr_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: self.params_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: self.histogram_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: self.exposure_buf.as_entire_binding(),
-                },
-            ],
-        });
+        let cached_bg = self
+            .cached_bg
+            .get_or_rebuild(resource_gen, || unreachable!());
 
         // Pass 1: Build histogram
         {
@@ -285,7 +300,7 @@ impl AutoExposurePass {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.histogram_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
+            pass.set_bind_group(0, cached_bg, &[]);
             pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
 
@@ -296,7 +311,7 @@ impl AutoExposurePass {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.average_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
+            pass.set_bind_group(0, cached_bg, &[]);
             pass.dispatch_workgroups(1, 1, 1);
         }
     }

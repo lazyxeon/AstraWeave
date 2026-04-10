@@ -10,6 +10,7 @@
 
 use egui::{Color32, RichText, Ui, Vec2};
 use std::collections::VecDeque;
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -877,6 +878,7 @@ impl NetworkingPanel {
                         .selectable_label(self.interest_policy == *policy, format!("{:?}", policy))
                         .clicked()
                     {
+                        info!(policy = ?policy, "Network: replication interest policy changed");
                         self.interest_policy = *policy;
                     }
                 }
@@ -1275,15 +1277,18 @@ impl NetworkingPanel {
     }
 
     fn start_networking(&mut self) {
+        info!(role = ?self.role, "Network: connecting");
         self.connection_state = ConnectionState::Connecting;
         self.error_message = None;
         // In production, this would actually start the network stack
         // For now, simulate connection after a short delay
         self.connection_state = ConnectionState::Connected;
+        info!("Network: connected");
         self.uptime_seconds = 0.0;
     }
 
     fn stop_networking(&mut self) {
+        info!("Network: disconnecting");
         self.connection_state = ConnectionState::Disconnected;
         self.clients.clear();
         self.uptime_seconds = 0.0;

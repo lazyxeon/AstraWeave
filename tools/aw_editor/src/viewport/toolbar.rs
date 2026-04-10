@@ -300,6 +300,10 @@ impl ViewportToolbar {
                             ui.label(format!("Frame: {:.2}ms", self.stats.frame_time_ms));
                             ui.label(format!("Entities: {}", self.stats.entity_count));
                             ui.label(format!("Triangles: {}K", self.stats.triangle_count / 1000));
+                            ui.label(format!(
+                                "Scatter: {} inst / {} draws",
+                                self.stats.scatter_instances, self.stats.scatter_draw_calls
+                            ));
                             ui.label(format!("Memory: {:.1} MB", self.stats.memory_usage_mb));
 
                             if !self.stats.frame_time_history.is_empty() {
@@ -552,6 +556,12 @@ pub struct PerformanceStats {
 
     /// Number of selected entities
     pub selection_count: usize,
+
+    /// Total scatter instances uploaded to GPU
+    pub scatter_instances: usize,
+
+    /// Number of scatter draw calls (mesh_type × quadrants)
+    pub scatter_draw_calls: u32,
 }
 
 impl Default for PerformanceStats {
@@ -565,6 +575,8 @@ impl Default for PerformanceStats {
             frame_time_history: Vec::with_capacity(60),
             camera_position: [0.0, 0.0, 0.0],
             selection_count: 0,
+            scatter_instances: 0,
+            scatter_draw_calls: 0,
         }
     }
 }

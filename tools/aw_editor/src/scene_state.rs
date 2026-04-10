@@ -4,6 +4,7 @@ use crate::gizmo::state::TransformSnapshot;
 use astraweave_core::{Entity, IVec2, Pose, World};
 use glam::{EulerRot, Quat, Vec3};
 use std::collections::HashMap;
+use tracing::{debug, info, warn};
 
 /// Abstraction used by the viewport to read and mutate scene data
 /// without knowing about the concrete storage implementation.
@@ -72,6 +73,7 @@ impl EditorSceneState {
     /// Apply a panel-authored transform back into the world/cache.
     /// Propagates translation delta to all descendants (transform inheritance).
     pub fn apply_transform(&mut self, entity: Entity, transform: &Transform) {
+        debug!(target: "aw_editor::scene_state", "apply_transform entity={}", entity);
         // Compute delta from old position for child propagation
         let old_pos = self.world.pose(entity).map(|p| (p.pos, p.height));
 
@@ -101,6 +103,9 @@ impl EditorSceneState {
 
             if dx != 0 || dy != 0 || dh != 0.0 {
                 let descendants = self.world.descendants_of(entity);
+                if !descendants.is_empty() {
+                    debug!(target: "aw_editor::scene_state", "Propagating transform delta to {} descendants of entity {}", descendants.len(), entity);
+                }
                 for desc in descendants {
                     if let Some(pose) = self.world.pose_mut(desc) {
                         pose.pos.x += dx;
@@ -122,9 +127,11 @@ impl EditorSceneState {
     /// Sync every cached entity (used when loading a scene).
     pub fn sync_all(&mut self) {
         let entities = self.world.entities();
+        let count = entities.len();
         for entity in entities {
             self.sync_entity(entity);
         }
+        info!(target: "aw_editor::scene_state", "Full scene sync: {} entities", count);
     }
 
     fn upsert_cache_entry(&mut self, entity: Entity) -> Option<&mut EditorEntity> {
@@ -335,6 +342,11 @@ impl EditorSceneState {
             }
         }
 
+        if !issues.is_empty() {
+            let errors = issues.iter().filter(|i| i.is_error).count();
+            let warnings = issues.len() - errors;
+            warn!(target: "aw_editor::scene_state", "Scene validation: {} errors, {} warnings", errors, warnings);
+        }
         issues
     }
 

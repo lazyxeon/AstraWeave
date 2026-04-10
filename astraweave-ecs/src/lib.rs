@@ -127,6 +127,11 @@ pub struct World {
     component_registry: ComponentMetaRegistry,
     /// Cached empty archetype ID to avoid per-spawn signature creation + HashMap lookup
     empty_archetype_id: Option<ArchetypeId>,
+    /// Monotonically increasing tick counter for change detection.
+    /// Incremented once per frame/system-run via `increment_change_tick()`.
+    /// Used to stamp component mutations so `each_changed::<T>()` can filter
+    /// entities whose component was modified after a given tick.
+    change_tick: u32,
 }
 
 impl World {
@@ -142,6 +147,27 @@ impl World {
     /// ```
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Returns the current change tick.
+    ///
+    /// The change tick is a monotonically increasing counter used for change
+    /// detection. Every mutation (insert, get_mut, each_mut) stamps the current
+    /// tick on the affected component column. Call [`each_changed`] with a
+    /// previous tick to iterate only entities whose component changed since then.
+    #[inline]
+    pub fn change_tick(&self) -> u32 {
+        self.change_tick
+    }
+
+    /// Advances the change tick by one and returns the new value.
+    ///
+    /// Call this once per frame or once per system batch to establish a new
+    /// "generation" for change detection.
+    #[inline]
+    pub fn increment_change_tick(&mut self) -> u32 {
+        self.change_tick = self.change_tick.wrapping_add(1);
+        self.change_tick
     }
 
     /// Spawns a new entity in the world and returns its handle.
@@ -278,8 +304,9 @@ impl World {
         // Insert new component directly into the extracted map (no extra HashMap alloc)
         current_components.insert(type_id, boxed);
 
+        let tick = self.change_tick;
         if let Some(new_arch) = self.archetypes.get_archetype_mut(new_archetype_id) {
-            new_arch.add_entity(e, current_components);
+            new_arch.add_entity_with_tick(e, current_components, tick);
         }
     }
 
@@ -354,7 +381,8 @@ impl World {
             .archetypes
             .get_archetype_mut(new_archetype_id)
             .expect("BUG: archetype should exist after get_or_create_archetype");
-        new_archetype.add_entity(entity, final_components);
+        let tick = self.change_tick;
+        new_archetype.add_entity_with_tick(entity, final_components, tick);
     }
 
     /// Returns an immutable reference to a component on an entity.
@@ -409,8 +437,12 @@ impl World {
             return None;
         }
 
+        let tick = self.change_tick;
         let archetype_id = self.archetypes.get_entity_archetype(e)?;
         let archetype = self.archetypes.get_archetype_mut(archetype_id)?;
+        // Conservative change detection: stamp tick on access (Bevy-style).
+        // Even if the caller doesn't mutate, we record it as changed.
+        archetype.stamp_change_tick::<T>(e, tick);
         archetype.get_mut::<T>(e)
     }
 
@@ -474,6 +506,7 @@ impl World {
     /// ```
     #[allow(clippy::expect_used)] // INVARIANT: archetype_ids sourced from archetypes_with_component
     pub fn each_mut<T: Component>(&mut self, mut f: impl FnMut(Entity, &mut T)) {
+        let tick = self.change_tick;
         let archetypes_with_t = self
             .archetypes
             .archetypes_with_component(TypeId::of::<T>())
@@ -488,6 +521,8 @@ impl World {
             // NEW: entities_vec() now returns &[Entity] (zero-cost!)
             let entities: Vec<Entity> = archetype.entities_vec().to_vec();
             for entity in entities {
+                // Stamp change tick before borrowing component (avoids double &mut)
+                archetype.stamp_change_tick::<T>(entity, tick);
                 if let Some(component) = archetype.get_mut::<T>(entity) {
                     f(entity, component);
                 }
@@ -515,6 +550,51 @@ impl World {
             .archetypes_with_component(TypeId::of::<T>())
             .flat_map(|archetype| archetype.entities_vec().iter().copied())
             .collect()
+    }
+
+    /// Iterate entities whose component `T` was modified after `since_tick`.
+    ///
+    /// This is the primary change-detection query. It checks the per-entity
+    /// change tick stamped by `insert`, `get_mut`, and `each_mut` against the
+    /// provided `since_tick` value. Only entities whose tick is **strictly
+    /// greater** than `since_tick` are yielded.
+    ///
+    /// # Typical usage
+    ///
+    /// ```rust,ignore
+    /// let last_tick = world.change_tick();
+    /// world.increment_change_tick();
+    /// // … systems mutate components …
+    /// world.each_changed::<CTransformLocal>(last_tick, |entity, transform| {
+    ///     // Only entities whose CTransformLocal changed since last_tick
+    /// });
+    /// ```
+    pub fn each_changed<T: Component>(&self, since_tick: u32, mut f: impl FnMut(Entity, &T)) {
+        let type_id = TypeId::of::<T>();
+        for archetype in self.archetypes.archetypes_with_component(type_id) {
+            for &entity in archetype.entities_vec() {
+                if let Some(tick) = archetype.get_change_tick::<T>(entity) {
+                    if tick > since_tick {
+                        if let Some(component) = archetype.get::<T>(entity) {
+                            f(entity, component);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns the change tick for a specific component on an entity.
+    ///
+    /// Returns `None` if the entity is dead, missing the component, or
+    /// change tracking data is unavailable.
+    pub fn get_change_tick<T: Component>(&self, entity: Entity) -> Option<u32> {
+        if !self.is_alive(entity) {
+            return None;
+        }
+        let archetype_id = self.archetypes.get_entity_archetype(entity)?;
+        let archetype = self.archetypes.get_archetype(archetype_id)?;
+        archetype.get_change_tick::<T>(entity)
     }
 
     pub fn remove<T: Component>(&mut self, e: Entity) -> bool {

@@ -119,6 +119,10 @@ pub struct SurfaceCachePass {
     update_cursor: u32,
     /// Frame counter.
     frame_index: u32,
+    /// Cached linear sampler (reused across frames).
+    sampler: wgpu::Sampler,
+    /// Cached bind group (generation-tracked).
+    cached_bg: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl SurfaceCachePass {
@@ -248,6 +252,13 @@ impl SurfaceCachePass {
             cache: None,
         });
 
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("surface_cache_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         Self {
             config,
             pipeline,
@@ -258,6 +269,8 @@ impl SurfaceCachePass {
             max_lights,
             update_cursor: 0,
             frame_index: 0,
+            sampler,
+            cached_bg: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -317,11 +330,12 @@ impl SurfaceCachePass {
 
     /// Dispatch the surface cache update compute pass.
     pub fn execute(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         depth_view: &wgpu::TextureView,
         albedo_view: &wgpu::TextureView,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         let total = self.config.total_probes();
         let update_count = ((total as f32 * self.config.update_fraction).ceil() as u32).min(total);
@@ -330,42 +344,37 @@ impl SurfaceCachePass {
             return;
         }
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("surface_cache_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("surface_cache_bg"),
-            layout: &self.bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.params_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: self.probe_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: self.light_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(depth_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(albedo_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
+        let bg = self.cached_bg.get_or_rebuild(resource_gen, || {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("surface_cache_bg"),
+                layout: &self.bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: self.probe_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: self.light_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(albedo_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                ],
+            })
         });
 
         let workgroups = (update_count + 63) / 64;
@@ -374,7 +383,7 @@ impl SurfaceCachePass {
             timestamp_writes: None,
         });
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &bg, &[]);
+        pass.set_bind_group(0, bg, &[]);
         pass.dispatch_workgroups(workgroups, 1, 1);
     }
 

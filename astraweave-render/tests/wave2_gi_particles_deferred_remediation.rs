@@ -400,9 +400,12 @@ fn gbuffer_formats_default_normal() {
 }
 
 #[test]
-fn gbuffer_formats_default_position() {
+fn gbuffer_formats_default_position_removed() {
+    // Position GBuffer was removed: world position is now reconstructed from depth + inverse VP.
+    // This test verifies the position field no longer exists on GBufferFormats.
     let f = GBufferFormats::default();
-    assert_eq!(f.position, wgpu::TextureFormat::Rgba16Float);
+    // Depth format is still present — used for position reconstruction
+    assert_eq!(f.depth, wgpu::TextureFormat::Depth32Float);
 }
 
 #[test]
@@ -420,7 +423,6 @@ fn gbuffer_formats_default_depth() {
 #[test]
 fn gbuffer_formats_normal_is_high_precision() {
     let f = GBufferFormats::default();
-    // Normal and position both need float precision, not SRGB
+    // Normal needs float precision, not SRGB
     assert_ne!(f.normal, wgpu::TextureFormat::Rgba8UnormSrgb);
-    assert_ne!(f.position, wgpu::TextureFormat::Rgba8UnormSrgb);
 }

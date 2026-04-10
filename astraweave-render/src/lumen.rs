@@ -247,7 +247,7 @@ impl LumenGI {
     /// Pass order: Surface Cache → DFAO → Final Gather → Copy History
     #[allow(clippy::too_many_arguments)]
     pub fn execute(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         depth_view: &wgpu::TextureView,
@@ -255,6 +255,7 @@ impl LumenGI {
         albedo_view: &wgpu::TextureView,
         ssgi_view: &wgpu::TextureView,
         velocity_view: &wgpu::TextureView,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled {
             return;
@@ -262,10 +263,11 @@ impl LumenGI {
 
         // 1. Surface cache update (probe grid refresh)
         self.surface_cache
-            .execute(device, encoder, depth_view, albedo_view);
+            .execute(device, encoder, depth_view, albedo_view, resource_gen);
 
         // 2. DFAO (distance-field ambient occlusion)
-        self.dfao.execute(device, encoder, depth_view, normal_view);
+        self.dfao
+            .execute(device, encoder, depth_view, normal_view, resource_gen);
 
         // 3. Final gather (composite SSGI + probes + DFAO)
         self.final_gather.execute(
@@ -278,6 +280,7 @@ impl LumenGI {
             self.dfao.ao_view(),
             velocity_view,
             self.surface_cache.probe_buffer(),
+            resource_gen,
         );
 
         // 4. Copy output to history for next frame

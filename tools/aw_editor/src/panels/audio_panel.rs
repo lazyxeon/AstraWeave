@@ -10,6 +10,7 @@
 
 use egui::{Color32, RichText, Ui, Vec2};
 use std::collections::HashMap;
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -615,6 +616,7 @@ impl AudioPanel {
 
     /// Queue an action for later processing
     pub fn queue_action(&mut self, action: AudioAction) {
+        info!(target: "aw_editor::panels::audio_panel", action = ?action, "Audio action queued");
         self.pending_actions.push(action);
     }
 
@@ -886,18 +888,23 @@ impl AudioPanel {
         // Playback controls
         ui.horizontal(|ui| {
             if ui.button("⏮ Prev").clicked() {
+                info!(target: "aw_editor::panels::audio_panel", "Previous music track");
                 // Previous track
             }
             if ui.button("> Play").clicked() {
+                info!(target: "aw_editor::panels::audio_panel", "Music playback started");
                 // Play current
             }
             if ui.button("|| Pause").clicked() {
+                info!(target: "aw_editor::panels::audio_panel", "Music playback paused");
                 // Pause
             }
             if ui.button("[] Stop").clicked() {
+                info!(target: "aw_editor::panels::audio_panel", "Music playback stopped");
                 // Stop
             }
             if ui.button(">| Next").clicked() {
+                info!(target: "aw_editor::panels::audio_panel", "Next music track");
                 // Next track
             }
 
@@ -908,9 +915,11 @@ impl AudioPanel {
                 .clicked()
             {
                 self.playlist_shuffle = !self.playlist_shuffle;
+                info!(target: "aw_editor::panels::audio_panel", shuffle = self.playlist_shuffle, "Playlist shuffle toggled");
             }
             if ui.selectable_label(self.playlist_loop, "🔁 Loop").clicked() {
                 self.playlist_loop = !self.playlist_loop;
+                info!(target: "aw_editor::panels::audio_panel", loop_enabled = self.playlist_loop, "Playlist loop toggled");
             }
         });
 
@@ -994,6 +1003,7 @@ impl AudioPanel {
 
         // Add track button
         if ui.button("Add Music Track").clicked() {
+            info!(target: "aw_editor::panels::audio_panel", track_count = self.music_tracks.len() + 1, "Music track added");
             self.music_tracks.push(MusicTrackEntry {
                 name: format!("Track {}", self.music_tracks.len() + 1),
                 path: String::new(),
@@ -1129,6 +1139,7 @@ impl AudioPanel {
         ui.horizontal(|ui| {
             if ui.button("Add Emitter").clicked() {
                 let id = self.next_emitter_id;
+                info!(target: "aw_editor::panels::audio_panel", emitter_id = id, "Audio emitter placed");
                 self.next_emitter_id += 1;
                 self.emitters.insert(
                     id,
@@ -1253,6 +1264,7 @@ impl AudioPanel {
 
             // Delete button outside the borrow scope
             if ui.button("Delete Selected Emitter").clicked() {
+                info!(target: "aw_editor::panels::audio_panel", emitter_id = ?self.selected_emitter_id, "Audio emitter deletion requested");
                 should_delete_emitter = true;
             }
         }
@@ -1372,18 +1384,23 @@ impl AudioPanel {
 
             ui.horizontal_wrapped(|ui| {
                 if ui.button("Music Fade").clicked() {
+                    info!(target: "aw_editor::panels::audio_panel", test = "music_fade", "Audio quick test triggered");
                     // Test music crossfade
                 }
                 if ui.button("[Hit] SFX Burst").clicked() {
+                    info!(target: "aw_editor::panels::audio_panel", test = "sfx_burst", "Audio quick test triggered");
                     // Play rapid SFX
                 }
                 if ui.button("🗣️ Voice Test").clicked() {
+                    info!(target: "aw_editor::panels::audio_panel", test = "voice", "Audio quick test triggered");
                     // Test voice with ducking
                 }
                 if ui.button("Surround Test").clicked() {
+                    info!(target: "aw_editor::panels::audio_panel", test = "surround", "Audio quick test triggered");
                     // Circle around listener
                 }
                 if ui.button("[Wave] Reverb Test").clicked() {
+                    info!(target: "aw_editor::panels::audio_panel", test = "reverb", "Audio quick test triggered");
                     // Test reverb settings
                 }
             });

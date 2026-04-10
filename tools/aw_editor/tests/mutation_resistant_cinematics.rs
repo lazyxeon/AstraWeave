@@ -62,27 +62,27 @@ mod track_type_tests {
 
     #[test]
     fn track_type_animation_icon() {
-        assert_eq!(TrackType::Animation.icon(), "🎬");
+        assert_eq!(TrackType::Animation.icon(), "[Anim]");
     }
 
     #[test]
     fn track_type_audio_icon() {
-        assert_eq!(TrackType::Audio.icon(), "🔊");
+        assert_eq!(TrackType::Audio.icon(), "[Snd]");
     }
 
     #[test]
     fn track_type_fx_icon() {
-        assert_eq!(TrackType::Fx.icon(), "✨");
+        assert_eq!(TrackType::Fx.icon(), "[Fx]");
     }
 
     #[test]
     fn track_type_dialogue_icon() {
-        assert_eq!(TrackType::Dialogue.icon(), "💬");
+        assert_eq!(TrackType::Dialogue.icon(), "[Chat]");
     }
 
     #[test]
     fn track_type_event_icon() {
-        assert_eq!(TrackType::Event.icon(), "⚡");
+        assert_eq!(TrackType::Event.icon(), "[Zap]");
     }
 
     // Display tests - verify Display trait
@@ -93,27 +93,27 @@ mod track_type_tests {
 
     #[test]
     fn track_type_animation_display() {
-        assert_eq!(TrackType::Animation.to_string(), "🎬 Animation");
+        assert_eq!(TrackType::Animation.to_string(), "[Anim] Animation");
     }
 
     #[test]
     fn track_type_audio_display() {
-        assert_eq!(TrackType::Audio.to_string(), "🔊 Audio");
+        assert_eq!(TrackType::Audio.to_string(), "[Snd] Audio");
     }
 
     #[test]
     fn track_type_fx_display() {
-        assert_eq!(TrackType::Fx.to_string(), "✨ VFX");
+        assert_eq!(TrackType::Fx.to_string(), "[Fx] VFX");
     }
 
     #[test]
     fn track_type_dialogue_display() {
-        assert_eq!(TrackType::Dialogue.to_string(), "💬 Dialogue");
+        assert_eq!(TrackType::Dialogue.to_string(), "[Chat] Dialogue");
     }
 
     #[test]
     fn track_type_event_display() {
-        assert_eq!(TrackType::Event.to_string(), "⚡ Event");
+        assert_eq!(TrackType::Event.to_string(), "[Zap] Event");
     }
 
     // Color tests - verify color RGB values
@@ -377,17 +377,17 @@ mod playback_state_tests {
     // Icon tests
     #[test]
     fn playback_state_stopped_icon() {
-        assert_eq!(PlaybackState::Stopped.icon(), "⏹️");
+        assert_eq!(PlaybackState::Stopped.icon(), "[]");
     }
 
     #[test]
     fn playback_state_playing_icon() {
-        assert_eq!(PlaybackState::Playing.icon(), "▶️");
+        assert_eq!(PlaybackState::Playing.icon(), ">");
     }
 
     #[test]
     fn playback_state_paused_icon() {
-        assert_eq!(PlaybackState::Paused.icon(), "⏸️");
+        assert_eq!(PlaybackState::Paused.icon(), "||");
     }
 
     #[test]
@@ -445,17 +445,17 @@ mod playback_state_tests {
     // Display tests
     #[test]
     fn playback_state_stopped_display() {
-        assert_eq!(PlaybackState::Stopped.to_string(), "⏹️ Stopped");
+        assert_eq!(PlaybackState::Stopped.to_string(), "[] Stopped");
     }
 
     #[test]
     fn playback_state_playing_display() {
-        assert_eq!(PlaybackState::Playing.to_string(), "▶️ Playing");
+        assert_eq!(PlaybackState::Playing.to_string(), "> Playing");
     }
 
     #[test]
     fn playback_state_paused_display() {
-        assert_eq!(PlaybackState::Paused.to_string(), "⏸️ Paused");
+        assert_eq!(PlaybackState::Paused.to_string(), "|| Paused");
     }
 
     #[test]
@@ -678,7 +678,7 @@ mod cinematics_tab_tests {
 
     #[test]
     fn cinematics_tab_tracks_icon() {
-        assert_eq!(CinematicsTab::Tracks.icon(), "🎬");
+        assert_eq!(CinematicsTab::Tracks.icon(), "[Anim]");
     }
 
     #[test]
@@ -693,7 +693,7 @@ mod cinematics_tab_tests {
 
     #[test]
     fn cinematics_tab_export_icon() {
-        assert_eq!(CinematicsTab::Export.icon(), "💾");
+        assert_eq!(CinematicsTab::Export.icon(), "[Save]");
     }
 
     // Display tests
@@ -709,7 +709,7 @@ mod cinematics_tab_tests {
 
     #[test]
     fn cinematics_tab_tracks_display() {
-        assert_eq!(CinematicsTab::Tracks.to_string(), "🎬 Tracks");
+        assert_eq!(CinematicsTab::Tracks.to_string(), "[Anim] Tracks");
     }
 
     #[test]
@@ -724,7 +724,7 @@ mod cinematics_tab_tests {
 
     #[test]
     fn cinematics_tab_export_display() {
-        assert_eq!(CinematicsTab::Export.to_string(), "💾 Export");
+        assert_eq!(CinematicsTab::Export.to_string(), "[Save] Export");
     }
 
     // all() tests

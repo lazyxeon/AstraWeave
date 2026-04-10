@@ -29,6 +29,8 @@ mod command; // Phase 2.1 - Undo/Redo system
 #[allow(dead_code)]
 mod component_ui; // Phase 2.3 - Component-based inspector
 #[allow(dead_code)]
+mod console_bridge; // Tracing-to-console bridge
+#[allow(dead_code)]
 mod dialogs; // Modal dialog helpers
 #[allow(dead_code)]
 mod editor_mode; // Phase 4.2 - Play-in-Editor
@@ -795,7 +797,9 @@ impl EditorApp {
     }
 
     fn log(&mut self, message: impl Into<String>) {
+        use crate::panels::console_panel::{LogEntry, LogLevel};
         use std::time::SystemTime;
+        let msg = message.into();
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default();
@@ -804,8 +808,27 @@ impl EditorApp {
         let mins = (secs % 3600) / 60;
         let secs = secs % 60;
         let timestamp = format!("[{:02}:{:02}:{:02}]", hours, mins, secs);
-        self.console_logs
-            .push(format!("{} {}", timestamp, message.into()));
+        // Legacy string log (backward compat with show_with_logs)
+        self.console_logs.push(format!("{} {}", timestamp, msg));
+        // Also push a structured entry so the new console system has it
+        self.console_panel
+            .push_entry(LogEntry::new(&msg, LogLevel::Info).with_category("Editor"));
+    }
+
+    fn log_warn(&mut self, message: impl Into<String>) {
+        use crate::panels::console_panel::{LogEntry, LogLevel};
+        let msg = message.into();
+        self.console_panel
+            .push_entry(LogEntry::new(&msg, LogLevel::Warning).with_category("Editor"));
+        self.log(msg);
+    }
+
+    fn log_error(&mut self, message: impl Into<String>) {
+        use crate::panels::console_panel::{LogEntry, LogLevel};
+        let msg = message.into();
+        self.console_panel
+            .push_entry(LogEntry::new(&msg, LogLevel::Error).with_category("Editor"));
+        self.log(msg);
     }
 
     fn create_new_scene(&mut self) {
@@ -4588,46 +4611,92 @@ impl EditorApp {
                     }
 
                     // Load biome-appropriate albedo texture.
-                    // For BiomePack biomes, try to load the pack's diffuse textures.
-                    // For standard biomes, use the material library.
+                    // For BiomePack biomes, load the pack's ground diffuse texture
+                    // directly. For standard biomes, use the material library.
                     let biome_name = self.dock_tab_viewer.terrain_primary_biome();
-                    let biome_label = match biome_name {
-                        "desert" => "Desert",
-                        "mountain" => "Mountain",
-                        "tundra" => "Tundra",
-                        "forest" => "Forest",
-                        "swamp" => "Swamp",
-                        "beach" => "Beach",
-                        "river" => "River",
-                        _ => {
-                            // Check if this is a BiomePack (name contains "Pack" or
-                            // "(Pack)") — try to load the pack's first diffuse texture.
-                            if biome_name.contains("Pack") || biome_name.contains("pack") {
-                                "BiomePack"
-                            } else {
-                                "Grassland"
+
+                    // Try to load ground texture from the active BiomePack first
+                    let mut loaded_from_pack = false;
+                    if let Some(pack) = self.dock_tab_viewer.cached_biome_pack() {
+                        // Find the first ground texture that has a diffuse channel
+                        let ground_diffuse = pack
+                            .ground_textures
+                            .iter()
+                            .find_map(|gt| gt.diffuse.as_ref().map(|d| pack.root_dir.join(d)));
+                        if let Some(tex_path) = ground_diffuse {
+                            if tex_path.exists() {
+                                if let Ok(img) = image::open(&tex_path) {
+                                    let rgba = img.to_rgba8();
+                                    let (w, h) = (rgba.width(), rgba.height());
+                                    if let Some(viewport) = &self.viewport {
+                                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                                            if let Some(adapter) = renderer.engine_adapter_mut() {
+                                                adapter
+                                                    .renderer_mut()
+                                                    .set_albedo_from_rgba8(w, h, &rgba);
+                                                info!("Loaded BiomePack ground texture ({}x{}) from {:?}", w, h, tex_path);
+                                                loaded_from_pack = true;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
-                    };
-                    if let Some(viewport) = &self.viewport {
-                        if let Ok(mut renderer) = viewport.renderer().lock() {
-                            renderer.load_biome_terrain_texture(biome_label);
+                    }
+
+                    if !loaded_from_pack {
+                        let biome_label = match biome_name {
+                            "desert" => "Desert",
+                            "mountain" => "Mountain",
+                            "tundra" => "Tundra",
+                            "forest" => "Forest",
+                            "swamp" => "Swamp",
+                            "beach" => "Beach",
+                            "river" => "River",
+                            _ => "Grassland",
+                        };
+                        if let Some(viewport) = &self.viewport {
+                            if let Ok(mut renderer) = viewport.renderer().lock() {
+                                renderer.load_biome_terrain_texture(biome_label);
+                            }
                         }
                     }
 
                     // Use pre-computed scatter placements from background thread
-                    // (avoids expensive O(n²) Poisson disk sampling on the main thread)
                     let scatter_placements = self.dock_tab_viewer.take_cached_scatter_placements();
-                    // Upload scatter placements to the GPU-instanced scatter renderer
-                    // (high-performance: 65K instances @ 60fps with background mesh loading)
+                    let scatter_count = scatter_placements.len();
+                    self.console_logs.push(format!(
+                        "Scatter: {} placements from terrain generation",
+                        scatter_count
+                    ));
                     if !scatter_placements.is_empty() {
+                        // Log a sample placement for debugging
+                        if let Some(sample) = scatter_placements.first() {
+                            self.console_logs.push(format!(
+                                "  Sample: key='{}' path='{}'",
+                                sample.mesh_key, sample.mesh_path
+                            ));
+                        }
                         if let Some(viewport) = &self.viewport {
                             if let Ok(mut renderer) = viewport.renderer().lock() {
-                                let count = scatter_placements.len();
-                                renderer.set_scatter_placements(scatter_placements);
-                                tracing::info!("Scatter: {count} placements uploaded to renderer");
+                                // Build diffuse texture map from BiomePack for
+                                // proper scatter texturing (decomposed GLBs have
+                                // no embedded materials).
+                                let diffuse_map = self
+                                    .dock_tab_viewer
+                                    .cached_biome_pack()
+                                    .map(|p| p.build_diffuse_texture_map())
+                                    .unwrap_or_default();
+                                let (loaded, total, not_found, load_fail) = renderer
+                                    .set_scatter_placements(scatter_placements, &diffuse_map);
+                                self.console_logs.push(format!(
+                                    "  Scatter result: {loaded}/{total} mesh groups loaded, {not_found} not found, {load_fail} load failed"
+                                ));
                             }
                         }
+                    } else {
+                        self.console_logs
+                            .push("  WARNING: 0 placements — check biome vegetation config".into());
                     }
 
                     // Inject BiomePack ground textures into the GPU texture layers
@@ -5366,6 +5435,128 @@ impl EditorApp {
                         self.console_logs.push(format!("  [{}] {}", id, e.name));
                     }
                 }
+            }
+            panels::console_panel::ConsoleAction::RequestStats => {
+                use panels::console_panel::{LogEntry, LogLevel};
+                let entity_count = self.entity_manager.entities().len();
+                let undo_depth = self.undo_stack.undo_count();
+                let redo_depth = self.undo_stack.redo_count();
+                let fps = self.current_fps;
+                let msg = format!(
+                    "Editor Stats:\n  Entities: {}\n  Undo depth: {} / Redo depth: {}\n  FPS: {:.1}\n  Dirty: {}",
+                    entity_count, undo_depth, redo_depth, fps, self.is_dirty
+                );
+                self.console_panel
+                    .push_entry(LogEntry::new(msg, LogLevel::Info).with_category("Console"));
+            }
+            panels::console_panel::ConsoleAction::RequestUndoStack => {
+                use panels::console_panel::{LogEntry, LogLevel};
+                let undo_count = self.undo_stack.undo_count();
+                let redo_count = self.undo_stack.redo_count();
+                let mut msg = format!(
+                    "Undo Stack: {} undoable, {} redoable",
+                    undo_count, redo_count
+                );
+                if let Some(desc) = self.undo_stack.undo_description() {
+                    msg.push_str(&format!("\n  Next undo: {}", desc));
+                }
+                if let Some(desc) = self.undo_stack.redo_description() {
+                    msg.push_str(&format!("\n  Next redo: {}", desc));
+                }
+                self.console_panel
+                    .push_entry(LogEntry::new(msg, LogLevel::Info).with_category("Console"));
+            }
+            panels::console_panel::ConsoleAction::RequestSceneInfo => {
+                use panels::console_panel::{LogEntry, LogLevel};
+                let entity_count = if let Some(scene) = &self.scene_state {
+                    scene.entity_count()
+                } else {
+                    0
+                };
+                let path_str = self
+                    .current_scene_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(unsaved)".to_string());
+                let msg = format!(
+                    "Scene Info:\n  Path: {}\n  World entities: {}\n  Dirty: {}",
+                    path_str, entity_count, self.is_dirty
+                );
+                self.console_panel
+                    .push_entry(LogEntry::new(msg, LogLevel::Info).with_category("Console"));
+            }
+            panels::console_panel::ConsoleAction::RequestPanelList => {
+                use panels::console_panel::{LogEntry, LogLevel};
+                let all_panels = panel_type::PanelType::all();
+                let mut lines = vec![format!("Panels ({}):", all_panels.len())];
+                for pt in all_panels {
+                    lines.push(format!("  {} — {}", pt.title(), pt.category()));
+                }
+                self.console_panel.push_entry(
+                    LogEntry::new(lines.join("\n"), LogLevel::Info).with_category("Console"),
+                );
+            }
+            panels::console_panel::ConsoleAction::TogglePanel(_name) => {
+                use panels::console_panel::{LogEntry, LogLevel};
+                self.console_panel.push_entry(
+                    LogEntry::new(
+                        "Panel toggle not yet wired to dock system",
+                        LogLevel::Warning,
+                    )
+                    .with_category("Console"),
+                );
+            }
+            panels::console_panel::ConsoleAction::ExportLogs(path) => {
+                use panels::console_panel::{LogEntry, LogLevel};
+                let export = self.console_panel.export_logs();
+                let out_path = path.unwrap_or_else(|| "editor_logs.txt".to_string());
+                match std::fs::write(&out_path, &export) {
+                    Ok(()) => {
+                        self.console_panel.push_entry(
+                            LogEntry::new(
+                                format!("Logs exported to: {} ({} bytes)", out_path, export.len()),
+                                LogLevel::Info,
+                            )
+                            .with_category("Console"),
+                        );
+                    }
+                    Err(e) => {
+                        self.console_panel.push_entry(
+                            LogEntry::new(format!("Failed to export logs: {}", e), LogLevel::Error)
+                                .with_category("Console"),
+                        );
+                    }
+                }
+            }
+            panels::console_panel::ConsoleAction::RequestViewportInfo => {
+                use panels::console_panel::{LogEntry, LogLevel};
+                if let Some(vp) = &self.viewport {
+                    let cam = vp.camera();
+                    let tgt = cam.target();
+                    let msg = format!(
+                        "Viewport Info:\n  Camera target: ({:.1}, {:.1}, {:.1})\n  Camera distance: {:.1}\n  Grid: {}",
+                        tgt.x, tgt.y, tgt.z,
+                        cam.distance(),
+                        if self.show_grid { "on" } else { "off" }
+                    );
+                    self.console_panel
+                        .push_entry(LogEntry::new(msg, LogLevel::Info).with_category("Console"));
+                } else {
+                    self.console_panel.push_entry(
+                        LogEntry::new("Viewport not initialized", LogLevel::Warning)
+                            .with_category("Console"),
+                    );
+                }
+            }
+            panels::console_panel::ConsoleAction::RequestAssetDbStats => {
+                use panels::console_panel::{LogEntry, LogLevel};
+                let count = self.asset_db.assets.len();
+                let msg = format!("Asset Database:\n  Total assets: {}", count);
+                self.console_panel
+                    .push_entry(LogEntry::new(msg, LogLevel::Info).with_category("Console"));
+            }
+            panels::console_panel::ConsoleAction::ClearCategory(_) => {
+                // Already handled internally by console_panel.clear_category()
             }
             panels::console_panel::ConsoleAction::Clear
             | panels::console_panel::ConsoleAction::None => {}
@@ -6500,7 +6691,12 @@ impl EditorApp {
                     // Apply ALL scatter at once so all zones render together
                     if !all_scatter.is_empty() {
                         if let Some(viewport) = &self.viewport {
-                            viewport.set_scatter_placements(all_scatter);
+                            let diffuse_map = self
+                                .dock_tab_viewer
+                                .cached_biome_pack()
+                                .map(|p| p.build_diffuse_texture_map())
+                                .unwrap_or_default();
+                            viewport.set_scatter_placements(all_scatter, &diffuse_map);
                         }
                     }
 
@@ -6522,7 +6718,7 @@ impl EditorApp {
                     }
                     // Clear scatter from viewport
                     if let Some(viewport) = &self.viewport {
-                        viewport.set_scatter_placements(Vec::new());
+                        viewport.set_scatter_placements(Vec::new(), &Default::default());
                     }
                     self.console_logs
                         .push("[Blueprint] Cleared generated content".into());
@@ -6702,7 +6898,12 @@ impl EditorApp {
         // Apply scatter to viewport
         if !scatter.is_empty() {
             if let Some(viewport) = &self.viewport {
-                viewport.set_scatter_placements(scatter);
+                let diffuse_map = self
+                    .dock_tab_viewer
+                    .cached_biome_pack()
+                    .map(|p| p.build_diffuse_texture_map())
+                    .unwrap_or_default();
+                viewport.set_scatter_placements(scatter, &diffuse_map);
             }
         }
 
@@ -8402,6 +8603,9 @@ impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         astraweave_profiling::span!("editor_update");
 
+        // Drain tracing events into the in-editor console panel each frame
+        console_bridge::drain_log_sink(&mut self.console_panel);
+
         // Apply editor style once (avoids cloning egui::Style every frame)
         if !self.style_applied {
             let mut style = (*ctx.style()).clone();
@@ -8739,9 +8943,11 @@ impl eframe::App for EditorApp {
 }
 
 fn main() -> Result<()> {
-    // Initialize observability
-    if let Err(e) = astraweave_observability::init_observability(Default::default()) {
-        eprintln!("Warning: Failed to initialize observability: {}", e);
+    // Initialize editor-specific tracing with console bridge layer.
+    // This replaces the generic observability init so that all tracing events
+    // are captured and forwarded to the in-editor ConsolePanel each frame.
+    if let Err(e) = console_bridge::init_editor_tracing() {
+        eprintln!("Warning: Failed to initialize editor tracing: {}", e);
     }
 
     // Create content directory if it doesn't exist

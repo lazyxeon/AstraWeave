@@ -222,7 +222,7 @@ async fn run_soak_test(config: SoakTestConfig) -> SoakTestResults {
 
         // Update LOD
         let loaded_chunks: Vec<ChunkId> = loader.get_loaded_chunk_ids().await;
-        lod_manager.update_all_chunks(&loaded_chunks, camera_pos);
+        lod_manager.update_all_chunks(&loaded_chunks, camera_pos, None);
 
         // Check for missing chunks in frustum
         let view_chunks =

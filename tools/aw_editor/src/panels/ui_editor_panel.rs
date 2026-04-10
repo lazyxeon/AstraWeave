@@ -9,6 +9,7 @@
 //! - Event binding
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -1286,6 +1287,7 @@ impl UiEditorPanel {
 
             if ui.button("+ Canvas").clicked() {
                 let id = self.next_canvas_id();
+                info!(canvas_id = id, "UI Editor: added canvas");
                 let new_canvas = UiCanvas {
                     id,
                     name: format!("Canvas {}", id),
@@ -1305,6 +1307,7 @@ impl UiEditorPanel {
                 ui.label(RichText::new("Widgets").strong());
                 if ui.button("+ Add").clicked() {
                     let id = self.next_widget_id();
+                    info!(widget_id = id, "UI Editor: added widget");
                     let new_widget = UiWidget {
                         id,
                         name: format!("Widget {}", id),
@@ -1346,6 +1349,7 @@ impl UiEditorPanel {
                     for (i, wt) in WidgetType::all().iter().enumerate() {
                         if ui.button(format!("{}\n{:?}", wt.icon(), wt)).clicked() {
                             let id = self.next_widget_id();
+                            info!(widget_id = id, widget_type = ?wt, "UI Editor: added widget from palette");
                             let new_widget = UiWidget {
                                 id,
                                 name: format!("{:?} {}", wt, id),
@@ -2067,6 +2071,7 @@ impl UiEditorPanel {
 
     pub fn add_widget(&mut self, name: &str, widget_type: WidgetType) -> u32 {
         let id = self.next_widget_id();
+        info!(widget_id = id, name = %name, widget_type = ?widget_type, "UI Editor: added widget");
         self.current_canvas.widgets.push(UiWidget {
             id,
             name: name.to_string(),

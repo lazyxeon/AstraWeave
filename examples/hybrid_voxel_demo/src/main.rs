@@ -180,7 +180,7 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(chunk) = state.voxel_grid.get_chunk(ChunkCoord::new(0, 0, 0)) {
         for (i, &distance) in lod_config.distances.iter().enumerate() {
-            let mesh = lod_gen.generate_mesh_lod(chunk, distance - 10.0);
+            let mesh = lod_gen.generate_mesh_lod(chunk, distance - 10.0, None);
             println!(
                 "  LOD {}: distance < {}m, {} vertices",
                 i,

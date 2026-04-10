@@ -10,6 +10,7 @@
 #![allow(clippy::upper_case_acronyms)] // NPC is industry-standard acronym
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::{info, warn};
 
 use crate::panels::Panel;
 
@@ -720,7 +721,10 @@ impl PcgPanel {
                     ui.text_edit_singleline(&mut self.seed_input);
                     if ui.button("Apply").clicked() {
                         if let Ok(seed) = self.seed_input.parse::<u64>() {
+                            info!(seed = seed, "PCG: seed changed");
                             self.current_seed = seed;
+                        } else {
+                            warn!(input = %self.seed_input, "PCG: invalid seed input");
                         }
                     }
                 }
@@ -730,6 +734,7 @@ impl PcgPanel {
                 if ui.button("[Dice] New Random Seed").clicked() {
                     self.current_seed = rand_seed();
                     self.seed_input = self.current_seed.to_string();
+                    info!(seed = self.current_seed, "PCG: generated random seed");
                 }
 
                 if ui.button("Copy").clicked() {
@@ -802,6 +807,7 @@ impl PcgPanel {
         ui.horizontal(|ui| {
             if ui.button("+ New Encounter").clicked() {
                 let id = self.next_id();
+                info!(encounter_id = id, "PCG: added new encounter rule");
                 self.encounters.push(EncounterConfig {
                     id,
                     name: format!("Encounter {}", id),
@@ -810,6 +816,7 @@ impl PcgPanel {
             }
 
             if ui.button("[Dice] Generate Random").clicked() {
+                info!("PCG: triggered random encounter generation");
                 self.generate_random_encounter();
             }
         });
@@ -955,6 +962,10 @@ impl PcgPanel {
         // Generation controls
         ui.horizontal(|ui| {
             if ui.button("[Dice] Generate Dungeon").clicked() {
+                info!(
+                    seed = self.current_seed,
+                    "PCG: triggered dungeon generation"
+                );
                 self.generate_dungeon_preview();
             }
             if ui.button("Reset Settings").clicked() {
@@ -1067,6 +1078,7 @@ impl PcgPanel {
         // Add loot table button
         if ui.button("+ New Loot Table").clicked() {
             let id = self.next_id();
+            info!(table_id = id, "PCG: added new loot table");
             self.loot_tables.push(LootTable {
                 id,
                 name: format!("Loot Table {}", id),

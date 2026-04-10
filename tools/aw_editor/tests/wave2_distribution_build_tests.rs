@@ -471,7 +471,7 @@ fn build_status_is_failed() {
 
 #[test]
 fn build_status_icon() {
-    assert_eq!(BuildStatus::Idle.icon(), "⏸");
+    assert_eq!(BuildStatus::Idle.icon(), "||");
 }
 
 #[test]

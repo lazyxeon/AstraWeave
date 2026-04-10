@@ -39,6 +39,10 @@ pub enum EditorQualityPreset {
     /// Editor default: reduced shadow quality (smaller PCF, narrower cascades),
     /// only SSAO + Bloom + Tonemap post-processing. Good balance for editing.
     EditorDefault,
+    /// Terrain-optimised: 2-cascade shadows, SSAO, bloom + tonemap.
+    /// Applied automatically when terrain is loaded. Strikes a balance
+    /// between visual fidelity (grounded shadows, AO) and performance.
+    EditorTerrain,
     /// Minimal: shadows disabled, tonemap only. Maximum performance for
     /// large scenes or weak GPUs.
     Minimal,
@@ -75,6 +79,12 @@ pub struct EngineRenderAdapter {
     terrain_cached_indices: Vec<Vec<u32>>,
     /// Current editor quality preset (shadows + post-processing).
     quality_preset: EditorQualityPreset,
+    /// Cached entity count + selection for dirty-skip in feed_entities
+    cached_entity_feed_count: usize,
+    /// Cached selected entity set for feed_entities dirty check
+    cached_entity_feed_selected: Vec<astraweave_core::Entity>,
+    /// Cached mesh map length for feed_entities dirty check
+    cached_entity_feed_mesh_count: usize,
 }
 
 impl EngineRenderAdapter {
@@ -116,6 +126,9 @@ impl EngineRenderAdapter {
             water_enabled: false,
             terrain_cached_indices: Vec::new(),
             quality_preset: EditorQualityPreset::default(),
+            cached_entity_feed_count: usize::MAX, // force first rebuild
+            cached_entity_feed_selected: Vec::new(),
+            cached_entity_feed_mesh_count: usize::MAX,
         };
         adapter.apply_quality_preset(EditorQualityPreset::EditorDefault);
         Ok(adapter)
@@ -167,10 +180,14 @@ impl EngineRenderAdapter {
     /// Returns (total_used_bytes, total_budget_bytes, usage_percentage).
     pub fn gpu_memory_stats(&self) -> (u64, u64, f32) {
         let budget = self.renderer.gpu_memory_budget();
+        let usage_pct = budget.usage_percentage();
+        if usage_pct > 80.0 {
+            tracing::warn!(target: "aw_editor::viewport", "GPU memory high: {:.1}% ({} MB used)", usage_pct, budget.total_usage() / (1024 * 1024));
+        }
         (
             budget.total_usage(),
             2 * 1024 * 1024 * 1024, // 2GB default
-            budget.usage_percentage(),
+            usage_pct,
         )
     }
 
@@ -186,6 +203,7 @@ impl EngineRenderAdapter {
     /// - `EditorDefault`: Reduced shadows + SSAO/Bloom/Tonemap only (balanced)
     /// - `Minimal`: No shadows + tonemap only (maximum performance)
     pub fn apply_quality_preset(&mut self, preset: EditorQualityPreset) {
+        tracing::info!(target: "aw_editor::viewport", "Quality preset changed to: {:?}", preset);
         self.quality_preset = preset;
 
         match preset {
@@ -197,9 +215,11 @@ impl EngineRenderAdapter {
                 self.renderer.set_cascade_lambda(0.75);
 
                 // Full post-processing chain
+                // NOTE: ssao/ssr disabled until proper compute shaders exist;
+                // current passes reuse the tonemap pipeline causing double-tonemap.
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
-                    ssao_enabled: true,
-                    ssr_enabled: true,
+                    ssao_enabled: false,
+                    ssr_enabled: false,
                     bloom_enabled: true,
                     taa_enabled: true,
                     dof_enabled: false, // DoF off by default even in game quality
@@ -210,15 +230,37 @@ impl EngineRenderAdapter {
                 self.renderer.set_post_process_chain(chain);
             }
             EditorQualityPreset::EditorDefault => {
-                // Reduced shadow quality: smaller PCF, narrower cascades
-                self.renderer.set_shadows_enabled(true);
-                self.renderer.set_shadow_filter(1.0, 0.005, 1.5);
-                self.renderer.set_cascade_extents(25.0, 80.0);
-                self.renderer.set_cascade_lambda(0.6);
+                // Shadows disabled in editor default for terrain performance
+                // (each shadow cascade costs ~2-3ms; with 121-chunk terrain this dominates)
+                self.renderer.set_shadows_enabled(false);
 
                 // Editor post-processing: only essential effects
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
-                    ssao_enabled: true,
+                    ssao_enabled: false, // SSAO disabled for terrain perf
+                    ssr_enabled: false,
+                    bloom_enabled: true,
+                    taa_enabled: false,
+                    dof_enabled: false,
+                    motion_blur_enabled: false,
+                    color_grading_enabled: true,
+                    tonemap_operator: astraweave_render::hdr_pipeline::TonemapOperator::Aces,
+                };
+                self.renderer.set_post_process_chain(chain);
+            }
+            EditorQualityPreset::EditorTerrain => {
+                // Terrain-optimised: shadows enabled for surface definition.
+                // The ground plane overwrite bug that caused the camera-
+                // following shadow artifact has been fixed — draw_into() now
+                // preserves the terrain ground plane position set by
+                // set_terrain_ground_plane().
+                self.renderer.set_shadows_enabled(true);
+
+                // NOTE: ssao_enabled and ssr_enabled are set to false because
+                // the renderer's SSR/SSAO passes currently reuse the tonemap
+                // pipeline, which double-tonemaps the scene (dark/muddy output).
+                // Re-enable when proper compute-based SSAO/SSR shaders exist.
+                let chain = astraweave_render::hdr_pipeline::PostProcessChain {
+                    ssao_enabled: false,
                     ssr_enabled: false,
                     bloom_enabled: true,
                     taa_enabled: false,
@@ -296,6 +338,18 @@ impl EngineRenderAdapter {
         entity_meshes: &std::collections::HashMap<astraweave_core::Entity, String>,
         selected_entities: &[astraweave_core::Entity],
     ) {
+        // Skip rebuild when nothing changed (entity count, selection, mesh assignments)
+        let entity_count = world.entities().len();
+        if entity_count == self.cached_entity_feed_count
+            && entity_meshes.len() == self.cached_entity_feed_mesh_count
+            && selected_entities == self.cached_entity_feed_selected.as_slice()
+        {
+            return;
+        }
+        self.cached_entity_feed_count = entity_count;
+        self.cached_entity_feed_mesh_count = entity_meshes.len();
+        self.cached_entity_feed_selected = selected_entities.to_vec();
+
         use astraweave_render::Instance;
         use std::collections::HashMap;
 
@@ -350,16 +404,9 @@ impl EngineRenderAdapter {
             }
         }
 
-        // Clear previous entity models (prefixed with "entity_")
-        let old_names: Vec<String> = self
-            .renderer
-            .model_names()
-            .into_iter()
-            .filter(|n| n.starts_with("entity_"))
-            .collect();
-        for name in &old_names {
-            self.renderer.clear_model(name);
-        }
+        // Determine which entity model names are still active this frame
+        let mut active_names: std::collections::HashSet<String> =
+            std::collections::HashSet::with_capacity(mesh_groups.len());
 
         // Add each group as a named model
         for (mesh_key, instances) in &mesh_groups {
@@ -367,60 +414,57 @@ impl EngineRenderAdapter {
                 Some(path) => format!("entity_mesh_{}", path.replace(['/', '\\', '.'], "_")),
                 None => "entity_default_cubes".to_string(),
             };
+            active_names.insert(model_name.clone());
 
-            // Load mesh if not already in engine (lazy load)
-            if !self.renderer.has_model(&model_name) {
-                let mesh = match mesh_key {
-                    Some(path) => {
-                        // Try to load glTF mesh
-                        let opts = astraweave_render::mesh_gltf::GltfOptions::default();
-                        match astraweave_render::mesh_gltf::load_gltf(Path::new(path), &opts) {
-                            Ok(cpu_meshes) if !cpu_meshes.is_empty() => {
-                                self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0])
-                            }
-                            _ => {
-                                // Fallback: use simple cube arrays
-                                self.renderer.create_mesh_from_arrays(
-                                    &CUBE_POSITIONS,
-                                    &CUBE_NORMALS,
-                                    &CUBE_INDICES,
-                                )
-                            }
+            // Fast path: model already exists → just update the instance buffer
+            // (reuses the existing mesh GPU buffers, no disk I/O)
+            if self.renderer.update_model_instances(&model_name, instances) {
+                continue;
+            }
+
+            // Slow path: first time seeing this model → load mesh and create GPU resources
+            let mesh = match mesh_key {
+                Some(path) => {
+                    let opts = astraweave_render::mesh_gltf::GltfOptions::default();
+                    match astraweave_render::mesh_gltf::load_gltf(Path::new(path), &opts) {
+                        Ok(cpu_meshes) if !cpu_meshes.is_empty() => {
+                            self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0])
                         }
-                    }
-                    None => self.renderer.create_mesh_from_arrays(
-                        &CUBE_POSITIONS,
-                        &CUBE_NORMALS,
-                        &CUBE_INDICES,
-                    ),
-                };
-                self.renderer.add_model(&model_name, mesh, instances);
-            } else {
-                // Model mesh already loaded — just update instances
-                self.renderer.clear_model(&model_name);
-                let mesh = match mesh_key {
-                    Some(path) => {
-                        let opts = astraweave_render::mesh_gltf::GltfOptions::default();
-                        match astraweave_render::mesh_gltf::load_gltf(Path::new(path), &opts) {
-                            Ok(cpu_meshes) if !cpu_meshes.is_empty() => {
-                                self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0])
-                            }
-                            _ => self.renderer.create_mesh_from_arrays(
+                        _ => {
+                            // Fallback: use simple cube arrays
+                            self.renderer.create_mesh_from_arrays(
                                 &CUBE_POSITIONS,
                                 &CUBE_NORMALS,
                                 &CUBE_INDICES,
-                            ),
+                            )
                         }
                     }
-                    None => self.renderer.create_mesh_from_arrays(
-                        &CUBE_POSITIONS,
-                        &CUBE_NORMALS,
-                        &CUBE_INDICES,
-                    ),
-                };
-                self.renderer.add_model(&model_name, mesh, instances);
-            }
+                }
+                None => self.renderer.create_mesh_from_arrays(
+                    &CUBE_POSITIONS,
+                    &CUBE_NORMALS,
+                    &CUBE_INDICES,
+                ),
+            };
+            self.renderer.add_model(&model_name, mesh, instances);
         }
+
+        // Remove entity models that no longer have any instances
+        let stale_names: Vec<String> = self
+            .renderer
+            .model_names_with_prefix("entity_")
+            .into_iter()
+            .filter(|n| !active_names.contains(n))
+            .collect();
+        for name in &stale_names {
+            self.renderer.clear_model(name);
+        }
+    }
+
+    /// Invalidate the feed_entities cache so the next call rebuilds all entity transforms.
+    /// Call when entity transforms change (gizmo drag, undo, paste, etc.)
+    pub fn invalidate_entity_cache(&mut self) {
+        self.cached_entity_feed_count = usize::MAX;
     }
 
     pub fn has_model(&self, name: &str) -> bool {
@@ -535,63 +579,264 @@ impl EngineRenderAdapter {
         // Cache indices for incremental brush updates (topology doesn't change)
         self.terrain_cached_indices = chunks.iter().map(|(_, idx)| idx.clone()).collect();
 
-        for (i, (vertices, indices)) in chunks.iter().enumerate() {
-            if vertices.is_empty() || indices.is_empty() {
+        let total_verts: usize = chunks.iter().map(|(v, _)| v.len()).sum();
+        let total_indices: usize = chunks.iter().map(|(_, i)| i.len()).sum();
+
+        if total_verts == 0 || total_indices == 0 {
+            return;
+        }
+
+        // ── Convert each chunk and compute per-chunk AABB ──────────────
+        struct ConvertedChunk {
+            positions: Vec<[f32; 3]>,
+            normals: Vec<[f32; 3]>,
+            tangents: Vec<[f32; 4]>,
+            uvs: Vec<[f32; 2]>,
+            biome_tint: [f32; 4],
+            aabb_min: [f32; 3],
+            aabb_max: [f32; 3],
+            indices: Vec<u32>,
+        }
+
+        let converted: Vec<ConvertedChunk> = chunks
+            .iter()
+            .filter(|(v, i)| !v.is_empty() && !i.is_empty())
+            .map(|(vertices, indices)| {
+                let (positions, normals, tangents, uvs, biome_tint, aabb_min, aabb_max) =
+                    Self::convert_terrain_vertices(vertices);
+                ConvertedChunk {
+                    positions,
+                    normals,
+                    tangents,
+                    uvs,
+                    biome_tint,
+                    aabb_min,
+                    aabb_max,
+                    indices: indices.clone(),
+                }
+            })
+            .collect();
+
+        if converted.is_empty() {
+            return;
+        }
+
+        // ── Spatial clustering (grid) ──────────────────────────────────
+        // Instead of merging all 121 chunks into 1 draw call (no frustum
+        // culling possible) we bin them into a grid of clusters. Each
+        // cluster gets its own merged mesh + AABB → the renderer can cull
+        // most terrain when the camera faces one direction.
+        //
+        // We use an adaptive grid: start with 8×8 so that 121 chunks stay
+        // comfortably within wgpu's 256 MB buffer limit per draw call.
+        let mut global_aabb_min = [f32::MAX; 3];
+        let mut global_aabb_max = [f32::MIN; 3];
+        for cc in &converted {
+            for j in 0..3 {
+                global_aabb_min[j] = global_aabb_min[j].min(cc.aabb_min[j]);
+                global_aabb_max[j] = global_aabb_max[j].max(cc.aabb_max[j]);
+            }
+        }
+
+        const GRID: usize = 4;
+        // Maximum vertices per merged cluster.  48 bytes/vertex × 5M ≈ 240 MB,
+        // safely under wgpu's 256 MB default buffer limit.
+        const MAX_VERTICES_PER_BIN: usize = 5_000_000;
+        let span_x = (global_aabb_max[0] - global_aabb_min[0]).max(1.0);
+        let span_z = (global_aabb_max[2] - global_aabb_min[2]).max(1.0);
+        let cell_w = span_x / GRID as f32;
+        let cell_d = span_z / GRID as f32;
+
+        // Bin chunks into grid cells by their AABB center
+        let mut bins: Vec<Vec<usize>> = vec![Vec::new(); GRID * GRID];
+        for (ci, cc) in converted.iter().enumerate() {
+            let cx = ((cc.aabb_min[0] + cc.aabb_max[0]) * 0.5 - global_aabb_min[0]) / cell_w;
+            let cz = ((cc.aabb_min[2] + cc.aabb_max[2]) * 0.5 - global_aabb_min[2]) / cell_d;
+            let gx = (cx as usize).min(GRID - 1);
+            let gz = (cz as usize).min(GRID - 1);
+            bins[gz * GRID + gx].push(ci);
+        }
+
+        let mut dominant_tint = [0.9f32, 0.9, 0.9, 1.0];
+        let mut sub_idx = 0u32; // global sub-cluster counter for unique names
+        for (bin_idx, bin) in bins.iter().enumerate() {
+            if bin.is_empty() {
                 continue;
             }
-            let name = format!("terrain_chunk_{i}");
 
-            // Single-pass conversion: editor vertices → engine arrays + biome tint + AABB
-            let (positions, normals, tangents, uvs, biome_tint, aabb_min, aabb_max) =
-                Self::convert_terrain_vertices(vertices);
+            let mut merged_positions = Vec::new();
+            let mut merged_normals = Vec::new();
+            let mut merged_tangents = Vec::new();
+            let mut merged_uvs = Vec::new();
+            let mut merged_indices = Vec::new();
+            let mut cluster_aabb_min = [f32::MAX; 3];
+            let mut cluster_aabb_max = [f32::MIN; 3];
+            let mut vertex_offset = 0u32;
 
-            let mesh = self
-                .renderer
-                .create_mesh_from_full_arrays(&positions, &normals, &tangents, &uvs, indices);
+            // Helper closure: flush the current merged buffers into a GPU model
+            let flush = |positions: &mut Vec<[f32; 3]>,
+                         normals: &mut Vec<[f32; 3]>,
+                         tangents: &mut Vec<[f32; 4]>,
+                         uvs: &mut Vec<[f32; 2]>,
+                         indices: &mut Vec<u32>,
+                         aabb_min: &mut [f32; 3],
+                         aabb_max: &mut [f32; 3],
+                         tint: [f32; 4],
+                         renderer: &mut astraweave_render::Renderer,
+                         names: &mut Vec<String>,
+                         sub: &mut u32| {
+                if positions.is_empty() {
+                    return;
+                }
+                let name = format!("terrain_c{bin_idx}_{sub}");
+                *sub += 1;
+                let mesh = renderer.create_mesh_from_full_arrays(
+                    positions, normals, tangents, uvs, indices,
+                );
+                let instance = astraweave_render::Instance::from_pos_scale_color(
+                    glam::Vec3::ZERO,
+                    glam::Vec3::ONE,
+                    tint,
+                );
+                renderer.add_model_with_bounds(&name, mesh, &[instance], *aabb_min, *aabb_max);
+                names.push(name);
+                positions.clear();
+                normals.clear();
+                tangents.clear();
+                uvs.clear();
+                indices.clear();
+                *aabb_min = [f32::MAX; 3];
+                *aabb_max = [f32::MIN; 3];
+            };
 
-            let instance = astraweave_render::Instance::from_pos_scale_color(
-                glam::Vec3::ZERO,
-                glam::Vec3::ONE,
-                biome_tint,
+            for &ci in bin {
+                let cc = &converted[ci];
+
+                // If adding this chunk would exceed the per-buffer limit, flush first
+                if !merged_positions.is_empty()
+                    && merged_positions.len() + cc.positions.len() > MAX_VERTICES_PER_BIN
+                {
+                    vertex_offset = 0;
+                    flush(
+                        &mut merged_positions,
+                        &mut merged_normals,
+                        &mut merged_tangents,
+                        &mut merged_uvs,
+                        &mut merged_indices,
+                        &mut cluster_aabb_min,
+                        &mut cluster_aabb_max,
+                        dominant_tint,
+                        &mut self.renderer,
+                        &mut self.terrain_model_names,
+                        &mut sub_idx,
+                    );
+                }
+
+                for &idx in &cc.indices {
+                    merged_indices.push(idx + vertex_offset);
+                }
+                vertex_offset += cc.positions.len() as u32;
+
+                merged_positions.extend_from_slice(&cc.positions);
+                merged_normals.extend_from_slice(&cc.normals);
+                merged_tangents.extend_from_slice(&cc.tangents);
+                merged_uvs.extend_from_slice(&cc.uvs);
+
+                for j in 0..3 {
+                    cluster_aabb_min[j] = cluster_aabb_min[j].min(cc.aabb_min[j]);
+                    cluster_aabb_max[j] = cluster_aabb_max[j].max(cc.aabb_max[j]);
+                }
+                dominant_tint = cc.biome_tint;
+            }
+
+            // Flush remaining
+            flush(
+                &mut merged_positions,
+                &mut merged_normals,
+                &mut merged_tangents,
+                &mut merged_uvs,
+                &mut merged_indices,
+                &mut cluster_aabb_min,
+                &mut cluster_aabb_max,
+                dominant_tint,
+                &mut self.renderer,
+                &mut self.terrain_model_names,
+                &mut sub_idx,
             );
-
-            self.renderer
-                .add_model_with_bounds(&name, mesh, &[instance], aabb_min, aabb_max);
-            self.terrain_model_names.push(name);
         }
 
         // Track stats for the scene stats panel
-        self.terrain_total_indices = chunks.iter().map(|(_, idx)| idx.len()).sum();
-        self.terrain_total_triangles = self.terrain_total_indices / 3;
+        self.terrain_total_indices = total_indices;
+        self.terrain_total_triangles = total_indices / 3;
 
         // Position ground fill plane below all terrain to block sky bleed-through.
-        // Compute global min Y and max XZ extent across all chunks.
-        let mut global_min_y = f32::MAX;
-        let mut global_max_extent: f32 = 50.0;
-        for (verts, _) in chunks {
-            for v in verts {
-                global_min_y = global_min_y.min(v.position[1]);
-                global_max_extent = global_max_extent
-                    .max(v.position[0].abs())
-                    .max(v.position[2].abs());
-            }
-        }
+        let global_min_y = global_aabb_min[1];
+        let global_max_extent = global_aabb_max[0]
+            .abs()
+            .max(global_aabb_max[2].abs())
+            .max(global_aabb_min[0].abs())
+            .max(global_aabb_min[2].abs());
+
         if global_min_y < f32::MAX {
-            let ground_y = global_min_y - 5.0; // 5 units below lowest terrain point
-            let extent = global_max_extent + 100.0; // generous overshoot
+            let ground_y = global_min_y - 5.0;
+            let extent = global_max_extent + 100.0;
             self.renderer.set_terrain_ground_plane(ground_y, extent);
 
-            // Scale fog parameters for the terrain extent so distant chunks
-            // fade gently rather than disappearing into a wall of white.
+            // ── Fog ────────────────────────────────────────────────────
+            // Distance fog fades terrain edges smoothly into the sky.
+            // The fog color MUST match the sky horizon color so the
+            // transition is seamless — a mismatch creates white void.
             let env = self.renderer.scene_environment_mut();
-            env.visuals.fog_start = extent * 0.4; // fog begins at 40% of terrain extent
-            env.visuals.fog_density = 0.5 / extent; // ~50% fog at the far edge
+            env.visuals.fog_color = glam::Vec3::new(0.75, 0.85, 1.0); // matches day_color_horizon
+            env.visuals.fog_start = extent * 0.7; // begin further out
+            env.visuals.fog_end = extent * 2.5; // softer rolloff
+            env.visuals.fog_density = 0.06 / extent; // gentler exponential
+                                                     // Ambient fill so shadowed areas aren't pitch black
+            env.visuals.ambient_color = glam::Vec3::new(0.45, 0.50, 0.55);
+            env.visuals.ambient_intensity = 0.35;
             tracing::debug!(
                 "Ground fill plane set at Y={ground_y:.1}, extent={extent:.0}, \
                  fog_start={:.0}, fog_density={:.5}",
                 env.visuals.fog_start,
                 env.visuals.fog_density,
             );
+
+            // ── Sky ────────────────────────────────────────────────────
+            // Activate the procedural sky renderer so the background shows
+            // a gradient sky instead of a flat white/grey void.
+            let sky = astraweave_render::SkyConfig {
+                day_color_top: glam::Vec3::new(0.25, 0.55, 1.0),
+                day_color_horizon: glam::Vec3::new(0.75, 0.85, 1.0),
+                sunset_color_top: glam::Vec3::new(0.8, 0.4, 0.2),
+                sunset_color_horizon: glam::Vec3::new(1.0, 0.6, 0.3),
+                night_color_top: glam::Vec3::new(0.0, 0.0, 0.1),
+                night_color_horizon: glam::Vec3::new(0.1, 0.1, 0.2),
+                cloud_coverage: 0.35,
+                cloud_speed: 0.01,
+                cloud_altitude: 800.0,
+            };
+            self.renderer.set_sky_config(sky);
+
+            // ── Sun ────────────────────────────────────────────────────
+            // A warm directional light at ~35° elevation for visible
+            // terrain shadows and natural surface shading.
+            let sun_dir = glam::Vec3::new(-0.5, -0.6, -0.4).normalize();
+            self.renderer.set_light_direction_override(sun_dir, 1.5);
+
+            // ── Shadow cascade tuning for terrain ──────────────────────
+            // Wider cascade extents cover more terrain, and a higher
+            // cascade lambda biases toward logarithmic splits for better
+            // near-field shadow quality.
+            self.renderer.set_cascade_extents(80.0, 250.0);
+            self.renderer.set_cascade_lambda(0.7);
+            self.renderer.set_shadow_filter(1.5, 0.0005, 1.0);
+
+            // ── Quality preset ─────────────────────────────────────────
+            // Auto-switch to EditorTerrain (shadows) when terrain
+            // is loaded, unless the user has explicitly chosen GameQuality.
+            if self.quality_preset != EditorQualityPreset::GameQuality {
+                self.apply_quality_preset(EditorQualityPreset::EditorTerrain);
+            }
         }
 
         tracing::debug!(
@@ -767,14 +1012,19 @@ impl EngineRenderAdapter {
     /// Upload scatter placements as instanced models in the engine renderer.
     ///
     /// Groups placements by mesh key, creates one model per unique mesh type.
-    pub fn upload_scatter_placements(&mut self, placements: &[ScatterPlacement]) {
+    /// Upload scatter placements. Returns (loaded, total_groups, not_found, load_failed).
+    pub fn upload_scatter_placements(
+        &mut self,
+        placements: &[ScatterPlacement],
+        diffuse_textures: &std::collections::HashMap<String, std::path::PathBuf>,
+    ) -> (u32, u32, u32, u32) {
         // Clear previous scatter models
         for name in self.scatter_model_names.drain(..) {
             self.renderer.clear_model(&name);
         }
 
         if placements.is_empty() {
-            return;
+            return (0, 0, 0, 0);
         }
 
         // Group by mesh_key
@@ -785,32 +1035,33 @@ impl EngineRenderAdapter {
         }
 
         let mut loaded_groups = 0u32;
+        let mut skipped_not_found = 0u32;
+        let mut skipped_load_fail = 0u32;
+
+        // Texture deduplication cache: canonical path → (width, height, rgba_pixels).
+        // Prevents the same image file from being loaded and decoded multiple times
+        // when several scatter groups reference the same texture.
+        let mut texture_cache: std::collections::HashMap<std::path::PathBuf, (u32, u32, Vec<u8>)> =
+            std::collections::HashMap::new();
+
         for (key, items) in &groups {
             // Only render scatter groups that have real glTF mesh assets on disk.
             let mesh_path = &items[0].mesh_path;
-            if !std::path::Path::new(mesh_path).exists() {
-                tracing::debug!("Scatter: skipping '{key}' — mesh not found: {mesh_path}");
+            let mesh_path_obj = std::path::Path::new(mesh_path);
+            if !mesh_path_obj.exists() {
+                // On the first few misses, log the full path for debugging
+                if skipped_not_found < 3 {
+                    tracing::warn!(
+                        target: "aw_editor::viewport",
+                        "Scatter: skipping '{}' ({} instances) — mesh not found: {}",
+                        key,
+                        items.len(),
+                        mesh_path
+                    );
+                }
+                skipped_not_found += 1;
                 continue;
             }
-
-            let name = format!("scatter_{key}");
-
-            // Build instances from placements
-            let instances: Vec<astraweave_render::Instance> = items
-                .iter()
-                .map(|p| {
-                    let transform = glam::Mat4::from_scale_rotation_translation(
-                        glam::Vec3::splat(p.scale),
-                        glam::Quat::from_rotation_y(p.rotation),
-                        p.position,
-                    );
-                    astraweave_render::Instance {
-                        transform,
-                        color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
-                        material_id: 0,
-                    }
-                })
-                .collect();
 
             // Load glTF mesh and add as instanced model with all placements.
             // Wrapped in catch_unwind to prevent a single bad asset from
@@ -823,31 +1074,281 @@ impl EngineRenderAdapter {
             }));
             match load_result {
                 Ok(Ok(cpu_meshes)) if !cpu_meshes.is_empty() => {
-                    let mesh = self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0]);
-                    // Use per-model texture if the glTF had an embedded albedo
-                    if let Some(ref img) = cpu_meshes[0].albedo_image {
-                        self.renderer.add_model_with_texture(
-                            &name,
-                            mesh,
-                            &instances,
-                            img.width,
-                            img.height,
-                            &img.pixels,
-                        );
-                    } else {
-                        self.renderer.add_model(&name, mesh, &instances);
+                    // Compute model AABB for pivot correction: most glTF models
+                    // have their origin at the center of the bounding box rather
+                    // than at the bottom. `aabb_min_y * scale` gives the offset
+                    // needed to place the model's base at ground level.
+                    let aabb_min_y = cpu_meshes[0].aabb().map(|(min, _max)| min.y).unwrap_or(0.0);
+
+                    // Build per-instance data with AABB pivot correction and
+                    // surface-normal alignment, paired with the source placement
+                    // for spatial binning.
+                    let instance_data: Vec<(glam::Vec3, astraweave_render::Instance)> = items
+                        .iter()
+                        .map(|p| {
+                            let normal_quat = {
+                                let n = p.terrain_normal;
+                                let slope_cos = n.y;
+                                if slope_cos < 0.996 && n.length_squared() > 0.5 {
+                                    glam::Quat::from_rotation_arc(glam::Vec3::Y, n)
+                                } else {
+                                    glam::Quat::IDENTITY
+                                }
+                            };
+                            let yaw_quat = glam::Quat::from_rotation_y(p.rotation);
+                            let rotation = normal_quat * yaw_quat;
+
+                            let pivot_offset = aabb_min_y * p.scale;
+                            let mut pos = p.position;
+                            pos.y -= pivot_offset;
+
+                            let transform = glam::Mat4::from_scale_rotation_translation(
+                                glam::Vec3::splat(p.scale),
+                                rotation,
+                                pos,
+                            );
+                            (
+                                p.position,
+                                astraweave_render::Instance {
+                                    transform,
+                                    color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
+                                    material_id: 0,
+                                },
+                            )
+                        })
+                        .collect();
+
+                    // ── Spatial sub-grouping (2×2 quadrants) ───────────────
+                    // Splitting into quadrants gives the frustum culler 4×
+                    // granularity: when the camera faces one direction, the
+                    // back quadrants are culled entirely.
+                    let mut x_min = f32::MAX;
+                    let mut x_max = f32::MIN;
+                    let mut z_min = f32::MAX;
+                    let mut z_max = f32::MIN;
+                    for p in items.iter() {
+                        x_min = x_min.min(p.position.x);
+                        x_max = x_max.max(p.position.x);
+                        z_min = z_min.min(p.position.z);
+                        z_max = z_max.max(p.position.z);
                     }
-                    self.scatter_model_names.push(name);
+                    let mid_x = (x_min + x_max) * 0.5;
+                    let mid_z = (z_min + z_max) * 0.5;
+
+                    // Bin instances into 4 quadrants
+                    let mut quadrants: [Vec<(glam::Vec3, astraweave_render::Instance)>; 4] =
+                        [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+                    for (pos, inst) in instance_data {
+                        let qi = match (pos.x >= mid_x, pos.z >= mid_z) {
+                            (false, false) => 0,
+                            (true, false) => 1,
+                            (false, true) => 2,
+                            (true, true) => 3,
+                        };
+                        quadrants[qi].push((pos, inst));
+                    }
+
+                    let has_texture = cpu_meshes[0].albedo_image.is_some();
+
+                    // If glTF has no embedded texture (decomposed assets), try
+                    // loading the diffuse texture from the BiomePack texture map.
+                    //
+                    // Textures are capped at SCATTER_MAX_TEX_SIZE to prevent GPU
+                    // memory exhaustion from oversized assets (e.g., 8192×8192
+                    // normal maps mislabeled as diffuse).  Deduplication by
+                    // canonical path avoids re-loading the same image file for
+                    // multiple scatter groups.
+                    const SCATTER_MAX_TEX_SIZE: u32 = 2048;
+
+                    let external_texture = if !has_texture {
+                        // Try matching by mesh filename stem
+                        let stem = std::path::Path::new(mesh_path)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("");
+                        let tex_path = diffuse_textures
+                            .get(stem)
+                            .or_else(|| diffuse_textures.get(key.as_str()));
+                        tex_path.and_then(|p| {
+                            if !p.exists() {
+                                tracing::warn!(
+                                    "Scatter: diffuse texture not found: {}",
+                                    p.display()
+                                );
+                                return None;
+                            }
+
+                            // Check the texture cache first (deduplicate by
+                            // canonical path so the same file isn't loaded and
+                            // uploaded multiple times).
+                            let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
+                            if let Some(cached) = texture_cache.get(&canon) {
+                                tracing::debug!(
+                                    "Scatter: reusing cached {}×{} texture for '{key}'",
+                                    cached.0,
+                                    cached.1
+                                );
+                                return Some(cached.clone());
+                            }
+
+                            match image::open(p) {
+                                Ok(img) => {
+                                    let rgba = img.to_rgba8();
+                                    let (w, h) = rgba.dimensions();
+
+                                    // Cap at SCATTER_MAX_TEX_SIZE to prevent GPU OOM
+                                    let (final_w, final_h, pixels) =
+                                        if w > SCATTER_MAX_TEX_SIZE || h > SCATTER_MAX_TEX_SIZE {
+                                            let tw = w.min(SCATTER_MAX_TEX_SIZE);
+                                            let th = h.min(SCATTER_MAX_TEX_SIZE);
+                                            tracing::info!(
+                                                target: "aw_editor::viewport",
+                                                "Scatter: downsampling {}×{} → {}×{} for '{key}' from {}",
+                                                w, h, tw, th, p.display()
+                                            );
+                                            let resized = image::imageops::resize(
+                                                &rgba,
+                                                tw,
+                                                th,
+                                                image::imageops::FilterType::Triangle,
+                                            );
+                                            (tw, th, resized.into_raw())
+                                        } else {
+                                            tracing::debug!(
+                                                "Scatter: loaded diffuse {}×{} for '{key}' from {}",
+                                                w, h, p.display()
+                                            );
+                                            (w, h, rgba.into_raw())
+                                        };
+
+                                    let entry = (final_w, final_h, pixels);
+                                    texture_cache.insert(canon, entry.clone());
+                                    Some(entry)
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Scatter: failed to load diffuse for '{key}': {e}"
+                                    );
+                                    None
+                                }
+                            }
+                        })
+                    } else {
+                        None
+                    };
+
+                    // ── Create mesh ONCE per group and track the first
+                    // textured quadrant so subsequent quadrants share the
+                    // GPU texture (wgpu resources are reference-counted). ──
+                    let shared_mesh = self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0]);
+                    let mut first_textured_quad: Option<String> = None;
+
+                    for (qi, quad) in quadrants.iter().enumerate() {
+                        if quad.is_empty() {
+                            continue;
+                        }
+                        let sub_name = format!("scatter_{key}_q{qi}");
+                        let instances: Vec<astraweave_render::Instance> =
+                            quad.iter().map(|(_, inst)| inst.clone()).collect();
+
+                        let mesh = shared_mesh.clone();
+
+                        // If a prior quadrant already uploaded the texture,
+                        // share it instead of creating a duplicate GPU texture.
+                        if let Some(ref source) = first_textured_quad {
+                            if self
+                                .renderer
+                                .add_model_sharing_texture(&sub_name, mesh.clone(), &instances, source)
+                            {
+                                // Texture shared successfully — skip texture upload.
+                            } else {
+                                // Source disappeared (shouldn't happen) — fall back.
+                                self.renderer.add_model(&sub_name, mesh, &instances);
+                            }
+                        } else if let Some(img) = cpu_meshes[0].albedo_image.as_ref() {
+                            // Cap embedded textures to prevent GPU OOM
+                            if img.width > SCATTER_MAX_TEX_SIZE || img.height > SCATTER_MAX_TEX_SIZE
+                            {
+                                let src = image::RgbaImage::from_raw(
+                                    img.width,
+                                    img.height,
+                                    img.pixels.clone(),
+                                );
+                                if let Some(src_img) = src {
+                                    let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
+                                    let th = img.height.min(SCATTER_MAX_TEX_SIZE);
+                                    let resized = image::imageops::resize(
+                                        &src_img,
+                                        tw,
+                                        th,
+                                        image::imageops::FilterType::Triangle,
+                                    );
+                                    self.renderer.add_model_with_texture(
+                                        &sub_name,
+                                        mesh,
+                                        &instances,
+                                        tw,
+                                        th,
+                                        &resized.into_raw(),
+                                    );
+                                    first_textured_quad = Some(sub_name.clone());
+                                } else {
+                                    tracing::warn!(
+                                        target: "aw_editor::viewport",
+                                        "Scatter: embedded texture {}×{} could not be resized; rendering untextured",
+                                        img.width, img.height
+                                    );
+                                    self.renderer.add_model(&sub_name, mesh, &instances);
+                                }
+                            } else {
+                                self.renderer.add_model_with_texture(
+                                    &sub_name,
+                                    mesh,
+                                    &instances,
+                                    img.width,
+                                    img.height,
+                                    &img.pixels,
+                                );
+                                first_textured_quad = Some(sub_name.clone());
+                            }
+                        } else if let Some((w, h, ref pixels)) = external_texture {
+                            self.renderer
+                                .add_model_with_texture(&sub_name, mesh, &instances, w, h, pixels);
+                            first_textured_quad = Some(sub_name.clone());
+                        } else {
+                            self.renderer.add_model(&sub_name, mesh, &instances);
+                        }
+
+                        // Compute tight AABB for this quadrant
+                        let mut g_min = [f32::MAX; 3];
+                        let mut g_max = [f32::MIN; 3];
+                        let br = items[0].bounding_radius;
+                        for (pos, _) in quad.iter() {
+                            g_min[0] = g_min[0].min(pos.x - br);
+                            g_min[1] = g_min[1].min(pos.y - br);
+                            g_min[2] = g_min[2].min(pos.z - br);
+                            g_max[0] = g_max[0].max(pos.x + br);
+                            g_max[1] = g_max[1].max(pos.y + br);
+                            g_max[2] = g_max[2].max(pos.z + br);
+                        }
+                        self.renderer.set_model_bounds(&sub_name, g_min, g_max);
+
+                        self.scatter_model_names.push(sub_name);
+                    }
+
                     loaded_groups += 1;
                 }
                 Ok(Ok(_)) => {
-                    tracing::debug!("Scatter: '{key}' glTF has no meshes: {mesh_path}");
+                    tracing::warn!("Scatter: '{key}' glTF has no meshes: {mesh_path}");
+                    skipped_load_fail += 1;
                 }
                 Ok(Err(e)) => {
-                    tracing::debug!("Scatter: skipping '{key}' — glTF load failed: {e}");
+                    tracing::warn!("Scatter: skipping '{key}' — glTF load failed: {e}");
+                    skipped_load_fail += 1;
                 }
                 Err(_) => {
                     tracing::warn!("Scatter: '{key}' glTF load panicked — skipping: {mesh_path}");
+                    skipped_load_fail += 1;
                 }
             }
         }
@@ -855,12 +1356,16 @@ impl EngineRenderAdapter {
         self.scatter_placement_count = placements.len();
         self.scatter_draw_call_count = loaded_groups;
 
-        tracing::debug!(
-            "Scatter: {loaded_groups}/{} groups loaded ({} placements, {} skipped without mesh)",
-            groups.len(),
+        let total = groups.len() as u32;
+        tracing::info!(
+            target: "aw_editor::viewport",
+            "Scatter upload: {loaded_groups}/{total} mesh groups loaded, {skipped_not_found} not found, {skipped_load_fail} load failed, {} instances, {} cached textures",
             placements.len(),
-            groups.len() as u32 - loaded_groups,
+            texture_cache.len(),
         );
+
+        // Return summary for console display
+        (loaded_groups, total, skipped_not_found, skipped_load_fail)
     }
 
     /// Clear all scatter data from the engine renderer.
@@ -943,6 +1448,10 @@ impl EngineRenderAdapter {
             env.visuals.fog_density = params.fog_density;
             env.visuals.fog_color = glam::Vec3::from(params.fog_color);
         }
+        // Apply particle count override from the UI slider
+        if let Some(count) = params.particle_count_override {
+            self.renderer.set_weather_max(count as usize);
+        }
     }
 
     /// Apply lighting parameters to the engine's scene environment and camera UBO.
@@ -957,9 +1466,12 @@ impl EngineRenderAdapter {
         env.sun_color = params.sun_color;
         env.sun_intensity = params.sun_intensity;
 
-        // Override the camera UBO's light direction so the PBR shader uses the
-        // world panel's sun settings instead of the internal TimeOfDay system.
-        let dir = glam::Vec3::from(params.sun_dir).normalize();
+        // Negate: sun_dir points TO the sun (positive Y = sun above),
+        // but the shader convention for light_dir is direction FROM the
+        // sun (negative Y = light traveling downward). The shader then
+        // does L = normalize(-light_dir) to get the direction toward
+        // the light source.
+        let dir = (-glam::Vec3::from(params.sun_dir)).normalize();
         self.renderer
             .set_light_direction_override(dir, params.sun_intensity);
     }

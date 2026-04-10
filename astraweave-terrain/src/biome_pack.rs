@@ -374,7 +374,95 @@ impl BiomePack {
     /// Load a BiomePack from a serialized JSON file (not a raw manifest).
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        Ok(serde_json::from_str(&content)?)
+        let mut pack: Self = serde_json::from_str(&content)?;
+
+        // Always derive root_dir from the JSON file's actual location on disk.
+        // The serialized root_dir may contain stale absolute paths from when the
+        // .blend file was originally decomposed (e.g., on a different drive or
+        // machine). The JSON file's parent directory is the authoritative root.
+        //
+        // Use dunce::canonicalize or manual resolution to avoid Windows \\?\ prefix
+        // that breaks downstream path consumers (glTF loaders, etc.).
+        let parent = path.parent().unwrap_or(std::path::Path::new("."));
+        let actual_root = {
+            let canonical = parent
+                .canonicalize()
+                .unwrap_or_else(|_| parent.to_path_buf());
+            // Strip Windows extended-length path prefix (\\?\) if present.
+            // Rust's canonicalize() adds this on Windows, but it breaks
+            // path string comparisons and some C-based file loaders.
+            let s = canonical.to_string_lossy();
+            if let Some(stripped) = s.strip_prefix(r"\\?\") {
+                std::path::PathBuf::from(stripped)
+            } else {
+                canonical
+            }
+        };
+        if pack.root_dir != actual_root {
+            eprintln!(
+                "BiomePack '{}': overriding root_dir '{}' -> '{}'",
+                pack.name,
+                pack.root_dir.display(),
+                actual_root.display(),
+            );
+            pack.root_dir = actual_root;
+        }
+
+        Ok(pack)
+    }
+
+    /// Build a map of mesh filename stem → absolute diffuse texture path.
+    ///
+    /// For each asset with a `diffuse` channel texture, the map entry key is
+    /// the GLB filename without extension (e.g. `"boulder_01"` for
+    /// `"meshes/boulder_01.glb"`). The value is the absolute path to the
+    /// diffuse texture file (`root_dir/textures/<filename>`).
+    ///
+    /// This allows the scatter upload pipeline to match loaded meshes to
+    /// their textures, since the decomposer exports meshes without embedded
+    /// materials.
+    pub fn build_diffuse_texture_map(&self) -> std::collections::HashMap<String, PathBuf> {
+        let mut map = std::collections::HashMap::new();
+        for asset in &self.assets {
+            // Find the diffuse texture for this asset, skipping normal/roughness
+            // maps that may be incorrectly labeled as "diffuse" in the biomepack.
+            let tex = asset
+                .textures
+                .iter()
+                .find(|t| t.channel == "diffuse" && !Self::filename_is_non_diffuse(&t.filename));
+            // Fall back to any texture labeled "diffuse" if the smart filter
+            // rejected all candidates (better than no texture at all).
+            let tex = tex.or_else(|| asset.textures.iter().find(|t| t.channel == "diffuse"));
+            if let Some(tex) = tex {
+                let tex_path = self.root_dir.join("textures").join(&tex.filename);
+                // Key by mesh filename stem and also by asset name for flexible matching
+                if let Some(stem) = Path::new(&asset.mesh_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                {
+                    map.insert(stem.to_string(), tex_path.clone());
+                }
+                map.insert(asset.name.clone(), tex_path);
+            }
+        }
+        map
+    }
+
+    /// Heuristic: detect filenames that look like non-diffuse texture maps
+    /// (normal, roughness, metallic, AO, displacement) so that mislabeled
+    /// channels in the biomepack JSON don't cause the wrong texture to load.
+    fn filename_is_non_diffuse(filename: &str) -> bool {
+        let lower = filename.to_lowercase();
+        lower.contains("_nor_")
+            || lower.contains("_normal")
+            || lower.contains("_nrm")
+            || lower.contains("_rough")
+            || lower.contains("_metal")
+            || lower.contains("_ao")
+            || lower.contains("_disp")
+            || lower.contains("_height")
+            || lower.contains("_arm")
+            || lower.contains("_orm")
     }
 
     /// Save the BiomePack as a JSON file.
@@ -390,13 +478,35 @@ impl BiomePack {
     /// is a South African semi-arid biome), but the vegetation types are fully
     /// populated from the pack's assets.
     pub fn to_biome_config(&self, biome_type: BiomeType) -> BiomeConfig {
-        // Build per-category buckets so the top-25 selection is diverse
-        // (avoids 25 tiny flowers when rocks/billboards have lower weights).
+        // Filter out non-scatterable assets: fog volumes, particle systems,
+        // shadow catchers, and other scene-composition objects that should not
+        // appear as vegetation instances on the terrain.
+        let is_scatterable = |a: &BiomePackAsset| -> bool {
+            let n = a.name.to_lowercase();
+            // Skip fog, particles, shadow casters, sand planes, etc.
+            !(n.contains("fog")
+                || n.contains("particle")
+                || n.contains("shadow")
+                || n.contains("volume")
+                || n == "sand"
+                || n == "monster"
+                || n.contains("background_water")
+                || n.contains("bacground_ground"))
+        };
+
         let to_veg = |a: &BiomePackAsset| {
             let full_path = self.root_dir.join(&a.mesh_path);
+            // Use dimension-weighted importance: larger assets (trees) get
+            // higher effective weight so they aren't drowned out by dozens
+            // of tiny branches that all share the same raw weight.
+            let max_dim = a
+                .dimensions
+                .map(|d| d[0].max(d[1]).max(d[2]) as f32)
+                .unwrap_or(1.0);
+            let dim_boost = (max_dim / 2.0).clamp(0.5, 5.0); // 1m → 0.5x, 4m → 2x, 10m+ → 5x
             VegetationType {
                 name: a.name.clone(),
-                weight: a.weight,
+                weight: a.weight * dim_boost,
                 model_path: full_path.to_string_lossy().to_string(),
                 scale_range: a.scale_range,
                 slope_tolerance: a.slope_tolerance,
@@ -413,25 +523,34 @@ impl BiomePack {
         let mut rocks: Vec<VegetationType> = self
             .assets
             .iter()
-            .filter(|a| a.category == "rock")
+            .filter(|a| a.category == "rock" && is_scatterable(a))
             .map(&to_veg)
             .collect();
         let mut veg: Vec<VegetationType> = self
             .assets
             .iter()
-            .filter(|a| a.category == "vegetation")
+            .filter(|a| a.category == "vegetation" && is_scatterable(a))
             .map(&to_veg)
             .collect();
         let mut billboards: Vec<VegetationType> = self
             .assets
             .iter()
-            .filter(|a| a.category == "billboard")
+            .filter(|a| a.category == "billboard" && is_scatterable(a))
             .map(&to_veg)
             .collect();
+        // Props are rarely good scatter candidates — only take root/ivy types
         let mut props: Vec<VegetationType> = self
             .assets
             .iter()
-            .filter(|a| a.category == "prop")
+            .filter(|a| {
+                a.category == "prop" && is_scatterable(a) && {
+                    let n = a.name.to_lowercase();
+                    n.contains("root")
+                        || n.contains("ivy")
+                        || n.contains("stick")
+                        || n.contains("debris")
+                }
+            })
             .map(&to_veg)
             .collect();
 
@@ -440,11 +559,13 @@ impl BiomePack {
         sort_desc(&mut billboards);
         sort_desc(&mut props);
 
-        // Stratified selection: reserve slots per category, then fill remainder.
+        // Stratified selection: reserve slots per category with tree priority.
+        // Trees (large vegetation) get dedicated slots so they're never
+        // crowded out by dozens of small branches/grass.
         const MAX_VEG_TYPES: usize = 25;
-        let rock_slots = rocks.len().min(8); // Up to 8 rocks
-        let billboard_slots = billboards.len().min(4); // Up to 4 billboards
-        let prop_slots = props.len().min(4); // Up to 4 props
+        let rock_slots = rocks.len().min(6);
+        let billboard_slots = billboards.len().min(3);
+        let prop_slots = props.len().min(3);
         let veg_slots = MAX_VEG_TYPES.saturating_sub(rock_slots + billboard_slots + prop_slots);
 
         let mut vegetation_types: Vec<VegetationType> = Vec::with_capacity(MAX_VEG_TYPES);
@@ -497,6 +618,7 @@ impl BiomePack {
             use_poisson_disk: self.scatter.use_poisson_disk,
             min_distance: self.scatter.min_distance,
             max_slope: self.scatter.max_slope,
+            max_curvature: 0.15,
             height_filter: None,
             seed_offset: 0,
         }

@@ -1056,12 +1056,12 @@ mod layout_preset_exact {
 
     #[test]
     fn expected_panel_count_per_preset() {
-        assert_eq!(LayoutPreset::Default.expected_panel_count(), 6);
-        assert_eq!(LayoutPreset::Wide.expected_panel_count(), 2);
-        assert_eq!(LayoutPreset::Compact.expected_panel_count(), 8);
-        assert_eq!(LayoutPreset::Modeling.expected_panel_count(), 3);
-        assert_eq!(LayoutPreset::Animation.expected_panel_count(), 5);
-        assert_eq!(LayoutPreset::Debug.expected_panel_count(), 5);
+        assert_eq!(LayoutPreset::Default.expected_panel_count(), 8);
+        assert_eq!(LayoutPreset::Wide.expected_panel_count(), 3);
+        assert_eq!(LayoutPreset::Compact.expected_panel_count(), 10);
+        assert_eq!(LayoutPreset::Modeling.expected_panel_count(), 4);
+        assert_eq!(LayoutPreset::Animation.expected_panel_count(), 6);
+        assert_eq!(LayoutPreset::Debug.expected_panel_count(), 6);
     }
 
     #[test]

@@ -599,7 +599,7 @@ mod brush_mode_tests {
 
     #[test]
     fn brush_mode_flatten_icon_returns_minus_emoji() {
-        assert_eq!(BrushMode::Flatten.icon(), "➖");
+        assert_eq!(BrushMode::Flatten.icon(), "-");
     }
 
     #[test]
@@ -664,8 +664,8 @@ mod brush_mode_tests {
     // --- all() method tests ---
 
     #[test]
-    fn brush_mode_all_returns_five_variants() {
-        assert_eq!(BrushMode::all().len(), 5);
+    fn brush_mode_all_returns_eight_variants() {
+        assert_eq!(BrushMode::all().len(), 8);
     }
 
     #[test]
@@ -712,7 +712,7 @@ mod brush_mode_tests {
     #[test]
     fn brush_mode_flatten_display_contains_icon_and_name() {
         let display = format!("{}", BrushMode::Flatten);
-        assert!(display.contains("➖"));
+        assert!(display.contains("-"));
         assert!(display.contains("Flatten"));
     }
 
@@ -753,7 +753,7 @@ mod brush_mode_tests {
     fn brush_mode_all_variants_have_unique_hashes() {
         use std::collections::HashSet;
         let set: HashSet<BrushMode> = BrushMode::all().iter().copied().collect();
-        assert_eq!(set.len(), 5);
+        assert_eq!(set.len(), 8);
     }
 
     // --- Boundary: all variants have non-empty names and icons ---
@@ -793,7 +793,7 @@ mod cross_type_integration_tests {
         assert_eq!(ErosionPresetType::all().len(), 6);
         assert_eq!(WaterBodyPreset::all().len(), 7);
         assert_eq!(FluidQualityPreset::all().len(), 4);
-        assert_eq!(BrushMode::all().len(), 5);
+        assert_eq!(BrushMode::all().len(), 8);
     }
 
     #[test]

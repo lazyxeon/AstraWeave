@@ -1536,7 +1536,7 @@ fn asset_type_unknown_not_content() {
 
 #[test]
 fn asset_type_all_count() {
-    assert_eq!(AssetType::all().len(), 9);
+    assert_eq!(AssetType::all().len(), 10);
 }
 
 // ============================================================================
@@ -1657,7 +1657,7 @@ fn asset_action_name_nonempty() {
 
 #[test]
 fn asset_action_all_variants_count() {
-    assert_eq!(AssetAction::all_variants().len(), 8);
+    assert_eq!(AssetAction::all_variants().len(), 10);
 }
 
 // ============================================================================
@@ -1681,7 +1681,7 @@ fn view_mode_grid_name() {
 
 #[test]
 fn view_mode_list_icon() {
-    assert_eq!(ViewMode::List.icon(), "📄");
+    assert_eq!(ViewMode::List.icon(), "📋");
 }
 
 #[test]

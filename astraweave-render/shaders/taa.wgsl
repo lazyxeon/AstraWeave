@@ -21,6 +21,16 @@ struct TaaParams {
 @group(0) @binding(5) var<uniform> params: TaaParams;
 @group(0) @binding(6) var output_tex: texture_storage_2d<rgba16float, write>;
 
+// Shared memory tile: 8×8 output + 1-pixel apron = 10×10
+const TAA_TILE: u32 = 8u;
+const TAA_PAD: u32 = 1u;
+const TAA_TILE_PAD: u32 = TAA_TILE + 2u * TAA_PAD;
+const TAA_SHM: u32 = TAA_TILE_PAD * TAA_TILE_PAD;
+
+var<workgroup> s_current: array<vec3<f32>, 100>;
+var<workgroup> s_taa_depth: array<f32, 100>;
+var<workgroup> s_sharp: array<vec3<f32>, 100>;
+
 // ============================================================================
 // CATMULL-ROM 5-TAP FILTER (for sharp history sampling)
 // ============================================================================
@@ -71,16 +81,15 @@ fn ycocg_to_rgb(ycocg: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(y + co - cg, y + cg, y - co - cg);
 }
 
-// Sample 3x3 neighborhood and compute min/max AABB in YCoCg space
-fn compute_neighborhood_aabb(uv: vec2<f32>, inv_res: vec2<f32>) -> array<vec3<f32>, 2> {
+// Sample 3x3 neighborhood from shared memory and compute min/max AABB in YCoCg space
+fn compute_neighborhood_aabb_tiled(cx: u32, cy: u32) -> array<vec3<f32>, 2> {
     var aabb_min = vec3<f32>(1e10);
     var aabb_max = vec3<f32>(-1e10);
 
     for (var dy = -1; dy <= 1; dy++) {
         for (var dx = -1; dx <= 1; dx++) {
-            let offset = vec2<f32>(f32(dx), f32(dy)) * inv_res;
-            let sample_rgb = textureSampleLevel(current_tex, samp, uv + offset, 0.0).rgb;
-            let sample_ycocg = rgb_to_ycocg(sample_rgb);
+            let idx = u32(i32(cy) + dy) * TAA_TILE_PAD + u32(i32(cx) + dx);
+            let sample_ycocg = rgb_to_ycocg(s_current[idx]);
             aabb_min = min(aabb_min, sample_ycocg);
             aabb_max = max(aabb_max, sample_ycocg);
         }
@@ -108,23 +117,23 @@ fn clamp_to_aabb(color: vec3<f32>, aabb_min: vec3<f32>, aabb_max: vec3<f32>) -> 
 // CLOSEST DEPTH (for velocity dilation — use motion of nearest surface)
 // ============================================================================
 
-fn find_closest_depth_uv(uv: vec2<f32>, inv_res: vec2<f32>) -> vec2<f32> {
-    var closest_uv = uv;
+// Find pixel offset to closest depth in 3x3 neighborhood (from shared memory)
+fn find_closest_depth_offset_tiled(cx: u32, cy: u32) -> vec2<i32> {
     var closest_depth = 1.0;
+    var best_offset = vec2<i32>(0, 0);
 
     for (var dy = -1; dy <= 1; dy++) {
         for (var dx = -1; dx <= 1; dx++) {
-            let offset = vec2<f32>(f32(dx), f32(dy)) * inv_res;
-            let sample_uv = uv + offset;
-            let d = textureSampleLevel(depth_tex, samp, sample_uv, 0.0).r;
+            let idx = u32(i32(cy) + dy) * TAA_TILE_PAD + u32(i32(cx) + dx);
+            let d = s_taa_depth[idx];
             if (d < closest_depth) {
                 closest_depth = d;
-                closest_uv = sample_uv;
+                best_offset = vec2<i32>(dx, dy);
             }
         }
     }
 
-    return closest_uv;
+    return best_offset;
 }
 
 // ============================================================================
@@ -132,9 +141,29 @@ fn find_closest_depth_uv(uv: vec2<f32>, inv_res: vec2<f32>) -> vec2<f32> {
 // ============================================================================
 
 @compute @workgroup_size(8, 8, 1)
-fn taa_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let pixel = vec2<i32>(gid.xy);
+fn taa_resolve(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(local_invocation_index) li: u32,
+    @builtin(workgroup_id) wid: vec3<u32>,
+) {
     let dims = vec2<i32>(params.resolution);
+    let base_x = i32(wid.x * TAA_TILE) - i32(TAA_PAD);
+    let base_y = i32(wid.y * TAA_TILE) - i32(TAA_PAD);
+
+    // Cooperative tile load: 64 threads load 100 entries (1-2 each)
+    for (var i = li; i < TAA_SHM; i += 64u) {
+        let tx = i % TAA_TILE_PAD;
+        let ty = i / TAA_TILE_PAD;
+        let px = clamp(base_x + i32(tx), 0, dims.x - 1);
+        let py = clamp(base_y + i32(ty), 0, dims.y - 1);
+        let coord = vec2<i32>(px, py);
+        s_current[i] = textureLoad(current_tex, coord, 0).rgb;
+        s_taa_depth[i] = textureLoad(depth_tex, coord, 0).r;
+    }
+    workgroupBarrier();
+
+    let pixel = vec2<i32>(gid.xy);
     if (pixel.x >= dims.x || pixel.y >= dims.y) {
         return;
     }
@@ -142,11 +171,17 @@ fn taa_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
     let uv = (vec2<f32>(pixel) + 0.5) * params.inv_resolution;
     let blend_factor = params.config.x;
 
-    // Current frame color
-    let current_rgb = textureSampleLevel(current_tex, samp, uv, 0.0).rgb;
+    // Center in tile coordinates (offset by apron)
+    let cx = lid.x + TAA_PAD;
+    let cy = lid.y + TAA_PAD;
+    let center_idx = cy * TAA_TILE_PAD + cx;
 
-    // Find velocity at closest depth (dilated velocity for edge stability)
-    let closest_uv = find_closest_depth_uv(uv, params.inv_resolution);
+    // Current frame color from shared memory
+    let current_rgb = s_current[center_idx];
+
+    // Find velocity at closest depth (from shared memory — dilated velocity for edge stability)
+    let closest_offset = find_closest_depth_offset_tiled(cx, cy);
+    let closest_uv = uv + vec2<f32>(closest_offset) * params.inv_resolution;
     let velocity = textureSampleLevel(velocity_tex, samp, closest_uv, 0.0).rg;
 
     // Reprojected history UV
@@ -162,8 +197,8 @@ fn taa_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Sample history with Catmull-Rom for sharpness
     let history_rgb = sample_catmull_rom(history_tex, samp, history_uv, params.resolution);
 
-    // Neighborhood clamping in YCoCg space (anti-ghosting)
-    let aabb = compute_neighborhood_aabb(uv, params.inv_resolution);
+    // Neighborhood clamping in YCoCg space from shared memory (anti-ghosting)
+    let aabb = compute_neighborhood_aabb_tiled(cx, cy);
     let history_ycocg = rgb_to_ycocg(history_rgb);
     let clamped_ycocg = clamp_to_aabb(history_ycocg, aabb[0], aabb[1]);
     let clamped_history = ycocg_to_rgb(clamped_ycocg);
@@ -187,26 +222,48 @@ fn taa_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
 // binding 5: params (reused)
 
 @compute @workgroup_size(8, 8, 1)
-fn rcas_sharpen(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let pixel = vec2<i32>(gid.xy);
+fn rcas_sharpen(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(local_invocation_index) li: u32,
+    @builtin(workgroup_id) wid: vec3<u32>,
+) {
     let dims = vec2<i32>(params.resolution);
+    let base_x = i32(wid.x * TAA_TILE) - i32(TAA_PAD);
+    let base_y = i32(wid.y * TAA_TILE) - i32(TAA_PAD);
+
+    // Cooperative tile load: 64 threads load 100 entries
+    for (var i = li; i < TAA_SHM; i += 64u) {
+        let tx = i % TAA_TILE_PAD;
+        let ty = i / TAA_TILE_PAD;
+        let px = clamp(base_x + i32(tx), 0, dims.x - 1);
+        let py = clamp(base_y + i32(ty), 0, dims.y - 1);
+        let coord = vec2<i32>(px, py);
+        s_sharp[i] = textureLoad(sharp_input, coord, 0).rgb;
+    }
+    workgroupBarrier();
+
+    let pixel = vec2<i32>(gid.xy);
     if (pixel.x >= dims.x || pixel.y >= dims.y) {
         return;
     }
 
     let strength = params.config.z;
+    let cx = lid.x + TAA_PAD;
+    let cy = lid.y + TAA_PAD;
+    let center_idx = cy * TAA_TILE_PAD + cx;
+
     if (strength <= 0.0) {
-        let passthrough = textureLoad(sharp_input, pixel, 0).rgb;
-        textureStore(output_tex, pixel, vec4<f32>(passthrough, 1.0));
+        textureStore(output_tex, pixel, vec4<f32>(s_sharp[center_idx], 1.0));
         return;
     }
 
-    // 5-tap cross pattern
-    let c = textureLoad(sharp_input, pixel, 0).rgb;
-    let n = textureLoad(sharp_input, pixel + vec2<i32>(0, -1), 0).rgb;
-    let s_val = textureLoad(sharp_input, pixel + vec2<i32>(0, 1), 0).rgb;
-    let e = textureLoad(sharp_input, pixel + vec2<i32>(1, 0), 0).rgb;
-    let w = textureLoad(sharp_input, pixel + vec2<i32>(-1, 0), 0).rgb;
+    // 5-tap cross pattern from shared memory
+    let c = s_sharp[center_idx];
+    let n = s_sharp[(cy - 1u) * TAA_TILE_PAD + cx];
+    let s_val = s_sharp[(cy + 1u) * TAA_TILE_PAD + cx];
+    let e = s_sharp[cy * TAA_TILE_PAD + cx + 1u];
+    let w = s_sharp[cy * TAA_TILE_PAD + cx - 1u];
 
     // Luma for edge detection
     let luma_weights = vec3<f32>(0.2126, 0.7152, 0.0722);

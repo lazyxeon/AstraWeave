@@ -91,6 +91,15 @@ pub struct Archetype {
 
     /// Whether this archetype uses BlobVec storage (true) or Box storage (false)
     uses_blob: bool,
+
+    // ========================================================================
+    // Change Detection (P2-4)
+    // ========================================================================
+    /// Per-component-column change ticks, parallel to entity rows.
+    /// `change_ticks[TypeId][row]` stores the World change_tick at which
+    /// entity at `row` last had component `TypeId` mutated (insert / get_mut / each_mut).
+    /// Works identically in both Box and BlobVec modes.
+    change_ticks: HashMap<TypeId, Vec<u32>>,
 }
 
 impl Archetype {
@@ -100,8 +109,10 @@ impl Archetype {
     /// spawn/despawn performance regression.
     pub fn new(id: ArchetypeId, signature: ArchetypeSignature) -> Self {
         let mut components = HashMap::new();
+        let mut change_ticks = HashMap::new();
         for ty in &signature.components {
             components.insert(*ty, Vec::new());
+            change_ticks.insert(*ty, Vec::new());
         }
         Self {
             id,
@@ -113,6 +124,7 @@ impl Archetype {
             blob_components: None,
             component_metas: None,
             uses_blob: false,
+            change_ticks,
         }
     }
 
@@ -128,10 +140,12 @@ impl Archetype {
         metas: HashMap<TypeId, ComponentMeta>,
     ) -> Self {
         let mut blob_components = HashMap::new();
+        let mut change_ticks = HashMap::new();
         for ty in &signature.components {
             if let Some(meta) = metas.get(ty) {
                 blob_components.insert(*ty, meta.create_blob_vec());
             }
+            change_ticks.insert(*ty, Vec::new());
         }
 
         Self {
@@ -143,6 +157,7 @@ impl Archetype {
             blob_components: Some(blob_components),
             component_metas: Some(metas),
             uses_blob: true,
+            change_ticks,
         }
     }
 
@@ -157,7 +172,18 @@ impl Archetype {
     pub fn add_entity(
         &mut self,
         entity: Entity,
+        component_data: HashMap<TypeId, Box<dyn std::any::Any + Send + Sync>>,
+    ) {
+        self.add_entity_with_tick(entity, component_data, 0)
+    }
+
+    /// Add entity with components and stamp the given change tick on every column.
+    #[allow(clippy::expect_used)]
+    pub fn add_entity_with_tick(
+        &mut self,
+        entity: Entity,
         mut component_data: HashMap<TypeId, Box<dyn std::any::Any + Send + Sync>>,
+        tick: u32,
     ) {
         // Use SparseSet for O(1) lookup (12-57× faster than BTreeMap)
         self.entity_index.insert(entity);
@@ -171,6 +197,10 @@ impl Archetype {
                     .get_mut(ty)
                     .expect("BUG: signature component should have column");
                 column.push(data);
+            }
+            // Push change tick for this column (parallel to entity row)
+            if let Some(ticks) = self.change_ticks.get_mut(ty) {
+                ticks.push(tick);
             }
         }
     }
@@ -189,6 +219,11 @@ impl Archetype {
     /// - Component type must be in the signature
     /// - Archetype must use BlobVec storage
     pub fn push_component_typed<T: Component>(&mut self, component: T) {
+        self.push_component_typed_with_tick(component, 0)
+    }
+
+    /// Push a typed component with change tick stamping.
+    pub fn push_component_typed_with_tick<T: Component>(&mut self, component: T, tick: u32) {
         debug_assert!(self.uses_blob, "push_component_typed requires BlobVec mode");
         let type_id = TypeId::of::<T>();
 
@@ -201,6 +236,11 @@ impl Archetype {
                 }
             }
         }
+
+        // Push change tick for this column
+        if let Some(ticks) = self.change_ticks.get_mut(&type_id) {
+            ticks.push(tick);
+        }
     }
 
     /// Add entity with typed components using BlobVec storage.
@@ -211,6 +251,16 @@ impl Archetype {
     /// * `entity` - The entity to add
     /// * `components` - Raw component data as bytes with clone functions
     pub fn add_entity_typed_raw(&mut self, entity: Entity, components: &[(TypeId, *const u8)]) {
+        self.add_entity_typed_raw_with_tick(entity, components, 0)
+    }
+
+    /// Add entity with raw typed components and stamp the given change tick.
+    pub fn add_entity_typed_raw_with_tick(
+        &mut self,
+        entity: Entity,
+        components: &[(TypeId, *const u8)],
+        tick: u32,
+    ) {
         debug_assert!(self.uses_blob, "add_entity_typed_raw requires BlobVec mode");
 
         self.entity_index.insert(entity);
@@ -235,6 +285,10 @@ impl Archetype {
                 unsafe {
                     blob.push_raw(*src_ptr, meta.clone_fn);
                 }
+            }
+            // Push change tick for this column
+            if let Some(ticks) = self.change_ticks.get_mut(type_id) {
+                ticks.push(tick);
             }
         }
     }
@@ -275,6 +329,43 @@ impl Archetype {
         boxed.downcast_mut::<T>()
     }
 
+    /// Stamp the change tick for a specific component column at the entity's row.
+    ///
+    /// Called by `World::get_mut` and `World::each_mut` to record mutations.
+    #[inline]
+    pub fn stamp_change_tick<T: Component>(&mut self, entity: Entity, tick: u32) {
+        if let Some(row) = self.entity_index.get(entity) {
+            if let Some(ticks) = self.change_ticks.get_mut(&TypeId::of::<T>()) {
+                if let Some(t) = ticks.get_mut(row) {
+                    *t = tick;
+                }
+            }
+        }
+    }
+
+    /// Stamp the change tick for a specific component column at the entity's row (by TypeId).
+    #[inline]
+    pub fn stamp_change_tick_by_type(&mut self, entity: Entity, type_id: TypeId, tick: u32) {
+        if let Some(row) = self.entity_index.get(entity) {
+            if let Some(ticks) = self.change_ticks.get_mut(&type_id) {
+                if let Some(t) = ticks.get_mut(row) {
+                    *t = tick;
+                }
+            }
+        }
+    }
+
+    /// Get the change tick for a specific component on an entity.
+    ///
+    /// Returns `None` if entity not in archetype or component not tracked.
+    #[inline]
+    pub fn get_change_tick<T: Component>(&self, entity: Entity) -> Option<u32> {
+        let row = self.entity_index.get(entity)?;
+        self.change_ticks
+            .get(&TypeId::of::<T>())
+            .and_then(|ticks| ticks.get(row).copied())
+    }
+
     pub fn remove_entity(&mut self, entity: Entity) -> Option<usize> {
         // NEW: O(1) removal with SparseSet (4-7× faster than BTreeMap)
         self.entity_index.remove(entity)
@@ -305,6 +396,13 @@ impl Archetype {
         for (ty, column) in self.components.iter_mut() {
             let component = column.swap_remove(row);
             components.insert(*ty, component);
+        }
+
+        // Keep change_ticks parallel: swap_remove from each tick column
+        for ticks in self.change_ticks.values_mut() {
+            if row < ticks.len() {
+                ticks.swap_remove(row);
+            }
         }
 
         components

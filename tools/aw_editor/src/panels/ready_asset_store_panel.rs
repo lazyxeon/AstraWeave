@@ -15,6 +15,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use egui::{Color32, RichText, Ui};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -950,12 +951,14 @@ impl ReadyAssetStorePanel {
 
         // Queue actions outside of nested UI context
         if should_spawn {
+            info!(asset_id = asset_id, "asset_store: spawn asset");
             self.queue_action(AssetStoreAction::SpawnAsset {
                 asset_id,
                 asset_path: asset_path.clone(),
             });
         }
         if should_preview {
+            info!(asset_id = asset_id, "asset_store: preview asset");
             self.queue_action(AssetStoreAction::PreviewAsset {
                 asset_id,
                 asset_path,

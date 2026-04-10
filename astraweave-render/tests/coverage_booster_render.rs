@@ -3138,7 +3138,7 @@ async fn test_culling_node_module() {
         .await
         .unwrap();
 
-    let (device, _queue) = adapter
+    let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor::default())
         .await
         .unwrap();
@@ -3165,7 +3165,7 @@ async fn test_culling_node_module() {
     let frustum = FrustumPlanes::from_view_proj(&vp);
 
     // Prepare culling data
-    node.prepare(&device, &instances, &frustum);
+    node.prepare(&device, &queue, &instances, &frustum);
 
     // Now resources should be available
     assert!(node.resources().is_some());
@@ -5180,7 +5180,7 @@ async fn test_culling_node_detailed() {
         .await
         .unwrap();
 
-    let (device, _queue) = adapter
+    let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor::default())
         .await
         .unwrap();
@@ -5214,7 +5214,7 @@ async fn test_culling_node_detailed() {
     let frustum = FrustumPlanes::from_view_proj(&view_proj);
 
     // Test prepare method
-    node.prepare(&device, &instances, &frustum);
+    node.prepare(&device, &queue, &instances, &frustum);
 
     // Test resources() after prepare - should be Some
     assert!(node.resources().is_some());
@@ -7857,7 +7857,7 @@ fn test_culling_node_comprehensive_wave19() {
     use glam::Vec3;
 
     // Create headless device for testing
-    let (device, _queue) = pollster::block_on(async {
+    let (device, queue) = pollster::block_on(async {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -7900,7 +7900,7 @@ fn test_culling_node_comprehensive_wave19() {
     };
 
     // Prepare the culling node
-    culling_node.prepare(&device, &instances, &frustum);
+    culling_node.prepare(&device, &queue, &instances, &frustum);
 
     // Now resources should be available
     assert!(culling_node.resources().is_some());

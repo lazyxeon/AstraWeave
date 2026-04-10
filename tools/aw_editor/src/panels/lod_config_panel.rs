@@ -9,6 +9,7 @@
 //! - Performance impact visualization
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -726,6 +727,7 @@ impl LodConfigPanel {
                 ui.label(RichText::new("Groups").strong());
                 if ui.button("+ New").clicked() {
                     let id = self.next_group_id();
+                    info!(group_id = id, "LOD: added new group");
                     let new_group = LodGroup {
                         id,
                         name: format!("LOD Group {}", id),
@@ -833,6 +835,7 @@ impl LodConfigPanel {
                 ui.label(RichText::new("LOD Levels").strong());
                 if ui.button("+ Add Level").clicked() {
                     let level = self.current_group.levels.len() as u32;
+                    info!(level = level, "LOD: added level");
                     let last_distance = self
                         .current_group
                         .levels
@@ -1243,9 +1246,14 @@ impl LodConfigPanel {
         // Actions
         ui.horizontal(|ui| {
             if ui.button("Generate LODs for Selected").clicked() {
+                info!(group = ?self.selected_group, "LOD: generating for selected group");
                 // Generate LODs for current group
             }
             if ui.button("Generate All LODs").clicked() {
+                info!(
+                    group_count = self.lod_groups.len(),
+                    "LOD: generating for all groups"
+                );
                 // Generate LODs for all groups
             }
         });

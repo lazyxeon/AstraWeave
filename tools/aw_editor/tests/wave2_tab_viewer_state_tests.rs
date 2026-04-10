@@ -32,6 +32,19 @@ fn make_entity(id: u64, name: &str) -> EntityInfo {
         name: name.to_string(),
         components: vec!["Transform".to_string()],
         entity_type: "Actor".to_string(),
+        hp: None,
+        team_id: None,
+        ammo: None,
+        pos_x: None,
+        pos_y: None,
+        rotation: None,
+        scale: None,
+        component_data: std::collections::HashMap::new(),
+        material_base_color: [1.0, 1.0, 1.0, 1.0],
+        material_metallic: 0.0,
+        material_roughness: 0.5,
+        material_emissive: [0.0, 0.0, 0.0],
+        material_textures: std::collections::HashMap::new(),
     }
 }
 
@@ -264,7 +277,7 @@ fn take_panels_to_add_drains() {
 #[test]
 fn check_transform_no_entity_no_events() {
     let mut v = make_viewer();
-    v.set_selected_transform(Some((1.0, 2.0, 3.0, 1.0, 1.0)));
+    v.set_selected_transform(Some((1.0, 2.0, 3.0, 1.0, 1.0, 1.0, 1.0)));
     // No entity selected — no events
     v.check_transform_changes();
     assert!(v.take_events().is_empty());
@@ -283,9 +296,9 @@ fn check_transform_no_previous_no_events() {
 fn check_transform_position_change_above_threshold() {
     let mut v = make_viewer();
     v.set_selected_entity(Some(1));
-    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0)));
+    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)));
     // Force previous to match, then change current
-    v.selected_transform = Some((0.002, 0.0, 0.0, 1.0, 1.0)); // x changed by 0.002 > 0.001
+    v.selected_transform = Some((0.002, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)); // x changed by 0.002 > 0.001
     v.check_transform_changes();
     let events = v.take_events();
     assert!(events
@@ -297,9 +310,9 @@ fn check_transform_position_change_above_threshold() {
 fn check_transform_position_change_at_threshold_no_event() {
     let mut v = make_viewer();
     v.set_selected_entity(Some(1));
-    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0)));
+    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)));
     // Change x by exactly 0.001 (not strictly > 0.001)
-    v.selected_transform = Some((0.001, 0.0, 0.0, 1.0, 1.0));
+    v.selected_transform = Some((0.001, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0));
     v.check_transform_changes();
     let events = v.take_events();
     // 0.001.abs() > 0.001 is false, so no position event
@@ -312,8 +325,8 @@ fn check_transform_position_change_at_threshold_no_event() {
 fn check_transform_rotation_change() {
     let mut v = make_viewer();
     v.set_selected_entity(Some(1));
-    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0)));
-    v.selected_transform = Some((0.0, 0.0, 0.5, 1.0, 1.0)); // rotation changed
+    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)));
+    v.selected_transform = Some((0.0, 0.0, 0.0, 1.5, 1.0, 1.0, 1.0)); // rotation changed
     v.check_transform_changes();
     let events = v.take_events();
     assert!(events
@@ -325,8 +338,8 @@ fn check_transform_rotation_change() {
 fn check_transform_scale_change() {
     let mut v = make_viewer();
     v.set_selected_entity(Some(1));
-    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0)));
-    v.selected_transform = Some((0.0, 0.0, 0.0, 2.0, 1.0)); // scale_x changed
+    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)));
+    v.selected_transform = Some((0.0, 0.0, 0.0, 1.0, 2.0, 1.0, 1.0)); // scale_x changed
     v.check_transform_changes();
     let events = v.take_events();
     assert!(events
@@ -338,8 +351,8 @@ fn check_transform_scale_change() {
 fn check_transform_all_changed() {
     let mut v = make_viewer();
     v.set_selected_entity(Some(5));
-    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0)));
-    v.selected_transform = Some((1.0, 1.0, 1.0, 2.0, 2.0)); // all changed
+    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)));
+    v.selected_transform = Some((1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0)); // all changed
     v.check_transform_changes();
     let events = v.take_events();
     assert!(events
@@ -357,8 +370,8 @@ fn check_transform_all_changed() {
 fn check_transform_y_only_change() {
     let mut v = make_viewer();
     v.set_selected_entity(Some(1));
-    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0)));
-    v.selected_transform = Some((0.0, 5.0, 0.0, 1.0, 1.0)); // y changed
+    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)));
+    v.selected_transform = Some((0.0, 5.0, 0.0, 1.0, 1.0, 1.0, 1.0)); // y changed
     v.check_transform_changes();
     let events = v.take_events();
     assert!(events
@@ -370,8 +383,8 @@ fn check_transform_y_only_change() {
 fn check_transform_scale_y_only_change() {
     let mut v = make_viewer();
     v.set_selected_entity(Some(1));
-    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0)));
-    v.selected_transform = Some((0.0, 0.0, 0.0, 1.0, 5.0)); // scale_y changed
+    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)));
+    v.selected_transform = Some((0.0, 0.0, 0.0, 1.0, 1.0, 5.0, 1.0)); // scale_y changed
     v.check_transform_changes();
     let events = v.take_events();
     assert!(events
@@ -383,8 +396,8 @@ fn check_transform_scale_y_only_change() {
 fn check_transform_updates_previous() {
     let mut v = make_viewer();
     v.set_selected_entity(Some(1));
-    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0)));
-    v.selected_transform = Some((5.0, 0.0, 0.0, 1.0, 1.0));
+    v.set_selected_transform(Some((0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)));
+    v.selected_transform = Some((5.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0));
     v.check_transform_changes();
     let _ = v.take_events();
     // Second check with no further change should emit no events
@@ -399,7 +412,7 @@ fn check_transform_updates_previous() {
 #[test]
 fn set_selected_transform_sets_both_current_and_previous() {
     let mut v = make_viewer();
-    v.set_selected_transform(Some((1.0, 2.0, 3.0, 4.0, 5.0)));
+    v.set_selected_transform(Some((1.0, 2.0, 3.0, 4.0, 5.0, 1.0, 1.0)));
     // After external sync, current == previous, so check should emit nothing
     v.set_selected_entity(Some(1));
     v.check_transform_changes();
@@ -409,9 +422,9 @@ fn set_selected_transform_sets_both_current_and_previous() {
 #[test]
 fn set_selected_transform_same_value_no_update() {
     let mut v = make_viewer();
-    v.set_selected_transform(Some((1.0, 2.0, 3.0, 4.0, 5.0)));
+    v.set_selected_transform(Some((1.0, 2.0, 3.0, 4.0, 5.0, 1.0, 1.0)));
     // Setting same value again should keep previous unchanged
-    v.set_selected_transform(Some((1.0, 2.0, 3.0, 4.0, 5.0)));
+    v.set_selected_transform(Some((1.0, 2.0, 3.0, 4.0, 5.0, 1.0, 1.0)));
     v.set_selected_entity(Some(1));
     v.check_transform_changes();
     assert!(v.take_events().is_empty());

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
+use tracing::{info, warn};
 
 /// Target platform for game builds
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -390,6 +391,7 @@ impl BuildManagerPanel {
 
     /// Start a build in a background thread
     pub fn start_build(&mut self) {
+        info!(target = ?self.config.target, profile = ?self.config.profile, "Build: started");
         // Reset cancel flag
         self.cancel_requested
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -412,6 +414,7 @@ impl BuildManagerPanel {
 
     /// Cancel the current build
     pub fn cancel_build(&mut self) {
+        info!("Build: cancellation requested");
         self.cancel_requested
             .store(true, std::sync::atomic::Ordering::SeqCst);
         self.build_logs
@@ -714,6 +717,10 @@ impl BuildManagerPanel {
                         output_path,
                         duration_secs,
                     } => {
+                        info!(
+                            duration_secs = duration_secs,
+                            "Build: completed successfully"
+                        );
                         self.status = BuildStatus::Success {
                             output_path,
                             duration_secs,
@@ -721,6 +728,7 @@ impl BuildManagerPanel {
                         should_clear_receiver = true;
                     }
                     BuildMessage::Failed { error } => {
+                        warn!(error = %error, "Build: failed");
                         self.status = BuildStatus::Failed {
                             error_message: error,
                         };
@@ -816,6 +824,7 @@ impl Panel for BuildManagerPanel {
                     let selected = self.config.target == target;
                     let text = format!("{} {}", target.icon(), target.name());
                     if ui.selectable_label(selected, text).clicked() {
+                        info!(platform = ?target, "Build: platform selected");
                         self.config.target = target;
                     }
                 }

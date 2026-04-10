@@ -789,31 +789,31 @@ fn issue_severity_levels() {
 
 #[test]
 fn issue_icon_maps_to_severity() {
-    // Severity 5 → 🔴
-    assert_eq!(RuntimeIssue::MissingSimulation.icon(), "🔴");
+    // Severity 5 → [R]
+    assert_eq!(RuntimeIssue::MissingSimulation.icon(), "[R]");
     assert_eq!(
         RuntimeIssue::CorruptedSimulation { reason: "x".into() }.icon(),
-        "🔴"
+        "[R]"
     );
     // Severity 4 → 🟠
     assert_eq!(RuntimeIssue::MissingEditSnapshot.icon(), "🟠");
-    // Severity 3 → 🟡
+    // Severity 3 → [Y]
     assert_eq!(
         RuntimeIssue::EntityCountMismatch {
             expected: 10,
             actual: 5
         }
         .icon(),
-        "🟡"
+        "[Y]"
     );
-    // Severity 2 → 🟢
+    // Severity 2 → [G]
     assert_eq!(
         RuntimeIssue::FrameTimeExceeded {
             frame_time_ms: 50,
             threshold_ms: 33
         }
         .icon(),
-        "🟢"
+        "[G]"
     );
     // Severity 1 → ℹ️
     assert_eq!(

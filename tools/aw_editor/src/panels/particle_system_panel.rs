@@ -8,6 +8,7 @@
 //! - Real-time preview and performance metrics
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -1056,6 +1057,7 @@ impl ParticleSystemPanel {
 
     /// Queue an action for external processing
     pub fn queue_action(&mut self, action: ParticleAction) {
+        info!(target: "aw_editor::panels::particle_system_panel", action = %action, "Particle action queued");
         self.pending_actions.push(action);
     }
 
@@ -1184,12 +1186,15 @@ impl ParticleSystemPanel {
                 .clicked()
             {
                 self.preview_playing = !self.preview_playing;
+                info!(target: "aw_editor::panels::particle_system_panel", playing = self.preview_playing, "Particle preview playback toggled");
             }
             if ui.button("[]").clicked() {
+                info!(target: "aw_editor::panels::particle_system_panel", "Particle preview stopped");
                 self.preview_playing = false;
                 self.preview_time = 0.0;
             }
             if ui.button("[Sync]").clicked() {
+                info!(target: "aw_editor::panels::particle_system_panel", "Particle preview resynced");
                 self.preview_time = 0.0;
             }
 
@@ -1220,6 +1225,7 @@ impl ParticleSystemPanel {
 
             if ui.button("+ New").clicked() {
                 let id = self.next_id();
+                info!(target: "aw_editor::panels::particle_system_panel", system_id = id, "New particle system created");
                 let new_sys = ParticleSystem {
                     id,
                     name: format!("Particle System {}", id),
@@ -1232,6 +1238,7 @@ impl ParticleSystemPanel {
 
             if ui.button("Duplicate").clicked() {
                 let id = self.next_id();
+                info!(target: "aw_editor::panels::particle_system_panel", system_id = id, source = %self.current_system.name, "Particle system duplicated");
                 let mut dup = self.current_system.clone();
                 dup.id = id;
                 dup.name = format!("{} (Copy)", dup.name);
@@ -1340,6 +1347,7 @@ impl ParticleSystemPanel {
                     // Bursts
                     ui.collapsing("[Hit] Bursts", |ui| {
                         if ui.button("+ Add Burst").clicked() {
+                            info!(target: "aw_editor::panels::particle_system_panel", system = %self.current_system.name, "Emission burst added");
                             self.current_system.bursts.push(EmissionBurst::default());
                         }
 
@@ -1984,6 +1992,7 @@ impl ParticleSystemPanel {
         // Add module button
         ui.horizontal(|ui| {
             if ui.button("+ Velocity").clicked() {
+                info!(target: "aw_editor::panels::particle_system_panel", module = "Velocity", "Particle module added");
                 self.current_system.modules.push(EmitterModule {
                     enabled: true,
                     name: "Velocity".to_string(),
@@ -1994,6 +2003,7 @@ impl ParticleSystemPanel {
                 });
             }
             if ui.button("+ Force").clicked() {
+                info!(target: "aw_editor::panels::particle_system_panel", module = "Force", "Particle module added");
                 self.current_system.modules.push(EmitterModule {
                     enabled: true,
                     name: "Force".to_string(),
@@ -2004,6 +2014,7 @@ impl ParticleSystemPanel {
                 });
             }
             if ui.button("+ Noise").clicked() {
+                info!(target: "aw_editor::panels::particle_system_panel", module = "Noise", "Particle module added");
                 self.current_system.modules.push(EmitterModule {
                     enabled: true,
                     name: "Noise".to_string(),
@@ -2015,6 +2026,7 @@ impl ParticleSystemPanel {
                 });
             }
             if ui.button("+ Collision").clicked() {
+                info!(target: "aw_editor::panels::particle_system_panel", module = "Collision", "Particle module added");
                 self.current_system.modules.push(EmitterModule {
                     enabled: true,
                     name: "Collision".to_string(),
@@ -2044,6 +2056,7 @@ impl ParticleSystemPanel {
                                 ui.label(RichText::new(&module.name).strong());
 
                                 if ui.button("[Del]").clicked() {
+                                    info!(target: "aw_editor::panels::particle_system_panel", module_index = idx, module = %module.name, "Particle module removed");
                                     to_remove = Some(idx);
                                 }
                             });
@@ -2223,6 +2236,7 @@ impl ParticleSystemPanel {
                         );
 
                         if ui.button("Apply").clicked() {
+                            info!(target: "aw_editor::panels::particle_system_panel", "Particle preset applied");
                             // Apply preset configuration
                         }
                     });
@@ -2233,6 +2247,7 @@ impl ParticleSystemPanel {
 
         ui.horizontal(|ui| {
             if ui.button("Save as Preset").clicked() {
+                info!(target: "aw_editor::panels::particle_system_panel", system = %self.current_system.name, "Particle system saved as preset");
                 // Save current system as preset
             }
         });

@@ -140,7 +140,7 @@ mod physics_visualization_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", PhysicsVisualization::Colliders);
-        assert!(display.contains("📦"));
+        assert!(display.contains("[Pkg]"));
     }
 
     #[test]
@@ -249,7 +249,7 @@ mod simulation_mode_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", SimulationMode::Running);
-        assert!(display.contains("▶️"));
+        assert!(display.contains(">"));
     }
 
     #[test]

@@ -97,6 +97,25 @@ impl WeatherFx {
         };
     }
 
+    /// Set the maximum particle count, reallocating the GPU buffer if needed.
+    pub fn set_max(&mut self, device: &wgpu::Device, new_max: usize) {
+        if new_max == self.max {
+            return;
+        }
+        self.max = new_max;
+        // Reallocate GPU buffer to fit the new maximum
+        self.buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("weather inst"),
+            size: (new_max * std::mem::size_of::<InstanceRaw>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        // Trim existing particles if they exceed the new cap
+        if self.particles.len() > new_max {
+            self.particles.truncate(new_max);
+        }
+    }
+
     /// Get current wind strength.
     pub fn wind_strength(&self) -> f32 {
         self.wind_strength
@@ -162,20 +181,33 @@ impl WeatherFx {
         let mut rng = rand::rng();
         let wind_offset = self.wind_dir * (self.wind_strength * 5.0);
         while self.particles.len() < max {
+            // Per-particle wind variation: ±30% jitter on wind + slight random drift
+            let jitter_x = rng.random_range(-0.3..0.3);
+            let jitter_z = rng.random_range(-0.3..0.3);
+            let speed_var = rng.random_range(0.7..1.3);
             self.particles.push(Particle {
                 pos: vec3(
                     cam.x + rng.random_range(-30.0..30.0),
                     cam.y + rng.random_range(8.0..25.0),
                     cam.z + rng.random_range(-30.0..30.0),
                 ),
-                vel: vec3(wind_offset.x, -20.0, wind_offset.z),
+                vel: vec3(
+                    (wind_offset.x + jitter_x) * speed_var,
+                    -20.0 * speed_var,
+                    (wind_offset.z + jitter_z) * speed_var,
+                ),
                 life: rng.random_range(0.5..1.5),
-                color: [0.7, 0.8, 1.0, 0.9],
-                scale: vec3(0.02, 0.5, 0.02),
+                // Bright translucent white-blue so rain is visible against dark backgrounds
+                color: [0.85, 0.9, 1.0, 0.6],
+                // Thin elongated streaks (stretched in Y for falling rain look)
+                scale: vec3(0.015, 0.6, 0.015),
             });
         }
         self.particles.retain_mut(|p| {
             p.life -= dt;
+            // Subtle per-frame turbulence: small random drift
+            p.vel.x += rng.random_range(-0.5..0.5) * dt;
+            p.vel.z += rng.random_range(-0.5..0.5) * dt;
             p.pos += p.vel * dt;
             let dist_sq = (p.pos - cam).length_squared();
             p.life > 0.0 && dist_sq < 3600.0 // 60m radius

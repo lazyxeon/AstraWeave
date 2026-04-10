@@ -47,7 +47,8 @@ pub use climate::{ClimateConfig, ClimateMap};
 pub use heightmap::{Heightmap, HeightmapConfig};
 pub use lod_blending::{LodBlender, MorphConfig, MorphedMesh, MorphingLodManager};
 pub use lod_manager::{
-    ChunkLodState, LodConfig as LodHysteresisConfig, LodLevel, LodManager, LodStats,
+    compute_pixel_error, ChunkLodState, LodConfig as LodHysteresisConfig, LodLevel, LodManager,
+    LodStats, ViewParams,
 }; // Week 4
 pub use meshing::{
     AsyncMeshGenerator, ChunkMesh, DualContouring, LodConfig, LodMeshGenerator, MeshVertex,

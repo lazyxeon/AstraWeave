@@ -9,6 +9,7 @@
 //! - Procedural placement
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -862,6 +863,7 @@ impl FoliagePanel {
                     );
 
                     if ui.add(button).clicked() {
+                        info!(tool = ?tool, "Foliage: switched paint tool");
                         self.current_tool = tool;
                     }
                 }
@@ -949,6 +951,7 @@ impl FoliagePanel {
         ui.horizontal(|ui| {
             if ui.button("+ Add Type").clicked() {
                 let id = self.next_type_id();
+                info!(type_id = id, "Foliage: added new type");
                 let new_type = FoliageType {
                     id,
                     name: format!("Foliage {}", id),
@@ -1258,6 +1261,7 @@ impl FoliagePanel {
             if ui.button("+ New Rule").clicked() {
                 let id = self.next_rule_id;
                 self.next_rule_id += 1;
+                info!(rule_id = id, "Foliage: added procedural rule");
                 self.procedural_rules.push(ProceduralRule {
                     id,
                     name: format!("Rule {}", id),
@@ -1266,6 +1270,7 @@ impl FoliagePanel {
             }
 
             if ui.button("Generate All").clicked() {
+                info!("Foliage: triggered procedural generation");
                 // Trigger procedural generation
             }
         });
@@ -1456,6 +1461,7 @@ impl FoliagePanel {
                 self.calculate_statistics();
             }
             if ui.button("Clear All Instances").clicked() {
+                info!("Foliage: cleared all instances");
                 for ft in &mut self.foliage_types {
                     ft.instance_count = 0;
                 }
@@ -1483,6 +1489,7 @@ impl FoliagePanel {
 
     pub fn add_foliage_type(&mut self, name: &str, category: FoliageCategory) -> u32 {
         let id = self.next_type_id();
+        info!(type_id = id, name = %name, category = ?category, "Foliage: added type");
         self.foliage_types.push(FoliageType {
             id,
             name: name.to_string(),

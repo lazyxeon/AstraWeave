@@ -209,17 +209,26 @@ fn calculate_acmr(indices: &[u32], _vertex_count: usize) -> f32 {
     cache_misses as f32 / (indices.len() / 3) as f32
 }
 
-/// Estimate overdraw ratio for mesh
+/// Estimate overdraw ratio for mesh using meshopt's software rasterizer.
 ///
-/// Simplified estimation based on triangle overlap.
-/// Real overdraw depends on depth buffer and triangle order.
-fn estimate_overdraw(_mesh: &Mesh) -> f32 {
-    // Simplified: assume 1.5× overdraw for unoptimized meshes
-    // (Average triangle overlaps 50% with others)
-    // Optimized meshes target 1.0-1.2× overdraw
+/// Returns the overdraw ratio (1.0 = no overdraw, >1.0 = pixels shaded multiple times).
+fn estimate_overdraw(mesh: &Mesh) -> f32 {
+    if mesh.indices.is_empty() || mesh.positions.is_empty() {
+        return 1.0;
+    }
 
-    // This is a placeholder - real overdraw measurement requires rasterization
-    1.5
+    let vertex_stride = std::mem::size_of::<f32>() * 3;
+    let positions_bytes: &[u8] = cast_slice(&mesh.positions);
+
+    match VertexDataAdapter::new(positions_bytes, vertex_stride, 0) {
+        Ok(vertices) => {
+            let stats = meshopt::analyze_overdraw(&mesh.indices, &vertices);
+            // overdraw is the ratio of pixels_shaded / pixels_covered
+            // A value of 1.0 means perfect (no overdraw)
+            stats.overdraw
+        }
+        Err(_) => 1.0,
+    }
 }
 
 /// Optimize overdraw using meshopt

@@ -79,6 +79,10 @@ pub struct GodRayPass {
     output_view: wgpu::TextureView,
     width: u32,
     height: u32,
+    /// Cached sampler (static — never changes).
+    sampler: wgpu::Sampler,
+    /// Cached bind group (rebuilt on generation change).
+    cached_bg: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl GodRayPass {
@@ -207,6 +211,13 @@ impl GodRayPass {
             output_view,
             width,
             height,
+            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("god_rays_sampler"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            }),
+            cached_bg: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -266,50 +277,51 @@ impl GodRayPass {
     }
 
     /// Dispatch the god rays compute pass.
+    ///
+    /// `resource_gen` is the renderer's generation counter; the bind group is
+    /// rebuilt only when it changes (e.g., after a resize).
     pub fn execute(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         depth_view: &wgpu::TextureView,
         scene_color_view: &wgpu::TextureView,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled {
             return;
         }
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("god_rays_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("god_rays_bg"),
-            layout: &self.bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.params_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(depth_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(scene_color_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&self.output_view),
-                },
-            ],
-        });
+        if !self.cached_bg.is_valid(resource_gen) {
+            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("god_rays_bg"),
+                layout: &self.bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(scene_color_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&self.output_view),
+                    },
+                ],
+            });
+            self.cached_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+        }
 
         let wg_x = (self.width + 7) / 8;
         let wg_y = (self.height + 7) / 8;
@@ -319,7 +331,10 @@ impl GodRayPass {
             timestamp_writes: None,
         });
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &bg, &[]);
+        let bg = self
+            .cached_bg
+            .get_or_rebuild(resource_gen, || unreachable!());
+        pass.set_bind_group(0, bg, &[]);
         pass.dispatch_workgroups(wg_x, wg_y, 1);
     }
 

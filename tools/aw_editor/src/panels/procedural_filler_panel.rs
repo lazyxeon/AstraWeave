@@ -10,6 +10,7 @@
 //! by selecting presets and clicking "Generate" rather than manual placement.
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -953,6 +954,7 @@ impl ProceduralFillerPanel {
                 };
 
                 if ui.add(button).clicked() {
+                    info!(mode = mode.name(), "filler: mode changed");
                     self.mode = *mode;
                 }
             }
@@ -1174,12 +1176,18 @@ impl ProceduralFillerPanel {
         if self.is_generating {
             ui.add(egui::ProgressBar::new(self.generation_progress).text("Generating..."));
             if ui.button("Cancel").clicked() {
+                info!("filler: generation cancelled");
                 self.is_generating = false;
                 self.queue_action(FillerAction::CancelGeneration);
             }
         } else {
             let generate_text = format!("Generate {}", self.mode.name());
             if ui.button(RichText::new(generate_text).strong()).clicked() {
+                info!(
+                    mode = self.mode.name(),
+                    seed = self.seed,
+                    "filler: generation triggered"
+                );
                 self.is_generating = true;
                 self.generation_progress = 0.0;
 

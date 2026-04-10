@@ -2,6 +2,7 @@ use super::Panel;
 use astraweave_core::{Entity, World};
 use egui::Ui;
 use std::collections::{HashMap, HashSet};
+use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
 pub struct HierarchyNode {
@@ -439,6 +440,7 @@ impl HierarchyPanel {
                     .desired_width(ui.available_width() - 30.0),
             );
             if ui.button("X").clicked() {
+                info!("hierarchy: filter cleared");
                 self.search_filter.clear();
             }
         });
@@ -501,6 +503,11 @@ impl HierarchyPanel {
             if response.drag_stopped() {
                 if let Some(source) = self.drag_source.take() {
                     if source != entity {
+                        info!(
+                            child = source,
+                            parent = entity,
+                            "hierarchy: entity reparented"
+                        );
                         self.add_child_to_parent(source, entity);
                         self.pending_actions
                             .push(HierarchyAction::SetParent(source, entity));
@@ -509,6 +516,7 @@ impl HierarchyPanel {
             }
 
             if response.clicked() {
+                debug!(entity = entity, "hierarchy: entity selected");
                 let modifiers = ui.input(|i| i.modifiers);
 
                 if modifiers.ctrl {

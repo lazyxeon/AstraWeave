@@ -36,6 +36,16 @@ impl Camera {
         // Standard direction: positive pitch = look up
         Vec3::new(cy * cp, sp, sy * cp).normalize()
     }
+
+    /// View matrix with the camera placed at the world origin (rotation only).
+    ///
+    /// Used for camera-relative rendering: all geometry is offset on the CPU so
+    /// the view matrix carries no large translation, avoiding f32 jitter at
+    /// large world coordinates.
+    pub fn view_matrix_camera_relative(&self) -> Mat4 {
+        let dir = Self::dir(self.yaw, self.pitch);
+        Mat4::look_to_rh(Vec3::ZERO, dir, Vec3::Y)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -467,5 +477,45 @@ mod tests {
         controller.update_camera(&mut camera, 0.016);
         // Position should change due to orbit update
         assert!(camera.position != initial_pos);
+    }
+
+    #[test]
+    fn view_matrix_camera_relative_strips_translation() {
+        let camera = Camera {
+            position: Vec3::new(10000.0, 500.0, 20000.0),
+            yaw: 0.5,
+            pitch: 0.2,
+            fovy: 60f32.to_radians(),
+            aspect: 1.0,
+            znear: 0.1,
+            zfar: 100.0,
+        };
+        let view_std = camera.view_matrix();
+        let view_cr = camera.view_matrix_camera_relative();
+
+        // Rotation part (upper-left 3x3) should be identical
+        for col in 0..3 {
+            let c_std = [
+                view_std.col(col).x,
+                view_std.col(col).y,
+                view_std.col(col).z,
+            ];
+            let c_cr = [view_cr.col(col).x, view_cr.col(col).y, view_cr.col(col).z];
+            for i in 0..3 {
+                assert!(
+                    (c_std[i] - c_cr[i]).abs() < 1e-6,
+                    "rotation mismatch at col={col} row={i}"
+                );
+            }
+        }
+
+        // Translation column (w_axis) should be zero for camera-relative
+        assert!((view_cr.w_axis.x).abs() < 1e-6);
+        assert!((view_cr.w_axis.y).abs() < 1e-6);
+        assert!((view_cr.w_axis.z).abs() < 1e-6);
+        assert!((view_cr.w_axis.w - 1.0).abs() < 1e-6);
+
+        // Standard view should have non-zero translation (camera far from origin)
+        assert!(view_std.w_axis.truncate().length() > 1.0);
     }
 }

@@ -5,6 +5,7 @@ use crate::runtime::RuntimeStats;
 use astract::widgets::PerformanceBudgetWidget;
 use egui::{Color32, RichText, Ui};
 use std::collections::{HashMap, VecDeque};
+use tracing::info;
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 // PERFORMANCE CATEGORIES & METRICS
@@ -851,6 +852,7 @@ impl PerformancePanel {
         });
 
         if !dominated {
+            info!(severity = ?alert.severity, category = ?alert.category, msg = %alert.message, "perf: alert triggered");
             self.alerts.push_front(alert);
             if self.alerts.len() > self.max_alerts {
                 self.alerts.pop_back();

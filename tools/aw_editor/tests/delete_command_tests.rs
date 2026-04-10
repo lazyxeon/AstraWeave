@@ -15,13 +15,13 @@ fn test_delete_entities_undo_redo() {
     // 1. Execute delete
     // Note: DeleteEntitiesCommand::new returns Box<dyn EditorCommand>
     let cmd = DeleteEntitiesCommand::new(vec![entity]);
-    stack.execute(cmd, &mut world).expect("Delete failed");
+    stack.execute(cmd, &mut world, None).expect("Delete failed");
 
     // Check deletion
     assert!(world.pose(entity).is_none(), "Entity should be destroyed");
 
     // 2. Undo
-    stack.undo(&mut world).expect("Undo failed");
+    stack.undo(&mut world, None).expect("Undo failed");
 
     // Check restoration
     assert!(world.pose(entity).is_some(), "Entity should be restored");
@@ -29,7 +29,7 @@ fn test_delete_entities_undo_redo() {
     assert_eq!(world.team(entity).unwrap().id, 1);
 
     // 3. Redo
-    stack.redo(&mut world).expect("Redo failed");
+    stack.redo(&mut world, None).expect("Redo failed");
 
     // Check deletion again
     assert!(
@@ -47,13 +47,13 @@ fn test_delete_multiple_entities() {
     let mut stack = UndoStack::new(10);
 
     stack
-        .execute(DeleteEntitiesCommand::new(vec![e1, e2]), &mut world)
+        .execute(DeleteEntitiesCommand::new(vec![e1, e2]), &mut world, None)
         .unwrap();
 
     assert!(world.pose(e1).is_none());
     assert!(world.pose(e2).is_none());
 
-    stack.undo(&mut world).unwrap();
+    stack.undo(&mut world, None).unwrap();
 
     assert!(world.pose(e1).is_some());
     assert!(world.pose(e2).is_some());

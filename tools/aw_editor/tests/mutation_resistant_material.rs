@@ -78,12 +78,12 @@ mod material_type_tests {
     // Icon tests - verify each variant returns correct icon
     #[test]
     fn material_type_standard_pbr_icon() {
-        assert_eq!(MaterialType::StandardPBR.icon(), "🎨");
+        assert_eq!(MaterialType::StandardPBR.icon(), "[Art]");
     }
 
     #[test]
     fn material_type_unlit_icon() {
-        assert_eq!(MaterialType::Unlit.icon(), "💡");
+        assert_eq!(MaterialType::Unlit.icon(), "[Lgt]");
     }
 
     #[test]
@@ -93,7 +93,7 @@ mod material_type_tests {
 
     #[test]
     fn material_type_glass_icon() {
-        assert_eq!(MaterialType::Glass.icon(), "🔮");
+        assert_eq!(MaterialType::Glass.icon(), "[Orb]");
     }
 
     #[test]
@@ -103,7 +103,7 @@ mod material_type_tests {
 
     #[test]
     fn material_type_foliage_icon() {
-        assert_eq!(MaterialType::Foliage.icon(), "🌿");
+        assert_eq!(MaterialType::Foliage.icon(), "[Leaf]");
     }
 
     #[test]
@@ -123,18 +123,18 @@ mod material_type_tests {
 
     #[test]
     fn material_type_decal_icon() {
-        assert_eq!(MaterialType::Decal.icon(), "🏷️");
+        assert_eq!(MaterialType::Decal.icon(), "[Tag]");
     }
 
     // Display tests
     #[test]
     fn material_type_standard_pbr_display() {
-        assert_eq!(MaterialType::StandardPBR.to_string(), "🎨 Standard PBR");
+        assert_eq!(MaterialType::StandardPBR.to_string(), "[Art] Standard PBR");
     }
 
     #[test]
     fn material_type_glass_display() {
-        assert_eq!(MaterialType::Glass.to_string(), "🔮 Glass");
+        assert_eq!(MaterialType::Glass.to_string(), "[Orb] Glass");
     }
 
     #[test]
@@ -242,22 +242,22 @@ mod blend_mode_tests {
 
     #[test]
     fn blend_mode_masked_icon() {
-        assert_eq!(BlendMode::Masked.icon(), "🎭");
+        assert_eq!(BlendMode::Masked.icon(), "[Mask]");
     }
 
     #[test]
     fn blend_mode_translucent_icon() {
-        assert_eq!(BlendMode::Translucent.icon(), "🔲");
+        assert_eq!(BlendMode::Translucent.icon(), "[Sq]");
     }
 
     #[test]
     fn blend_mode_additive_icon() {
-        assert_eq!(BlendMode::Additive.icon(), "➕");
+        assert_eq!(BlendMode::Additive.icon(), "+");
     }
 
     #[test]
     fn blend_mode_modulate_icon() {
-        assert_eq!(BlendMode::Modulate.icon(), "🔀");
+        assert_eq!(BlendMode::Modulate.icon(), "[Shuf]");
     }
 
     // is_transparent() tests - true path (3 variants)
@@ -314,7 +314,7 @@ mod blend_mode_tests {
 
     #[test]
     fn blend_mode_translucent_display() {
-        assert_eq!(BlendMode::Translucent.to_string(), "🔲 Translucent");
+        assert_eq!(BlendMode::Translucent.to_string(), "[Sq] Translucent");
     }
 
     // all() tests
@@ -396,7 +396,7 @@ mod texture_channel_tests {
     // Icon tests
     #[test]
     fn texture_channel_albedo_icon() {
-        assert_eq!(TextureChannel::Albedo.icon(), "🎨");
+        assert_eq!(TextureChannel::Albedo.icon(), "[Art]");
     }
 
     #[test]
@@ -406,7 +406,7 @@ mod texture_channel_tests {
 
     #[test]
     fn texture_channel_metallic_icon() {
-        assert_eq!(TextureChannel::Metallic.icon(), "✨");
+        assert_eq!(TextureChannel::Metallic.icon(), "[Fx]");
     }
 
     #[test]
@@ -421,7 +421,7 @@ mod texture_channel_tests {
 
     #[test]
     fn texture_channel_emissive_icon() {
-        assert_eq!(TextureChannel::Emissive.icon(), "💡");
+        assert_eq!(TextureChannel::Emissive.icon(), "[Lgt]");
     }
 
     #[test]
@@ -437,7 +437,7 @@ mod texture_channel_tests {
     // Display tests
     #[test]
     fn texture_channel_albedo_display() {
-        assert_eq!(TextureChannel::Albedo.to_string(), "🎨 Albedo");
+        assert_eq!(TextureChannel::Albedo.to_string(), "[Art] Albedo");
     }
 
     #[test]
@@ -543,22 +543,22 @@ mod preview_lighting_tests {
     // Icon tests
     #[test]
     fn preview_lighting_studio_icon() {
-        assert_eq!(PreviewLighting::Studio.icon(), "🎬");
+        assert_eq!(PreviewLighting::Studio.icon(), "[Anim]");
     }
 
     #[test]
     fn preview_lighting_outdoor_icon() {
-        assert_eq!(PreviewLighting::Outdoor.icon(), "☀️");
+        assert_eq!(PreviewLighting::Outdoor.icon(), "[Sun]");
     }
 
     #[test]
     fn preview_lighting_indoor_icon() {
-        assert_eq!(PreviewLighting::Indoor.icon(), "💡");
+        assert_eq!(PreviewLighting::Indoor.icon(), "[Lgt]");
     }
 
     #[test]
     fn preview_lighting_dramatic_icon() {
-        assert_eq!(PreviewLighting::Dramatic.icon(), "🎭");
+        assert_eq!(PreviewLighting::Dramatic.icon(), "[Mask]");
     }
 
     #[test]
@@ -569,17 +569,17 @@ mod preview_lighting_tests {
     // Display tests
     #[test]
     fn preview_lighting_studio_display() {
-        assert_eq!(PreviewLighting::Studio.to_string(), "🎬 Studio");
+        assert_eq!(PreviewLighting::Studio.to_string(), "[Anim] Studio");
     }
 
     #[test]
     fn preview_lighting_outdoor_display() {
-        assert_eq!(PreviewLighting::Outdoor.to_string(), "☀️ Outdoor");
+        assert_eq!(PreviewLighting::Outdoor.to_string(), "[Sun] Outdoor");
     }
 
     #[test]
     fn preview_lighting_dramatic_display() {
-        assert_eq!(PreviewLighting::Dramatic.to_string(), "🎭 Dramatic");
+        assert_eq!(PreviewLighting::Dramatic.to_string(), "[Mask] Dramatic");
     }
 
     // all() tests
@@ -661,12 +661,12 @@ mod material_tab_tests {
     // Icon tests
     #[test]
     fn material_tab_properties_icon() {
-        assert_eq!(MaterialTab::Properties.icon(), "🎨");
+        assert_eq!(MaterialTab::Properties.icon(), "[Art]");
     }
 
     #[test]
     fn material_tab_textures_icon() {
-        assert_eq!(MaterialTab::Textures.icon(), "🖼️");
+        assert_eq!(MaterialTab::Textures.icon(), "[Img]");
     }
 
     #[test]
@@ -676,7 +676,7 @@ mod material_tab_tests {
 
     #[test]
     fn material_tab_presets_icon() {
-        assert_eq!(MaterialTab::Presets.icon(), "📋");
+        assert_eq!(MaterialTab::Presets.icon(), "[List]");
     }
 
     #[test]
@@ -692,12 +692,12 @@ mod material_tab_tests {
     // Display tests
     #[test]
     fn material_tab_properties_display() {
-        assert_eq!(MaterialTab::Properties.to_string(), "🎨 Properties");
+        assert_eq!(MaterialTab::Properties.to_string(), "[Art] Properties");
     }
 
     #[test]
     fn material_tab_textures_display() {
-        assert_eq!(MaterialTab::Textures.to_string(), "🖼️ Textures");
+        assert_eq!(MaterialTab::Textures.to_string(), "[Img] Textures");
     }
 
     #[test]

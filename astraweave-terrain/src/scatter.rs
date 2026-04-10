@@ -32,6 +32,10 @@ pub struct ScatterConfig {
     pub min_distance: f32,
     /// Maximum slope allowed (degrees)
     pub max_slope: f32,
+    /// Maximum surface curvature (convexity) allowed.
+    /// Positive values reject ridge tips and spire peaks.
+    /// Default 0.15 rejects only sharp knife-edge features.
+    pub max_curvature: f32,
     /// Height range filter (min, max)
     pub height_filter: Option<(f32, f32)>,
     /// Random seed offset for this scatter type
@@ -44,6 +48,7 @@ impl Default for ScatterConfig {
             use_poisson_disk: true,
             min_distance: 2.0,
             max_slope: 35.0,
+            max_curvature: 0.15,
             height_filter: None,
             seed_offset: 0,
         }
@@ -130,6 +135,12 @@ impl VegetationScatter {
         let min_dist = self.config.min_distance;
         let min_dist_sq = min_dist * min_dist;
 
+        // Altitude ceiling: reject placements above 90% of the chunk's height
+        // range to prevent trees on improbable mountain peaks.
+        let hmin = chunk.heightmap().min_height();
+        let hmax = chunk.heightmap().max_height();
+        let altitude_ceiling = hmin + (hmax - hmin) * 0.90;
+
         // Build a spatial grid for O(1) neighbor lookups.
         // Cell size = min_distance so we only need to check 3×3 neighborhood.
         let cell_size = min_dist;
@@ -159,9 +170,21 @@ impl VegetationScatter {
                     }
                 }
 
+                // Altitude ceiling: no vegetation on the very top of peaks
+                if height > altitude_ceiling {
+                    continue;
+                }
+
                 let (slope, terrain_normal) =
                     self.estimate_slope_and_normal(chunk, world_pos, chunk_size);
                 if slope > self.config.max_slope {
+                    continue;
+                }
+
+                // Curvature filter: reject ridge tips and spire peaks where
+                // vegetation cannot credibly grow (convexity > threshold).
+                let curvature = self.estimate_curvature(chunk, world_pos, chunk_size);
+                if curvature > self.config.max_curvature {
                     continue;
                 }
 
@@ -220,6 +243,11 @@ impl VegetationScatter {
         let mut instances = Vec::new();
         let chunk_origin = chunk.id().to_world_pos(chunk_size);
 
+        // Altitude ceiling: reject placements above 90% of the chunk's height range
+        let hmin = chunk.heightmap().min_height();
+        let hmax = chunk.heightmap().max_height();
+        let altitude_ceiling = hmin + (hmax - hmin) * 0.90;
+
         for _ in 0..target_count {
             // Generate random position
             let local_x = rng.random::<f32>() * chunk_size;
@@ -237,10 +265,21 @@ impl VegetationScatter {
                     }
                 }
 
+                // Altitude ceiling: no vegetation on the very top of peaks
+                if height > altitude_ceiling {
+                    continue;
+                }
+
                 // Check slope
                 let (slope, terrain_normal) =
                     self.estimate_slope_and_normal(chunk, world_pos, chunk_size);
                 if slope > self.config.max_slope {
+                    continue;
+                }
+
+                // Curvature filter: reject ridge tips and spire peaks
+                let curvature = self.estimate_curvature(chunk, world_pos, chunk_size);
+                if curvature > self.config.max_curvature {
                     continue;
                 }
 
@@ -260,34 +299,98 @@ impl VegetationScatter {
         Ok(instances)
     }
 
-    /// Estimate slope at a position using nearby height samples.
-    /// Returns (slope_degrees, terrain_normal).
+    /// Estimate slope at a position using multi-scale height sampling.
+    ///
+    /// Samples at two offsets (0.5m and 2.0m) and takes the **maximum** slope
+    /// reading.  The fine scale catches micro-features (spikes, ridges) while
+    /// the coarse scale catches broad cliff faces where a single 1m sample
+    /// could land on an adjacent flat face, producing a false-low reading.
+    ///
+    /// Returns `(slope_degrees, terrain_normal)`.
     fn estimate_slope_and_normal(
         &self,
         chunk: &TerrainChunk,
         world_pos: Vec3,
         chunk_size: f32,
     ) -> (f32, Vec3) {
-        let offset = 1.0; // Sample distance
-
         let height_center = world_pos.y;
-        let height_x = chunk
+
+        // --- Fine-scale sample (0.5 m) — catches micro-features -----------
+        let fine = self.slope_at_offset(chunk, world_pos, chunk_size, 0.5, height_center);
+        // --- Coarse-scale sample (2.0 m) — catches broad cliff faces ------
+        let coarse = self.slope_at_offset(chunk, world_pos, chunk_size, 2.0, height_center);
+
+        // Take the steepest reading from either scale for filtering, but use
+        // the fine-scale normal for surface alignment (more localised).
+        if coarse.0 > fine.0 {
+            (coarse.0, fine.1)
+        } else {
+            fine
+        }
+    }
+
+    /// Compute slope and surface normal at a single sample offset.
+    /// Returns `(slope_degrees, terrain_normal)`.
+    fn slope_at_offset(
+        &self,
+        chunk: &TerrainChunk,
+        world_pos: Vec3,
+        chunk_size: f32,
+        offset: f32,
+        height_center: f32,
+    ) -> (f32, Vec3) {
+        let height_px = chunk
             .get_height_at_world_pos(world_pos + Vec3::new(offset, 0.0, 0.0), chunk_size)
             .unwrap_or(height_center);
-        let height_z = chunk
+        let height_nx = chunk
+            .get_height_at_world_pos(world_pos + Vec3::new(-offset, 0.0, 0.0), chunk_size)
+            .unwrap_or(height_center);
+        let height_pz = chunk
             .get_height_at_world_pos(world_pos + Vec3::new(0.0, 0.0, offset), chunk_size)
             .unwrap_or(height_center);
+        let height_nz = chunk
+            .get_height_at_world_pos(world_pos + Vec3::new(0.0, 0.0, -offset), chunk_size)
+            .unwrap_or(height_center);
 
-        let dx = height_x - height_center;
-        let dz = height_z - height_center;
-        let slope_radians = (dx * dx + dz * dz).sqrt().atan2(offset);
+        // Central-difference gradient (more accurate than one-sided)
+        let dx = (height_px - height_nx) / (2.0 * offset);
+        let dz = (height_pz - height_nz) / (2.0 * offset);
+        let slope_radians = (dx * dx + dz * dz).sqrt().atan();
 
-        // Calculate terrain normal from height gradient
-        // tangent_x = (offset, dx, 0), tangent_z = (0, dz, offset)
-        // normal = cross(tangent_z, tangent_x)
-        let normal = Vec3::new(-dx, offset, -dz).normalize_or(Vec3::Y);
+        // Normal from gradient: n = normalize(-dh/dx, 1, -dh/dz)
+        let normal = Vec3::new(-dx, 1.0, -dz).normalize_or(Vec3::Y);
 
         (slope_radians.to_degrees(), normal)
+    }
+
+    /// Estimate local surface curvature (Laplacian of the height field).
+    ///
+    /// Returns a positive value proportional to convexity (ridges, peaks).
+    /// Values > `threshold` indicate placement points that sit on knife-edge
+    /// ridges or spire tips where vegetation cannot credibly grow.
+    fn estimate_curvature(&self, chunk: &TerrainChunk, world_pos: Vec3, chunk_size: f32) -> f32 {
+        let h = 2.0; // Sample spacing for second derivative
+        let hc = world_pos.y;
+
+        let hpx = chunk
+            .get_height_at_world_pos(world_pos + Vec3::new(h, 0.0, 0.0), chunk_size)
+            .unwrap_or(hc);
+        let hnx = chunk
+            .get_height_at_world_pos(world_pos + Vec3::new(-h, 0.0, 0.0), chunk_size)
+            .unwrap_or(hc);
+        let hpz = chunk
+            .get_height_at_world_pos(world_pos + Vec3::new(0.0, 0.0, h), chunk_size)
+            .unwrap_or(hc);
+        let hnz = chunk
+            .get_height_at_world_pos(world_pos + Vec3::new(0.0, 0.0, -h), chunk_size)
+            .unwrap_or(hc);
+
+        // Discrete Laplacian: d²h/dx² + d²h/dz²
+        let d2x = (hpx - 2.0 * hc + hnx) / (h * h);
+        let d2z = (hpz - 2.0 * hc + hnz) / (h * h);
+
+        // Negative Laplacian = convexity (positive on ridges/peaks)
+        -(d2x + d2z)
     }
 
     /// Create a vegetation instance with appropriate type and scaling

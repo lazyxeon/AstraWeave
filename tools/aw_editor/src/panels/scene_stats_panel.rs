@@ -1,5 +1,6 @@
-﻿use super::Panel;
+use super::Panel;
 use egui::Ui;
+use tracing::debug;
 
 pub struct SceneStatsPanel {
     last_update: std::time::Instant,
@@ -54,6 +55,11 @@ impl SceneStatsPanel {
     }
 
     pub fn update_stats(&mut self, stats: SceneStats) {
+        debug!(
+            entities = stats.entity_count,
+            triangles = stats.total_triangles,
+            "scene_stats: updated"
+        );
         self.cached_stats = stats;
         self.last_update = std::time::Instant::now();
     }

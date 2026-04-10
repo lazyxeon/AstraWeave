@@ -1824,7 +1824,13 @@ impl TerrainPanel {
                 .unwrap_or("")
                 .to_lowercase()
                 .replace(".biomepack", "");
-            let detected = if name.contains("forest") || name.contains("pine") {
+            let detected = if name.contains("forest")
+                || name.contains("pine")
+                || name.contains("verdant")
+                || name.contains("trail")
+                || name.contains("jungle")
+                || name.contains("woodland")
+            {
                 "forest"
             } else if name.contains("tundra") || name.contains("snow") || name.contains("arctic") {
                 "tundra"
@@ -1836,12 +1842,17 @@ impl TerrainPanel {
                 "beach"
             } else if name.contains("river") {
                 "river"
-            } else if name.contains("desert") || name.contains("dune") || name.contains("sand") {
+            } else if name.contains("desert")
+                || name.contains("dune")
+                || name.contains("sand")
+                || name.contains("namaqualand")
+                || name.contains("arid")
+                || name.contains("savanna")
+            {
                 "desert"
             } else {
                 // Default to grassland — gentle rolling hills work best for
-                // arbitrary .blend scenes. Desert's high detail_scale (0.06)
-                // and mountain amplitude (35) create exaggerated geometric patterns.
+                // arbitrary .blend scenes.
                 "grassland"
             };
             return Self::noise_preset_for_biome(detected);

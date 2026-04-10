@@ -10,6 +10,7 @@
 //! Presets: OpenWorldRPG, TopDownRTS, SurvivalBuilder, TotalWarSimulation, Custom.
 
 use super::world_wizard::WorldTemplate;
+use tracing::info;
 
 // ============================================================================
 // GAMEPLAY PRESET ENUM
@@ -441,6 +442,7 @@ pub fn show_preset_selector(ui: &mut egui::Ui, current: GameplayPreset) -> Optio
         };
 
         if ui.selectable_label(is_selected, rt).clicked() {
+            info!(preset = preset.name(), "gameplay: preset selected");
             result = Some(*preset);
         }
     }

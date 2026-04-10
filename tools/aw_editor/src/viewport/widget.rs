@@ -110,11 +110,11 @@ pub struct ViewportWidget {
     /// Render texture (reused each frame)
     render_texture: Option<Arc<wgpu::Texture>>,
 
-    /// Staging buffer for CPU readback (GPU → CPU copy)
-    staging_buffer: Option<wgpu::Buffer>,
+    /// egui-wgpu renderer handle for native texture registration (GPU-direct display)
+    egui_wgpu_renderer: Arc<egui::mutex::RwLock<egui_wgpu::Renderer>>,
 
-    /// egui texture handle for displaying rendered viewport
-    egui_texture: Option<egui::TextureHandle>,
+    /// Registered native texture ID (avoids CPU readback entirely)
+    native_texture_id: Option<egui::TextureId>,
 
     /// Last viewport size (for resize detection)
     last_size: (u32, u32),
@@ -131,9 +131,9 @@ pub struct ViewportWidget {
     /// Track if left mouse button was pressed (for click detection)
     mouse_pressed_pos: Option<egui::Pos2>,
 
-    /// Frame time tracking for FPS calculation
+    /// Frame time tracking for FPS calculation (exponential moving average)
     last_frame_time: std::time::Instant,
-    frame_times: Vec<f32>,
+    fps_ema: f32,
 
     /// Gizmo state (for transform manipulation)
     gizmo_state: GizmoState,
@@ -235,19 +235,22 @@ impl ViewportWidget {
             r
         }));
 
+        // Store egui-wgpu renderer handle for native texture registration
+        let egui_wgpu_renderer = render_state.renderer.clone();
+
         Ok(Self {
             renderer,
             camera: OrbitCamera::default(),
             render_texture: None,
-            staging_buffer: None,
-            egui_texture: None,
+            egui_wgpu_renderer,
+            native_texture_id: None,
             last_size: (0, 0),
             has_focus: false,
             toolbar: ViewportToolbar::default(),
             selected_entities: Vec::new(),
             mouse_pressed_pos: None,
             last_frame_time: std::time::Instant::now(),
-            frame_times: Vec::with_capacity(60),
+            fps_ema: 0.0,
             gizmo_state: GizmoState::new(),
             gizmo_picker: GizmoPicker::default(),
             hovered_handle: None,
@@ -293,15 +296,15 @@ impl ViewportWidget {
             renderer,
             camera: OrbitCamera::default(),
             render_texture: None,
-            staging_buffer: None,
-            egui_texture: None,
+            egui_wgpu_renderer: existing.egui_wgpu_renderer.clone(),
+            native_texture_id: None,
             last_size: (0, 0),
             has_focus: false,
             toolbar: ViewportToolbar::default(),
             selected_entities: Vec::new(),
             mouse_pressed_pos: None,
             last_frame_time: std::time::Instant::now(),
-            frame_times: Vec::with_capacity(60),
+            fps_ema: 0.0,
             gizmo_state: GizmoState::new(),
             gizmo_picker: GizmoPicker::default(),
             hovered_handle: None,
@@ -326,17 +329,16 @@ impl ViewportWidget {
     }
 
     /// Lock the renderer, recovering from mutex poison if needed.
-    /// On poison, recovers the inner value and logs a warning once.
+    /// On poison, returns None to avoid using potentially corrupted GPU state.
     fn with_renderer<F, R>(&self, op: &str, f: F) -> Option<R>
     where
         F: FnOnce(&mut ViewportRenderer) -> R,
     {
         match self.renderer.lock() {
             Ok(mut renderer) => Some(f(&mut renderer)),
-            Err(poisoned) => {
-                tracing::error!("Renderer mutex poisoned during '{op}' — recovering inner state");
-                let mut renderer = poisoned.into_inner();
-                Some(f(&mut renderer))
+            Err(_poisoned) => {
+                tracing::error!("Renderer mutex poisoned during '{op}' — operation skipped (GPU state may be corrupted)");
+                None
             }
         }
     }
@@ -415,19 +417,18 @@ impl ViewportWidget {
         opt_prefab_mgr: Option<&mut crate::prefab::PrefabManager>, // Phase 8.1 Week 5 Day 3: Auto-tracking
         is_playing: bool, // When true, capture game input alongside camera controls
     ) -> Result<()> {
-        // Update frame time tracking
+        // Update frame time tracking (exponential moving average, O(1))
         let now = std::time::Instant::now();
         let frame_time = now.duration_since(self.last_frame_time).as_secs_f32();
         self.last_frame_time = now;
-        self.frame_times.push(frame_time);
-        if self.frame_times.len() > 60 {
-            self.frame_times.remove(0);
+        // EMA with α=0.05 (~20-frame smoothing window)
+        if self.fps_ema <= 0.0 {
+            self.fps_ema = frame_time; // seed with first sample
+        } else {
+            self.fps_ema = self.fps_ema * 0.95 + frame_time * 0.05;
         }
-
-        // Calculate FPS
-        let avg_frame_time = self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
-        let fps = if avg_frame_time > 0.0 {
-            1.0 / avg_frame_time
+        let fps = if self.fps_ema > 0.0 {
+            1.0 / self.fps_ema
         } else {
             0.0
         };
@@ -630,8 +631,13 @@ impl ViewportWidget {
                 let grid_pref = self.toolbar.show_grid && self.toolbar.grid_type != GridType::None;
                 let crosshair_mode = self.toolbar.grid_type == GridType::Crosshair;
                 let shading_mode = self.toolbar.shading_mode.to_u32();
+                // Force entity rebuild when gizmo is actively dragging (transforms changing)
+                let gizmo_dragging = self.gizmo_state.is_active();
 
                 self.with_renderer("render", |renderer| {
+                    if gizmo_dragging {
+                        renderer.invalidate_entity_cache();
+                    }
                     // Auto-hide grid when terrain is loaded to prevent z-fighting
                     let show_grid = grid_pref && !renderer.has_terrain();
                     if let Err(e) = renderer.render(
@@ -650,14 +656,27 @@ impl ViewportWidget {
                 });
             }
 
-            // Copy texture to CPU and upload to egui (after renderer is unlocked)
-            if let Err(e) = self.copy_texture_to_cpu(ui, &texture, size) {
-                warn!(error = %e, "Texture copy failed");
+            // Register/update native texture with egui-wgpu (zero-copy GPU-direct display)
+            // Only re-register when native_texture_id is None (after resize or first frame)
+            if self.native_texture_id.is_none() {
+                let view = texture.create_view(&wgpu::TextureViewDescriptor {
+                    format: Some(wgpu::TextureFormat::Rgba8Unorm),
+                    ..Default::default()
+                });
+                // Get device handle before locking egui renderer to avoid nested locks
+                if let Some(device) = self.with_renderer("device", |r| r.device().clone()) {
+                    let mut egui_renderer = self.egui_wgpu_renderer.write();
+                    let tex_id = egui_renderer.register_native_texture(
+                        &device,
+                        &view,
+                        wgpu::FilterMode::Linear,
+                    );
+                    self.native_texture_id = Some(tex_id);
+                }
             }
 
-            // Display texture via egui (CPU readback approach)
-            if let Some(handle) = self.egui_texture.as_ref() {
-                let texture_id = handle.id();
+            // Display texture via egui (GPU-direct, no CPU readback)
+            if let Some(texture_id) = self.native_texture_id {
 
                 // Visual border for focus/hover states (✓ Implemented)
                 // Border rendering happens in viewport_frame() above
@@ -714,11 +733,25 @@ impl ViewportWidget {
 
                 // Update and display toolbar (provides FPS, camera info, reset, stats)
                 self.toolbar.stats.fps = fps;
-                self.toolbar.stats.frame_time_ms = avg_frame_time * 1000.0;
-                self.toolbar.stats.push_frame_time(avg_frame_time * 1000.0);
+                self.toolbar.stats.frame_time_ms = self.fps_ema * 1000.0;
+                self.toolbar.stats.push_frame_time(self.fps_ema * 1000.0);
                 self.toolbar.stats.memory_usage_mb = estimate_memory_usage_mb();
                 self.toolbar.stats.camera_position = self.camera.position().to_array();
                 self.toolbar.stats.entity_count = entity_manager.count() as u32;
+
+                // Scatter stats from the renderer (gather then assign to
+                // avoid borrow conflict with &self in with_renderer).
+                if let Some((si, sd, tris)) = self.with_renderer("scatter_stats", |renderer| {
+                    (
+                        renderer.scatter_instance_count() as usize,
+                        renderer.scatter_draw_calls(),
+                        renderer.terrain_triangles() as u32,
+                    )
+                }) {
+                    self.toolbar.stats.scatter_instances = si;
+                    self.toolbar.stats.scatter_draw_calls = sd;
+                    self.toolbar.stats.triangle_count = tris;
+                }
 
                 // Sync toolbar snap settings to viewport
                 self.grid_snap_size = self.toolbar.snap_size;
@@ -1881,160 +1914,6 @@ impl ViewportWidget {
         Ok(())
     }
 
-    /// Copy wgpu texture to CPU and upload to egui
-    ///
-    /// Performs GPU → CPU copy via staging buffer, then creates egui texture.
-    /// This is the CPU readback approach for texture display.
-    ///
-    /// # Performance
-    ///
-    /// GPU → CPU copy: ~0.5-1ms @ 1080p (depends on GPU/CPU transfer speed)
-    /// egui upload: ~0.1-0.2ms (texture data copy)
-    /// Total: ~0.6-1.2ms (acceptable for 60 FPS)
-    ///
-    /// # Arguments
-    ///
-    /// * `ui` - egui UI context (for texture upload)
-    /// * `texture` - Source wgpu texture to copy
-    /// * `size` - Texture dimensions (width, height)
-    ///
-    /// # Errors
-    ///
-    /// Returns error if:
-    /// - Staging buffer creation fails
-    /// - Texture copy fails
-    /// - Buffer mapping fails
-    fn copy_texture_to_cpu(
-        &mut self,
-        ui: &egui::Ui,
-        texture: &wgpu::Texture,
-        size: (u32, u32),
-    ) -> Result<()> {
-        // Lock renderer momentarily to clone device/queue handles
-        let (device, queue) = {
-            let renderer = self
-                .renderer
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Renderer lock poisoned: {}", e))?;
-            (renderer.device().clone(), renderer.queue().clone())
-        };
-
-        // Calculate buffer size (RGBA8 = 4 bytes per pixel)
-        let bytes_per_row = size.0 * 4;
-        let padded_bytes_per_row = bytes_per_row.div_ceil(256) * 256; // wgpu requires 256-byte alignment
-        let buffer_size = (padded_bytes_per_row * size.1) as u64;
-
-        // Create staging buffer if needed (reuse if size matches)
-        let needs_new_buffer = self
-            .staging_buffer
-            .as_ref()
-            .map(|b| b.size() != buffer_size)
-            .unwrap_or(true);
-
-        if needs_new_buffer {
-            self.staging_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("viewport_staging_buffer"),
-                size: buffer_size,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }));
-        }
-
-        let staging_buffer = match self.staging_buffer.as_ref() {
-            Some(buf) => buf,
-            None => return Err(anyhow::anyhow!("Staging buffer not initialized")),
-        };
-
-        // Create command encoder for texture copy
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("viewport_copy_encoder"),
-        });
-
-        // Copy texture to staging buffer
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: staging_buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded_bytes_per_row),
-                    rows_per_image: Some(size.1),
-                },
-            },
-            wgpu::Extent3d {
-                width: size.0,
-                height: size.1,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        // Submit copy command
-        queue.submit(Some(encoder.finish()));
-
-        // Map buffer and read pixels (synchronous)
-        let buffer_slice = staging_buffer.slice(..);
-
-        // Request mapping
-        buffer_slice.map_async(wgpu::MapMode::Read, |result| {
-            if let Err(e) = result {
-                warn!("Buffer mapping failed: {:?}", e);
-            }
-        });
-
-        // Wait for GPU to finish (synchronous polling)
-        let _ = device.poll(wgpu::MaintainBase::Wait);
-
-        // Read pixel data and create egui texture
-        {
-            let data = buffer_slice.get_mapped_range();
-
-            // Convert from GPU's BGRA byte order to RGBA (egui expects RGBA)
-            let mut rgba_data = Vec::with_capacity((size.0 * size.1 * 4) as usize);
-            for row in 0..size.1 {
-                let row_start = (row * padded_bytes_per_row) as usize;
-                let row_end = row_start + (size.0 * 4) as usize;
-                let row_bytes = &data[row_start..row_end];
-                // Swap B↔R: BGRA → RGBA for each pixel
-                for pixel in row_bytes.chunks_exact(4) {
-                    rgba_data.push(pixel[2]); // R (was B in BGRA)
-                    rgba_data.push(pixel[1]); // G
-                    rgba_data.push(pixel[0]); // B (was R in BGRA)
-                    rgba_data.push(pixel[3]); // A
-                }
-            }
-
-            // Create egui ColorImage
-            let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                [size.0 as usize, size.1 as usize],
-                &rgba_data,
-            );
-
-            // Upload to egui texture system
-            let texture_options = egui::TextureOptions {
-                magnification: egui::TextureFilter::Linear,
-                minification: egui::TextureFilter::Linear,
-                ..Default::default()
-            };
-
-            // Upload to egui texture system (handle manages lifetime)
-            let texture_handle =
-                ui.ctx()
-                    .load_texture("viewport_render", color_image, texture_options);
-
-            self.egui_texture = Some(texture_handle);
-        }
-
-        // Unmap buffer for next frame
-        staging_buffer.unmap();
-
-        Ok(())
-    }
-
     /// Resize render texture
     ///
     /// Creates new render texture when viewport size changes.
@@ -2067,6 +1946,13 @@ impl ViewportWidget {
 
         // Wrap in Arc for sharing with paint callback
         self.render_texture = Some(Arc::new(texture));
+
+        // Invalidate native texture registration (new texture needs re-registration)
+        // Free the old egui texture slot if it exists
+        if let Some(old_id) = self.native_texture_id.take() {
+            let mut egui_renderer = self.egui_wgpu_renderer.write();
+            egui_renderer.free_texture(&old_id);
+        }
 
         // Resize renderer's depth buffer
         renderer
@@ -2678,9 +2564,10 @@ impl ViewportWidget {
     pub fn set_scatter_placements(
         &self,
         placements: Vec<crate::terrain_integration::ScatterPlacement>,
+        diffuse_textures: &std::collections::HashMap<String, std::path::PathBuf>,
     ) {
         self.with_renderer("set_scatter_placements", |r| {
-            r.set_scatter_placements(placements)
+            r.set_scatter_placements(placements, diffuse_textures)
         });
     }
 

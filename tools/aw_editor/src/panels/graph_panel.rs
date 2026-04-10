@@ -1,6 +1,7 @@
 use astract::graph::{ForceDirectedParams, GraphEdge, GraphNode, NodeGraph, Port, PortType};
 use egui::Ui;
 use std::collections::HashMap;
+use tracing::info;
 
 /// Graph type for categorization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -697,12 +698,14 @@ impl GraphPanel {
                 .add_enabled(has_selection, egui::Button::new("Delete"))
                 .clicked()
             {
+                info!(count = self.selected_nodes.len(), "graph: nodes deleted");
                 self.delete_selected();
             }
 
             ui.separator();
 
             if ui.button("🔙 Reset Graph").clicked() {
+                info!(graph = ?self.active_graph, "graph: reset");
                 self.active_graph_mut().clear();
                 self.initialized = false;
                 self.selected_nodes.clear();
@@ -783,6 +786,7 @@ impl GraphPanel {
 
             if let Some(idx) = self.selected_template {
                 if cols[0].button("Add Selected Node").clicked() {
+                    info!(template_idx = idx, graph = ?self.active_graph, "graph: node added from template");
                     // Add node at center of current view
                     self.add_node_from_template(idx, 250.0, 150.0);
                 }

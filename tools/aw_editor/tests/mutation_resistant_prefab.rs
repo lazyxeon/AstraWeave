@@ -485,7 +485,7 @@ mod prefab_issue_tests {
         let issue = PrefabIssue::EmptyPrefab {
             path: make_path("test.prefab"),
         };
-        assert_eq!(issue.icon(), "📦");
+        assert_eq!(issue.icon(), "[Pkg]");
     }
 
     #[test]
@@ -501,7 +501,7 @@ mod prefab_issue_tests {
         let issue = PrefabIssue::CyclicReference {
             path: make_path("test.prefab"),
         };
-        assert_eq!(issue.icon(), "🔄");
+        assert_eq!(issue.icon(), "[Sync]");
     }
 
     #[test]

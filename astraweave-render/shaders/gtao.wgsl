@@ -66,18 +66,54 @@ fn rotate_direction(dir: vec2<f32>, angle: f32) -> vec2<f32> {
     return vec2<f32>(dir.x * c - dir.y * s, dir.x * s + dir.y * c);
 }
 
+// Shared memory depth tile: 8×8 output + 8-pixel apron (covers radius ≤ 8)
+const GTAO_TILE: u32 = 8u;
+const GTAO_APRON: u32 = 8u;
+const GTAO_TILE_PAD: u32 = GTAO_TILE + 2u * GTAO_APRON;
+const GTAO_SHM: u32 = GTAO_TILE_PAD * GTAO_TILE_PAD;
+
+var<workgroup> s_gtao_depth: array<f32, 576>;
+
+// Read depth from shared tile if within bounds, else fall back to texture
+fn read_depth_tiled(sample_pixel: vec2<i32>, base: vec2<i32>) -> f32 {
+    let tc = sample_pixel - base;
+    if (tc.x >= 0 && tc.x < i32(GTAO_TILE_PAD) && tc.y >= 0 && tc.y < i32(GTAO_TILE_PAD)) {
+        return s_gtao_depth[u32(tc.y) * GTAO_TILE_PAD + u32(tc.x)];
+    }
+    return textureLoad(depth_tex, sample_pixel, 0);
+}
+
 @compute @workgroup_size(8, 8, 1)
-fn gtao_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let pixel = vec2<i32>(gid.xy);
+fn gtao_main(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(local_invocation_index) li: u32,
+    @builtin(workgroup_id) wid: vec3<u32>,
+) {
     let dims = vec2<i32>(params.resolution);
+    let base_x = i32(wid.x * GTAO_TILE) - i32(GTAO_APRON);
+    let base_y = i32(wid.y * GTAO_TILE) - i32(GTAO_APRON);
+    let base = vec2<i32>(base_x, base_y);
+
+    // Cooperative depth tile load: 64 threads load 576 entries (9 each)
+    for (var i = li; i < GTAO_SHM; i += 64u) {
+        let tx = i % GTAO_TILE_PAD;
+        let ty = i / GTAO_TILE_PAD;
+        let px = clamp(base_x + i32(tx), 0, dims.x - 1);
+        let py = clamp(base_y + i32(ty), 0, dims.y - 1);
+        s_gtao_depth[i] = textureLoad(depth_tex, vec2<i32>(px, py), 0);
+    }
+    workgroupBarrier();
+
+    let pixel = vec2<i32>(gid.xy);
     if (pixel.x >= dims.x || pixel.y >= dims.y) {
         return;
     }
 
     let uv = (vec2<f32>(pixel) + 0.5) * params.inv_resolution;
 
-    // Sample center depth and normal
-    let center_depth = textureLoad(depth_tex, pixel, 0);
+    // Sample center depth from shared tile
+    let center_depth = read_depth_tiled(pixel, base);
     if (center_depth >= 1.0) {
         // Sky pixel — no AO
         textureStore(ao_output, pixel, vec4<f32>(1.0, 0.0, 0.0, 0.0));
@@ -115,7 +151,7 @@ fn gtao_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
 
             let sample_pixel = vec2<i32>(sample_uv * params.resolution);
-            let sample_depth = textureLoad(depth_tex, sample_pixel, 0);
+            let sample_depth = read_depth_tiled(sample_pixel, base);
             let sample_pos = reconstruct_view_pos(sample_uv, sample_depth);
 
             let delta = sample_pos - center_pos;

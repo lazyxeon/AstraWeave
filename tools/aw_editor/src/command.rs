@@ -49,7 +49,7 @@ use crate::entity_manager::EntityManager;
 use anyhow::Result;
 use astraweave_core::{Entity, IVec2, Team, World};
 use std::fmt;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 // ============================================================================
 // Command Trait
@@ -284,8 +284,17 @@ impl UndoStack {
         world: &mut World,
         entities: Option<&mut EntityManager>,
     ) -> Result<()> {
+        let desc = command.describe();
         // Execute the command first
-        command.execute(world, entities)?;
+        match command.execute(world, entities) {
+            Ok(()) => {
+                info!(target: "aw_editor::command", "Command executed: {}", desc);
+            }
+            Err(e) => {
+                warn!(target: "aw_editor::command", "Command failed: {} — {}", desc, e);
+                return Err(e);
+            }
+        }
 
         // Discard redo history (branching)
         self.commands.truncate(self.cursor);
@@ -295,7 +304,7 @@ impl UndoStack {
             if let Some(last_cmd) = self.commands.last_mut() {
                 if last_cmd.try_merge(command.as_ref()) {
                     // Merge successful, don't add new command
-                    debug!("Merged command: {}", command.describe());
+                    debug!(target: "aw_editor::command", "Merged command: {}", desc);
                     return Ok(());
                 }
             }
@@ -310,6 +319,7 @@ impl UndoStack {
             let remove_count = self.commands.len() - self.max_size;
             self.commands.drain(0..remove_count);
             self.cursor = self.cursor.saturating_sub(remove_count);
+            warn!(target: "aw_editor::command", "Undo stack at capacity ({}), dropped {} oldest commands", self.max_size, remove_count);
         }
 
         Ok(())
@@ -327,9 +337,13 @@ impl UndoStack {
 
         self.cursor -= 1;
         let cmd = &mut self.commands[self.cursor];
+        let desc = cmd.describe();
 
-        debug!("Undo: {}", cmd.describe());
-        cmd.undo(world, entities)?;
+        info!(target: "aw_editor::command", "Undo: {}", desc);
+        if let Err(e) = cmd.undo(world, entities) {
+            warn!(target: "aw_editor::command", "Undo failed: {} — {}", desc, e);
+            return Err(e);
+        }
 
         Ok(())
     }
@@ -345,9 +359,13 @@ impl UndoStack {
         }
 
         let cmd = &mut self.commands[self.cursor];
+        let desc = cmd.describe();
 
-        debug!(">|  Redo: {}", cmd.describe());
-        cmd.execute(world, entities)?;
+        info!(target: "aw_editor::command", "Redo: {}", desc);
+        if let Err(e) = cmd.execute(world, entities) {
+            warn!(target: "aw_editor::command", "Redo failed: {} — {}", desc, e);
+            return Err(e);
+        }
 
         self.cursor += 1;
 
@@ -531,17 +549,19 @@ impl UndoStack {
     /// Use this when you've already applied a transform (e.g., during gizmo drag)
     /// and just need to record it for undo/redo without executing again.
     pub fn push_executed(&mut self, command: Box<dyn EditorCommand>) {
+        let desc = command.describe();
         self.commands.truncate(self.cursor);
 
         if self.auto_merge && self.cursor > 0 {
             if let Some(last_cmd) = self.commands.last_mut() {
                 if last_cmd.try_merge(command.as_ref()) {
-                    debug!("Merged command: {}", command.describe());
+                    debug!(target: "aw_editor::command", "Merged command: {}", desc);
                     return;
                 }
             }
         }
 
+        debug!(target: "aw_editor::command", "Recorded: {}", desc);
         self.commands.push(command);
         self.cursor += 1;
 
@@ -549,6 +569,7 @@ impl UndoStack {
             let remove_count = self.commands.len() - self.max_size;
             self.commands.drain(0..remove_count);
             self.cursor = self.cursor.saturating_sub(remove_count);
+            warn!(target: "aw_editor::command", "Undo stack at capacity ({}), dropped {} oldest commands", self.max_size, remove_count);
         }
     }
 }

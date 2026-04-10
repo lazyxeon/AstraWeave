@@ -187,7 +187,7 @@ mod distribution_format_icon_tests {
 
     #[test]
     fn windows_portable_icon() {
-        assert_eq!(DistributionFormat::WindowsPortable.icon(), "📦");
+        assert_eq!(DistributionFormat::WindowsPortable.icon(), "[Pkg]");
     }
 
     #[test]
@@ -197,7 +197,7 @@ mod distribution_format_icon_tests {
 
     #[test]
     fn macos_dmg_icon() {
-        assert_eq!(DistributionFormat::MacOSDmg.icon(), "💾");
+        assert_eq!(DistributionFormat::MacOSDmg.icon(), "[Save]");
     }
 
     #[test]
@@ -207,12 +207,12 @@ mod distribution_format_icon_tests {
 
     #[test]
     fn linux_tarball_icon() {
-        assert_eq!(DistributionFormat::LinuxTarball.icon(), "📁");
+        assert_eq!(DistributionFormat::LinuxTarball.icon(), "[Dir]");
     }
 
     #[test]
     fn steam_depot_icon() {
-        assert_eq!(DistributionFormat::SteamDepot.icon(), "🎮");
+        assert_eq!(DistributionFormat::SteamDepot.icon(), "[Gp]");
     }
 }
 
@@ -840,7 +840,7 @@ mod runtime_issue_icon_tests {
     #[test]
     fn severity_5_icon_is_red_circle() {
         // Both severity-5 variants should produce 🔴
-        assert_eq!(RuntimeIssue::MissingSimulation.icon(), "🔴");
+        assert_eq!(RuntimeIssue::MissingSimulation.icon(), "[R]");
     }
 
     #[test]
@@ -848,7 +848,7 @@ mod runtime_issue_icon_tests {
         let issue = RuntimeIssue::CorruptedSimulation {
             reason: "test".into(),
         };
-        assert_eq!(issue.icon(), "🔴");
+        assert_eq!(issue.icon(), "[R]");
     }
 
     #[test]
@@ -862,7 +862,7 @@ mod runtime_issue_icon_tests {
             expected: 10,
             actual: 5,
         };
-        assert_eq!(issue.icon(), "🟡");
+        assert_eq!(issue.icon(), "[Y]");
     }
 
     #[test]
@@ -871,7 +871,7 @@ mod runtime_issue_icon_tests {
             frame_time_ms: 50,
             threshold_ms: 33,
         };
-        assert_eq!(issue.icon(), "🟢");
+        assert_eq!(issue.icon(), "[G]");
     }
 
     #[test]
@@ -1470,13 +1470,13 @@ mod scene_validation_issue_tests {
     #[test]
     fn error_icon_is_red_x() {
         let issue = SceneValidationIssue::Error("test".into());
-        assert_eq!(issue.icon(), "❌");
+        assert_eq!(issue.icon(), "[x]");
     }
 
     #[test]
     fn warning_icon_is_warning_sign() {
         let issue = SceneValidationIssue::Warning("test".into());
-        assert_eq!(issue.icon(), "⚠️");
+        assert_eq!(issue.icon(), "[!]");
     }
 
     #[test]

@@ -89,6 +89,10 @@ pub struct FinalGatherPass {
     prev_view_proj: Mat4,
     width: u32,
     height: u32,
+    /// Cached linear sampler (reused across frames).
+    sampler: wgpu::Sampler,
+    /// Cached bind group (generation-tracked).
+    cached_bg: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl FinalGatherPass {
@@ -179,6 +183,13 @@ impl FinalGatherPass {
             cache: None,
         });
 
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("final_gather_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         Self {
             config,
             pipeline,
@@ -192,6 +203,8 @@ impl FinalGatherPass {
             prev_view_proj: Mat4::IDENTITY,
             width,
             height,
+            sampler,
+            cached_bg: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -252,7 +265,7 @@ impl FinalGatherPass {
     /// Dispatch the final gather compute pass.
     #[allow(clippy::too_many_arguments)]
     pub fn execute(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         depth_view: &wgpu::TextureView,
@@ -262,67 +275,63 @@ impl FinalGatherPass {
         dfao_view: &wgpu::TextureView,
         velocity_view: &wgpu::TextureView,
         probe_buffer: &wgpu::Buffer,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled {
             return;
         }
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("final_gather_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("final_gather_bg"),
-            layout: &self.bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.params_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(depth_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(normal_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(albedo_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(ssgi_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::TextureView(dfao_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::TextureView(velocity_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 7,
-                    resource: wgpu::BindingResource::TextureView(&self.history_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 8,
-                    resource: probe_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 9,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 10,
-                    resource: wgpu::BindingResource::TextureView(&self.output_view),
-                },
-            ],
+        let bg = self.cached_bg.get_or_rebuild(resource_gen, || {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("final_gather_bg"),
+                layout: &self.bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(normal_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(albedo_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(ssgi_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(dfao_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::TextureView(velocity_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: wgpu::BindingResource::TextureView(&self.history_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 8,
+                        resource: probe_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 9,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 10,
+                        resource: wgpu::BindingResource::TextureView(&self.output_view),
+                    },
+                ],
+            })
         });
 
         let wg_x = (self.width + 7) / 8;
@@ -333,7 +342,7 @@ impl FinalGatherPass {
             timestamp_writes: None,
         });
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &bg, &[]);
+        pass.set_bind_group(0, bg, &[]);
         pass.dispatch_workgroups(wg_x, wg_y, 1);
     }
 

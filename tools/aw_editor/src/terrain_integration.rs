@@ -1,10 +1,28 @@
 use astraweave_terrain::{
-    BiomeBlendConfig, BiomeBlender, BiomeConfig, BiomePack, BiomeType, ChunkId, Heightmap,
-    HeightmapPatch, PackedBiomeBlend, ScatterConfig, SplatConfig, SplatMapGenerator, SplatRule,
-    SplatWeights, TerrainChunk, VegetationInstance, VegetationScatter, WorldConfig, WorldGenerator,
+    BiomeBlendConfig, BiomeBlender, BiomeConfig, BiomePack, BiomePackAsset, BiomeType, ChunkId,
+    Heightmap, HeightmapPatch, PackedBiomeBlend, ScatterConfig, SplatConfig, SplatMapGenerator,
+    SplatRule, SplatWeights, TerrainChunk, VegetationInstance, VegetationScatter, WorldConfig,
+    WorldGenerator,
 };
 use glam::{Vec2, Vec3};
 use std::collections::HashMap;
+use tracing::{debug, info};
+
+/// Transform data for a terrain asset from fixed_placements.json.
+#[allow(dead_code)]
+struct TerrainAssetTransform {
+    position: [f32; 3],
+    scale: [f32; 3],
+}
+
+impl TerrainAssetTransform {
+    fn identity() -> Self {
+        Self {
+            position: [0.0, 0.0, 0.0],
+            scale: [1.0, 1.0, 1.0],
+        }
+    }
+}
 
 /// Full noise preset for a biome — configures all three noise layers.
 pub struct BiomeNoisePreset {
@@ -191,19 +209,31 @@ impl TerrainState {
                 }
             };
 
-            // Use Desert as base type since most packs are nature/desert scenes;
-            // the pack's vegetation overrides the biome anyway.
+            // Detect biome type from pack name for terrain material selection.
+            // This affects splat rules (ground color), noise preset, and scatter spacing.
             let base = pack.name.to_lowercase();
-            let biome_type = if base.contains("forest") {
+            let biome_type = if base.contains("forest")
+                || base.contains("verdant")
+                || base.contains("trail")
+                || base.contains("jungle")
+                || base.contains("woodland")
+            {
                 BiomeType::Forest
-            } else if base.contains("tundra") || base.contains("snow") {
+            } else if base.contains("tundra") || base.contains("snow") || base.contains("arctic") {
                 BiomeType::Tundra
-            } else if base.contains("mountain") {
+            } else if base.contains("mountain") || base.contains("alpine") {
                 BiomeType::Mountain
-            } else if base.contains("swamp") {
+            } else if base.contains("swamp") || base.contains("marsh") {
                 BiomeType::Swamp
-            } else {
+            } else if base.contains("desert")
+                || base.contains("dune")
+                || base.contains("namaqualand")
+                || base.contains("arid")
+                || base.contains("savanna")
+            {
                 BiomeType::Desert
+            } else {
+                BiomeType::Grassland
             };
             return vec![pack.to_biome_config(biome_type)];
         }
@@ -347,8 +377,330 @@ impl TerrainState {
             .sort_by(|a, b| a.x.cmp(&b.x).then(a.z.cmp(&b.z)));
         self.dirty_chunk_indices.clear();
 
+        // ── Stamp .blend terrain heightmap onto procedural chunks ─────
+        // NOTE: stamp_blend_heightmap is disabled for now.
+        // The .blend scene (~60m) is far smaller than the procedural terrain
+        // (2560m at radius=5). Stamping the sculpted heightmap at 1:1 scale
+        // creates a crater where blend heights (~0-12m) replace procedural
+        // noise. A future version can re-enable this when scene-scale
+        // matching is implemented.
+        // self.stamp_blend_heightmap(chunk_size);
+
+        // ── Cross-chunk normal stitching ──────────────────────────────
+        // Edge vertices previously used clamped (halved) gradients because
+        // no neighbor data was available. Now that all chunks are generated
+        // we can fetch the actual neighbor heights and recompute full
+        // central-difference normals, eliminating lighting seams.
+        self.stitch_edge_normals(chunk_size);
+
         self.terrain_dirty = false;
+        info!(target: "aw_editor::terrain_integration", "Terrain generated: {} chunks (radius={})", count, chunk_radius);
         Ok(count)
+    }
+
+    /// Stamp rasterized .blend terrain meshes onto procedural heightmap chunks.
+    ///
+    /// Loads terrain-category GLB meshes from the BiomePack (e.g. `ground.glb`),
+    /// rasterizes them into a heightmap grid, and overwrites procedural height
+    /// values in overlapping chunks. A smooth blend zone at the edges prevents
+    /// harsh seams between sculpted and procedural terrain.
+    ///
+    /// After stamping, affected chunks get their mesh vertices regenerated.
+    #[allow(dead_code)]
+    fn stamp_blend_heightmap(&mut self, chunk_size: f32) {
+        let pack = match &self.cached_pack {
+            Some((_, p)) => p,
+            None => return,
+        };
+
+        // Collect terrain-category assets from the BiomePack
+        let terrain_assets: Vec<&BiomePackAsset> = pack
+            .assets
+            .iter()
+            .filter(|a| a.category == "terrain" && a.mesh_path.ends_with(".glb"))
+            .collect();
+
+        if terrain_assets.is_empty() {
+            return;
+        }
+
+        // Load GLB files and extract vertex/face data
+        let mut extracted_meshes = Vec::new();
+        for asset in &terrain_assets {
+            let glb_path = pack.root_dir.join(&asset.mesh_path);
+            if !glb_path.exists() {
+                tracing::warn!("Terrain stamp: GLB not found: {}", glb_path.display());
+                continue;
+            }
+            let bytes = match std::fs::read(&glb_path) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("Terrain stamp: cannot read {}: {e}", glb_path.display());
+                    continue;
+                }
+            };
+            let mesh_data = match astraweave_asset::gltf_loader::load_all_meshes_merged(&bytes) {
+                Ok(m) => m,
+                Err(e) => {
+                    tracing::warn!("Terrain stamp: failed to load {}: {e}", glb_path.display());
+                    continue;
+                }
+            };
+
+            if mesh_data.positions.is_empty() || mesh_data.indices.is_empty() {
+                continue;
+            }
+
+            // Convert indices to triangle faces [u32; 3]
+            let faces: Vec<[u32; 3]> = mesh_data
+                .indices
+                .chunks_exact(3)
+                .map(|tri| [tri[0], tri[1], tri[2]])
+                .collect();
+
+            // Early-skip meshes with no vertices
+            let _bounds = match astraweave_blend::heightmap_raster::TerrainBounds::from_vertices(
+                &mesh_data.positions,
+            ) {
+                Some(b) => b,
+                None => continue,
+            };
+
+            // Apply the fixed placement transform if available.
+            // The .blend scene positions terrain meshes at specific locations
+            // with specific scales that define the scene layout.
+            let transform = self.get_terrain_asset_transform(asset);
+
+            let transformed_positions: Vec<[f32; 3]> = mesh_data
+                .positions
+                .iter()
+                .map(|p| {
+                    let scaled = [
+                        p[0] * transform.scale[0],
+                        p[1] * transform.scale[1],
+                        p[2] * transform.scale[2],
+                    ];
+                    [
+                        scaled[0] + transform.position[0],
+                        scaled[1] + transform.position[1],
+                        scaled[2] + transform.position[2],
+                    ]
+                })
+                .collect();
+
+            let transformed_bounds =
+                match astraweave_blend::heightmap_raster::TerrainBounds::from_vertices(
+                    &transformed_positions,
+                ) {
+                    Some(b) => b,
+                    None => continue,
+                };
+
+            extracted_meshes.push(astraweave_blend::heightmap_raster::ExtractedTerrainMesh {
+                name: asset.name.clone(),
+                vertices: transformed_positions,
+                faces,
+                bounds: transformed_bounds,
+            });
+
+            info!(
+                target: "aw_editor::terrain_integration",
+                "Terrain stamp: loaded '{}' ({} verts, bounds X:{:.1}..{:.1} Z:{:.1}..{:.1} Y:{:.1}..{:.1})",
+                asset.name,
+                mesh_data.positions.len(),
+                transformed_bounds.min[0], transformed_bounds.max[0],
+                transformed_bounds.min[2], transformed_bounds.max[2],
+                transformed_bounds.min[1], transformed_bounds.max[1],
+            );
+        }
+
+        if extracted_meshes.is_empty() {
+            return;
+        }
+
+        // Rasterize terrain meshes into a heightmap grid.
+        // Use 512 resolution for good fidelity from the sculpted meshes.
+        let rasterized = match astraweave_blend::heightmap_raster::rasterize_terrain_meshes(
+            &extracted_meshes,
+            512,
+        ) {
+            Ok(hm) => hm,
+            Err(e) => {
+                tracing::warn!("Terrain stamp: rasterization failed: {e}");
+                return;
+            }
+        };
+
+        info!(
+            target: "aw_editor::terrain_integration",
+            "Terrain stamp: rasterized {}×{} heightmap, world X:{:.1}..{:.1} Z:{:.1}..{:.1} height:{:.1}..{:.1}",
+            rasterized.resolution, rasterized.resolution,
+            rasterized.world_min[0], rasterized.world_max[0],
+            rasterized.world_min[1], rasterized.world_max[1],
+            rasterized.min_height, rasterized.max_height,
+        );
+
+        // Blend radius: smooth transition zone (in world units) at the edge
+        // of the rasterized region to avoid harsh seams.
+        let blend_margin = chunk_size * 0.15;
+        let primary_biome = self.primary_biome_type();
+        let seed = self.config.seed;
+        let mut stamped_count = 0u32;
+
+        // Stamp rasterized heights onto each chunk that overlaps the region
+        let chunk_ids: Vec<ChunkId> = self.generated_chunks.keys().copied().collect();
+        for chunk_id in chunk_ids {
+            let chunk_origin = chunk_id.to_world_pos(chunk_size);
+            let chunk_end_x = chunk_origin.x + chunk_size;
+            let chunk_end_z = chunk_origin.z + chunk_size;
+
+            // Check if this chunk overlaps the rasterized region
+            if chunk_end_x < rasterized.world_min[0]
+                || chunk_origin.x > rasterized.world_max[0]
+                || chunk_end_z < rasterized.world_min[1]
+                || chunk_origin.z > rasterized.world_max[1]
+            {
+                continue;
+            }
+
+            let gen_chunk = match self.generated_chunks.get_mut(&chunk_id) {
+                Some(gc) => gc,
+                None => continue,
+            };
+
+            let hm = gen_chunk.chunk.heightmap_mut();
+            let resolution = hm.resolution();
+            let cell_size = chunk_size / (resolution - 1) as f32;
+            let mut any_modified = false;
+
+            for gz in 0..resolution {
+                for gx in 0..resolution {
+                    let world_x = chunk_origin.x + gx as f32 * cell_size;
+                    let world_z = chunk_origin.z + gz as f32 * cell_size;
+
+                    // Check if this point is within the rasterized region
+                    let in_x =
+                        world_x >= rasterized.world_min[0] && world_x <= rasterized.world_max[0];
+                    let in_z =
+                        world_z >= rasterized.world_min[1] && world_z <= rasterized.world_max[1];
+
+                    if !in_x || !in_z {
+                        continue;
+                    }
+
+                    // Sample the rasterized heightmap
+                    let blend_height = rasterized.sample(world_x, world_z);
+
+                    // Compute blend factor based on distance from edge
+                    let dist_to_edge = [
+                        world_x - rasterized.world_min[0],
+                        rasterized.world_max[0] - world_x,
+                        world_z - rasterized.world_min[1],
+                        rasterized.world_max[1] - world_z,
+                    ]
+                    .into_iter()
+                    .fold(f32::INFINITY, f32::min);
+
+                    let blend_factor = if blend_margin > 0.0 {
+                        (dist_to_edge / blend_margin).clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    };
+
+                    // Smoothstep for natural transition
+                    let t = blend_factor * blend_factor * (3.0 - 2.0 * blend_factor);
+
+                    let procedural_height = hm.get_height(gx, gz);
+                    let final_height = procedural_height * (1.0 - t) + blend_height * t;
+
+                    hm.set_height(gx, gz, final_height);
+                    any_modified = true;
+                }
+            }
+
+            if any_modified {
+                stamped_count += 1;
+                // Regenerate mesh vertices for this chunk with stamped heights
+                let world_offset = Vec3::new(chunk_origin.x, 0.0, chunk_origin.z);
+                let (vertices, indices) = Self::generate_heightmap_mesh(
+                    gen_chunk.chunk.heightmap(),
+                    gen_chunk.chunk.biome_map(),
+                    chunk_size,
+                    world_offset,
+                    seed,
+                    primary_biome,
+                );
+                gen_chunk.vertices = vertices;
+                gen_chunk.indices = indices;
+            }
+        }
+
+        if stamped_count > 0 {
+            info!(
+                target: "aw_editor::terrain_integration",
+                "Terrain stamp: stamped .blend heightmap onto {} chunks",
+                stamped_count,
+            );
+        }
+    }
+
+    /// Look up the fixed placement transform for a terrain asset.
+    #[allow(dead_code)]
+    fn get_terrain_asset_transform(&self, asset: &BiomePackAsset) -> TerrainAssetTransform {
+        let pack = match &self.cached_pack {
+            Some((_, p)) => p,
+            None => return TerrainAssetTransform::identity(),
+        };
+
+        // Try to load fixed placements and find the matching terrain object
+        let fp_path = match &pack.fixed_placements_path {
+            Some(p) => pack.root_dir.join(p),
+            None => return TerrainAssetTransform::identity(),
+        };
+
+        let content = match std::fs::read_to_string(&fp_path) {
+            Ok(c) => c,
+            Err(_) => return TerrainAssetTransform::identity(),
+        };
+
+        let placements: Vec<serde_json::Value> = match serde_json::from_str(&content) {
+            Ok(p) => p,
+            Err(_) => return TerrainAssetTransform::identity(),
+        };
+
+        for placement in &placements {
+            let name = placement.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if name == asset.name {
+                let raw_pos = Self::json_array_to_f32_3(placement.get("position"));
+                let raw_scl =
+                    Self::json_array_to_f32_3(placement.get("scale")).unwrap_or([1.0, 1.0, 1.0]);
+                let bp = raw_pos.unwrap_or([0.0, 0.0, 0.0]);
+                // Convert from Blender Z-up [X, Y, Z] to engine Y-up [X, Z, -Y]:
+                // Blender X → engine X, Blender Z (up) → engine Y (up),
+                // Blender Y (forward) → engine -Z (forward).
+                // GLB mesh vertices are already Y-up (glTF exporter converts).
+                return TerrainAssetTransform {
+                    position: [bp[0], bp[2], -bp[1]],
+                    scale: [raw_scl[0], raw_scl[2], raw_scl[1]],
+                };
+            }
+        }
+
+        TerrainAssetTransform::identity()
+    }
+
+    #[allow(dead_code)]
+    fn json_array_to_f32_3(val: Option<&serde_json::Value>) -> Option<[f32; 3]> {
+        let arr = val?.as_array()?;
+        if arr.len() >= 3 {
+            Some([
+                arr[0].as_f64()? as f32,
+                arr[1].as_f64()? as f32,
+                arr[2].as_f64()? as f32,
+            ])
+        } else {
+            None
+        }
     }
 
     fn generate_heightmap_mesh(
@@ -416,10 +768,17 @@ impl TerrainState {
                     .map(Self::splat_weights_to_material_slots)
                     .unwrap_or(([0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]));
 
+                // Use world-space tiled UVs: one texture tile every 8 units
+                // gives ~256 texels/unit at 2048×2048, which produces crisp
+                // terrain detail without visible pixelation.
+                const TERRAIN_UV_TILE_SIZE: f32 = 8.0;
+                let tiled_u = world_x / TERRAIN_UV_TILE_SIZE;
+                let tiled_v = world_z / TERRAIN_UV_TILE_SIZE;
+
                 vertices.push(TerrainVertex::new(
                     [world_x, height, world_z],
                     [normal.x, normal.y, normal.z],
-                    [x as f32 / resolution as f32, z as f32 / resolution as f32],
+                    [tiled_u, tiled_v],
                     biome_weights_0,
                     biome_weights_1,
                     material_ids,
@@ -541,6 +900,132 @@ impl TerrainState {
         let dz = (h_down - h_up) / (2.0 * cell_size);
 
         Vec3::new(-dx, 1.0, -dz).normalize()
+    }
+
+    /// Re-compute vertex normals at chunk boundaries using neighbor chunk
+    /// height data so the gradient is a full central-difference rather than
+    /// a clamped half-gradient. This eliminates the visible lighting seam
+    /// between adjacent chunks.
+    fn stitch_edge_normals(&mut self, chunk_size: f32) {
+        // Collect chunk IDs so we can iterate without holding a mutable borrow
+        let ids: Vec<ChunkId> = self.generated_chunks.keys().copied().collect();
+
+        for id in &ids {
+            let resolution = {
+                let gc = &self.generated_chunks[id];
+                gc.chunk.heightmap().resolution() as usize
+            };
+            let cell_size = chunk_size / (resolution - 1) as f32;
+
+            // Fetch neighbor edge heights (Option<Vec<f32>>)
+            // left neighbor  (x-1) → its right edge column  (x = res-1)
+            // right neighbor (x+1) → its left edge column   (x = 0)
+            // up neighbor    (z-1) → its bottom edge row     (z = res-1)
+            // down neighbor  (z+1) → its top edge row        (z = 0)
+            let left_heights: Option<Vec<f32>> = self
+                .generated_chunks
+                .get(&ChunkId {
+                    x: id.x - 1,
+                    z: id.z,
+                })
+                .map(|gc| {
+                    let res = gc.chunk.heightmap().resolution();
+                    (0..res)
+                        .map(|z| gc.chunk.heightmap().get_height(res - 1, z))
+                        .collect()
+                });
+            let right_heights: Option<Vec<f32>> = self
+                .generated_chunks
+                .get(&ChunkId {
+                    x: id.x + 1,
+                    z: id.z,
+                })
+                .map(|gc| {
+                    let res = gc.chunk.heightmap().resolution();
+                    (0..res)
+                        .map(|z| gc.chunk.heightmap().get_height(0, z))
+                        .collect()
+                });
+            let up_heights: Option<Vec<f32>> = self
+                .generated_chunks
+                .get(&ChunkId {
+                    x: id.x,
+                    z: id.z - 1,
+                })
+                .map(|gc| {
+                    let res = gc.chunk.heightmap().resolution();
+                    (0..res)
+                        .map(|x| gc.chunk.heightmap().get_height(x, res - 1))
+                        .collect()
+                });
+            let down_heights: Option<Vec<f32>> = self
+                .generated_chunks
+                .get(&ChunkId {
+                    x: id.x,
+                    z: id.z + 1,
+                })
+                .map(|gc| {
+                    let res = gc.chunk.heightmap().resolution();
+                    (0..res)
+                        .map(|x| gc.chunk.heightmap().get_height(x, 0))
+                        .collect()
+                });
+
+            // Now mutably update the vertex normals for boundary vertices
+            let gc = self.generated_chunks.get_mut(id).unwrap();
+            let hm = gc.chunk.heightmap();
+
+            for z in 0..resolution {
+                for x in 0..resolution {
+                    let is_edge_x = x == 0 || x == resolution - 1;
+                    let is_edge_z = z == 0 || z == resolution - 1;
+                    if !is_edge_x && !is_edge_z {
+                        continue; // interior vertex, already correct
+                    }
+
+                    let h_center = hm.get_height(x as u32, z as u32);
+
+                    // X gradient: use neighbor chunk data at boundaries
+                    let h_left = if x > 0 {
+                        hm.get_height((x - 1) as u32, z as u32)
+                    } else if let Some(ref lh) = left_heights {
+                        lh.get(z).copied().unwrap_or(h_center)
+                    } else {
+                        h_center
+                    };
+                    let h_right = if x < resolution - 1 {
+                        hm.get_height((x + 1) as u32, z as u32)
+                    } else if let Some(ref rh) = right_heights {
+                        rh.get(z).copied().unwrap_or(h_center)
+                    } else {
+                        h_center
+                    };
+
+                    // Z gradient: use neighbor chunk data at boundaries
+                    let h_up = if z > 0 {
+                        hm.get_height(x as u32, (z - 1) as u32)
+                    } else if let Some(ref uh) = up_heights {
+                        uh.get(x).copied().unwrap_or(h_center)
+                    } else {
+                        h_center
+                    };
+                    let h_down = if z < resolution - 1 {
+                        hm.get_height(x as u32, (z + 1) as u32)
+                    } else if let Some(ref dh) = down_heights {
+                        dh.get(x).copied().unwrap_or(h_center)
+                    } else {
+                        h_center
+                    };
+
+                    let dx = (h_right - h_left) / (2.0 * cell_size);
+                    let dz = (h_down - h_up) / (2.0 * cell_size);
+                    let normal = Vec3::new(-dx, 1.0, -dz).normalize();
+
+                    let vi = z * resolution + x;
+                    gc.vertices[vi].normal = [normal.x, normal.y, normal.z];
+                }
+            }
+        }
     }
 
     fn biome_to_id(biome: BiomeType) -> u32 {
@@ -1126,6 +1611,7 @@ impl TerrainState {
 
     /// Begin a new brush stroke — enables heightmap snapshotting for undo.
     pub fn begin_stroke(&mut self) {
+        debug!(target: "aw_editor::terrain_integration", "Brush stroke begin");
         self.is_stroking = true;
         self.stroke_pre_snapshots.clear();
     }
@@ -1159,8 +1645,10 @@ impl TerrainState {
         }
 
         if deltas.is_empty() {
+            debug!(target: "aw_editor::terrain_integration", "Brush stroke end: no chunks modified");
             None
         } else {
+            info!(target: "aw_editor::terrain_integration", "Brush stroke end: {} chunks modified", deltas.len());
             Some(deltas)
         }
     }
@@ -1647,6 +2135,28 @@ impl TerrainState {
     pub fn generate_scatter_placements(&self) -> Vec<ScatterPlacement> {
         let chunk_size = self.config.chunk_size;
 
+        // Diagnostic: log biome config vegetation info
+        if let Some(primary) = self.config.biomes.first() {
+            let veg_count = primary.vegetation.vegetation_types.len();
+            let density = primary.vegetation.density;
+            eprintln!(
+                "SCATTER: generating for {} chunks, biome='{}' veg_types={} density={:.4}",
+                self.generated_chunks.len(),
+                primary.name,
+                veg_count,
+                density,
+            );
+            if veg_count > 0 {
+                let sample = &primary.vegetation.vegetation_types[0];
+                eprintln!(
+                    "SCATTER: first veg type: name='{}' path='{}' weight={:.3}",
+                    sample.name, sample.model_path, sample.weight,
+                );
+            }
+        } else {
+            eprintln!("SCATTER: WARNING — no biome configs available, scatter will be empty!");
+        }
+
         let mut placements = Vec::new();
 
         for (chunk_id, gen_chunk) in &self.generated_chunks {
@@ -1736,8 +2246,37 @@ impl TerrainState {
                 );
             }
 
+            // Use pack-aware placement when a BiomePack is loaded.
+            // BiomePack assets are modeled at real-world Blender scale, but the
+            // procedural terrain spans hundreds of units per chunk. We apply a
+            // dimension-aware scale boost: small assets (bushes ~0.5m) get a
+            // large boost (~12x) to be visible, while large assets (cliffs ~20m)
+            // get a minimal boost (~1x) to stay reasonably sized.
+            let pack_ref = self.cached_pack.as_ref().map(|(_, p)| p);
             for vi in vegetation {
-                placements.push(ScatterPlacement::from_vegetation_instance(&vi));
+                let mut placement = ScatterPlacement::from_zone_placement(&vi, pack_ref);
+
+                if pack_ref.is_some() {
+                    // BiomePack assets use Blender meters, terrain uses world
+                    // units where 1 unit ≈ 1 meter.  The `from_zone_placement`
+                    // path already returns `vi.scale` (~0.7-1.3) without a
+                    // boost, so at this point the asset renders at roughly its
+                    // natural Blender size.  That's correct for 1:1 worlds,
+                    // but the procedural terrain spans 256 units per chunk and
+                    // the camera sits at Y ≈ 100-200 units, so assets at their
+                    // natural Blender scale appear as tiny dots.
+                    //
+                    // Apply a uniform scale boost that makes assets visible at
+                    // typical editor camera distances.  The value is tuned so
+                    // that a 1-meter bush becomes ~8 units and a 6-meter tree
+                    // becomes ~48 units — clearly visible from camera heights
+                    // of 100-500 units.
+                    const PACK_SCALE_BOOST: f32 = 8.0;
+                    placement.scale *= PACK_SCALE_BOOST;
+                    placement.bounding_radius *= PACK_SCALE_BOOST;
+                }
+
+                placements.push(placement);
             }
         }
 
@@ -1882,37 +2421,41 @@ impl ScatterPlacement {
         // Per-type world-scale multiplier: Nature Kit models are tiny (~1 unit),
         // terrain spans hundreds of units. Trees need a much larger multiplier
         // than grass/flowers to look proportional.
-        let (type_multiplier, sink_factor, tint) = match vi.vegetation_type.as_str() {
+        let (type_multiplier, base_tint) = match vi.vegetation_type.as_str() {
             // Trees — models are ~1.2–1.7 units tall, need to reach 15–30 units
-            s if s.contains("tree") || s.contains("pine") => (14.0, 0.06, [0.35, 0.55, 0.25, 1.0]),
+            s if s.contains("tree") || s.contains("pine") => (14.0, [0.90, 1.00, 0.85, 1.0]),
             // Cacti — models ~0.75 units, need to be ~5–8 units
-            s if s.contains("cactus") => (8.0, 0.04, [0.45, 0.60, 0.30, 1.0]),
+            s if s.contains("cactus") => (8.0, [0.92, 1.00, 0.88, 1.0]),
             // Bushes — models ~0.25 units, need to be ~2–3 units
-            s if s.contains("bush") => (7.0, 0.04, [0.30, 0.58, 0.22, 1.0]),
+            s if s.contains("bush") => (7.0, [0.88, 1.00, 0.85, 1.0]),
             // Rocks/boulders/cliffs — models ~0.26 units, need to be ~2–4 units
             s if s.contains("rock")
                 || s.contains("stone")
                 || s.contains("boulder")
                 || s.contains("cliff") =>
             {
-                (8.0, 0.03, [0.60, 0.58, 0.55, 1.0])
+                (8.0, [0.95, 0.93, 0.90, 1.0])
             }
             // Mushrooms — small ground detail
-            s if s.contains("mushroom") => (5.0, 0.01, [0.70, 0.55, 0.40, 1.0]),
+            s if s.contains("mushroom") => (5.0, [0.95, 0.90, 0.88, 1.0]),
             // Flowers — keep their original colors mostly
-            s if s.contains("flower") => (3.5, 0.02, [0.90, 0.85, 0.80, 1.0]),
+            s if s.contains("flower") => (3.5, [1.00, 0.98, 0.95, 1.0]),
             // Grass, ground cover — models ~0.2 units, OK at ~1–2 units
-            _ => (3.5, 0.02, [0.40, 0.68, 0.28, 1.0]),
+            _ => (3.5, [0.92, 0.95, 0.88, 1.0]),
         };
         let world_scale = vi.scale * type_multiplier;
-        // Sink base slightly below terrain to counteract bilinear-vs-triangle
-        // height mismatch that causes objects to float above the rendered surface.
-        // The base AO darkening in the shader hides the minor terrain intersection.
-        // Per-type sinking: small assets sink less, large assets sink more.
-        let mut pos = vi.position;
-        pos.y -= sink_factor * world_scale;
+
+        // Per-instance tint variation: derive a deterministic hash from
+        // position to add ±12% hue/value jitter, breaking the uniform
+        // "plantation" look without requiring a persistent RNG.
+        let tint = Self::jitter_tint(base_tint, vi.position);
+
+        // NOTE: The old sink_factor hack has been removed. Pivot correction
+        // is now done at render time in upload_scatter_placements() using the
+        // actual model AABB, which provides accurate grounding regardless of
+        // model origin placement.
         Self {
-            position: pos,
+            position: vi.position,
             rotation: vi.rotation,
             scale: world_scale,
             mesh_key: vi.vegetation_type.clone(),
@@ -1956,50 +2499,47 @@ impl ScatterPlacement {
         };
 
         // Use pack dimensions for correct scaling, fall back to heuristics
-        let (world_scale, sink_factor, tint, bounding_radius) = if let Some(asset) = pack_asset {
+        let (world_scale, tint, bounding_radius) = if let Some(asset) = pack_asset {
             // Use actual Blender dimensions — no heuristic multiplier needed.
             // The zone scatter system already handles adaptive scaling via
             // AdaptiveScaleParams, so we use scale 1:1 here.
             let dims = asset.dimensions.unwrap_or([1.0, 1.0, 1.0]);
             let max_dim = dims[0].max(dims[1]).max(dims[2]) as f32;
             let radius = max_dim * vi.scale * 0.5;
-            let sink = 0.02 * vi.scale;
             // Category-aware tint for visual variety
             let tint = match asset.category.as_str() {
-                "vegetation" => [0.35, 0.55, 0.25, 1.0],
-                "rock" => [0.60, 0.58, 0.55, 1.0],
-                "structure" | "furniture" => [0.70, 0.65, 0.60, 1.0],
-                _ => [0.50, 0.50, 0.50, 1.0],
+                "vegetation" => [0.90, 1.00, 0.85, 1.0],
+                "rock" => [0.95, 0.93, 0.90, 1.0],
+                "structure" | "furniture" => [1.00, 0.98, 0.95, 1.0],
+                _ => [0.95, 0.95, 0.95, 1.0],
             };
-            (vi.scale, sink, tint, radius)
+            (vi.scale, tint, radius)
         } else {
             // Fall back to heuristic scaling for non-pack placements
-            let (type_multiplier, sink, tint) = match vi.vegetation_type.as_str() {
-                s if s.contains("tree") || s.contains("pine") => {
-                    (14.0, 0.06, [0.35, 0.55, 0.25, 1.0])
-                }
-                s if s.contains("cactus") => (8.0, 0.04, [0.45, 0.60, 0.30, 1.0]),
-                s if s.contains("bush") => (7.0, 0.04, [0.30, 0.58, 0.22, 1.0]),
+            let (type_multiplier, tint) = match vi.vegetation_type.as_str() {
+                s if s.contains("tree") || s.contains("pine") => (14.0, [0.90, 1.00, 0.85, 1.0]),
+                s if s.contains("cactus") => (8.0, [0.92, 1.00, 0.88, 1.0]),
+                s if s.contains("bush") => (7.0, [0.88, 1.00, 0.85, 1.0]),
                 s if s.contains("rock")
                     || s.contains("stone")
                     || s.contains("boulder")
                     || s.contains("cliff") =>
                 {
-                    (8.0, 0.03, [0.60, 0.58, 0.55, 1.0])
+                    (8.0, [0.95, 0.93, 0.90, 1.0])
                 }
-                s if s.contains("mushroom") => (5.0, 0.01, [0.70, 0.55, 0.40, 1.0]),
-                s if s.contains("flower") => (3.5, 0.02, [0.90, 0.85, 0.80, 1.0]),
-                _ => (3.5, 0.02, [0.40, 0.68, 0.28, 1.0]),
+                s if s.contains("mushroom") => (5.0, [0.95, 0.90, 0.88, 1.0]),
+                s if s.contains("flower") => (3.5, [1.00, 0.98, 0.95, 1.0]),
+                _ => (3.5, [0.92, 0.95, 0.88, 1.0]),
             };
             let ws = vi.scale * type_multiplier;
-            (ws, sink, tint, ws * 2.0)
+            (ws, tint, ws * 2.0)
         };
 
-        let mut pos = vi.position;
-        pos.y -= sink_factor * world_scale;
+        // NOTE: No sink_factor hack. Pivot correction is done at render time
+        // using the actual model AABB in upload_scatter_placements().
 
         Self {
-            position: pos,
+            position: vi.position,
             rotation: vi.rotation,
             scale: world_scale,
             mesh_key: vi.vegetation_type.clone(),
@@ -2008,6 +2548,30 @@ impl ScatterPlacement {
             tint,
             terrain_normal: vi.terrain_normal,
         }
+    }
+
+    /// Deterministic per-instance tint jitter derived from world position.
+    ///
+    /// Applies ±12% variation to each RGB channel, breaking the uniform
+    /// "plantation" look without requiring a persistent RNG.
+    fn jitter_tint(base: [f32; 4], pos: Vec3) -> [f32; 4] {
+        // Simple spatial hash: bit-mix the quantised position coordinates
+        let ix = (pos.x * 73.13) as i32;
+        let iz = (pos.z * 119.97) as i32;
+        let hash =
+            ((ix.wrapping_mul(374761393)) ^ (iz.wrapping_mul(668265263))).wrapping_add(1013904223);
+
+        // Extract three independent ±1 float channels from the hash bits
+        let r_off = ((hash & 0xFF) as f32 / 255.0 - 0.5) * 0.24; // ±12%
+        let g_off = (((hash >> 8) & 0xFF) as f32 / 255.0 - 0.5) * 0.24;
+        let b_off = (((hash >> 16) & 0xFF) as f32 / 255.0 - 0.5) * 0.24;
+
+        [
+            (base[0] + r_off).clamp(0.0, 1.5),
+            (base[1] + g_off).clamp(0.0, 1.5),
+            (base[2] + b_off).clamp(0.0, 1.5),
+            base[3],
+        ]
     }
 }
 

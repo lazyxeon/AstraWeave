@@ -12,6 +12,7 @@
 //! translates into the existing [`FillerAction::GenerateFullScene`] pipeline.
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use super::gameplay_presets::{self, GameplayPreset};
 use super::procedural_filler_panel::{BiomePreset, EnvironmentPreset, FillerAction};
@@ -343,6 +344,7 @@ impl WorldWizard {
                                 )
                                 .clicked()
                             {
+                                info!(template = ?self.selected_template, "world_wizard: world created");
                                 action = Some(WorldWizardAction::Generate {
                                     template: self.selected_template,
                                     gameplay: self.gameplay_preset,
@@ -351,6 +353,7 @@ impl WorldWizard {
                                 self.open = false;
                             }
                         } else if ui.button("Next →").clicked() {
+                            info!(from = self.step.label(), to = WizardStep::ALL[step_idx + 1].label(), "world_wizard: step completed");
                             self.step = WizardStep::ALL[step_idx + 1];
                         }
 

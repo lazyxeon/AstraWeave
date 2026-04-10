@@ -19,6 +19,7 @@ use astract::charts::{
 use egui::{Color32, Ui};
 use std::collections::HashMap;
 use std::time::Instant;
+use tracing::info;
 
 /// Chart type enum for switching visualization modes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -651,6 +652,7 @@ impl ChartsPanel {
     }
 
     fn render_data_source_selector(&mut self, ui: &mut Ui) {
+        let prev_source = self.active_data_source;
         ui.horizontal(|ui| {
             ui.label("Data:");
             egui::ComboBox::from_id_salt("data_source")
@@ -661,6 +663,12 @@ impl ChartsPanel {
                     }
                 });
         });
+        if self.active_data_source != prev_source {
+            info!(
+                source = self.active_data_source.name(),
+                "charts: data source changed"
+            );
+        }
     }
 
     fn render_options(&mut self, ui: &mut Ui) {

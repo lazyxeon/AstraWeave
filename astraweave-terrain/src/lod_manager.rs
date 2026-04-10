@@ -61,12 +61,64 @@ impl LodLevel {
     }
 }
 
+/// View parameters for screen-space error LOD selection.
+///
+/// When provided, LOD transitions use pixel-error metric instead of fixed
+/// distance thresholds, producing resolution- and FOV-adaptive LOD that
+/// allocates geometry budget where it matters most.
+#[derive(Debug, Clone, Copy)]
+pub struct ViewParams {
+    /// Vertical field of view in radians (e.g. `Camera.fovy`).
+    pub fov_y: f32,
+    /// Viewport height in pixels (e.g. swapchain height).
+    pub screen_height: f32,
+}
+
+impl ViewParams {
+    pub fn new(fov_y: f32, screen_height: f32) -> Self {
+        Self {
+            fov_y,
+            screen_height,
+        }
+    }
+}
+
+/// Compute the projected pixel error given a world-space geometric error,
+/// distance to the observer, and view parameters.
+///
+/// Formula:
+/// ```text
+/// pixel_error = (geometric_error * screen_height) / (distance * 2.0 * tan(fov_y / 2.0))
+/// ```
+///
+/// Returns `f32::MAX` when distance is effectively zero.
+#[inline]
+pub fn compute_pixel_error(geometric_error: f32, distance: f32, view: &ViewParams) -> f32 {
+    let denom = distance * 2.0 * (view.fov_y * 0.5).tan();
+    if denom < 1e-6 {
+        return f32::MAX; // Camera inside chunk — max detail
+    }
+    (geometric_error * view.screen_height) / denom
+}
+
 /// LOD transition configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LodConfig {
     /// Distance thresholds for each LOD level (in world units)
     /// [L0->L1, L1->L2, L2->L3]
+    /// Used as fallback when `ViewParams` is not supplied.
     pub distance_thresholds: [f32; 3],
+
+    /// Pixel-error thresholds for screen-space error selection.
+    /// [L0->L1, L1->L2, L2->L3]
+    /// When `ViewParams` is supplied, a chunk transitions to a lower LOD
+    /// when its pixel error drops below the threshold.
+    pub pixel_error_thresholds: [f32; 3],
+
+    /// Per-LOD geometric error in world units, indexed by `LodLevel as usize`.
+    /// This is the maximum surface deviation introduced at each LOD.
+    /// Typically: [0.0, chunk_spacing, 2*chunk_spacing, 4*chunk_spacing].
+    pub geometric_errors: [f32; 4],
 
     /// Hysteresis margin (0.0-1.0, typically 0.1 for 10%)
     pub hysteresis_margin: f32,
@@ -81,8 +133,14 @@ pub struct LodConfig {
 impl Default for LodConfig {
     fn default() -> Self {
         Self {
-            // L0->L1 at 256m, L1->L2 at 512m, L2->L3 at 1024m
+            // Legacy distance thresholds (fallback when ViewParams is not supplied)
             distance_thresholds: [256.0, 512.0, 1024.0],
+            // Screen-space error thresholds in pixels:
+            // L0→L1 at 2 px, L1→L2 at 4 px, L2→L3 at 8 px
+            pixel_error_thresholds: [2.0, 4.0, 8.0],
+            // Geometric error per LOD in world units:
+            // L0 = 0 (perfect), L1 = 0.5m, L2 = 1.0m, L3 = 4.0m
+            geometric_errors: [0.0, 0.5, 1.0, 4.0],
             hysteresis_margin: 0.1, // 10% margin
             blend_zone_size: 32.0,  // 32m blend zone
             enable_blending: true,
@@ -108,11 +166,42 @@ impl LodConfig {
 
         // Apply hysteresis
         if increasing_detail {
-            // Moving to higher detail: subtract margin (trigger sooner)
             base_threshold * (1.0 - self.hysteresis_margin)
         } else {
-            // Moving to lower detail: add margin (trigger later)
             base_threshold * (1.0 + self.hysteresis_margin)
+        }
+    }
+
+    /// Get pixel-error threshold with hysteresis for a LOD transition.
+    ///
+    /// For screen-space error: a higher pixel error means MORE detail needed,
+    /// so "increasing detail" means the error exceeded the upper threshold.
+    pub fn get_pixel_error_threshold(
+        &self,
+        from: LodLevel,
+        to: LodLevel,
+        increasing_detail: bool,
+    ) -> f32 {
+        let base = match (from, to) {
+            (LodLevel::Full, LodLevel::Half) | (LodLevel::Half, LodLevel::Full) => {
+                self.pixel_error_thresholds[0]
+            }
+            (LodLevel::Half, LodLevel::Quarter) | (LodLevel::Quarter, LodLevel::Half) => {
+                self.pixel_error_thresholds[1]
+            }
+            (LodLevel::Quarter, LodLevel::Skybox) | (LodLevel::Skybox, LodLevel::Quarter) => {
+                self.pixel_error_thresholds[2]
+            }
+            _ => return f32::MAX,
+        };
+
+        // Hysteresis on pixel error (inverted vs distance):
+        // Increasing detail → error exceeded threshold → trigger at base * (1 + margin)
+        // Decreasing detail → error dropped → trigger at base * (1 - margin)
+        if increasing_detail {
+            base * (1.0 + self.hysteresis_margin)
+        } else {
+            base * (1.0 - self.hysteresis_margin)
         }
     }
 }
@@ -290,8 +379,17 @@ impl LodManager {
         evicted
     }
 
-    /// Update LOD for a chunk based on camera position
-    pub fn update_chunk_lod(&mut self, chunk_id: ChunkId, camera_pos: Vec3) -> bool {
+    /// Update LOD for a chunk based on camera position.
+    ///
+    /// When `view` is `Some`, uses screen-space pixel error for LOD selection
+    /// (resolution- and FOV-adaptive). Falls back to fixed distance thresholds
+    /// when `view` is `None`.
+    pub fn update_chunk_lod(
+        &mut self,
+        chunk_id: ChunkId,
+        camera_pos: Vec3,
+        view: Option<&ViewParams>,
+    ) -> bool {
         let chunk_center = chunk_id.to_center_pos(self.chunk_size);
         let distance = (chunk_center - camera_pos).length();
 
@@ -308,28 +406,70 @@ impl LodManager {
 
         state.distance = distance;
 
-        // Determine target LOD based on distance
-        let target_lod = if distance < self.config.distance_thresholds[0] {
-            LodLevel::Full
-        } else if distance < self.config.distance_thresholds[1] {
-            LodLevel::Half
-        } else if distance < self.config.distance_thresholds[2] {
-            LodLevel::Quarter
+        // Determine target LOD
+        let target_lod = if let Some(vp) = view {
+            // Screen-space error path: pick the coarsest LOD whose projected
+            // geometric error is below the pixel-error budget.
+            // Walk from coarsest (Skybox) to finest (Full).
+            let err_skybox = compute_pixel_error(self.config.geometric_errors[3], distance, vp);
+            let err_quarter = compute_pixel_error(self.config.geometric_errors[2], distance, vp);
+            let err_half = compute_pixel_error(self.config.geometric_errors[1], distance, vp);
+
+            if err_skybox <= self.config.pixel_error_thresholds[2] {
+                LodLevel::Skybox
+            } else if err_quarter <= self.config.pixel_error_thresholds[1] {
+                LodLevel::Quarter
+            } else if err_half <= self.config.pixel_error_thresholds[0] {
+                LodLevel::Half
+            } else {
+                LodLevel::Full
+            }
         } else {
-            LodLevel::Skybox
+            // Legacy distance-bucket fallback
+            if distance < self.config.distance_thresholds[0] {
+                LodLevel::Full
+            } else if distance < self.config.distance_thresholds[1] {
+                LodLevel::Half
+            } else if distance < self.config.distance_thresholds[2] {
+                LodLevel::Quarter
+            } else {
+                LodLevel::Skybox
+            }
         };
 
         // Check if LOD should change (with hysteresis)
         if target_lod != state.current_lod {
             let increasing_detail = (target_lod as u8) < (state.current_lod as u8);
-            let threshold =
-                self.config
-                    .get_threshold(state.current_lod, target_lod, increasing_detail);
 
-            let should_transition = if increasing_detail {
-                distance < threshold
+            let should_transition = if let Some(vp) = view {
+                // Screen-space hysteresis: compare pixel error against threshold
+                let candidate_lod = if increasing_detail {
+                    target_lod
+                } else {
+                    state.current_lod
+                };
+                let geo_err = self.config.geometric_errors[candidate_lod as usize];
+                let px_err = compute_pixel_error(geo_err, distance, vp);
+                let threshold = self.config.get_pixel_error_threshold(
+                    state.current_lod,
+                    target_lod,
+                    increasing_detail,
+                );
+                if increasing_detail {
+                    px_err > threshold
+                } else {
+                    px_err < threshold
+                }
             } else {
-                distance > threshold
+                // Legacy distance hysteresis
+                let threshold =
+                    self.config
+                        .get_threshold(state.current_lod, target_lod, increasing_detail);
+                if increasing_detail {
+                    distance < threshold
+                } else {
+                    distance > threshold
+                }
             };
 
             if should_transition {
@@ -372,12 +512,19 @@ impl LodManager {
         false // No LOD change
     }
 
-    /// Update all loaded chunks
-    pub fn update_all_chunks(&mut self, chunk_ids: &[ChunkId], camera_pos: Vec3) -> usize {
+    /// Update all loaded chunks.
+    ///
+    /// When `view` is `Some`, uses screen-space pixel error for LOD selection.
+    pub fn update_all_chunks(
+        &mut self,
+        chunk_ids: &[ChunkId],
+        camera_pos: Vec3,
+        view: Option<&ViewParams>,
+    ) -> usize {
         let mut changed_count = 0;
 
         for &chunk_id in chunk_ids {
-            if self.update_chunk_lod(chunk_id, camera_pos) {
+            if self.update_chunk_lod(chunk_id, camera_pos, view) {
                 changed_count += 1;
             }
         }
@@ -495,18 +642,19 @@ mod tests {
             hysteresis_margin: 0.1,
             blend_zone_size: 32.0,
             enable_blending: false, // Disable blending for simpler test
+            ..LodConfig::default()
         };
         let mut manager = LodManager::new(config, 256.0);
         let chunk_id = ChunkId::new(0, 0);
 
         // Start at chunk center (distance = 0) -> Full LOD
         let chunk_center = chunk_id.to_center_pos(256.0);
-        manager.update_chunk_lod(chunk_id, chunk_center);
+        manager.update_chunk_lod(chunk_id, chunk_center, None);
         assert_eq!(manager.get_chunk_lod(chunk_id), Some(LodLevel::Full));
 
         // Move to exact threshold distance + a bit more (300m from center)
         let far_pos = chunk_center + Vec3::new(300.0, 0.0, 0.0);
-        manager.update_chunk_lod(chunk_id, far_pos);
+        manager.update_chunk_lod(chunk_id, far_pos, None);
         // Distance is 300, threshold for downgrade is 256 * 1.1 = 281.6
         assert_eq!(manager.get_chunk_lod(chunk_id), Some(LodLevel::Half));
     }
@@ -691,7 +839,7 @@ mod tests {
         let config = LodConfig::default();
         let mut manager = LodManager::new(config, 256.0);
 
-        let changed = manager.update_all_chunks(&[], Vec3::ZERO);
+        let changed = manager.update_all_chunks(&[], Vec3::ZERO, None);
         assert_eq!(changed, 0);
     }
 
@@ -702,13 +850,14 @@ mod tests {
             hysteresis_margin: 0.1,
             blend_zone_size: 32.0,
             enable_blending: false,
+            ..LodConfig::default()
         };
         let mut manager = LodManager::new(config, 256.0);
 
         let chunks = vec![ChunkId::new(0, 0), ChunkId::new(1, 0), ChunkId::new(2, 0)];
 
         // First update - all chunks get initialized
-        manager.update_all_chunks(&chunks, Vec3::ZERO);
+        manager.update_all_chunks(&chunks, Vec3::ZERO, None);
 
         let stats = manager.get_stats();
         assert_eq!(stats.total_chunks, 3);
@@ -752,13 +901,14 @@ mod tests {
             hysteresis_margin: 0.1,
             blend_zone_size: 32.0,
             enable_blending: true,
+            ..LodConfig::default()
         };
         let mut manager = LodManager::new(config, 256.0);
         let chunk_id = ChunkId::new(0, 0);
 
         // Initialize chunk at center
         let chunk_center = chunk_id.to_center_pos(256.0);
-        manager.update_chunk_lod(chunk_id, chunk_center);
+        manager.update_chunk_lod(chunk_id, chunk_center, None);
 
         // Verify it starts in Full LOD
         assert_eq!(manager.get_chunk_lod(chunk_id), Some(LodLevel::Full));

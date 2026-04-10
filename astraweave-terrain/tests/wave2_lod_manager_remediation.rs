@@ -211,11 +211,12 @@ fn update_chunk_lod_close_stays_full() {
         hysteresis_margin: 0.1,
         blend_zone_size: 32.0,
         enable_blending: false,
+        ..LodConfig::default()
     };
     let mut mgr = LodManager::new(cfg, 256.0);
     let chunk = ChunkId::new(0, 0);
     let center = chunk.to_center_pos(256.0);
-    mgr.update_chunk_lod(chunk, center);
+    mgr.update_chunk_lod(chunk, center, None);
     assert_eq!(mgr.get_chunk_lod(chunk), Some(LodLevel::Full));
 }
 
@@ -226,15 +227,16 @@ fn update_chunk_lod_far_downgrades_to_half() {
         hysteresis_margin: 0.1,
         blend_zone_size: 32.0,
         enable_blending: false,
+        ..LodConfig::default()
     };
     let mut mgr = LodManager::new(cfg, 256.0);
     let chunk = ChunkId::new(0, 0);
     let center = chunk.to_center_pos(256.0);
     // Initialize at center
-    mgr.update_chunk_lod(chunk, center);
+    mgr.update_chunk_lod(chunk, center, None);
     // Move far away (beyond 256 * 1.1 = 281.6)
     let far = center + Vec3::new(300.0, 0.0, 0.0);
-    mgr.update_chunk_lod(chunk, far);
+    mgr.update_chunk_lod(chunk, far, None);
     assert_eq!(mgr.get_chunk_lod(chunk), Some(LodLevel::Half));
 }
 
@@ -340,7 +342,7 @@ fn evict_distant_cache_removes_far_chunks() {
 fn update_all_chunks_empty_returns_zero() {
     let cfg = LodConfig::default();
     let mut mgr = LodManager::new(cfg, 256.0);
-    assert_eq!(mgr.update_all_chunks(&[], Vec3::ZERO), 0);
+    assert_eq!(mgr.update_all_chunks(&[], Vec3::ZERO, None), 0);
 }
 
 #[test]
@@ -350,10 +352,11 @@ fn update_all_chunks_initializes_states() {
         hysteresis_margin: 0.1,
         blend_zone_size: 32.0,
         enable_blending: false,
+        ..LodConfig::default()
     };
     let mut mgr = LodManager::new(cfg, 256.0);
     let chunks = vec![ChunkId::new(0, 0), ChunkId::new(1, 0)];
-    mgr.update_all_chunks(&chunks, Vec3::ZERO);
+    mgr.update_all_chunks(&chunks, Vec3::ZERO, None);
     let stats = mgr.get_stats();
     assert_eq!(stats.total_chunks, 2);
 }
@@ -365,14 +368,15 @@ fn update_all_chunks_removes_unloaded_states() {
         hysteresis_margin: 0.1,
         blend_zone_size: 32.0,
         enable_blending: false,
+        ..LodConfig::default()
     };
     let mut mgr = LodManager::new(cfg, 256.0);
     let chunks = vec![ChunkId::new(0, 0), ChunkId::new(1, 0)];
-    mgr.update_all_chunks(&chunks, Vec3::ZERO);
+    mgr.update_all_chunks(&chunks, Vec3::ZERO, None);
     assert_eq!(mgr.get_stats().total_chunks, 2);
 
     // Update with only one chunk — the other should be removed
-    mgr.update_all_chunks(&[ChunkId::new(0, 0)], Vec3::ZERO);
+    mgr.update_all_chunks(&[ChunkId::new(0, 0)], Vec3::ZERO, None);
     assert_eq!(mgr.get_stats().total_chunks, 1);
 }
 
@@ -499,19 +503,20 @@ fn update_chunk_lod_with_blending_begins_transition() {
         hysteresis_margin: 0.1,
         blend_zone_size: 32.0,
         enable_blending: true,
+        ..LodConfig::default()
     };
     let mut mgr = LodManager::new(cfg, 256.0);
     let chunk = ChunkId::new(0, 0);
     let center = chunk.to_center_pos(256.0);
 
     // Initialize at center → Full
-    mgr.update_chunk_lod(chunk, center);
+    mgr.update_chunk_lod(chunk, center, None);
     assert_eq!(mgr.get_chunk_lod(chunk), Some(LodLevel::Full));
     assert!(!mgr.is_transitioning(chunk));
 
     // Move far away → should start blend transition
     let far = center + Vec3::new(300.0, 0.0, 0.0);
-    mgr.update_chunk_lod(chunk, far);
+    mgr.update_chunk_lod(chunk, far, None);
     // With blending enabled, current LOD stays Full but target changes
     // (it starts transitioning)
     assert!(
@@ -529,14 +534,15 @@ fn update_chunk_lod_transition_resets_on_repeated_calls() {
         hysteresis_margin: 0.1,
         blend_zone_size: 32.0,
         enable_blending: true,
+        ..LodConfig::default()
     };
     let mut mgr = LodManager::new(cfg, 256.0);
     let chunk = ChunkId::new(0, 0);
     let center = chunk.to_center_pos(256.0);
 
-    mgr.update_chunk_lod(chunk, center);
+    mgr.update_chunk_lod(chunk, center, None);
     let far = center + Vec3::new(300.0, 0.0, 0.0);
-    mgr.update_chunk_lod(chunk, far);
+    mgr.update_chunk_lod(chunk, far, None);
 
     // Blend factor should start at 0.0 (just initiated transition)
     assert_eq!(mgr.get_blend_factor(chunk), 0.0);

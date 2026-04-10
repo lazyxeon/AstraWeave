@@ -45,6 +45,7 @@ glam = { workspace = true }
 rand = "0.8"
 rfd = "0.15"
 tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = "0.4"
 pollster = "0.4"
 astract = { path = "../../crates/astract" }
@@ -54,6 +55,7 @@ astraweave-profiling = { path = "../../astraweave-profiling" }
 astraweave-render = { path = "../../astraweave-render", features = ["gltf-assets", "textures"] }
 astraweave-author = { path = "../../astraweave-author" }
 astraweave-asset = { path = "../../astraweave-asset", features = ["blend"] }
+astraweave-blend = { path = "../../crates/astraweave-blend" }
 astraweave-audio = { path = "../../astraweave-audio" }
 astraweave-behavior = { path = "../../astraweave-behavior" }
 astraweave-dialogue = { path = "../../astraweave-dialogue" }

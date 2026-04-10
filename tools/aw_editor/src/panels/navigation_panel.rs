@@ -8,6 +8,7 @@
 //! - Obstacle placement and management
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -653,6 +654,7 @@ impl NavigationPanel {
 
     /// Queue an action for later processing
     pub fn queue_action(&mut self, action: NavigationAction) {
+        info!(target: "aw_editor::panels::navigation_panel", action = %action, "Navigation action queued");
         self.pending_actions.push(action);
     }
 
@@ -800,9 +802,12 @@ impl NavigationPanel {
         // Bake controls
         ui.horizontal(|ui| {
             if ui.button("🔨 Bake NavMesh").clicked() {
+                info!(target: "aw_editor::panels::navigation_panel", "NavMesh bake started");
                 self.is_baked = true;
+                info!(target: "aw_editor::panels::navigation_panel", "NavMesh bake completed");
             }
             if ui.button("Clear").clicked() {
+                info!(target: "aw_editor::panels::navigation_panel", "NavMesh cleared");
                 self.regions.clear();
                 self.total_triangles = 0;
                 self.total_vertices = 0;
@@ -901,6 +906,7 @@ impl NavigationPanel {
 
         // Add agent button
         if ui.button("+ Add Agent Type").clicked() {
+            info!(target: "aw_editor::panels::navigation_panel", agent_count = self.agent_configs.len() + 1, "Agent type added");
             self.agent_configs.push(NavAgentConfig {
                 name: format!("Agent {}", self.agent_configs.len() + 1),
                 ..Default::default()
@@ -1004,6 +1010,7 @@ impl NavigationPanel {
         // Add obstacle button
         if ui.button("+ Add Obstacle").clicked() {
             let id = self.next_id();
+            info!(target: "aw_editor::panels::navigation_panel", obstacle_id = id, "Obstacle added");
             self.obstacles.push(NavObstacle {
                 id,
                 name: format!("Obstacle {}", id),
@@ -1111,6 +1118,7 @@ impl NavigationPanel {
         // Add link button
         if ui.button("+ Add Link").clicked() {
             let id = self.next_id();
+            info!(target: "aw_editor::panels::navigation_panel", link_id = id, "Nav link added");
             self.nav_links.push(NavLink {
                 id,
                 name: format!("Link {}", id),
@@ -1311,6 +1319,7 @@ impl NavigationPanel {
         // Test controls
         ui.horizontal(|ui| {
             if ui.button("Find Path").clicked() {
+                info!(target: "aw_editor::panels::navigation_panel", "Pathfinding test initiated");
                 self.test_path();
             }
             ui.checkbox(&mut self.auto_update_path, "Auto-update");
@@ -1555,6 +1564,7 @@ impl NavigationPanel {
 
                 // Reset button
                 if ui.button("Reset to Defaults").clicked() {
+                    info!(target: "aw_editor::panels::navigation_panel", "Bake settings reset to defaults");
                     self.bake_settings = NavMeshBakeSettings::default();
                 }
             });

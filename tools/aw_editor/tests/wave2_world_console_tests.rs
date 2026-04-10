@@ -236,11 +236,11 @@ fn weather_settings_defaults() {
 #[test]
 fn lighting_settings_defaults() {
     let s = LightingSettings::default();
-    assert!((s.ambient_intensity - 0.3).abs() < f32::EPSILON);
-    assert!((s.sun_intensity - 1.0).abs() < f32::EPSILON);
+    assert!((s.ambient_intensity - 0.7).abs() < f32::EPSILON);
+    assert!((s.sun_intensity - 1.5).abs() < f32::EPSILON);
     assert!((s.shadow_intensity - 0.7).abs() < f32::EPSILON);
     assert!(!s.fog_enabled);
-    assert!((s.exposure - 1.0).abs() < f32::EPSILON);
+    assert!((s.exposure - 1.2).abs() < f32::EPSILON);
     assert!((s.gamma - 2.2).abs() < f32::EPSILON);
 }
 
@@ -403,13 +403,13 @@ fn log_level_matches_all_always_true() {
 
 #[test]
 fn log_level_matches_warning() {
-    assert!(LogLevel::Warning.matches("⚠️ something bad"));
+    assert!(LogLevel::Warning.matches("warning: something bad"));
     assert!(!LogLevel::Warning.matches("normal log"));
 }
 
 #[test]
 fn log_level_matches_error() {
-    assert!(LogLevel::Error.matches("❌ critical failure"));
+    assert!(LogLevel::Error.matches("error: critical failure"));
     assert!(!LogLevel::Error.matches("normal log"));
 }
 

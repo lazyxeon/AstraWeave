@@ -120,6 +120,12 @@ pub struct GtaoPass {
     frame_index: u32,
     width: u32,
     height: u32,
+    /// Cached sampler (static — never changes).
+    sampler: wgpu::Sampler,
+    /// Cached bind groups (rebuilt on generation change).
+    cached_ao_bg: crate::bind_group_cache::CachedBindGroup,
+    cached_blur_h_bg: crate::bind_group_cache::CachedBindGroup,
+    cached_blur_v_bg: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl GtaoPass {
@@ -351,6 +357,13 @@ impl GtaoPass {
             cache: None,
         });
 
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("gtao_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         Self {
             config,
             ao_pipeline,
@@ -367,6 +380,10 @@ impl GtaoPass {
             frame_index: 0,
             width,
             height,
+            sampler,
+            cached_ao_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            cached_blur_h_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            cached_blur_v_bg: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -405,143 +422,163 @@ impl GtaoPass {
     }
 
     /// Execute the GTAO compute pass: AO generation + bilateral blur.
+    ///
+    /// `resource_gen` is the renderer's generation counter; bind groups are
+    /// rebuilt only when it changes (e.g., after a resize).
     pub fn execute(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         depth_view: &wgpu::TextureView,
         normal_view: &wgpu::TextureView,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled {
             return;
         }
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("gtao_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        // --- Rebuild cached bind groups when resource generation changes ---
 
-        // 1. AO generation pass
-        let ao_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("gtao_ao_bg"),
-            layout: &self.ao_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(depth_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(normal_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: self.params_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&self.blur_temp_view),
-                },
-            ],
-        });
+        if !self.cached_ao_bg.is_valid(resource_gen) {
+            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("gtao_ao_bg"),
+                layout: &self.ao_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(normal_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: self.params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&self.blur_temp_view),
+                    },
+                ],
+            });
+            self.cached_ao_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+        }
+
+        if !self.cached_blur_h_bg.is_valid(resource_gen) {
+            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("gtao_blur_h_bg"),
+                layout: &self.blur_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&self.blur_temp_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: self.blur_h_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&self.ao_view),
+                    },
+                ],
+            });
+            self.cached_blur_h_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+        }
+
+        if !self.cached_blur_v_bg.is_valid(resource_gen) {
+            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("gtao_blur_v_bg"),
+                layout: &self.blur_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&self.ao_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: self.blur_v_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&self.blur_temp_view),
+                    },
+                ],
+            });
+            self.cached_blur_v_bg =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+        }
+
+        // --- Dispatch compute passes ---
 
         let wg_x = (self.width + 7) / 8;
         let wg_y = (self.height + 7) / 8;
 
+        // 1. AO generation pass
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("gtao_ao"),
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.ao_pipeline);
-            pass.set_bind_group(0, &ao_bg, &[]);
+            let bg = self
+                .cached_ao_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, bg, &[]);
             pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
 
         // 2. Horizontal blur: blur_temp → ao_output
-        let blur_h_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("gtao_blur_h_bg"),
-            layout: &self.blur_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&self.blur_temp_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(depth_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: self.blur_h_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&self.ao_view),
-                },
-            ],
-        });
-
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("gtao_blur_h"),
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.blur_pipeline);
-            pass.set_bind_group(0, &blur_h_bg, &[]);
+            let bg = self
+                .cached_blur_h_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, bg, &[]);
             pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
 
-        // 3. Vertical blur: ao_output → blur_temp (then swap view)
-        let blur_v_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("gtao_blur_v_bg"),
-            layout: &self.blur_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&self.ao_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(depth_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: self.blur_v_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&self.blur_temp_view),
-                },
-            ],
-        });
-
+        // 3. Vertical blur: ao_output → blur_temp
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("gtao_blur_v"),
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.blur_pipeline);
-            pass.set_bind_group(0, &blur_v_bg, &[]);
+            let bg = self
+                .cached_blur_v_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, bg, &[]);
             pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
         // Final result is in blur_temp_view after V pass.
-        // Note: for production, we'd swap the views so ao_view always has the final result.
-        // For now, consumers should use blur_temp_view for the final AO.
     }
 
     /// Resize AO textures.

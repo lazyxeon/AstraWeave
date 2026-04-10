@@ -264,7 +264,7 @@ mod particle_blend_mode_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", ParticleBlendMode::Additive);
-        assert!(display.contains("✨"));
+        assert!(display.contains("[Fx]"));
     }
 
     #[test]
@@ -381,7 +381,7 @@ mod particle_render_mode_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", ParticleRenderMode::Billboard);
-        assert!(display.contains("📄"));
+        assert!(display.contains("[Doc]"));
     }
 
     #[test]

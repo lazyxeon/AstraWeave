@@ -64,32 +64,32 @@ fn preset_display_matches_name() {
 
 #[test]
 fn preset_expected_panel_count_default_6() {
-    assert_eq!(LayoutPreset::Default.expected_panel_count(), 6);
+    assert_eq!(LayoutPreset::Default.expected_panel_count(), 8);
 }
 
 #[test]
 fn preset_expected_panel_count_wide_2() {
-    assert_eq!(LayoutPreset::Wide.expected_panel_count(), 2);
+    assert_eq!(LayoutPreset::Wide.expected_panel_count(), 3);
 }
 
 #[test]
 fn preset_expected_panel_count_compact_8() {
-    assert_eq!(LayoutPreset::Compact.expected_panel_count(), 8);
+    assert_eq!(LayoutPreset::Compact.expected_panel_count(), 10);
 }
 
 #[test]
 fn preset_expected_panel_count_modeling_3() {
-    assert_eq!(LayoutPreset::Modeling.expected_panel_count(), 3);
+    assert_eq!(LayoutPreset::Modeling.expected_panel_count(), 4);
 }
 
 #[test]
 fn preset_expected_panel_count_animation_5() {
-    assert_eq!(LayoutPreset::Animation.expected_panel_count(), 5);
+    assert_eq!(LayoutPreset::Animation.expected_panel_count(), 6);
 }
 
 #[test]
 fn preset_expected_panel_count_debug_5() {
-    assert_eq!(LayoutPreset::Debug.expected_panel_count(), 5);
+    assert_eq!(LayoutPreset::Debug.expected_panel_count(), 6);
 }
 
 // ============================================================================
@@ -881,7 +881,7 @@ fn biome_paint_icon_grass_dense() {
             radius: 1,
         },
     };
-    assert_eq!(p.icon(), "🌿");
+    assert_eq!(p.icon(), "[Leaf]");
 }
 
 #[test]
@@ -952,7 +952,7 @@ fn trigger_icon() {
         center: [0.0, 0.0, 0.0],
         radius: 1.0,
     };
-    assert_eq!(t.icon(), "🎯");
+    assert_eq!(t.icon(), "[Tgt]");
 }
 
 #[test]
@@ -1064,7 +1064,7 @@ fn director_op_icon_collapse() {
             area: FortRegion::default()
         }
         .icon(),
-        "💥"
+        "[Hit]"
     );
 }
 

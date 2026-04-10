@@ -9,6 +9,24 @@ pub enum ConsoleAction {
     Clear,
     SpawnEntity(String),
     ListEntities,
+    /// Request editor stats (entity count, undo depth, FPS, memory)
+    RequestStats,
+    /// Dump undo/redo stack history
+    RequestUndoStack,
+    /// Show scene state info (entity count, dirty flag)
+    RequestSceneInfo,
+    /// List all panels and their open/closed state
+    RequestPanelList,
+    /// Toggle a panel by name
+    TogglePanel(String),
+    /// Export logs to file
+    ExportLogs(Option<String>),
+    /// Show viewport state (camera pos, render stats)
+    RequestViewportInfo,
+    /// Show asset database statistics
+    RequestAssetDbStats,
+    /// Clear logs for a specific category
+    ClearCategory(String),
 }
 
 /// Log entry with full metadata
@@ -190,8 +208,8 @@ impl ConsolePanel {
             show_timestamps: true,
             show_categories: true,
             show_source_location: false,
-            log_entries: VecDeque::with_capacity(1000),
-            max_entries: 1000,
+            log_entries: VecDeque::with_capacity(5000),
+            max_entries: 5000,
             enabled_categories: std::collections::HashSet::new(),
             all_categories: Vec::new(),
             expanded_stacktraces: std::collections::HashSet::new(),
@@ -238,6 +256,19 @@ impl ConsolePanel {
         self.log_entries.clear();
         self.expanded_stacktraces.clear();
         self.paused_entry_count = 0;
+    }
+
+    /// Clear logs for a specific category
+    pub fn clear_category(&mut self, category: &str) {
+        let cat_lower = category.to_lowercase();
+        self.log_entries.retain(|entry| {
+            entry
+                .category
+                .as_ref()
+                .map(|c| c.to_lowercase() != cat_lower)
+                .unwrap_or(true)
+        });
+        self.expanded_stacktraces.clear();
     }
 
     /// Get entry counts by level
@@ -338,13 +369,24 @@ impl ConsolePanel {
         match parts.first() {
             Some(&"clear") => self.clear(),
             Some(&"help") => {
-                self.push_entry(
-                    LogEntry::new(
-                        "Available commands: clear, help, pause, resume, filter <level>",
-                        LogLevel::Info,
-                    )
-                    .with_category("Console"),
-                );
+                let help_text = "Available commands:\n\
+                    \x20 clear              — Clear all logs\n\
+                    \x20 help               — Show this help\n\
+                    \x20 pause / resume     — Pause/resume log capture\n\
+                    \x20 filter <level>     — Filter by level (all/debug/info/warn/error)\n\
+                    \x20 spawn <type>       — Spawn an entity\n\
+                    \x20 list               — List entities\n\
+                    \x20 stats              — Show editor stats (entities, FPS, memory)\n\
+                    \x20 undo-stack         — Show undo/redo history\n\
+                    \x20 scene-info         — Show scene state\n\
+                    \x20 panels             — List all panels\n\
+                    \x20 panel <name>       — Toggle a panel\n\
+                    \x20 viewport-info      — Show viewport state\n\
+                    \x20 asset-db           — Show asset database stats\n\
+                    \x20 export-logs [path] — Export logs to file\n\
+                    \x20 clear-cat <cat>    — Clear logs for a category\n\
+                    \x20 categories         — List all log categories";
+                self.push_entry(LogEntry::new(help_text, LogLevel::Info).with_category("Console"));
             }
             Some(&"pause") => {
                 self.is_paused = true;
@@ -468,6 +510,64 @@ impl ConsolePanel {
                 logs.push("Listing entities...".into());
                 ConsoleAction::ListEntities
             }
+            Some(&"stats") => {
+                logs.push("Requesting editor stats...".into());
+                ConsoleAction::RequestStats
+            }
+            Some(&"undo-stack") => {
+                logs.push("Requesting undo stack...".into());
+                ConsoleAction::RequestUndoStack
+            }
+            Some(&"scene-info") => {
+                logs.push("Requesting scene info...".into());
+                ConsoleAction::RequestSceneInfo
+            }
+            Some(&"panels") => {
+                logs.push("Listing panels...".into());
+                ConsoleAction::RequestPanelList
+            }
+            Some(&"panel") => {
+                let name = parts.get(1..).map(|p| p.join(" ")).unwrap_or_default();
+                if name.is_empty() {
+                    logs.push("Usage: panel <name>".into());
+                    ConsoleAction::None
+                } else {
+                    logs.push(format!("Toggling panel: {}", name));
+                    ConsoleAction::TogglePanel(name)
+                }
+            }
+            Some(&"viewport-info") => {
+                logs.push("Requesting viewport info...".into());
+                ConsoleAction::RequestViewportInfo
+            }
+            Some(&"asset-db") => {
+                logs.push("Requesting asset database stats...".into());
+                ConsoleAction::RequestAssetDbStats
+            }
+            Some(&"export-logs") => {
+                let path = parts.get(1).map(|s| s.to_string());
+                logs.push("Exporting logs...".into());
+                ConsoleAction::ExportLogs(path)
+            }
+            Some(&"clear-cat") => {
+                let cat = parts.get(1..).map(|p| p.join(" ")).unwrap_or_default();
+                if cat.is_empty() {
+                    logs.push("Usage: clear-cat <category>".into());
+                    ConsoleAction::None
+                } else {
+                    self.clear_category(&cat);
+                    logs.push(format!("Cleared logs for category: {}", cat));
+                    ConsoleAction::None
+                }
+            }
+            Some(&"categories") => {
+                if self.all_categories.is_empty() {
+                    logs.push("No categories recorded yet.".into());
+                } else {
+                    logs.push(format!("Categories: {}", self.all_categories.join(", ")));
+                }
+                ConsoleAction::None
+            }
             Some(unknown) => {
                 logs.push(format!(
                     "Unknown command: {}. Type 'help' for available commands.",
@@ -500,7 +600,15 @@ impl ConsolePanel {
     pub fn show_with_logs(&mut self, ui: &mut Ui, logs: &mut Vec<String>) -> ConsoleAction {
         let mut action = ConsoleAction::None;
 
-        let (total_count, info_count, warning_count, error_count) = Self::get_counts_legacy(logs);
+        // Use structured entry counts (preferred) with legacy fallback
+        let (total, _debug_count, s_info, s_warn, s_error) = self.get_counts();
+        let (legacy_total, l_info, l_warn, l_error) = Self::get_counts_legacy(logs);
+        // Show whichever system has more entries (during migration, structured wins)
+        let (total_count, info_count, warning_count, error_count) = if total >= legacy_total {
+            (total, s_info, s_warn, s_error)
+        } else {
+            (legacy_total, l_info, l_warn, l_error)
+        };
 
         ui.horizontal(|ui| {
             ui.heading("Console");
@@ -525,10 +633,20 @@ impl ConsolePanel {
                 );
             }
 
+            // Show active category count
+            if !self.all_categories.is_empty() {
+                ui.separator();
+                ui.label(
+                    egui::RichText::new(format!("{} categories", self.all_categories.len()))
+                        .color(egui::Color32::GRAY)
+                        .small(),
+                );
+            }
+
             if self.is_paused {
                 ui.separator();
                 ui.label(
-                    egui::RichText::new(format!("⏸ Paused ({} skipped)", self.paused_entry_count))
+                    egui::RichText::new(format!("[PAUSED] ({} skipped)", self.paused_entry_count))
                         .color(egui::Color32::YELLOW),
                 );
             }
@@ -561,6 +679,8 @@ impl ConsolePanel {
             ui.separator();
 
             ui.checkbox(&mut self.auto_scroll, "Auto-scroll");
+            ui.checkbox(&mut self.show_timestamps, "Time");
+            ui.checkbox(&mut self.show_categories, "Cat");
 
             if ui.button("Clear").on_hover_text("Clear all logs").clicked() {
                 logs.clear();
@@ -573,8 +693,14 @@ impl ConsolePanel {
                 .on_hover_text("Copy logs to clipboard")
                 .clicked()
             {
-                let all_logs = logs.join("\n");
-                ui.ctx().copy_text(all_logs);
+                // Prefer structured export
+                let export = self.export_logs();
+                if !export.is_empty() {
+                    ui.ctx().copy_text(export);
+                } else {
+                    let all_logs = logs.join("\n");
+                    ui.ctx().copy_text(all_logs);
+                }
             }
         });
 
@@ -596,38 +722,89 @@ impl ConsolePanel {
         };
 
         scroll.show(ui, |ui| {
-            if collapsed.is_empty() {
-                ui.colored_label(
-                    egui::Color32::GRAY,
-                    if logs.is_empty() {
-                        "No logs yet."
-                    } else {
-                        "No logs match the current filter."
-                    },
-                );
-            } else {
-                for (msg, count) in &collapsed {
-                    let color = if msg.contains("[x]") || msg.to_lowercase().contains("error") {
-                        egui::Color32::from_rgb(255, 100, 100)
-                    } else if msg.contains("[!]") || msg.to_lowercase().contains("warning") {
-                        egui::Color32::from_rgb(255, 200, 100)
-                    } else if msg.contains("[ok]") {
-                        egui::Color32::from_rgb(100, 255, 100)
-                    } else {
-                        egui::Color32::LIGHT_GRAY
-                    };
+            // Display structured log entries (from tracing bridge)
+            let filtered_entries = self.filter_entries();
+            let has_structured = !filtered_entries.is_empty();
 
-                    if *count > 1 {
-                        ui.horizontal(|ui| {
-                            ui.colored_label(color, *msg);
+            if has_structured {
+                for (_idx, entry) in &filtered_entries {
+                    ui.horizontal(|ui| {
+                        // Timestamp
+                        if self.show_timestamps {
                             ui.label(
-                                egui::RichText::new(format!("×{}", count))
-                                    .color(egui::Color32::from_rgb(180, 180, 255))
-                                    .small(),
+                                egui::RichText::new(entry.format_timestamp())
+                                    .color(egui::Color32::DARK_GRAY)
+                                    .small()
+                                    .monospace(),
                             );
-                        });
-                    } else {
-                        ui.colored_label(color, *msg);
+                        }
+
+                        // Category badge
+                        if self.show_categories {
+                            if let Some(cat) = &entry.category {
+                                ui.label(
+                                    egui::RichText::new(format!("[{}]", cat))
+                                        .color(egui::Color32::from_rgb(120, 180, 220))
+                                        .small(),
+                                );
+                            }
+                        }
+
+                        // Level-colored message
+                        let color = entry.level.color();
+                        ui.colored_label(color, &entry.message);
+
+                        // Source location (small, gray)
+                        if self.show_source_location {
+                            if let (Some(file), Some(line)) =
+                                (&entry.source_file, entry.source_line)
+                            {
+                                ui.label(
+                                    egui::RichText::new(format!("{}:{}", file, line))
+                                        .color(egui::Color32::DARK_GRAY)
+                                        .small(),
+                                );
+                            }
+                        }
+                    });
+                }
+            }
+
+            // Also display legacy logs if structured entries are sparse
+            if !has_structured {
+                if collapsed.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::GRAY,
+                        if logs.is_empty() {
+                            "No logs yet."
+                        } else {
+                            "No logs match the current filter."
+                        },
+                    );
+                } else {
+                    for (msg, count) in &collapsed {
+                        let color = if msg.contains("[x]") || msg.to_lowercase().contains("error") {
+                            egui::Color32::from_rgb(255, 100, 100)
+                        } else if msg.contains("[!]") || msg.to_lowercase().contains("warning") {
+                            egui::Color32::from_rgb(255, 200, 100)
+                        } else if msg.contains("[ok]") {
+                            egui::Color32::from_rgb(100, 255, 100)
+                        } else {
+                            egui::Color32::LIGHT_GRAY
+                        };
+
+                        if *count > 1 {
+                            ui.horizontal(|ui| {
+                                ui.colored_label(color, *msg);
+                                ui.label(
+                                    egui::RichText::new(format!("x{}", count))
+                                        .color(egui::Color32::from_rgb(180, 180, 255))
+                                        .small(),
+                                );
+                            });
+                        } else {
+                            ui.colored_label(color, *msg);
+                        }
                     }
                 }
             }

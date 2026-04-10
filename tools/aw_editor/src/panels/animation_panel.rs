@@ -8,6 +8,7 @@
 //! - Animation events and curves
 
 use egui::{Color32, RichText, Ui, Vec2};
+use tracing::info;
 
 use crate::panels::Panel;
 
@@ -953,6 +954,7 @@ impl AnimationPanel {
 
     /// Queue an action for external handling.
     fn queue_action(&mut self, action: AnimationAction) {
+        info!(target: "aw_editor::panels::animation_panel", action = %action, "Animation action queued");
         self.pending_actions.push(action);
     }
 
@@ -1185,6 +1187,7 @@ impl AnimationPanel {
 
             if ui.button("+ New").clicked() {
                 let id = self.next_clip_id();
+                info!(target: "aw_editor::panels::animation_panel", clip_id = id, "New animation clip created");
                 let new_clip = AnimationClip {
                     id,
                     name: format!("Clip {}", id),
@@ -1197,6 +1200,7 @@ impl AnimationPanel {
 
             if ui.button("Duplicate").clicked() {
                 let id = self.next_clip_id();
+                info!(target: "aw_editor::panels::animation_panel", clip_id = id, source = %self.current_clip.name, "Animation clip duplicated");
                 let mut dup = self.current_clip.clone();
                 dup.id = id;
                 dup.name = format!("{} (Copy)", dup.name);
@@ -1276,8 +1280,10 @@ impl AnimationPanel {
                     .clicked()
                 {
                     self.preview_playing = !self.preview_playing;
+                    info!(target: "aw_editor::panels::animation_panel", playing = self.preview_playing, "Timeline playback toggled");
                 }
                 if ui.button("⏹").clicked() {
+                    info!(target: "aw_editor::panels::animation_panel", "Timeline playback stopped");
                     self.preview_playing = false;
                     self.preview_time = 0.0;
                 }
@@ -1613,6 +1619,7 @@ impl AnimationPanel {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Events").strong());
                 if ui.button("+ Add Event").clicked() {
+                    info!(target: "aw_editor::panels::animation_panel", time = self.preview_time, "Animation event added");
                     self.current_clip.events.push(AnimationEvent {
                         id: self.current_clip.events.len() as u32 + 1,
                         time: self.preview_time,
@@ -1662,6 +1669,7 @@ impl AnimationPanel {
 
             if ui.button("+ New").clicked() {
                 let id = self.next_controller_id();
+                info!(target: "aw_editor::panels::animation_panel", controller_id = id, "New animation controller created");
                 let new_ctrl = AnimationController {
                     id,
                     name: format!("Controller {}", id),
@@ -1681,6 +1689,7 @@ impl AnimationPanel {
                 ui.label(RichText::new("States").strong());
                 if ui.button("+ Add State").clicked() {
                     let id = self.next_state_id();
+                    info!(target: "aw_editor::panels::animation_panel", state_id = id, "State added to animation controller");
                     self.current_controller.states.push(AnimationState {
                         id,
                         name: format!("State {}", id),
@@ -1744,6 +1753,7 @@ impl AnimationPanel {
                     let from = self.current_controller.states[0].id;
                     let to = self.current_controller.states[1].id;
                     let id = self.next_transition_id();
+                    info!(target: "aw_editor::panels::animation_panel", transition_id = id, from_state = from, to_state = to, "State transition added");
                     self.current_controller.transitions.push(StateTransition {
                         id,
                         from_state: from,
@@ -1794,6 +1804,7 @@ impl AnimationPanel {
         ui.horizontal(|ui| {
             if ui.button("+ New Blend Tree").clicked() {
                 let id = self.current_controller.blend_trees.len() as u32 + 1;
+                info!(target: "aw_editor::panels::animation_panel", blend_tree_id = id, "New blend tree created");
                 self.current_controller.blend_trees.push(BlendTree {
                     id,
                     name: format!("Blend Tree {}", id),
@@ -1876,6 +1887,7 @@ impl AnimationPanel {
         ui.horizontal(|ui| {
             if ui.button("+ Add Layer").clicked() {
                 let id = self.current_controller.layers.len() as u32 + 1;
+                info!(target: "aw_editor::panels::animation_panel", layer_id = id, "Animation layer added");
                 self.current_controller.layers.push(AnimationLayer {
                     id,
                     name: format!("Layer {}", id),
@@ -1941,6 +1953,7 @@ impl AnimationPanel {
         ui.horizontal(|ui| {
             if ui.button("+ Float").clicked() {
                 let id = self.next_parameter_id();
+                info!(target: "aw_editor::panels::animation_panel", param_id = id, param_type = "Float", "Animation parameter added");
                 self.current_controller.parameters.push(AnimationParameter {
                     id,
                     name: format!("Float{}", id),
@@ -1950,6 +1963,7 @@ impl AnimationPanel {
             }
             if ui.button("+ Int").clicked() {
                 let id = self.next_parameter_id();
+                info!(target: "aw_editor::panels::animation_panel", param_id = id, param_type = "Int", "Animation parameter added");
                 self.current_controller.parameters.push(AnimationParameter {
                     id,
                     name: format!("Int{}", id),
@@ -1959,6 +1973,7 @@ impl AnimationPanel {
             }
             if ui.button("+ Bool").clicked() {
                 let id = self.next_parameter_id();
+                info!(target: "aw_editor::panels::animation_panel", param_id = id, param_type = "Bool", "Animation parameter added");
                 self.current_controller.parameters.push(AnimationParameter {
                     id,
                     name: format!("Bool{}", id),
@@ -1968,6 +1983,7 @@ impl AnimationPanel {
             }
             if ui.button("+ Trigger").clicked() {
                 let id = self.next_parameter_id();
+                info!(target: "aw_editor::panels::animation_panel", param_id = id, param_type = "Trigger", "Animation parameter added");
                 self.current_controller.parameters.push(AnimationParameter {
                     id,
                     name: format!("Trigger{}", id),
@@ -2163,8 +2179,10 @@ impl AnimationPanel {
                     .clicked()
                 {
                     self.preview_playing = !self.preview_playing;
+                    info!(target: "aw_editor::panels::animation_panel", playing = self.preview_playing, "IK/Procedural preview playback toggled");
                 }
                 if ui.button("[] Stop").clicked() {
+                    info!(target: "aw_editor::panels::animation_panel", "IK/Procedural preview playback stopped");
                     self.preview_playing = false;
                     self.preview_time = 0.0;
                 }

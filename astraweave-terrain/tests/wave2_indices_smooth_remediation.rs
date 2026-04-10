@@ -123,7 +123,7 @@ fn generate_indices_row_offset_uses_multiplication() {
         indices[cell_offset]
     );
     assert_eq!(indices[cell_offset + 1], 12); // base + resolution = 8+4
-    assert_eq!(indices[cell_offset + 2], 9);  // base + 1
+    assert_eq!(indices[cell_offset + 2], 9); // base + 1
 }
 
 #[test]

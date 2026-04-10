@@ -1,7 +1,5 @@
 //! Physically-based bloom with energy-conserving 13-tap downsample and tent upsample.
 
-use wgpu::util::DeviceExt;
-
 /// GPU-side uniform for bloom downsample.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -59,8 +57,18 @@ pub struct BloomPass {
     /// Mip chain textures (from full res down to smallest).
     mip_textures: Vec<wgpu::Texture>,
     mip_views: Vec<wgpu::TextureView>,
+    /// Pre-allocated per-mip uniform buffers for downsample params (one per mip).
+    down_params_bufs: Vec<wgpu::Buffer>,
+    /// Pre-allocated per-mip uniform buffers for upsample params (one per mip).
+    up_params_bufs: Vec<wgpu::Buffer>,
+    /// Cached sampler (reused every frame).
+    sampler: wgpu::Sampler,
     width: u32,
     height: u32,
+    /// Cached downsample bind groups (one per mip level).
+    cached_down_bgs: crate::bind_group_cache::CachedBindGroupSet,
+    /// Cached upsample bind groups (one per mip level - 1).
+    cached_up_bgs: crate::bind_group_cache::CachedBindGroupSet,
 }
 
 impl BloomPass {
@@ -154,16 +162,48 @@ impl BloomPass {
             cache: None,
         });
 
+        let mip_count = config.mip_count as usize;
+
         Self {
             config,
             downsample_pipeline,
             upsample_pipeline,
             down_bgl,
             up_bgl,
+            down_params_bufs: (0..mip_textures.len())
+                .map(|i| {
+                    device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some(&format!("bloom_down_params_{i}")),
+                        size: std::mem::size_of::<BloomDownsampleParams>() as u64,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    })
+                })
+                .collect(),
+            up_params_bufs: (0..mip_textures.len())
+                .map(|i| {
+                    device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some(&format!("bloom_up_params_{i}")),
+                        size: std::mem::size_of::<BloomUpsampleParams>() as u64,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    })
+                })
+                .collect(),
+            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("bloom_sampler"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            }),
             mip_textures,
             mip_views,
             width,
             height,
+            cached_down_bgs: crate::bind_group_cache::CachedBindGroupSet::new(mip_count),
+            cached_up_bgs: crate::bind_group_cache::CachedBindGroupSet::new(
+                mip_count.saturating_sub(1),
+            ),
         }
     }
 
@@ -189,90 +229,132 @@ impl BloomPass {
     ///
     /// `scene_view` is the HDR scene texture to extract bloom from.
     /// After execution, `bloom_view()` contains the final bloom result.
+    /// `resource_gen` is the renderer's generation counter; bind groups are
+    /// rebuilt only when it changes (e.g., after a resize).
     pub fn execute(
-        &self,
+        &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         scene_view: &wgpu::TextureView,
         threshold: f32,
         intensity: f32,
+        resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled || self.mip_views.is_empty() {
             return;
         }
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("bloom_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
-        // --- Downsample chain (scene → mip[0] → mip[1] → ...) ---
+        // --- Rebuild cached bind groups when resource generation changes ---
+        // Downsample BGs
         let mut src_width = self.width;
         let mut src_height = self.height;
-
         for i in 0..self.mip_views.len() {
-            let dst_w = (src_width / 2).max(1);
-            let dst_h = (src_height / 2).max(1);
-
             let src_view = if i == 0 {
                 scene_view
             } else {
                 &self.mip_views[i - 1]
             };
 
+            if !self.cached_down_bgs.is_valid(i, resource_gen) {
+                let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("bloom_down_bg"),
+                    layout: &self.down_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(src_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: self.down_params_bufs[i].as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(&self.mip_views[i]),
+                        },
+                    ],
+                });
+                self.cached_down_bgs.set(i, bg, resource_gen);
+            }
+            src_width = (src_width / 2).max(1);
+            src_height = (src_height / 2).max(1);
+        }
+
+        // Upsample BGs
+        if self.mip_views.len() >= 2 {
+            for i in (0..self.mip_views.len() - 1).rev() {
+                if !self.cached_up_bgs.is_valid(i, resource_gen) {
+                    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("bloom_up_bg"),
+                        layout: &self.up_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(
+                                    &self.mip_views[i + 1],
+                                ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&self.mip_views[i]),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::Sampler(&self.sampler),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: self.up_params_bufs[i].as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 4,
+                                resource: wgpu::BindingResource::TextureView(&self.mip_views[i]),
+                            },
+                        ],
+                    });
+                    self.cached_up_bgs.set(i, bg, resource_gen);
+                }
+            }
+        }
+
+        // --- Dispatch downsample chain ---
+        src_width = self.width;
+        src_height = self.height;
+
+        for i in 0..self.mip_views.len() {
+            let dst_w = (src_width / 2).max(1);
+            let dst_h = (src_height / 2).max(1);
+
             let params = BloomDownsampleParams {
                 inv_resolution: [1.0 / src_width as f32, 1.0 / src_height as f32],
-                threshold: if i == 0 { threshold } else { 0.0 }, // only threshold on first pass
+                threshold: if i == 0 { threshold } else { 0.0 },
                 soft_knee: self.config.soft_knee,
             };
-            let params_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("bloom_down_params"),
-                contents: bytemuck::bytes_of(&params),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-
-            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("bloom_down_bg"),
-                layout: &self.down_bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(src_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: params_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::TextureView(&self.mip_views[i]),
-                    },
-                ],
-            });
+            queue.write_buffer(&self.down_params_bufs[i], 0, bytemuck::bytes_of(&params));
 
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("bloom_downsample"),
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.downsample_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
+            let bg = self
+                .cached_down_bgs
+                .get_or_rebuild(i, resource_gen, || unreachable!());
+            pass.set_bind_group(0, bg, &[]);
             pass.dispatch_workgroups((dst_w + 7) / 8, (dst_h + 7) / 8, 1);
 
             src_width = dst_w;
             src_height = dst_h;
         }
 
-        // --- Upsample chain (mip[n-1] → mip[n-2] → ... → mip[0]) ---
+        // --- Dispatch upsample chain ---
         if self.mip_views.len() >= 2 {
             for i in (0..self.mip_views.len() - 1).rev() {
-                let coarse_view = &self.mip_views[i + 1];
-                let fine_view = &self.mip_views[i];
                 let fine_w = (self.width / 2u32.pow(i as u32 + 1)).max(1);
                 let fine_h = (self.height / 2u32.pow(i as u32 + 1)).max(1);
 
@@ -282,45 +364,17 @@ impl BloomPass {
                     intensity: weight,
                     _pad: 0.0,
                 };
-                let params_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("bloom_up_params"),
-                    contents: bytemuck::bytes_of(&params),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-
-                let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("bloom_up_bg"),
-                    layout: &self.up_bgl,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(coarse_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(fine_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::Sampler(&sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: params_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 4,
-                            resource: wgpu::BindingResource::TextureView(fine_view),
-                        },
-                    ],
-                });
+                queue.write_buffer(&self.up_params_bufs[i], 0, bytemuck::bytes_of(&params));
 
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("bloom_upsample"),
                     timestamp_writes: None,
                 });
                 pass.set_pipeline(&self.upsample_pipeline);
-                pass.set_bind_group(0, &bg, &[]);
+                let bg = self
+                    .cached_up_bgs
+                    .get_or_rebuild(i, resource_gen, || unreachable!());
+                pass.set_bind_group(0, bg, &[]);
                 pass.dispatch_workgroups((fine_w + 7) / 8, (fine_h + 7) / 8, 1);
             }
         }

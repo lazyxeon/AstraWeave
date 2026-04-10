@@ -142,24 +142,30 @@ pub mod overlay; // NEW (for cutscene fades/letterbox later)
 pub mod transparency; // Transparency depth sorting and render pass // Advanced post-processing (TAA, motion blur, DOF, color grading)
 
 // GPU memory management and SSAO
+pub mod bind_group_cache; // Generation-tracked bind group cache
 pub mod gpu_memory; // GPU memory budget tracking and enforcement
+pub mod gpu_profiler; // GPU timestamp profiler for per-pass performance analysis
 #[cfg(feature = "ssao")]
-pub mod ssao; // Screen-space ambient occlusion
+pub mod ssao;
+pub mod staging_ring; // Per-frame ring buffer for transient GPU allocations // Screen-space ambient occlusion
 
 pub use advanced_post::{
     AdvancedPostFx, ColorGradingConfig, DofConfig, MotionBlurConfig, TaaConfig,
 };
 pub use asset_index::{AssetIndex, HdriRef as AssetHdriRef, MaterialSetEntry, TextureEntry};
 pub use atmosphere::{AtmosphereConfig, AtmospherePass};
+pub use bind_group_cache::{CachedBindGroup, CachedBindGroupSet, Generation};
 pub use biome_detector::{BiomeDetector, BiomeDetectorConfig, BiomeTransition};
 pub use biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
 pub use biome_transition::{BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect};
 pub use brdf_lut::{BrdfLutConfig, BrdfLutPass};
 pub use culling::{
-    batch_visible_instances, build_indirect_commands_cpu, cpu_frustum_cull, BatchId,
-    CullingPipeline, CullingResources, DrawBatch, DrawIndirectCommand, FrustumPlanes, InstanceAABB,
+    batch_visible_instances, build_indirect_commands_cpu, cpu_frustum_cull,
+    dispatch_indexed_indirect_draws, dispatch_multi_draw_indexed_indirect, BatchId,
+    CullingPipeline, CullingResources, DrawBatch, DrawIndexedIndirectCommand, DrawIndirectCommand,
+    FrustumPlanes, IndirectDrawPipeline, IndirectDrawResources, InstanceAABB,
 };
-pub use culling_node::CullingNode;
+pub use culling_node::{CullingNode, IndirectCullingNode};
 pub use decals::{Decal, DecalAtlas, DecalBlendMode, DecalSystem, GpuDecal, DECAL_SHADER};
 pub use deferred::{DeferredRenderer, GBuffer, GBufferFormats};
 pub use disney_material::{evaluate_disney_brdf, BrdfResult, BRDF_LUT_WGSL, DISNEY_BRDF_WGSL};
@@ -169,6 +175,7 @@ pub use final_gather::{FinalGatherConfig, FinalGatherParams, FinalGatherPass};
 pub use god_rays::{sun_to_screen, GodRayConfig, GodRayParams, GodRayPass};
 pub use gpu_memory::{GpuMemoryBudget, MemoryCategory};
 pub use gpu_particles::{EmitterParams, GpuParticle, GpuParticleSystem};
+pub use gpu_profiler::{GpuProfiler, PassTiming};
 pub use hdri_catalog::{DayPeriod, HdriCatalog, HdriEntry};
 pub use ibl::{IblManager, IblQuality, IblResources, SkyMode};
 pub use lumen::{LumenConfig, LumenGI, LumenQuality};
@@ -197,6 +204,7 @@ pub use residency::ResidencyManager;
 pub use scene_environment::{
     SceneEnvironment, SceneEnvironmentUBO, WGSL_FOG_FUNCTIONS, WGSL_SCENE_ENVIRONMENT,
 };
+pub use staging_ring::{StagingRing, SubAllocation};
 pub use surface_cache::{
     DirectionalLightGpu, ProbeSH, SurfaceCacheConfig, SurfaceCacheParams, SurfaceCachePass,
 };

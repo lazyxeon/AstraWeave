@@ -44,75 +44,131 @@ fn bin_to_luminance(bin: u32) -> f32 {
     return exp2(log_lum);
 }
 
-// Pass 1: Build histogram
+// Pass 1: Build histogram using per-workgroup shared histogram to reduce global atomic contention
+var<workgroup> local_histogram: array<atomic<u32>, 256>;
+
 @compute @workgroup_size(16, 16, 1)
-fn histogram_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let dims = vec2<u32>(params.resolution);
-    if (gid.x >= dims.x || gid.y >= dims.y) {
-        return;
+fn histogram_pass(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_index) li: u32,
+) {
+    // Initialize local histogram (256 threads match 256 bins exactly)
+    if (li < 256u) {
+        atomicStore(&local_histogram[li], 0u);
     }
+    workgroupBarrier();
 
-    let uv = (vec2<f32>(gid.xy) + 0.5) * params.inv_resolution;
-    let color = textureSampleLevel(hdr_tex, samp, uv, 0.0).rgb;
-    let lum = luminance(color);
-    let bin = luminance_to_bin(lum);
+    // Each thread bins its pixel into the per-workgroup shared histogram
+    let dims = vec2<u32>(params.resolution);
+    if (gid.x < dims.x && gid.y < dims.y) {
+        let uv = (vec2<f32>(gid.xy) + 0.5) * params.inv_resolution;
+        let color = textureSampleLevel(hdr_tex, samp, uv, 0.0).rgb;
+        let lum = luminance(color);
+        let bin = luminance_to_bin(lum);
+        atomicAdd(&local_histogram[bin], 1u);
+    }
+    workgroupBarrier();
 
-    atomicAdd(&histogram[bin], 1u);
+    // Merge local histogram into global (each thread merges one bin)
+    if (li < 256u) {
+        let count = atomicLoad(&local_histogram[li]);
+        if (count > 0u) {
+            atomicAdd(&histogram[li], count);
+        }
+    }
 }
 
 // Pass 2: Compute average luminance from histogram and adapt exposure
-@compute @workgroup_size(1, 1, 1)
-fn average_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
+// Uses 256 threads (one per bin) with workgroup shared memory reduction
+var<workgroup> shared_weighted: array<f32, 256>;
+var<workgroup> shared_count: array<u32, 256>;
+
+@compute @workgroup_size(256, 1, 1)
+fn average_pass(@builtin(local_invocation_id) lid: vec3<u32>) {
+    let bin = lid.x;
     let total_pixels = u32(params.resolution.x * params.resolution.y);
     let low_count = u32(f32(total_pixels) * params.low_percentile);
     let high_count = u32(f32(total_pixels) * params.high_percentile);
 
-    // Accumulate histogram, ignoring low and high percentiles
-    var running_count = 0u;
+    // Each thread loads its histogram bin count
+    let count = atomicLoad(&histogram[bin]);
+    // Reset bin for next frame
+    atomicStore(&histogram[bin], 0u);
+
+    // Compute exclusive prefix sum of counts to determine bin boundaries
+    // Use a simple serial scan from thread 0 (fast for 256 elements)
+    // We store per-bin running totals in shared memory
+    shared_count[bin] = count;
+    workgroupBarrier();
+
+    // Thread 0 does a serial prefix scan over 256 elements and computes
+    // per-bin included counts, then writes partial results for all threads
+    // (This is fast: 256 iterations on one warp, <1µs)
     var weighted_sum = 0.0;
     var valid_count = 0u;
 
-    for (var bin = 0u; bin < 256u; bin++) {
-        let count = atomicLoad(&histogram[bin]);
-        let prev_running = running_count;
-        running_count += count;
+    if (bin == 0u) {
+        var running_count = 0u;
+        for (var i = 0u; i < 256u; i++) {
+            let c = shared_count[i];
+            let prev_running = running_count;
+            running_count += c;
 
-        // Skip bins below low percentile or above high percentile
-        if (running_count <= low_count || prev_running >= high_count) {
-            // Reset bin for next frame
-            atomicStore(&histogram[bin], 0u);
-            continue;
+            if (running_count <= low_count || prev_running >= high_count) {
+                shared_weighted[i] = 0.0;
+                shared_count[i] = 0u;
+                continue;
+            }
+
+            var included = c;
+            if (prev_running < low_count) {
+                included -= (low_count - prev_running);
+            }
+            if (running_count > high_count) {
+                included -= (running_count - high_count);
+            }
+
+            let bin_lum = bin_to_luminance(i);
+            shared_weighted[i] = bin_lum * f32(included);
+            shared_count[i] = included;
         }
+    }
+    workgroupBarrier();
 
-        // Partial inclusion for boundary bins
-        var included = count;
-        if (prev_running < low_count) {
-            included -= (low_count - prev_running);
+    // Parallel reduction of weighted_sum and valid_count using shared memory
+    // Each thread starts with its own bin's contribution
+    var my_weighted = shared_weighted[bin];
+    var my_count = shared_count[bin];
+
+    // Tree reduction: 8 steps for 256 elements (log2(256) = 8)
+    for (var stride = 128u; stride > 0u; stride >>= 1u) {
+        if (bin < stride) {
+            my_weighted += shared_weighted[bin + stride];
+            my_count += shared_count[bin + stride];
+            shared_weighted[bin] = my_weighted;
+            shared_count[bin] = my_count;
         }
-        if (running_count > high_count) {
-            included -= (running_count - high_count);
-        }
-
-        let bin_lum = bin_to_luminance(bin);
-        weighted_sum += bin_lum * f32(included);
-        valid_count += included;
-
-        // Reset bin for next frame
-        atomicStore(&histogram[bin], 0u);
+        workgroupBarrier();
     }
 
-    let avg_lum = select(0.18, weighted_sum / f32(max(valid_count, 1u)), valid_count > 0u);
+    // Thread 0 writes final exposure
+    if (bin == 0u) {
+        let final_weighted = shared_weighted[0];
+        let final_count = shared_count[0];
 
-    // Target exposure: EV = log2(avg_lum / 0.18)
-    let target_ev = -log2(avg_lum / 0.18 + 0.001);
+        let avg_lum = select(0.18, final_weighted / f32(max(final_count, 1u)), final_count > 0u);
 
-    // Temporal adaptation (smooth transition)
-    let current_ev = exposure_data[0];
-    let adapted_ev = mix(current_ev, target_ev, 1.0 - exp(-params.time_delta * params.adaptation_speed));
+        // Target exposure: EV = log2(avg_lum / 0.18)
+        let target_ev = -log2(avg_lum / 0.18 + 0.001);
 
-    // Manual override
-    let final_ev = select(adapted_ev, params.target_exposure, params.target_exposure != 0.0);
+        // Temporal adaptation (smooth transition)
+        let current_ev = exposure_data[0];
+        let adapted_ev = mix(current_ev, target_ev, 1.0 - exp(-params.time_delta * params.adaptation_speed));
 
-    exposure_data[0] = final_ev;
-    exposure_data[1] = target_ev;
+        // Manual override
+        let final_ev = select(adapted_ev, params.target_exposure, params.target_exposure != 0.0);
+
+        exposure_data[0] = final_ev;
+        exposure_data[1] = target_ev;
+    }
 }

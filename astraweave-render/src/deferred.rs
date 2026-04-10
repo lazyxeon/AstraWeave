@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use wgpu;
+use wgpu::util::DeviceExt;
 
 /// G-buffer texture format configuration
 #[derive(Debug, Clone, Copy)]
@@ -11,8 +12,6 @@ pub struct GBufferFormats {
     pub albedo: wgpu::TextureFormat,
     /// Normal + metallic (RGBA16Float for precision)
     pub normal: wgpu::TextureFormat,
-    /// Position + AO (RGBA16Float)
-    pub position: wgpu::TextureFormat,
     /// Emissive (RGBA8)
     pub emissive: wgpu::TextureFormat,
     /// Velocity / motion vectors (RG16Float — screen-space pixel delta)
@@ -26,7 +25,6 @@ impl Default for GBufferFormats {
         Self {
             albedo: wgpu::TextureFormat::Rgba8UnormSrgb,
             normal: wgpu::TextureFormat::Rgba16Float,
-            position: wgpu::TextureFormat::Rgba16Float,
             emissive: wgpu::TextureFormat::Rgba8UnormSrgb,
             velocity: wgpu::TextureFormat::Rg16Float,
             depth: wgpu::TextureFormat::Depth32Float,
@@ -43,10 +41,6 @@ pub struct GBuffer {
     /// Normal texture (RGB = normal, A = metallic)
     pub normal_texture: wgpu::Texture,
     pub normal_view: wgpu::TextureView,
-
-    /// Position texture (RGB = world position, A = AO)
-    pub position_texture: wgpu::Texture,
-    pub position_view: wgpu::TextureView,
 
     /// Emissive texture
     pub emissive_texture: wgpu::Texture,
@@ -103,19 +97,6 @@ impl GBuffer {
         });
         let normal_view = normal_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Position texture
-        let position_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("GBuffer Position"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: formats.position,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let position_view = position_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
         // Emissive texture
         let emissive_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("GBuffer Emissive"),
@@ -160,8 +141,6 @@ impl GBuffer {
             albedo_view,
             normal_texture,
             normal_view,
-            position_texture,
-            position_view,
             emissive_texture,
             emissive_view,
             velocity_texture,
@@ -184,8 +163,8 @@ impl GBuffer {
     }
 
     /// Get color attachment descriptors for G-buffer pass (without velocity).
-    /// Use `color_attachments_with_velocity()` for the full 5-target MRT.
-    pub fn color_attachments(&self) -> [Option<wgpu::RenderPassColorAttachment<'_>>; 4] {
+    /// Use `color_attachments_with_velocity()` for the full 4-target MRT.
+    pub fn color_attachments(&self) -> [Option<wgpu::RenderPassColorAttachment<'_>>; 3] {
         [
             Some(wgpu::RenderPassColorAttachment {
                 view: &self.albedo_view,
@@ -197,14 +176,6 @@ impl GBuffer {
             }),
             Some(wgpu::RenderPassColorAttachment {
                 view: &self.normal_view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            }),
-            Some(wgpu::RenderPassColorAttachment {
-                view: &self.position_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -225,7 +196,7 @@ impl GBuffer {
     /// Get color attachment descriptors including velocity buffer for motion vectors.
     pub fn color_attachments_with_velocity(
         &self,
-    ) -> [Option<wgpu::RenderPassColorAttachment<'_>>; 5] {
+    ) -> [Option<wgpu::RenderPassColorAttachment<'_>>; 4] {
         [
             Some(wgpu::RenderPassColorAttachment {
                 view: &self.albedo_view,
@@ -237,14 +208,6 @@ impl GBuffer {
             }),
             Some(wgpu::RenderPassColorAttachment {
                 view: &self.normal_view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            }),
-            Some(wgpu::RenderPassColorAttachment {
-                view: &self.position_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -295,9 +258,14 @@ pub struct DeferredRenderer {
     /// Light accumulation bind group
     light_bind_group: wgpu::BindGroup,
 
-    /// Bind group layout (used in new())
-    #[allow(dead_code)]
+    /// Bind group layout (used for rebuilding after resize)
     bind_group_layout: wgpu::BindGroupLayout,
+
+    /// Inverse view-projection uniform buffer for position reconstruction
+    inv_vp_buf: wgpu::Buffer,
+
+    /// Sampler (cached, reused across frames)
+    sampler: wgpu::Sampler,
 }
 
 impl DeferredRenderer {
@@ -305,6 +273,14 @@ impl DeferredRenderer {
     pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Result<Self> {
         let formats = GBufferFormats::default();
         let gbuffer = GBuffer::new(device, width, height, formats);
+
+        // Inverse VP uniform buffer (mat4x4<f32> = 64 bytes)
+        let identity_cols = glam::Mat4::IDENTITY.to_cols_array();
+        let inv_vp_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Deferred InvVP"),
+            contents: bytemuck::cast_slice(&identity_cols),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
 
         // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -332,12 +308,12 @@ impl DeferredRenderer {
                     },
                     count: None,
                 },
-                // Position texture
+                // Depth texture (replaces position — reconstruct world pos from depth + inv VP)
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -359,6 +335,17 @@ impl DeferredRenderer {
                     binding: 4,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                // Inverse view-projection matrix
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
                     count: None,
                 },
             ],
@@ -391,7 +378,7 @@ impl DeferredRenderer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&gbuffer.position_view),
+                    resource: wgpu::BindingResource::TextureView(&gbuffer.depth_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
@@ -400,6 +387,10 @@ impl DeferredRenderer {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: inv_vp_buf.as_entire_binding(),
                 },
             ],
         });
@@ -451,6 +442,8 @@ impl DeferredRenderer {
             light_pipeline,
             light_bind_group,
             bind_group_layout,
+            inv_vp_buf,
+            sampler,
         })
     }
 
@@ -462,6 +455,46 @@ impl DeferredRenderer {
     /// Get G-buffer (mutable)
     pub fn gbuffer_mut(&mut self) -> &mut GBuffer {
         &mut self.gbuffer
+    }
+
+    /// Upload the inverse view-projection matrix for this frame.
+    pub fn update_inv_vp(&self, queue: &wgpu::Queue, inv_vp: &glam::Mat4) {
+        let cols = inv_vp.to_cols_array();
+        queue.write_buffer(&self.inv_vp_buf, 0, bytemuck::cast_slice(&cols));
+    }
+
+    /// Rebuild the light bind group after a GBuffer resize.
+    pub fn rebuild_bind_group(&mut self, device: &wgpu::Device) {
+        self.light_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Deferred Light Bind Group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.gbuffer.albedo_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&self.gbuffer.normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&self.gbuffer.depth_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&self.gbuffer.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: self.inv_vp_buf.as_entire_binding(),
+                },
+            ],
+        });
     }
 
     /// Perform light accumulation pass
@@ -487,13 +520,18 @@ impl DeferredRenderer {
     }
 }
 
-/// Deferred lighting shader
+/// Deferred lighting shader — reconstructs world position from depth + inverse VP.
 const DEFERRED_LIGHT_SHADER: &str = r#"
 @group(0) @binding(0) var albedo_tex: texture_2d<f32>;
 @group(0) @binding(1) var normal_tex: texture_2d<f32>;
-@group(0) @binding(2) var position_tex: texture_2d<f32>;
+@group(0) @binding(2) var depth_tex: texture_depth_2d;
 @group(0) @binding(3) var emissive_tex: texture_2d<f32>;
 @group(0) @binding(4) var tex_sampler: sampler;
+
+struct InvVP {
+    m: mat4x4<f32>,
+};
+@group(0) @binding(5) var<uniform> inv_vp: InvVP;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -516,24 +554,27 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     // Sample G-buffer
     let albedo = textureSample(albedo_tex, tex_sampler, input.uv);
     let normal_metallic = textureSample(normal_tex, tex_sampler, input.uv);
-    let position_ao = textureSample(position_tex, tex_sampler, input.uv);
     let emissive = textureSample(emissive_tex, tex_sampler, input.uv);
-    
-    let world_pos = position_ao.xyz;
+
+    // Reconstruct world position from depth + inverse view-projection
+    let depth = textureSample(depth_tex, tex_sampler, input.uv);
+    let ndc = vec4<f32>(input.uv * 2.0 - 1.0, depth, 1.0);
+    let world_h = inv_vp.m * ndc;
+    let world_pos = world_h.xyz / world_h.w;
+
     let normal = normalize(normal_metallic.xyz * 2.0 - 1.0);
     let roughness = albedo.a;
     let metallic = normal_metallic.a;
-    let ao = position_ao.a;
-    
+
     // Simple directional light (placeholder for full lighting)
     let light_dir = normalize(vec3<f32>(0.5, 1.0, 0.3));
     let n_dot_l = max(dot(normal, light_dir), 0.0);
-    
+
     let diffuse = albedo.rgb * n_dot_l;
-    let ambient = albedo.rgb * 0.1 * ao;
-    
+    let ambient = albedo.rgb * 0.1;
+
     let final_color = diffuse + ambient + emissive.rgb;
-    
+
     return vec4<f32>(final_color, 1.0);
 }
 "#;
@@ -556,20 +597,17 @@ mod tests {
         let f = GBufferFormats::default();
         assert_eq!(f.albedo, wgpu::TextureFormat::Rgba8UnormSrgb);
         assert_eq!(f.normal, wgpu::TextureFormat::Rgba16Float);
-        assert_eq!(f.position, wgpu::TextureFormat::Rgba16Float);
         assert_eq!(f.emissive, wgpu::TextureFormat::Rgba8UnormSrgb);
         assert_eq!(f.velocity, wgpu::TextureFormat::Rg16Float);
         assert_eq!(f.depth, wgpu::TextureFormat::Depth32Float);
     }
 
     #[test]
-    fn gbuffer_has_six_attachment_formats() {
-        // 5 color (albedo, normal, position, emissive, velocity) + 1 depth
+    fn gbuffer_has_five_attachment_formats() {
+        // 4 color (albedo, normal, emissive, velocity) + 1 depth
         let f = GBufferFormats::default();
-        let formats = [
-            f.albedo, f.normal, f.position, f.emissive, f.velocity, f.depth,
-        ];
-        assert_eq!(formats.len(), 6);
+        let formats = [f.albedo, f.normal, f.emissive, f.velocity, f.depth];
+        assert_eq!(formats.len(), 5);
     }
 
     #[test]
@@ -586,30 +624,45 @@ mod tests {
     }
 
     #[test]
-    fn deferred_light_shader_has_five_bindings() {
-        // 4 textures + 1 sampler in group(0)
+    fn deferred_light_shader_has_six_bindings() {
+        // 3 textures + 1 depth texture + 1 sampler + 1 uniform in group(0)
         let src = DEFERRED_LIGHT_SHADER;
         let binding_count = src.matches("@binding").count();
         assert_eq!(
-            binding_count, 5,
-            "shader should have 5 bindings (4 tex + 1 sampler)"
+            binding_count, 6,
+            "shader should have 6 bindings (3 tex + 1 depth + 1 sampler + 1 uniform)"
         );
     }
 
     #[test]
     fn gbuffer_formats_are_distinct_types() {
         let f = GBufferFormats::default();
-        // Albedo and emissive are sRGB (8-bit), normal and position are float16
+        // Albedo and emissive are sRGB (8-bit), normal is float16
         assert_ne!(
             f.albedo, f.normal,
             "albedo should differ from normal format"
         );
         assert_ne!(f.depth, f.albedo, "depth should differ from color format");
-        // Normal and position share format
-        assert_eq!(f.normal, f.position);
         // Velocity is RG16Float (different from all others)
         assert_ne!(f.velocity, f.albedo);
         assert_ne!(f.velocity, f.normal);
         assert_ne!(f.velocity, f.depth);
+    }
+
+    #[test]
+    fn deferred_light_shader_reconstructs_from_depth() {
+        // Verify the shader uses depth reconstruction instead of position texture
+        assert!(
+            DEFERRED_LIGHT_SHADER.contains("depth_tex"),
+            "shader must sample depth texture"
+        );
+        assert!(
+            DEFERRED_LIGHT_SHADER.contains("inv_vp"),
+            "shader must use inverse VP for reconstruction"
+        );
+        assert!(
+            !DEFERRED_LIGHT_SHADER.contains("position_tex"),
+            "shader must NOT reference position texture"
+        );
     }
 }

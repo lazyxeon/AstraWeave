@@ -212,7 +212,7 @@ mod tangent_mode_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", TangentMode::Auto);
-        assert!(display.contains("🔄"));
+        assert!(display.contains("[Sync]"));
     }
 
     #[test]
@@ -834,7 +834,7 @@ mod blending_mode_tests {
     #[test]
     fn test_display_contains_icon() {
         let display = format!("{}", BlendingMode::Override);
-        assert!(display.contains("🔄"));
+        assert!(display.contains("[Sync]"));
     }
 
     #[test]
