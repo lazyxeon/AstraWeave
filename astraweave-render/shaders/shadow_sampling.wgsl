@@ -142,7 +142,8 @@ fn get_cascade_vp(params: ShadowParams, index: u32) -> mat4x4<f32> {
 // PCSS: BLOCKER SEARCH + PENUMBRA ESTIMATION
 // ============================================================================
 
-// Search for average blocker depth in a region around the sample point
+// Search for average blocker depth in a region around the sample point.
+// Uses textureLoad to read actual shadow map depths (comparison-free).
 fn pcss_blocker_search(
     shadow_tex_arr: texture_depth_2d_array,
     shadow_samp: sampler_comparison,
@@ -154,6 +155,7 @@ fn pcss_blocker_search(
     rotation: f32,
 ) -> vec2<f32> {
     // Returns: (average_blocker_depth, num_blockers)
+    let dims = vec2<f32>(textureDimensions(shadow_tex_arr).xy);
     var blocker_sum = 0.0;
     var num_blockers = 0.0;
 
@@ -165,13 +167,14 @@ fn pcss_blocker_search(
             continue;
         }
 
-        // Use comparison sampler to check if this texel is a blocker
-        let vis = textureSampleCompare(shadow_tex_arr, shadow_samp, sample_uv, layer, receiver_depth);
-        if (vis < 0.5) {
-            // This is a blocker
-            // Approximate blocker depth (we use the receiver depth minus a small offset as estimate
-            // since we can't directly read the depth value with a comparison sampler)
-            blocker_sum += receiver_depth;
+        // Read actual depth from shadow map (no comparison sampler needed)
+        let texel_coord = vec2<i32>(sample_uv * dims);
+        let shadow_depth = textureLoad(shadow_tex_arr, texel_coord, layer, 0);
+
+        // A texel is a blocker if its stored depth is closer to the light
+        // than the receiver (shadow_depth < receiver_depth in standard depth)
+        if (shadow_depth < receiver_depth) {
+            blocker_sum += shadow_depth;
             num_blockers += 1.0;
         }
     }

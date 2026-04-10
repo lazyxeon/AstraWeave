@@ -17,6 +17,25 @@ pub struct NoiseConfig {
     pub erosion_enabled: bool,
     /// Strength of erosion effect
     pub erosion_strength: f32,
+    /// Frequency of 3D cave noise (lower = larger cave networks)
+    #[serde(default = "default_cave_frequency")]
+    pub cave_frequency: f64,
+    /// Density threshold below which caves form (0.0–1.0, higher = more caves)
+    #[serde(default = "default_cave_threshold")]
+    pub cave_threshold: f64,
+    /// Strength multiplier for cave carving (0.0 = no caves, 1.0 = full strength)
+    #[serde(default = "default_cave_strength")]
+    pub cave_strength: f64,
+}
+
+fn default_cave_frequency() -> f64 {
+    0.03
+}
+fn default_cave_threshold() -> f64 {
+    0.35
+}
+fn default_cave_strength() -> f64 {
+    1.0
 }
 
 impl Default for NoiseConfig {
@@ -54,6 +73,9 @@ impl Default for NoiseConfig {
             },
             erosion_enabled: true,
             erosion_strength: 0.3,
+            cave_frequency: default_cave_frequency(),
+            cave_threshold: default_cave_threshold(),
+            cave_strength: default_cave_strength(),
         }
     }
 }
@@ -193,6 +215,8 @@ pub struct TerrainNoise {
     base_elevation: Box<dyn NoiseFn<f64, 3> + Send + Sync>,
     mountains: Box<dyn NoiseFn<f64, 3> + Send + Sync>,
     detail: Box<dyn NoiseFn<f64, 3> + Send + Sync>,
+    /// 3D ridged-multi noise for cave networks
+    cave_noise: Box<dyn NoiseFn<f64, 3> + Send + Sync>,
     config: NoiseConfig,
 }
 
@@ -211,10 +235,21 @@ impl TerrainNoise {
         let mountains = Self::create_noise_fn(&config.mountains, seed + 1);
         let detail = Self::create_noise_fn(&config.detail, seed + 2);
 
+        // 3D ridged-multi noise for cave carving.
+        // Ridged noise produces narrow, connected ridges — when thresholded,
+        // these become tunnel-like cave networks.
+        let cave_noise: Box<dyn NoiseFn<f64, 3> + Send + Sync> = Box::new(
+            RidgedMulti::<Perlin>::new(seed as u32 + 42)
+                .set_octaves(4)
+                .set_persistence(0.5)
+                .set_lacunarity(2.0),
+        );
+
         Self {
             base_elevation,
             mountains,
             detail,
+            cave_noise,
             config: config.clone(),
         }
     }
@@ -317,11 +352,53 @@ impl TerrainNoise {
         height.max(0.0)
     }
 
-    /// Generate a density map for cave/overhang generation (future use)
+    /// Sample 3D density for isosurface extraction (caves, overhangs).
+    ///
+    /// Returns a signed density value:
+    /// - **Positive** = solid terrain (inside surface)
+    /// - **Negative** = air / void (outside surface)
+    ///
+    /// The density combines:
+    /// 1. A height-relative base: `surface_height - y` (positive underground)
+    /// 2. 3D ridged-multi noise subtracted as a cave mask, producing
+    ///    tunnel-like voids when the noise exceeds `cave_threshold`
+    ///
+    /// Cave networks form where ridged noise creates narrow high-value ridges
+    /// in 3D space. The `cave_strength` parameter controls carving intensity.
     pub fn sample_density(&self, x: f64, y: f64, z: f64) -> f32 {
-        // Use 3D noise for density - this could be used for caves
+        // Base density: above terrain surface = negative (air), below = positive (solid)
+        let surface_height = self.sample_height(x, z) as f64;
+        let base_density = surface_height - y;
 
-        self.base_elevation.get([x * 0.01, y * 0.01, z * 0.01]) as f32
+        // 3D cave noise at cave_frequency scale
+        let freq = self.config.cave_frequency;
+        let cave_sample = self.cave_noise.get([x * freq, y * freq, z * freq]);
+
+        // Ridged-multi outputs roughly [−1, 1]. We map to [0, 1] and threshold.
+        let cave_val = (cave_sample * 0.5 + 0.5).clamp(0.0, 1.0);
+
+        // Carve caves where noise exceeds threshold (narrow ridged peaks = tunnels)
+        let cave_mask = if cave_val > self.config.cave_threshold {
+            // Smooth falloff above threshold
+            let excess = (cave_val - self.config.cave_threshold)
+                / (1.0 - self.config.cave_threshold + 1e-10);
+            excess * excess * self.config.cave_strength
+        } else {
+            0.0
+        };
+
+        // Depth attenuation: caves weaken near the surface to prevent sky holes,
+        // and taper off at extreme depth to keep a solid floor.
+        let depth_below_surface = (surface_height - y).max(0.0);
+        let surface_guard = (depth_below_surface / 10.0).clamp(0.0, 1.0); // ramp over 10 units
+        let deep_guard = 1.0 - ((depth_below_surface - 200.0) / 50.0).clamp(0.0, 1.0); // taper after 200
+        let depth_factor = surface_guard * deep_guard;
+
+        // Final density: base minus cave carving
+        let carve_strength = 80.0; // world-unit carving radius
+        let density = base_density - cave_mask * carve_strength * depth_factor;
+
+        density as f32
     }
 
     /// Get the configuration

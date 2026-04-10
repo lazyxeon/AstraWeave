@@ -21,6 +21,7 @@ struct PrefixSumParams {
 @group(0) @binding(0) var<storage, read> input: array<u32>;
 @group(0) @binding(1) var<storage, read_write> output: array<u32>;
 @group(0) @binding(2) var<uniform> params: PrefixSumParams;
+@group(0) @binding(3) var<storage, read_write> block_sums: array<u32>;
 
 // Each subgroup produces a partial sum; we store those for inter-subgroup fixup
 var<workgroup> subgroup_totals: array<u32, 16>; // max 16 subgroups per workgroup
@@ -31,6 +32,7 @@ fn prefix_sum(
     @builtin(global_invocation_id) gid: vec3<u32>,
     @builtin(local_invocation_id) lid: vec3<u32>,
     @builtin(local_invocation_index) li: u32,
+    @builtin(workgroup_id) wid: vec3<u32>,
     @builtin(subgroup_invocation_id) sg_id: u32,
     @builtin(subgroup_size) sg_size: u32,
 ) {
@@ -88,5 +90,11 @@ fn prefix_sum(
     }
     if (idx1 < params.element_count) {
         output[idx1] = thread_exclusive + val0;
+    }
+
+    // Step 7: Write block sum for multi-pass scan
+    if (tid == 0u) {
+        let last_sg = num_subgroups - 1u;
+        block_sums[wid.x] = subgroup_offsets[last_sg] + subgroup_totals[last_sg];
     }
 }

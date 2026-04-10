@@ -1,9 +1,15 @@
 //! Geometry Clipmap / CDLOD terrain rendering system.
 //!
+//! **DEPRECATED**: This module is superseded by the terrain crate's chunk-based
+//! `LodManager` + `MorphingLodManager`, which integrates streaming, SVO-based
+//! voxel LOD, erosion, and cave density. Use `astraweave_terrain::LodManager`
+//! with `MorphingLodManager` for new terrain rendering pipelines.
+//!
 //! Implements concentric rings of terrain mesh centered on the camera, where
 //! each successive ring doubles the cell size. Inner rings are fine-grained;
 //! outer rings cover vast distances with fewer vertices.
 //!
+#![allow(deprecated)]
 //! # Architecture
 //!
 //! ```text

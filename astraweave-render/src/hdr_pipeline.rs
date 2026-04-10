@@ -482,21 +482,34 @@ fn tonemap_aces(x: vec3<f32>) -> vec3<f32> {
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-// AgX tonemapping (attempt at a neutral look that preserves hue in highlights)
+// AgX tonemapping — sRGB → AgX log space via 3×3 inset matrix, log2 encoding,
+// 6th-order polynomial contrast curve. Reference: Troy Sobotka, Blender AgX.
 fn agx_default_contrast_approx(x: vec3<f32>) -> vec3<f32> {
     let x2 = x * x;
     let x4 = x2 * x2;
-    return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+    return 15.5     * x4 * x2
+         - 40.14    * x4 * x
+         + 31.96    * x4
+         -  6.868   * x2 * x
+         +  0.4298  * x2
+         +  0.1191  * x
+         -  0.00232;
 }
 
 fn tonemap_agx(color: vec3<f32>) -> vec3<f32> {
-    // AGX log encoding
-    let min_ev = -12.47393;
-    let max_ev = 4.026069;
-    let clamped = clamp(color, vec3<f32>(1e-10), vec3<f32>(65504.0));
-    var x = (log2(clamped) - min_ev) / (max_ev - min_ev);
-    x = clamp(x, vec3<f32>(0.0), vec3<f32>(1.0));
-    return agx_default_contrast_approx(x);
+    // 3×3 AgX inset matrix: maps sRGB linear primaries into the AgX log encoding
+    // gamut. Without this, log encoding operates on raw sRGB values and produces
+    // incorrect hue shifts, especially in saturated highlights.
+    let agx_mat = mat3x3<f32>(
+        0.842479062253094,  0.0423282422610123, 0.0423756549057051,
+        0.0784335999999992, 0.878468636469772,  0.0784336,
+        0.0792237451477643, 0.0791661274605434, 0.879142973793104
+    );
+    var val = agx_mat * max(color, vec3<f32>(1e-10));
+    // Log2 encoding into [min_ev, max_ev] range, then normalize to [0,1]
+    val = clamp(log2(val), vec3<f32>(-12.47393), vec3<f32>(4.026069));
+    val = (val - vec3<f32>(-12.47393)) / (vec3<f32>(4.026069) - vec3<f32>(-12.47393));
+    return agx_default_contrast_approx(val);
 }
 
 // Reinhard tonemapping (extended, per-channel)

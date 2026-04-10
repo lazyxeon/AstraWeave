@@ -2,7 +2,12 @@
 //
 // Each probe stores second-order spherical harmonics (L2 = 9 coefficients per RGB channel).
 // A subset of probes is updated each frame by sampling the scene's direct + indirect lighting
-// from 6 axis-aligned directions, then projecting into SH basis.
+// from 14 directions, then projecting into SH basis.
+//
+// Optimization: Directional lights are cooperatively loaded into shared memory once,
+// eliminating 14 × num_lights redundant global reads per thread.
+
+const MAX_SHARED_LIGHTS: u32 = 64u;
 
 struct SurfaceCacheParams {
     grid_origin:       vec3<f32>,
@@ -45,6 +50,10 @@ struct DirectionalLight {
 @group(0) @binding(3) var t_depth:              texture_2d<f32>;
 @group(0) @binding(4) var t_albedo:             texture_2d<f32>;
 @group(0) @binding(5) var s_linear:             sampler;
+
+// Shared memory: cooperatively loaded directional lights
+var<workgroup> shared_lights: array<DirectionalLight, 64>;
+var<workgroup> shared_light_count: u32;
 
 // ----- SH basis functions (real, unnormalized) -----
 
@@ -98,8 +107,8 @@ const EXTRA_DIRS: array<vec3<f32>, 8> = array<vec3<f32>, 8>(
     vec3<f32>(-0.577, -0.577, -0.577),
 );
 
-fn evaluate_radiance(probe_pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
-    // Accumulate direct lighting from all directional lights
+fn evaluate_radiance_shared(probe_pos: vec3<f32>, dir: vec3<f32>, num_lights: u32) -> vec3<f32> {
+    // Accumulate direct lighting from shared directional lights
     var radiance = vec3<f32>(0.0);
 
     // Sky contribution: use simple hemisphere model
@@ -110,9 +119,9 @@ fn evaluate_radiance(probe_pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
     let ground_factor = max(-dir.y * 0.5 + 0.5, 0.0) * 0.15;
     radiance += vec3<f32>(0.3, 0.25, 0.2) * ground_factor * params.sky_intensity;
 
-    // Direct lights contribution (N·L for diffuse)
-    for (var i = 0u; i < arrayLength(&dir_lights); i++) {
-        let light = dir_lights[i];
+    // Direct lights contribution from shared memory (N·L for diffuse)
+    for (var i = 0u; i < num_lights; i++) {
+        let light = shared_lights[i];
         let n_dot_l = max(dot(dir, -light.direction), 0.0);
         radiance += light.color * light.intensity * n_dot_l * 0.318310; // 1/pi
     }
@@ -121,7 +130,25 @@ fn evaluate_radiance(probe_pos: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
 }
 
 @compute @workgroup_size(64)
-fn surface_cache_update(@builtin(global_invocation_id) gid: vec3<u32>) {
+fn surface_cache_update(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_index) lid: u32,
+) {
+    // Cooperative load: fill shared_lights from global dir_lights array.
+    // arrayLength() is uniform across the workgroup so all threads agree.
+    let total_lights = arrayLength(&dir_lights);
+    let capped_lights = min(total_lights, MAX_SHARED_LIGHTS);
+
+    if (lid < capped_lights) {
+        shared_lights[lid] = dir_lights[lid];
+    }
+    if (lid == 0u) {
+        shared_light_count = capped_lights;
+    }
+    workgroupBarrier();
+
+    let num_lights = shared_light_count;
+
     let local_idx = gid.x;
     if (local_idx >= params.update_count) {
         return;
@@ -148,7 +175,7 @@ fn surface_cache_update(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     for (var i = 0; i < 6; i++) {
         let dir = SAMPLE_DIRS[i];
-        let radiance = evaluate_radiance(pos, dir);
+        let radiance = evaluate_radiance_shared(pos, dir, num_lights);
         let basis = sh_basis(dir);
 
         new_sh.c0 += vec4<f32>(radiance * basis[0] * weight, 0.0);
@@ -164,7 +191,7 @@ fn surface_cache_update(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     for (var i = 0; i < 8; i++) {
         let dir = EXTRA_DIRS[i];
-        let radiance = evaluate_radiance(pos, dir);
+        let radiance = evaluate_radiance_shared(pos, dir, num_lights);
         let basis = sh_basis(dir);
 
         new_sh.c0 += vec4<f32>(radiance * basis[0] * weight, 0.0);

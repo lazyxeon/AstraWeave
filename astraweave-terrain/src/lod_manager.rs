@@ -561,6 +561,61 @@ impl LodManager {
             .unwrap_or(0.0)
     }
 
+    /// Compute a continuous vertex morph factor for a chunk based on camera distance.
+    ///
+    /// Unlike the discrete `blend_factor` (which ticks at a fixed rate during
+    /// transitions), this returns a **smooth, distance-based** factor suitable
+    /// for vertex morphing on the GPU — the same technique used by clipmap/CDLOD
+    /// terrain systems.
+    ///
+    /// Returns `0.0` when the chunk is firmly in its current LOD level, ramping
+    /// to `1.0` as it approaches the boundary with the next coarser level.
+    /// The transition zone occupies 20% of the distance band for each LOD level.
+    ///
+    /// Pair with `current_lod` + `lower()` to select the two meshes to interpolate
+    /// between when rendering with vertex morphing.
+    pub fn continuous_morph_factor(&self, chunk_id: ChunkId) -> f32 {
+        let state = match self.chunk_states.get(&chunk_id) {
+            Some(s) => s,
+            None => return 0.0,
+        };
+
+        let lod = state.current_lod;
+        let distance = state.distance;
+
+        // Determine the distance band for the current LOD level
+        let (band_start, band_end) = match lod {
+            LodLevel::Full => (0.0, self.config.distance_thresholds[0]),
+            LodLevel::Half => (
+                self.config.distance_thresholds[0],
+                self.config.distance_thresholds[1],
+            ),
+            LodLevel::Quarter => (
+                self.config.distance_thresholds[1],
+                self.config.distance_thresholds[2],
+            ),
+            LodLevel::Skybox => return 0.0, // No lower LOD to morph toward
+        };
+
+        // Transition zone: last 20% of the distance band
+        let band_width = band_end - band_start;
+        if band_width <= 0.0 {
+            return 0.0;
+        }
+        let morph_start = band_end - band_width * 0.2;
+
+        if distance <= morph_start {
+            0.0
+        } else if distance >= band_end {
+            1.0
+        } else {
+            // Smoothstep within the transition zone
+            let t = (distance - morph_start) / (band_end - morph_start);
+            // Hermite smoothstep: 3t² - 2t³
+            t * t * (3.0 - 2.0 * t)
+        }
+    }
+
     /// Get statistics
     pub fn get_stats(&self) -> LodStats {
         let mut stats = LodStats::default();

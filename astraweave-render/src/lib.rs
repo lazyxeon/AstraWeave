@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 //! # AstraWeave Render
 //!
 //! GPU rendering pipeline for AstraWeave, built on **wgpu 25**.
@@ -32,7 +32,12 @@
 //! | `ssao` | Screen-space ambient occlusion |
 
 pub mod camera;
-pub mod clipmap_terrain; // Geometry clipmap / CDLOD terrain with distance-morphing LOD rings
+#[deprecated(
+    since = "0.10.0",
+    note = "Use astraweave-terrain's chunk-based LodManager with MorphingLodManager instead. \
+            Clipmap terrain will be removed in a future release."
+)]
+pub mod clipmap_terrain; // DEPRECATED: Geometry clipmap / CDLOD terrain
 pub mod clustered;
 pub mod clustered_forward; // Complete clustered forward rendering
 pub mod clustered_megalights; // MegaLights: GPU-accelerated light culling (Phase 1)
@@ -89,6 +94,7 @@ pub mod parallax; // Parallax Occlusion Mapping — steep ray-march + binary ref
 pub mod particle_forces; // Enhanced particle simulation: forces, curves, emission shapes (Phase 7)
 pub mod particle_render; // Billboard particle render pipeline with blending (Phase 7)
 pub mod particle_sort; // GPU bitonic sort for depth-ordered particle transparency (Phase 7)
+pub mod pipeline_cache; // Disk-backed Vulkan/DX12 pipeline cache (eliminates cold-start stalls)
 pub mod residency;
 pub mod scene_environment;
 pub mod shader_manager; // Shader hot-reload: hash-based change detection + pipeline invalidation
@@ -171,6 +177,11 @@ pub use biome_detector::{BiomeDetector, BiomeDetectorConfig, BiomeTransition};
 pub use biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
 pub use biome_transition::{BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect};
 pub use brdf_lut::{BrdfLutConfig, BrdfLutPass};
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.10.0",
+    note = "Use astraweave-terrain's chunk-based LodManager with MorphingLodManager instead."
+)]
 pub use clipmap_terrain::{ClipmapConfig, ClipmapTerrain, ClipmapVertex};
 pub use compute_noise::{GpuNoiseConfig, GpuNoisePipeline, GpuNoiseType};
 pub use culling::{

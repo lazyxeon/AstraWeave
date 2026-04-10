@@ -124,6 +124,9 @@ pub struct NaniteCullingPipeline {
     depth_texture: wgpu::Texture,
     depth_view: wgpu::TextureView,
 
+    // Atomic depth buffer for race-free SW rasterization
+    atomic_depth_buffer: wgpu::Buffer,
+
     // Metadata
     meshlet_count: u32,
     max_visible_meshlets: u32,
@@ -258,6 +261,15 @@ impl NaniteCullingPipeline {
         });
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        // Atomic depth buffer for race-free SW rasterization depth testing.
+        // Uses u32 atomics with IEEE 754 float-to-u32 bitcast ordering.
+        let atomic_depth_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Nanite Atomic Depth Buffer"),
+            size: (screen_width as u64) * (screen_height as u64) * std::mem::size_of::<u32>() as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         // Create pipelines
         let (hiz_pyramid_pipeline, hiz_bind_group_layout, hiz_bind_groups) =
             Self::create_hiz_pipeline(device, &hiz_views)?;
@@ -307,6 +319,7 @@ impl NaniteCullingPipeline {
             visibility_view,
             depth_texture,
             depth_view,
+            atomic_depth_buffer,
             meshlet_count,
             max_visible_meshlets,
         })
@@ -594,6 +607,17 @@ impl NaniteCullingPipeline {
                         },
                         count: None,
                     },
+                    // Atomic depth buffer for race-free depth testing
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
                 ],
             });
 
@@ -878,6 +902,8 @@ impl NaniteCullingPipeline {
         self.cull_clusters_gpu(encoder)?;
 
         // Stage 3: Software rasterization (visibility buffer)
+        // Clear atomic depth buffer to 0 (minimum depth) before rasterization
+        encoder.clear_buffer(&self.atomic_depth_buffer, 0, None);
         self.rasterize_visibility_buffer(encoder)?;
 
         // Stage 4: Material resolve (deferred shading)

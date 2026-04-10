@@ -51,6 +51,10 @@ struct Camera {
 
 @group(1) @binding(0) var visibility_buffer: texture_storage_2d<r32uint, read_write>;
 @group(1) @binding(1) var depth_buffer: texture_storage_2d<r32float, read_write>;
+// Atomic depth buffer: flat array of atomic<u32>, indexed pixel_y * width + pixel_x
+// Depth stored as bitcast u32 with reversed-Z convention (higher = closer).
+// Uses atomicMax for race-free depth test (closer fragments naturally have higher u32 values).
+@group(1) @binding(2) var<storage, read_write> atomic_depth: array<atomic<u32>>;
 
 // Edge function for triangle rasterization
 fn edge_function(a: vec2<f32>, b: vec2<f32>, c: vec2<f32>) -> f32 {
@@ -86,90 +90,116 @@ fn pack_visibility_id(meshlet_id: u32, triangle_id: u32) -> u32 {
     return (meshlet_id << 16u) | (triangle_id & 0xFFFFu);
 }
 
-// Software rasterization: tile-based processing
-// Each workgroup handles one 8x8 tile
+// Software rasterization: tile-based processing with shared memory
+// Each workgroup handles one 8×8 tile.  Thread 0 loads and transforms
+// each triangle; all 64 threads test their pixel against the shared
+// pre-transformed triangle — eliminating 63/64 redundant global reads
+// and vertex transforms.
+
+// Shared pre-transformed triangle data (written by thread 0, read by all)
+var<workgroup> s_screen0: vec2<f32>;
+var<workgroup> s_screen1: vec2<f32>;
+var<workgroup> s_screen2: vec2<f32>;
+var<workgroup> s_ndc_z0: f32;
+var<workgroup> s_ndc_z1: f32;
+var<workgroup> s_ndc_z2: f32;
+var<workgroup> s_vis_id: u32;
+// Meshlet iteration state (written by thread 0)
+var<workgroup> s_tri_count: u32;
+var<workgroup> s_tri_offset: u32;
+var<workgroup> s_vtx_offset: u32;
+var<workgroup> s_meshlet_id: u32;
+
 @compute @workgroup_size(8, 8)
 fn main(
     @builtin(global_invocation_id) global_id: vec3<u32>,
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(local_invocation_index) lid: u32,
 ) {
     let pixel_coords = global_id.xy;
     let screen_size = textureDimensions(visibility_buffer);
+    let is_leader = lid == 0u;
     
-    // Bounds check
-    if (pixel_coords.x >= screen_size.x || pixel_coords.y >= screen_size.y) {
-        return;
-    }
-    
+    // All threads need to participate in barriers even if out of bounds,
+    // so we track validity separately
+    let valid_pixel = pixel_coords.x < screen_size.x && pixel_coords.y < screen_size.y;
     let pixel_center = vec2<f32>(f32(pixel_coords.x) + 0.5, f32(pixel_coords.y) + 0.5);
     
     // Iterate through all visible meshlets
     for (var meshlet_idx = 0u; meshlet_idx < visible_count; meshlet_idx++) {
-        let meshlet_id = visible_meshlet_ids[meshlet_idx];
-        let meshlet = meshlets[meshlet_id];
+        // Thread 0 loads meshlet metadata into shared memory
+        if (is_leader) {
+            let mid = visible_meshlet_ids[meshlet_idx];
+            let m = meshlets[mid];
+            s_meshlet_id = mid;
+            s_tri_count = m.triangle_count;
+            s_tri_offset = m.triangle_offset;
+            s_vtx_offset = m.vertex_offset;
+        }
+        workgroupBarrier();
+
+        // All threads read meshlet metadata from shared memory
+        let tri_count = s_tri_count;
+        let tri_offset = s_tri_offset;
+        let vtx_offset = s_vtx_offset;
+        let meshlet_id = s_meshlet_id;
         
         // Process all triangles in this meshlet
-        for (var tri_idx = 0u; tri_idx < meshlet.triangle_count; tri_idx++) {
-            // Get triangle vertices
-            let index_offset = meshlet.triangle_offset + tri_idx * 3u;
-            let i0 = indices[index_offset];
-            let i1 = indices[index_offset + 1u];
-            let i2 = indices[index_offset + 2u];
-            
-            let v0 = vertices[meshlet.vertex_offset + i0];
-            let v1 = vertices[meshlet.vertex_offset + i1];
-            let v2 = vertices[meshlet.vertex_offset + i2];
-            
-            // Transform to clip space
-            let clip0 = camera.view_proj * vec4<f32>(v0.position, 1.0);
-            let clip1 = camera.view_proj * vec4<f32>(v1.position, 1.0);
-            let clip2 = camera.view_proj * vec4<f32>(v2.position, 1.0);
-            
-            // Perspective divide
-            let ndc0 = clip0.xyz / clip0.w;
-            let ndc1 = clip1.xyz / clip1.w;
-            let ndc2 = clip2.xyz / clip2.w;
-            
-            // Convert to screen space
-            let screen0 = vec2<f32>(
-                (ndc0.x * 0.5 + 0.5) * f32(screen_size.x),
-                (1.0 - (ndc0.y * 0.5 + 0.5)) * f32(screen_size.y),
-            );
-            let screen1 = vec2<f32>(
-                (ndc1.x * 0.5 + 0.5) * f32(screen_size.x),
-                (1.0 - (ndc1.y * 0.5 + 0.5)) * f32(screen_size.y),
-            );
-            let screen2 = vec2<f32>(
-                (ndc2.x * 0.5 + 0.5) * f32(screen_size.x),
-                (1.0 - (ndc2.y * 0.5 + 0.5)) * f32(screen_size.y),
-            );
-            
-            // Compute barycentric coordinates
-            let bary = compute_barycentric(pixel_center, screen0, screen1, screen2);
-            
-            // Check if pixel is inside triangle
-            if (point_in_triangle(bary)) {
-                // Interpolate depth
-                let depth = interpolate_depth(bary, ndc0.z, ndc1.z, ndc2.z);
+        for (var tri_idx = 0u; tri_idx < tri_count; tri_idx++) {
+            // Thread 0 loads indices, vertices, transforms to screen space
+            if (is_leader) {
+                let index_offset = tri_offset + tri_idx * 3u;
+                let i0 = indices[index_offset];
+                let i1 = indices[index_offset + 1u];
+                let i2 = indices[index_offset + 2u];
                 
-                // Atomic depth test
-                let depth_u32 = bitcast<u32>(depth);
-                let old_depth_u32 = textureLoad(depth_buffer, pixel_coords).r;
-                let old_depth = bitcast<f32>(old_depth_u32);
+                let v0 = vertices[vtx_offset + i0];
+                let v1 = vertices[vtx_offset + i1];
+                let v2 = vertices[vtx_offset + i2];
                 
-                // Reversed depth: closer = higher value
-                if (depth > old_depth) {
-                    // This fragment is closer - attempt atomic update
-                    // Note: WGSL doesn't have atomic texture operations yet
-                    // In practice, use storage buffer or accept race conditions
+                // Transform to clip space
+                let clip0 = camera.view_proj * vec4<f32>(v0.position, 1.0);
+                let clip1 = camera.view_proj * vec4<f32>(v1.position, 1.0);
+                let clip2 = camera.view_proj * vec4<f32>(v2.position, 1.0);
+                
+                // Perspective divide
+                let ndc0 = clip0.xyz / clip0.w;
+                let ndc1 = clip1.xyz / clip1.w;
+                let ndc2 = clip2.xyz / clip2.w;
+                
+                // Convert to screen space
+                let sx = f32(screen_size.x);
+                let sy = f32(screen_size.y);
+                s_screen0 = vec2<f32>((ndc0.x * 0.5 + 0.5) * sx, (1.0 - (ndc0.y * 0.5 + 0.5)) * sy);
+                s_screen1 = vec2<f32>((ndc1.x * 0.5 + 0.5) * sx, (1.0 - (ndc1.y * 0.5 + 0.5)) * sy);
+                s_screen2 = vec2<f32>((ndc2.x * 0.5 + 0.5) * sx, (1.0 - (ndc2.y * 0.5 + 0.5)) * sy);
+                s_ndc_z0 = ndc0.z;
+                s_ndc_z1 = ndc1.z;
+                s_ndc_z2 = ndc2.z;
+                s_vis_id = pack_visibility_id(meshlet_id, tri_idx);
+            }
+            workgroupBarrier();
+
+            // All threads: test their pixel against the shared triangle
+            if (valid_pixel) {
+                let bary = compute_barycentric(pixel_center, s_screen0, s_screen1, s_screen2);
+                
+                if (point_in_triangle(bary)) {
+                    let depth = interpolate_depth(bary, s_ndc_z0, s_ndc_z1, s_ndc_z2);
                     
-                    textureStore(depth_buffer, pixel_coords, vec4<f32>(bitcast<f32>(depth_u32), 0.0, 0.0, 0.0));
-                    
-                    let vis_id = pack_visibility_id(meshlet_id, tri_idx);
-                    textureStore(visibility_buffer, pixel_coords, vec4<u32>(vis_id, 0u, 0u, 0u));
+                    // Atomic depth test (reversed-Z: higher = closer)
+                    let depth_u32 = bitcast<u32>(depth);
+                    let pixel_idx = pixel_coords.y * screen_size.x + pixel_coords.x;
+                    let old_depth_u32 = atomicMax(&atomic_depth[pixel_idx], depth_u32);
+
+                    if (depth_u32 > old_depth_u32) {
+                        textureStore(visibility_buffer, pixel_coords, vec4<u32>(s_vis_id, 0u, 0u, 0u));
+                        textureStore(depth_buffer, pixel_coords, vec4<f32>(depth, 0.0, 0.0, 0.0));
+                    }
                 }
             }
+            workgroupBarrier();
         }
     }
 }

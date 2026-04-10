@@ -7,6 +7,7 @@
 // 0 = ACES Filmic (Narkowicz 2015)
 // 1 = Khronos PBR Neutral (2024)
 // 2 = Reinhard
+// 3 = AgX (Troy Sobotka / Blender)
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -79,6 +80,33 @@ fn reinhard_tonemap(color: vec3<f32>) -> vec3<f32> {
     return color / (color + vec3<f32>(1.0));
 }
 
+// ─── AgX Tonemapping (Troy Sobotka / Blender) ──────────────────────────────
+// Reference implementation: sRGB → AgX inset matrix → log2 encoding →
+// 6th-order polynomial contrast curve. Preserves hue in saturated highlights.
+fn agx_default_contrast_approx(x: vec3<f32>) -> vec3<f32> {
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    return 15.5     * x4 * x2
+         - 40.14    * x4 * x
+         + 31.96    * x4
+         -  6.868   * x2 * x
+         +  0.4298  * x2
+         +  0.1191  * x
+         -  0.00232;
+}
+
+fn agx_tonemap(color: vec3<f32>) -> vec3<f32> {
+    let agx_mat = mat3x3<f32>(
+        0.842479062253094,  0.0423282422610123, 0.0423756549057051,
+        0.0784335999999992, 0.878468636469772,  0.0784336,
+        0.0792237451477643, 0.0791661274605434, 0.879142973793104
+    );
+    var val = agx_mat * max(color, vec3<f32>(1e-10));
+    val = clamp(log2(val), vec3<f32>(-12.47393), vec3<f32>(4.026069));
+    val = (val - vec3<f32>(-12.47393)) / (vec3<f32>(4.026069) - vec3<f32>(-12.47393));
+    return agx_default_contrast_approx(val);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let hdr_color = textureSample(hdr_texture, hdr_sampler, in.uv).rgb;
@@ -91,6 +119,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
         case 2u: {
             tonemapped = reinhard_tonemap(hdr_color);
+        }
+        case 3u: {
+            tonemapped = agx_tonemap(hdr_color);
         }
         default: {
             tonemapped = aces_tonemap(hdr_color);

@@ -618,7 +618,8 @@ impl ClusteredForwardRenderer {
     }
 }
 
-/// WGSL shader code for clustered forward rendering
+/// WGSL shader code for clustered forward rendering.
+/// Consuming shaders must prepend `brdf_common.wgsl` before this code.
 pub const CLUSTERED_LIGHTING_SHADER: &str = r#"
 struct Light {
     position: vec4<f32>,  // w = radius
@@ -688,21 +689,18 @@ fn calculate_clustered_lighting(
         
         let L = normalize(light_dir);
         let V = normalize(view_pos - world_pos);
-        let H = normalize(L + V);
         
         let NdotL = max(dot(normal, L), 0.0);
-        let NdotV = max(dot(normal, V), 0.0);
-        let NdotH = max(dot(normal, H), 0.0);
         
         // Attenuation
         let attenuation = 1.0 - pow(distance / radius, 4.0);
         let attenuation_clamped = max(attenuation, 0.0);
         
-        // Simple Blinn-Phong for now (can be extended to PBR)
-        let diffuse = albedo * NdotL;
-        let specular = pow(NdotH, 32.0) * (1.0 - roughness);
-        
-        let light_contribution = (diffuse + specular) * light.color.rgb * light.color.w * attenuation_clamped;
+        // PBR Cook-Torrance + Burley diffuse (from brdf_common.wgsl)
+        let F0 = mix(vec3<f32>(0.04), albedo, metallic);
+        let brdf = evaluate_brdf(normal, V, L, albedo, metallic, roughness, F0);
+
+        let light_contribution = brdf * light.color.rgb * light.color.w * attenuation_clamped;
         total_light = total_light + light_contribution;
     }
     

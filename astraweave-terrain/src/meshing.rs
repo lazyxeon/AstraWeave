@@ -11,7 +11,7 @@
 use crate::marching_cubes_tables::{EDGE_ENDPOINTS, MC_EDGE_TABLE, MC_TRI_TABLE};
 use crate::voxel_data::{ChunkCoord, Voxel, VoxelChunk, CHUNK_SIZE};
 use glam::{IVec3, Vec3};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Vertex data for mesh generation
 #[derive(Debug, Clone, Copy)]
@@ -55,6 +55,109 @@ impl ChunkMesh {
         std::mem::size_of::<Self>()
             + self.vertices.len() * std::mem::size_of::<MeshVertex>()
             + self.indices.len() * std::mem::size_of::<u32>()
+    }
+
+    /// Add vertical skirt geometry along chunk boundary edges to hide LOD seam cracks.
+    ///
+    /// For each mesh edge where both vertices lie on the same chunk boundary face,
+    /// creates a quad (2 triangles) dropping the edge downward by `skirt_depth`.
+    /// This fills any gaps between adjacent chunks at different LOD levels.
+    ///
+    /// Skirts are generated for all 6 faces (±X, ±Y, ±Z). Typical `skirt_depth`
+    /// values of 2.0–4.0 world units hide cracks without visible artifacts.
+    pub fn add_skirts(&mut self, skirt_depth: f32, chunk_origin: Vec3) {
+        if self.vertices.is_empty() || skirt_depth <= 0.0 {
+            return;
+        }
+
+        let chunk_extent = CHUNK_SIZE as f32;
+        // Boundary detection tolerance: dual-contouring vertices sit at cell centers
+        // (~0.5 to ~CHUNK_SIZE-1.5 in local space), so a 1.5 tolerance catches them.
+        let eps = 1.5;
+
+        // For each vertex, determine which boundary faces it belongs to.
+        // Faces: 0=x_min, 1=x_max, 2=y_min, 3=y_max, 4=z_min, 5=z_max
+        let face_membership: Vec<[bool; 6]> = self
+            .vertices
+            .iter()
+            .map(|v| {
+                let local = v.position - chunk_origin;
+                [
+                    local.x < eps,
+                    local.x > chunk_extent - eps - 1.0,
+                    local.y < eps,
+                    local.y > chunk_extent - eps - 1.0,
+                    local.z < eps,
+                    local.z > chunk_extent - eps - 1.0,
+                ]
+            })
+            .collect();
+
+        let mut skirt_vertices: Vec<MeshVertex> = Vec::new();
+        let mut skirt_indices: Vec<u32> = Vec::new();
+        let base = self.vertices.len() as u32;
+        let mut processed_edges: HashSet<(u32, u32)> = HashSet::new();
+
+        let drop_offset = Vec3::new(0.0, -skirt_depth, 0.0);
+
+        let num_triangles = self.indices.len() / 3;
+        for tri in 0..num_triangles {
+            let idx = [
+                self.indices[tri * 3] as usize,
+                self.indices[tri * 3 + 1] as usize,
+                self.indices[tri * 3 + 2] as usize,
+            ];
+
+            for &(a, b) in &[(idx[0], idx[1]), (idx[1], idx[2]), (idx[2], idx[0])] {
+                let edge_key = if a < b {
+                    (a as u32, b as u32)
+                } else {
+                    (b as u32, a as u32)
+                };
+                if processed_edges.contains(&edge_key) {
+                    continue;
+                }
+
+                // Check if both vertices share any boundary face
+                let mut is_boundary_edge = false;
+                for face in 0..6 {
+                    if face_membership[a][face] && face_membership[b][face] {
+                        is_boundary_edge = true;
+                        break;
+                    }
+                }
+
+                if is_boundary_edge {
+                    processed_edges.insert(edge_key);
+
+                    let skirt_idx_a = base + skirt_vertices.len() as u32;
+                    skirt_vertices.push(MeshVertex {
+                        position: self.vertices[a].position + drop_offset,
+                        normal: self.vertices[a].normal,
+                        material: self.vertices[a].material,
+                    });
+
+                    let skirt_idx_b = base + skirt_vertices.len() as u32;
+                    skirt_vertices.push(MeshVertex {
+                        position: self.vertices[b].position + drop_offset,
+                        normal: self.vertices[b].normal,
+                        material: self.vertices[b].material,
+                    });
+
+                    // Skirt quad: original edge (a, b) connected to dropped edge
+                    skirt_indices.push(a as u32);
+                    skirt_indices.push(b as u32);
+                    skirt_indices.push(skirt_idx_a);
+
+                    skirt_indices.push(skirt_idx_a);
+                    skirt_indices.push(b as u32);
+                    skirt_indices.push(skirt_idx_b);
+                }
+            }
+        }
+
+        self.vertices.extend(skirt_vertices);
+        self.indices.extend(skirt_indices);
     }
 }
 
@@ -114,11 +217,16 @@ impl DualContouring {
             }
         }
 
-        ChunkMesh {
+        let chunk_origin = chunk.coord().to_world_pos();
+        let mut mesh = ChunkMesh {
             coord: chunk.coord(),
             vertices,
             indices,
-        }
+        };
+
+        // Add skirt geometry to hide LOD seam cracks between chunks
+        mesh.add_skirts(2.0, chunk_origin);
+        mesh
     }
 
     /// Process a single cell (8 voxels forming a cube)

@@ -18,6 +18,7 @@ struct PrefixSumParams {
 @group(0) @binding(0) var<storage, read> input: array<u32>;
 @group(0) @binding(1) var<storage, read_write> output: array<u32>;
 @group(0) @binding(2) var<uniform> params: PrefixSumParams;
+@group(0) @binding(3) var<storage, read_write> block_sums: array<u32>;
 
 // Shared memory for workgroup-local scan (512 elements max per workgroup)
 var<workgroup> shared_data: array<u32, 512>;
@@ -66,8 +67,10 @@ fn prefix_sum(
         d >>= 1u;
     }
     
-    // Phase 3: Clear root (exclusive scan)
+    // Phase 3: Extract block sum and clear root (exclusive scan)
     if (tid == 0u) {
+        // Save total sum of this block before clearing for exclusive scan
+        block_sums[wid.x] = shared_data[params.workgroup_size * 2u - 1u];
         shared_data[params.workgroup_size * 2u - 1u] = 0u;
     }
     

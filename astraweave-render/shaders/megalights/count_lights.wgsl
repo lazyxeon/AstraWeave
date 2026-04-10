@@ -1,11 +1,12 @@
 // MegaLights Stage 1: Count Lights Per Cluster
 // 
 // Purpose: Parallel count of lights affecting each cluster
-// Algorithm: Each thread processes one cluster, tests all lights against AABB
+// Algorithm: Cooperative light batching — workgroup loads 64 lights into
+//            shared memory, then each thread tests its cluster AABB locally.
+//            Eliminates redundant global memory reads across threads.
 // Output: light_counts[cluster_idx] = number of intersecting lights
-//
-// Performance: O(N × M) but fully parallel (GPU crushes this)
-// Estimated: <50µs @ 1000 lights × 8192 clusters
+
+const TILE_SIZE: u32 = 64u;
 
 struct GpuLight {
     position: vec4<f32>,  // xyz = position, w = radius
@@ -33,6 +34,9 @@ struct CountParams {
 @group(0) @binding(2) var<storage, read_write> light_counts: array<atomic<u32>>;
 @group(0) @binding(3) var<uniform> params: CountParams;
 
+// Shared memory: cooperatively loaded batch of lights
+var<workgroup> shared_lights: array<GpuLight, 64>;
+
 /// Sphere-AABB intersection test (conservative, fast)
 fn sphere_intersects_aabb(
     center: vec3<f32>,
@@ -51,33 +55,49 @@ fn sphere_intersects_aabb(
 @compute @workgroup_size(64, 1, 1)
 fn count_lights_per_cluster(
     @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_index) lid: u32,
 ) {
     // Compute linear cluster index
     let cluster_idx = gid.x + 
                       gid.y * params.cluster_dims.x + 
                       gid.z * (params.cluster_dims.x * params.cluster_dims.y);
     
-    // Early exit for threads beyond cluster count
-    if (cluster_idx >= params.total_clusters) {
-        return;
+    // Load cluster bounds into registers (each thread has its own cluster)
+    var cluster_min = vec3<f32>(0.0);
+    var cluster_max = vec3<f32>(0.0);
+    let valid = cluster_idx < params.total_clusters;
+    if (valid) {
+        let cluster = clusters[cluster_idx];
+        cluster_min = cluster.min_pos;
+        cluster_max = cluster.max_pos;
     }
-    
-    // Load cluster bounds (cached in registers)
-    let cluster = clusters[cluster_idx];
+
     var count = 0u;
-    
-    // Test each light against this cluster
-    // (Tight loop, GPU auto-vectorizes)
-    for (var i = 0u; i < params.light_count; i++) {
-        let light = lights[i];
-        let light_pos = light.position.xyz;
-        let light_radius = light.position.w;
-        
-        if (sphere_intersects_aabb(light_pos, light_radius, cluster.min_pos, cluster.max_pos)) {
-            count++;
+    let num_batches = (params.light_count + TILE_SIZE - 1u) / TILE_SIZE;
+
+    for (var batch = 0u; batch < num_batches; batch++) {
+        // Cooperative load: each thread loads one light into shared memory
+        let light_idx = batch * TILE_SIZE + lid;
+        if (light_idx < params.light_count) {
+            shared_lights[lid] = lights[light_idx];
         }
+        workgroupBarrier();
+
+        // Test all lights in the batch against this thread's cluster
+        let batch_end = min(TILE_SIZE, params.light_count - batch * TILE_SIZE);
+        if (valid) {
+            for (var i = 0u; i < batch_end; i++) {
+                let light = shared_lights[i];
+                if (sphere_intersects_aabb(light.position.xyz, light.position.w, cluster_min, cluster_max)) {
+                    count++;
+                }
+            }
+        }
+        workgroupBarrier();
     }
-    
-    // Atomic write (safe, no conflicts across threads)
-    atomicStore(&light_counts[cluster_idx], count);
+
+    // Write final count
+    if (valid) {
+        atomicStore(&light_counts[cluster_idx], count);
+    }
 }

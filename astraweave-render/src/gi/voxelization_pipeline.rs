@@ -123,6 +123,7 @@ pub struct VoxelizationPipeline {
     // Compute pipelines
     voxelize_pipeline: wgpu::ComputePipeline,
     clear_pipeline: wgpu::ComputePipeline,
+    resolve_pipeline: wgpu::ComputePipeline,
 
     // Bind group layout
     bind_group_layout: wgpu::BindGroupLayout,
@@ -132,6 +133,10 @@ pub struct VoxelizationPipeline {
     vertex_buffer: Option<wgpu::Buffer>,
     index_buffer: Option<wgpu::Buffer>,
     material_buffer: wgpu::Buffer,
+
+    // Atomic accumulation buffer for race-free voxelization
+    // 4 × u32 per voxel: R, G, B (fixed-point), sample_count
+    accum_buffer: wgpu::Buffer,
 
     // Statistics
     stats: VoxelizationStats,
@@ -214,6 +219,17 @@ impl VoxelizationPipeline {
                     },
                     count: None,
                 },
+                // Atomic accumulation buffer (4 × u32 per voxel: R, G, B, count)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -244,6 +260,16 @@ impl VoxelizationPipeline {
             cache: None,
         });
 
+        // Create compute pipeline for resolving accumulated atomics to final texture
+        let resolve_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Voxel Resolve Compute Pipeline"),
+            layout: Some(&voxelize_pipeline_layout),
+            module: &shader_module,
+            entry_point: Some("resolve_voxels"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
         // Create config buffer
         let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Voxelization Config Buffer"),
@@ -259,16 +285,28 @@ impl VoxelizationPipeline {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Create atomic accumulation buffer: 4 × u32 per voxel (R, G, B, count)
+        let voxel_count = (config.voxel_resolution as u64).pow(3);
+        let accum_buffer_size = voxel_count * 4 * std::mem::size_of::<u32>() as u64;
+        let accum_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Voxel Accumulation Buffer"),
+            size: accum_buffer_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             config,
             _shader_module: shader_module,
             voxelize_pipeline,
             clear_pipeline,
+            resolve_pipeline,
             bind_group_layout,
             config_buffer,
             vertex_buffer: None,
             index_buffer: None,
             material_buffer,
+            accum_buffer,
             stats: VoxelizationStats::default(),
         }
     }
@@ -404,7 +442,36 @@ impl VoxelizationPipeline {
 
         drop(compute_pass);
 
+        // Resolve accumulated atomics into final radiance texture
+        self.resolve_voxels(device, encoder, voxel_texture_view);
+
         self.stats.voxelization_time_ms = _start_time.elapsed().as_secs_f32() * 1000.0;
+    }
+
+    /// Resolve atomic accumulation buffer into final voxel radiance texture.
+    /// Must be called after voxelization to convert summed fixed-point values
+    /// to averaged float radiance.
+    fn resolve_voxels(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        voxel_texture_view: &wgpu::TextureView,
+    ) {
+        let bind_group = self.create_bind_group_for_clear(device, voxel_texture_view);
+
+        let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("VXGI Resolve Pass"),
+            timestamp_writes: None,
+        });
+
+        compute_pass.set_pipeline(&self.resolve_pipeline);
+        compute_pass.set_bind_group(0, &bind_group, &[]);
+
+        let workgroup_size = 8;
+        let dispatch_size = self.config.voxel_resolution.div_ceil(workgroup_size);
+        compute_pass.dispatch_workgroups(dispatch_size, dispatch_size, dispatch_size);
+
+        drop(compute_pass);
     }
 
     /// Create bind group for voxelization.
@@ -447,6 +514,10 @@ impl VoxelizationPipeline {
                     binding: 4,
                     resource: wgpu::BindingResource::TextureView(voxel_texture_view),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: self.accum_buffer.as_entire_binding(),
+                },
             ],
         }))
     }
@@ -484,6 +555,10 @@ impl VoxelizationPipeline {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: wgpu::BindingResource::TextureView(voxel_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: self.accum_buffer.as_entire_binding(),
                 },
             ],
         })

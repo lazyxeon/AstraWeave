@@ -78,10 +78,12 @@ pub fn bin_lights_cpu(
         if zmin >= zmax {
             continue;
         }
-        let iz0 = (((zmin - near) / (far - near)) * dims.z as f32)
+        // Use logarithmic depth slicing to match GPU fragment shader (clustered_lighting.wgsl)
+        let log_ratio = (far / near).ln();
+        let iz0 = ((zmin / near).ln() / log_ratio * dims.z as f32)
             .floor()
             .clamp(0.0, dims.z as f32 - 1.0) as u32;
-        let iz1 = (((zmax - near) / (far - near)) * dims.z as f32)
+        let iz1 = ((zmax / near).ln() / log_ratio * dims.z as f32)
             .floor()
             .clamp(0.0, dims.z as f32 - 1.0) as u32;
         for iz in iz0..=iz1 {
@@ -128,10 +130,12 @@ pub fn bin_lights_cpu(
         if zmin >= zmax {
             continue;
         }
-        let iz0 = (((zmin - near) / (far - near)) * dims.z as f32)
+        // Use logarithmic depth slicing to match GPU fragment shader (clustered_lighting.wgsl)
+        let log_ratio = (far / near).ln();
+        let iz0 = ((zmin / near).ln() / log_ratio * dims.z as f32)
             .floor()
             .clamp(0.0, dims.z as f32 - 1.0) as u32;
-        let iz1 = (((zmax - near) / (far - near)) * dims.z as f32)
+        let iz1 = ((zmax / near).ln() / log_ratio * dims.z as f32)
             .floor()
             .clamp(0.0, dims.z as f32 - 1.0) as u32;
         for iz in iz0..=iz1 {
@@ -200,8 +204,10 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let zmin = max(z - radius, near);
     let zmax = min(z + radius, far);
     if (zmin >= zmax) { return; }
-    let iz0 = u32(clamp(floor(((zmin - near) / (far - near)) * f32(params.clusters.z)), 0.0, f32(params.clusters.z - 1u)));
-    let iz1 = u32(clamp(floor(((zmax - near) / (far - near)) * f32(params.clusters.z)), 0.0, f32(params.clusters.z - 1u)));
+    // Logarithmic depth slicing — matches clustered_lighting.wgsl get_cluster_index()
+    let log_ratio = log2(far / near);
+    let iz0 = u32(clamp(floor(log2(zmin / near) / log_ratio * f32(params.clusters.z)), 0.0, f32(params.clusters.z - 1u)));
+    let iz1 = u32(clamp(floor(log2(zmax / near) / log_ratio * f32(params.clusters.z)), 0.0, f32(params.clusters.z - 1u)));
     for (var iz: u32 = iz0; iz <= iz1; iz = iz + 1u) {
         for (var iy: u32 = iy0; iy <= iy1; iy = iy + 1u) {
             for (var ix: u32 = ix0; ix <= ix1; ix = ix + 1u) {

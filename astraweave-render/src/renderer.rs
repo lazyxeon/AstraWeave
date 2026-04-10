@@ -15,7 +15,7 @@ use crate::types::{Instance, InstanceRaw, Mesh};
 use astraweave_cinematics as awc;
 use astraweave_materials::MaterialPackage;
 
-pub(crate) const SHADER_SRC: &str = r#"
+pub(crate) const SHADER_SRC: &str = concat!(include_str!("../shaders/brdf_common.wgsl"), r#"
 struct VSIn {
     @location(0) position: vec3<f32>,
     @location(1) normal:   vec3<f32>,
@@ -147,18 +147,7 @@ fn vs(input: VSIn) -> VSOut {
     return out;
 }
 
-// Cook-Torrance PBR with IBL environment lighting
-fn fresnel_schlick(cos_theta: f32, F0: vec3<f32>) -> vec3<f32> {
-    return F0 + (vec3<f32>(1.0,1.0,1.0) - F0) * pow(1.0 - cos_theta, 5.0);
-}
-
-// Fresnel with roughness for IBL (smoother at grazing angles for rough surfaces)
-fn fresnel_schlick_roughness(cos_theta: f32, F0: vec3<f32>, roughness: f32) -> vec3<f32> {
-    let one_minus_rough = vec3<f32>(1.0 - roughness);
-    return F0 + (max(one_minus_rough, F0) - F0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
-}
-
-// Sample IBL for diffuse and specular indirect lighting
+// IBL uses fresnel_schlick_roughness from brdf_common.wgsl
 fn compute_ibl(
     N: vec3<f32>,
     V: vec3<f32>,
@@ -185,30 +174,10 @@ fn compute_ibl(
     return (diffuse_ibl + specular_ibl) * uIbl.ibl_intensity;
 }
 
-fn distribution_ggx(N: vec3<f32>, H: vec3<f32>, roughness: f32) -> f32 {
-    let a = roughness * roughness;
-    let a2 = a * a;
-    let NdotH = max(dot(N, H), 0.0);
-    let NdotH2 = NdotH * NdotH;
-    let denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    return a2 / (3.14159 * denom * denom + 1e-5);
-}
-
-fn geometry_smith(N: vec3<f32>, V: vec3<f32>, L: vec3<f32>, roughness: f32) -> f32 {
-    let r = (roughness + 1.0);
-    let k = (r * r) / 8.0;
-    let NdotV = max(dot(N, V), 0.0);
-    let NdotL = max(dot(N, L), 0.0);
-    let ggx1 = NdotV / (NdotV * (1.0 - k) + k + 1e-5);
-    let ggx2 = NdotL / (NdotL * (1.0 - k) + k + 1e-5);
-    return ggx1 * ggx2;
-}
-
 @fragment
 fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let V = normalize(uCamera.camera_pos - input.world_pos);
     let L = normalize(-uCamera.light_dir);
-    let H = normalize(V + L);
     // Base normal from geometry
     var N = normalize(input.normal);
     // Normal map sample using real UVs and TBN
@@ -216,7 +185,6 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let nrm_ts = normalize(nrm_rgb * 2.0 - vec3<f32>(1.0,1.0,1.0));
     let T = input.tbn0; let B = input.tbn1; let NN = input.tbn2;
     N = normalize(T * nrm_ts.x + B * nrm_ts.y + NN * nrm_ts.z);
-    let NdotL = max(dot(N, L), 0.0);
 
     var base_color = (uMaterial.base_color.rgb * input.color.rgb);
     let tex = textureSample(albedo_tex, albedo_samp, input.uv);
@@ -231,16 +199,9 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     roughness = clamp(min(roughness, max(mr.g, 0.04)), 0.04, 1.0);
 
     let F0 = mix(vec3<f32>(0.04, 0.04, 0.04), base_color, metallic);
-    let F = fresnel_schlick(max(dot(H, V), 0.0), F0);
-    let D = distribution_ggx(N, H, roughness);
-    let G = geometry_smith(N, V, L, roughness);
 
-    let numerator = D * G * F;
-    let denom = 4.0 * max(dot(N, V), 0.0) * NdotL + 1e-5;
-    let specular = numerator / denom;
-
-    let kd = (vec3<f32>(1.0,1.0,1.0) - F) * (1.0 - metallic);
-    let diffuse = kd * base_color / 3.14159;
+    // Unified BRDF: Cook-Torrance specular + Burley diffuse (from brdf_common.wgsl)
+    let brdf_result = evaluate_brdf(N, V, L, base_color, metallic, roughness, F0);
 
     let radiance = vec3<f32>(2.0, 1.96, 1.8); // sun radiance (HDR, ACES compresses)
         // Shadow sampling
@@ -293,8 +254,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         if (uLight.extras.x < 0.0) {
             shadow = 1.0;
         }
-    // Direct lighting
-    var lit_color = (diffuse + specular) * radiance * NdotL * shadow;
+    // Direct lighting (evaluate_brdf already includes NdotL)
+    var lit_color = brdf_result * radiance * shadow;
 
     // IBL indirect lighting (replaces flat ambient)
     let ibl_color = compute_ibl(N, V, base_color, metallic, roughness, F0);
@@ -316,7 +277,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
 
     return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
 }
-"#;
+"#);
 
 #[cfg(not(feature = "postfx"))]
 pub(crate) const POST_SHADER: &str = r#"
@@ -435,6 +396,142 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
 }
 "#;
 
+const SKINNED_SHADER_SRC: &str = concat!(include_str!("../shaders/brdf_common.wgsl"), r#"
+struct VSIn {
+  @location(0) position: vec3<f32>,
+  @location(1) normal:   vec3<f32>,
+    @location(12) tangent:  vec4<f32>,
+  @location(10) joints:  vec4<u32>,
+  @location(11) weights: vec4<f32>,
+  @location(2) m0: vec4<f32>,
+  @location(3) m1: vec4<f32>,
+  @location(4) m2: vec4<f32>,
+  @location(5) m3: vec4<f32>,
+  @location(6) n0: vec3<f32>,
+  @location(7) n1: vec3<f32>,
+  @location(8) n2: vec3<f32>,
+  @location(9) color: vec4<f32>,
+};
+
+struct VSOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) world_pos: vec3<f32>,
+  @location(1) normal: vec3<f32>,
+    @location(3) tbn0: vec3<f32>,
+    @location(4) tbn1: vec3<f32>,
+    @location(5) tbn2: vec3<f32>,
+  @location(2) color: vec4<f32>,
+};
+
+struct Camera { view_proj: mat4x4<f32>, light_dir: vec3<f32>, _pad: f32, camera_pos: vec3<f32>, _pad2: f32 };
+@group(0) @binding(0) var<uniform> uCamera: Camera;
+
+struct MaterialUbo { base_color: vec4<f32>, metallic: f32, roughness: f32, _pad: vec2<f32> };
+@group(1) @binding(0) var<uniform> uMaterial: MaterialUbo;
+
+struct MainLightUbo { view_proj0: mat4x4<f32>, view_proj1: mat4x4<f32>, splits: vec2<f32>, extras: vec2<f32> };
+@group(2) @binding(0) var<uniform> uLight: MainLightUbo;
+@group(2) @binding(1) var shadow_tex: texture_depth_2d_array;
+@group(2) @binding(2) var shadow_sampler: sampler_comparison;
+
+@group(3) @binding(0) var albedo_tex: texture_2d<f32>;
+@group(3) @binding(1) var albedo_samp: sampler;
+@group(3) @binding(2) var mr_tex: texture_2d<f32>;
+@group(3) @binding(3) var mr_samp: sampler;
+@group(3) @binding(4) var normal_tex: texture_2d<f32>;
+@group(3) @binding(5) var normal_samp: sampler;
+struct Skinning { mats: array<mat4x4<f32>> };
+@group(3) @binding(6) var<storage, read> skin: Skinning;
+
+@vertex
+fn vs(input: VSIn) -> VSOut {
+  let model_inst = mat4x4<f32>(input.m0, input.m1, input.m2, input.m3);
+  let j = input.joints;
+  let w = input.weights;
+  let m0 = skin.mats[u32(j.x)];
+  let m1 = skin.mats[u32(j.y)];
+  let m2 = skin.mats[u32(j.z)];
+  let m3 = skin.mats[u32(j.w)];
+  let pos4 = vec4<f32>(input.position, 1.0);
+    let nrm4 = vec4<f32>(input.normal, 0.0);
+  let skinned_pos = (m0 * pos4) * w.x + (m1 * pos4) * w.y + (m2 * pos4) * w.z + (m3 * pos4) * w.w;
+  let skinned_nrm = (m0 * nrm4) * w.x + (m1 * nrm4) * w.y + (m2 * nrm4) * w.z + (m3 * nrm4) * w.w;
+    let tan4 = vec4<f32>(input.tangent.xyz, 0.0);
+    let skinned_tan = (m0 * tan4) * w.x + (m1 * tan4) * w.y + (m2 * tan4) * w.z + (m3 * tan4) * w.w;
+  let world = model_inst * skinned_pos;
+  var out: VSOut;
+  out.pos = uCamera.view_proj * world;
+    let Nw = normalize((model_inst * skinned_nrm).xyz);
+    let Tw = normalize((model_inst * skinned_tan).xyz);
+    let Bw = normalize(cross(Nw, Tw)) * input.tangent.w;
+    out.normal = Nw;
+  out.world_pos = world.xyz;
+    out.tbn0 = Tw;
+    out.tbn1 = Bw;
+    out.tbn2 = Nw;
+  out.color = input.color;
+  return out;
+}
+
+@fragment
+fn fs(input: VSOut) -> @location(0) vec4<f32> {
+    let V = normalize(uCamera.camera_pos - input.world_pos);
+    let L = normalize(-uCamera.light_dir);
+    var N = normalize(input.normal);
+    var base_color = (uMaterial.base_color.rgb * input.color.rgb);
+    var metallic = clamp(uMaterial.metallic, 0.0, 1.0);
+    var roughness = clamp(uMaterial.roughness, 0.04, 1.0);
+    let F0 = mix(vec3<f32>(0.04, 0.04, 0.04), base_color, metallic);
+
+    // Unified BRDF: Cook-Torrance specular + Burley diffuse (from brdf_common.wgsl)
+    let brdf_result = evaluate_brdf(N, V, L, base_color, metallic, roughness, F0);
+
+    let radiance = vec3<f32>(2.0, 1.96, 1.8);
+    // Cascaded shadow sampling with edge fade (same as static path)
+    let dist = length(input.world_pos - uCamera.camera_pos);
+    let shadow_far = uLight.splits.y;
+    let use_c0 = dist < uLight.splits.x;
+    var lvp: mat4x4<f32>;
+    if (use_c0) { lvp = uLight.view_proj0; } else { lvp = uLight.view_proj1; }
+    let lp = lvp * vec4<f32>(input.world_pos, 1.0);
+    let ndc = lp.xyz / lp.w;
+    let uv = ndc.xy * 0.5 + vec2<f32>(0.5, 0.5);
+    let depth = ndc.z;
+    let slope = max(0.0, 1.0 - dot(N, L));
+    let base_bias = uLight.extras.y;
+    let bias = max(base_bias, 0.00001);
+    var shadow: f32 = 1.0;
+    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && dist < shadow_far) {
+        let layer = i32(select(1, 0, use_c0));
+        let dims = vec2<f32>(textureDimensions(shadow_tex).xy);
+        let texel = 1.0 / dims;
+        var sum = 0.0;
+        for (var dx: i32 = -1; dx <= 1; dx = dx + 1) {
+            for (var dy: i32 = -1; dy <= 1; dy = dy + 1) {
+                let o = vec2<f32>(f32(dx), f32(dy)) * texel * max(0.0, uLight.extras.x);
+                sum = sum + textureSampleCompare(shadow_tex, shadow_sampler, uv + o, layer, depth - bias);
+            }
+        }
+        shadow = sum / 9.0;
+        let fade_start = shadow_far * 0.8;
+        if (dist > fade_start) {
+            let fade = (dist - fade_start) / (shadow_far - fade_start);
+            shadow = mix(shadow, 1.0, clamp(fade, 0.0, 1.0));
+        }
+        let edge_fade_x = min(uv.x, 1.0 - uv.x) * 10.0;
+        let edge_fade_y = min(uv.y, 1.0 - uv.y) * 10.0;
+        let edge_fade = clamp(min(edge_fade_x, edge_fade_y), 0.0, 1.0);
+        shadow = mix(1.0, shadow, edge_fade);
+    }
+    if (uLight.extras.x < 0.0) {
+        shadow = 1.0;
+    }
+    // Direct lighting (evaluate_brdf already includes NdotL) + ambient lift
+    let lit_color = brdf_result * radiance * shadow + base_color * 0.08;
+    return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
+}
+"#);
+
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct CameraUBO {
@@ -467,6 +564,8 @@ pub struct Renderer {
     queue: wgpu::Queue,
     /// Vulkan pipeline cache for faster shader compilation on subsequent launches.
     pipeline_cache: Option<wgpu::PipelineCache>,
+    /// Keeps PipelineCacheManager alive for its Drop impl (persists cache to disk).
+    _pipeline_cache_mgr: Option<crate::pipeline_cache::PipelineCacheManager>,
     /// Per-pass GPU timestamp profiler; `None` when `TIMESTAMP_QUERY` is unsupported.
     gpu_profiler: Option<crate::gpu_profiler::GpuProfiler>,
     /// Ring buffer for transient per-frame GPU allocations (uniforms, storage).
@@ -827,13 +926,11 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
-        // Pipeline cache — Vulkan pipeline cache for faster shader compilation.
-        // NOTE: `Device::create_pipeline_cache()` is `unsafe` in wgpu 25, and this crate
-        // uses `#![forbid(unsafe_code)]`. The infrastructure (field, accessor, Drop save,
-        // and `cache: pipeline_cache.as_ref()` in all pipeline descriptors) is wired up
-        // so that enabling this requires only replacing `None` below with the cache
-        // creation call when wgpu stabilizes a safe API or the safety constraint is relaxed.
-        let pipeline_cache: Option<wgpu::PipelineCache> = None;
+        // Pipeline cache — Vulkan/DX12 pipeline cache for faster shader compilation.
+        // Loads prior cache data from disk if available; saves on drop.
+        let pipeline_cache_mgr =
+            crate::pipeline_cache::PipelineCacheManager::create(&device, None);
+        let pipeline_cache = pipeline_cache_mgr.as_ref().map(|m| m.cache().clone());
 
         // GPU timestamp profiler — created when TIMESTAMP_QUERY is available.
         let gpu_profiler = if device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
@@ -2426,173 +2523,7 @@ fn vs(input: VSIn) -> VSOut {
             });
         let skinned_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor{
             label: Some("skinned shader"),
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(r#"
-struct VSIn {
-  @location(0) position: vec3<f32>,
-  @location(1) normal:   vec3<f32>,
-    @location(12) tangent:  vec4<f32>,
-  @location(10) joints:  vec4<u32>,
-  @location(11) weights: vec4<f32>,
-  @location(2) m0: vec4<f32>,
-  @location(3) m1: vec4<f32>,
-  @location(4) m2: vec4<f32>,
-  @location(5) m3: vec4<f32>,
-  @location(6) n0: vec3<f32>,
-  @location(7) n1: vec3<f32>,
-  @location(8) n2: vec3<f32>,
-  @location(9) color: vec4<f32>,
-};
-
-struct VSOut {
-  @builtin(position) pos: vec4<f32>,
-  @location(0) world_pos: vec3<f32>,
-  @location(1) normal: vec3<f32>,
-    @location(3) tbn0: vec3<f32>,
-    @location(4) tbn1: vec3<f32>,
-    @location(5) tbn2: vec3<f32>,
-  @location(2) color: vec4<f32>,
-};
-
-struct Camera { view_proj: mat4x4<f32>, light_dir: vec3<f32>, _pad: f32, camera_pos: vec3<f32>, _pad2: f32 };
-@group(0) @binding(0) var<uniform> uCamera: Camera;
-
-struct MaterialUbo { base_color: vec4<f32>, metallic: f32, roughness: f32, _pad: vec2<f32> };
-@group(1) @binding(0) var<uniform> uMaterial: MaterialUbo;
-
-struct MainLightUbo { view_proj0: mat4x4<f32>, view_proj1: mat4x4<f32>, splits: vec2<f32>, extras: vec2<f32> };
-@group(2) @binding(0) var<uniform> uLight: MainLightUbo;
-@group(2) @binding(1) var shadow_tex: texture_depth_2d_array;
-@group(2) @binding(2) var shadow_sampler: sampler_comparison;
-
-@group(3) @binding(0) var albedo_tex: texture_2d<f32>;
-@group(3) @binding(1) var albedo_samp: sampler;
-@group(3) @binding(2) var mr_tex: texture_2d<f32>;
-@group(3) @binding(3) var mr_samp: sampler;
-@group(3) @binding(4) var normal_tex: texture_2d<f32>;
-@group(3) @binding(5) var normal_samp: sampler;
-struct Skinning { mats: array<mat4x4<f32>> };
-@group(3) @binding(6) var<storage, read> skin: Skinning;
-
-@vertex
-fn vs(input: VSIn) -> VSOut {
-  // Build instance model matrix
-  let model_inst = mat4x4<f32>(input.m0, input.m1, input.m2, input.m3);
-  // Skinning transform
-  let j = input.joints;
-  let w = input.weights;
-  let m0 = skin.mats[u32(j.x)];
-  let m1 = skin.mats[u32(j.y)];
-  let m2 = skin.mats[u32(j.z)];
-  let m3 = skin.mats[u32(j.w)];
-  let pos4 = vec4<f32>(input.position, 1.0);
-    let nrm4 = vec4<f32>(input.normal, 0.0);
-  let skinned_pos = (m0 * pos4) * w.x + (m1 * pos4) * w.y + (m2 * pos4) * w.z + (m3 * pos4) * w.w;
-  let skinned_nrm = (m0 * nrm4) * w.x + (m1 * nrm4) * w.y + (m2 * nrm4) * w.z + (m3 * nrm4) * w.w;
-    let tan4 = vec4<f32>(input.tangent.xyz, 0.0);
-    let skinned_tan = (m0 * tan4) * w.x + (m1 * tan4) * w.y + (m2 * tan4) * w.z + (m3 * tan4) * w.w;
-  let world = model_inst * skinned_pos;
-  var out: VSOut;
-  out.pos = uCamera.view_proj * world;
-    let Nw = normalize((model_inst * skinned_nrm).xyz);
-    let Tw = normalize((model_inst * skinned_tan).xyz);
-    let Bw = normalize(cross(Nw, Tw)) * input.tangent.w;
-    out.normal = Nw;
-  out.world_pos = world.xyz;
-    out.tbn0 = Tw;
-    out.tbn1 = Bw;
-    out.tbn2 = Nw;
-  out.color = input.color;
-  return out;
-}
-
-// Reuse the same fragment code as the static pipeline
-fn fresnel_schlick(cos_theta: f32, F0: vec3<f32>) -> vec3<f32> {
-    return F0 + (vec3<f32>(1.0,1.0,1.0) - F0) * pow(1.0 - cos_theta, 5.0);
-}
-fn distribution_ggx(N: vec3<f32>, H: vec3<f32>, roughness: f32) -> f32 {
-    let a = roughness * roughness;
-    let a2 = a * a;
-    let NdotH = max(dot(N, H), 0.0);
-    let NdotH2 = NdotH * NdotH;
-    let denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    return a2 / (3.14159 * denom * denom + 1e-5);
-}
-fn geometry_smith(N: vec3<f32>, V: vec3<f32>, L: vec3<f32>, roughness: f32) -> f32 {
-    let r = (roughness + 1.0);
-    let k = (r * r) / 8.0;
-    let NdotV = max(dot(N, V), 0.0);
-    let NdotL = max(dot(N, L), 0.0);
-    let ggx1 = NdotV / (NdotV * (1.0 - k) + k + 1e-5);
-    let ggx2 = NdotL / (NdotL * (1.0 - k) + k + 1e-5);
-    return ggx1 * ggx2;
-}
-@fragment
-fn fs(input: VSOut) -> @location(0) vec4<f32> {
-    let V = normalize(uCamera.camera_pos - input.world_pos);
-    let L = normalize(-uCamera.light_dir);
-    let H = normalize(V + L);
-    var N = normalize(input.normal);
-    // Normal mapping disabled in skinned path for now; use vertex normal transformed to world.
-    let NdotL = max(dot(N, L), 0.0);
-    var base_color = (uMaterial.base_color.rgb * input.color.rgb);
-    var metallic = clamp(uMaterial.metallic, 0.0, 1.0);
-    var roughness = clamp(uMaterial.roughness, 0.04, 1.0);
-    let F0 = mix(vec3<f32>(0.04, 0.04, 0.04), base_color, metallic);
-    let F = fresnel_schlick(max(dot(H, V), 0.0), F0);
-    let D = distribution_ggx(N, H, roughness);
-    let G = geometry_smith(N, V, L, roughness);
-    let numerator = D * G * F;
-    let denom = 4.0 * max(dot(N, V), 0.0) * NdotL + 1e-5;
-    let specular = numerator / denom;
-    let kd = (vec3<f32>(1.0,1.0,1.0) - F) * (1.0 - metallic);
-    let diffuse = kd * base_color / 3.14159;
-    let radiance = vec3<f32>(2.0, 1.96, 1.8); // sun radiance (HDR, ACES compresses)
-    // Cascaded shadow sampling with edge fade (same as static path)
-    let dist = length(input.world_pos - uCamera.camera_pos);
-    let shadow_far = uLight.splits.y;
-    let use_c0 = dist < uLight.splits.x;
-    var lvp: mat4x4<f32>;
-    if (use_c0) { lvp = uLight.view_proj0; } else { lvp = uLight.view_proj1; }
-    let lp = lvp * vec4<f32>(input.world_pos, 1.0);
-    let ndc = lp.xyz / lp.w;
-    let uv = ndc.xy * 0.5 + vec2<f32>(0.5, 0.5);
-    let depth = ndc.z;
-    let slope = max(0.0, 1.0 - dot(N, L));
-    let base_bias = uLight.extras.y;
-    let bias = max(base_bias /* + slope_scale * slope */ , 0.00001);
-    var shadow: f32 = 1.0;
-    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && dist < shadow_far) {
-        let layer = i32(select(1, 0, use_c0));
-        let dims = vec2<f32>(textureDimensions(shadow_tex).xy);
-        let texel = 1.0 / dims;
-        var sum = 0.0;
-        for (var dx: i32 = -1; dx <= 1; dx = dx + 1) {
-            for (var dy: i32 = -1; dy <= 1; dy = dy + 1) {
-                let o = vec2<f32>(f32(dx), f32(dy)) * texel * max(0.0, uLight.extras.x);
-                sum = sum + textureSampleCompare(shadow_tex, shadow_sampler, uv + o, layer, depth - bias);
-            }
-        }
-        shadow = sum / 9.0;
-        // Fade shadow at distance and UV edges
-        let fade_start = shadow_far * 0.8;
-        if (dist > fade_start) {
-            let fade = (dist - fade_start) / (shadow_far - fade_start);
-            shadow = mix(shadow, 1.0, clamp(fade, 0.0, 1.0));
-        }
-        let edge_fade_x = min(uv.x, 1.0 - uv.x) * 10.0;
-        let edge_fade_y = min(uv.y, 1.0 - uv.y) * 10.0;
-        let edge_fade = clamp(min(edge_fade_x, edge_fade_y), 0.0, 1.0);
-        shadow = mix(1.0, shadow, edge_fade);
-    }
-    // Debug override: force shadow off when extras.x is negative (sentinel from CPU)
-    if (uLight.extras.x < 0.0) {
-        shadow = 1.0;
-    }
-    // Match ambient lift with static pipeline
-    let lit_color = (diffuse + specular) * radiance * NdotL * shadow + base_color * 0.08;
-    return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
-}
-"#)),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(SKINNED_SHADER_SRC)),
         });
         let skinned_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             cache: pipeline_cache.as_ref(),
@@ -2996,6 +2927,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             device,
             queue,
             pipeline_cache,
+            _pipeline_cache_mgr: pipeline_cache_mgr,
             gpu_profiler,
             staging_ring,
             resource_generation,

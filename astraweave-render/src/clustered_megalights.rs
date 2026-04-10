@@ -19,6 +19,11 @@
 use anyhow::{Context, Result};
 use wgpu;
 
+use crate::subgroup_ops::{select_prefix_sum_shader, SubgroupCapabilities};
+
+/// Elements processed per workgroup in parallel prefix sum (256 threads × 2 elements)
+const ELEMENTS_PER_WORKGROUP: u32 = 512;
+
 /// GPU light representation (32 bytes, matches GpuLight in clustered_forward.rs)
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -62,20 +67,29 @@ struct PrefixSumParams {
 }
 
 pub struct MegaLightsRenderer {
-    // Compute pipelines (3 stages)
+    // Compute pipelines (3 stages + propagation for multi-pass prefix sum)
     count_pipeline: wgpu::ComputePipeline,
     prefix_sum_pipeline: wgpu::ComputePipeline,
+    propagate_offsets_pipeline: wgpu::ComputePipeline,
     write_indices_pipeline: wgpu::ComputePipeline,
 
     // Bind group layouts
     count_bind_group_layout: wgpu::BindGroupLayout,
     prefix_sum_bind_group_layout: wgpu::BindGroupLayout,
+    propagate_bind_group_layout: wgpu::BindGroupLayout,
     write_indices_bind_group_layout: wgpu::BindGroupLayout,
 
     // Bind groups (rebuilt when buffers change)
     count_bind_group: Option<wgpu::BindGroup>,
     prefix_sum_bind_group: Option<wgpu::BindGroup>,
+    block_scan_bind_group: Option<wgpu::BindGroup>,
+    propagate_bind_group: Option<wgpu::BindGroup>,
     write_indices_bind_group: Option<wgpu::BindGroup>,
+
+    // Multi-pass prefix sum buffers
+    block_sums_buffer: wgpu::Buffer,
+    block_offsets_buffer: wgpu::Buffer,
+    block_sums_scratch_buffer: wgpu::Buffer,
 
     // Configuration
     cluster_dims: (u32, u32, u32),
@@ -96,10 +110,19 @@ impl MegaLightsRenderer {
             ),
         });
 
+        // Select prefix sum shader based on subgroup capabilities
+        let caps = SubgroupCapabilities::from_features(device.features());
+        let (prefix_sum_source, _is_subgroup) = select_prefix_sum_shader(&caps);
+
         let prefix_sum_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("MegaLights Prefix Sum Shader"),
+            source: wgpu::ShaderSource::Wgsl(prefix_sum_source.into()),
+        });
+
+        let propagate_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("MegaLights Propagate Offsets Shader"),
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("../shaders/megalights/prefix_sum.wgsl").into(),
+                include_str!("../shaders/megalights/prefix_sum_propagate.wgsl").into(),
             ),
         });
 
@@ -183,6 +206,58 @@ impl MegaLightsRenderer {
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // @binding(2): params (uniform)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // @binding(3): block_sums (storage, read_write)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+
+        // Propagate offsets bind group layout (pass 3 of multi-pass prefix sum)
+        let propagate_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("MegaLights Propagate Offsets BG Layout"),
+                entries: &[
+                    // @binding(0): data (storage, read_write)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // @binding(1): block_offsets (storage, read)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -298,6 +373,23 @@ impl MegaLightsRenderer {
                 cache: None,
             });
 
+        let propagate_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("MegaLights Propagate Offsets Pipeline Layout"),
+                bind_group_layouts: &[&propagate_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+        let propagate_offsets_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("MegaLights Propagate Offsets Pipeline"),
+                layout: Some(&propagate_pipeline_layout),
+                module: &propagate_shader,
+                entry_point: Some("propagate_offsets"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+
         let write_indices_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("MegaLights Write Indices Pipeline Layout"),
@@ -315,16 +407,50 @@ impl MegaLightsRenderer {
                 cache: None,
             });
 
+        // Multi-pass prefix sum buffers
+        let total_clusters = (cluster_dims.0 * cluster_dims.1 * cluster_dims.2) as u64;
+        let num_blocks = total_clusters.div_ceil(ELEMENTS_PER_WORKGROUP as u64);
+        let block_buf_size = (num_blocks.max(1) * std::mem::size_of::<u32>() as u64).max(4);
+
+        let block_sums_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Prefix Sum Block Sums"),
+            size: block_buf_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let block_offsets_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Prefix Sum Block Offsets"),
+            size: block_buf_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Scratch buffer for block scan's own block_sums output (1 element, discarded)
+        let block_sums_scratch_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Prefix Sum Block Sums Scratch"),
+            size: std::mem::size_of::<u32>() as u64,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+
         Ok(Self {
             count_pipeline,
             prefix_sum_pipeline,
+            propagate_offsets_pipeline,
             write_indices_pipeline,
             count_bind_group_layout,
             prefix_sum_bind_group_layout,
+            propagate_bind_group_layout,
             write_indices_bind_group_layout,
             count_bind_group: None,
             prefix_sum_bind_group: None,
+            block_scan_bind_group: None,
+            propagate_bind_group: None,
             write_indices_bind_group: None,
+            block_sums_buffer,
+            block_offsets_buffer,
+            block_sums_scratch_buffer,
             cluster_dims,
             max_lights,
         })
@@ -367,7 +493,7 @@ impl MegaLightsRenderer {
             ],
         }));
 
-        // Prefix sum bind group
+        // Prefix sum bind group (pass 1: local scan with block sum output)
         self.prefix_sum_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("MegaLights Prefix Sum Bind Group"),
             layout: &self.prefix_sum_bind_group_layout,
@@ -379,6 +505,54 @@ impl MegaLightsRenderer {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: light_offsets_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: prefix_sum_params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.block_sums_buffer.as_entire_binding(),
+                },
+            ],
+        }));
+
+        // Block scan bind group (pass 2: scan block sums → block offsets)
+        self.block_scan_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("MegaLights Block Scan Bind Group"),
+            layout: &self.prefix_sum_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.block_sums_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: self.block_offsets_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: prefix_sum_params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.block_sums_scratch_buffer.as_entire_binding(),
+                },
+            ],
+        }));
+
+        // Propagate bind group (pass 3: add block offsets to local scans)
+        self.propagate_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("MegaLights Propagate Offsets Bind Group"),
+            layout: &self.propagate_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: light_offsets_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: self.block_offsets_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -440,12 +614,20 @@ impl MegaLightsRenderer {
             .prefix_sum_bind_group
             .as_ref()
             .context("Prefix sum bind group not initialized")?;
+        let block_scan_bg = self
+            .block_scan_bind_group
+            .as_ref()
+            .context("Block scan bind group not initialized")?;
+        let propagate_bg = self
+            .propagate_bind_group
+            .as_ref()
+            .context("Propagate bind group not initialized")?;
         let write_indices_bg = self
             .write_indices_bind_group
             .as_ref()
             .context("Write indices bind group not initialized")?;
 
-        let _total_clusters = self.cluster_dims.0 * self.cluster_dims.1 * self.cluster_dims.2;
+        let total_clusters = self.cluster_dims.0 * self.cluster_dims.1 * self.cluster_dims.2;
 
         // Stage 1: Count lights per cluster
         {
@@ -465,19 +647,44 @@ impl MegaLightsRenderer {
             pass.dispatch_workgroups(workgroups_x, workgroups_y, workgroups_z);
         }
 
-        // Stage 2: Prefix sum (exclusive scan)
+        // Stage 2: Parallel prefix sum (3-pass Blelloch / subgroup-optimized)
+        let num_blocks = total_clusters.div_ceil(ELEMENTS_PER_WORKGROUP);
         {
+            // Pass 2a: Local scan — each workgroup scans 512 elements, writes block sums
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("MegaLights Prefix Sum Pass"),
+                label: Some("MegaLights Prefix Sum Local Scan"),
                 timestamp_writes: None,
             });
 
             pass.set_pipeline(&self.prefix_sum_pipeline);
             pass.set_bind_group(0, prefix_sum_bg, &[]);
+            pass.dispatch_workgroups(num_blocks, 1, 1);
+        }
 
-            // Serial scan on single thread (see prefix_sum.wgsl)
-            // For ~10k-50k clusters, a single thread is faster than multi-dispatch synchronization overhead
-            pass.dispatch_workgroups(1, 1, 1);
+        if num_blocks > 1 {
+            // Pass 2b: Scan block sums — one workgroup scans the block totals
+            {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("MegaLights Prefix Sum Block Scan"),
+                    timestamp_writes: None,
+                });
+
+                pass.set_pipeline(&self.prefix_sum_pipeline);
+                pass.set_bind_group(0, block_scan_bg, &[]);
+                pass.dispatch_workgroups(1, 1, 1);
+            }
+
+            // Pass 2c: Propagate block offsets to all elements
+            {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("MegaLights Prefix Sum Propagate"),
+                    timestamp_writes: None,
+                });
+
+                pass.set_pipeline(&self.propagate_offsets_pipeline);
+                pass.set_bind_group(0, propagate_bg, &[]);
+                pass.dispatch_workgroups(num_blocks, 1, 1);
+            }
         }
 
         // Stage 3: Write light indices

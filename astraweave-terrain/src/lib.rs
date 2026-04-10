@@ -12,8 +12,10 @@ pub mod biome_pack;
 pub mod blueprint_zone;
 pub mod chunk;
 pub mod climate;
+pub mod collision;
 pub mod compressed_voxels; // P4-8: Palette compression + RLE for voxel chunks
 pub mod erosion;
+pub mod gpu_bridge; // GPU acceleration bridge (TerrainGpuAccelerator trait)
 pub mod heightmap;
 pub mod lod_blending;
 pub mod lod_manager; // Week 4 Action 14: LOD with hysteresis
@@ -44,7 +46,12 @@ pub use blueprint_zone::{
     AdaptiveScaleParams, BlendMask, BlueprintZone, PlacementMode, ZoneId, ZoneRegistry, ZoneSource,
 };
 pub use chunk::{ChunkId, ChunkManager, TerrainChunk};
+pub use collision::{collision_mesh_from_chunk, collision_mesh_from_heightmap, CollisionMesh};
 pub use climate::{ClimateConfig, ClimateMap};
+pub use gpu_bridge::{
+    GpuErosionRequest, GpuHeightmapRequest, GpuHeightmapResult, GpuNoiseRequest,
+    TerrainGpuAccelerator,
+};
 pub use compressed_voxels::{
     CompressedVoxelChunk, PaletteEntry, RleRun, VoxelPalette, CHUNK_VOLUME,
 };

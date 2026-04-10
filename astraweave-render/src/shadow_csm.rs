@@ -454,9 +454,9 @@ impl CsmRenderer {
     /// ```
     pub fn update_cascades(
         &mut self,
-        _camera_pos: Vec3,
-        _camera_view: Mat4,
-        _camera_proj: Mat4,
+        camera_pos: Vec3,
+        camera_view: Mat4,
+        camera_proj: Mat4,
         light_dir: Vec3,
         near: f32,
         far: f32,
@@ -486,43 +486,123 @@ impl CsmRenderer {
             *split = lambda * log_split + (1.0 - lambda) * uniform_split;
         }
 
+        // Compute inverse view-projection to get frustum corners in world space
+        let inv_proj = camera_proj.inverse();
+        let inv_view = camera_view.inverse();
+
         // Update each cascade
         for (i, cascade) in self.cascades.iter_mut().enumerate() {
             cascade.near = split_distances[i];
             cascade.far = split_distances[i + 1];
 
-            // 🎯 BEVY-STYLE: Compute light view matrix from direction
-            // Directional lights need a view matrix that looks FROM light TO scene
-            let light_distance = 50.0; // How far back to place the light
-            let scene_center = Vec3::ZERO; // Look at origin
-            let light_pos = scene_center - (light_dir.normalize() * light_distance);
+            // Map cascade near/far to NDC z range [0, 1] (reverse-Z convention)
+            // For a perspective projection, ndc_z = (split - near) / (far - near)
+            let ndc_near = (split_distances[i] - near) / (far - near);
+            let ndc_far = (split_distances[i + 1] - near) / (far - near);
+
+            // Compute 8 frustum corners for this cascade slice in NDC space
+            // NDC: x,y in [-1,1], z in [0,1] for wgpu
+            let ndc_corners = [
+                // Near plane
+                Vec3::new(-1.0, -1.0, ndc_near),
+                Vec3::new( 1.0, -1.0, ndc_near),
+                Vec3::new(-1.0,  1.0, ndc_near),
+                Vec3::new( 1.0,  1.0, ndc_near),
+                // Far plane
+                Vec3::new(-1.0, -1.0, ndc_far),
+                Vec3::new( 1.0, -1.0, ndc_far),
+                Vec3::new(-1.0,  1.0, ndc_far),
+                Vec3::new( 1.0,  1.0, ndc_far),
+            ];
+
+            // Unproject NDC corners to world space
+            let mut world_corners = [Vec3::ZERO; 8];
+            let mut center = Vec3::ZERO;
+            for (j, ndc) in ndc_corners.iter().enumerate() {
+                let clip = glam::Vec4::new(ndc.x, ndc.y, ndc.z, 1.0);
+                let view_pos = inv_proj * clip;
+                let view_pos = view_pos / view_pos.w; // perspective divide
+                let world_pos = inv_view * view_pos;
+                world_corners[j] = Vec3::new(world_pos.x, world_pos.y, world_pos.z);
+                center += world_corners[j];
+            }
+            center /= 8.0;
 
             // Choose up vector perpendicular to light direction
-            // If light is mostly vertical (|light_dir.y| > 0.9), use X as up
-            // Otherwise use Y as up (standard)
             let up = if light_dir.y.abs() > 0.9 {
                 Vec3::X
             } else {
                 Vec3::Y
             };
 
-            cascade.view_matrix = Mat4::look_at_rh(light_pos, scene_center, up);
+            // Compute light view matrix looking at the cascade center
+            let light_norm = light_dir.normalize();
 
-            // FIXED: Use large enough orthographic bounds to cover entire test scene
-            // Scene bounds: Ground is 20×20 at origin, cubes at ±5, ±15, ±25
-            // Need at least -30 to +30 to capture everything
-            let ortho_size = 35.0; // Large enough for test scene (can optimize per-cascade later)
+            // Compute the bounding sphere radius of the frustum slice to determine
+            // how far back to place the light (ensures all geometry is captured)
+            let mut max_radius = 0.0f32;
+            for corner in &world_corners {
+                let dist = (*corner - center).length();
+                if dist > max_radius {
+                    max_radius = dist;
+                }
+            }
 
-            // Log ortho_size on first call for diagnostics
+            // Place light far enough behind the frustum center to capture everything
+            let light_distance = max_radius + 50.0;
+            let light_pos = center - light_norm * light_distance;
+
+            cascade.view_matrix = Mat4::look_at_rh(light_pos, center, up);
+
+            // Transform frustum corners to light space and compute tight AABB
+            let mut ls_min = Vec3::splat(f32::MAX);
+            let mut ls_max = Vec3::splat(f32::MIN);
+            for corner in &world_corners {
+                let ls = cascade.view_matrix.transform_point3(*corner);
+                ls_min = ls_min.min(ls);
+                ls_max = ls_max.max(ls);
+            }
+
+            // Also include camera position itself to avoid popping
+            let ls_cam = cascade.view_matrix.transform_point3(camera_pos);
+            ls_min = ls_min.min(ls_cam);
+            ls_max = ls_max.max(ls_cam);
+
+            let ortho_half_x = (ls_max.x - ls_min.x) * 0.5;
+            let ortho_half_y = (ls_max.y - ls_min.y) * 0.5;
+            // Use the larger of x/y for a square ortho (simplifies sampling)
+            let ortho_size = ortho_half_x.max(ortho_half_y);
+
+            // Texel-snapping: round light-space center to texel increments to prevent
+            // shadow shimmer as the camera moves
+            let shadow_map_size = 2048.0; // per-cascade resolution
+            let texel_size = (ortho_size * 2.0) / shadow_map_size;
+            let ls_center_x = (ls_min.x + ls_max.x) * 0.5;
+            let ls_center_y = (ls_min.y + ls_max.y) * 0.5;
+            let snapped_x = (ls_center_x / texel_size).floor() * texel_size;
+            let snapped_y = (ls_center_y / texel_size).floor() * texel_size;
+            let snap_offset_x = snapped_x - ls_center_x;
+            let snap_offset_y = snapped_y - ls_center_y;
+
+            // Apply texel-snap offset to the view matrix (translate in light space)
+            cascade.view_matrix = Mat4::from_translation(Vec3::new(snap_offset_x, snap_offset_y, 0.0))
+                * cascade.view_matrix;
+
+            // Light-space depth range: ensure we capture geometry in front of and behind
+            let ls_depth_range = ls_max.z - ls_min.z;
+            let light_near = 0.1;
+            let light_far = ls_depth_range + light_distance * 2.0;
+
+            // Log diagnostics on first call
             if i == 0 {
                 static FIRST_UPDATE: std::sync::atomic::AtomicBool =
                     std::sync::atomic::AtomicBool::new(true);
                 if FIRST_UPDATE.swap(false, std::sync::atomic::Ordering::Relaxed) {
                     log::debug!(
-                        "Light frustum: ortho_size = {}, covers [{}, {}] in X and Z",
+                        "CSM cascade 0: ortho_size={:.1}, center=({:.1},{:.1},{:.1}), light_far={:.1}",
                         ortho_size,
-                        -ortho_size,
-                        ortho_size
+                        center.x, center.y, center.z,
+                        light_far,
                     );
                 }
             }
@@ -532,8 +612,8 @@ impl CsmRenderer {
                 ortho_size,
                 -ortho_size,
                 ortho_size,
-                0.1,   // Near (light space)
-                100.0, // Far (light space)
+                light_near,
+                light_far,
             );
 
             cascade.view_proj_matrix = cascade.proj_matrix * cascade.view_matrix;

@@ -37,6 +37,11 @@ struct Material {
 @group(0) @binding(3) var<storage, read> materials: array<Material>;
 @group(0) @binding(4) var voxel_texture: texture_storage_3d<rgba16float, read_write>;
 
+// ---- Atomic accumulation buffer for race-free radiance injection ----
+// Each voxel stores 4 atomic<u32> channels: R, G, B, sample_count
+// Radiance is accumulated in fixed-point (×1024) and divided in the resolve pass.
+@group(0) @binding(5) var<storage, read_write> voxel_accum: array<atomic<u32>>;
+
 // ============================================================================
 // COORDINATE CONVERSION
 // ============================================================================
@@ -266,19 +271,29 @@ fn calculate_radiance(
     return radiance;
 }
 
-/// Atomically blend radiance into voxel texture (since multiple triangles may overlap)
+/// Linearize a voxel coordinate to a flat buffer index (4 u32 per voxel: R, G, B, count)
+fn voxel_accum_index(coord: vec3<u32>) -> u32 {
+    let res = config.voxel_resolution;
+    return (coord.x + coord.y * res + coord.z * res * res) * 4u;
+}
+
+/// Atomically accumulate radiance into the accumulation buffer.
+/// Uses fixed-point arithmetic (×1024) with atomicAdd for race-free injection.
 fn inject_radiance(voxel_coord: vec3<i32>, radiance: vec3<f32>, opacity: f32) {
     let u_coord = vec3<u32>(voxel_coord);
-    
-    // Read existing radiance
-    let existing = textureLoad(voxel_texture, u_coord);
-    
-    // Blend using over operator: C_out = C_src + C_dst * (1 - α_src)
-    let blended_rgb = radiance + existing.rgb * (1.0 - opacity);
-    let blended_alpha = opacity + existing.a * (1.0 - opacity);
-    
-    // Store back (note: this is not atomic, but sufficient for voxelization)
-    textureStore(voxel_texture, u_coord, vec4<f32>(blended_rgb, blended_alpha));
+    let base_idx = voxel_accum_index(u_coord);
+
+    // Fixed-point encoding: multiply by 1024 and clamp to avoid overflow
+    // Max radiance per sample: ~4 million / 1024 = ~4096 HDR units (sufficient)
+    let scale = 1024.0;
+    let r = u32(clamp(radiance.x * opacity * scale, 0.0, 4194304.0));
+    let g = u32(clamp(radiance.y * opacity * scale, 0.0, 4194304.0));
+    let b = u32(clamp(radiance.z * opacity * scale, 0.0, 4194304.0));
+
+    atomicAdd(&voxel_accum[base_idx + 0u], r);
+    atomicAdd(&voxel_accum[base_idx + 1u], g);
+    atomicAdd(&voxel_accum[base_idx + 2u], b);
+    atomicAdd(&voxel_accum[base_idx + 3u], 1u);  // sample count
 }
 
 // ============================================================================
@@ -365,6 +380,43 @@ fn clear_voxels(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
     
-    // Clear to transparent black (ready for radiance injection)
+    // Clear texture to transparent black
     textureStore(voxel_texture, global_id, vec4<f32>(0.0, 0.0, 0.0, 0.0));
+
+    // Clear accumulation buffer (4 u32 per voxel: R, G, B, count)
+    let base_idx = voxel_accum_index(global_id);
+    atomicStore(&voxel_accum[base_idx + 0u], 0u);
+    atomicStore(&voxel_accum[base_idx + 1u], 0u);
+    atomicStore(&voxel_accum[base_idx + 2u], 0u);
+    atomicStore(&voxel_accum[base_idx + 3u], 0u);
+}
+
+// ============================================================================
+// RESOLVE SHADER — converts atomic accumulation to final radiance texture
+// ============================================================================
+
+@compute @workgroup_size(8, 8, 8)
+fn resolve_voxels(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    if global_id.x >= config.voxel_resolution ||
+       global_id.y >= config.voxel_resolution ||
+       global_id.z >= config.voxel_resolution {
+        return;
+    }
+
+    let base_idx = voxel_accum_index(global_id);
+    let count = atomicLoad(&voxel_accum[base_idx + 3u]);
+
+    if count == 0u {
+        textureStore(voxel_texture, global_id, vec4<f32>(0.0, 0.0, 0.0, 0.0));
+        return;
+    }
+
+    // Decode fixed-point: divide by (scale × count) to get average radiance
+    let inv = 1.0 / (1024.0 * f32(count));
+    let r = f32(atomicLoad(&voxel_accum[base_idx + 0u])) * inv;
+    let g = f32(atomicLoad(&voxel_accum[base_idx + 1u])) * inv;
+    let b = f32(atomicLoad(&voxel_accum[base_idx + 2u])) * inv;
+    let alpha = min(f32(count), 1.0);  // opaque if any triangle contributed
+
+    textureStore(voxel_texture, global_id, vec4<f32>(r, g, b, alpha));
 }
