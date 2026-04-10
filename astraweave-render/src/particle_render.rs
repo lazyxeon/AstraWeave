@@ -98,6 +98,7 @@ pub struct ParticleRenderPass {
     bgl: wgpu::BindGroupLayout,
     camera_buf: wgpu::Buffer,
     /// Fallback 1x1 white texture when no particle texture is bound.
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     default_texture: wgpu::Texture,
     default_view: wgpu::TextureView,
     sampler: wgpu::Sampler,
@@ -325,6 +326,7 @@ impl ParticleRenderPass {
 
     /// Render particles into the given render pass.
     /// `particle_count` is the actual number of live particles (not max capacity).
+    #[allow(clippy::too_many_arguments)]
     pub fn render<'a>(
         &'a self,
         device: &wgpu::Device,

@@ -226,6 +226,7 @@ impl FinalGatherPass {
     }
 
     /// Update parameters for this frame.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_params(
         &mut self,
         queue: &wgpu::Queue,
@@ -334,8 +335,8 @@ impl FinalGatherPass {
             })
         });
 
-        let wg_x = (self.width + 7) / 8;
-        let wg_y = (self.height + 7) / 8;
+        let wg_x = self.width.div_ceil(8);
+        let wg_y = self.height.div_ceil(8);
 
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("final_gather"),

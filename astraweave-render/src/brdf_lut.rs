@@ -56,6 +56,7 @@ pub struct BrdfLutPass {
     pipeline: wgpu::ComputePipeline,
     bgl: wgpu::BindGroupLayout,
     params_buf: wgpu::Buffer,
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     lut_texture: wgpu::Texture,
     lut_view: wgpu::TextureView,
     generated: bool,
@@ -183,7 +184,7 @@ impl BrdfLutPass {
             ],
         });
 
-        let wg = (self.config.size + 7) / 8;
+        let wg = self.config.size.div_ceil(8);
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("brdf_lut_gen"),
             timestamp_writes: None,

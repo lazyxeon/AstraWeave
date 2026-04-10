@@ -3729,6 +3729,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     /// When the `camera-relative` feature is active, the view matrix is
     /// automatically adjusted to remove translation, and `camera_pos` in the
     /// GPU UBO is set to zero.  Call [`set_camera_world_position`] first.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_camera_matrices(
         &mut self,
         view: glam::Mat4,
@@ -3989,7 +3990,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
 
         let vertex_size = std::mem::size_of::<crate::types::Vertex>();
         let vbuf_bytes = vertex_size * positions.len();
-        let ibuf_bytes = std::mem::size_of::<u32>() * indices.len();
+        let ibuf_bytes = std::mem::size_of_val(indices);
         let max_buf = self.device.limits().max_buffer_size as usize;
 
         if vbuf_bytes > max_buf || ibuf_bytes > max_buf {
@@ -6309,6 +6310,7 @@ fn sphere_radius(corners: &[glam::Vec3; 8], center: glam::Vec3) -> f32 {
         .fold(0.0_f32, f32::max)
 }
 
+#[allow(dead_code)]
 fn aabb_in_view_space(view: &glam::Mat4, corners_ws: &[glam::Vec3; 8]) -> (glam::Vec3, glam::Vec3) {
     let mut min = glam::Vec3::splat(f32::INFINITY);
     let mut max = glam::Vec3::splat(f32::NEG_INFINITY);

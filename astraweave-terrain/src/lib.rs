@@ -12,6 +12,7 @@ pub mod biome_pack;
 pub mod blueprint_zone;
 pub mod chunk;
 pub mod climate;
+pub mod compressed_voxels; // P4-8: Palette compression + RLE for voxel chunks
 pub mod erosion;
 pub mod heightmap;
 pub mod lod_blending;
@@ -44,6 +45,9 @@ pub use blueprint_zone::{
 };
 pub use chunk::{ChunkId, ChunkManager, TerrainChunk};
 pub use climate::{ClimateConfig, ClimateMap};
+pub use compressed_voxels::{
+    CompressedVoxelChunk, PaletteEntry, RleRun, VoxelPalette, CHUNK_VOLUME,
+};
 pub use heightmap::{Heightmap, HeightmapConfig};
 pub use lod_blending::{LodBlender, MorphConfig, MorphedMesh, MorphingLodManager};
 pub use lod_manager::{
@@ -53,7 +57,7 @@ pub use lod_manager::{
 pub use meshing::{
     AsyncMeshGenerator, ChunkMesh, DualContouring, LodConfig, LodMeshGenerator, MeshVertex,
 };
-pub use noise_gen::{NoiseConfig, TerrainNoise};
+pub use noise_gen::{domain_warped_fbm, DomainWarpConfig, NoiseConfig, NoiseType, TerrainNoise};
 pub use noise_simd::SimdHeightmapGenerator; // Week 3 Action 8: SIMD optimization
 pub use partition_integration::{
     PartitionCoord, VoxelPartitionConfig, VoxelPartitionEvent, VoxelPartitionManager,

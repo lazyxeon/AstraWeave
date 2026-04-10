@@ -109,9 +109,10 @@ impl Default for SizeCurve {
 }
 
 /// Emission shape for spawning new particles.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum EmissionShape {
     /// Point emission.
+    #[default]
     Point,
     /// Sphere with given radius.
     Sphere { radius: f32 },
@@ -121,12 +122,6 @@ pub enum EmissionShape {
     Box { half_extents: Vec3 },
     /// Ring with inner and outer radius (XZ plane).
     Ring { inner: f32, outer: f32 },
-}
-
-impl Default for EmissionShape {
-    fn default() -> Self {
-        EmissionShape::Point
-    }
 }
 
 impl EmissionShape {
@@ -281,6 +276,7 @@ impl ParticleSimPass {
     }
 
     /// Update simulation parameters and dispatch.
+    #[allow(clippy::too_many_arguments)]
     pub fn execute(
         &mut self,
         device: &wgpu::Device,
@@ -339,7 +335,7 @@ impl ParticleSimPass {
             ],
         });
 
-        let workgroups = (max_particles + 63) / 64;
+        let workgroups = max_particles.div_ceil(64);
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("particle_simulate"),
             timestamp_writes: None,

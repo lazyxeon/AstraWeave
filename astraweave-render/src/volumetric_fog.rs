@@ -191,6 +191,7 @@ pub struct VolumetricFogPass {
     apply_params_buf: wgpu::Buffer,
     cascade_buf: wgpu::Buffer,
     // 3D froxel textures
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     density_texture: wgpu::Texture,
     density_view: wgpu::TextureView,
     scatter_texture: wgpu::Texture,
@@ -198,8 +199,10 @@ pub struct VolumetricFogPass {
     scatter_history: wgpu::Texture,
     scatter_history_view: wgpu::TextureView,
     // 2D output textures
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     integrated_texture: wgpu::Texture,
     integrated_view: wgpu::TextureView,
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     applied_texture: wgpu::Texture,
     applied_view: wgpu::TextureView,
     // State
@@ -718,7 +721,7 @@ impl VolumetricFogPass {
                 .cached_density_bg
                 .get_or_rebuild(resource_gen, || unreachable!());
             pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups((fx + 3) / 4, (fy + 3) / 4, (fz + 3) / 4);
+            pass.dispatch_workgroups(fx.div_ceil(4), fy.div_ceil(4), fz.div_ceil(4));
         }
 
         // Pass 2: Scatter
@@ -732,7 +735,7 @@ impl VolumetricFogPass {
                 .cached_scatter_bg
                 .get_or_rebuild(resource_gen, || unreachable!());
             pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups((fx + 3) / 4, (fy + 3) / 4, (fz + 3) / 4);
+            pass.dispatch_workgroups(fx.div_ceil(4), fy.div_ceil(4), fz.div_ceil(4));
         }
 
         // Pass 3: Integrate
@@ -746,7 +749,7 @@ impl VolumetricFogPass {
                 .cached_integrate_bg
                 .get_or_rebuild(resource_gen, || unreachable!());
             pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups((self.width + 7) / 8, (self.height + 7) / 8, 1);
+            pass.dispatch_workgroups(self.width.div_ceil(8), self.height.div_ceil(8), 1);
         }
 
         // Pass 4: Apply
@@ -760,7 +763,7 @@ impl VolumetricFogPass {
                 .cached_apply_bg
                 .get_or_rebuild(resource_gen, || unreachable!());
             pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups((self.width + 7) / 8, (self.height + 7) / 8, 1);
+            pass.dispatch_workgroups(self.width.div_ceil(8), self.height.div_ceil(8), 1);
         }
     }
 

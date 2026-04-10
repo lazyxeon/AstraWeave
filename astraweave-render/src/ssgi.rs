@@ -93,6 +93,7 @@ impl Default for SsgiConfig {
 }
 
 /// Manages SSGI GPU resources.
+#[allow(dead_code)]
 pub struct SsgiPass {
     config: SsgiConfig,
     /// SSGI compute pipeline.
@@ -104,16 +105,20 @@ pub struct SsgiPass {
     /// Denoise params buffer.
     denoise_buf: wgpu::Buffer,
     /// Current frame GI output (rgba16float).
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     gi_texture: wgpu::Texture,
     gi_view: wgpu::TextureView,
     /// History GI texture for temporal accumulation.
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     history_texture: wgpu::Texture,
     history_view: wgpu::TextureView,
     /// Denoised output.
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     denoised_texture: wgpu::Texture,
     denoised_view: wgpu::TextureView,
     /// Bind group layouts.
     gi_bgl: wgpu::BindGroupLayout,
+    #[allow(dead_code)]
     denoise_bgl: wgpu::BindGroupLayout,
     frame_index: u32,
     width: u32,
@@ -250,6 +255,7 @@ impl SsgiPass {
     }
 
     /// Get the final denoised GI texture view.
+    #[allow(clippy::misnamed_getters)]
     pub fn gi_view(&self) -> &wgpu::TextureView {
         &self.denoised_view
     }

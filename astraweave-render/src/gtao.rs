@@ -107,9 +107,11 @@ pub struct GtaoPass {
     /// Blur params uniform buffer (vertical).
     blur_v_buf: wgpu::Buffer,
     /// AO output texture (R16Float).
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     ao_texture: wgpu::Texture,
     ao_view: wgpu::TextureView,
     /// Blur intermediate texture (R16Float).
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     blur_temp_texture: wgpu::Texture,
     blur_temp_view: wgpu::TextureView,
     /// AO bind group layout.
@@ -534,8 +536,8 @@ impl GtaoPass {
 
         // --- Dispatch compute passes ---
 
-        let wg_x = (self.width + 7) / 8;
-        let wg_y = (self.height + 7) / 8;
+        let wg_x = self.width.div_ceil(8);
+        let wg_y = self.height.div_ceil(8);
 
         // 1. AO generation pass
         {

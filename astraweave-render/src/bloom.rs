@@ -55,6 +55,7 @@ pub struct BloomPass {
     down_bgl: wgpu::BindGroupLayout,
     up_bgl: wgpu::BindGroupLayout,
     /// Mip chain textures (from full res down to smallest).
+    #[allow(dead_code)] // textures must be kept alive for views to remain valid
     mip_textures: Vec<wgpu::Texture>,
     mip_views: Vec<wgpu::TextureView>,
     /// Pre-allocated per-mip uniform buffers for downsample params (one per mip).
@@ -231,6 +232,7 @@ impl BloomPass {
     /// After execution, `bloom_view()` contains the final bloom result.
     /// `resource_gen` is the renderer's generation counter; bind groups are
     /// rebuilt only when it changes (e.g., after a resize).
+    #[allow(clippy::too_many_arguments)]
     pub fn execute(
         &mut self,
         device: &wgpu::Device,
@@ -346,7 +348,7 @@ impl BloomPass {
                 .cached_down_bgs
                 .get_or_rebuild(i, resource_gen, || unreachable!());
             pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups((dst_w + 7) / 8, (dst_h + 7) / 8, 1);
+            pass.dispatch_workgroups(dst_w.div_ceil(8), dst_h.div_ceil(8), 1);
 
             src_width = dst_w;
             src_height = dst_h;
@@ -375,7 +377,7 @@ impl BloomPass {
                     .cached_up_bgs
                     .get_or_rebuild(i, resource_gen, || unreachable!());
                 pass.set_bind_group(0, bg, &[]);
-                pass.dispatch_workgroups((fine_w + 7) / 8, (fine_h + 7) / 8, 1);
+                pass.dispatch_workgroups(fine_w.div_ceil(8), fine_h.div_ceil(8), 1);
             }
         }
     }

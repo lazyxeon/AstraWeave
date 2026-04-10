@@ -293,8 +293,8 @@ impl AutoExposurePass {
 
         // Pass 1: Build histogram
         {
-            let wg_x = (self.width + 15) / 16;
-            let wg_y = (self.height + 15) / 16;
+            let wg_x = self.width.div_ceil(16);
+            let wg_y = self.height.div_ceil(16);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("histogram_pass"),
                 timestamp_writes: None,

@@ -62,6 +62,8 @@ struct MainLightUbo {
 @group(3) @binding(3) var mr_samp: sampler;
 @group(3) @binding(4) var normal_tex: texture_2d<f32>;  // tangent-space normal in RGB
 @group(3) @binding(5) var normal_samp: sampler;
+@group(3) @binding(6) var height_tex: texture_2d<f32>;  // heightmap (R channel, 1=raised 0=depressed)
+@group(3) @binding(7) var height_samp: sampler;
 
 // Scene environment (fog, ambient, sun) — matches SceneEnvironmentUBO (96 bytes).
 // Layout uses vec4 packing to avoid vec3 alignment mismatches between Rust and WGSL.
@@ -118,6 +120,65 @@ fn geometry_smith(N: vec3<f32>, V: vec3<f32>, L: vec3<f32>, roughness: f32) -> f
     return ggx1 * ggx2;
 }
 
+// ============================================================================
+// PARALLAX OCCLUSION MAPPING
+// ============================================================================
+
+const POM_MIN_STEPS: f32 = 8.0;
+const POM_MAX_STEPS: f32 = 32.0;
+const POM_BINARY_REFINEMENT_STEPS: u32 = 5u;
+
+/// Compute parallax-displaced UV coordinates.
+/// height_scale from uMaterial._pad.y: 0.0 = disabled, typical 0.02–0.08.
+fn pom_offset_uv(
+    uv: vec2<f32>,
+    view_ts: vec3<f32>,
+    height_scale: f32
+) -> vec2<f32> {
+    if (height_scale <= 0.0) {
+        return uv;
+    }
+
+    let n_dot_v = max(abs(view_ts.z), 0.001);
+    let num_steps = mix(POM_MAX_STEPS, POM_MIN_STEPS, n_dot_v);
+    let step_size = 1.0 / num_steps;
+    let max_offset = view_ts.xy / view_ts.z * height_scale;
+    let delta_uv = max_offset * step_size;
+
+    var current_uv = uv;
+    var current_layer_depth: f32 = 0.0;
+    var current_height = textureSampleLevel(height_tex, height_samp, current_uv, 0.0).r;
+
+    var i: u32 = 0u;
+    let max_i = u32(num_steps);
+    while (i < max_i && current_layer_depth < current_height) {
+        current_uv -= delta_uv;
+        current_layer_depth += step_size;
+        current_height = textureSampleLevel(height_tex, height_samp, current_uv, 0.0).r;
+        i++;
+    }
+
+    // Binary refinement — converge on exact intersection
+    var prev_uv = current_uv + delta_uv;
+    var prev_depth = current_layer_depth - step_size;
+
+    for (var j: u32 = 0u; j < POM_BINARY_REFINEMENT_STEPS; j++) {
+        let mid_uv = (current_uv + prev_uv) * 0.5;
+        let mid_depth = (current_layer_depth + prev_depth) * 0.5;
+        let mid_height = textureSampleLevel(height_tex, height_samp, mid_uv, 0.0).r;
+
+        if (mid_depth < mid_height) {
+            prev_uv = mid_uv;
+            prev_depth = mid_depth;
+        } else {
+            current_uv = mid_uv;
+            current_layer_depth = mid_depth;
+        }
+    }
+
+    return current_uv;
+}
+
 @fragment
 fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let V = normalize(uCamera.camera_pos - input.world_pos);
@@ -125,19 +186,27 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let H = normalize(V + L);
     // Base normal from geometry
     var N = normalize(input.normal);
-    // Normal map sample using real UVs and TBN
-    let nrm_rgb = textureSample(normal_tex, normal_samp, input.uv).rgb;
-    let nrm_ts = normalize(nrm_rgb * 2.0 - vec3<f32>(1.0,1.0,1.0));
+
+    // Parallax Occlusion Mapping: compute displaced UV before all texture samples.
+    // height_scale stored in uMaterial._pad.y (0.0 = POM disabled).
     let T = input.tbn0; let B = input.tbn1; let NN = input.tbn2;
+    let tbn_mat = mat3x3<f32>(T, B, NN);
+    let view_ts = normalize(transpose(tbn_mat) * V);
+    let height_scale = uMaterial._pad.y;
+    let tex_uv = pom_offset_uv(input.uv, view_ts, height_scale);
+
+    // Normal map sample using displaced UVs and TBN
+    let nrm_rgb = textureSample(normal_tex, normal_samp, tex_uv).rgb;
+    let nrm_ts = normalize(nrm_rgb * 2.0 - vec3<f32>(1.0,1.0,1.0));
     N = normalize(T * nrm_ts.x + B * nrm_ts.y + NN * nrm_ts.z);
     let NdotL = max(dot(N, L), 0.0);
 
     var base_color = (uMaterial.base_color.rgb * input.color.rgb);
-    let tex = textureSample(albedo_tex, albedo_samp, input.uv);
+    let tex = textureSample(albedo_tex, albedo_samp, tex_uv);
     base_color = base_color * tex.rgb;
     var metallic = clamp(uMaterial.metallic, 0.0, 1.0);
     var roughness = clamp(uMaterial.roughness, 0.04, 1.0);
-    let mr = textureSample(mr_tex, mr_samp, input.uv);
+    let mr = textureSample(mr_tex, mr_samp, tex_uv);
     metallic = clamp(max(metallic, mr.r), 0.0, 1.0);
     roughness = clamp(min(roughness, max(mr.g, 0.04)), 0.04, 1.0);
 

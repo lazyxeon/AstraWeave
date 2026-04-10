@@ -8,8 +8,7 @@
 use glam::Vec3;
 
 use crate::material_extended::{
-    MaterialGpuExtended, MATERIAL_FLAG_ANISOTROPY, MATERIAL_FLAG_CLEARCOAT, MATERIAL_FLAG_SHEEN,
-    MATERIAL_FLAG_SUBSURFACE, MATERIAL_FLAG_TRANSMISSION,
+    MaterialGpuExtended, MATERIAL_FLAG_CLEARCOAT, MATERIAL_FLAG_SHEEN, MATERIAL_FLAG_SUBSURFACE,
 };
 
 /// The Disney BRDF WGSL source, available for shader composition.

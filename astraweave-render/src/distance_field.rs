@@ -202,6 +202,7 @@ pub struct DfaoPass {
     sdf_texture: wgpu::Texture,
     sdf_view: wgpu::TextureView,
     /// Output AO texture (R16Float).
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     ao_texture: wgpu::Texture,
     ao_view: wgpu::TextureView,
     width: u32,
@@ -502,8 +503,8 @@ impl DfaoPass {
             })
         });
 
-        let wg_x = (self.width + 7) / 8;
-        let wg_y = (self.height + 7) / 8;
+        let wg_x = self.width.div_ceil(8);
+        let wg_y = self.height.div_ceil(8);
 
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("dfao"),

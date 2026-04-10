@@ -377,7 +377,7 @@ impl SurfaceCachePass {
             })
         });
 
-        let workgroups = (update_count + 63) / 64;
+        let workgroups = update_count.div_ceil(64);
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("surface_cache_update"),
             timestamp_writes: None,
@@ -446,9 +446,9 @@ fn evaluate_sh(probe: &ProbeSH, dir: Vec3) -> Vec3 {
     ];
 
     let mut result = Vec3::ZERO;
-    for i in 0..9 {
+    for (i, &bi) in b.iter().enumerate() {
         let c = probe.c[i];
-        result += Vec3::new(c[0], c[1], c[2]) * b[i];
+        result += Vec3::new(c[0], c[1], c[2]) * bi;
     }
     result
 }

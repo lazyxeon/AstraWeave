@@ -75,6 +75,7 @@ pub struct GodRayPass {
     pipeline: wgpu::ComputePipeline,
     bgl: wgpu::BindGroupLayout,
     params_buf: wgpu::Buffer,
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     output_texture: wgpu::Texture,
     output_view: wgpu::TextureView,
     width: u32,
@@ -323,8 +324,8 @@ impl GodRayPass {
                 crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
 
-        let wg_x = (self.width + 7) / 8;
-        let wg_y = (self.height + 7) / 8;
+        let wg_x = self.width.div_ceil(8);
+        let wg_y = self.height.div_ceil(8);
 
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("god_rays"),

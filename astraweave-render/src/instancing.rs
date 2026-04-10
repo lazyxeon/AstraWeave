@@ -4,7 +4,6 @@
 use glam::{Mat4, Quat, Vec3};
 use std::collections::HashMap;
 use wgpu;
-use wgpu::util::DeviceExt;
 
 /// Instance transform data (sent to GPU)
 #[repr(C)]

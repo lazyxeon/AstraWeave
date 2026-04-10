@@ -32,9 +32,11 @@
 //! | `ssao` | Screen-space ambient occlusion |
 
 pub mod camera;
+pub mod clipmap_terrain; // Geometry clipmap / CDLOD terrain with distance-morphing LOD rings
 pub mod clustered;
 pub mod clustered_forward; // Complete clustered forward rendering
 pub mod clustered_megalights; // MegaLights: GPU-accelerated light culling (Phase 1)
+pub mod compute_noise; // GPU compute noise generation (Perlin/fBM/Ridged/Billow/DomainWarped)
 pub mod debug_quad;
 pub mod depth;
 pub mod environment;
@@ -83,18 +85,24 @@ pub mod material_loader; // internal builder helpers
 pub mod mesh_gltf; // glTF loader
 #[cfg(any(feature = "obj-assets", feature = "assets"))]
 pub mod mesh_obj;
+pub mod parallax; // Parallax Occlusion Mapping — steep ray-march + binary refinement
 pub mod particle_forces; // Enhanced particle simulation: forces, curves, emission shapes (Phase 7)
 pub mod particle_render; // Billboard particle render pipeline with blending (Phase 7)
 pub mod particle_sort; // GPU bitonic sort for depth-ordered particle transparency (Phase 7)
 pub mod residency;
 pub mod scene_environment;
+pub mod shader_manager; // Shader hot-reload: hash-based change detection + pipeline invalidation
 pub mod ssgi; // Screen-Space Global Illumination with temporal denoise
 pub mod ssr; // Screen-Space Reflections with Hi-Z ray marching
+pub mod subgroup_ops; // Subgroup-optimized shader variants (auto-exposure, prefix sum, bitonic sort)
 pub mod surface_cache; // World-space irradiance probe grid (Lumen Phase 5)
 pub mod taa; // Temporal Anti-Aliasing with neighborhood clamping and RCAS sharpening
+pub mod temporal_upscale; // Temporal upscaling (TAA-U) — render at reduced internal res, resolve to native
 pub mod terrain_material;
 pub mod texture_streaming;
 pub mod velocity; // Motion vector / velocity buffer for temporal effects (TAA, motion blur, TSR)
+pub mod virtual_texture; // Sparse Virtual Texturing: tile-based page streaming with feedback + LRU cache
+pub mod volumetric_clouds; // Perlin-Worley volumetric cloud raymarching (Phase 3)
 pub mod volumetric_fog; // Froxel-based volumetric fog + light scattering (Phase 6)
 pub mod weather_system; // Texture streaming with LRU cache and priority-based loading // Phase PBR-F: Terrain layering with splat maps and triplanar projection // asset streaming and residency management // OBJ fallback loader // Phase 2 Task 5: Skeletal animation with CPU/GPU skinning
 
@@ -103,6 +111,7 @@ pub mod skinning_gpu; // Phase 2 Task 5 Phase D: GPU skinning pipeline
 
 pub mod instancing;
 pub mod lod_generator; // Week 5 Action 19: LOD generation with quadric error metrics
+pub mod ltc_area_lights; // LTC area lights: rectangular, disk, tube area lights (Heitz et al. 2016)
 pub mod vertex_compression; // Week 5 Action 19: Vertex compression // Week 5 Action 19: GPU instancing for draw call reduction (octahedral normals, half-float UVs)
 
 #[cfg(test)]
@@ -136,10 +145,13 @@ pub mod advanced_post;
 pub mod decals; // Screen-space decal system
 pub mod deferred; // Deferred rendering pipeline
 pub mod effects; // NEW
+pub mod gpu_erosion;
 pub mod gpu_particles; // GPU compute-based particle system
+pub mod material_bindless; // Bindless texture array material system
 pub mod msaa; // MSAA anti-aliasing resources
+pub mod oit; // Weighted Blended Order-Independent Transparency
 pub mod overlay; // NEW (for cutscene fades/letterbox later)
-pub mod transparency; // Transparency depth sorting and render pass // Advanced post-processing (TAA, motion blur, DOF, color grading)
+pub mod transparency; // Transparency depth sorting and render pass // Advanced post-processing (TAA, motion blur, DOF, color grading) // GPU compute SWE erosion
 
 // GPU memory management and SSAO
 pub mod bind_group_cache; // Generation-tracked bind group cache
@@ -159,6 +171,8 @@ pub use biome_detector::{BiomeDetector, BiomeDetectorConfig, BiomeTransition};
 pub use biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
 pub use biome_transition::{BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect};
 pub use brdf_lut::{BrdfLutConfig, BrdfLutPass};
+pub use clipmap_terrain::{ClipmapConfig, ClipmapTerrain, ClipmapVertex};
+pub use compute_noise::{GpuNoiseConfig, GpuNoisePipeline, GpuNoiseType};
 pub use culling::{
     batch_visible_instances, build_indirect_commands_cpu, cpu_frustum_cull,
     dispatch_indexed_indirect_draws, dispatch_multi_draw_indexed_indirect, BatchId,
@@ -173,16 +187,19 @@ pub use distance_field::{DfaoConfig, DfaoParams, DfaoPass, SdfBox, SdfConfig, Sd
 pub use effects::{WeatherFx, WeatherKind};
 pub use final_gather::{FinalGatherConfig, FinalGatherParams, FinalGatherPass};
 pub use god_rays::{sun_to_screen, GodRayConfig, GodRayParams, GodRayPass};
+pub use gpu_erosion::{ErosionPreset, GpuErosionConfig, GpuErosionPipeline};
 pub use gpu_memory::{GpuMemoryBudget, MemoryCategory};
 pub use gpu_particles::{EmitterParams, GpuParticle, GpuParticleSystem};
 pub use gpu_profiler::{GpuProfiler, PassTiming};
 pub use hdri_catalog::{DayPeriod, HdriCatalog, HdriEntry};
 pub use ibl::{IblManager, IblQuality, IblResources, SkyMode};
+pub use ltc_area_lights::{AreaLight, AreaLightManager, AreaLightType, GpuAreaLight};
 pub use lumen::{LumenConfig, LumenGI, LumenQuality};
 pub use material::{
     ArrayLayout, MaterialGpu, MaterialGpuArrays, MaterialLayerDesc, MaterialLoadStats,
     MaterialManager, MaterialPackDesc,
 };
+pub use material_bindless::{BindlessMaterialConfig, BindlessMaterialSystem, GpuMaterialEntry};
 pub use material_extended::{
     MaterialDefinitionExtended, MaterialGpuExtended, MATERIAL_FLAG_ANISOTROPY,
     MATERIAL_FLAG_CLEARCOAT, MATERIAL_FLAG_SHEEN, MATERIAL_FLAG_SUBSURFACE,
@@ -191,6 +208,8 @@ pub use material_extended::{
 pub use mesh::{CpuMesh, MeshVertex, MeshVertexLayout};
 pub use mesh_registry::{MeshHandle, MeshKey, MeshRegistry};
 pub use msaa::{create_msaa_depth_texture, MsaaMode, MsaaRenderTarget};
+pub use oit::{OitBuffers, WboitRenderer, ACCUM_FORMAT, REVEALAGE_FORMAT};
+pub use parallax::PomConfig;
 pub use particle_forces::{
     ColorGradient, EmissionShape, ParticleForces, ParticleSimPass, SimParams, SizeCurve,
 };
@@ -204,15 +223,20 @@ pub use residency::ResidencyManager;
 pub use scene_environment::{
     SceneEnvironment, SceneEnvironmentUBO, WGSL_FOG_FUNCTIONS, WGSL_SCENE_ENVIRONMENT,
 };
+pub use shader_manager::{ShaderKey, ShaderManager};
 pub use staging_ring::{StagingRing, SubAllocation};
+pub use subgroup_ops::SubgroupCapabilities;
 pub use surface_cache::{
     DirectionalLightGpu, ProbeSH, SurfaceCacheConfig, SurfaceCacheParams, SurfaceCachePass,
 };
+pub use temporal_upscale::{TemporalUpscalePass, UpscaleConfig, UpscaleQuality};
 pub use terrain_material::{
     TerrainLayerDesc, TerrainLayerGpu, TerrainMaterialDesc, TerrainMaterialGpu,
 };
 pub use texture_streaming::{TextureStreamingManager, TextureStreamingStats};
 pub use transparency::{create_blend_state, BlendMode, TransparencyManager, TransparentInstance};
+pub use virtual_texture::{PageCache, PageRequest, VirtualTextureConfig, VirtualTextureFeedback};
+pub use volumetric_clouds::{CloudConfig, CloudQuality, VolumetricCloudsPass};
 pub use volumetric_fog::{VolumetricFogConfig, VolumetricFogPass, VolumetricQuality};
 
 // Phase 2 Task 5: Skeletal Animation exports

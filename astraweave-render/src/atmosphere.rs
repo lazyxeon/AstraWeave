@@ -240,10 +240,13 @@ pub struct AtmospherePass {
     sky_params_buf: wgpu::Buffer,
     aerial_params_buf: wgpu::Buffer,
     // Textures
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     transmittance_texture: wgpu::Texture,
     transmittance_view: wgpu::TextureView,
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     sky_texture: wgpu::Texture,
     sky_view: wgpu::TextureView,
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     aerial_texture: wgpu::Texture,
     aerial_view: wgpu::TextureView,
     // State
@@ -575,8 +578,8 @@ impl AtmospherePass {
             self.cached_lut_bg =
                 crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
 
-            let wg_x = (self.config.lut_width + 7) / 8;
-            let wg_y = (self.config.lut_height + 7) / 8;
+            let wg_x = self.config.lut_width.div_ceil(8);
+            let wg_y = self.config.lut_height.div_ceil(8);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("atmo_transmittance_lut"),
                 timestamp_writes: None,
@@ -623,8 +626,8 @@ impl AtmospherePass {
                     crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
             }
 
-            let wg_x = (self.width + 7) / 8;
-            let wg_y = (self.height + 7) / 8;
+            let wg_x = self.width.div_ceil(8);
+            let wg_y = self.height.div_ceil(8);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("atmo_sky_render"),
                 timestamp_writes: None,
@@ -674,8 +677,8 @@ impl AtmospherePass {
                     crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
             }
 
-            let wg_x = (self.width + 7) / 8;
-            let wg_y = (self.height + 7) / 8;
+            let wg_x = self.width.div_ceil(8);
+            let wg_y = self.height.div_ceil(8);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("atmo_aerial_perspective"),
                 timestamp_writes: None,

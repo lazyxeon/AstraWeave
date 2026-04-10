@@ -165,7 +165,7 @@ impl ParticleSortPass {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        num_particles: u32,
+        _num_particles: u32,
         camera_pos: Vec3,
     ) {
         let n = self.max_particles;
@@ -188,7 +188,7 @@ impl ParticleSortPass {
             ],
         });
 
-        let workgroups = (n + 255) / 256;
+        let workgroups = n.div_ceil(256);
 
         // Bitonic sort: iterate over stages
         let mut stage = 2u32;

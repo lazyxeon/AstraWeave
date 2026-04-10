@@ -68,6 +68,7 @@ pub struct SsrPass {
     config: SsrConfig,
     pipeline: wgpu::ComputePipeline,
     params_buf: wgpu::Buffer,
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
     ssr_texture: wgpu::Texture,
     ssr_view: wgpu::TextureView,
     bgl: wgpu::BindGroupLayout,
@@ -195,6 +196,7 @@ impl SsrPass {
         self.frame_index = self.frame_index.wrapping_add(1);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn execute(
         &mut self,
         device: &wgpu::Device,
@@ -248,8 +250,8 @@ impl SsrPass {
                 crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
 
-        let wg_x = (self.width + 7) / 8;
-        let wg_y = (self.height + 7) / 8;
+        let wg_x = self.width.div_ceil(8);
+        let wg_y = self.height.div_ceil(8);
 
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("ssr"),

@@ -174,7 +174,7 @@ impl GpuMemoryBudget {
 
         if let Some(budget) = budgets.get_mut(&category) {
             // Use checked_add to prevent u64 overflow bypassing the hard limit
-            let new_total = budget.current.checked_add(bytes).unwrap_or(u64::MAX);
+            let new_total = budget.current.saturating_add(bytes);
 
             // Check hard limit
             if new_total > budget.hard_limit {

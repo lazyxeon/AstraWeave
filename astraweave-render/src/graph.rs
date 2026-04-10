@@ -501,8 +501,8 @@ impl RenderGraph {
 
         // Kahn's algorithm for topological sort.
         let mut queue: VecDeque<usize> = VecDeque::new();
-        for i in 0..n {
-            if in_degree[i] == 0 {
+        for (i, deg) in in_degree.iter().enumerate().take(n) {
+            if *deg == 0 {
                 queue.push_back(i);
             }
         }
@@ -633,11 +633,10 @@ impl RenderGraph {
         };
         self.compiled = Some(compiled);
 
-        // SAFETY: we just assigned `Some` above, so `as_ref()` cannot be `None`.
         Ok(self
             .compiled
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("BUG: compiled graph missing after assignment"))?)
+            .expect("BUG: compiled graph missing after assignment"))
     }
 
     /// Get the compiled graph (if `compile()` was called).

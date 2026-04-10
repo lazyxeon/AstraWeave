@@ -198,6 +198,83 @@ fn calculate_height_weights(
 }
 
 // ============================================================================
+// PARALLAX OCCLUSION MAPPING (TERRAIN — texture array variant)
+// ============================================================================
+
+const POM_MIN_STEPS: f32 = 8.0;
+const POM_MAX_STEPS: f32 = 32.0;
+const POM_BINARY_STEPS: u32 = 5u;
+
+/// Compute parallax-displaced UV for a specific terrain layer using its height texture.
+///
+/// Parameters:
+///   height_array - the terrain height texture array
+///   samp         - linear sampler
+///   layer_index  - index into the texture array for this layer's heightmap
+///   uv           - initial texture coordinates
+///   view_ts      - view direction in tangent space
+///   height_scale - maximum displacement (0.0 = disabled, typical 0.02–0.06)
+///
+/// Returns: displaced UV for subsequent texture lookups on this layer.
+fn pom_offset_uv_terrain(
+    height_array: texture_2d_array<f32>,
+    samp: sampler,
+    layer_index: u32,
+    uv: vec2<f32>,
+    view_ts: vec3<f32>,
+    height_scale: f32
+) -> vec2<f32> {
+    if (height_scale <= 0.0) {
+        return uv;
+    }
+
+    let n_dot_v = max(abs(view_ts.z), 0.001);
+    let num_steps = mix(POM_MAX_STEPS, POM_MIN_STEPS, n_dot_v);
+    let step_size = 1.0 / num_steps;
+    let max_offset = view_ts.xy / view_ts.z * height_scale;
+    let delta_uv = max_offset * step_size;
+
+    var current_uv = uv;
+    var current_layer_depth: f32 = 0.0;
+    var current_height = textureSampleLevel(
+        height_array, samp, current_uv, layer_index, 0.0
+    ).r;
+
+    var i: u32 = 0u;
+    let max_i = u32(num_steps);
+    while (i < max_i && current_layer_depth < current_height) {
+        current_uv -= delta_uv;
+        current_layer_depth += step_size;
+        current_height = textureSampleLevel(
+            height_array, samp, current_uv, layer_index, 0.0
+        ).r;
+        i++;
+    }
+
+    // Binary refinement
+    var prev_uv = current_uv + delta_uv;
+    var prev_depth = current_layer_depth - step_size;
+
+    for (var j: u32 = 0u; j < POM_BINARY_STEPS; j++) {
+        let mid_uv = (current_uv + prev_uv) * 0.5;
+        let mid_depth = (current_layer_depth + prev_depth) * 0.5;
+        let mid_height = textureSampleLevel(
+            height_array, samp, mid_uv, layer_index, 0.0
+        ).r;
+
+        if (mid_depth < mid_height) {
+            prev_uv = mid_uv;
+            prev_depth = mid_depth;
+        } else {
+            current_uv = mid_uv;
+            current_layer_depth = mid_depth;
+        }
+    }
+
+    return current_uv;
+}
+
+// ============================================================================
 // SPLAT MAP SAMPLING
 // ============================================================================
 

@@ -30,6 +30,7 @@ impl Default for NoiseConfig {
                 persistence: 0.5,
                 lacunarity: 2.0,
                 noise_type: NoiseType::Perlin,
+                domain_warp: DomainWarpConfig::default(),
             },
             mountains: NoiseLayer {
                 enabled: true,
@@ -39,6 +40,7 @@ impl Default for NoiseConfig {
                 persistence: 0.4,
                 lacunarity: 2.2,
                 noise_type: NoiseType::RidgedNoise,
+                domain_warp: DomainWarpConfig::default(),
             },
             detail: NoiseLayer {
                 enabled: true,
@@ -48,6 +50,7 @@ impl Default for NoiseConfig {
                 persistence: 0.6,
                 lacunarity: 2.0,
                 noise_type: NoiseType::Billow,
+                domain_warp: DomainWarpConfig::default(),
             },
             erosion_enabled: true,
             erosion_strength: 0.3,
@@ -65,6 +68,41 @@ pub struct NoiseLayer {
     pub persistence: f64,
     pub lacunarity: f64,
     pub noise_type: NoiseType,
+    /// Domain warp settings (only used when noise_type = DomainWarped).
+    #[serde(default)]
+    pub domain_warp: DomainWarpConfig,
+}
+
+/// Configuration for domain warping (noise-on-noise).
+///
+/// Domain warping offsets input coordinates with secondary noise fields
+/// before evaluating the primary noise. Multiple iterations create
+/// increasingly organic, swirled patterns reminiscent of geological
+/// formations, marble textures, and coastlines.
+///
+/// Reference: Inigo Quilez, "Domain Warping" (2002/2019).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DomainWarpConfig {
+    /// Number of warp iterations (1 = simple warp, 2+ = nested warps).
+    /// Each iteration feeds the result of the previous warp as input.
+    pub iterations: u32,
+    /// Scale of the warping noise (relative to the base noise scale).
+    pub warp_scale: f64,
+    /// Warp strength — how much the coordinates are displaced (world units).
+    pub warp_strength: f64,
+    /// Octaves for the warping noise.
+    pub warp_octaves: usize,
+}
+
+impl Default for DomainWarpConfig {
+    fn default() -> Self {
+        Self {
+            iterations: 1,
+            warp_scale: 1.5,
+            warp_strength: 40.0,
+            warp_octaves: 3,
+        }
+    }
 }
 
 /// Types of noise functions available
@@ -75,6 +113,79 @@ pub enum NoiseType {
     RidgedNoise,
     Billow,
     Fbm,
+    /// Domain-warped fBM: offsets input coordinates with secondary noise
+    /// before evaluating the primary noise, creating organic swirled patterns.
+    DomainWarped,
+}
+
+/// Domain-warped noise function.
+///
+/// Displaces input coordinates through one or more iterations of noise-on-noise,
+/// producing organic terrain features (swirled ridges, eroded coastlines, marble veins).
+///
+/// For N iterations:
+///   p₀ = input
+///   p₁ = p₀ + strength * warp_noise(p₀)
+///   p₂ = p₁ + strength * warp_noise(p₁)
+///   ...
+///   output = primary_noise(pₙ)
+struct DomainWarpedNoise {
+    /// Primary noise evaluated at the warped coordinates.
+    primary: Fbm<Perlin>,
+    /// Warp noise fields (one per axis: X, Z). Y stays at 0 for terrain.
+    warp_x: Fbm<Perlin>,
+    warp_z: Fbm<Perlin>,
+    /// How many times to apply warping.
+    iterations: u32,
+    /// How much the coordinates are displaced per iteration.
+    warp_strength: f64,
+}
+
+impl DomainWarpedNoise {
+    fn new(layer: &NoiseLayer, seed: u64) -> Self {
+        let dw = &layer.domain_warp;
+
+        let primary = Fbm::<Perlin>::new(seed as u32)
+            .set_octaves(layer.octaves)
+            .set_persistence(layer.persistence)
+            .set_lacunarity(layer.lacunarity);
+
+        // Use different seeds for each warp axis to decorrelate them.
+        let warp_x = Fbm::<Perlin>::new(seed as u32 + 100)
+            .set_octaves(dw.warp_octaves)
+            .set_persistence(0.5)
+            .set_lacunarity(2.0);
+
+        let warp_z = Fbm::<Perlin>::new(seed as u32 + 200)
+            .set_octaves(dw.warp_octaves)
+            .set_persistence(0.5)
+            .set_lacunarity(2.0);
+
+        Self {
+            primary,
+            warp_x,
+            warp_z,
+            iterations: dw.iterations.max(1),
+            warp_strength: dw.warp_strength,
+        }
+    }
+}
+
+impl NoiseFn<f64, 3> for DomainWarpedNoise {
+    fn get(&self, point: [f64; 3]) -> f64 {
+        let mut x = point[0];
+        let y = point[1];
+        let mut z = point[2];
+
+        for _ in 0..self.iterations {
+            let dx = self.warp_x.get([x, y, z]) * self.warp_strength;
+            let dz = self.warp_z.get([x, y, z]) * self.warp_strength;
+            x += dx;
+            z += dz;
+        }
+
+        self.primary.get([x, y, z])
+    }
 }
 
 /// Terrain noise generator that combines multiple noise layers
@@ -133,6 +244,7 @@ impl TerrainNoise {
                     .set_lacunarity(layer.lacunarity);
                 Box::new(noise)
             }
+            NoiseType::DomainWarped => Box::new(DomainWarpedNoise::new(layer, seed)),
         }
     }
 
@@ -216,6 +328,35 @@ impl TerrainNoise {
     pub fn config(&self) -> &NoiseConfig {
         &self.config
     }
+}
+
+/// Sample domain-warped fBM noise at a single point.
+///
+/// This is a standalone convenience function for use outside `TerrainNoise`.
+/// It creates temporary noise sources — for bulk generation, use `TerrainNoise`
+/// with `NoiseType::DomainWarped` instead.
+///
+/// `scale` — base coordinate scale (smaller = larger features).
+/// `warp_config` — warping parameters.
+pub fn domain_warped_fbm(
+    x: f64,
+    z: f64,
+    scale: f64,
+    seed: u64,
+    warp_config: &DomainWarpConfig,
+) -> f64 {
+    let layer = NoiseLayer {
+        enabled: true,
+        scale,
+        amplitude: 1.0,
+        octaves: 4,
+        persistence: 0.5,
+        lacunarity: 2.0,
+        noise_type: NoiseType::DomainWarped,
+        domain_warp: warp_config.clone(),
+    };
+    let noise = DomainWarpedNoise::new(&layer, seed);
+    noise.get([x * scale, 0.0, z * scale])
 }
 
 /// Utility functions for noise generation
@@ -375,5 +516,85 @@ mod tests {
 
         // Edges should have low value
         assert!(mask[0] < 0.2);
+    }
+
+    #[test]
+    fn test_domain_warp_config_default() {
+        let cfg = DomainWarpConfig::default();
+        assert_eq!(cfg.iterations, 1);
+        assert!((cfg.warp_scale - 1.5).abs() < 1e-5);
+        assert!((cfg.warp_strength - 40.0).abs() < 1e-5);
+        assert_eq!(cfg.warp_octaves, 3);
+    }
+
+    #[test]
+    fn test_domain_warped_noise_type() {
+        let mut config = NoiseConfig::default();
+        config.base_elevation.noise_type = NoiseType::DomainWarped;
+        config.base_elevation.domain_warp = DomainWarpConfig {
+            iterations: 2,
+            warp_scale: 1.5,
+            warp_strength: 30.0,
+            warp_octaves: 3,
+        };
+
+        let noise = TerrainNoise::new(&config, 42);
+        let h = noise.sample_height(100.0, 100.0);
+        assert!(h >= 0.0);
+    }
+
+    #[test]
+    fn test_domain_warped_deterministic() {
+        let warp = DomainWarpConfig {
+            iterations: 2,
+            warp_scale: 1.5,
+            warp_strength: 50.0,
+            warp_octaves: 3,
+        };
+
+        let h1 = domain_warped_fbm(100.0, 200.0, 0.005, 42, &warp);
+        let h2 = domain_warped_fbm(100.0, 200.0, 0.005, 42, &warp);
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_domain_warped_differs_from_plain_fbm() {
+        let warp = DomainWarpConfig {
+            iterations: 2,
+            warp_scale: 1.5,
+            warp_strength: 50.0,
+            warp_octaves: 3,
+        };
+
+        let warped = domain_warped_fbm(100.0, 200.0, 0.005, 42, &warp);
+
+        // Plain fBM at the same coordinates should differ
+        let plain_noise = Fbm::<Perlin>::new(42);
+        let plain = plain_noise.get([100.0 * 0.005, 0.0, 200.0 * 0.005]);
+
+        // Domain warping should produce a different value
+        assert!((warped - plain).abs() > 1e-10);
+    }
+
+    #[test]
+    fn test_domain_warped_iterations_matter() {
+        let warp1 = DomainWarpConfig {
+            iterations: 1,
+            warp_scale: 1.5,
+            warp_strength: 50.0,
+            warp_octaves: 3,
+        };
+        let warp3 = DomainWarpConfig {
+            iterations: 3,
+            warp_scale: 1.5,
+            warp_strength: 50.0,
+            warp_octaves: 3,
+        };
+
+        let h1 = domain_warped_fbm(100.0, 200.0, 0.005, 42, &warp1);
+        let h3 = domain_warped_fbm(100.0, 200.0, 0.005, 42, &warp3);
+
+        // More iterations should produce a different result
+        assert!((h1 - h3).abs() > 1e-10);
     }
 }
