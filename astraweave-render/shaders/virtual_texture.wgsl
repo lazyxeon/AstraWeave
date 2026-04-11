@@ -50,7 +50,10 @@ fn compute_mip_level(uv: vec2<f32>, screen_pos: vec2<f32>) -> f32 {
     return clamp(mip, 0.0, params.max_mip_level);
 }
 
-@compute @workgroup_size(8, 8)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y)
 fn feedback_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
     let screen_pos = vec2<f32>(f32(gid.x), f32(gid.y));
     if (screen_pos.x >= params.screen_size.x || screen_pos.y >= params.screen_size.y) {

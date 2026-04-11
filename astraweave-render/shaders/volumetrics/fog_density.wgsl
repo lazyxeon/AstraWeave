@@ -111,7 +111,11 @@ fn froxel_to_world(froxel: vec3<u32>) -> vec3<f32> {
     return world_h.xyz / world_h.w;
 }
 
-@compute @workgroup_size(4, 4, 4)
+override WG_X: u32 = 4u;
+override WG_Y: u32 = 4u;
+override WG_Z: u32 = 4u;
+
+@compute @workgroup_size(WG_X, WG_Y, WG_Z)
 fn fog_density_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = params.froxel_dims;
     if (gid.x >= dims.x || gid.y >= dims.y || gid.z >= dims.z) {

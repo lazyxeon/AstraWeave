@@ -78,6 +78,8 @@ pub struct GtaoConfig {
     pub power: f32,
     /// Bilateral blur depth threshold.
     pub blur_depth_threshold: f32,
+    /// Render AO at half resolution for performance (bilinear upscale on composite).
+    pub half_res: bool,
 }
 
 impl Default for GtaoConfig {
@@ -89,6 +91,7 @@ impl Default for GtaoConfig {
             num_steps: 6,
             power: 1.5,
             blur_depth_threshold: 0.05,
+            half_res: false,
         }
     }
 }
@@ -132,11 +135,17 @@ pub struct GtaoPass {
 
 impl GtaoPass {
     pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
-        let config = GtaoConfig::default();
+        Self::with_config(device, width, height, GtaoConfig::default())
+    }
+
+    pub fn with_config(device: &wgpu::Device, width: u32, height: u32, config: GtaoConfig) -> Self {
+        // Compute effective resolution (half-res if enabled)
+        let tex_w = if config.half_res { width.div_ceil(2) } else { width };
+        let tex_h = if config.half_res { height.div_ceil(2) } else { height };
 
         let ao_size = wgpu::Extent3d {
-            width,
-            height,
+            width: tex_w,
+            height: tex_h,
             depth_or_array_layers: 1,
         };
 
@@ -169,8 +178,8 @@ impl GtaoPass {
         // Uniform buffers
         use wgpu::util::DeviceExt;
         let default_params = GtaoParams::new(
-            width,
-            height,
+            tex_w,
+            tex_h,
             0.1,
             200.0,
             std::f32::consts::FRAC_PI_3,
@@ -182,7 +191,7 @@ impl GtaoPass {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let inv_res = [1.0 / width as f32, 1.0 / height as f32];
+        let inv_res = [1.0 / tex_w as f32, 1.0 / tex_h as f32];
         let blur_h = GtaoBlurParams {
             direction: [1.0, 0.0],
             inv_resolution: inv_res,
@@ -325,7 +334,7 @@ impl GtaoPass {
         // Compute pipelines
         let ao_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("gtao_shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/gtao.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/gtao.wgsl")).into()),
         });
         let ao_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("gtao_ao_pl"),
@@ -380,8 +389,8 @@ impl GtaoPass {
             ao_bgl,
             blur_bgl,
             frame_index: 0,
-            width,
-            height,
+            width: tex_w,
+            height: tex_h,
             sampler,
             cached_ao_bg: crate::bind_group_cache::CachedBindGroup::new(),
             cached_blur_h_bg: crate::bind_group_cache::CachedBindGroup::new(),
@@ -583,12 +592,15 @@ impl GtaoPass {
         // Final result is in blur_temp_view after V pass.
     }
 
-    /// Resize AO textures.
+    /// Resize AO textures (preserves current config including half_res).
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
-        if self.width == width && self.height == height {
+        let tex_w = if self.config.half_res { width.div_ceil(2) } else { width };
+        let tex_h = if self.config.half_res { height.div_ceil(2) } else { height };
+        if self.width == tex_w && self.height == tex_h {
             return;
         }
-        *self = Self::new(device, width, height);
+        let config = self.config.clone();
+        *self = Self::with_config(device, width, height, config);
     }
 
     /// Get dimensions.

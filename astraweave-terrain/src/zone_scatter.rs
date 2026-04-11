@@ -285,6 +285,7 @@ impl ZoneScatterGenerator {
                 vegetation_type: fp.category.clone(),
                 model_path: fp.mesh_path.clone(),
                 terrain_normal,
+                tint: Vec3::ONE,
             });
         }
 

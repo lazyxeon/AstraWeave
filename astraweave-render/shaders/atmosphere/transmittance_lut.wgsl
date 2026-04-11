@@ -34,7 +34,7 @@ struct AtmosphereParams {
 @group(0) @binding(0) var<uniform>  params: AtmosphereParams;
 @group(0) @binding(1) var           t_output: texture_storage_2d<rgba16float, write>;
 
-const PI: f32 = 3.14159265358979;
+// PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 const NUM_STEPS: u32 = 40u;
 
 fn atmosphere_top(params_r: f32, params_h: f32) -> f32 {
@@ -109,7 +109,10 @@ fn compute_transmittance(h: f32, cos_zenith: f32) -> vec3<f32> {
     return exp(-optical_depth);
 }
 
-@compute @workgroup_size(8, 8)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y)
 fn transmittance_lut(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (gid.x >= params.lut_width || gid.y >= params.lut_height) {
         return;

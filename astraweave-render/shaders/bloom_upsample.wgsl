@@ -15,7 +15,10 @@ struct BloomUpsampleParams {
 @group(0) @binding(3) var<uniform> params: BloomUpsampleParams;
 @group(0) @binding(4) var dst_tex: texture_storage_2d<rgba16float, write>;
 
-@compute @workgroup_size(8, 8, 1)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y, 1)
 fn bloom_upsample(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dst_dims = textureDimensions(dst_tex);
     if (gid.x >= dst_dims.x || gid.y >= dst_dims.y) {

@@ -322,10 +322,10 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     lit_color = lit_color + clustered_light;
 
     // VXGI indirect lighting (Group 5)
+    // Energy-conserving: modulate by kd (= (1-F)*(1-metallic)) so metals
+    // and high-Fresnel surfaces don't double-count reflected energy.
     let vxgi_light = calculate_vxgi_lighting(input.world_pos, N);
-    // Combine with AO if available (currently AO is separate post-pass)
-    // Multiply by albedo for diffuse reflection
-    lit_color = lit_color + (vxgi_light * base_color * 1.0);
+    lit_color = lit_color + (vxgi_light * base_color * kd);
 
     // Distance fog — exponential with start distance threshold.
     // Only applies beyond fog_start to keep near geometry crisp.

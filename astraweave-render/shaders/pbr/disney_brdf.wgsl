@@ -11,8 +11,7 @@
 //
 // This file is designed to be #included from the main lighting shader.
 
-const PI: f32 = 3.14159265358979;
-const INV_PI: f32 = 0.31830988618;
+// PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 
 // ======================================================================
 // Material data (matches MaterialGpuExtended layout)
@@ -199,7 +198,7 @@ fn evaluate_disney_brdf(
     // --- Diffuse ---
     if (mat.metallic < 1.0) {
         var fd: f32;
-        if (has_flag(mat.flags, FLAG_SUBSURFACE) && mat.subsurface_scale > 0.0) {
+        if (ENABLE_SUBSURFACE && has_flag(mat.flags, FLAG_SUBSURFACE) && mat.subsurface_scale > 0.0) {
             fd = diffuse_subsurface(n_dot_l, n_dot_v, l_dot_h, mat.roughness, mat.subsurface_scale);
             // Tint subsurface
             result.diffuse = mat.base_color * mix(vec3<f32>(1.0), mat.subsurface_color, mat.subsurface_scale) * fd;
@@ -215,7 +214,7 @@ fn evaluate_disney_brdf(
         var d: f32;
         var vis: f32;
 
-        if (has_flag(mat.flags, FLAG_ANISOTROPY) && abs(mat.anisotropy) > 0.01) {
+        if (ENABLE_ANISOTROPY && has_flag(mat.flags, FLAG_ANISOTROPY) && abs(mat.anisotropy) > 0.01) {
             // Anisotropic specular
             let aspect = sqrt(1.0 - mat.anisotropy * 0.9);
             let alpha_t = alpha / aspect;
@@ -239,7 +238,7 @@ fn evaluate_disney_brdf(
     }
 
     // --- Clearcoat ---
-    if (has_flag(mat.flags, FLAG_CLEARCOAT) && mat.clearcoat > 0.0) {
+    if (ENABLE_CLEARCOAT && has_flag(mat.flags, FLAG_CLEARCOAT) && mat.clearcoat > 0.0) {
         let cc_alpha = max(mat.clearcoat_roughness * mat.clearcoat_roughness, 0.002);
         let cc_f0 = f0_from_ior(1.5); // fixed IOR for clearcoat
         let d_cc = d_ggx(n_dot_h, cc_alpha);
@@ -249,14 +248,14 @@ fn evaluate_disney_brdf(
     }
 
     // --- Sheen ---
-    if (has_flag(mat.flags, FLAG_SHEEN) && length(mat.sheen_color) > 0.001) {
+    if (ENABLE_SHEEN && has_flag(mat.flags, FLAG_SHEEN) && length(mat.sheen_color) > 0.001) {
         let d_sheen = d_charlie(n_dot_h, mat.sheen_roughness);
         let f_sheen = fresnel_schlick(l_dot_h, mat.sheen_color);
         result.diffuse += d_sheen * f_sheen * (1.0 - mat.metallic);
     }
 
     // --- Transmission ---
-    if (has_flag(mat.flags, FLAG_TRANSMISSION) && mat.transmission > 0.0) {
+    if (ENABLE_TRANSMISSION && has_flag(mat.flags, FLAG_TRANSMISSION) && mat.transmission > 0.0) {
         // Simplified: treat as modulated specular transmission
         let f_t = 1.0 - fresnel_schlick_scalar(n_dot_v, f0_from_ior(mat.ior));
         let attenuation = exp(-mat.base_color * (1.0 / max(mat.attenuation_distance, 0.001)));
@@ -295,11 +294,52 @@ fn evaluate_disney_ibl(
 
     // Clearcoat IBL
     var cc = vec3<f32>(0.0);
-    if (has_flag(mat.flags, FLAG_CLEARCOAT) && mat.clearcoat > 0.0) {
+    if (ENABLE_CLEARCOAT && has_flag(mat.flags, FLAG_CLEARCOAT) && mat.clearcoat > 0.0) {
         let cc_f0 = f0_from_ior(1.5);
         let cc_f = fresnel_schlick_scalar(n_dot_v, cc_f0);
         cc = prefiltered * cc_f * mat.clearcoat;
     }
 
     return (diffuse + specular + cc) * mat.occlusion;
+}
+
+// ======================================================================
+// 7. LOD-aware Disney BRDF evaluation
+// ======================================================================
+
+// LOD-aware wrapper for evaluate_disney_brdf / evaluate_disney_ibl.
+// Strips optional lobes at higher LOD tiers to save ALU on distant fragments.
+//   LOD 0: full 7-lobe evaluation (clearcoat, anisotropy, sheen, subsurface, transmission)
+//   LOD 1: base diffuse + specular only (clears optional lobe flags)
+//   LOD 2: minimal Lambertian + Schlick specular approximation
+fn evaluate_disney_brdf_lod(
+    mat:   DisneyMaterial,
+    n:     vec3<f32>,
+    v:     vec3<f32>,
+    l:     vec3<f32>,
+    t:     vec3<f32>,
+    b:     vec3<f32>,
+    lod:   u32,
+) -> BRDFResult {
+    // LOD 2: minimal path — Lambertian diffuse + Schlick specular
+    if (lod >= 2u) {
+        let h = normalize(v + l);
+        let n_dot_l = max(dot(n, l), 0.0);
+        let l_dot_h = max(dot(l, h), 0.0);
+        let f0 = mix(vec3<f32>(0.04), mat.base_color, mat.metallic);
+        var result: BRDFResult;
+        result.diffuse = mat.base_color * (1.0 - mat.metallic) * INV_PI * n_dot_l;
+        result.specular = fresnel_schlick(l_dot_h, f0) * 0.25 * n_dot_l;
+        return result;
+    }
+
+    // LOD 1: strip optional lobes (clearcoat, anisotropy, sheen, subsurface, transmission)
+    if (lod >= 1u) {
+        var stripped = mat;
+        stripped.flags = 0u;
+        return evaluate_disney_brdf(stripped, n, v, l, t, b);
+    }
+
+    // LOD 0: full evaluation
+    return evaluate_disney_brdf(mat, n, v, l, t, b);
 }

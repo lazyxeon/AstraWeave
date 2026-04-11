@@ -1108,11 +1108,11 @@ cargo run -p hello_companion --release
 
 | Task | Refs | Summary | Files |
 |------|------|---------|-------|
-| 4A-1 | PP-10 | Remove legacy `BloomPipeline` in `post.rs` (keep compute `bloom.rs`) | `post.rs` |
+| 4A-1 | PP-10 | ✅ Remove legacy `BloomPipeline` in `post.rs` (keep compute `bloom.rs`) | `post.rs` |
 | 4A-2 | PP-11 | Remove legacy `ssao.rs` (keep `gtao.rs`) | `ssao.rs` |
-| 4A-3 | PP-12 | Consolidate duplicate `TaaConfig` structs | `advanced_post.rs`, `taa.rs` |
-| 4A-4 | M-13 | Consolidate duplicate BRDF LUT generation paths | `brdf_lut.rs`, `ibl.rs` |
-| 4A-5 | AP-05 | Remove dead `compress_bc7_simple()` function | `texture.rs` |
+| 4A-3 | PP-12 | ✅ Consolidate duplicate `TaaConfig` structs | `advanced_post.rs`, `taa.rs` |
+| 4A-4 | M-13 | ⏸️ Consolidate duplicate BRDF LUT generation paths (deferred — high refactor risk) | `brdf_lut.rs`, `ibl.rs` |
+| 4A-5 | AP-05 | ✅ Remove dead `compress_bc7_simple()` function | `texture.rs` |
 | 4A-6 | SA-2.4 | Remove dead shader code (already partially in 3D-6) | Various |
 
 ---
@@ -1135,8 +1135,8 @@ cargo run -p hello_companion --release
 | 4C-1 | M-11 | SSS quality upgrade (pre-integrated skin BRDF or separable SSS filter) | `disney_brdf.wgsl` |
 | 4C-2 | M-12 | Wire or remove unused SSS uniform fields | `material_extended.rs` |
 | 4C-3 | M-14 | TBN inverse-transpose for non-uniform scale | `pbr.wgsl` |
-| 4C-4 | L-11 | Max 256 lights warning/metric when exceeded | `clustered_forward.rs` |
-| 4C-5 | L-13 | Replace SSGI sin-hash with PCG hash | `ssgi.wgsl` |
+| 4C-4 | L-11 | ✅ Max 256 lights warning/metric when exceeded | `clustered_forward.rs` |
+| 4C-5 | L-13 | ✅ Replace SSGI sin-hash with PCG hash | `ssgi.wgsl` |
 
 ---
 

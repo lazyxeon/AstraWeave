@@ -11,7 +11,11 @@ struct DofParams {
     bokeh_size: f32,       // Max blur radius in pixels
     near_start: f32,       // Near field starts blurring
     near_end: f32,         // Near field fully blurred
-    _pad: f32,
+    cam_near: f32,         // Camera near plane (was hardcoded 0.1)
+    cam_far: f32,          // Camera far plane (was hardcoded 200.0)
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
 };
 
 @group(0) @binding(0) var color_tex: texture_2d<f32>;
@@ -69,8 +73,7 @@ fn dof_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let uv = (vec2<f32>(gid.xy) + 0.5) * params.inv_resolution;
     let center_depth = textureSampleLevel(depth_tex, samp, uv, 0.0).r;
 
-    // Approximate linear depth (assuming standard perspective with near=0.1, far=200)
-    let linear_z = linearize_depth(center_depth, 0.1, 200.0);
+    let linear_z = linearize_depth(center_depth, params.cam_near, params.cam_far);
     let coc = compute_coc(linear_z);
 
     if (coc < 0.5) {
@@ -89,7 +92,7 @@ fn dof_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let sample_uv = uv + offset;
         let sample_color = textureSampleLevel(color_tex, samp, sample_uv, 0.0).rgb;
         let sample_depth = textureSampleLevel(depth_tex, samp, sample_uv, 0.0).r;
-        let sample_z = linearize_depth(sample_depth, 0.1, 200.0);
+        let sample_z = linearize_depth(sample_depth, params.cam_near, params.cam_far);
         let sample_coc = compute_coc(sample_z);
 
         // Weight: prefer samples with similar or larger CoC (prevents sharp objects bleeding into blur)

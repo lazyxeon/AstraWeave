@@ -18,7 +18,7 @@ struct MaterialEntry {
     emissive_strength:  f32,
     uv_scale:           vec2<f32>,
     flags:              u32,
-    _padding:           u32,
+    alpha_cutoff:       f32,
 }
 
 // ─── Sampled Result ───
@@ -60,10 +60,11 @@ fn sample_material(material_id: u32, uv: vec2<f32>) -> MaterialSample {
         result.albedo = mat.base_color;
     }
 
-    // Normal (tangent space)
+    // Normal (tangent space) — decode [0,1]→[-1,1] and normalize to avoid
+    // denormalized normals from texture filtering/compression.
     if ((mat.flags & MAT_FLAG_HAS_NORMAL) != 0u) {
         let n = textureSample(textures[mat.normal_index], material_sampler, scaled_uv).xyz;
-        result.normal = n * 2.0 - 1.0;
+        result.normal = normalize(n * 2.0 - 1.0);
     } else {
         result.normal = vec3<f32>(0.0, 0.0, 1.0);
     }

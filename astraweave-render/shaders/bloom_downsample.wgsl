@@ -25,7 +25,10 @@ fn soft_threshold(color: vec3<f32>, threshold: f32, knee: f32) -> vec3<f32> {
     return color * max(mult, 0.0);
 }
 
-@compute @workgroup_size(8, 8, 1)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y, 1)
 fn bloom_downsample(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dst_dims = textureDimensions(dst_tex);
     if (gid.x >= dst_dims.x || gid.y >= dst_dims.y) {

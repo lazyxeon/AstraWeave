@@ -216,6 +216,7 @@ impl Default for BiomeVegetation {
                 cluster_factor: 0.0,
                 exclusion_radius: 0.0,
                 placement_priority: 0,
+                        altitude_range: None,
             }],
             size_variation: (0.8, 1.5),
             random_rotation: true,
@@ -254,6 +255,10 @@ pub struct VegetationType {
     /// by higher-priority (later) passes.
     #[serde(default)]
     pub placement_priority: u8,
+    /// Optional altitude band for this species (min, max world-space Y).
+    /// If set, instances are only placed within this altitude range.
+    #[serde(default)]
+    pub altitude_range: Option<(f32, f32)>,
 }
 
 /// Complete biome configuration
@@ -319,6 +324,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "grass_large".to_string(),
@@ -332,6 +338,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "flower_yellow".to_string(),
@@ -345,6 +352,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "flower_red".to_string(),
@@ -358,6 +366,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "flower_purple".to_string(),
@@ -371,6 +380,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "oak_tree".to_string(),
@@ -383,6 +393,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_default".to_string(),
@@ -396,6 +407,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_round".to_string(),
@@ -409,6 +421,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_willow".to_string(),
@@ -422,6 +435,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "plant_bush".to_string(),
@@ -434,6 +448,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "bush_round".to_string(),
@@ -447,6 +462,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "rock_small".to_string(),
@@ -460,6 +476,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                 ],
                 size_variation: (0.8, 1.5),
@@ -516,6 +533,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "cactus_short".to_string(),
@@ -529,6 +547,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "rock_large".to_string(),
@@ -542,6 +561,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "stone_small".to_string(),
@@ -555,6 +575,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "plant_flat".to_string(),
@@ -568,6 +589,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                 ],
                 size_variation: (0.5, 2.0),
@@ -622,6 +644,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "pine_round".to_string(),
@@ -633,6 +656,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_detailed".to_string(),
@@ -644,6 +668,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_conifer".to_string(),
@@ -655,6 +680,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_broad".to_string(),
@@ -666,6 +692,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_canopy".to_string(),
@@ -677,6 +704,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "plant_bush_detailed".to_string(),
@@ -688,6 +716,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "grass_leafs".to_string(),
@@ -699,6 +728,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "mushroom_red".to_string(),
@@ -710,6 +740,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "mushroom_tan".to_string(),
@@ -721,6 +752,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "stump".to_string(),
@@ -732,6 +764,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "log".to_string(),
@@ -743,6 +776,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                 ],
                 size_variation: (0.7, 1.8),
@@ -800,6 +834,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_cone".to_string(),
@@ -812,6 +847,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_bare".to_string(),
@@ -824,6 +860,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "grass_leafs".to_string(),
@@ -837,6 +874,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "rock_large".to_string(),
@@ -850,6 +888,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "rock_tall".to_string(),
@@ -862,6 +901,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "stone_large".to_string(),
@@ -875,6 +915,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "rock_kaykit".to_string(),
@@ -888,6 +929,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                 ],
                 size_variation: (0.6, 2.0),
@@ -944,6 +986,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "rock_small_flat".to_string(),
@@ -957,6 +1000,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "stone_small".to_string(),
@@ -970,6 +1014,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "plant_bush_small".to_string(),
@@ -983,6 +1028,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_bare_tall".to_string(),
@@ -996,6 +1042,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_bare_small".to_string(),
@@ -1009,6 +1056,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                 ],
                 size_variation: (0.4, 1.0),
@@ -1060,6 +1108,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_swamp".to_string(),
@@ -1073,6 +1122,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "stump_old".to_string(),
@@ -1085,6 +1135,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "grass_leafs_large".to_string(),
@@ -1098,6 +1149,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "mushroom_red_tall".to_string(),
@@ -1111,6 +1163,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "mushroom_tan_tall".to_string(),
@@ -1124,6 +1177,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "lily_large".to_string(),
@@ -1136,6 +1190,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "hanging_moss".to_string(),
@@ -1149,6 +1204,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                 ],
                 size_variation: (0.6, 1.4),
@@ -1200,6 +1256,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "palm_bend".to_string(),
@@ -1213,6 +1270,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "palm_short".to_string(),
@@ -1226,6 +1284,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "rock_small_flat".to_string(),
@@ -1239,6 +1298,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "grass".to_string(),
@@ -1251,6 +1311,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                 ],
                 size_variation: (0.7, 1.2),
@@ -1299,6 +1360,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "tree_fat".to_string(),
@@ -1311,6 +1373,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "grass_large".to_string(),
@@ -1324,6 +1387,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "grass_leafs".to_string(),
@@ -1337,6 +1401,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "lily_small".to_string(),
@@ -1349,6 +1414,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                     VegetationType {
                         name: "rock_small".to_string(),
@@ -1362,6 +1428,7 @@ impl BiomeConfig {
                         cluster_factor: 0.0,
                         exclusion_radius: 0.0,
                         placement_priority: 0,
+                        altitude_range: None,
                     },
                 ],
                 size_variation: (0.6, 1.3),

@@ -37,7 +37,10 @@ fn slice_to_depth(slice: f32) -> f32 {
     return z_near * pow(z_far / z_near, t);
 }
 
-@compute @workgroup_size(8, 8)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y)
 fn integrate_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let screen_dims = vec2<u32>(params.resolution);
     if (gid.x >= screen_dims.x || gid.y >= screen_dims.y) {

@@ -98,7 +98,7 @@ pub struct DrawIndexedIndirectCommand {
 const MAX_INSTANCES_PER_CHUNK: u32 = 65_536;
 
 /// Scatter compute shader source (loaded at compile time).
-const SCATTER_SHADER_SRC: &str = include_str!("../shaders/vegetation_scatter.wgsl");
+const SCATTER_SHADER_SRC: &str = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/vegetation_scatter.wgsl"));
 
 /// Manages the GPU vegetation scatter and cull compute pipelines.
 pub struct VegetationGpuPipeline {

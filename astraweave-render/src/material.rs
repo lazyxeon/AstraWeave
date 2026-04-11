@@ -98,6 +98,74 @@ pub struct MaterialGpuArrays {
     pub material_buffer: wgpu::Buffer,
 }
 
+// ---------------------------------------------------------------------------
+// Canonical material UBO (Rust-side counterpart to WGSL `MaterialUbo`)
+// ---------------------------------------------------------------------------
+
+/// Rust-side representation of the per-draw material UBO.
+///
+/// Matches the inline WGSL `MaterialUbo` struct used in both the static and
+/// skinned PBR render pipelines. Write to the material uniform buffer via
+/// `bytemuck::bytes_of(&ubo)` instead of raw `[f32; 8]` slices.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct MaterialUboData {
+    pub base_color: [f32; 4],
+    pub metallic: f32,
+    pub roughness: f32,
+    pub alpha_cutoff: f32,
+    pub _pad: f32,
+}
+
+impl Default for MaterialUboData {
+    fn default() -> Self {
+        Self {
+            base_color: [1.0, 1.0, 1.0, 1.0],
+            metallic: 0.0,
+            roughness: 0.5,
+            alpha_cutoff: 0.5,
+            _pad: 0.0,
+        }
+    }
+}
+
+impl MaterialUboData {
+    /// Create from base color and PBR parameters.
+    pub fn new(base_color: [f32; 4], metallic: f32, roughness: f32, alpha_cutoff: f32) -> Self {
+        Self {
+            base_color,
+            metallic,
+            roughness,
+            alpha_cutoff,
+            _pad: 0.0,
+        }
+    }
+}
+
+impl From<&crate::material_bindless::GpuMaterialEntry> for MaterialUboData {
+    fn from(entry: &crate::material_bindless::GpuMaterialEntry) -> Self {
+        Self {
+            base_color: entry.base_color,
+            metallic: entry.metallic_factor,
+            roughness: entry.roughness_factor,
+            alpha_cutoff: entry.alpha_cutoff,
+            _pad: 0.0,
+        }
+    }
+}
+
+impl From<&MaterialGpu> for MaterialUboData {
+    fn from(gpu: &MaterialGpu) -> Self {
+        Self {
+            base_color: [1.0, 1.0, 1.0, gpu.factors[3]], // MaterialGpu has no base color RGB
+            metallic: gpu.factors[0],
+            roughness: gpu.factors[1],
+            alpha_cutoff: 0.5, // MaterialGpu has no alpha_cutoff
+            _pad: 0.0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MaterialLoadStats {
     pub biome: String,

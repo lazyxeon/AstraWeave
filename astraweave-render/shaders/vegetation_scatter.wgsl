@@ -115,7 +115,9 @@ fn estimate_slope(uv: vec2<f32>, texel: f32, chunk_sz: f32) -> vec3<f32> {
     return normalize(vec3<f32>(-dx, 1.0, -dz));
 }
 
-@compute @workgroup_size(64)
+override WG_SIZE: u32 = 64u;
+
+@compute @workgroup_size(WG_SIZE)
 fn scatter_vegetation(@builtin(global_invocation_id) gid: vec3<u32>) {
     let cell_index = gid.x;
     let total_cells = params.grid_dim * params.grid_dim;
@@ -198,7 +200,7 @@ fn scatter_vegetation(@builtin(global_invocation_id) gid: vec3<u32>) {
     let scale_t = hash_to_float(pcg_hash(cell_seed + 5u));
     let instance_scale = mix(scale_min, scale_max, scale_t);
 
-    let rotation = hash_to_float(pcg_hash(cell_seed + 6u)) * 6.2831853; // 0..2π
+    let rotation = hash_to_float(pcg_hash(cell_seed + 6u)) * TWO_PI; // 0..2π
 
     // Atomically allocate an instance slot
     let slot = atomicAdd(&instance_count, 1u);
@@ -238,7 +240,7 @@ fn test_sphere_frustum(center: vec3<f32>, radius: f32) -> bool {
     return true;
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(WG_SIZE)
 fn cull_vegetation(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx = gid.x;
     if (idx >= cull_instance_count) {

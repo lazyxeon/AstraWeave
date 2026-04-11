@@ -19,6 +19,8 @@ notify = "8"
 walkdir = "2"
 toml = "0.9"
 ron = "0.11"
+meshopt = "0.6"
+bytemuck = { workspace = true }
 tracing = { workspace = true }
 
 # Optional: glTF parsing (CPU side) with KHR material extensions

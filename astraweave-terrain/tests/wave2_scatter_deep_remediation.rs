@@ -502,6 +502,7 @@ fn scatter_result_total_count_vegetation_only() {
         vegetation_type: "tree".to_string(),
         model_path: "tree.glb".to_string(),
         terrain_normal: Vec3::Y,
+        tint: Vec3::ONE,
     });
     result.vegetation.push(VegetationInstance {
         position: Vec3::ONE,
@@ -510,6 +511,7 @@ fn scatter_result_total_count_vegetation_only() {
         vegetation_type: "bush".to_string(),
         model_path: "bush.glb".to_string(),
         terrain_normal: Vec3::Y,
+        tint: Vec3::ONE,
     });
 
     assert_eq!(result.total_count(), 2);
@@ -527,6 +529,7 @@ fn scatter_result_total_count_is_sum_not_difference() {
         vegetation_type: "tree".to_string(),
         model_path: "tree.glb".to_string(),
         terrain_normal: Vec3::Y,
+        tint: Vec3::ONE,
     });
 
     // total_count = vegetation.len() + resources.len()
@@ -555,6 +558,7 @@ fn scatter_result_not_empty_with_vegetation() {
         vegetation_type: "t".to_string(),
         model_path: "t.glb".to_string(),
         terrain_normal: Vec3::Y,
+        tint: Vec3::ONE,
     });
     assert!(!result.is_empty());
 }

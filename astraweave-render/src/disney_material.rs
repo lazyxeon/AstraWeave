@@ -12,10 +12,21 @@ use crate::material_extended::{
 };
 
 /// The Disney BRDF WGSL source, available for shader composition.
-pub const DISNEY_BRDF_WGSL: &str = include_str!("../shaders/pbr/disney_brdf.wgsl");
+/// All permutation features enabled (backward-compatible default).
+/// For compile-time feature elimination, use [`ShaderPermutation::generate_disney_brdf()`].
+pub const DISNEY_BRDF_WGSL: &str = concat!(
+    include_str!("../shaders/constants.wgsl"),
+    // Default permutation: all optional lobes enabled (matches runtime-branching behavior).
+    "const ENABLE_CLEARCOAT: bool = true;\n",
+    "const ENABLE_ANISOTROPY: bool = true;\n",
+    "const ENABLE_SUBSURFACE: bool = true;\n",
+    "const ENABLE_SHEEN: bool = true;\n",
+    "const ENABLE_TRANSMISSION: bool = true;\n\n",
+    include_str!("../shaders/pbr/disney_brdf.wgsl")
+);
 
 /// The BRDF LUT WGSL source.
-pub const BRDF_LUT_WGSL: &str = include_str!("../shaders/pbr/brdf_lut.wgsl");
+pub const BRDF_LUT_WGSL: &str = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/pbr/brdf_lut.wgsl"));
 
 /// CPU-side Disney BRDF evaluation result.
 #[derive(Debug, Clone, Copy)]
@@ -170,6 +181,26 @@ mod tests {
         assert!(!DISNEY_BRDF_WGSL.is_empty());
         assert!(DISNEY_BRDF_WGSL.contains("evaluate_disney_brdf"));
         assert!(DISNEY_BRDF_WGSL.contains("evaluate_disney_ibl"));
+    }
+
+    #[test]
+    fn brdf_wgsl_contains_lod_function() {
+        assert!(
+            DISNEY_BRDF_WGSL.contains("evaluate_disney_brdf_lod"),
+            "disney_brdf.wgsl must contain LOD-aware evaluation function"
+        );
+    }
+
+    #[test]
+    fn disney_brdf_wgsl_parses_naga() {
+        // Validate that the combined constants + disney_brdf shader parses
+        // with naga. This catches syntax errors in the LOD-aware functions.
+        let result = naga::front::wgsl::parse_str(DISNEY_BRDF_WGSL);
+        assert!(
+            result.is_ok(),
+            "disney_brdf.wgsl should parse: {:?}",
+            result.err()
+        );
     }
 
     #[test]

@@ -5,8 +5,8 @@
 
 use anyhow::{Context, Result};
 use glam::Vec3;
+use meshopt::VertexDataAdapter;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 type SimplifiedMesh = (
@@ -305,7 +305,7 @@ impl QuadricError {
     }
 }
 
-/// Generate meshlets from a mesh using k-means clustering
+/// Generate meshlets from a mesh using meshopt's optimized clustering algorithm
 pub fn generate_meshlets(
     positions: &[[f32; 3]],
     normals: &[[f32; 3]],
@@ -317,91 +317,40 @@ pub fn generate_meshlets(
         anyhow::bail!("Index count must be a multiple of 3");
     }
 
-    let triangle_count = indices.len() / 3;
-    let mut meshlets = Vec::new();
+    if indices.is_empty() {
+        return Ok(Vec::new());
+    }
 
-    // Simple greedy clustering: group triangles spatially
-    let mut remaining_triangles: Vec<usize> = (0..triangle_count).collect();
+    // Create vertex data adapter for meshopt (positions as raw bytes, zero-copy)
+    let position_bytes: &[u8] = bytemuck::cast_slice(positions);
+    let vertex_adapter = VertexDataAdapter::new(
+        position_bytes,
+        std::mem::size_of::<[f32; 3]>(),
+        0,
+    )
+    .context("Failed to create VertexDataAdapter for meshlet generation")?;
 
-    while !remaining_triangles.is_empty() {
-        let mut meshlet_vertices = Vec::new();
-        let mut meshlet_indices = Vec::new();
-        let mut vertex_map: HashMap<u32, u8> = HashMap::new();
+    // Use meshopt's optimized meshlet builder (topology-aware spatial clustering)
+    let meshopt_meshlets = meshopt::clusterize::build_meshlets(
+        indices,
+        &vertex_adapter,
+        MAX_MESHLET_VERTICES,
+        MAX_MESHLET_TRIANGLES,
+        0.5, // cone_weight: balance cluster compactness vs backface-culling efficiency
+    );
 
-        // Start with the first remaining triangle
-        let seed_tri = remaining_triangles[0];
-        let seed_center = {
-            let i0 = indices[seed_tri * 3] as usize;
-            let i1 = indices[seed_tri * 3 + 1] as usize;
-            let i2 = indices[seed_tri * 3 + 2] as usize;
-            let p0 = Vec3::from_array(positions[i0]);
-            let p1 = Vec3::from_array(positions[i1]);
-            let p2 = Vec3::from_array(positions[i2]);
-            (p0 + p1 + p2) / 3.0
-        };
-
-        let mut i = 0;
-        while i < remaining_triangles.len() {
-            let tri_idx = remaining_triangles[i];
-            let i0 = indices[tri_idx * 3];
-            let i1 = indices[tri_idx * 3 + 1];
-            let i2 = indices[tri_idx * 3 + 2];
-
-            // Check if we can add this triangle
-            let new_vertices = [i0, i1, i2]
-                .iter()
-                .filter(|&&idx| !vertex_map.contains_key(&idx))
-                .count();
-
-            if meshlet_vertices.len() + new_vertices <= MAX_MESHLET_VERTICES
-                && meshlet_indices.len() + 3 <= MAX_MESHLET_TRIANGLES * 3
-            {
-                // Compute triangle center
-                let p0 = Vec3::from_array(positions[i0 as usize]);
-                let p1 = Vec3::from_array(positions[i1 as usize]);
-                let p2 = Vec3::from_array(positions[i2 as usize]);
-                let tri_center = (p0 + p1 + p2) / 3.0;
-
-                // Use spatial proximity as clustering criterion
-                let distance = (tri_center - seed_center).length();
-
-                // Add triangle if it's close enough or we're just starting
-                if meshlet_indices.is_empty() || distance < 10.0 {
-                    // Add vertices to meshlet
-                    for &idx in &[i0, i1, i2] {
-                        if let std::collections::hash_map::Entry::Vacant(e) = vertex_map.entry(idx)
-                        {
-                            let local_idx = meshlet_vertices.len() as u8;
-                            e.insert(local_idx);
-                            meshlet_vertices.push(idx);
-                        }
-                    }
-
-                    // Add triangle indices
-                    meshlet_indices.push(vertex_map[&i0]);
-                    meshlet_indices.push(vertex_map[&i1]);
-                    meshlet_indices.push(vertex_map[&i2]);
-
-                    // Remove this triangle from remaining
-                    remaining_triangles.swap_remove(i);
-                    continue;
-                }
-            }
-
-            i += 1;
-        }
-
-        // Create meshlet
-        if !meshlet_indices.is_empty() {
-            let meshlet = Meshlet::new(
-                meshlet_vertices,
-                meshlet_indices,
-                positions,
-                normals,
-                0, // LOD 0
-            );
-            meshlets.push(meshlet);
-        }
+    // Convert meshopt meshlets to our Meshlet format
+    let mut meshlets = Vec::with_capacity(meshopt_meshlets.len());
+    for i in 0..meshopt_meshlets.len() {
+        let m = meshopt_meshlets.get(i);
+        let meshlet = Meshlet::new(
+            m.vertices.to_vec(),
+            m.triangles.to_vec(),
+            positions,
+            normals,
+            0, // LOD 0
+        );
+        meshlets.push(meshlet);
     }
 
     Ok(meshlets)

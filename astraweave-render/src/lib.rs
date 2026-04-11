@@ -32,12 +32,6 @@
 //! | `ssao` | Screen-space ambient occlusion |
 
 pub mod camera;
-#[deprecated(
-    since = "0.10.0",
-    note = "Use astraweave-terrain's chunk-based LodManager with MorphingLodManager instead. \
-            Clipmap terrain will be removed in a future release."
-)]
-pub mod clipmap_terrain; // DEPRECATED: Geometry clipmap / CDLOD terrain
 pub mod clustered;
 pub mod clustered_forward; // Complete clustered forward rendering
 pub mod clustered_megalights; // MegaLights: GPU-accelerated light culling (Phase 1)
@@ -76,11 +70,13 @@ pub mod disney_material; // Disney principled BRDF evaluation + WGSL source (Pha
 pub mod distance_field; // Signed Distance Field generation + Distance-Field AO (Lumen Phase 5)
 pub mod final_gather; // Lumen final gather: multi-bounce diffuse indirect compositor
 pub mod god_rays; // Screen-space god rays / crepuscular light shafts (Phase 6)
+pub mod frame_graph; // Frame render graph: DAG-based pass pipeline builder
 pub mod graph; // minimal render graph scaffolding (Phase 2)
 pub mod graph_adapter; // runs a graph on Renderer frames
 pub mod gtao; // Ground Truth Ambient Occlusion with visibility bitmask
 pub mod hdr_pipeline; // HDR rendering pipeline orchestration (tonemap, color grading, post-FX chain)
 pub mod hdri_catalog;
+pub mod hiz_pyramid; // Shared Hi-Z min-depth pyramid for SSR/SSGI ray acceleration
 pub mod lumen; // Lumen Global Illumination orchestrator (Phase 5)
 pub mod material; // shared authored materials API + GPU arrays
 pub mod material_extended; // Phase PBR-E: Advanced materials (clearcoat, anisotropy, SSS, sheen, transmission)
@@ -98,6 +94,7 @@ pub mod pipeline_cache; // Disk-backed Vulkan/DX12 pipeline cache (eliminates co
 pub mod residency;
 pub mod scene_environment;
 pub mod shader_manager; // Shader hot-reload: hash-based change detection + pipeline invalidation
+pub mod shader_permutation; // Compile-time permutation system for Disney BRDF lobes
 pub mod ssgi; // Screen-Space Global Illumination with temporal denoise
 pub mod ssr; // Screen-Space Reflections with Hi-Z ray marching
 pub mod subgroup_ops; // Subgroup-optimized shader variants (auto-exposure, prefix sum, bitonic sort)
@@ -157,24 +154,28 @@ pub mod material_bindless; // Bindless texture array material system
 pub mod msaa; // MSAA anti-aliasing resources
 pub mod oit; // Weighted Blended Order-Independent Transparency
 pub mod overlay; // NEW (for cutscene fades/letterbox later)
+pub mod puddle_accumulation; // Rain-driven puddle formation in terrain concavities
 pub mod rain_occlusion; // GPU rain/weather particle occlusion via depth buffer
+pub mod rain_splash; // Rain impact splash particle spawner
 pub mod snow_accumulation; // Per-chunk snow accumulation compute + snow material blending
+pub mod snow_footprint; // Entity footprint depression in accumulated snow
 pub mod transparency; // Transparency depth sorting and render pass // Advanced post-processing (TAA, motion blur, DOF, color grading) // GPU compute SWE erosion
+pub mod grass_blade; // Procedural per-blade grass geometry rendering
 pub mod vegetation_gpu; // GPU-instanced vegetation scatter and frustum cull pipeline
+pub mod vegetation_interaction; // Entity proximity grass bending stamp system
 pub mod vegetation_lod; // Tree LOD chain with billboard/impostor support
 pub mod weather_gpu; // GPU-accelerated weather particle emitter configurations
 
-// GPU memory management and SSAO
+// GPU memory management
 pub mod bind_group_cache; // Generation-tracked bind group cache
 pub mod gpu_memory; // GPU memory budget tracking and enforcement
 pub mod gpu_profiler; // GPU timestamp profiler for per-pass performance analysis
-#[cfg(feature = "ssao")]
-pub mod ssao;
-pub mod staging_ring; // Per-frame ring buffer for transient GPU allocations // Screen-space ambient occlusion
+pub mod staging_ring; // Per-frame ring buffer for transient GPU allocations
 
 pub use advanced_post::{
-    AdvancedPostFx, ColorGradingConfig, DofConfig, MotionBlurConfig, TaaConfig,
+    AdvancedPostFx, ColorGradingConfig, DofConfig, MotionBlurConfig,
 };
+pub use taa::TaaConfig;
 pub use asset_index::{AssetIndex, HdriRef as AssetHdriRef, MaterialSetEntry, TextureEntry};
 pub use atmosphere::{AtmosphereConfig, AtmospherePass};
 pub use bind_group_cache::{CachedBindGroup, CachedBindGroupSet, Generation};
@@ -182,12 +183,6 @@ pub use biome_detector::{BiomeDetector, BiomeDetectorConfig, BiomeTransition};
 pub use biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
 pub use biome_transition::{BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect};
 pub use brdf_lut::{BrdfLutConfig, BrdfLutPass};
-#[allow(deprecated)]
-#[deprecated(
-    since = "0.10.0",
-    note = "Use astraweave-terrain's chunk-based LodManager with MorphingLodManager instead."
-)]
-pub use clipmap_terrain::{ClipmapConfig, ClipmapTerrain, ClipmapVertex};
 pub use compute_noise::{GpuNoiseConfig, GpuNoisePipeline, GpuNoiseType};
 pub use culling::{
     batch_visible_instances, build_indirect_commands_cpu, cpu_frustum_cull,
@@ -233,8 +228,6 @@ pub use particle_render::{
     ParticleBlendMode, ParticleCameraUniforms, ParticleRenderConfig, ParticleRenderPass,
 };
 pub use particle_sort::{ParticleSortPass, SortEntry};
-#[cfg(feature = "bloom")]
-pub use post::{BloomConfig, BloomPipeline};
 pub use residency::ResidencyManager;
 pub use scene_environment::{
     SceneEnvironment, SceneEnvironmentUBO, WGSL_FOG_FUNCTIONS, WGSL_SCENE_ENVIRONMENT,

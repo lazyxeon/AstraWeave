@@ -428,22 +428,6 @@ fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
     particles[id].velocity = vec4<f32>(xsph_vel, 0.0);
 }
 
-// --- Dye Mixing & Secondary Physics ---
-// SecondaryParticle struct is defined at file top (before bindings)
-// secondary_particles and secondary_counter are in bindings section
-
-@compute @workgroup_size(64)
-fn emit_whitewater(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    // Secondary particles feature disabled for now
-    return;
-}
-
-@compute @workgroup_size(64)
-fn update_whitewater(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    // Secondary particles feature disabled for now
-    return;
-}
-
 // --- Heat Diffusion Kernel ---
 // Laplacian-based thermal diffusion between neighboring particles
 

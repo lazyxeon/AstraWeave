@@ -42,7 +42,7 @@ pub struct GpuMaterialEntry {
     pub emissive_strength: f32,
     pub uv_scale: [f32; 2],
     pub flags: u32,
-    pub _padding: u32,
+    pub alpha_cutoff: f32,
 }
 
 impl Default for GpuMaterialEntry {
@@ -59,7 +59,7 @@ impl Default for GpuMaterialEntry {
             emissive_strength: 0.0,
             uv_scale: [1.0, 1.0],
             flags: 0,
-            _padding: 0,
+            alpha_cutoff: 0.5,
         }
     }
 }

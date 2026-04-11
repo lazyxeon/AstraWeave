@@ -1088,7 +1088,7 @@ mod shadow_csm_tests {
 
 #[cfg(test)]
 mod post_tests {
-    use crate::post::BloomConfig;
+    use crate::bloom::BloomConfig;
 
     #[test]
     fn test_bloom_config_creation() {
@@ -1096,6 +1096,7 @@ mod post_tests {
             threshold: 1.0,
             intensity: 0.5,
             mip_count: 5,
+            ..Default::default()
         };
         assert!(config.threshold > 0.0, "Threshold should be positive");
         assert!(config.intensity >= 0.0, "Intensity should be non-negative");
@@ -1111,6 +1112,7 @@ mod post_tests {
             threshold: 0.8,
             intensity: 1.0,
             mip_count: 4,
+            ..Default::default()
         };
         // Typical bloom values
         assert!(config.threshold >= 0.0 && config.threshold <= 10.0);
@@ -1124,6 +1126,7 @@ mod post_tests {
             threshold: 1.0,
             intensity: 0.0, // Disabled bloom
             mip_count: 5,
+            ..Default::default()
         };
         assert_eq!(config.intensity, 0.0);
     }
@@ -1136,6 +1139,7 @@ mod post_tests {
                 threshold: 1.0,
                 intensity: 0.5,
                 mip_count: mip,
+                ..Default::default()
             };
             assert_eq!(config.mip_count, mip);
         }

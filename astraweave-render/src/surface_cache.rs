@@ -235,7 +235,8 @@ impl SurfaceCachePass {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("surface_cache_update_shader"),
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("../shaders/lumen/surface_cache_update.wgsl").into(),
+                concat!(include_str!("../shaders/constants.wgsl"),
+                include_str!("../shaders/lumen/surface_cache_update.wgsl")).into(),
             ),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

@@ -22,6 +22,10 @@ pub struct WaterUniforms {
     pub _pad1: f32,                    // 108-112
     pub foam_color: [f32; 3],          // 112-124
     pub foam_threshold: f32,           // 124-128
+    pub rain_intensity: f32,           // 128-132
+    pub ripple_scale: f32,             // 132-136
+    pub ripple_strength: f32,          // 136-140
+    pub _pad2: f32,                    // 140-144
 }
 
 impl Default for WaterUniforms {
@@ -36,6 +40,10 @@ impl Default for WaterUniforms {
             _pad1: 0.0,
             foam_color: [0.95, 0.98, 1.0], // White foam
             foam_threshold: 0.6,
+            rain_intensity: 0.0,
+            ripple_scale: 4.0,
+            ripple_strength: 0.15,
+            _pad2: 0.0,
         }
     }
 }
@@ -274,6 +282,14 @@ impl WaterRenderer {
         self.uniforms.foam_color = foam.into();
     }
 
+    /// Set rain intensity for ripple effects on the water surface.
+    ///
+    /// `intensity`: 0.0 = no rain, 1.0 = heavy rain.
+    /// Applied on the next [`Self::update`] call.
+    pub fn set_rain_intensity(&mut self, intensity: f32) {
+        self.uniforms.rain_intensity = intensity.clamp(0.0, 1.0);
+    }
+
     /// Get current water colors (deep, shallow, foam).
     pub fn water_colors(&self) -> (Vec3, Vec3, Vec3) {
         (
@@ -307,7 +323,7 @@ mod tests {
     #[test]
     fn test_uniforms_size() {
         // Ensure uniform struct is properly aligned for GPU
-        assert_eq!(std::mem::size_of::<WaterUniforms>(), 128);
+        assert_eq!(std::mem::size_of::<WaterUniforms>(), 144);
     }
 
     #[test]

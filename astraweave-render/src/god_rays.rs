@@ -50,6 +50,8 @@ pub struct GodRayConfig {
     pub decay: f32,
     /// Final brightness multiplier.
     pub exposure: f32,
+    /// Render at half resolution for performance (bilinear upscale on composite).
+    pub half_res: bool,
 }
 
 impl Default for GodRayConfig {
@@ -61,6 +63,7 @@ impl Default for GodRayConfig {
             weight: 0.25,
             decay: 0.97,
             exposure: 0.3,
+            half_res: false,
         }
     }
 }
@@ -88,14 +91,20 @@ pub struct GodRayPass {
 
 impl GodRayPass {
     pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
-        let config = GodRayConfig::default();
+        Self::with_config(device, width, height, GodRayConfig::default())
+    }
+
+    pub fn with_config(device: &wgpu::Device, width: u32, height: u32, config: GodRayConfig) -> Self {
+        // Compute effective resolution (half-res if enabled)
+        let tex_w = if config.half_res { width.div_ceil(2) } else { width };
+        let tex_h = if config.half_res { height.div_ceil(2) } else { height };
         let fmt = wgpu::TextureFormat::Rgba16Float;
 
         let output_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("god_rays_output"),
             size: wgpu::Extent3d {
-                width,
-                height,
+                width: tex_w,
+                height: tex_h,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -108,8 +117,8 @@ impl GodRayPass {
         let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let params = GodRayParams {
-            resolution: [width as f32, height as f32],
-            inv_resolution: [1.0 / width as f32, 1.0 / height as f32],
+            resolution: [tex_w as f32, tex_h as f32],
+            inv_resolution: [1.0 / tex_w as f32, 1.0 / tex_h as f32],
             sun_screen_pos: [0.5, 0.5],
             sun_visible: 0.0,
             num_samples: config.num_samples,
@@ -210,8 +219,8 @@ impl GodRayPass {
             params_buf,
             output_texture,
             output_view,
-            width,
-            height,
+            width: tex_w,
+            height: tex_h,
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("god_rays_sampler"),
                 mag_filter: wgpu::FilterMode::Linear,
@@ -339,12 +348,15 @@ impl GodRayPass {
         pass.dispatch_workgroups(wg_x, wg_y, 1);
     }
 
-    /// Resize output texture.
+    /// Resize output texture (preserves current config including half_res).
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
-        if self.width == width && self.height == height {
+        let tex_w = if self.config.half_res { width.div_ceil(2) } else { width };
+        let tex_h = if self.config.half_res { height.div_ceil(2) } else { height };
+        if self.width == tex_w && self.height == tex_h {
             return;
         }
-        *self = Self::new(device, width, height);
+        let config = self.config.clone();
+        *self = Self::with_config(device, width, height, config);
     }
 }
 

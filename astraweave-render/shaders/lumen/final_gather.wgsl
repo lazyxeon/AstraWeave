@@ -142,7 +142,10 @@ fn reproject_uv(world_pos: vec3<f32>) -> vec2<f32> {
     return prev_ndc * 0.5 + 0.5;
 }
 
-@compute @workgroup_size(8, 8)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y)
 fn final_gather_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = vec2<u32>(textureDimensions(t_depth));
     if (gid.x >= dims.x || gid.y >= dims.y) {
@@ -177,7 +180,7 @@ fn final_gather_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let ao_modulated = gi_combined * mix(1.0, dfao, params.dfao_weight);
 
     // Apply albedo (Lambertian diffuse: E * albedo / pi)
-    let indirect = ao_modulated * albedo * 0.318310; // 1/pi
+    let indirect = ao_modulated * albedo * INV_PI; // 1/pi
 
     // --- Temporal reprojection ---
     let prev_uv = reproject_uv(world_pos);

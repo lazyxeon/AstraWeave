@@ -1,8 +1,9 @@
 //! Screen-Space Reflections (SSR) with Hi-Z acceleration.
 //!
-//! Traces rays in screen space against the depth buffer to produce reflections.
-//! Uses increasing step sizes and screen-edge fading for quality. Falls back
-//! to IBL cubemap for misses.
+//! Traces rays hierarchically against a min-depth Hi-Z pyramid for O(log N)
+//! convergence. Uses mip-chain traversal to skip empty space at coarse levels
+//! and refines to pixel accuracy at mip 0. Screen-edge fading and roughness
+//! cutoff reduce artifacts.
 
 /// GPU-side uniform parameters for the SSR compute pass.
 #[repr(C)]
@@ -19,7 +20,10 @@ pub struct SsrParams {
     pub fade_start: f32,
     pub fade_end: f32,
     pub roughness_cutoff: f32,
+    pub temporal_blend: f32,
     pub frame_index: u32,
+    pub hiz_mip_count: u32,
+    pub _pad: [u32; 2],
 }
 
 impl Default for SsrParams {
@@ -36,7 +40,10 @@ impl Default for SsrParams {
             fade_start: 0.1,
             fade_end: 0.02,
             roughness_cutoff: 0.5,
+            temporal_blend: 0.9,
             frame_index: 0,
+            hiz_mip_count: 11,
+            _pad: [0; 2],
         }
     }
 }
@@ -49,6 +56,7 @@ pub struct SsrConfig {
     pub stride: f32,
     pub thickness: f32,
     pub roughness_cutoff: f32,
+    pub temporal_blend: f32,
 }
 
 impl Default for SsrConfig {
@@ -59,6 +67,7 @@ impl Default for SsrConfig {
             stride: 4.0,
             thickness: 0.3,
             roughness_cutoff: 0.5,
+            temporal_blend: 0.9,
         }
     }
 }
@@ -71,6 +80,9 @@ pub struct SsrPass {
     #[allow(dead_code)] // texture must be kept alive for view to remain valid
     ssr_texture: wgpu::Texture,
     ssr_view: wgpu::TextureView,
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
+    history_texture: wgpu::Texture,
+    history_view: wgpu::TextureView,
     bgl: wgpu::BindGroupLayout,
     frame_index: u32,
     width: u32,
@@ -97,10 +109,28 @@ impl SsrPass {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: fmt,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let ssr_view = ssr_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let history_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ssr_history"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: fmt,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let history_view = history_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         use wgpu::util::DeviceExt;
         let params = SsrParams::default();
@@ -113,13 +143,15 @@ impl SsrPass {
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("ssr_bgl"),
             entries: &[
-                tex_entry(0),          // depth
+                hiz_tex_entry(0),      // Hi-Z min-depth pyramid (multi-mip)
                 tex_entry(1),          // normals
                 tex_entry(2),          // color
                 tex_entry(3),          // metallic-roughness
-                sampler_entry(4),      // sampler
-                uniform_entry(5),      // params
-                storage_entry(6, fmt), // output
+                tex_entry(4),          // velocity
+                tex_entry(5),          // history
+                sampler_entry(6),      // sampler
+                uniform_entry(7),      // params
+                storage_entry(8, fmt), // output
             ],
         });
 
@@ -147,6 +179,8 @@ impl SsrPass {
             params_buf,
             ssr_texture,
             ssr_view,
+            history_texture,
+            history_view,
             bgl,
             frame_index: 0,
             width,
@@ -177,7 +211,7 @@ impl SsrPass {
         (self.width, self.height)
     }
 
-    pub fn update_params(&mut self, queue: &wgpu::Queue, proj: glam::Mat4) {
+    pub fn update_params(&mut self, queue: &wgpu::Queue, proj: glam::Mat4, hiz_mip_count: u32) {
         let params = SsrParams {
             inv_proj: proj.inverse().to_cols_array_2d(),
             proj: proj.to_cols_array_2d(),
@@ -190,7 +224,10 @@ impl SsrPass {
             fade_start: 0.1,
             fade_end: 0.02,
             roughness_cutoff: self.config.roughness_cutoff,
+            temporal_blend: self.config.temporal_blend,
             frame_index: self.frame_index,
+            hiz_mip_count,
+            _pad: [0; 2],
         };
         queue.write_buffer(&self.params_buf, 0, bytemuck::bytes_of(&params));
         self.frame_index = self.frame_index.wrapping_add(1);
@@ -201,10 +238,11 @@ impl SsrPass {
         &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
-        depth_view: &wgpu::TextureView,
+        hiz_view: &wgpu::TextureView,
         normal_view: &wgpu::TextureView,
         color_view: &wgpu::TextureView,
         mr_view: &wgpu::TextureView,
+        velocity_view: &wgpu::TextureView,
         resource_gen: crate::bind_group_cache::Generation,
     ) {
         if !self.config.enabled {
@@ -218,7 +256,7 @@ impl SsrPass {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(depth_view),
+                        resource: wgpu::BindingResource::TextureView(hiz_view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
@@ -234,14 +272,22 @@ impl SsrPass {
                     },
                     wgpu::BindGroupEntry {
                         binding: 4,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        resource: wgpu::BindingResource::TextureView(velocity_view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 5,
-                        resource: self.params_buf.as_entire_binding(),
+                        resource: wgpu::BindingResource::TextureView(&self.history_view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 6,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: self.params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 8,
                         resource: wgpu::BindingResource::TextureView(&self.ssr_view),
                     },
                 ],
@@ -265,6 +311,29 @@ impl SsrPass {
         pass.dispatch_workgroups(wg_x, wg_y, 1);
     }
 
+    /// Copy current SSR output to history for next frame reprojection.
+    pub fn copy_to_history(&self, encoder: &mut wgpu::CommandEncoder) {
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.ssr_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.history_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         if self.width == width && self.height == height {
             return;
@@ -279,6 +348,20 @@ fn tex_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
         visibility: wgpu::ShaderStages::COMPUTE,
         ty: wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+/// Hi-Z pyramid texture entry: unfilterable float (uses textureLoad, not textureSample).
+fn hiz_tex_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
             view_dimension: wgpu::TextureViewDimension::D2,
             multisampled: false,
         },
@@ -327,7 +410,7 @@ mod tests {
 
     #[test]
     fn ssr_params_size() {
-        assert_eq!(std::mem::size_of::<SsrParams>(), 176);
+        assert_eq!(std::mem::size_of::<SsrParams>(), 192);
     }
 
     #[test]
@@ -335,6 +418,7 @@ mod tests {
         let c = SsrConfig::default();
         assert!(c.enabled);
         assert_eq!(c.max_steps, 64);
+        assert!(c.temporal_blend > 0.0 && c.temporal_blend < 1.0);
     }
 
     #[test]

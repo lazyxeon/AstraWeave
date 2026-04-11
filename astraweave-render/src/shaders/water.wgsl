@@ -24,9 +24,67 @@ struct WaterUniforms {
     _pad2: f32,
     foam_color: vec3<f32>,
     foam_threshold: f32,
+    // Rain ripple parameters.
+    rain_intensity: f32,   // 0.0 = no rain, 1.0 = heavy rain
+    ripple_scale: f32,     // UV tile scale for ripple pattern (default 4.0)
+    ripple_strength: f32,  // Normal perturbation strength (default 0.15)
+    _pad3: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: WaterUniforms;
+
+// ── Rain ripple normal perturbation ─────────────────────────────────────────
+// Procedural concentric ring pattern from multiple random "drop" origins.
+// Each layer uses a different speed and phase offset for variation.
+
+fn ripple_ring(uv: vec2<f32>, center: vec2<f32>, time: f32, freq: f32) -> f32 {
+    let dist = length(uv - center);
+    let wave = sin(dist * freq - time * 12.0) * exp(-dist * 3.0);
+    // Fade out over time (each "drop" lasts ~1 second).
+    let age = fract(time * 0.7 + dot(center, vec2<f32>(17.1, 31.7)));
+    let fade = 1.0 - smoothstep(0.6, 1.0, age);
+    return wave * fade;
+}
+
+fn rain_ripple_normal(world_xz: vec2<f32>, time: f32, scale: f32, strength: f32) -> vec3<f32> {
+    let uv = world_xz * scale;
+    var h = 0.0;
+
+    // 3 layers of ripple drops at different pseudo-random positions.
+    let c1 = vec2<f32>(fract(sin(dot(vec2<f32>(1.0, 2.0), vec2<f32>(127.1, 311.7))) * 43758.5453),
+                       fract(sin(dot(vec2<f32>(1.0, 2.0), vec2<f32>(269.5, 183.3))) * 43758.5453));
+    let c2 = vec2<f32>(fract(sin(dot(vec2<f32>(3.0, 4.0), vec2<f32>(127.1, 311.7))) * 43758.5453),
+                       fract(sin(dot(vec2<f32>(3.0, 4.0), vec2<f32>(269.5, 183.3))) * 43758.5453));
+    let c3 = vec2<f32>(fract(sin(dot(vec2<f32>(5.0, 6.0), vec2<f32>(127.1, 311.7))) * 43758.5453),
+                       fract(sin(dot(vec2<f32>(5.0, 6.0), vec2<f32>(269.5, 183.3))) * 43758.5453));
+
+    // Tile centers to repeat across the surface.
+    let tile = floor(uv);
+    h += ripple_ring(fract(uv), c1, time, 25.0);
+    h += ripple_ring(fract(uv + 0.37), c2, time + 0.33, 30.0);
+    h += ripple_ring(fract(uv + 0.71), c3, time + 0.67, 22.0);
+
+    h *= strength;
+
+    // Compute normal from finite differences of the height.
+    let eps = 0.01;
+    let uv_dx = (uv + vec2<f32>(eps, 0.0));
+    let uv_dz = (uv + vec2<f32>(0.0, eps));
+    var h_dx = 0.0;
+    var h_dz = 0.0;
+    h_dx += ripple_ring(fract(uv_dx), c1, time, 25.0);
+    h_dx += ripple_ring(fract(uv_dx + 0.37), c2, time + 0.33, 30.0);
+    h_dx += ripple_ring(fract(uv_dx + 0.71), c3, time + 0.67, 22.0);
+    h_dz += ripple_ring(fract(uv_dz), c1, time, 25.0);
+    h_dz += ripple_ring(fract(uv_dz + 0.37), c2, time + 0.33, 30.0);
+    h_dz += ripple_ring(fract(uv_dz + 0.71), c3, time + 0.67, 22.0);
+    h_dx *= strength;
+    h_dz *= strength;
+
+    let dx = (h_dx - h) / eps;
+    let dz = (h_dz - h) / eps;
+    return normalize(vec3<f32>(-dx, 1.0, -dz));
+}
 
 // Gerstner wave parameters
 // Each wave: (direction.x, direction.y, amplitude, frequency)
@@ -118,8 +176,20 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let N = normalize(input.normal);
+    var N = normalize(input.normal);
     let V = normalize(uniforms.camera_pos - input.world_pos);
+
+    // Rain ripple normal perturbation.
+    if (uniforms.rain_intensity > 0.0) {
+        let ripple_N = rain_ripple_normal(
+            input.world_pos.xz,
+            uniforms.time,
+            uniforms.ripple_scale,
+            uniforms.ripple_strength * uniforms.rain_intensity,
+        );
+        // Blend ripple normal with wave normal.
+        N = normalize(mix(N, ripple_N, uniforms.rain_intensity * 0.6));
+    }
     
     // Fresnel effect for reflection blend
     let fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);

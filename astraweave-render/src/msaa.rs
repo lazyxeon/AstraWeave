@@ -45,6 +45,16 @@ impl MsaaMode {
             alpha_to_coverage_enabled: false,
         }
     }
+
+    /// Get MultisampleState with alpha-to-coverage enabled.
+    /// Use for vegetation and masked-alpha pipelines when MSAA is active.
+    pub fn multisample_state_alpha_to_coverage(self) -> wgpu::MultisampleState {
+        wgpu::MultisampleState {
+            count: self.sample_count(),
+            mask: !0,
+            alpha_to_coverage_enabled: self.is_enabled(),
+        }
+    }
 }
 
 /// MSAA render target manager

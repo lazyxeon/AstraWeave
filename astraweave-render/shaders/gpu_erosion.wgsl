@@ -45,9 +45,12 @@ fn total_height(i: u32) -> f32 {
     return terrain[i] + water[i];
 }
 
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
 // ─── Pass 1: Rain + Outflow Flux ───
 
-@compute @workgroup_size(8, 8)
+@compute @workgroup_size(WG_X, WG_Y)
 fn rain_and_flux(@builtin(global_invocation_id) gid: vec3<u32>) {
     let x = gid.x;
     let y = gid.y;
@@ -111,7 +114,7 @@ fn rain_and_flux(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 // ─── Pass 2: Water Update + Velocity ───
 
-@compute @workgroup_size(8, 8)
+@compute @workgroup_size(WG_X, WG_Y)
 fn water_velocity(@builtin(global_invocation_id) gid: vec3<u32>) {
     let x = gid.x;
     let y = gid.y;
@@ -174,7 +177,7 @@ fn water_velocity(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 // ─── Pass 3: Erosion, Deposition, Sediment Transport, Evaporation ───
 
-@compute @workgroup_size(8, 8)
+@compute @workgroup_size(WG_X, WG_Y)
 fn erode_transport(@builtin(global_invocation_id) gid: vec3<u32>) {
     let x = gid.x;
     let y = gid.y;

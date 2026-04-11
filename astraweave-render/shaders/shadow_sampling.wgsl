@@ -56,7 +56,7 @@ struct ShadowParams {
 
 // Per-pixel rotation angle from Interleaved Gradient Noise
 fn shadow_rotation_angle(pixel: vec2<f32>) -> f32 {
-    return fract(52.9829189 * fract(0.06711056 * pixel.x + 0.00583715 * pixel.y)) * 6.28318530;
+    return fract(52.9829189 * fract(0.06711056 * pixel.x + 0.00583715 * pixel.y)) * TWO_PI;
 }
 
 fn rotate_sample(sample: vec2<f32>, angle: f32) -> vec2<f32> {

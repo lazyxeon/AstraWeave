@@ -13,7 +13,6 @@ skinning-cpu = []
 skinning-gpu = []
 assets = []
 nanite = []
-bloom = []
 ibl = []
 megalights = []  # MegaLights GPU light culling (Phase 1)
 msaa = []  # MSAA anti-aliasing
@@ -21,7 +20,6 @@ gpu-particles = []  # GPU compute-based particle system
 decals = []  # Screen-space decal system
 deferred = []  # Deferred rendering pipeline
 advanced-post = []  # Advanced post-processing (TAA, motion blur, DOF)
-ssao = []  # Screen-space ambient occlusion
 camera-relative = []  # Camera-relative rendering for large-world precision
 gltf-assets = ["gltf", "assets"]
 obj-assets = ["tobj", "assets"]
@@ -57,6 +55,7 @@ texture2ddecoder = "0.1"
 serde = { workspace = true }
 serde_json = "1"
 rand = { workspace = true }
+mikktspace = "0.3"
 tokio = { version = "1", features = ["sync", "fs", "rt"] }
 
 [dev-dependencies]

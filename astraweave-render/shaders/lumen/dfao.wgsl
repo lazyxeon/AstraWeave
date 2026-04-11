@@ -82,7 +82,10 @@ fn trace_ao_cone(origin: vec3<f32>, dir: vec3<f32>, cone_angle: f32) -> f32 {
     return saturate(1.0 - occlusion * params.ao_intensity);
 }
 
-@compute @workgroup_size(8, 8)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y)
 fn dfao_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = vec2<u32>(textureDimensions(t_depth));
     if (gid.x >= dims.x || gid.y >= dims.y) {

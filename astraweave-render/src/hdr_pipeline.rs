@@ -97,6 +97,9 @@ pub struct PostProcessChain {
     pub bloom_enabled: bool,
     pub ssao_enabled: bool,
     pub ssr_enabled: bool,
+    pub ssgi_enabled: bool,
+    pub god_rays_enabled: bool,
+    pub auto_exposure_enabled: bool,
     pub taa_enabled: bool,
     pub motion_blur_enabled: bool,
     pub dof_enabled: bool,
@@ -110,6 +113,9 @@ impl Default for PostProcessChain {
             bloom_enabled: false,
             ssao_enabled: false,
             ssr_enabled: false,
+            ssgi_enabled: false,
+            god_rays_enabled: false,
+            auto_exposure_enabled: false,
             taa_enabled: true,
             motion_blur_enabled: false,
             dof_enabled: false,
@@ -130,6 +136,14 @@ impl PostProcessChain {
         if self.ssr_enabled {
             passes.push(PostPass::Ssr);
         }
+        // SSGI after SSR — screen-space indirect lighting on HDR data.
+        if self.ssgi_enabled {
+            passes.push(PostPass::Ssgi);
+        }
+        // God rays after SSGI — volumetric light shafts composited on HDR.
+        if self.god_rays_enabled {
+            passes.push(PostPass::GodRays);
+        }
         // Bloom operates on HDR data (pre-tonemap).
         if self.bloom_enabled {
             passes.push(PostPass::Bloom);
@@ -144,6 +158,10 @@ impl PostProcessChain {
         }
         if self.motion_blur_enabled {
             passes.push(PostPass::MotionBlur);
+        }
+        // Auto-exposure computes scene EV just before tonemap uses it.
+        if self.auto_exposure_enabled {
+            passes.push(PostPass::AutoExposure);
         }
         // Tonemapping + color grading is always last.
         passes.push(PostPass::Tonemap);
@@ -171,10 +189,13 @@ impl PostProcessChain {
 pub enum PostPass {
     Ssao,
     Ssr,
+    Ssgi,
+    GodRays,
     Bloom,
     Taa,
     Dof,
     MotionBlur,
+    AutoExposure,
     Tonemap,
 }
 
@@ -658,6 +679,9 @@ mod tests {
             bloom_enabled: true,
             ssao_enabled: true,
             ssr_enabled: true,
+            ssgi_enabled: true,
+            god_rays_enabled: true,
+            auto_exposure_enabled: true,
             taa_enabled: true,
             motion_blur_enabled: true,
             dof_enabled: true,
@@ -665,15 +689,18 @@ mod tests {
             tonemap_operator: TonemapOperator::Aces,
         };
         let passes = chain.active_passes();
-        assert_eq!(passes.len(), 7);
-        // Order: SSAO → SSR → Bloom → TAA → DoF → MotionBlur → Tonemap
+        assert_eq!(passes.len(), 10);
+        // Order: SSAO → SSR → SSGI → GodRays → Bloom → TAA → DoF → MotionBlur → AutoExposure → Tonemap
         assert_eq!(passes[0], PostPass::Ssao);
         assert_eq!(passes[1], PostPass::Ssr);
-        assert_eq!(passes[2], PostPass::Bloom);
-        assert_eq!(passes[3], PostPass::Taa);
-        assert_eq!(passes[4], PostPass::Dof);
-        assert_eq!(passes[5], PostPass::MotionBlur);
-        assert_eq!(passes[6], PostPass::Tonemap);
+        assert_eq!(passes[2], PostPass::Ssgi);
+        assert_eq!(passes[3], PostPass::GodRays);
+        assert_eq!(passes[4], PostPass::Bloom);
+        assert_eq!(passes[5], PostPass::Taa);
+        assert_eq!(passes[6], PostPass::Dof);
+        assert_eq!(passes[7], PostPass::MotionBlur);
+        assert_eq!(passes[8], PostPass::AutoExposure);
+        assert_eq!(passes[9], PostPass::Tonemap);
     }
 
     #[test]
@@ -686,6 +713,9 @@ mod tests {
             bloom_enabled: false,
             ssao_enabled: false,
             ssr_enabled: false,
+            ssgi_enabled: false,
+            god_rays_enabled: false,
+            auto_exposure_enabled: false,
             taa_enabled: false,
             motion_blur_enabled: false,
             dof_enabled: false,

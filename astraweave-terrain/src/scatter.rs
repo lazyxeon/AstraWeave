@@ -6,6 +6,29 @@ use glam::Vec3;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
+/// Generate a per-instance tint color centered around 1.0 with subtle variation.
+/// Uses position-based hashing for deterministic results.
+/// `variation` controls the maximum deviation from 1.0 (e.g. 0.1 → range [0.9, 1.1]).
+fn generate_instance_tint(position: Vec3, variation: f32) -> Vec3 {
+    // Simple bit-mixing hash from position for deterministic per-instance variation
+    let hash_x = (position.x * 73856093.0) as i32;
+    let hash_y = (position.y * 19349663.0) as i32;
+    let hash_z = (position.z * 83492791.0) as i32;
+    let h = (hash_x ^ hash_y ^ hash_z) as u32;
+
+    // Extract 3 independent channels from the hash bits
+    let r = ((h & 0xFF) as f32) / 255.0; // 0..1
+    let g = (((h >> 8) & 0xFF) as f32) / 255.0;
+    let b = (((h >> 16) & 0xFF) as f32) / 255.0;
+
+    // Map to [1.0 - variation, 1.0 + variation]
+    Vec3::new(
+        1.0 + (r * 2.0 - 1.0) * variation,
+        1.0 + (g * 2.0 - 1.0) * variation,
+        1.0 + (b * 2.0 - 1.0) * variation,
+    )
+}
+
 /// LOD-based density falloff configuration for vegetation.
 ///
 /// Mirrors the editor `FoliageType` LOD settings. At each LOD band boundary
@@ -70,6 +93,13 @@ pub struct VegetationInstance {
     pub model_path: String,
     /// Terrain surface normal at placement point
     pub terrain_normal: Vec3,
+    /// Per-instance color tint for visual variation (RGB, centered around 1.0)
+    #[serde(default = "default_tint")]
+    pub tint: Vec3,
+}
+
+fn default_tint() -> Vec3 {
+    Vec3::ONE
 }
 
 /// A scatter pattern configuration
@@ -368,6 +398,13 @@ impl VegetationScatter {
                     continue;
                 }
 
+                // Per-species altitude band check
+                if let Some((alt_min, alt_max)) = selected.altitude_range {
+                    if height < alt_min || height > alt_max {
+                        continue;
+                    }
+                }
+
                 let scale = rng.random_range(selected.scale_range.0..=selected.scale_range.1);
                 let rotation = if biome_config.vegetation.random_rotation {
                     rng.random::<f32>() * std::f32::consts::TAU
@@ -383,6 +420,7 @@ impl VegetationScatter {
                     vegetation_type: selected.name.clone(),
                     model_path: selected.model_path.clone(),
                     terrain_normal,
+                    tint: generate_instance_tint(world_pos, 0.1),
                 });
 
                 // Register in intra-tier grid
@@ -401,9 +439,14 @@ impl VegetationScatter {
         Ok(all_instances)
     }
 
-    /// Generate scatter using Poisson disk sampling for natural distribution
+    /// Generate scatter using Poisson disk sampling for natural distribution.
     ///
-    /// Uses a spatial grid for O(1) neighbor lookups instead of brute-force O(n²).
+    /// Uses Bridson's algorithm (2007) with an active-list approach for O(n)
+    /// guaranteed placement, replacing the previous rejection-based dart-throwing
+    /// which degraded to >90% rejection rate near saturation.
+    ///
+    /// Grid cell size = min_distance / √2 so each cell holds at most one sample
+    /// and only a 5×5 neighborhood check is needed.
     fn generate_poisson_disk_scatter(
         &self,
         chunk: &TerrainChunk,
@@ -423,70 +466,97 @@ impl VegetationScatter {
         let hmax = chunk.heightmap().max_height();
         let altitude_ceiling = hmin + (hmax - hmin) * 0.90;
 
-        // Build a spatial grid for O(1) neighbor lookups.
-        // Cell size = min_distance so we only need to check 3×3 neighborhood.
-        let cell_size = min_dist;
+        // Bridson's grid: cell_size = r/√2 ensures at most one sample per cell.
+        let cell_size = min_dist / std::f32::consts::SQRT_2;
         let grid_dim = ((chunk_size / cell_size).ceil() as usize).max(1);
-        // Each cell stores indices into `instances`
-        let mut grid: Vec<Vec<usize>> = vec![Vec::new(); grid_dim * grid_dim];
+        let mut grid: Vec<Option<usize>> = vec![None; grid_dim * grid_dim];
 
-        // Cap attempts to avoid pathologically long runs.
-        // At min_distance=2 on a 256m chunk, the theoretical max is ~16K placements.
         let effective_target = target_count.min(16_384);
-        let max_attempts = effective_target * 15;
-        let mut attempts = 0;
+        let k = 30u32; // candidates per active point (Bridson's standard)
 
-        while instances.len() < effective_target && attempts < max_attempts {
-            attempts += 1;
+        // Active list: indices into `instances` of points that can still spawn neighbors.
+        let mut active_list: Vec<usize> = Vec::new();
 
+        // --- Seed: find a valid initial point via random sampling ---
+        for _ in 0..1000 {
             let local_x = rng.random::<f32>() * chunk_size;
             let local_z = rng.random::<f32>() * chunk_size;
-            let mut world_pos = Vec3::new(chunk_origin.x + local_x, 0.0, chunk_origin.z + local_z);
+            let mut world_pos =
+                Vec3::new(chunk_origin.x + local_x, 0.0, chunk_origin.z + local_z);
 
-            if let Some(height) = chunk.get_height_at_world_pos(world_pos, chunk_size) {
-                world_pos.y = height;
+            let height = match chunk.get_height_at_world_pos(world_pos, chunk_size) {
+                Some(h) => h,
+                None => continue,
+            };
+            world_pos.y = height;
 
-                if let Some((min_height, max_height)) = self.config.height_filter {
-                    if height < min_height || height > max_height {
-                        continue;
-                    }
-                }
+            if !self.passes_terrain_filters(
+                world_pos,
+                height,
+                altitude_ceiling,
+                chunk,
+                chunk_size,
+            ) {
+                continue;
+            }
 
-                // Altitude ceiling: no vegetation on the very top of peaks
-                if height > altitude_ceiling {
-                    continue;
-                }
-
-                let (slope, terrain_normal) =
-                    self.estimate_slope_and_normal(chunk, world_pos, chunk_size);
-                if slope > self.config.max_slope {
-                    continue;
-                }
-
-                // Curvature filter: reject ridge tips and spire peaks where
-                // vegetation cannot credibly grow (convexity > threshold).
-                let curvature = self.estimate_curvature(chunk, world_pos, chunk_size);
-                if curvature > self.config.max_curvature {
-                    continue;
-                }
-
-                // Grid-accelerated minimum distance check (3×3 neighborhood)
+            if let Some(instance) = self.create_vegetation_instance(
+                world_pos,
+                biome_config,
+                rng,
+                self.estimate_slope_and_normal(chunk, world_pos, chunk_size).0,
+                self.estimate_slope_and_normal(chunk, world_pos, chunk_size).1,
+            )? {
                 let gx = ((local_x / cell_size) as usize).min(grid_dim - 1);
                 let gz = ((local_z / cell_size) as usize).min(grid_dim - 1);
+                let idx = instances.len();
+                instances.push(instance);
+                grid[gz * grid_dim + gx] = Some(idx);
+                active_list.push(idx);
+                break;
+            }
+        }
 
-                let x_min = gx.saturating_sub(1);
-                let x_max = (gx + 1).min(grid_dim - 1);
-                let z_min = gz.saturating_sub(1);
-                let z_max = (gz + 1).min(grid_dim - 1);
+        // --- Main Bridson loop ---
+        while !active_list.is_empty() && instances.len() < effective_target {
+            // Pick a random parent from the active list.
+            let ai = rng.random_range(0..active_list.len());
+            let parent_idx = active_list[ai];
+            let parent_pos = instances[parent_idx].position;
+            let parent_lx = parent_pos.x - chunk_origin.x;
+            let parent_lz = parent_pos.z - chunk_origin.z;
+
+            let mut accepted_any = false;
+            for _ in 0..k {
+                // Generate candidate in annulus [r, 2r] around parent.
+                let angle = rng.random::<f32>() * std::f32::consts::TAU;
+                let radius = min_dist + rng.random::<f32>() * min_dist;
+                let cx = parent_lx + radius * angle.cos();
+                let cz = parent_lz + radius * angle.sin();
+
+                // Bounds check
+                if cx < 0.0 || cx >= chunk_size || cz < 0.0 || cz >= chunk_size {
+                    continue;
+                }
+
+                // Grid-accelerated distance check (5×5 neighborhood)
+                let gx = ((cx / cell_size) as usize).min(grid_dim - 1);
+                let gz = ((cz / cell_size) as usize).min(grid_dim - 1);
 
                 let mut too_close = false;
-                'outer: for nz in z_min..=z_max {
+                let x_min = gx.saturating_sub(2);
+                let x_max = (gx + 2).min(grid_dim - 1);
+                let z_min = gz.saturating_sub(2);
+                let z_max = (gz + 2).min(grid_dim - 1);
+
+                'neighbor: for nz in z_min..=z_max {
                     for nx in x_min..=x_max {
-                        for &idx in &grid[nz * grid_dim + nx] {
-                            let diff = instances[idx].position - world_pos;
+                        if let Some(ni) = grid[nz * grid_dim + nx] {
+                            let diff = instances[ni].position
+                                - Vec3::new(chunk_origin.x + cx, 0.0, chunk_origin.z + cz);
                             if diff.x * diff.x + diff.z * diff.z < min_dist_sq {
                                 too_close = true;
-                                break 'outer;
+                                break 'neighbor;
                             }
                         }
                     }
@@ -496,7 +566,29 @@ impl VegetationScatter {
                     continue;
                 }
 
-                if let Some(vegetation_instance) = self.create_vegetation_instance(
+                // Terrain validation
+                let mut world_pos =
+                    Vec3::new(chunk_origin.x + cx, 0.0, chunk_origin.z + cz);
+                let height = match chunk.get_height_at_world_pos(world_pos, chunk_size) {
+                    Some(h) => h,
+                    None => continue,
+                };
+                world_pos.y = height;
+
+                if !self.passes_terrain_filters(
+                    world_pos,
+                    height,
+                    altitude_ceiling,
+                    chunk,
+                    chunk_size,
+                ) {
+                    continue;
+                }
+
+                let (slope, terrain_normal) =
+                    self.estimate_slope_and_normal(chunk, world_pos, chunk_size);
+
+                if let Some(instance) = self.create_vegetation_instance(
                     world_pos,
                     biome_config,
                     rng,
@@ -504,13 +596,47 @@ impl VegetationScatter {
                     terrain_normal,
                 )? {
                     let idx = instances.len();
-                    instances.push(vegetation_instance);
-                    grid[gz * grid_dim + gx].push(idx);
+                    instances.push(instance);
+                    grid[gz * grid_dim + gx] = Some(idx);
+                    active_list.push(idx);
+                    accepted_any = true;
                 }
+            }
+
+            if !accepted_any {
+                active_list.swap_remove(ai);
             }
         }
 
         Ok(instances)
+    }
+
+    /// Check height filter, altitude ceiling, slope, and curvature constraints.
+    fn passes_terrain_filters(
+        &self,
+        world_pos: Vec3,
+        height: f32,
+        altitude_ceiling: f32,
+        chunk: &TerrainChunk,
+        chunk_size: f32,
+    ) -> bool {
+        if let Some((min_height, max_height)) = self.config.height_filter {
+            if height < min_height || height > max_height {
+                return false;
+            }
+        }
+        if height > altitude_ceiling {
+            return false;
+        }
+        let (slope, _) = self.estimate_slope_and_normal(chunk, world_pos, chunk_size);
+        if slope > self.config.max_slope {
+            return false;
+        }
+        let curvature = self.estimate_curvature(chunk, world_pos, chunk_size);
+        if curvature > self.config.max_curvature {
+            return false;
+        }
+        true
     }
 
     /// Generate scatter using simple random placement
@@ -684,12 +810,17 @@ impl VegetationScatter {
         slope: f32,
         terrain_normal: Vec3,
     ) -> anyhow::Result<Option<VegetationInstance>> {
-        // Filter vegetation types by slope tolerance
+        // Filter vegetation types by slope tolerance and altitude range
+        let height = position.y;
         let suitable_types: Vec<_> = biome_config
             .vegetation
             .vegetation_types
             .iter()
             .filter(|veg_type| slope <= veg_type.slope_tolerance)
+            .filter(|veg_type| match veg_type.altitude_range {
+                Some((alt_min, alt_max)) => height >= alt_min && height <= alt_max,
+                None => true,
+            })
             .collect();
 
         if suitable_types.is_empty() {
@@ -735,6 +866,7 @@ impl VegetationScatter {
             vegetation_type: selected_type.name.clone(),
             model_path: selected_type.model_path.clone(),
             terrain_normal,
+            tint: generate_instance_tint(position, 0.1),
         }))
     }
 
@@ -907,6 +1039,7 @@ mod tests {
             vegetation_type: "test".to_string(),
             model_path: "test.glb".to_string(),
             terrain_normal: Vec3::Y,
+            tint: Vec3::ONE,
         });
 
         assert!(!result.is_empty());

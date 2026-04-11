@@ -84,34 +84,3 @@ fn compute_anisotropic(@builtin(global_invocation_id) global_id: vec3<u32>) {
     aniso_data[id].axis2 = vec4<f32>(axis2, r * compress);     // Compressed perpendicular
     aniso_data[id].axis3 = vec4<f32>(axis3, r * compress);     // Compressed perpendicular
 }
-
-// Helper function to evaluate anisotropic kernel at point p relative to particle center
-fn aniso_kernel(p: vec3<f32>, axis1: vec4<f32>, axis2: vec4<f32>, axis3: vec4<f32>) -> f32 {
-    // Transform point to ellipsoid-local coordinates
-    let dir1 = axis1.xyz;
-    let dir2 = axis2.xyz;
-    let dir3 = axis3.xyz;
-    
-    let scale1 = axis1.w;
-    let scale2 = axis2.w;
-    let scale3 = axis3.w;
-    
-    // Project onto each axis and normalize by scale
-    let q1 = dot(p, dir1) / scale1;
-    let q2 = dot(p, dir2) / scale2;
-    let q3 = dot(p, dir3) / scale3;
-    
-    // Ellipsoid distance (normalized radius)
-    let ellipsoid_r = sqrt(q1 * q1 + q2 * q2 + q3 * q3);
-    
-    // Cubic spline kernel in ellipsoid space
-    if (ellipsoid_r >= 1.0) { return 0.0; }
-    
-    let q = ellipsoid_r;
-    if (q < 0.5) {
-        return 1.0 - 6.0 * q * q + 6.0 * q * q * q;
-    } else {
-        let one_minus_q = 1.0 - q;
-        return 2.0 * one_minus_q * one_minus_q * one_minus_q;
-    }
-}

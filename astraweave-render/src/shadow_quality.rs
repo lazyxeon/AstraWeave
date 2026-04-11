@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn shadow_sampling_shader_parses() {
-        let src = include_str!("../shaders/shadow_sampling.wgsl");
+        let src = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/shadow_sampling.wgsl"));
         // The shader contains only functions (no entry points), so naga will parse
         // but won't find entry points. We just validate it parses without errors.
         // Use naga's frontend directly to check syntax.

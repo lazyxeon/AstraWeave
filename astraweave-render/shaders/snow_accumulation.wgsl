@@ -23,6 +23,13 @@ struct SnowParams {
     min_slope_cos: f32,
     // Maximum accumulation depth (caps the heightmap value).
     max_depth: f32,
+    // Current temperature in Celsius.
+    temperature: f32,
+    // Temperature threshold above which enhanced melting begins.
+    melt_threshold: f32,
+    // Melt sensitivity: each 1°C above threshold multiplies melt rate.
+    melt_sensitivity: f32,
+    _pad: f32,
 };
 
 @group(0) @binding(0) var<uniform> params: SnowParams;
@@ -31,7 +38,10 @@ struct SnowParams {
 // Accumulation heightmap (read-write storage texture, r32float).
 @group(0) @binding(2) var accumulation: texture_storage_2d<r32float, read_write>;
 
-@compute @workgroup_size(8, 8)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y)
 fn update_snow(@builtin(global_invocation_id) gid: vec3<u32>) {
     let x = gid.x;
     let y = gid.y;
@@ -54,12 +64,22 @@ fn update_snow(@builtin(global_invocation_id) gid: vec3<u32>) {
     let current = textureLoad(accumulation, coord).r;
 
     var new_depth = current;
-    if (params.snow_active > 0.5 && slope_cos >= params.min_slope_cos) {
+    // Compute temperature-driven melt multiplier.
+    // Above melt_threshold, each degree adds melt_sensitivity to the rate.
+    let temp_excess = max(params.temperature - params.melt_threshold, 0.0);
+    let melt_multiplier = 1.0 + temp_excess * params.melt_sensitivity;
+
+    if (params.snow_active > 0.5 && slope_cos >= params.min_slope_cos && params.temperature < params.melt_threshold) {
         // Accumulate — rate modulated by how upward-facing the surface is.
+        // Only accumulate when temperature is below melt threshold.
         new_depth = new_depth + params.accumulate_rate * params.dt * slope_cos;
+    } else if (params.snow_active > 0.5 && slope_cos >= params.min_slope_cos) {
+        // Snowing but above threshold — accumulation reduced by melt factor.
+        let net_rate = params.accumulate_rate * slope_cos - params.melt_rate * melt_multiplier;
+        new_depth = new_depth + net_rate * params.dt;
     } else {
         // Melt (or shed on steep slopes even during snowfall).
-        new_depth = new_depth - params.melt_rate * params.dt;
+        new_depth = new_depth - params.melt_rate * melt_multiplier * params.dt;
     }
 
     new_depth = clamp(new_depth, 0.0, params.max_depth);

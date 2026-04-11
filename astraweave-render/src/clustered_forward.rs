@@ -338,7 +338,16 @@ impl ClusteredForwardRenderer {
 
     /// Update lights for the current frame
     pub fn update_lights(&mut self, lights: Vec<GpuLight>) {
-        self.lights = lights;
+        if lights.len() > self._max_lights {
+            log::warn!(
+                "Light count ({}) exceeds clustered renderer capacity ({}); excess lights will be ignored",
+                lights.len(),
+                self._max_lights,
+            );
+            self.lights = lights[..self._max_lights].to_vec();
+        } else {
+            self.lights = lights;
+        }
     }
 
     /// Build clusters and assign lights
@@ -617,96 +626,6 @@ impl ClusteredForwardRenderer {
         self.lights.len()
     }
 }
-
-/// WGSL shader code for clustered forward rendering.
-/// Consuming shaders must prepend `brdf_common.wgsl` before this code.
-pub const CLUSTERED_LIGHTING_SHADER: &str = r#"
-struct Light {
-    position: vec4<f32>,  // w = radius
-    color: vec4<f32>,     // w = intensity
-}
-
-struct Cluster {
-    min_bounds: vec4<f32>,
-    max_bounds: vec4<f32>,
-    light_offset: u32,
-    light_count: u32,
-    padding: vec2<u32>,
-}
-
-@group(2) @binding(0) var<storage, read> lights: array<Light>;
-@group(2) @binding(1) var<storage, read> clusters: array<Cluster>;
-@group(2) @binding(2) var<storage, read> light_indices: array<u32>;
-
-struct ClusterConfig {
-    cluster_x: u32,
-    cluster_y: u32,
-    cluster_z: u32,
-    near: f32,
-    far: f32,
-}
-
-fn get_cluster_index(frag_coord: vec3<f32>, config: ClusterConfig) -> u32 {
-    let x = u32(frag_coord.x / config.cluster_x);
-    let y = u32(frag_coord.y / config.cluster_y);
-    
-    // Exponential depth mapping
-    let depth = frag_coord.z;
-    let z_slice = log2(depth / config.near) / log2(config.far / config.near);
-    let z = u32(z_slice * f32(config.cluster_z));
-    
-    return x + y * config.cluster_x + z * config.cluster_x * config.cluster_y;
-}
-
-fn calculate_clustered_lighting(
-    world_pos: vec3<f32>,
-    normal: vec3<f32>,
-    view_pos: vec3<f32>,
-    albedo: vec3<f32>,
-    metallic: f32,
-    roughness: f32,
-    frag_coord: vec3<f32>,
-    config: ClusterConfig
-) -> vec3<f32> {
-    let cluster_idx = get_cluster_index(frag_coord, config);
-    let cluster = clusters[cluster_idx];
-    
-    var total_light = vec3<f32>(0.0);
-    
-    // Iterate through lights in this cluster
-    for (var i = 0u; i < cluster.light_count; i = i + 1u) {
-        let light_idx = light_indices[cluster.light_offset + i];
-        let light = lights[light_idx];
-        
-        let light_dir = light.position.xyz - world_pos;
-        let distance = length(light_dir);
-        let radius = light.position.w;
-        
-        // Skip if outside light radius
-        if (distance > radius) {
-            continue;
-        }
-        
-        let L = normalize(light_dir);
-        let V = normalize(view_pos - world_pos);
-        
-        let NdotL = max(dot(normal, L), 0.0);
-        
-        // Attenuation
-        let attenuation = 1.0 - pow(distance / radius, 4.0);
-        let attenuation_clamped = max(attenuation, 0.0);
-        
-        // PBR Cook-Torrance + Burley diffuse (from brdf_common.wgsl)
-        let F0 = mix(vec3<f32>(0.04), albedo, metallic);
-        let brdf = evaluate_brdf(normal, V, L, albedo, metallic, roughness, F0);
-
-        let light_contribution = brdf * light.color.rgb * light.color.w * attenuation_clamped;
-        total_light = total_light + light_contribution;
-    }
-    
-    return total_light;
-}
-"#;
 
 #[cfg(test)]
 mod tests {

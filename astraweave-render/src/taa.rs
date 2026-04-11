@@ -97,7 +97,6 @@ pub struct TaaPass {
     /// TAA resolve compute pipeline.
     resolve_pipeline: wgpu::ComputePipeline,
     /// RCAS sharpen compute pipeline.
-    #[allow(dead_code)]
     sharpen_pipeline: wgpu::ComputePipeline,
     /// Uniform buffer.
     params_buf: wgpu::Buffer,
@@ -107,6 +106,11 @@ pub struct TaaPass {
     /// Resolved output texture.
     resolved_texture: wgpu::Texture,
     resolved_view: wgpu::TextureView,
+    /// Sharpened output texture (post-RCAS).
+    /// Stored to keep the GPU allocation alive for sharpened_view.
+    #[allow(dead_code)]
+    sharpened_texture: wgpu::Texture,
+    sharpened_view: wgpu::TextureView,
     /// Bind group layout.
     bgl: wgpu::BindGroupLayout,
     /// Frame counter for jitter sequence.
@@ -117,6 +121,8 @@ pub struct TaaPass {
     sampler: wgpu::Sampler,
     /// Cached resolve bind group (rebuilt on generation change).
     cached_bg: crate::bind_group_cache::CachedBindGroup,
+    /// Cached sharpen bind group (rebuilt on generation change).
+    cached_sharpen_bg: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl TaaPass {
@@ -146,6 +152,8 @@ impl TaaPass {
         let history_view = history_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let resolved_texture = make_tex("taa_resolved");
         let resolved_view = resolved_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sharpened_texture = make_tex("taa_sharpened");
+        let sharpened_view = sharpened_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         use wgpu::util::DeviceExt;
         let uniforms = TaaUniforms {
@@ -215,6 +223,8 @@ impl TaaPass {
             history_view,
             resolved_texture,
             resolved_view,
+            sharpened_texture,
+            sharpened_view,
             bgl,
             frame_index: 0,
             width,
@@ -226,6 +236,7 @@ impl TaaPass {
                 ..Default::default()
             }),
             cached_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            cached_sharpen_bg: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -350,6 +361,60 @@ impl TaaPass {
             .get_or_rebuild(resource_gen, || unreachable!());
         pass.set_bind_group(0, bg, &[]);
         pass.dispatch_workgroups(wg_x, wg_y, 1);
+        drop(pass);
+
+        // --- RCAS sharpen pass: reads resolved, writes sharpened ---
+        if self.config.sharpen_strength > 0.0 {
+            if !self.cached_sharpen_bg.is_valid(resource_gen) {
+                let sharpen_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("taa_sharpen_bg"),
+                    layout: &self.bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&self.resolved_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&self.history_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(velocity_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(depth_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 5,
+                            resource: self.params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 6,
+                            resource: wgpu::BindingResource::TextureView(&self.sharpened_view),
+                        },
+                    ],
+                });
+                self.cached_sharpen_bg =
+                    crate::bind_group_cache::CachedBindGroup::with_bind_group(sharpen_bg, resource_gen);
+            }
+
+            let mut sharpen_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("taa_rcas_sharpen"),
+                timestamp_writes: None,
+            });
+            sharpen_pass.set_pipeline(&self.sharpen_pipeline);
+            let sbg = self
+                .cached_sharpen_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            sharpen_pass.set_bind_group(0, sbg, &[]);
+            sharpen_pass.dispatch_workgroups(wg_x, wg_y, 1);
+        }
     }
 
     /// Copy resolved output to history for next frame's reprojection.
@@ -375,9 +440,13 @@ impl TaaPass {
         );
     }
 
-    /// Get the output view (alias for resolved_view, consistency with other passes).
+    /// Get the output view (sharpened if RCAS active, otherwise resolved).
     pub fn output_view(&self) -> &wgpu::TextureView {
-        &self.resolved_view
+        if self.config.sharpen_strength > 0.0 {
+            &self.sharpened_view
+        } else {
+            &self.resolved_view
+        }
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {

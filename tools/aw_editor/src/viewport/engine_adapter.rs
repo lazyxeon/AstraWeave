@@ -220,6 +220,9 @@ impl EngineRenderAdapter {
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
                     ssao_enabled: false,
                     ssr_enabled: false,
+                    ssgi_enabled: false,
+                    god_rays_enabled: false,
+                    auto_exposure_enabled: false,
                     bloom_enabled: true,
                     taa_enabled: true,
                     dof_enabled: false, // DoF off by default even in game quality
@@ -238,6 +241,9 @@ impl EngineRenderAdapter {
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
                     ssao_enabled: false, // SSAO disabled for terrain perf
                     ssr_enabled: false,
+                    ssgi_enabled: false,
+                    god_rays_enabled: false,
+                    auto_exposure_enabled: false,
                     bloom_enabled: true,
                     taa_enabled: false,
                     dof_enabled: false,
@@ -262,6 +268,9 @@ impl EngineRenderAdapter {
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
                     ssao_enabled: false,
                     ssr_enabled: false,
+                    ssgi_enabled: false,
+                    god_rays_enabled: false,
+                    auto_exposure_enabled: false,
                     bloom_enabled: true,
                     taa_enabled: false,
                     dof_enabled: false,
@@ -279,6 +288,9 @@ impl EngineRenderAdapter {
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
                     ssao_enabled: false,
                     ssr_enabled: false,
+                    ssgi_enabled: false,
+                    god_rays_enabled: false,
+                    auto_exposure_enabled: false,
                     bloom_enabled: false,
                     taa_enabled: false,
                     dof_enabled: false,

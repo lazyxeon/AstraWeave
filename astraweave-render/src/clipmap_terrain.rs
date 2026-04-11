@@ -144,6 +144,8 @@ pub struct ClipmapUniforms {
     /// View-projection matrix (column-major).
     pub view_proj: [[f32; 4]; 4],
     /// Camera world position.
+    /// When using `camera-relative` rendering, set to `Vec3::ZERO`; the
+    /// actual world position goes in `heightmap_origin` instead.
     pub camera_pos: [f32; 3],
     /// Finest grid cell size.
     pub clipmap_scale: f32,
@@ -153,9 +155,16 @@ pub struct ClipmapUniforms {
     pub heightmap_size: [f32; 2],
     /// 1/heightmap size.
     pub inv_heightmap_size: [f32; 2],
+    /// True world-space XZ position of the camera, used to offset heightmap UV
+    /// lookups. In standard rendering this should be `[0.0, 0.0]` (world_xz
+    /// already contains the absolute position). In `camera-relative` mode,
+    /// set to the camera's DVec3 XZ downcast to f32 so height sampling uses
+    /// the correct world-space location while vertices stay near the origin.
+    pub heightmap_origin: [f32; 2],
+    pub _pad: [f32; 2],
 }
 
-const _: () = assert!(std::mem::size_of::<ClipmapUniforms>() == 112);
+const _: () = assert!(std::mem::size_of::<ClipmapUniforms>() == 128);
 
 /// Pre-built mesh data for a single clipmap ring.
 #[derive(Debug)]
@@ -311,6 +320,8 @@ impl ClipmapTerrain {
             morph_constants: [0.0; 4],
             heightmap_size: [config.heightmap_width, config.heightmap_height],
             inv_heightmap_size: [1.0 / config.heightmap_width, 1.0 / config.heightmap_height],
+            heightmap_origin: [0.0; 2],
+            _pad: [0.0; 2],
         };
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("clipmap_uniforms"),
@@ -477,6 +488,41 @@ impl ClipmapTerrain {
                 1.0 / self.config.heightmap_width,
                 1.0 / self.config.heightmap_height,
             ],
+            heightmap_origin: [0.0; 2],
+            _pad: [0.0; 2],
+        };
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+    }
+
+    /// Update uniform buffer for camera-relative rendering.
+    ///
+    /// `camera_pos` should be `Vec3::ZERO` (all geometry lives near the origin).
+    /// `world_camera_xz` is the camera's true world XZ (from `DVec3`) downcast to
+    /// `f32`, used so heightmap UV lookups reference the correct world location.
+    pub fn update_camera_relative(
+        &self,
+        queue: &wgpu::Queue,
+        view_proj: glam::Mat4,
+        camera_pos: glam::Vec3,
+        world_camera_xz: [f32; 2],
+    ) {
+        let uniforms = ClipmapUniforms {
+            view_proj: view_proj.to_cols_array_2d(),
+            camera_pos: camera_pos.to_array(),
+            clipmap_scale: self.config.base_cell_size,
+            morph_constants: [
+                self.config.morph_start_distance(0),
+                self.config.morph_range_inv(0),
+                0.0,
+                0.0,
+            ],
+            heightmap_size: [self.config.heightmap_width, self.config.heightmap_height],
+            inv_heightmap_size: [
+                1.0 / self.config.heightmap_width,
+                1.0 / self.config.heightmap_height,
+            ],
+            heightmap_origin: world_camera_xz,
+            _pad: [0.0; 2],
         };
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
     }
@@ -531,7 +577,7 @@ mod tests {
 
     #[test]
     fn clipmap_uniforms_size() {
-        assert_eq!(std::mem::size_of::<ClipmapUniforms>(), 112);
+        assert_eq!(std::mem::size_of::<ClipmapUniforms>(), 128);
     }
 
     #[test]

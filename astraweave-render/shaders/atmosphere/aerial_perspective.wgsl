@@ -37,7 +37,7 @@ struct AerialParams {
 @group(0) @binding(4) var           s_linear:        sampler;
 @group(0) @binding(5) var           t_output:        texture_storage_2d<rgba16float, write>;
 
-const PI: f32 = 3.14159265358979;
+// PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 const AERIAL_STEPS: u32 = 16u;
 
 fn phase_rayleigh(cos_theta: f32) -> f32 {
@@ -81,7 +81,10 @@ fn reconstruct_world_pos(uv: vec2<f32>, depth: f32) -> vec3<f32> {
     return world_h.xyz / world_h.w;
 }
 
-@compute @workgroup_size(8, 8)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y)
 fn aerial_perspective_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = vec2<u32>(params.resolution);
     if (gid.x >= dims.x || gid.y >= dims.y) {

@@ -123,7 +123,7 @@ fn evaluate_radiance_shared(probe_pos: vec3<f32>, dir: vec3<f32>, num_lights: u3
     for (var i = 0u; i < num_lights; i++) {
         let light = shared_lights[i];
         let n_dot_l = max(dot(dir, -light.direction), 0.0);
-        radiance += light.color * light.intensity * n_dot_l * 0.318310; // 1/pi
+        radiance += light.color * light.intensity * n_dot_l * INV_PI; // 1/pi
     }
 
     return radiance;
@@ -171,7 +171,7 @@ fn surface_cache_update(
 
     // Sample 14 directions (6 axis + 8 diagonal)
     let total_samples = 14.0;
-    let weight = 4.0 * 3.14159265 / total_samples; // uniform sphere PDF
+    let weight = 4.0 * PI / total_samples; // uniform sphere PDF
 
     for (var i = 0; i < 6; i++) {
         let dir = SAMPLE_DIRS[i];

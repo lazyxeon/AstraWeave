@@ -23,10 +23,6 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 use wgpu;
 
-/// Shadow map shader source (embedded at compile time)
-#[allow(dead_code)]
-const SHADOW_SHADER: &str = include_str!("../shaders/shadow_csm.wgsl");
-
 // Minimal shadow-only shader (uses group(0) since it's the only bind group)
 const SHADOW_DEPTH_SHADER: &str = r#"
 // Shadow cascade data
@@ -62,6 +58,43 @@ fn shadow_vertex_main(
 @fragment
 fn shadow_fragment_main(in: ShadowVertexOutput) {
     // Depth written automatically
+}
+
+// ─── Alpha-tested variant ───
+// For vegetation, fences, particles — any geometry with alpha-masked textures.
+
+struct AlphaVertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) uv: vec2<f32>,
+}
+
+struct AlphaVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}
+
+@group(1) @binding(0) var alpha_tex: texture_2d<f32>;
+@group(1) @binding(1) var alpha_samp: sampler;
+
+@vertex
+fn shadow_vertex_alpha_main(
+    in: AlphaVertexInput,
+    @builtin(instance_index) cascade_index: u32,
+) -> AlphaVertexOutput {
+    var out: AlphaVertexOutput;
+    let world_pos = vec4<f32>(in.position, 1.0);
+    let cascade_idx = min(cascade_index, 3u);
+    out.clip_position = cascades[cascade_idx].view_proj * world_pos;
+    out.uv = in.uv;
+    return out;
+}
+
+@fragment
+fn shadow_fragment_alpha_main(in: AlphaVertexOutput) {
+    let alpha = textureSample(alpha_tex, alpha_samp, in.uv).a;
+    if (alpha < 0.5) {
+        discard;
+    }
 }
 "#;
 
@@ -147,8 +180,20 @@ pub struct CsmRenderer {
     /// Render pass depth attachments (one per cascade)
     cascade_views: [wgpu::TextureView; CASCADE_COUNT],
 
-    /// Shadow rendering pipeline (depth-only pass)
+    /// Per-cascade dirty flags — skip re-rendering clean cascades
+    cascade_dirty: [bool; CASCADE_COUNT],
+
+    /// Previous cascade view-projection matrices for dirty detection
+    prev_view_proj: [Mat4; CASCADE_COUNT],
+
+    /// Shadow rendering pipeline (depth-only pass, opaque geometry)
     pub shadow_pipeline: wgpu::RenderPipeline,
+
+    /// Alpha-tested shadow pipeline (for masked geometry: foliage, fences, etc.)
+    pub shadow_alpha_pipeline: wgpu::RenderPipeline,
+
+    /// Bind group layout for alpha-test material (group(1): albedo texture + sampler)
+    pub shadow_alpha_bgl: wgpu::BindGroupLayout,
 
     /// Shader module
     #[allow(dead_code)]
@@ -419,6 +464,92 @@ impl CsmRenderer {
             cache: None,
         });
 
+        // Alpha-tested shadow pipeline (for masked geometry)
+        let shadow_alpha_bgl =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Shadow Alpha BGL"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let shadow_alpha_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Shadow Alpha Pipeline Layout"),
+            bind_group_layouts: &[&shadow_bind_group_layout, &shadow_alpha_bgl],
+            push_constant_ranges: &[],
+        });
+
+        let shadow_alpha_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Shadow Alpha Render Pipeline"),
+                layout: Some(&shadow_alpha_pl),
+                vertex: wgpu::VertexState {
+                    module: &shader_module,
+                    entry_point: Some("shadow_vertex_alpha_main"),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: 48, // Same stride as Vertex (pos+norm+tangent+uv)
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &[
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x3,
+                                offset: 0,
+                                shader_location: 0, // position
+                            },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x2,
+                                offset: 40, // uv after pos(12)+normal(12)+tangent(16)
+                                shader_location: 1, // uv → shader @location(1)
+                            },
+                        ],
+                    }],
+                    compilation_options: Default::default(),
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None, // No culling for alpha-tested geometry (two-sided foliage)
+                    unclipped_depth: false,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    conservative: false,
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState {
+                        constant: 2,
+                        slope_scale: 2.0,
+                        clamp: 0.0,
+                    },
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader_module,
+                    entry_point: Some("shadow_fragment_alpha_main"),
+                    targets: &[], // Depth-only, no color targets
+                    compilation_options: Default::default(),
+                }),
+                multiview: None,
+                cache: None,
+            });
+
         Ok(Self {
             atlas_texture,
             atlas_view,
@@ -430,7 +561,11 @@ impl CsmRenderer {
             shadow_bind_group: None, // Created after first update
             shadow_bind_group_layout,
             cascade_views,
+            cascade_dirty: [true; CASCADE_COUNT],
+            prev_view_proj: [Mat4::ZERO; CASCADE_COUNT],
             shadow_pipeline,
+            shadow_alpha_pipeline,
+            shadow_alpha_bgl,
             shader_module,
         })
     }
@@ -548,8 +683,10 @@ impl CsmRenderer {
                 }
             }
 
-            // Place light far enough behind the frustum center to capture everything
-            let light_distance = max_radius + 50.0;
+            // Place light far enough behind the frustum center to capture everything.
+            // Margin scales proportionally with cascade size (not fixed) to preserve
+            // depth precision for near cascades and coverage for far cascades.
+            let light_distance = max_radius * 2.0;
             let light_pos = center - light_norm * light_distance;
 
             cascade.view_matrix = Mat4::look_at_rh(light_pos, center, up);
@@ -617,6 +754,16 @@ impl CsmRenderer {
             );
 
             cascade.view_proj_matrix = cascade.proj_matrix * cascade.view_matrix;
+
+            // Dirty detection: compare against previous frame's matrix
+            // Use column-wise max-abs-diff for numerical stability
+            let diff = cascade.view_proj_matrix - self.prev_view_proj[i];
+            let max_diff = diff.x_axis.abs().max_element()
+                .max(diff.y_axis.abs().max_element())
+                .max(diff.z_axis.abs().max_element())
+                .max(diff.w_axis.abs().max_element());
+            self.cascade_dirty[i] = max_diff > 1e-5;
+            self.prev_view_proj[i] = cascade.view_proj_matrix;
         }
     }
 
@@ -708,6 +855,11 @@ impl CsmRenderer {
         }
 
         for cascade_idx in 0..CASCADE_COUNT {
+            // Skip re-rendering clean cascades (matrix unchanged since last frame)
+            if !self.cascade_dirty[cascade_idx] {
+                continue;
+            }
+
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some(&format!("Shadow Cascade {} Render Pass", cascade_idx)),
                 color_attachments: &[], // Depth-only pass
@@ -740,6 +892,17 @@ impl CsmRenderer {
                 cascade_idx as u32..(cascade_idx as u32 + 1),
             );
         }
+    }
+
+    /// Mark all cascades as dirty, forcing re-render on next frame.
+    /// Call when scene geometry changes (object added/removed/moved).
+    pub fn invalidate_all(&mut self) {
+        self.cascade_dirty = [true; CASCADE_COUNT];
+    }
+
+    /// Check if a specific cascade needs re-rendering.
+    pub fn is_cascade_dirty(&self, cascade_idx: usize) -> bool {
+        self.cascade_dirty.get(cascade_idx).copied().unwrap_or(true)
     }
 }
 

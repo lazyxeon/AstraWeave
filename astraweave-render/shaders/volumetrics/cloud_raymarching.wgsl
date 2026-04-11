@@ -50,7 +50,7 @@ struct CloudParams {
 @group(0) @binding(2) var           s_linear:  sampler;
 @group(0) @binding(3) var           t_output:  texture_storage_2d<rgba16float, write>;
 
-const PI: f32 = 3.14159265358979;
+// PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 
 // ============================================================================
 // Noise functions
@@ -332,7 +332,10 @@ fn temporal_jitter(pixel: vec2<u32>) -> f32 {
 // Main raymarching kernel
 // ============================================================================
 
-@compute @workgroup_size(8, 8, 1)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y, 1)
 fn cloud_raymarch_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = vec2<u32>(u32(params.resolution.x), u32(params.resolution.y));
     if (gid.x >= dims.x || gid.y >= dims.y) {

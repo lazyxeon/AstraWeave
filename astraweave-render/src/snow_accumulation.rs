@@ -19,7 +19,7 @@ use bytemuck::{Pod, Zeroable};
 
 /// GPU-side parameters for the snow accumulation compute shader.
 ///
-/// Must match `SnowParams` in `snow_accumulation.wgsl`. 32 bytes, 4-byte aligned.
+/// Must match `SnowParams` in `snow_accumulation.wgsl`. 48 bytes, 4-byte aligned.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct SnowParamsGpu {
@@ -40,6 +40,17 @@ pub struct SnowParamsGpu {
     pub min_slope_cos: f32,
     /// Maximum accumulation depth (caps the heightmap value).
     pub max_depth: f32,
+    /// Current temperature in Celsius. Above `melt_threshold`, melt rate
+    /// increases proportionally: `effective_melt = melt_rate * max(1.0, (temp - threshold) * melt_sensitivity + 1.0)`.
+    /// Below threshold, melt rate uses the base value.
+    pub temperature: f32,
+    /// Temperature (°C) above which enhanced melting begins. Default: 0.0.
+    pub melt_threshold: f32,
+    /// How aggressively temperature above the threshold accelerates melting.
+    /// Default: 0.5 (each 1°C above threshold adds 50% melt rate).
+    pub melt_sensitivity: f32,
+    /// Padding for 16-byte alignment.
+    pub _pad: f32,
 }
 
 impl Default for SnowParamsGpu {
@@ -53,6 +64,10 @@ impl Default for SnowParamsGpu {
             height: 256,
             min_slope_cos: 0.5, // ~60° slope limit
             max_depth: 1.0,
+            temperature: -5.0,
+            melt_threshold: 0.0,
+            melt_sensitivity: 0.5,
+            _pad: 0.0,
         }
     }
 }
@@ -127,6 +142,11 @@ pub struct SnowAccumulationConfig {
     pub min_slope_cos: f32,
     /// Resolution of accumulation heightmap per chunk (square).
     pub map_resolution: u32,
+    /// Temperature threshold (°C) above which enhanced melting begins.
+    pub melt_threshold: f32,
+    /// How aggressively temperature above the threshold accelerates melting.
+    /// Each 1°C above threshold multiplies melt rate by (1 + sensitivity).
+    pub melt_sensitivity: f32,
 }
 
 impl Default for SnowAccumulationConfig {
@@ -137,13 +157,15 @@ impl Default for SnowAccumulationConfig {
             max_depth: 1.0,
             min_slope_cos: 0.5,
             map_resolution: 256,
+            melt_threshold: 0.0,
+            melt_sensitivity: 0.5,
         }
     }
 }
 
 impl SnowAccumulationConfig {
     /// Build GPU params from this config + runtime state.
-    pub fn to_gpu_params(&self, dt: f32, snow_active: bool) -> SnowParamsGpu {
+    pub fn to_gpu_params(&self, dt: f32, snow_active: bool, temperature: f32) -> SnowParamsGpu {
         SnowParamsGpu {
             accumulate_rate: self.accumulate_rate,
             melt_rate: self.melt_rate,
@@ -153,6 +175,10 @@ impl SnowAccumulationConfig {
             height: self.map_resolution,
             min_slope_cos: self.min_slope_cos,
             max_depth: self.max_depth,
+            temperature,
+            melt_threshold: self.melt_threshold,
+            melt_sensitivity: self.melt_sensitivity,
+            _pad: 0.0,
         }
     }
 
@@ -164,6 +190,8 @@ impl SnowAccumulationConfig {
             max_depth: 2.0,
             min_slope_cos: 0.3,
             map_resolution: 256,
+            melt_threshold: -5.0,
+            melt_sensitivity: 0.3,
         }
     }
 
@@ -175,6 +203,8 @@ impl SnowAccumulationConfig {
             max_depth: 0.5,
             min_slope_cos: 0.6,
             map_resolution: 256,
+            melt_threshold: 2.0,
+            melt_sensitivity: 0.8,
         }
     }
 
@@ -202,7 +232,7 @@ mod tests {
 
     #[test]
     fn snow_params_gpu_size() {
-        assert_eq!(std::mem::size_of::<SnowParamsGpu>(), 32);
+        assert_eq!(std::mem::size_of::<SnowParamsGpu>(), 48);
     }
 
     #[test]
@@ -228,12 +258,17 @@ mod tests {
             height: 512,
             min_slope_cos: 0.4,
             max_depth: 2.0,
+            temperature: -5.0,
+            melt_threshold: 0.0,
+            melt_sensitivity: 0.5,
+            _pad: 0.0,
         };
         let bytes = bytemuck::bytes_of(&p);
-        assert_eq!(bytes.len(), 32);
+        assert_eq!(bytes.len(), 48);
         let back: &SnowParamsGpu = bytemuck::from_bytes(bytes);
         assert_eq!(back.width, 512);
         assert_eq!(back.snow_active, 1.0);
+        assert_eq!(back.temperature, -5.0);
     }
 
     #[test]
@@ -271,7 +306,7 @@ mod tests {
     #[test]
     fn snow_config_to_gpu_active() {
         let c = SnowAccumulationConfig::default();
-        let g = c.to_gpu_params(0.016, true);
+        let g = c.to_gpu_params(0.016, true, -5.0);
         assert_eq!(g.snow_active, 1.0);
         assert!((g.dt - 0.016).abs() < 1e-6);
         assert_eq!(g.accumulate_rate, c.accumulate_rate);
@@ -280,7 +315,7 @@ mod tests {
     #[test]
     fn snow_config_to_gpu_inactive() {
         let c = SnowAccumulationConfig::default();
-        let g = c.to_gpu_params(0.016, false);
+        let g = c.to_gpu_params(0.016, false, -5.0);
         assert_eq!(g.snow_active, 0.0);
     }
 
@@ -316,6 +351,13 @@ mod tests {
         assert!(SNOW_ACCUMULATION_WGSL.contains("update_snow"));
         assert!(SNOW_ACCUMULATION_WGSL.contains("SnowParams"));
         assert!(SNOW_ACCUMULATION_WGSL.contains("accumulation"));
+    }
+
+    #[test]
+    fn snow_wgsl_has_override_workgroup_size() {
+        assert!(SNOW_ACCUMULATION_WGSL.contains("override WG_X: u32 = 8u;"));
+        assert!(SNOW_ACCUMULATION_WGSL.contains("override WG_Y: u32 = 8u;"));
+        assert!(SNOW_ACCUMULATION_WGSL.contains("@workgroup_size(WG_X, WG_Y)"));
     }
 
     #[test]

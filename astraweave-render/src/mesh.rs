@@ -84,11 +84,82 @@ impl CpuMesh {
     }
 }
 
-// Public tangent generation utility (MikkTSpace-like approximation)
+// MikkTSpace tangent generation (spec-compliant)
+//
+// Uses the `mikktspace` crate which implements the exact algorithm from
+// Morten Mikkelsen's paper. This guarantees tangent-space consistency
+// with normal maps authored in MikkTSpace-aware tools (Blender, Substance, xNormal).
+
+/// Adapter for `mikktspace::Geometry` over indexed triangle meshes.
+struct MikkTSpaceAdapter<'a> {
+    vertices: &'a mut [MeshVertex],
+    indices: &'a [u32],
+}
+
+impl mikktspace::Geometry for MikkTSpaceAdapter<'_> {
+    fn num_faces(&self) -> usize {
+        self.indices.len() / 3
+    }
+
+    fn num_vertices_of_face(&self, _face: usize) -> usize {
+        3
+    }
+
+    fn position(&self, face: usize, vert: usize) -> [f32; 3] {
+        let idx = self.indices[face * 3 + vert] as usize;
+        self.vertices[idx].position
+    }
+
+    fn normal(&self, face: usize, vert: usize) -> [f32; 3] {
+        let idx = self.indices[face * 3 + vert] as usize;
+        self.vertices[idx].normal
+    }
+
+    fn tex_coord(&self, face: usize, vert: usize) -> [f32; 2] {
+        let idx = self.indices[face * 3 + vert] as usize;
+        self.vertices[idx].uv
+    }
+
+    fn set_tangent_encoded(&mut self, tangent: [f32; 4], face: usize, vert: usize) {
+        let idx = self.indices[face * 3 + vert] as usize;
+        self.vertices[idx].tangent = tangent;
+    }
+}
+
+/// Compute MikkTSpace-compliant tangents for an indexed triangle mesh.
+///
+/// Falls back to a Lengyel approximation if the mesh has degenerate
+/// geometry that MikkTSpace cannot handle (e.g., zero-area triangles).
 pub fn compute_tangents(mesh: &mut CpuMesh) {
-    if mesh.indices.len() % 3 != 0 {
+    if mesh.indices.len() % 3 != 0 || mesh.indices.is_empty() {
         return;
     }
+
+    // MikkTSpace panics on degenerate triangles where all three indices
+    // reference the same vertex (causes out-of-bounds in the algorithm).
+    // Check for this and fall back to Lengyel if found.
+    let has_degenerate = mesh.indices.chunks_exact(3).any(|tri| {
+        tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2]
+    });
+    if has_degenerate {
+        compute_tangents_lengyel(mesh);
+        return;
+    }
+
+    let mut adapter = MikkTSpaceAdapter {
+        vertices: &mut mesh.vertices,
+        indices: &mesh.indices,
+    };
+
+    if !mikktspace::generate_tangents(&mut adapter) {
+        // MikkTSpace can fail on degenerate geometry — fall back to
+        // Lengyel approximation so we never leave tangents unset.
+        compute_tangents_lengyel(mesh);
+    }
+}
+
+/// Lengyel approximation fallback (Gram-Schmidt orthonormalization + handedness).
+fn compute_tangents_lengyel(mesh: &mut CpuMesh) {
     let v = &mut mesh.vertices;
     let idx = &mesh.indices;
     let mut tan1: Vec<Vec3> = vec![Vec3::ZERO; v.len()];

@@ -15,7 +15,10 @@ struct ApplyParams {
 @group(0) @binding(3) var           s_linear:     sampler;
 @group(0) @binding(4) var           t_output:     texture_storage_2d<rgba16float, write>;
 
-@compute @workgroup_size(8, 8)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y)
 fn apply_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = vec2<u32>(params.resolution);
     if (gid.x >= dims.x || gid.y >= dims.y) {

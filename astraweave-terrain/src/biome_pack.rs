@@ -514,6 +514,7 @@ impl BiomePack {
                 cluster_factor: 0.0,
                 exclusion_radius: 0.0,
                 placement_priority: 0,
+                        altitude_range: None,
             }
         };
         let sort_desc = |v: &mut Vec<VegetationType>| {

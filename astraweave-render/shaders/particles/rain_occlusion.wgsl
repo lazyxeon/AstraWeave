@@ -26,7 +26,9 @@ struct OcclusionParams {
 @group(0) @binding(2) var                      depth_tex: texture_depth_2d;
 @group(0) @binding(3) var                      depth_samp: sampler;
 
-@compute @workgroup_size(64)
+override WG_SIZE: u32 = 64u;
+
+@compute @workgroup_size(WG_SIZE)
 fn rain_occlusion(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx = gid.x;
     if (idx >= params.particle_count) {

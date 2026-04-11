@@ -141,11 +141,14 @@ fn find_closest_velocity(uv: vec2<f32>) -> vec2<f32> {
     return textureSampleLevel(t_velocity, samp, best_uv, 0.0).rg;
 }
 
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
 // ============================================================================
 // TEMPORAL UPSCALE RESOLVE
 // ============================================================================
 
-@compute @workgroup_size(8, 8, 1)
+@compute @workgroup_size(WG_X, WG_Y, 1)
 fn temporal_upscale_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = vec2<u32>(u32(params.output_resolution.x), u32(params.output_resolution.y));
     if (gid.x >= dims.x || gid.y >= dims.y) {
@@ -198,7 +201,7 @@ fn temporal_upscale_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
 // RCAS SHARPENING (post-upscale, at native resolution)
 // ============================================================================
 
-@compute @workgroup_size(8, 8, 1)
+@compute @workgroup_size(WG_X, WG_Y, 1)
 fn upscale_rcas_sharpen(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = vec2<i32>(params.output_resolution);
     let pixel = vec2<i32>(gid.xy);

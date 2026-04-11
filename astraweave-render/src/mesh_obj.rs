@@ -26,6 +26,7 @@ pub fn load_obj(path: &std::path::Path) -> Result<Vec<CpuMesh>> {
         let mut cpu = CpuMesh {
             vertices: Vec::with_capacity(mesh.positions.len() / 3),
             indices: mesh.indices.clone(),
+            albedo_image: None,
         };
         for i in 0..(mesh.positions.len() / 3) {
             let p = Vec3::new(

@@ -73,6 +73,26 @@ pub struct CloudCompositeParams {
     pub cloud_thickness: f32,
 }
 
+/// Cloud shadow map uniform parameters (matches WGSL `CloudShadowParams`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct CloudShadowParams {
+    pub center: [f32; 3],
+    pub extent: f32,
+    pub sun_dir: [f32; 3],
+    pub cloud_altitude: f32,
+    pub cloud_thickness: f32,
+    pub cloud_coverage: f32,
+    pub cloud_density: f32,
+    pub cloud_speed: f32,
+    pub wind_dir: [f32; 3],
+    pub time: f32,
+    pub extinction: f32,
+    pub shadow_steps: u32,
+    pub resolution: f32,
+    pub _pad0: f32,
+}
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -282,7 +302,8 @@ impl VolumetricCloudsPass {
             device,
             &raymarch_bgl,
             "cloud_raymarch",
-            include_str!("../shaders/volumetrics/cloud_raymarching.wgsl"),
+            concat!(include_str!("../shaders/constants.wgsl"),
+            include_str!("../shaders/volumetrics/cloud_raymarching.wgsl")),
             "cloud_raymarch_main",
         );
         let composite_pipeline = create_compute_pipeline(
@@ -560,6 +581,210 @@ impl VolumetricCloudsPass {
 }
 
 // ---------------------------------------------------------------------------
+// Cloud Shadow Map Pass
+// ---------------------------------------------------------------------------
+
+/// Default shadow map resolution (pixels, square).
+const CLOUD_SHADOW_RES: u32 = 512;
+
+/// Default shadow map world-space half-extent (covers 2048 × 2048 m).
+const CLOUD_SHADOW_EXTENT: f32 = 1024.0;
+
+/// Generates a 2D cloud shadow transmittance map from the sun direction.
+///
+/// The map covers a square region centered on the camera, projected through
+/// the cloud layer along the sun direction. PBR / terrain shaders sample
+/// this texture to darken surfaces under clouds.
+pub struct CloudShadowPass {
+    pipeline: wgpu::ComputePipeline,
+    bgl: wgpu::BindGroupLayout,
+    params_buf: wgpu::Buffer,
+    #[allow(dead_code)] // texture must be kept alive for view to remain valid
+    shadow_texture: wgpu::Texture,
+    shadow_view: wgpu::TextureView,
+    shadow_sampler: wgpu::Sampler,
+    resolution: u32,
+    extent: f32,
+    time: f32,
+    cached_bg: CachedBindGroup,
+}
+
+impl CloudShadowPass {
+    /// Create a new cloud shadow map pass.
+    ///
+    /// * `resolution` – shadow map size in pixels (square). 512 is a good default.
+    /// * `extent` – half-extent in world units (1024.0 → covers 2048 m).
+    pub fn new(device: &wgpu::Device, resolution: u32, extent: f32) -> Self {
+        let fmt = wgpu::TextureFormat::R16Float;
+
+        let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("cloud_shadow_map"),
+            size: wgpu::Extent3d {
+                width: resolution,
+                height: resolution,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: fmt,
+            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let shadow_view = shadow_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("cloud_shadow_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
+
+        let params_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("cloud_shadow_params"),
+            contents: &[0u8; std::mem::size_of::<CloudShadowParams>()],
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("cloud_shadow_bgl"),
+            entries: &[
+                bgl_uniform(0),
+                bgl_storage_2d_rw(1, fmt),
+            ],
+        });
+
+        let pipeline = create_compute_pipeline(
+            device,
+            &bgl,
+            "cloud_shadow",
+            concat!(
+                include_str!("../shaders/constants.wgsl"),
+                include_str!("../shaders/volumetrics/cloud_shadow_map.wgsl")
+            ),
+            "cloud_shadow_main",
+        );
+
+        Self {
+            pipeline,
+            bgl,
+            params_buf,
+            shadow_texture,
+            shadow_view,
+            shadow_sampler,
+            resolution,
+            extent,
+            time: 0.0,
+            cached_bg: CachedBindGroup::new(),
+        }
+    }
+
+    /// Create with default resolution and extent.
+    pub fn new_default(device: &wgpu::Device) -> Self {
+        Self::new(device, CLOUD_SHADOW_RES, CLOUD_SHADOW_EXTENT)
+    }
+
+    /// Get the shadow map transmittance texture view (for binding in PBR/terrain shaders).
+    pub fn shadow_view(&self) -> &wgpu::TextureView {
+        &self.shadow_view
+    }
+
+    /// Get the shadow map sampler (linear, clamp-to-edge).
+    pub fn shadow_sampler(&self) -> &wgpu::Sampler {
+        &self.shadow_sampler
+    }
+
+    /// Shadow map resolution (pixels, square).
+    pub fn resolution(&self) -> u32 {
+        self.resolution
+    }
+
+    /// Half-extent in world units. The shadow map covers
+    /// `[-extent, extent]×[-extent, extent]` centered on the camera.
+    pub fn extent(&self) -> f32 {
+        self.extent
+    }
+
+    /// Update the uniform buffer for the current frame and queue dispatch.
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_frame(
+        &mut self,
+        queue: &wgpu::Queue,
+        camera_pos: Vec3,
+        sun_dir: Vec3,
+        config: &CloudConfig,
+        extinction: f32,
+        shadow_steps: u32,
+        dt: f32,
+    ) {
+        self.time += dt;
+
+        let params = CloudShadowParams {
+            center: [camera_pos.x, config.cloud_altitude, camera_pos.z],
+            extent: self.extent,
+            sun_dir: sun_dir.to_array(),
+            cloud_altitude: config.cloud_altitude,
+            cloud_thickness: config.cloud_thickness,
+            cloud_coverage: config.cloud_coverage,
+            cloud_density: config.cloud_density,
+            cloud_speed: config.cloud_speed,
+            wind_dir: config.wind_dir.to_array(),
+            time: self.time,
+            extinction,
+            shadow_steps,
+            resolution: self.resolution as f32,
+            _pad0: 0.0,
+        };
+        queue.write_buffer(&self.params_buf, 0, bytemuck::bytes_of(&params));
+    }
+
+    /// Execute the cloud shadow map compute pass.
+    pub fn execute(
+        &mut self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        resource_gen: Generation,
+    ) {
+        if !self.cached_bg.is_valid(resource_gen) {
+            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("cloud_shadow_bg"),
+                layout: &self.bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&self.shadow_view),
+                    },
+                ],
+            });
+            self.cached_bg = CachedBindGroup::with_bind_group(bg, resource_gen);
+        }
+
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("cloud_shadow_map"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.pipeline);
+            let bg = self
+                .cached_bg
+                .get_or_rebuild(resource_gen, || unreachable!());
+            pass.set_bind_group(0, bg, &[]);
+            pass.dispatch_workgroups(
+                self.resolution.div_ceil(8),
+                self.resolution.div_ceil(8),
+                1,
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline / BGL helpers (local to this module)
 // ---------------------------------------------------------------------------
 
@@ -692,7 +917,7 @@ mod tests {
 
     #[test]
     fn parse_cloud_raymarching_wgsl() {
-        let source = include_str!("../shaders/volumetrics/cloud_raymarching.wgsl");
+        let source = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/volumetrics/cloud_raymarching.wgsl"));
         let module = naga::front::wgsl::parse_str(source);
         assert!(
             module.is_ok(),
@@ -739,5 +964,31 @@ mod tests {
         assert_eq!(pass.dimensions(), (1920, 1080));
         assert_eq!(pass.half_width, 960);
         assert_eq!(pass.half_height, 540);
+    }
+
+    #[test]
+    fn cloud_shadow_params_size() {
+        // vec3+f32(16) + vec3+f32(16) + 4×f32(16) + vec3+f32(16) + f32+u32+f32+f32(16) = 80
+        assert_eq!(std::mem::size_of::<CloudShadowParams>(), 80);
+    }
+
+    #[test]
+    fn parse_cloud_shadow_map_wgsl() {
+        let source = concat!(
+            include_str!("../shaders/constants.wgsl"),
+            include_str!("../shaders/volumetrics/cloud_shadow_map.wgsl")
+        );
+        let module = naga::front::wgsl::parse_str(source);
+        assert!(
+            module.is_ok(),
+            "cloud_shadow_map.wgsl parse failed: {:?}",
+            module.err()
+        );
+    }
+
+    #[test]
+    fn cloud_shadow_default_extent() {
+        assert_eq!(CLOUD_SHADOW_RES, 512);
+        assert_eq!(CLOUD_SHADOW_EXTENT, 1024.0);
     }
 }

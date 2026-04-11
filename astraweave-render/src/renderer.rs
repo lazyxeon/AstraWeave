@@ -15,7 +15,7 @@ use crate::types::{Instance, InstanceRaw, Mesh};
 use astraweave_cinematics as awc;
 use astraweave_materials::MaterialPackage;
 
-pub(crate) const SHADER_SRC: &str = concat!(include_str!("../shaders/brdf_common.wgsl"), r#"
+pub(crate) const SHADER_SRC: &str = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/brdf_common.wgsl"), r#"
 struct VSIn {
     @location(0) position: vec3<f32>,
     @location(1) normal:   vec3<f32>,
@@ -56,7 +56,8 @@ struct MaterialUbo {
     base_color: vec4<f32>,
     metallic: f32,
     roughness: f32,
-    _pad: vec2<f32>,
+    alpha_cutoff: f32,
+    _pad: f32,
 };
 
 @group(1) @binding(0) var<uniform> uMaterial: MaterialUbo;
@@ -91,6 +92,8 @@ struct SceneEnv {
     tint_alpha: f32,
     blend_factor: f32,
     _pad1: vec3<f32>,
+    sun_color: vec3<f32>,
+    sun_intensity: f32,
 };
 @group(4) @binding(0) var<uniform> uScene: SceneEnv;
 
@@ -110,6 +113,22 @@ struct IblParams {
     _pad: vec2<f32>,
 };
 @group(5) @binding(4) var<uniform> uIbl: IblParams;
+
+// Screen-space GI (from SSGI/Lumen pipeline). Fallback is 1x1 black.
+@group(5) @binding(5) var gi_tex: texture_2d<f32>;
+@group(5) @binding(6) var gi_samp: sampler;
+// Cloud shadow transmittance map (1.0 = lit, 0.0 = shadowed)
+@group(5) @binding(7) var cloud_shadow_tex: texture_2d<f32>;
+@group(5) @binding(8) var cloud_shadow_samp: sampler;
+
+fn sample_cloud_shadow(world_pos: vec3<f32>) -> f32 {
+    let shadow_extent = 1024.0;
+    let uv = (world_pos.xz - uCamera.camera_pos.xz) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        return 1.0;
+    }
+    return textureSampleLevel(cloud_shadow_tex, cloud_shadow_samp, uv, 0.0).r;
+}
 
 // Distance-based fog (linear + exponential blend)
 fn apply_scene_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {
@@ -132,12 +151,13 @@ fn apply_scene_tint(color: vec3<f32>) -> vec3<f32> {
 @vertex
 fn vs(input: VSIn) -> VSOut {
   let model = mat4x4<f32>(input.m0, input.m1, input.m2, input.m3);
+  let normal_mat = mat3x3<f32>(input.n0, input.n1, input.n2);
   let world = model * vec4<f32>(input.position, 1.0);
   var out: VSOut;
   out.pos = uCamera.view_proj * world;
-    // normal matrix simplified (assuming uniform scale); for accuracy pass and use 3x3
-    let Nw = normalize((model * vec4<f32>(input.normal, 0.0)).xyz);
-    let Tw = normalize((model * vec4<f32>(input.tangent.xyz, 0.0)).xyz);
+    // Use inverse-transpose normal matrix for correct non-uniform scale handling
+    let Nw = normalize(normal_mat * input.normal);
+    let Tw = normalize(normal_mat * input.tangent.xyz);
     let Bw = normalize(cross(Nw, Tw)) * input.tangent.w;
     out.normal = Nw;
   out.world_pos = world.xyz;
@@ -190,7 +210,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let tex = textureSample(albedo_tex, albedo_samp, input.uv);
     // Alpha cutoff: discard fully transparent fragments early to avoid
     // wasted shading and incorrect depth writes (vegetation canopies).
-    if (tex.a < 0.5) { discard; }
+    if (tex.a < uMaterial.alpha_cutoff) { discard; }
     base_color = base_color * tex.rgb;
     var metallic = clamp(uMaterial.metallic, 0.0, 1.0);
     var roughness = clamp(uMaterial.roughness, 0.04, 1.0);
@@ -200,10 +220,13 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
 
     let F0 = mix(vec3<f32>(0.04, 0.04, 0.04), base_color, metallic);
 
-    // Unified BRDF: Cook-Torrance specular + Burley diffuse (from brdf_common.wgsl)
-    let brdf_result = evaluate_brdf(N, V, L, base_color, metallic, roughness, F0);
+    // Material LOD: simplify shading for sub-pixel or distant fragments.
+    let mat_lod = compute_material_lod(input.world_pos);
 
-    let radiance = vec3<f32>(2.0, 1.96, 1.8); // sun radiance (HDR, ACES compresses)
+    // Unified BRDF: Cook-Torrance specular + Burley diffuse (from brdf_common.wgsl)
+    let brdf_result = evaluate_brdf_lod(N, V, L, base_color, metallic, roughness, F0, mat_lod);
+
+    let radiance = uScene.sun_color * uScene.sun_intensity; // from SceneEnv UBO
         // Shadow sampling
         // Cascaded shadow mapping (2 cascades) with edge fade.
         // Use distance from camera for correct cascade selection.
@@ -255,11 +278,19 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             shadow = 1.0;
         }
     // Direct lighting (evaluate_brdf already includes NdotL)
-    var lit_color = brdf_result * radiance * shadow;
+    let cloud_shadow = sample_cloud_shadow(input.world_pos);
+    var lit_color = brdf_result * radiance * shadow * cloud_shadow;
 
     // IBL indirect lighting (replaces flat ambient)
     let ibl_color = compute_ibl(N, V, base_color, metallic, roughness, F0);
     lit_color = lit_color + ibl_color;
+
+    // Screen-space GI: sample indirect diffuse from SSGI/Lumen pipeline.
+    // When no GI pass is active, gi_tex is a 1x1 black texture → adds zero.
+    let gi_dims = vec2<f32>(textureDimensions(gi_tex));
+    let gi_uv = input.pos.xy / gi_dims;
+    let gi_indirect = textureSampleLevel(gi_tex, gi_samp, gi_uv, 0.0).rgb;
+    lit_color += gi_indirect * base_color * (1.0 - metallic);
 
     // Scene ambient as fallback floor (provides fill when IBL is low)
     let ambient = uScene.ambient_color * uScene.ambient_intensity * 0.35;
@@ -396,7 +427,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
 }
 "#;
 
-const SKINNED_SHADER_SRC: &str = concat!(include_str!("../shaders/brdf_common.wgsl"), r#"
+const SKINNED_SHADER_SRC: &str = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/brdf_common.wgsl"), r#"
 struct VSIn {
   @location(0) position: vec3<f32>,
   @location(1) normal:   vec3<f32>,
@@ -426,7 +457,7 @@ struct VSOut {
 struct Camera { view_proj: mat4x4<f32>, light_dir: vec3<f32>, _pad: f32, camera_pos: vec3<f32>, _pad2: f32 };
 @group(0) @binding(0) var<uniform> uCamera: Camera;
 
-struct MaterialUbo { base_color: vec4<f32>, metallic: f32, roughness: f32, _pad: vec2<f32> };
+struct MaterialUbo { base_color: vec4<f32>, metallic: f32, roughness: f32, alpha_cutoff: f32, _pad: f32 };
 @group(1) @binding(0) var<uniform> uMaterial: MaterialUbo;
 
 struct MainLightUbo { view_proj0: mat4x4<f32>, view_proj1: mat4x4<f32>, splits: vec2<f32>, extras: vec2<f32> };
@@ -442,6 +473,37 @@ struct MainLightUbo { view_proj0: mat4x4<f32>, view_proj1: mat4x4<f32>, splits: 
 @group(3) @binding(5) var normal_samp: sampler;
 struct Skinning { mats: array<mat4x4<f32>> };
 @group(3) @binding(6) var<storage, read> skin: Skinning;
+
+// ── Scene Environment ─────────
+struct SceneEnv {
+    fog_color: vec3<f32>,
+    fog_density: f32,
+    fog_start: f32,
+    fog_end: f32,
+    _pad0: vec2<f32>,
+    ambient_color: vec3<f32>,
+    ambient_intensity: f32,
+    tint_color: vec3<f32>,
+    tint_alpha: f32,
+    blend_factor: f32,
+    _pad1: vec3<f32>,
+    sun_color: vec3<f32>,
+    sun_intensity: f32,
+};
+@group(4) @binding(0) var<uniform> uScene: SceneEnv;
+
+// Group 5 shares the main PBR IBL layout; skinned shader uses cloud shadow bindings.
+@group(5) @binding(7) var cloud_shadow_tex: texture_2d<f32>;
+@group(5) @binding(8) var cloud_shadow_samp: sampler;
+
+fn sample_cloud_shadow(world_pos: vec3<f32>) -> f32 {
+    let shadow_extent = 1024.0;
+    let uv = (world_pos.xz - uCamera.camera_pos.xz) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        return 1.0;
+    }
+    return textureSampleLevel(cloud_shadow_tex, cloud_shadow_samp, uv, 0.0).r;
+}
 
 @vertex
 fn vs(input: VSIn) -> VSOut {
@@ -459,10 +521,12 @@ fn vs(input: VSIn) -> VSOut {
     let tan4 = vec4<f32>(input.tangent.xyz, 0.0);
     let skinned_tan = (m0 * tan4) * w.x + (m1 * tan4) * w.y + (m2 * tan4) * w.z + (m3 * tan4) * w.w;
   let world = model_inst * skinned_pos;
+  let normal_mat = mat3x3<f32>(input.n0, input.n1, input.n2);
   var out: VSOut;
   out.pos = uCamera.view_proj * world;
-    let Nw = normalize((model_inst * skinned_nrm).xyz);
-    let Tw = normalize((model_inst * skinned_tan).xyz);
+    // Apply instance normal matrix (inverse-transpose) to skinned normals
+    let Nw = normalize(normal_mat * skinned_nrm.xyz);
+    let Tw = normalize(normal_mat * skinned_tan.xyz);
     let Bw = normalize(cross(Nw, Tw)) * input.tangent.w;
     out.normal = Nw;
   out.world_pos = world.xyz;
@@ -483,10 +547,13 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     var roughness = clamp(uMaterial.roughness, 0.04, 1.0);
     let F0 = mix(vec3<f32>(0.04, 0.04, 0.04), base_color, metallic);
 
-    // Unified BRDF: Cook-Torrance specular + Burley diffuse (from brdf_common.wgsl)
-    let brdf_result = evaluate_brdf(N, V, L, base_color, metallic, roughness, F0);
+    // Material LOD: simplify shading for distant / sub-pixel skinned fragments.
+    let mat_lod = compute_material_lod(input.world_pos);
 
-    let radiance = vec3<f32>(2.0, 1.96, 1.8);
+    // Unified BRDF: Cook-Torrance specular + Burley diffuse (from brdf_common.wgsl)
+    let brdf_result = evaluate_brdf_lod(N, V, L, base_color, metallic, roughness, F0, mat_lod);
+
+    let radiance = uScene.sun_color * uScene.sun_intensity;
     // Cascaded shadow sampling with edge fade (same as static path)
     let dist = length(input.world_pos - uCamera.camera_pos);
     let shadow_far = uLight.splits.y;
@@ -527,7 +594,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
         shadow = 1.0;
     }
     // Direct lighting (evaluate_brdf already includes NdotL) + ambient lift
-    let lit_color = brdf_result * radiance * shadow + base_color * 0.08;
+    let cloud_shadow = sample_cloud_shadow(input.world_pos);
+    let lit_color = brdf_result * radiance * shadow * cloud_shadow + base_color * 0.08;
     return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
 }
 "#);
@@ -741,6 +809,12 @@ pub struct Renderer {
     ibl_bind_group: wgpu::BindGroup,
     ibl_params_buf: wgpu::Buffer,
 
+    // Screen-space Global Illumination (composite into PBR via group(5) bindings 5-6)
+    gi_fallback_view: wgpu::TextureView,
+    gi_sampler: wgpu::Sampler,
+    // Cloud shadow map generation and sampling resources (group 5 bindings 7-8).
+    cloud_shadow_pass: crate::volumetric_clouds::CloudShadowPass,
+
     // Water rendering
     water_renderer: Option<crate::water::WaterRenderer>,
 
@@ -836,6 +910,11 @@ impl Renderer {
             })
             .await?;
 
+        // Register GPU error callback for validation errors and device loss.
+        device.on_uncaptured_error(Box::new(|error| {
+            log::error!("wgpu device error: {error}");
+        }));
+
         let caps = surface.get_capabilities(&adapter);
         let format = caps
             .formats
@@ -891,6 +970,11 @@ impl Renderer {
                 trace: Default::default(),
             })
             .await?;
+
+        // Register GPU error callback for validation errors and device loss.
+        device.on_uncaptured_error(Box::new(|error| {
+            log::error!("wgpu device error (headless): {error}");
+        }));
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -1008,7 +1092,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
         // Seed the material buffer with a bright-ish default so geometry renders visibly out of the box.
-        let default_material: [f32; 8] = [0.85, 0.78, 0.72, 1.0, 0.05, 0.6, 0.0, 0.0];
+        let default_material: [f32; 8] = [0.85, 0.78, 0.72, 1.0, 0.05, 0.6, 0.5, 0.0];
         queue.write_buffer(&material_buf, 0, bytemuck::cast_slice(&default_material));
 
         // Scene environment bind group layout (created early so it can be used in pipeline layout)
@@ -1757,8 +1841,46 @@ impl Renderer {
                     },
                     count: None,
                 },
+                // 5: GI texture (screen-space indirect diffuse from SSGI/Lumen)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                // 6: GI sampler
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                // 7: cloud shadow transmittance texture
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                // 8: cloud shadow sampler
+                wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
+
+        let cloud_shadow_pass = crate::volumetric_clouds::CloudShadowPass::new_default(&device);
 
         // IBL params uniform buffer
         #[repr(C)]
@@ -1877,6 +1999,39 @@ impl Renderer {
             ..Default::default()
         });
 
+        // Fallback 1x1 black texture for screen-space GI (SSGI/Lumen).
+        // When no GI pass is active, this contributes zero indirect light.
+        let gi_fallback_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gi_fallback"),
+            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &gi_fallback_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &[0u8; 8], // 4 x f16 = 8 bytes, all zero → black
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(8), rows_per_image: Some(1) },
+            wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        );
+        let gi_fallback_view = gi_fallback_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let gi_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("gi_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
+
         let ibl_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("ibl_fallback_bg"),
             layout: &ibl_params_bgl,
@@ -1900,6 +2055,22 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: ibl_params_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&gi_fallback_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::Sampler(&gi_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(cloud_shadow_pass.shadow_view()),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(cloud_shadow_pass.shadow_sampler()),
                 },
             ],
         });
@@ -2518,7 +2689,7 @@ fn vs(input: VSIn) -> VSOut {
         let skinned_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("skinned pipeline layout"),
-                bind_group_layouts: &[&bind_layout, &material_bgl, &shadow_bgl, &tex_bgl],
+                bind_group_layouts: &[&bind_layout, &material_bgl, &shadow_bgl, &tex_bgl, &scene_env_bgl, &ibl_params_bgl],
                 push_constant_ranges: &[],
             });
         let skinned_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor{
@@ -3040,6 +3211,9 @@ fn vs(input: VSIn) -> VSOut {
             ibl_resources: None,
             ibl_bind_group,
             ibl_params_buf,
+            gi_fallback_view,
+            gi_sampler,
+            cloud_shadow_pass,
             water_renderer: None,
             biome_system: crate::biome_material::BiomeMaterialSystem::new(
                 crate::biome_material::BiomeMaterialConfig::default(),
@@ -3231,6 +3405,22 @@ fn vs(input: VSIn) -> VSOut {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: self.ibl_params_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&self.gi_fallback_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::Sampler(&self.gi_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(self.cloud_shadow_pass.shadow_view()),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(self.cloud_shadow_pass.shadow_sampler()),
                 },
             ],
         });
@@ -3856,16 +4046,20 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     pub fn set_material_params(&mut self, base_color: [f32; 4], metallic: f32, roughness: f32) {
-        // layout: vec4 + f32 + f32 + padding
-        let mut data = [0f32; 8];
-        data[0] = base_color[0];
-        data[1] = base_color[1];
-        data[2] = base_color[2];
-        data[3] = base_color[3];
-        data[4] = metallic;
-        data[5] = roughness;
+        self.set_material_params_full(base_color, metallic, roughness, 0.5);
+    }
+
+    /// Set material parameters including per-material alpha cutoff threshold.
+    pub fn set_material_params_full(
+        &mut self,
+        base_color: [f32; 4],
+        metallic: f32,
+        roughness: f32,
+        alpha_cutoff: f32,
+    ) {
+        let ubo = crate::material::MaterialUboData::new(base_color, metallic, roughness, alpha_cutoff);
         self.queue
-            .write_buffer(&self.material_buf, 0, bytemuck::cast_slice(&data));
+            .write_buffer(&self.material_buf, 0, bytemuck::bytes_of(&ubo));
     }
 
     pub fn create_mesh_from_arrays(
@@ -4329,10 +4523,12 @@ fn vs(input: VSIn) -> VSOut {
             {
                 enc.write_timestamp(&self.timestamp_query_set, 0);
             }
-            let cluster_ts = ts_cluster.map(|(b, e)| wgpu::ComputePassTimestampWrites {
-                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
-                beginning_of_pass_write_index: Some(b),
-                end_of_pass_write_index: Some(e),
+            let cluster_ts = ts_cluster.and_then(|(b, e)| {
+                Some(wgpu::ComputePassTimestampWrites {
+                    query_set: self.gpu_profiler.as_ref()?.query_set(),
+                    beginning_of_pass_write_index: Some(b),
+                    end_of_pass_write_index: Some(e),
+                })
             });
             let mut cpass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("cluster bin"),
@@ -4375,10 +4571,12 @@ fn vs(input: VSIn) -> VSOut {
             if !has_shadow_casters_r {
                 continue;
             }
-            let shadow_ts = ts_shadow[idx].map(|(b, e)| wgpu::RenderPassTimestampWrites {
-                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
-                beginning_of_pass_write_index: Some(b),
-                end_of_pass_write_index: Some(e),
+            let shadow_ts = ts_shadow[idx].and_then(|(b, e)| {
+                Some(wgpu::RenderPassTimestampWrites {
+                    query_set: self.gpu_profiler.as_ref()?.query_set(),
+                    beginning_of_pass_write_index: Some(b),
+                    end_of_pass_write_index: Some(e),
+                })
             });
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
@@ -4498,11 +4696,40 @@ fn vs(input: VSIn) -> VSOut {
                 .write_buffer(&self.scene_env_buf, 0, bytemuck::bytes_of(&scene_ubo));
         }
 
+        // Update cloud shadow map for terrain/PBR sampling.
         {
-            let main_ts = ts_main.map(|(b, e)| wgpu::RenderPassTimestampWrites {
-                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
-                beginning_of_pass_write_index: Some(b),
-                end_of_pass_write_index: Some(e),
+            let cam_pos = glam::Vec3::new(
+                self.camera_ubo.camera_pos_pad[0],
+                self.camera_ubo.camera_pos_pad[1],
+                self.camera_ubo.camera_pos_pad[2],
+            );
+            let sun_dir = -glam::Vec3::new(
+                self.camera_ubo.light_dir_pad[0],
+                self.camera_ubo.light_dir_pad[1],
+                self.camera_ubo.light_dir_pad[2],
+            )
+            .normalize_or_zero();
+            let cloud_cfg = crate::volumetric_clouds::CloudConfig::default();
+            self.cloud_shadow_pass.prepare_frame(
+                &self.queue,
+                cam_pos,
+                sun_dir,
+                &cloud_cfg,
+                cloud_cfg.extinction_coeff,
+                32,
+                1.0 / 60.0,
+            );
+            self.cloud_shadow_pass
+                .execute(&self.device, &mut enc, self.resource_generation);
+        }
+
+        {
+            let main_ts = ts_main.and_then(|(b, e)| {
+                Some(wgpu::RenderPassTimestampWrites {
+                    query_set: self.gpu_profiler.as_ref()?.query_set(),
+                    beginning_of_pass_write_index: Some(b),
+                    end_of_pass_write_index: Some(e),
+                })
             });
             let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main pass"),
@@ -4626,10 +4853,12 @@ fn vs(input: VSIn) -> VSOut {
 
         // Postprocess HDR to surface
         {
-            let post_ts = ts_post.map(|(b, e)| wgpu::RenderPassTimestampWrites {
-                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
-                beginning_of_pass_write_index: Some(b),
-                end_of_pass_write_index: Some(e),
+            let post_ts = ts_post.and_then(|(b, e)| {
+                Some(wgpu::RenderPassTimestampWrites {
+                    query_set: self.gpu_profiler.as_ref()?.query_set(),
+                    beginning_of_pass_write_index: Some(b),
+                    end_of_pass_write_index: Some(e),
+                })
             });
             let mut pp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("post pass"),
@@ -4777,10 +5006,12 @@ fn vs(input: VSIn) -> VSOut {
             // GPU compute pass only needed when lights changed (offsets were recomputed above)
             enc.clear_buffer(&self.clustered_counts_buf, 0, None);
             {
-                let cluster_ts = di_ts_cluster.map(|(b, e)| wgpu::ComputePassTimestampWrites {
-                    query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
-                    beginning_of_pass_write_index: Some(b),
-                    end_of_pass_write_index: Some(e),
+                let cluster_ts = di_ts_cluster.and_then(|(b, e)| {
+                    Some(wgpu::ComputePassTimestampWrites {
+                        query_set: self.gpu_profiler.as_ref()?.query_set(),
+                        beginning_of_pass_write_index: Some(b),
+                        end_of_pass_write_index: Some(e),
+                    })
                 });
                 let mut cpass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("cluster bin"),
@@ -4829,10 +5060,12 @@ fn vs(input: VSIn) -> VSOut {
             if !has_shadow_casters {
                 continue;
             }
-            let shadow_ts = di_ts_shadow[idx].map(|(b, e)| wgpu::RenderPassTimestampWrites {
-                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
-                beginning_of_pass_write_index: Some(b),
-                end_of_pass_write_index: Some(e),
+            let shadow_ts = di_ts_shadow[idx].and_then(|(b, e)| {
+                Some(wgpu::RenderPassTimestampWrites {
+                    query_set: self.gpu_profiler.as_ref()?.query_set(),
+                    beginning_of_pass_write_index: Some(b),
+                    end_of_pass_write_index: Some(e),
+                })
             });
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
@@ -4970,11 +5203,40 @@ fn vs(input: VSIn) -> VSOut {
                 .write_buffer(&self.scene_env_buf, 0, bytemuck::bytes_of(&scene_ubo));
         }
 
+        // Update cloud shadow map for terrain/PBR sampling.
         {
-            let main_ts = di_ts_main.map(|(b, e)| wgpu::RenderPassTimestampWrites {
-                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
-                beginning_of_pass_write_index: Some(b),
-                end_of_pass_write_index: Some(e),
+            let cam_pos = glam::Vec3::new(
+                self.camera_ubo.camera_pos_pad[0],
+                self.camera_ubo.camera_pos_pad[1],
+                self.camera_ubo.camera_pos_pad[2],
+            );
+            let sun_dir = -glam::Vec3::new(
+                self.camera_ubo.light_dir_pad[0],
+                self.camera_ubo.light_dir_pad[1],
+                self.camera_ubo.light_dir_pad[2],
+            )
+            .normalize_or_zero();
+            let cloud_cfg = crate::volumetric_clouds::CloudConfig::default();
+            self.cloud_shadow_pass.prepare_frame(
+                &self.queue,
+                cam_pos,
+                sun_dir,
+                &cloud_cfg,
+                cloud_cfg.extinction_coeff,
+                32,
+                1.0 / 60.0,
+            );
+            self.cloud_shadow_pass
+                .execute(&self.device, enc, self.resource_generation);
+        }
+
+        {
+            let main_ts = di_ts_main.and_then(|(b, e)| {
+                Some(wgpu::RenderPassTimestampWrites {
+                    query_set: self.gpu_profiler.as_ref()?.query_set(),
+                    beginning_of_pass_write_index: Some(b),
+                    end_of_pass_write_index: Some(e),
+                })
             });
             let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main render pass"),
@@ -5102,10 +5364,12 @@ fn vs(input: VSIn) -> VSOut {
         // the editor has its own tonemap pass.
         // Standalone mode: use the full post pipeline (ACES tonemap + tint).
         {
-            let post_ts = di_ts_post.map(|(b, e)| wgpu::RenderPassTimestampWrites {
-                query_set: self.gpu_profiler.as_ref().unwrap().query_set(),
-                beginning_of_pass_write_index: Some(b),
-                end_of_pass_write_index: Some(e),
+            let post_ts = di_ts_post.and_then(|(b, e)| {
+                Some(wgpu::RenderPassTimestampWrites {
+                    query_set: self.gpu_profiler.as_ref()?.query_set(),
+                    beginning_of_pass_write_index: Some(b),
+                    end_of_pass_write_index: Some(e),
+                })
             });
             let mut pp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("post pass (external)"),
@@ -5712,8 +5976,9 @@ fn vs(input: VSIn) -> VSOut {
             }));
         }
 
+        // SAFETY: ext_inst_buf is guaranteed Some — allocated just above if it was None or too small.
         self.queue.write_buffer(
-            self.ext_inst_buf.as_ref().unwrap(),
+            self.ext_inst_buf.as_ref().expect("ext_inst_buf allocated above"),
             0,
             bytemuck::cast_slice(&raw),
         );
@@ -6365,6 +6630,46 @@ mod tests {
         assert!(
             shader.contains("uLight.extras.x < 0.0"),
             "shader should check sentinel for debug shadow override"
+        );
+    }
+
+    #[test]
+    fn brdf_common_contains_material_lod_functions() {
+        let brdf_src = include_str!("../shaders/brdf_common.wgsl");
+        assert!(
+            brdf_src.contains("compute_material_lod"),
+            "brdf_common.wgsl must contain compute_material_lod"
+        );
+        assert!(
+            brdf_src.contains("evaluate_brdf_lod"),
+            "brdf_common.wgsl must contain evaluate_brdf_lod"
+        );
+        // evaluate_brdf should delegate to evaluate_brdf_lod
+        assert!(
+            brdf_src.contains("evaluate_brdf_lod(N, V, L, base_color, metallic, roughness, F0, 0u)"),
+            "evaluate_brdf should delegate to evaluate_brdf_lod with LOD 0"
+        );
+    }
+
+    #[test]
+    fn shader_uses_material_lod() {
+        let shader = SHADER_SRC;
+        assert!(
+            shader.contains("compute_material_lod"),
+            "static PBR shader should compute material LOD"
+        );
+        assert!(
+            shader.contains("evaluate_brdf_lod"),
+            "static PBR shader should call evaluate_brdf_lod"
+        );
+        let skinned = SKINNED_SHADER_SRC;
+        assert!(
+            skinned.contains("compute_material_lod"),
+            "skinned PBR shader should compute material LOD"
+        );
+        assert!(
+            skinned.contains("evaluate_brdf_lod"),
+            "skinned PBR shader should call evaluate_brdf_lod"
         );
     }
 }

@@ -32,8 +32,7 @@ struct GtaoParams {
 @group(0) @binding(3) var<uniform> params: GtaoParams;
 @group(0) @binding(4) var ao_output: texture_storage_2d<r32float, write>;
 
-const PI: f32 = 3.14159265;
-const TWO_PI: f32 = 6.28318530;
+// PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 // 32-bit visibility bitmask (32 elevation sectors per direction)
 const BITMASK_BITS: u32 = 32u;
 

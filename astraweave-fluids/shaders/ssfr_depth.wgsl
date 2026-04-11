@@ -1,5 +1,5 @@
 // SSFR Depth Pass - Renders particle spheres to a depth texture
-// Optimized for Screen-Space Fluid Rendering
+// Screen-Space Fluid Rendering with correct sphere-surface depth
 
 struct CameraUniform {
     view_proj: mat4x4<f32>,
@@ -56,22 +56,36 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let particle_radius = 0.5;
     out.radius = particle_radius;
     
-    // Transform to view space for accurate sphere rendering
-    // We assume a simple view-aligned billboard for depth pass
     let world_pos = in.position.xyz;
-    let proj_pos = camera.view_proj * vec4<f32>(world_pos, 1.0);
     
-    // Expand billboard in clip space (can be improved for perspective-correctness)
-    let aspect = 1.0; // Handled by view_proj usually, but for simple billboards:
-    let billboard_scale = particle_radius * 2.5; 
+    // Extract camera basis vectors from view_inv (camera-to-world, column-major).
+    // Column 0 = right, column 1 = up, column 2 = back (-forward).
+    let cam_right  = camera.view_inv[0].xyz;
+    let cam_up     = camera.view_inv[1].xyz;
+    let cam_back   = camera.view_inv[2].xyz;
+    let cam_origin = camera.cam_pos.xyz;
     
-    // Correct billboard expansion in view space is better
-    // But for depth pass, we just need the quad covering the sphere
-    out.view_pos = (camera.view_proj * vec4<f32>(world_pos, 1.0)).xyz; // This is not quite view space, it's clip. 
-    // Let's do real view space
+    // Compute true view-space position of particle center.
+    let rel = world_pos - cam_origin;
+    out.view_pos = vec3<f32>(dot(rel, cam_right), dot(rel, cam_up), dot(rel, cam_back));
     
-    // Placeholder for simplified version, will refine in later passes if needed
-    out.clip_position = proj_pos + vec4<f32>(quad_offset * billboard_scale * proj_pos.w * 0.1, 0.0, 0.0);
+    // Project particle center to clip space.
+    let clip_center = camera.view_proj * vec4<f32>(world_pos, 1.0);
+    
+    // Compute perspective-correct projected radius by projecting an edge point.
+    let edge_world = world_pos + cam_right * particle_radius;
+    let clip_edge  = camera.view_proj * vec4<f32>(edge_world, 1.0);
+    let ndc_center = clip_center.xy / clip_center.w;
+    let ndc_edge   = clip_edge.xy / clip_edge.w;
+    let ndc_radius = length(ndc_edge - ndc_center);
+    
+    // Expand quad in clip space with 20% margin for anti-aliasing.
+    out.clip_position = vec4<f32>(
+        clip_center.x + quad_offset.x * ndc_radius * clip_center.w * 1.2,
+        clip_center.y + quad_offset.y * ndc_radius * clip_center.w * 1.2,
+        clip_center.z,
+        clip_center.w
+    );
     
     return out;
 }
@@ -83,11 +97,29 @@ fn fs_main(in: VertexOutput) -> @builtin(frag_depth) f32 {
         discard;
     }
     
-    // Calculate depth of the sphere surface
+    // Compute sphere surface offset in view space.
+    // z_norm = how far the surface protrudes toward camera along the view axis.
     let z_norm = sqrt(1.0 - r2);
-    let pixel_pos_view = in.view_pos + vec3<f32>(0.0, 0.0, z_norm * in.radius);
     
-    // Project back to get correct depth
-    // Simplified depth: just add the sphere offset to the billboard depth
-    return in.clip_position.z / in.clip_position.w - (z_norm * in.radius * 0.01); 
+    // Surface point in view space: X,Y offset by uv * radius in the billboard
+    // plane (right/up), Z offset by +z_norm * radius (toward camera, i.e.,
+    // less negative in back-direction space).
+    let surface_view = in.view_pos + vec3<f32>(
+        in.uv.x * in.radius,
+        in.uv.y * in.radius,
+        z_norm * in.radius
+    );
+    
+    // Reconstruct world-space position from view-space coordinates.
+    let cam_right = camera.view_inv[0].xyz;
+    let cam_up    = camera.view_inv[1].xyz;
+    let cam_back  = camera.view_inv[2].xyz;
+    let surface_world = camera.cam_pos.xyz
+        + cam_right * surface_view.x
+        + cam_up    * surface_view.y
+        + cam_back  * surface_view.z;
+    
+    // Re-project to get correct clip-space depth.
+    let surface_clip = camera.view_proj * vec4<f32>(surface_world, 1.0);
+    return surface_clip.z / surface_clip.w;
 }

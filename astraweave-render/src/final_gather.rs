@@ -166,7 +166,8 @@ impl FinalGatherPass {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("final_gather_shader"),
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("../shaders/lumen/final_gather.wgsl").into(),
+                concat!(include_str!("../shaders/constants.wgsl"),
+                include_str!("../shaders/lumen/final_gather.wgsl")).into(),
             ),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

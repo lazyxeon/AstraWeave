@@ -174,8 +174,11 @@ fn domain_warped(p: vec3<f32>, seed: u32, octaves: u32, lacunarity: f32, persist
     return fbm(warped_p, seed, octaves, lacunarity, persistence);
 }
 
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
 // ─────────────────── Main compute entry ───────────────────
-@compute @workgroup_size(8, 8, 1)
+@compute @workgroup_size(WG_X, WG_Y, 1)
 fn generate_noise(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = vec2<u32>(params.resolution);
     if (gid.x >= dims.x || gid.y >= dims.y) {

@@ -278,8 +278,6 @@ pub struct FluidSystem {
     delta_pos_pipeline: wgpu::ComputePipeline,
     integrate_pipeline: wgpu::ComputePipeline,
     mix_dye_pipeline: wgpu::ComputePipeline,
-    emit_whitewater_pipeline: wgpu::ComputePipeline,
-    update_whitewater_pipeline: wgpu::ComputePipeline,
 
     params_buffer: wgpu::Buffer,
     pub particle_count: u32,
@@ -758,8 +756,6 @@ impl FluidSystem {
             delta_pos_pipeline,
             integrate_pipeline,
             mix_dye_pipeline,
-            emit_whitewater_pipeline,
-            update_whitewater_pipeline,
         ) = {
             let create_p = |label, entry_point| {
                 device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -779,8 +775,6 @@ impl FluidSystem {
                 create_p("Delta Pos", "compute_delta_pos"),
                 create_p("Integrate", "integrate"),
                 create_p("Mix Dye", "mix_dye"),
-                create_p("Emit Whitewater", "emit_whitewater"),
-                create_p("Update Whitewater", "update_whitewater"),
             )
         };
 
@@ -826,8 +820,6 @@ impl FluidSystem {
             density_error_staging_buffers,
             staging_mapped: [false; 2],
             mix_dye_pipeline,
-            emit_whitewater_pipeline,
-            update_whitewater_pipeline,
             particle_flags,
             active_count: particle_count,
             max_particles: particle_count,
@@ -1177,14 +1169,6 @@ impl FluidSystem {
             // Dye mixing
             cpass.set_pipeline(&self.mix_dye_pipeline);
             cpass.dispatch_workgroups(particle_workgroups, 1, 1);
-
-            // Whitewater emission
-            cpass.set_pipeline(&self.emit_whitewater_pipeline);
-            cpass.dispatch_workgroups(particle_workgroups, 1, 1);
-
-            // Whitewater update (max 65536 particles)
-            cpass.set_pipeline(&self.update_whitewater_pipeline);
-            cpass.dispatch_workgroups(1024, 1, 1); // 1024 * 64 = 65536
         }
         // 6. Copy error to staging for adaptive iterations (asynchronously)
         let staging_idx = self.frame_index % 2;

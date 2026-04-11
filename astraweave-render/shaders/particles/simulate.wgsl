@@ -103,7 +103,9 @@ fn sample_size_curve(t: f32) -> f32 {
     }
 }
 
-@compute @workgroup_size(64)
+override WG_SIZE: u32 = 64u;
+
+@compute @workgroup_size(WG_SIZE)
 fn simulate_particles(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx = gid.x;
     if (idx >= params.max_particles) {

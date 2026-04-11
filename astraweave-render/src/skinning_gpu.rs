@@ -54,7 +54,7 @@ impl JointPaletteManager {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let raw_size = std::mem::size_of::<JointPalette>() as u64;
         let alignment = device.limits().min_storage_buffer_offset_alignment as u64;
-        let slot_stride = (raw_size + alignment - 1) / alignment * alignment;
+        let slot_stride = raw_size.div_ceil(alignment) * alignment;
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("joint_palette_pool_layout"),

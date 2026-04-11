@@ -50,7 +50,7 @@ fn phase_hg(cos_theta: f32, g: f32) -> f32 {
     let g2 = g * g;
     let denom = 1.0 + g2 - 2.0 * g * cos_theta;
     // (1 - g^2) / (4π * (1 + g^2 - 2g·cosθ)^1.5)
-    return (1.0 - g2) / (4.0 * 3.14159265 * pow(denom, 1.5));
+    return (1.0 - g2) / (4.0 * PI * pow(denom, 1.5));
 }
 
 // ---- Froxel → world position (same exponential distribution as density pass) ----
@@ -107,7 +107,11 @@ fn temporal_offset(frame: u32) -> vec3<f32> {
     ) * 0.5 - 0.25; // [-0.25, 0.25] jitter
 }
 
-@compute @workgroup_size(4, 4, 4)
+override WG_X: u32 = 4u;
+override WG_Y: u32 = 4u;
+override WG_Z: u32 = 4u;
+
+@compute @workgroup_size(WG_X, WG_Y, WG_Z)
 fn scatter_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dims = params.froxel_dims;
     if (gid.x >= dims.x || gid.y >= dims.y || gid.z >= dims.z) {

@@ -14,7 +14,12 @@ pub enum WeatherKind {
 
 pub struct WeatherFx {
     kind: WeatherKind,
-    particles: Vec<Particle>,
+    /// Pre-allocated particle pool. Active particles are stored contiguously
+    /// in `pool[0..active_count]`. Dead particles are swap-removed to avoid
+    /// Vec shifts/reallocations during gameplay.
+    pool: Vec<Particle>,
+    /// Number of currently active particles in the pool.
+    active_count: usize,
     buf: wgpu::Buffer,
     max: usize,
     /// Biome-driven tint multiplied into particle base colours.
@@ -46,7 +51,8 @@ impl WeatherFx {
         });
         Self {
             kind: WeatherKind::None,
-            particles: vec![],
+            pool: Vec::with_capacity(max),
+            active_count: 0,
             buf,
             max,
             biome_tint: Vec3::ONE, // neutral tint
@@ -111,9 +117,12 @@ impl WeatherFx {
             mapped_at_creation: false,
         });
         // Trim existing particles if they exceed the new cap
-        if self.particles.len() > new_max {
-            self.particles.truncate(new_max);
+        if self.active_count > new_max {
+            self.active_count = new_max;
+            self.pool.truncate(new_max);
         }
+        // Reserve capacity for the new max
+        self.pool.reserve(new_max.saturating_sub(self.pool.len()));
     }
 
     /// Get current wind strength.
@@ -128,19 +137,20 @@ impl WeatherFx {
 
     /// Number of active particles for instanced drawing.
     pub fn particle_count(&self) -> usize {
-        self.particles.len()
+        self.active_count
     }
 
     pub fn update(&mut self, queue: &wgpu::Queue, dt: f32, camera_pos: Vec3) {
         // Early-out: skip all work (including GPU upload) when weather is off and no particles remain
-        if self.kind == WeatherKind::None && self.particles.is_empty() {
+        if self.kind == WeatherKind::None && self.active_count == 0 {
             return;
         }
 
         let effective_max = ((self.max as f32) * self.density).max(1.0) as usize;
         match self.kind {
             WeatherKind::None => {
-                self.particles.clear();
+                self.pool.clear();
+                self.active_count = 0;
             }
             WeatherKind::Rain => self.tick_rain(dt, effective_max, camera_pos),
             WeatherKind::Snow => self.tick_snow(dt, effective_max, camera_pos),
@@ -150,7 +160,7 @@ impl WeatherFx {
         // Apply biome tint and upload
         let tint = self.biome_tint;
         let raws: Vec<InstanceRaw> = self
-            .particles
+            .pool[..self.active_count]
             .iter()
             .map(|p| {
                 let m = Mat4::from_scale_rotation_translation(p.scale, glam::Quat::IDENTITY, p.pos);
@@ -180,12 +190,12 @@ impl WeatherFx {
     fn tick_rain(&mut self, dt: f32, max: usize, cam: Vec3) {
         let mut rng = rand::rng();
         let wind_offset = self.wind_dir * (self.wind_strength * 5.0);
-        while self.particles.len() < max {
+        while self.active_count < max {
             // Per-particle wind variation: ±30% jitter on wind + slight random drift
             let jitter_x = rng.random_range(-0.3..0.3);
             let jitter_z = rng.random_range(-0.3..0.3);
             let speed_var = rng.random_range(0.7..1.3);
-            self.particles.push(Particle {
+            let p = Particle {
                 pos: vec3(
                     cam.x + rng.random_range(-30.0..30.0),
                     cam.y + rng.random_range(8.0..25.0),
@@ -201,24 +211,38 @@ impl WeatherFx {
                 color: [0.85, 0.9, 1.0, 0.6],
                 // Thin elongated streaks (stretched in Y for falling rain look)
                 scale: vec3(0.015, 0.6, 0.015),
-            });
+            };
+            if self.active_count < self.pool.len() {
+                self.pool[self.active_count] = p;
+            } else {
+                self.pool.push(p);
+            }
+            self.active_count += 1;
         }
-        self.particles.retain_mut(|p| {
+        // Swap-remove dead particles (O(1) per removal, no shifts)
+        let mut i = 0;
+        while i < self.active_count {
+            let p = &mut self.pool[i];
             p.life -= dt;
             // Subtle per-frame turbulence: small random drift
             p.vel.x += rng.random_range(-0.5..0.5) * dt;
             p.vel.z += rng.random_range(-0.5..0.5) * dt;
             p.pos += p.vel * dt;
             let dist_sq = (p.pos - cam).length_squared();
-            p.life > 0.0 && dist_sq < 3600.0 // 60m radius
-        });
+            if p.life <= 0.0 || dist_sq >= 3600.0 {
+                self.active_count -= 1;
+                self.pool.swap(i, self.active_count);
+            } else {
+                i += 1;
+            }
+        }
     }
 
     fn tick_snow(&mut self, dt: f32, max: usize, cam: Vec3) {
         let mut rng = rand::rng();
         let wind_offset = self.wind_dir * (self.wind_strength * 2.0);
-        while self.particles.len() < max {
-            self.particles.push(Particle {
+        while self.active_count < max {
+            let p = Particle {
                 pos: vec3(
                     cam.x + rng.random_range(-35.0..35.0),
                     cam.y + rng.random_range(10.0..25.0),
@@ -232,23 +256,36 @@ impl WeatherFx {
                 life: rng.random_range(3.0..6.0),
                 color: [1.0, 1.0, 1.0, 0.85],
                 scale: vec3(0.08, 0.08, 0.08),
-            });
+            };
+            if self.active_count < self.pool.len() {
+                self.pool[self.active_count] = p;
+            } else {
+                self.pool.push(p);
+            }
+            self.active_count += 1;
         }
-        self.particles.retain_mut(|p| {
+        let mut i = 0;
+        while i < self.active_count {
+            let p = &mut self.pool[i];
             p.life -= dt;
             let sway = (p.life * 2.0).sin() * 0.3;
             p.vel.x += sway * dt;
             p.pos += p.vel * dt;
             let dist_sq = (p.pos - cam).length_squared();
-            p.life > 0.0 && dist_sq < 4900.0 // 70m radius
-        });
+            if p.life <= 0.0 || dist_sq >= 4900.0 {
+                self.active_count -= 1;
+                self.pool.swap(i, self.active_count);
+            } else {
+                i += 1;
+            }
+        }
     }
 
     fn tick_sandstorm(&mut self, dt: f32, max: usize, cam: Vec3) {
         let mut rng = rand::rng();
         let wind_speed = self.wind_strength * 15.0;
-        while self.particles.len() < max {
-            self.particles.push(Particle {
+        while self.active_count < max {
+            let p = Particle {
                 pos: vec3(
                     cam.x + rng.random_range(-50.0..50.0),
                     cam.y + rng.random_range(-2.0..8.0),
@@ -262,22 +299,35 @@ impl WeatherFx {
                 life: rng.random_range(0.8..2.5),
                 color: [0.85, 0.75, 0.55, 0.7],
                 scale: vec3(0.03, 0.03, 0.15),
-            });
+            };
+            if self.active_count < self.pool.len() {
+                self.pool[self.active_count] = p;
+            } else {
+                self.pool.push(p);
+            }
+            self.active_count += 1;
         }
-        self.particles.retain_mut(|p| {
+        let mut i = 0;
+        while i < self.active_count {
+            let p = &mut self.pool[i];
             p.life -= dt;
             p.vel.y += (rng.random_range(-1.0..1.0) as f32) * dt * 5.0;
             p.pos += p.vel * dt;
             let dist_sq = (p.pos - cam).length_squared();
-            p.life > 0.0 && dist_sq < 6400.0 // 80m radius
-        });
+            if p.life <= 0.0 || dist_sq >= 6400.0 {
+                self.active_count -= 1;
+                self.pool.swap(i, self.active_count);
+            } else {
+                i += 1;
+            }
+        }
     }
 
     fn tick_wind(&mut self, dt: f32, max: usize, cam: Vec3) {
         let mut rng = rand::rng();
         let wind_vel = self.wind_dir * (self.wind_strength * 8.0);
-        while self.particles.len() < max {
-            self.particles.push(Particle {
+        while self.active_count < max {
+            let p = Particle {
                 pos: vec3(
                     cam.x + rng.random_range(-30.0..30.0),
                     cam.y + rng.random_range(-1.0..4.0),
@@ -287,20 +337,33 @@ impl WeatherFx {
                 life: rng.random_range(1.0..3.0),
                 color: [1.0, 1.0, 1.0, 0.3],
                 scale: vec3(0.05, 0.05, 0.8),
-            });
+            };
+            if self.active_count < self.pool.len() {
+                self.pool[self.active_count] = p;
+            } else {
+                self.pool.push(p);
+            }
+            self.active_count += 1;
         }
-        self.particles.retain_mut(|p| {
+        let mut i = 0;
+        while i < self.active_count {
+            let p = &mut self.pool[i];
             p.life -= dt;
             p.pos += p.vel * dt;
-            p.life > 0.0
-        });
+            if p.life <= 0.0 {
+                self.active_count -= 1;
+                self.pool.swap(i, self.active_count);
+            } else {
+                i += 1;
+            }
+        }
     }
 
     pub fn buffer(&self) -> &wgpu::Buffer {
         &self.buf
     }
     pub fn count(&self) -> u32 {
-        self.particles.len() as u32
+        self.active_count as u32
     }
 }
 

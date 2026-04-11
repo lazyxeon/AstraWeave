@@ -43,7 +43,6 @@ path = "src/main.rs"
 [features]
 visual = [
     "astraweave-render/gltf-assets",
-    "astraweave-render/bloom",
     "astraweave-render/textures",
     "dep:astraweave-asset",
     "dep:egui",

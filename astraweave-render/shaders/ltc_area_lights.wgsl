@@ -165,7 +165,7 @@ fn ltc_integrate_polygon(poly: ptr<function, array<vec3<f32>, 5>>, count: u32) -
     }
 
     // The result is the solid angle subtended, divided by 2π
-    return max(irradiance, 0.0) / 6.283185307;
+    return max(irradiance, 0.0) / TWO_PI;
 }
 
 // ─── LTC Area Light Evaluation ───

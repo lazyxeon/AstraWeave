@@ -26,7 +26,7 @@ struct SsgiParams {
 @group(0) @binding(4) var<uniform> params: SsgiParams;
 @group(0) @binding(5) var gi_output: texture_storage_2d<rgba16float, write>;
 
-const PI: f32 = 3.14159265;
+// PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 
 // Interleaved Gradient Noise
 fn ign(pixel: vec2<f32>, frame: f32) -> f32 {
@@ -34,13 +34,20 @@ fn ign(pixel: vec2<f32>, frame: f32) -> f32 {
     return fract(magic.z * fract(dot(pixel + frame * vec2<f32>(5.0, 3.0), magic.xy)));
 }
 
-// Hash function for random direction generation
+// PCG hash — better statistical properties than fract(sin()) for ray direction generation
+fn pcg(v: u32) -> u32 {
+    var state = v * 747796405u + 2891336453u;
+    let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
 fn hash2(p: vec2<f32>) -> vec2<f32> {
-    let n = vec2<f32>(
-        dot(p, vec2<f32>(127.1, 311.7)),
-        dot(p, vec2<f32>(269.5, 183.3))
+    let x = bitcast<u32>(p.x);
+    let y = bitcast<u32>(p.y);
+    return vec2<f32>(
+        f32(pcg(x ^ pcg(y))) / 4294967295.0,
+        f32(pcg(y ^ pcg(x))) / 4294967295.0
     );
-    return fract(sin(n) * 43758.5453);
 }
 
 // Generate cosine-weighted hemisphere direction in tangent space
@@ -102,7 +109,10 @@ fn ray_march(
     return vec4<f32>(0.0);
 }
 
-@compute @workgroup_size(8, 8, 1)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y, 1)
 fn ssgi_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let pixel = vec2<i32>(gid.xy);
     let dims = vec2<i32>(params.resolution);

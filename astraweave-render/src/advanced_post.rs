@@ -4,26 +4,8 @@
 use anyhow::Result;
 use wgpu;
 
-/// Temporal Anti-Aliasing (TAA) configuration
-#[derive(Debug, Clone, Copy)]
-pub struct TaaConfig {
-    /// Enable TAA
-    pub enabled: bool,
-    /// History blend factor (0 = no history, 1 = full history)
-    pub blend_factor: f32,
-    /// Jitter scale
-    pub jitter_scale: f32,
-}
-
-impl Default for TaaConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            blend_factor: 0.95,
-            jitter_scale: 1.0,
-        }
-    }
-}
+// Re-use the production TaaConfig from the taa module (single source of truth).
+use crate::taa::TaaConfig;
 
 /// Motion blur configuration
 #[derive(Debug, Clone, Copy)]
@@ -123,9 +105,13 @@ pub struct AdvancedPostFx {
     #[allow(dead_code)]
     motion_blur_config: MotionBlurConfig,
 
-    // DOF resources (reserved for future full implementation)
+    // DOF resources
     #[allow(dead_code)]
     dof_pipeline: wgpu::RenderPipeline,
+    #[allow(dead_code)]
+    dof_bgl: wgpu::BindGroupLayout,
+    #[allow(dead_code)]
+    dof_params_buf: wgpu::Buffer,
     #[allow(dead_code)]
     dof_bind_group: Option<wgpu::BindGroup>,
     #[allow(dead_code)]
@@ -295,15 +281,74 @@ impl AdvancedPostFx {
             cache: None,
         });
 
-        // Create DOF pipeline
+        // Create DOF pipeline (with depth texture and params uniform)
+        let dof_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("DoF BG Layout"),
+            entries: &[
+                // binding 0: color texture
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // binding 1: depth texture
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // binding 2: sampler
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                // binding 3: DoF params uniform
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let dof_params_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("DoF Params"),
+            size: 32, // DofParams: 8 floats = 32 bytes
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let dof_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("DOF Shader"),
             source: wgpu::ShaderSource::Wgsl(DOF_SHADER.into()),
         });
 
+        let dof_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("DoF Pipeline Layout"),
+            bind_group_layouts: &[&dof_bgl],
+            push_constant_ranges: &[],
+        });
+
         let dof_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("DOF Pipeline"),
-            layout: Some(&taa_pipeline_layout),
+            layout: Some(&dof_pl),
             vertex: wgpu::VertexState {
                 module: &dof_shader,
                 entry_point: Some("vs_main"),
@@ -395,6 +440,8 @@ impl AdvancedPostFx {
             motion_blur_bind_group: None,
             motion_blur_config: MotionBlurConfig::default(),
             dof_pipeline,
+            dof_bgl,
+            dof_params_buf,
             dof_bind_group: None,
             dof_config: DofConfig::default(),
             color_grading_pipeline,
@@ -535,7 +582,19 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 
 const DOF_SHADER: &str = r#"
 @group(0) @binding(0) var color_tex: texture_2d<f32>;
-@group(0) @binding(1) var tex_sampler: sampler;
+@group(0) @binding(1) var depth_tex: texture_2d<f32>;
+@group(0) @binding(2) var tex_sampler: sampler;
+
+struct DofParams {
+    focus_distance: f32,
+    focus_range: f32,
+    bokeh_size: f32,
+    _pad0: f32,
+    near: f32,
+    far: f32,
+    inv_resolution: vec2<f32>,
+}
+@group(0) @binding(3) var<uniform> dof: DofParams;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -552,11 +611,49 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return output;
 }
 
+// Linearize a reverse-Z depth value to view-space distance.
+fn linearize_depth(d: f32) -> f32 {
+    return dof.near * dof.far / (dof.far - d * (dof.far - dof.near));
+}
+
+// Compute circle of confusion (CoC) radius from linear depth.
+fn compute_coc(linear_depth: f32) -> f32 {
+    let diff = abs(linear_depth - dof.focus_distance);
+    let coc = clamp(diff / dof.focus_range, 0.0, 1.0) * dof.bokeh_size;
+    return coc;
+}
+
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Simple Gaussian blur as placeholder
-    let color = textureSample(color_tex, tex_sampler, input.uv);
-    return color;
+    let raw_depth = textureSample(depth_tex, tex_sampler, input.uv).r;
+    let linear_depth = linearize_depth(raw_depth);
+    let coc = compute_coc(linear_depth);
+
+    // Early-out: fragments in focus need no blur.
+    if (coc < 0.5) {
+        return textureSample(color_tex, tex_sampler, input.uv);
+    }
+
+    // 9-tap Gaussian disk weighted by CoC.
+    let offsets = array<vec2<f32>, 8>(
+        vec2<f32>(-1.0,  0.0), vec2<f32>( 1.0,  0.0),
+        vec2<f32>( 0.0, -1.0), vec2<f32>( 0.0,  1.0),
+        vec2<f32>(-0.707, -0.707), vec2<f32>( 0.707, -0.707),
+        vec2<f32>(-0.707,  0.707), vec2<f32>( 0.707,  0.707),
+    );
+
+    var accum = textureSample(color_tex, tex_sampler, input.uv);
+    var total_weight = 1.0;
+
+    for (var i = 0u; i < 8u; i = i + 1u) {
+        let sample_uv = input.uv + offsets[i] * coc * dof.inv_resolution;
+        let s = textureSample(color_tex, tex_sampler, sample_uv);
+        let w = 0.75;
+        accum += s * w;
+        total_weight += w;
+    }
+
+    return accum / total_weight;
 }
 "#;
 

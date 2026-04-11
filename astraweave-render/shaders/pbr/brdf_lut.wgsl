@@ -17,7 +17,7 @@ struct BrdfLutParams {
 @group(0) @binding(0) var<uniform>  params:   BrdfLutParams;
 @group(0) @binding(1) var           t_output: texture_storage_2d<rgba16float, write>;
 
-const PI: f32 = 3.14159265358979;
+// PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 
 // Hammersley quasi-random sequence
 fn radical_inverse_vdc(bits_in: u32) -> f32 {
@@ -57,7 +57,10 @@ fn geometry_smith(n_dot_v: f32, n_dot_l: f32, roughness: f32) -> f32 {
     return geometry_schlick_ggx(n_dot_v, roughness) * geometry_schlick_ggx(n_dot_l, roughness);
 }
 
-@compute @workgroup_size(8, 8)
+override WG_X: u32 = 8u;
+override WG_Y: u32 = 8u;
+
+@compute @workgroup_size(WG_X, WG_Y)
 fn brdf_lut_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (gid.x >= params.lut_size || gid.y >= params.lut_size) {
         return;

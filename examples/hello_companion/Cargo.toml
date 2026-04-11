@@ -20,7 +20,7 @@ reqwest = { workspace = true, optional = true }
 chrono = { version = "0.4", features = ["serde"], optional = true }
 
 # Visual demo dependencies (enable with --features visual)
-astraweave-render = { path = "../../astraweave-render", features = ["gltf-assets", "assets", "bloom", "textures"], optional = true }
+astraweave-render = { path = "../../astraweave-render", features = ["gltf-assets", "assets", "textures"], optional = true }
 astraweave-asset = { path = "../../astraweave-asset", features = ["gltf"], optional = true }
 astraweave-terrain = { path = "../../astraweave-terrain", optional = true }
 astraweave-ui = { path = "../../astraweave-ui", optional = true }
