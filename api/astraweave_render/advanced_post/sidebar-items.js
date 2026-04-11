@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["AdvancedPostFx","ColorGradingConfig","DofConfig","MotionBlurConfig","TaaConfig"]};
+window.SIDEBAR_ITEMS = {"struct":["AdvancedPostFx","ColorGradingConfig","DofConfig","MotionBlurConfig"]};

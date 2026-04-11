@@ -31,7 +31,7 @@
 <a href=#31 id=31 data-nosnippet>31</a></span><span class="kw">use </span>bytemuck::{Pod, Zeroable};
 <a href=#32 id=32 data-nosnippet>32</a>
 <a href=#33 id=33 data-nosnippet>33</a><span class="doccomment">/// WGSL source for the LTC area lights shader module.
-<a href=#34 id=34 data-nosnippet>34</a></span><span class="kw">pub const </span>LTC_AREA_LIGHTS_WGSL: <span class="kw-2">&amp;</span>str = <span class="macro">include_str!</span>(<span class="string">"../shaders/ltc_area_lights.wgsl"</span>);
+<a href=#34 id=34 data-nosnippet>34</a></span><span class="kw">pub const </span>LTC_AREA_LIGHTS_WGSL: <span class="kw-2">&amp;</span>str = <span class="macro">concat!</span>(<span class="macro">include_str!</span>(<span class="string">"../shaders/constants.wgsl"</span>), <span class="macro">include_str!</span>(<span class="string">"../shaders/ltc_area_lights.wgsl"</span>));
 <a href=#35 id=35 data-nosnippet>35</a>
 <a href=#36 id=36 data-nosnippet>36</a><span class="doccomment">/// LTC LUT resolution (64×64 is the standard from Heitz 2016).
 <a href=#37 id=37 data-nosnippet>37</a></span><span class="kw">pub const </span>LTC_LUT_SIZE: u32 = <span class="number">64</span>;

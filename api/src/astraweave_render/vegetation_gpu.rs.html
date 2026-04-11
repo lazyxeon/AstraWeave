@@ -98,7 +98,7 @@
 <a href=#98 id=98 data-nosnippet>98</a></span><span class="kw">const </span>MAX_INSTANCES_PER_CHUNK: u32 = <span class="number">65_536</span>;
 <a href=#99 id=99 data-nosnippet>99</a>
 <a href=#100 id=100 data-nosnippet>100</a><span class="doccomment">/// Scatter compute shader source (loaded at compile time).
-<a href=#101 id=101 data-nosnippet>101</a></span><span class="kw">const </span>SCATTER_SHADER_SRC: <span class="kw-2">&amp;</span>str = <span class="macro">include_str!</span>(<span class="string">"../shaders/vegetation_scatter.wgsl"</span>);
+<a href=#101 id=101 data-nosnippet>101</a></span><span class="kw">const </span>SCATTER_SHADER_SRC: <span class="kw-2">&amp;</span>str = <span class="macro">concat!</span>(<span class="macro">include_str!</span>(<span class="string">"../shaders/constants.wgsl"</span>), <span class="macro">include_str!</span>(<span class="string">"../shaders/vegetation_scatter.wgsl"</span>));
 <a href=#102 id=102 data-nosnippet>102</a>
 <a href=#103 id=103 data-nosnippet>103</a><span class="doccomment">/// Manages the GPU vegetation scatter and cull compute pipelines.
 <a href=#104 id=104 data-nosnippet>104</a></span><span class="kw">pub struct </span>VegetationGpuPipeline {

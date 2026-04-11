@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["SsgiConfig","SsgiDenoiseParams","SsgiParams","SsgiPass"]};
+window.SIDEBAR_ITEMS = {"struct":["SsgiConfig","SsgiDenoiseParams","SsgiParams","SsgiPass","SsgiUpsampleParams"]};

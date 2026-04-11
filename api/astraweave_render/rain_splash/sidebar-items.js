@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["RAIN_SPLASH_SHADER"],"struct":["RainSplashConfig","SplashParams"]};

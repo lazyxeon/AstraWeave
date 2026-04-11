@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PUDDLE_ACCUMULATION_WGSL"],"struct":["PuddleConfig","PuddleMaterial","PuddleParamsGpu"]};

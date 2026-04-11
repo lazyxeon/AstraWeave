@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_ENTITIES","SNOW_FOOTPRINT_SHADER"],"struct":["EntityFoot","FootprintParams","SnowFootprintConfig"]};
