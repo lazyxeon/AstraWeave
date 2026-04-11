@@ -289,15 +289,18 @@
 <a href=#289 id=289 data-nosnippet>289</a>
 <a href=#290 id=290 data-nosnippet>290</a>    <span class="attr">#[test]
 <a href=#291 id=291 data-nosnippet>291</a>    </span><span class="kw">fn </span>shadow_sampling_shader_parses() {
-<a href=#292 id=292 data-nosnippet>292</a>        <span class="kw">let </span>src = <span class="macro">concat!</span>(<span class="macro">include_str!</span>(<span class="string">"../shaders/constants.wgsl"</span>), <span class="macro">include_str!</span>(<span class="string">"../shaders/shadow_sampling.wgsl"</span>));
-<a href=#293 id=293 data-nosnippet>293</a>        <span class="comment">// The shader contains only functions (no entry points), so naga will parse
-<a href=#294 id=294 data-nosnippet>294</a>        // but won't find entry points. We just validate it parses without errors.
-<a href=#295 id=295 data-nosnippet>295</a>        // Use naga's frontend directly to check syntax.
-<a href=#296 id=296 data-nosnippet>296</a>        </span><span class="kw">let </span>result = naga::front::wgsl::parse_str(src);
-<a href=#297 id=297 data-nosnippet>297</a>        <span class="macro">assert!</span>(
-<a href=#298 id=298 data-nosnippet>298</a>            result.is_ok(),
-<a href=#299 id=299 data-nosnippet>299</a>            <span class="string">"shadow_sampling.wgsl should parse: {:?}"</span>,
-<a href=#300 id=300 data-nosnippet>300</a>            result.err()
-<a href=#301 id=301 data-nosnippet>301</a>        );
-<a href=#302 id=302 data-nosnippet>302</a>    }
-<a href=#303 id=303 data-nosnippet>303</a>}</code></pre></div></section></main></body></html>
+<a href=#292 id=292 data-nosnippet>292</a>        <span class="kw">let </span>src = <span class="macro">concat!</span>(
+<a href=#293 id=293 data-nosnippet>293</a>            <span class="macro">include_str!</span>(<span class="string">"../shaders/constants.wgsl"</span>),
+<a href=#294 id=294 data-nosnippet>294</a>            <span class="macro">include_str!</span>(<span class="string">"../shaders/shadow_sampling.wgsl"</span>)
+<a href=#295 id=295 data-nosnippet>295</a>        );
+<a href=#296 id=296 data-nosnippet>296</a>        <span class="comment">// The shader contains only functions (no entry points), so naga will parse
+<a href=#297 id=297 data-nosnippet>297</a>        // but won't find entry points. We just validate it parses without errors.
+<a href=#298 id=298 data-nosnippet>298</a>        // Use naga's frontend directly to check syntax.
+<a href=#299 id=299 data-nosnippet>299</a>        </span><span class="kw">let </span>result = naga::front::wgsl::parse_str(src);
+<a href=#300 id=300 data-nosnippet>300</a>        <span class="macro">assert!</span>(
+<a href=#301 id=301 data-nosnippet>301</a>            result.is_ok(),
+<a href=#302 id=302 data-nosnippet>302</a>            <span class="string">"shadow_sampling.wgsl should parse: {:?}"</span>,
+<a href=#303 id=303 data-nosnippet>303</a>            result.err()
+<a href=#304 id=304 data-nosnippet>304</a>        );
+<a href=#305 id=305 data-nosnippet>305</a>    }
+<a href=#306 id=306 data-nosnippet>306</a>}</code></pre></div></section></main></body></html>

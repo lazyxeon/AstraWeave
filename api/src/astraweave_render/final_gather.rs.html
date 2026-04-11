@@ -166,330 +166,333 @@
 <a href=#166 id=166 data-nosnippet>166</a>        <span class="kw">let </span>shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
 <a href=#167 id=167 data-nosnippet>167</a>            label: <span class="prelude-val">Some</span>(<span class="string">"final_gather_shader"</span>),
 <a href=#168 id=168 data-nosnippet>168</a>            source: wgpu::ShaderSource::Wgsl(
-<a href=#169 id=169 data-nosnippet>169</a>                <span class="macro">concat!</span>(<span class="macro">include_str!</span>(<span class="string">"../shaders/constants.wgsl"</span>),
-<a href=#170 id=170 data-nosnippet>170</a>                <span class="macro">include_str!</span>(<span class="string">"../shaders/lumen/final_gather.wgsl"</span>)).into(),
-<a href=#171 id=171 data-nosnippet>171</a>            ),
-<a href=#172 id=172 data-nosnippet>172</a>        });
-<a href=#173 id=173 data-nosnippet>173</a>        <span class="kw">let </span>pl = device.create_pipeline_layout(<span class="kw-2">&amp;</span>wgpu::PipelineLayoutDescriptor {
-<a href=#174 id=174 data-nosnippet>174</a>            label: <span class="prelude-val">Some</span>(<span class="string">"final_gather_pl"</span>),
-<a href=#175 id=175 data-nosnippet>175</a>            bind_group_layouts: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>bgl],
-<a href=#176 id=176 data-nosnippet>176</a>            push_constant_ranges: <span class="kw-2">&amp;</span>[],
-<a href=#177 id=177 data-nosnippet>177</a>        });
-<a href=#178 id=178 data-nosnippet>178</a>        <span class="kw">let </span>pipeline = device.create_compute_pipeline(<span class="kw-2">&amp;</span>wgpu::ComputePipelineDescriptor {
-<a href=#179 id=179 data-nosnippet>179</a>            label: <span class="prelude-val">Some</span>(<span class="string">"final_gather_pipeline"</span>),
-<a href=#180 id=180 data-nosnippet>180</a>            layout: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>pl),
-<a href=#181 id=181 data-nosnippet>181</a>            module: <span class="kw-2">&amp;</span>shader,
-<a href=#182 id=182 data-nosnippet>182</a>            entry_point: <span class="prelude-val">Some</span>(<span class="string">"final_gather_main"</span>),
-<a href=#183 id=183 data-nosnippet>183</a>            compilation_options: Default::default(),
-<a href=#184 id=184 data-nosnippet>184</a>            cache: <span class="prelude-val">None</span>,
-<a href=#185 id=185 data-nosnippet>185</a>        });
-<a href=#186 id=186 data-nosnippet>186</a>
-<a href=#187 id=187 data-nosnippet>187</a>        <span class="kw">let </span>sampler = device.create_sampler(<span class="kw-2">&amp;</span>wgpu::SamplerDescriptor {
-<a href=#188 id=188 data-nosnippet>188</a>            label: <span class="prelude-val">Some</span>(<span class="string">"final_gather_sampler"</span>),
-<a href=#189 id=189 data-nosnippet>189</a>            mag_filter: wgpu::FilterMode::Linear,
-<a href=#190 id=190 data-nosnippet>190</a>            min_filter: wgpu::FilterMode::Linear,
-<a href=#191 id=191 data-nosnippet>191</a>            ..Default::default()
-<a href=#192 id=192 data-nosnippet>192</a>        });
-<a href=#193 id=193 data-nosnippet>193</a>
-<a href=#194 id=194 data-nosnippet>194</a>        <span class="self">Self </span>{
-<a href=#195 id=195 data-nosnippet>195</a>            config,
-<a href=#196 id=196 data-nosnippet>196</a>            pipeline,
-<a href=#197 id=197 data-nosnippet>197</a>            bgl,
-<a href=#198 id=198 data-nosnippet>198</a>            params_buf,
-<a href=#199 id=199 data-nosnippet>199</a>            output_texture,
-<a href=#200 id=200 data-nosnippet>200</a>            output_view,
-<a href=#201 id=201 data-nosnippet>201</a>            history_texture,
-<a href=#202 id=202 data-nosnippet>202</a>            history_view,
-<a href=#203 id=203 data-nosnippet>203</a>            frame_index: <span class="number">0</span>,
-<a href=#204 id=204 data-nosnippet>204</a>            prev_view_proj: Mat4::IDENTITY,
-<a href=#205 id=205 data-nosnippet>205</a>            width,
-<a href=#206 id=206 data-nosnippet>206</a>            height,
-<a href=#207 id=207 data-nosnippet>207</a>            sampler,
-<a href=#208 id=208 data-nosnippet>208</a>            cached_bg: <span class="kw">crate</span>::bind_group_cache::CachedBindGroup::new(),
-<a href=#209 id=209 data-nosnippet>209</a>        }
-<a href=#210 id=210 data-nosnippet>210</a>    }
-<a href=#211 id=211 data-nosnippet>211</a>
-<a href=#212 id=212 data-nosnippet>212</a>    <span class="doccomment">/// Get the final indirect lighting output view.
-<a href=#213 id=213 data-nosnippet>213</a>    </span><span class="kw">pub fn </span>output_view(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>wgpu::TextureView {
-<a href=#214 id=214 data-nosnippet>214</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.output_view
-<a href=#215 id=215 data-nosnippet>215</a>    }
-<a href=#216 id=216 data-nosnippet>216</a>
-<a href=#217 id=217 data-nosnippet>217</a>    <span class="kw">pub fn </span>config(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>FinalGatherConfig {
-<a href=#218 id=218 data-nosnippet>218</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.config
-<a href=#219 id=219 data-nosnippet>219</a>    }
-<a href=#220 id=220 data-nosnippet>220</a>
-<a href=#221 id=221 data-nosnippet>221</a>    <span class="kw">pub fn </span>set_config(<span class="kw-2">&amp;mut </span><span class="self">self</span>, config: FinalGatherConfig) {
-<a href=#222 id=222 data-nosnippet>222</a>        <span class="self">self</span>.config = config;
-<a href=#223 id=223 data-nosnippet>223</a>    }
-<a href=#224 id=224 data-nosnippet>224</a>
-<a href=#225 id=225 data-nosnippet>225</a>    <span class="kw">pub fn </span>dimensions(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; (u32, u32) {
-<a href=#226 id=226 data-nosnippet>226</a>        (<span class="self">self</span>.width, <span class="self">self</span>.height)
-<a href=#227 id=227 data-nosnippet>227</a>    }
-<a href=#228 id=228 data-nosnippet>228</a>
-<a href=#229 id=229 data-nosnippet>229</a>    <span class="doccomment">/// Update parameters for this frame.
-<a href=#230 id=230 data-nosnippet>230</a>    </span><span class="attr">#[allow(clippy::too_many_arguments)]
-<a href=#231 id=231 data-nosnippet>231</a>    </span><span class="kw">pub fn </span>update_params(
-<a href=#232 id=232 data-nosnippet>232</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-<a href=#233 id=233 data-nosnippet>233</a>        queue: <span class="kw-2">&amp;</span>wgpu::Queue,
-<a href=#234 id=234 data-nosnippet>234</a>        inv_view_proj: Mat4,
-<a href=#235 id=235 data-nosnippet>235</a>        grid_origin: [f32; <span class="number">3</span>],
-<a href=#236 id=236 data-nosnippet>236</a>        probe_spacing: f32,
-<a href=#237 id=237 data-nosnippet>237</a>        grid_dims: UVec3,
-<a href=#238 id=238 data-nosnippet>238</a>        near: f32,
-<a href=#239 id=239 data-nosnippet>239</a>        far: f32,
-<a href=#240 id=240 data-nosnippet>240</a>    ) {
-<a href=#241 id=241 data-nosnippet>241</a>        <span class="kw">let </span>params = FinalGatherParams {
-<a href=#242 id=242 data-nosnippet>242</a>            inv_view_proj: inv_view_proj.to_cols_array_2d(),
-<a href=#243 id=243 data-nosnippet>243</a>            prev_view_proj: <span class="self">self</span>.prev_view_proj.to_cols_array_2d(),
-<a href=#244 id=244 data-nosnippet>244</a>            resolution: [<span class="self">self</span>.width <span class="kw">as </span>f32, <span class="self">self</span>.height <span class="kw">as </span>f32],
-<a href=#245 id=245 data-nosnippet>245</a>            inv_resolution: [<span class="number">1.0 </span>/ <span class="self">self</span>.width <span class="kw">as </span>f32, <span class="number">1.0 </span>/ <span class="self">self</span>.height <span class="kw">as </span>f32],
-<a href=#246 id=246 data-nosnippet>246</a>            grid_origin,
-<a href=#247 id=247 data-nosnippet>247</a>            probe_spacing,
-<a href=#248 id=248 data-nosnippet>248</a>            grid_dims: grid_dims.to_array(),
-<a href=#249 id=249 data-nosnippet>249</a>            ssgi_weight: <span class="self">self</span>.config.ssgi_weight,
-<a href=#250 id=250 data-nosnippet>250</a>            probe_weight: <span class="self">self</span>.config.probe_weight,
-<a href=#251 id=251 data-nosnippet>251</a>            dfao_weight: <span class="self">self</span>.config.dfao_weight,
-<a href=#252 id=252 data-nosnippet>252</a>            temporal_blend: <span class="self">self</span>.config.temporal_blend,
-<a href=#253 id=253 data-nosnippet>253</a>            frame_index: <span class="self">self</span>.frame_index,
-<a href=#254 id=254 data-nosnippet>254</a>            near_plane: near,
-<a href=#255 id=255 data-nosnippet>255</a>            far_plane: far,
-<a href=#256 id=256 data-nosnippet>256</a>            _pad0: <span class="number">0.0</span>,
-<a href=#257 id=257 data-nosnippet>257</a>            _pad1: <span class="number">0.0</span>,
-<a href=#258 id=258 data-nosnippet>258</a>        };
-<a href=#259 id=259 data-nosnippet>259</a>        queue.write_buffer(<span class="kw-2">&amp;</span><span class="self">self</span>.params_buf, <span class="number">0</span>, bytemuck::bytes_of(<span class="kw-2">&amp;</span>params));
-<a href=#260 id=260 data-nosnippet>260</a>
-<a href=#261 id=261 data-nosnippet>261</a>        <span class="comment">// Store current VP for next frame's temporal reprojection
-<a href=#262 id=262 data-nosnippet>262</a>        // (caller should pass view_proj, not inv — fix up caller side)
-<a href=#263 id=263 data-nosnippet>263</a>        </span><span class="self">self</span>.prev_view_proj = inv_view_proj.inverse();
-<a href=#264 id=264 data-nosnippet>264</a>        <span class="self">self</span>.frame_index = <span class="self">self</span>.frame_index.wrapping_add(<span class="number">1</span>);
-<a href=#265 id=265 data-nosnippet>265</a>    }
-<a href=#266 id=266 data-nosnippet>266</a>
-<a href=#267 id=267 data-nosnippet>267</a>    <span class="doccomment">/// Dispatch the final gather compute pass.
-<a href=#268 id=268 data-nosnippet>268</a>    </span><span class="attr">#[allow(clippy::too_many_arguments)]
-<a href=#269 id=269 data-nosnippet>269</a>    </span><span class="kw">pub fn </span>execute(
-<a href=#270 id=270 data-nosnippet>270</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-<a href=#271 id=271 data-nosnippet>271</a>        device: <span class="kw-2">&amp;</span>wgpu::Device,
-<a href=#272 id=272 data-nosnippet>272</a>        encoder: <span class="kw-2">&amp;mut </span>wgpu::CommandEncoder,
-<a href=#273 id=273 data-nosnippet>273</a>        depth_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
-<a href=#274 id=274 data-nosnippet>274</a>        normal_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
-<a href=#275 id=275 data-nosnippet>275</a>        albedo_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
-<a href=#276 id=276 data-nosnippet>276</a>        ssgi_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
-<a href=#277 id=277 data-nosnippet>277</a>        dfao_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
-<a href=#278 id=278 data-nosnippet>278</a>        velocity_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
-<a href=#279 id=279 data-nosnippet>279</a>        probe_buffer: <span class="kw-2">&amp;</span>wgpu::Buffer,
-<a href=#280 id=280 data-nosnippet>280</a>        resource_gen: <span class="kw">crate</span>::bind_group_cache::Generation,
-<a href=#281 id=281 data-nosnippet>281</a>    ) {
-<a href=#282 id=282 data-nosnippet>282</a>        <span class="kw">if </span>!<span class="self">self</span>.config.enabled {
-<a href=#283 id=283 data-nosnippet>283</a>            <span class="kw">return</span>;
-<a href=#284 id=284 data-nosnippet>284</a>        }
-<a href=#285 id=285 data-nosnippet>285</a>
-<a href=#286 id=286 data-nosnippet>286</a>        <span class="kw">let </span>bg = <span class="self">self</span>.cached_bg.get_or_rebuild(resource_gen, || {
-<a href=#287 id=287 data-nosnippet>287</a>            device.create_bind_group(<span class="kw-2">&amp;</span>wgpu::BindGroupDescriptor {
-<a href=#288 id=288 data-nosnippet>288</a>                label: <span class="prelude-val">Some</span>(<span class="string">"final_gather_bg"</span>),
-<a href=#289 id=289 data-nosnippet>289</a>                layout: <span class="kw-2">&amp;</span><span class="self">self</span>.bgl,
-<a href=#290 id=290 data-nosnippet>290</a>                entries: <span class="kw-2">&amp;</span>[
-<a href=#291 id=291 data-nosnippet>291</a>                    wgpu::BindGroupEntry {
-<a href=#292 id=292 data-nosnippet>292</a>                        binding: <span class="number">0</span>,
-<a href=#293 id=293 data-nosnippet>293</a>                        resource: <span class="self">self</span>.params_buf.as_entire_binding(),
-<a href=#294 id=294 data-nosnippet>294</a>                    },
-<a href=#295 id=295 data-nosnippet>295</a>                    wgpu::BindGroupEntry {
-<a href=#296 id=296 data-nosnippet>296</a>                        binding: <span class="number">1</span>,
-<a href=#297 id=297 data-nosnippet>297</a>                        resource: wgpu::BindingResource::TextureView(depth_view),
-<a href=#298 id=298 data-nosnippet>298</a>                    },
-<a href=#299 id=299 data-nosnippet>299</a>                    wgpu::BindGroupEntry {
-<a href=#300 id=300 data-nosnippet>300</a>                        binding: <span class="number">2</span>,
-<a href=#301 id=301 data-nosnippet>301</a>                        resource: wgpu::BindingResource::TextureView(normal_view),
-<a href=#302 id=302 data-nosnippet>302</a>                    },
-<a href=#303 id=303 data-nosnippet>303</a>                    wgpu::BindGroupEntry {
-<a href=#304 id=304 data-nosnippet>304</a>                        binding: <span class="number">3</span>,
-<a href=#305 id=305 data-nosnippet>305</a>                        resource: wgpu::BindingResource::TextureView(albedo_view),
-<a href=#306 id=306 data-nosnippet>306</a>                    },
-<a href=#307 id=307 data-nosnippet>307</a>                    wgpu::BindGroupEntry {
-<a href=#308 id=308 data-nosnippet>308</a>                        binding: <span class="number">4</span>,
-<a href=#309 id=309 data-nosnippet>309</a>                        resource: wgpu::BindingResource::TextureView(ssgi_view),
-<a href=#310 id=310 data-nosnippet>310</a>                    },
-<a href=#311 id=311 data-nosnippet>311</a>                    wgpu::BindGroupEntry {
-<a href=#312 id=312 data-nosnippet>312</a>                        binding: <span class="number">5</span>,
-<a href=#313 id=313 data-nosnippet>313</a>                        resource: wgpu::BindingResource::TextureView(dfao_view),
-<a href=#314 id=314 data-nosnippet>314</a>                    },
-<a href=#315 id=315 data-nosnippet>315</a>                    wgpu::BindGroupEntry {
-<a href=#316 id=316 data-nosnippet>316</a>                        binding: <span class="number">6</span>,
-<a href=#317 id=317 data-nosnippet>317</a>                        resource: wgpu::BindingResource::TextureView(velocity_view),
-<a href=#318 id=318 data-nosnippet>318</a>                    },
-<a href=#319 id=319 data-nosnippet>319</a>                    wgpu::BindGroupEntry {
-<a href=#320 id=320 data-nosnippet>320</a>                        binding: <span class="number">7</span>,
-<a href=#321 id=321 data-nosnippet>321</a>                        resource: wgpu::BindingResource::TextureView(<span class="kw-2">&amp;</span><span class="self">self</span>.history_view),
-<a href=#322 id=322 data-nosnippet>322</a>                    },
-<a href=#323 id=323 data-nosnippet>323</a>                    wgpu::BindGroupEntry {
-<a href=#324 id=324 data-nosnippet>324</a>                        binding: <span class="number">8</span>,
-<a href=#325 id=325 data-nosnippet>325</a>                        resource: probe_buffer.as_entire_binding(),
-<a href=#326 id=326 data-nosnippet>326</a>                    },
-<a href=#327 id=327 data-nosnippet>327</a>                    wgpu::BindGroupEntry {
-<a href=#328 id=328 data-nosnippet>328</a>                        binding: <span class="number">9</span>,
-<a href=#329 id=329 data-nosnippet>329</a>                        resource: wgpu::BindingResource::Sampler(<span class="kw-2">&amp;</span><span class="self">self</span>.sampler),
-<a href=#330 id=330 data-nosnippet>330</a>                    },
-<a href=#331 id=331 data-nosnippet>331</a>                    wgpu::BindGroupEntry {
-<a href=#332 id=332 data-nosnippet>332</a>                        binding: <span class="number">10</span>,
-<a href=#333 id=333 data-nosnippet>333</a>                        resource: wgpu::BindingResource::TextureView(<span class="kw-2">&amp;</span><span class="self">self</span>.output_view),
-<a href=#334 id=334 data-nosnippet>334</a>                    },
-<a href=#335 id=335 data-nosnippet>335</a>                ],
-<a href=#336 id=336 data-nosnippet>336</a>            })
-<a href=#337 id=337 data-nosnippet>337</a>        });
-<a href=#338 id=338 data-nosnippet>338</a>
-<a href=#339 id=339 data-nosnippet>339</a>        <span class="kw">let </span>wg_x = <span class="self">self</span>.width.div_ceil(<span class="number">8</span>);
-<a href=#340 id=340 data-nosnippet>340</a>        <span class="kw">let </span>wg_y = <span class="self">self</span>.height.div_ceil(<span class="number">8</span>);
+<a href=#169 id=169 data-nosnippet>169</a>                <span class="macro">concat!</span>(
+<a href=#170 id=170 data-nosnippet>170</a>                    <span class="macro">include_str!</span>(<span class="string">"../shaders/constants.wgsl"</span>),
+<a href=#171 id=171 data-nosnippet>171</a>                    <span class="macro">include_str!</span>(<span class="string">"../shaders/lumen/final_gather.wgsl"</span>)
+<a href=#172 id=172 data-nosnippet>172</a>                )
+<a href=#173 id=173 data-nosnippet>173</a>                .into(),
+<a href=#174 id=174 data-nosnippet>174</a>            ),
+<a href=#175 id=175 data-nosnippet>175</a>        });
+<a href=#176 id=176 data-nosnippet>176</a>        <span class="kw">let </span>pl = device.create_pipeline_layout(<span class="kw-2">&amp;</span>wgpu::PipelineLayoutDescriptor {
+<a href=#177 id=177 data-nosnippet>177</a>            label: <span class="prelude-val">Some</span>(<span class="string">"final_gather_pl"</span>),
+<a href=#178 id=178 data-nosnippet>178</a>            bind_group_layouts: <span class="kw-2">&amp;</span>[<span class="kw-2">&amp;</span>bgl],
+<a href=#179 id=179 data-nosnippet>179</a>            push_constant_ranges: <span class="kw-2">&amp;</span>[],
+<a href=#180 id=180 data-nosnippet>180</a>        });
+<a href=#181 id=181 data-nosnippet>181</a>        <span class="kw">let </span>pipeline = device.create_compute_pipeline(<span class="kw-2">&amp;</span>wgpu::ComputePipelineDescriptor {
+<a href=#182 id=182 data-nosnippet>182</a>            label: <span class="prelude-val">Some</span>(<span class="string">"final_gather_pipeline"</span>),
+<a href=#183 id=183 data-nosnippet>183</a>            layout: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>pl),
+<a href=#184 id=184 data-nosnippet>184</a>            module: <span class="kw-2">&amp;</span>shader,
+<a href=#185 id=185 data-nosnippet>185</a>            entry_point: <span class="prelude-val">Some</span>(<span class="string">"final_gather_main"</span>),
+<a href=#186 id=186 data-nosnippet>186</a>            compilation_options: Default::default(),
+<a href=#187 id=187 data-nosnippet>187</a>            cache: <span class="prelude-val">None</span>,
+<a href=#188 id=188 data-nosnippet>188</a>        });
+<a href=#189 id=189 data-nosnippet>189</a>
+<a href=#190 id=190 data-nosnippet>190</a>        <span class="kw">let </span>sampler = device.create_sampler(<span class="kw-2">&amp;</span>wgpu::SamplerDescriptor {
+<a href=#191 id=191 data-nosnippet>191</a>            label: <span class="prelude-val">Some</span>(<span class="string">"final_gather_sampler"</span>),
+<a href=#192 id=192 data-nosnippet>192</a>            mag_filter: wgpu::FilterMode::Linear,
+<a href=#193 id=193 data-nosnippet>193</a>            min_filter: wgpu::FilterMode::Linear,
+<a href=#194 id=194 data-nosnippet>194</a>            ..Default::default()
+<a href=#195 id=195 data-nosnippet>195</a>        });
+<a href=#196 id=196 data-nosnippet>196</a>
+<a href=#197 id=197 data-nosnippet>197</a>        <span class="self">Self </span>{
+<a href=#198 id=198 data-nosnippet>198</a>            config,
+<a href=#199 id=199 data-nosnippet>199</a>            pipeline,
+<a href=#200 id=200 data-nosnippet>200</a>            bgl,
+<a href=#201 id=201 data-nosnippet>201</a>            params_buf,
+<a href=#202 id=202 data-nosnippet>202</a>            output_texture,
+<a href=#203 id=203 data-nosnippet>203</a>            output_view,
+<a href=#204 id=204 data-nosnippet>204</a>            history_texture,
+<a href=#205 id=205 data-nosnippet>205</a>            history_view,
+<a href=#206 id=206 data-nosnippet>206</a>            frame_index: <span class="number">0</span>,
+<a href=#207 id=207 data-nosnippet>207</a>            prev_view_proj: Mat4::IDENTITY,
+<a href=#208 id=208 data-nosnippet>208</a>            width,
+<a href=#209 id=209 data-nosnippet>209</a>            height,
+<a href=#210 id=210 data-nosnippet>210</a>            sampler,
+<a href=#211 id=211 data-nosnippet>211</a>            cached_bg: <span class="kw">crate</span>::bind_group_cache::CachedBindGroup::new(),
+<a href=#212 id=212 data-nosnippet>212</a>        }
+<a href=#213 id=213 data-nosnippet>213</a>    }
+<a href=#214 id=214 data-nosnippet>214</a>
+<a href=#215 id=215 data-nosnippet>215</a>    <span class="doccomment">/// Get the final indirect lighting output view.
+<a href=#216 id=216 data-nosnippet>216</a>    </span><span class="kw">pub fn </span>output_view(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>wgpu::TextureView {
+<a href=#217 id=217 data-nosnippet>217</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.output_view
+<a href=#218 id=218 data-nosnippet>218</a>    }
+<a href=#219 id=219 data-nosnippet>219</a>
+<a href=#220 id=220 data-nosnippet>220</a>    <span class="kw">pub fn </span>config(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>FinalGatherConfig {
+<a href=#221 id=221 data-nosnippet>221</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.config
+<a href=#222 id=222 data-nosnippet>222</a>    }
+<a href=#223 id=223 data-nosnippet>223</a>
+<a href=#224 id=224 data-nosnippet>224</a>    <span class="kw">pub fn </span>set_config(<span class="kw-2">&amp;mut </span><span class="self">self</span>, config: FinalGatherConfig) {
+<a href=#225 id=225 data-nosnippet>225</a>        <span class="self">self</span>.config = config;
+<a href=#226 id=226 data-nosnippet>226</a>    }
+<a href=#227 id=227 data-nosnippet>227</a>
+<a href=#228 id=228 data-nosnippet>228</a>    <span class="kw">pub fn </span>dimensions(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; (u32, u32) {
+<a href=#229 id=229 data-nosnippet>229</a>        (<span class="self">self</span>.width, <span class="self">self</span>.height)
+<a href=#230 id=230 data-nosnippet>230</a>    }
+<a href=#231 id=231 data-nosnippet>231</a>
+<a href=#232 id=232 data-nosnippet>232</a>    <span class="doccomment">/// Update parameters for this frame.
+<a href=#233 id=233 data-nosnippet>233</a>    </span><span class="attr">#[allow(clippy::too_many_arguments)]
+<a href=#234 id=234 data-nosnippet>234</a>    </span><span class="kw">pub fn </span>update_params(
+<a href=#235 id=235 data-nosnippet>235</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+<a href=#236 id=236 data-nosnippet>236</a>        queue: <span class="kw-2">&amp;</span>wgpu::Queue,
+<a href=#237 id=237 data-nosnippet>237</a>        inv_view_proj: Mat4,
+<a href=#238 id=238 data-nosnippet>238</a>        grid_origin: [f32; <span class="number">3</span>],
+<a href=#239 id=239 data-nosnippet>239</a>        probe_spacing: f32,
+<a href=#240 id=240 data-nosnippet>240</a>        grid_dims: UVec3,
+<a href=#241 id=241 data-nosnippet>241</a>        near: f32,
+<a href=#242 id=242 data-nosnippet>242</a>        far: f32,
+<a href=#243 id=243 data-nosnippet>243</a>    ) {
+<a href=#244 id=244 data-nosnippet>244</a>        <span class="kw">let </span>params = FinalGatherParams {
+<a href=#245 id=245 data-nosnippet>245</a>            inv_view_proj: inv_view_proj.to_cols_array_2d(),
+<a href=#246 id=246 data-nosnippet>246</a>            prev_view_proj: <span class="self">self</span>.prev_view_proj.to_cols_array_2d(),
+<a href=#247 id=247 data-nosnippet>247</a>            resolution: [<span class="self">self</span>.width <span class="kw">as </span>f32, <span class="self">self</span>.height <span class="kw">as </span>f32],
+<a href=#248 id=248 data-nosnippet>248</a>            inv_resolution: [<span class="number">1.0 </span>/ <span class="self">self</span>.width <span class="kw">as </span>f32, <span class="number">1.0 </span>/ <span class="self">self</span>.height <span class="kw">as </span>f32],
+<a href=#249 id=249 data-nosnippet>249</a>            grid_origin,
+<a href=#250 id=250 data-nosnippet>250</a>            probe_spacing,
+<a href=#251 id=251 data-nosnippet>251</a>            grid_dims: grid_dims.to_array(),
+<a href=#252 id=252 data-nosnippet>252</a>            ssgi_weight: <span class="self">self</span>.config.ssgi_weight,
+<a href=#253 id=253 data-nosnippet>253</a>            probe_weight: <span class="self">self</span>.config.probe_weight,
+<a href=#254 id=254 data-nosnippet>254</a>            dfao_weight: <span class="self">self</span>.config.dfao_weight,
+<a href=#255 id=255 data-nosnippet>255</a>            temporal_blend: <span class="self">self</span>.config.temporal_blend,
+<a href=#256 id=256 data-nosnippet>256</a>            frame_index: <span class="self">self</span>.frame_index,
+<a href=#257 id=257 data-nosnippet>257</a>            near_plane: near,
+<a href=#258 id=258 data-nosnippet>258</a>            far_plane: far,
+<a href=#259 id=259 data-nosnippet>259</a>            _pad0: <span class="number">0.0</span>,
+<a href=#260 id=260 data-nosnippet>260</a>            _pad1: <span class="number">0.0</span>,
+<a href=#261 id=261 data-nosnippet>261</a>        };
+<a href=#262 id=262 data-nosnippet>262</a>        queue.write_buffer(<span class="kw-2">&amp;</span><span class="self">self</span>.params_buf, <span class="number">0</span>, bytemuck::bytes_of(<span class="kw-2">&amp;</span>params));
+<a href=#263 id=263 data-nosnippet>263</a>
+<a href=#264 id=264 data-nosnippet>264</a>        <span class="comment">// Store current VP for next frame's temporal reprojection
+<a href=#265 id=265 data-nosnippet>265</a>        // (caller should pass view_proj, not inv — fix up caller side)
+<a href=#266 id=266 data-nosnippet>266</a>        </span><span class="self">self</span>.prev_view_proj = inv_view_proj.inverse();
+<a href=#267 id=267 data-nosnippet>267</a>        <span class="self">self</span>.frame_index = <span class="self">self</span>.frame_index.wrapping_add(<span class="number">1</span>);
+<a href=#268 id=268 data-nosnippet>268</a>    }
+<a href=#269 id=269 data-nosnippet>269</a>
+<a href=#270 id=270 data-nosnippet>270</a>    <span class="doccomment">/// Dispatch the final gather compute pass.
+<a href=#271 id=271 data-nosnippet>271</a>    </span><span class="attr">#[allow(clippy::too_many_arguments)]
+<a href=#272 id=272 data-nosnippet>272</a>    </span><span class="kw">pub fn </span>execute(
+<a href=#273 id=273 data-nosnippet>273</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+<a href=#274 id=274 data-nosnippet>274</a>        device: <span class="kw-2">&amp;</span>wgpu::Device,
+<a href=#275 id=275 data-nosnippet>275</a>        encoder: <span class="kw-2">&amp;mut </span>wgpu::CommandEncoder,
+<a href=#276 id=276 data-nosnippet>276</a>        depth_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
+<a href=#277 id=277 data-nosnippet>277</a>        normal_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
+<a href=#278 id=278 data-nosnippet>278</a>        albedo_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
+<a href=#279 id=279 data-nosnippet>279</a>        ssgi_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
+<a href=#280 id=280 data-nosnippet>280</a>        dfao_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
+<a href=#281 id=281 data-nosnippet>281</a>        velocity_view: <span class="kw-2">&amp;</span>wgpu::TextureView,
+<a href=#282 id=282 data-nosnippet>282</a>        probe_buffer: <span class="kw-2">&amp;</span>wgpu::Buffer,
+<a href=#283 id=283 data-nosnippet>283</a>        resource_gen: <span class="kw">crate</span>::bind_group_cache::Generation,
+<a href=#284 id=284 data-nosnippet>284</a>    ) {
+<a href=#285 id=285 data-nosnippet>285</a>        <span class="kw">if </span>!<span class="self">self</span>.config.enabled {
+<a href=#286 id=286 data-nosnippet>286</a>            <span class="kw">return</span>;
+<a href=#287 id=287 data-nosnippet>287</a>        }
+<a href=#288 id=288 data-nosnippet>288</a>
+<a href=#289 id=289 data-nosnippet>289</a>        <span class="kw">let </span>bg = <span class="self">self</span>.cached_bg.get_or_rebuild(resource_gen, || {
+<a href=#290 id=290 data-nosnippet>290</a>            device.create_bind_group(<span class="kw-2">&amp;</span>wgpu::BindGroupDescriptor {
+<a href=#291 id=291 data-nosnippet>291</a>                label: <span class="prelude-val">Some</span>(<span class="string">"final_gather_bg"</span>),
+<a href=#292 id=292 data-nosnippet>292</a>                layout: <span class="kw-2">&amp;</span><span class="self">self</span>.bgl,
+<a href=#293 id=293 data-nosnippet>293</a>                entries: <span class="kw-2">&amp;</span>[
+<a href=#294 id=294 data-nosnippet>294</a>                    wgpu::BindGroupEntry {
+<a href=#295 id=295 data-nosnippet>295</a>                        binding: <span class="number">0</span>,
+<a href=#296 id=296 data-nosnippet>296</a>                        resource: <span class="self">self</span>.params_buf.as_entire_binding(),
+<a href=#297 id=297 data-nosnippet>297</a>                    },
+<a href=#298 id=298 data-nosnippet>298</a>                    wgpu::BindGroupEntry {
+<a href=#299 id=299 data-nosnippet>299</a>                        binding: <span class="number">1</span>,
+<a href=#300 id=300 data-nosnippet>300</a>                        resource: wgpu::BindingResource::TextureView(depth_view),
+<a href=#301 id=301 data-nosnippet>301</a>                    },
+<a href=#302 id=302 data-nosnippet>302</a>                    wgpu::BindGroupEntry {
+<a href=#303 id=303 data-nosnippet>303</a>                        binding: <span class="number">2</span>,
+<a href=#304 id=304 data-nosnippet>304</a>                        resource: wgpu::BindingResource::TextureView(normal_view),
+<a href=#305 id=305 data-nosnippet>305</a>                    },
+<a href=#306 id=306 data-nosnippet>306</a>                    wgpu::BindGroupEntry {
+<a href=#307 id=307 data-nosnippet>307</a>                        binding: <span class="number">3</span>,
+<a href=#308 id=308 data-nosnippet>308</a>                        resource: wgpu::BindingResource::TextureView(albedo_view),
+<a href=#309 id=309 data-nosnippet>309</a>                    },
+<a href=#310 id=310 data-nosnippet>310</a>                    wgpu::BindGroupEntry {
+<a href=#311 id=311 data-nosnippet>311</a>                        binding: <span class="number">4</span>,
+<a href=#312 id=312 data-nosnippet>312</a>                        resource: wgpu::BindingResource::TextureView(ssgi_view),
+<a href=#313 id=313 data-nosnippet>313</a>                    },
+<a href=#314 id=314 data-nosnippet>314</a>                    wgpu::BindGroupEntry {
+<a href=#315 id=315 data-nosnippet>315</a>                        binding: <span class="number">5</span>,
+<a href=#316 id=316 data-nosnippet>316</a>                        resource: wgpu::BindingResource::TextureView(dfao_view),
+<a href=#317 id=317 data-nosnippet>317</a>                    },
+<a href=#318 id=318 data-nosnippet>318</a>                    wgpu::BindGroupEntry {
+<a href=#319 id=319 data-nosnippet>319</a>                        binding: <span class="number">6</span>,
+<a href=#320 id=320 data-nosnippet>320</a>                        resource: wgpu::BindingResource::TextureView(velocity_view),
+<a href=#321 id=321 data-nosnippet>321</a>                    },
+<a href=#322 id=322 data-nosnippet>322</a>                    wgpu::BindGroupEntry {
+<a href=#323 id=323 data-nosnippet>323</a>                        binding: <span class="number">7</span>,
+<a href=#324 id=324 data-nosnippet>324</a>                        resource: wgpu::BindingResource::TextureView(<span class="kw-2">&amp;</span><span class="self">self</span>.history_view),
+<a href=#325 id=325 data-nosnippet>325</a>                    },
+<a href=#326 id=326 data-nosnippet>326</a>                    wgpu::BindGroupEntry {
+<a href=#327 id=327 data-nosnippet>327</a>                        binding: <span class="number">8</span>,
+<a href=#328 id=328 data-nosnippet>328</a>                        resource: probe_buffer.as_entire_binding(),
+<a href=#329 id=329 data-nosnippet>329</a>                    },
+<a href=#330 id=330 data-nosnippet>330</a>                    wgpu::BindGroupEntry {
+<a href=#331 id=331 data-nosnippet>331</a>                        binding: <span class="number">9</span>,
+<a href=#332 id=332 data-nosnippet>332</a>                        resource: wgpu::BindingResource::Sampler(<span class="kw-2">&amp;</span><span class="self">self</span>.sampler),
+<a href=#333 id=333 data-nosnippet>333</a>                    },
+<a href=#334 id=334 data-nosnippet>334</a>                    wgpu::BindGroupEntry {
+<a href=#335 id=335 data-nosnippet>335</a>                        binding: <span class="number">10</span>,
+<a href=#336 id=336 data-nosnippet>336</a>                        resource: wgpu::BindingResource::TextureView(<span class="kw-2">&amp;</span><span class="self">self</span>.output_view),
+<a href=#337 id=337 data-nosnippet>337</a>                    },
+<a href=#338 id=338 data-nosnippet>338</a>                ],
+<a href=#339 id=339 data-nosnippet>339</a>            })
+<a href=#340 id=340 data-nosnippet>340</a>        });
 <a href=#341 id=341 data-nosnippet>341</a>
-<a href=#342 id=342 data-nosnippet>342</a>        <span class="kw">let </span><span class="kw-2">mut </span>pass = encoder.begin_compute_pass(<span class="kw-2">&amp;</span>wgpu::ComputePassDescriptor {
-<a href=#343 id=343 data-nosnippet>343</a>            label: <span class="prelude-val">Some</span>(<span class="string">"final_gather"</span>),
-<a href=#344 id=344 data-nosnippet>344</a>            timestamp_writes: <span class="prelude-val">None</span>,
-<a href=#345 id=345 data-nosnippet>345</a>        });
-<a href=#346 id=346 data-nosnippet>346</a>        pass.set_pipeline(<span class="kw-2">&amp;</span><span class="self">self</span>.pipeline);
-<a href=#347 id=347 data-nosnippet>347</a>        pass.set_bind_group(<span class="number">0</span>, bg, <span class="kw-2">&amp;</span>[]);
-<a href=#348 id=348 data-nosnippet>348</a>        pass.dispatch_workgroups(wg_x, wg_y, <span class="number">1</span>);
-<a href=#349 id=349 data-nosnippet>349</a>    }
-<a href=#350 id=350 data-nosnippet>350</a>
-<a href=#351 id=351 data-nosnippet>351</a>    <span class="doccomment">/// Copy output to history for next frame's temporal reprojection.
-<a href=#352 id=352 data-nosnippet>352</a>    </span><span class="kw">pub fn </span>copy_to_history(<span class="kw-2">&amp;</span><span class="self">self</span>, encoder: <span class="kw-2">&amp;mut </span>wgpu::CommandEncoder) {
-<a href=#353 id=353 data-nosnippet>353</a>        encoder.copy_texture_to_texture(
-<a href=#354 id=354 data-nosnippet>354</a>            wgpu::TexelCopyTextureInfo {
-<a href=#355 id=355 data-nosnippet>355</a>                texture: <span class="kw-2">&amp;</span><span class="self">self</span>.output_texture,
-<a href=#356 id=356 data-nosnippet>356</a>                mip_level: <span class="number">0</span>,
-<a href=#357 id=357 data-nosnippet>357</a>                origin: wgpu::Origin3d::ZERO,
-<a href=#358 id=358 data-nosnippet>358</a>                aspect: wgpu::TextureAspect::All,
-<a href=#359 id=359 data-nosnippet>359</a>            },
-<a href=#360 id=360 data-nosnippet>360</a>            wgpu::TexelCopyTextureInfo {
-<a href=#361 id=361 data-nosnippet>361</a>                texture: <span class="kw-2">&amp;</span><span class="self">self</span>.history_texture,
-<a href=#362 id=362 data-nosnippet>362</a>                mip_level: <span class="number">0</span>,
-<a href=#363 id=363 data-nosnippet>363</a>                origin: wgpu::Origin3d::ZERO,
-<a href=#364 id=364 data-nosnippet>364</a>                aspect: wgpu::TextureAspect::All,
-<a href=#365 id=365 data-nosnippet>365</a>            },
-<a href=#366 id=366 data-nosnippet>366</a>            wgpu::Extent3d {
-<a href=#367 id=367 data-nosnippet>367</a>                width: <span class="self">self</span>.width,
-<a href=#368 id=368 data-nosnippet>368</a>                height: <span class="self">self</span>.height,
-<a href=#369 id=369 data-nosnippet>369</a>                depth_or_array_layers: <span class="number">1</span>,
-<a href=#370 id=370 data-nosnippet>370</a>            },
-<a href=#371 id=371 data-nosnippet>371</a>        );
-<a href=#372 id=372 data-nosnippet>372</a>    }
-<a href=#373 id=373 data-nosnippet>373</a>
-<a href=#374 id=374 data-nosnippet>374</a>    <span class="doccomment">/// Resize output/history textures.
-<a href=#375 id=375 data-nosnippet>375</a>    </span><span class="kw">pub fn </span>resize(<span class="kw-2">&amp;mut </span><span class="self">self</span>, device: <span class="kw-2">&amp;</span>wgpu::Device, width: u32, height: u32) {
-<a href=#376 id=376 data-nosnippet>376</a>        <span class="kw">if </span><span class="self">self</span>.width == width &amp;&amp; <span class="self">self</span>.height == height {
-<a href=#377 id=377 data-nosnippet>377</a>            <span class="kw">return</span>;
-<a href=#378 id=378 data-nosnippet>378</a>        }
-<a href=#379 id=379 data-nosnippet>379</a>        <span class="kw-2">*</span><span class="self">self </span>= <span class="self">Self</span>::new(device, width, height);
-<a href=#380 id=380 data-nosnippet>380</a>    }
-<a href=#381 id=381 data-nosnippet>381</a>}
-<a href=#382 id=382 data-nosnippet>382</a>
-<a href=#383 id=383 data-nosnippet>383</a><span class="comment">// ---------------------------------------------------------------------------
-<a href=#384 id=384 data-nosnippet>384</a>// Bind group layout helpers
-<a href=#385 id=385 data-nosnippet>385</a>// ---------------------------------------------------------------------------
-<a href=#386 id=386 data-nosnippet>386</a>
-<a href=#387 id=387 data-nosnippet>387</a></span><span class="kw">fn </span>bgl_uniform(binding: u32) -&gt; wgpu::BindGroupLayoutEntry {
-<a href=#388 id=388 data-nosnippet>388</a>    wgpu::BindGroupLayoutEntry {
-<a href=#389 id=389 data-nosnippet>389</a>        binding,
-<a href=#390 id=390 data-nosnippet>390</a>        visibility: wgpu::ShaderStages::COMPUTE,
-<a href=#391 id=391 data-nosnippet>391</a>        ty: wgpu::BindingType::Buffer {
-<a href=#392 id=392 data-nosnippet>392</a>            ty: wgpu::BufferBindingType::Uniform,
-<a href=#393 id=393 data-nosnippet>393</a>            has_dynamic_offset: <span class="bool-val">false</span>,
-<a href=#394 id=394 data-nosnippet>394</a>            min_binding_size: <span class="prelude-val">None</span>,
-<a href=#395 id=395 data-nosnippet>395</a>        },
-<a href=#396 id=396 data-nosnippet>396</a>        count: <span class="prelude-val">None</span>,
-<a href=#397 id=397 data-nosnippet>397</a>    }
-<a href=#398 id=398 data-nosnippet>398</a>}
-<a href=#399 id=399 data-nosnippet>399</a>
-<a href=#400 id=400 data-nosnippet>400</a><span class="kw">fn </span>bgl_texture_2d(binding: u32) -&gt; wgpu::BindGroupLayoutEntry {
-<a href=#401 id=401 data-nosnippet>401</a>    wgpu::BindGroupLayoutEntry {
-<a href=#402 id=402 data-nosnippet>402</a>        binding,
-<a href=#403 id=403 data-nosnippet>403</a>        visibility: wgpu::ShaderStages::COMPUTE,
-<a href=#404 id=404 data-nosnippet>404</a>        ty: wgpu::BindingType::Texture {
-<a href=#405 id=405 data-nosnippet>405</a>            sample_type: wgpu::TextureSampleType::Float { filterable: <span class="bool-val">true </span>},
-<a href=#406 id=406 data-nosnippet>406</a>            view_dimension: wgpu::TextureViewDimension::D2,
-<a href=#407 id=407 data-nosnippet>407</a>            multisampled: <span class="bool-val">false</span>,
-<a href=#408 id=408 data-nosnippet>408</a>        },
-<a href=#409 id=409 data-nosnippet>409</a>        count: <span class="prelude-val">None</span>,
-<a href=#410 id=410 data-nosnippet>410</a>    }
-<a href=#411 id=411 data-nosnippet>411</a>}
-<a href=#412 id=412 data-nosnippet>412</a>
-<a href=#413 id=413 data-nosnippet>413</a><span class="kw">fn </span>bgl_storage_ro(binding: u32) -&gt; wgpu::BindGroupLayoutEntry {
-<a href=#414 id=414 data-nosnippet>414</a>    wgpu::BindGroupLayoutEntry {
-<a href=#415 id=415 data-nosnippet>415</a>        binding,
-<a href=#416 id=416 data-nosnippet>416</a>        visibility: wgpu::ShaderStages::COMPUTE,
-<a href=#417 id=417 data-nosnippet>417</a>        ty: wgpu::BindingType::Buffer {
-<a href=#418 id=418 data-nosnippet>418</a>            ty: wgpu::BufferBindingType::Storage { read_only: <span class="bool-val">true </span>},
-<a href=#419 id=419 data-nosnippet>419</a>            has_dynamic_offset: <span class="bool-val">false</span>,
-<a href=#420 id=420 data-nosnippet>420</a>            min_binding_size: <span class="prelude-val">None</span>,
-<a href=#421 id=421 data-nosnippet>421</a>        },
-<a href=#422 id=422 data-nosnippet>422</a>        count: <span class="prelude-val">None</span>,
-<a href=#423 id=423 data-nosnippet>423</a>    }
-<a href=#424 id=424 data-nosnippet>424</a>}
-<a href=#425 id=425 data-nosnippet>425</a>
-<a href=#426 id=426 data-nosnippet>426</a><span class="kw">fn </span>bgl_sampler(binding: u32) -&gt; wgpu::BindGroupLayoutEntry {
-<a href=#427 id=427 data-nosnippet>427</a>    wgpu::BindGroupLayoutEntry {
-<a href=#428 id=428 data-nosnippet>428</a>        binding,
-<a href=#429 id=429 data-nosnippet>429</a>        visibility: wgpu::ShaderStages::COMPUTE,
-<a href=#430 id=430 data-nosnippet>430</a>        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-<a href=#431 id=431 data-nosnippet>431</a>        count: <span class="prelude-val">None</span>,
-<a href=#432 id=432 data-nosnippet>432</a>    }
-<a href=#433 id=433 data-nosnippet>433</a>}
-<a href=#434 id=434 data-nosnippet>434</a>
-<a href=#435 id=435 data-nosnippet>435</a><span class="kw">fn </span>bgl_storage_tex_rw(binding: u32, format: wgpu::TextureFormat) -&gt; wgpu::BindGroupLayoutEntry {
-<a href=#436 id=436 data-nosnippet>436</a>    wgpu::BindGroupLayoutEntry {
-<a href=#437 id=437 data-nosnippet>437</a>        binding,
-<a href=#438 id=438 data-nosnippet>438</a>        visibility: wgpu::ShaderStages::COMPUTE,
-<a href=#439 id=439 data-nosnippet>439</a>        ty: wgpu::BindingType::StorageTexture {
-<a href=#440 id=440 data-nosnippet>440</a>            access: wgpu::StorageTextureAccess::WriteOnly,
-<a href=#441 id=441 data-nosnippet>441</a>            format,
-<a href=#442 id=442 data-nosnippet>442</a>            view_dimension: wgpu::TextureViewDimension::D2,
-<a href=#443 id=443 data-nosnippet>443</a>        },
-<a href=#444 id=444 data-nosnippet>444</a>        count: <span class="prelude-val">None</span>,
-<a href=#445 id=445 data-nosnippet>445</a>    }
-<a href=#446 id=446 data-nosnippet>446</a>}
-<a href=#447 id=447 data-nosnippet>447</a>
-<a href=#448 id=448 data-nosnippet>448</a><span class="attr">#[cfg(test)]
-<a href=#449 id=449 data-nosnippet>449</a></span><span class="kw">mod </span>tests {
-<a href=#450 id=450 data-nosnippet>450</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#451 id=451 data-nosnippet>451</a>
-<a href=#452 id=452 data-nosnippet>452</a>    <span class="attr">#[test]
-<a href=#453 id=453 data-nosnippet>453</a>    </span><span class="kw">fn </span>final_gather_params_size() {
-<a href=#454 id=454 data-nosnippet>454</a>        <span class="comment">// 2 mat4x4 (128) + 4 floats (16) + 3 floats + pad (16) + 3 u32 + pad (16) +
-<a href=#455 id=455 data-nosnippet>455</a>        // 4 floats (16) + 4 floats (16) = 208
-<a href=#456 id=456 data-nosnippet>456</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;FinalGatherParams&gt;(), <span class="number">208</span>);
-<a href=#457 id=457 data-nosnippet>457</a>    }
-<a href=#458 id=458 data-nosnippet>458</a>
-<a href=#459 id=459 data-nosnippet>459</a>    <span class="attr">#[test]
-<a href=#460 id=460 data-nosnippet>460</a>    </span><span class="kw">fn </span>default_config() {
-<a href=#461 id=461 data-nosnippet>461</a>        <span class="kw">let </span>c = FinalGatherConfig::default();
-<a href=#462 id=462 data-nosnippet>462</a>        <span class="macro">assert!</span>(c.enabled);
-<a href=#463 id=463 data-nosnippet>463</a>        <span class="macro">assert!</span>((c.ssgi_weight - <span class="number">0.6</span>).abs() &lt; <span class="number">1e-6</span>);
-<a href=#464 id=464 data-nosnippet>464</a>        <span class="macro">assert!</span>((c.probe_weight - <span class="number">0.4</span>).abs() &lt; <span class="number">1e-6</span>);
-<a href=#465 id=465 data-nosnippet>465</a>        <span class="macro">assert!</span>((c.dfao_weight - <span class="number">0.8</span>).abs() &lt; <span class="number">1e-6</span>);
-<a href=#466 id=466 data-nosnippet>466</a>        <span class="macro">assert!</span>((c.temporal_blend - <span class="number">0.9</span>).abs() &lt; <span class="number">1e-6</span>);
-<a href=#467 id=467 data-nosnippet>467</a>    }
-<a href=#468 id=468 data-nosnippet>468</a>
-<a href=#469 id=469 data-nosnippet>469</a>    <span class="attr">#[test]
-<a href=#470 id=470 data-nosnippet>470</a>    </span><span class="kw">fn </span>weights_sum_reasonable() {
-<a href=#471 id=471 data-nosnippet>471</a>        <span class="kw">let </span>c = FinalGatherConfig::default();
-<a href=#472 id=472 data-nosnippet>472</a>        <span class="kw">let </span>total = c.ssgi_weight + c.probe_weight;
-<a href=#473 id=473 data-nosnippet>473</a>        <span class="macro">assert!</span>(
-<a href=#474 id=474 data-nosnippet>474</a>            total &gt; <span class="number">0.5 </span>&amp;&amp; total &lt;= <span class="number">1.5</span>,
-<a href=#475 id=475 data-nosnippet>475</a>            <span class="string">"GI weights should sum to ~1.0: {total}"
-<a href=#476 id=476 data-nosnippet>476</a>        </span>);
-<a href=#477 id=477 data-nosnippet>477</a>    }
-<a href=#478 id=478 data-nosnippet>478</a>
-<a href=#479 id=479 data-nosnippet>479</a>    <span class="attr">#[test]
-<a href=#480 id=480 data-nosnippet>480</a>    </span><span class="kw">fn </span>final_gather_pass_creation() {
-<a href=#481 id=481 data-nosnippet>481</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
-<a href=#482 id=482 data-nosnippet>482</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
-<a href=#483 id=483 data-nosnippet>483</a>            power_preference: wgpu::PowerPreference::LowPower,
-<a href=#484 id=484 data-nosnippet>484</a>            compatible_surface: <span class="prelude-val">None</span>,
-<a href=#485 id=485 data-nosnippet>485</a>            force_fallback_adapter: <span class="bool-val">false</span>,
-<a href=#486 id=486 data-nosnippet>486</a>        }))
-<a href=#487 id=487 data-nosnippet>487</a>        .expect(<span class="string">"adapter"</span>);
-<a href=#488 id=488 data-nosnippet>488</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
-<a href=#489 id=489 data-nosnippet>489</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
-<a href=#490 id=490 data-nosnippet>490</a>                .expect(<span class="string">"device"</span>);
-<a href=#491 id=491 data-nosnippet>491</a>
-<a href=#492 id=492 data-nosnippet>492</a>        <span class="kw">let </span>pass = FinalGatherPass::new(<span class="kw-2">&amp;</span>device, <span class="number">1280</span>, <span class="number">720</span>);
-<a href=#493 id=493 data-nosnippet>493</a>        <span class="macro">assert_eq!</span>(pass.dimensions(), (<span class="number">1280</span>, <span class="number">720</span>));
-<a href=#494 id=494 data-nosnippet>494</a>    }
-<a href=#495 id=495 data-nosnippet>495</a>}</code></pre></div></section></main></body></html>
+<a href=#342 id=342 data-nosnippet>342</a>        <span class="kw">let </span>wg_x = <span class="self">self</span>.width.div_ceil(<span class="number">8</span>);
+<a href=#343 id=343 data-nosnippet>343</a>        <span class="kw">let </span>wg_y = <span class="self">self</span>.height.div_ceil(<span class="number">8</span>);
+<a href=#344 id=344 data-nosnippet>344</a>
+<a href=#345 id=345 data-nosnippet>345</a>        <span class="kw">let </span><span class="kw-2">mut </span>pass = encoder.begin_compute_pass(<span class="kw-2">&amp;</span>wgpu::ComputePassDescriptor {
+<a href=#346 id=346 data-nosnippet>346</a>            label: <span class="prelude-val">Some</span>(<span class="string">"final_gather"</span>),
+<a href=#347 id=347 data-nosnippet>347</a>            timestamp_writes: <span class="prelude-val">None</span>,
+<a href=#348 id=348 data-nosnippet>348</a>        });
+<a href=#349 id=349 data-nosnippet>349</a>        pass.set_pipeline(<span class="kw-2">&amp;</span><span class="self">self</span>.pipeline);
+<a href=#350 id=350 data-nosnippet>350</a>        pass.set_bind_group(<span class="number">0</span>, bg, <span class="kw-2">&amp;</span>[]);
+<a href=#351 id=351 data-nosnippet>351</a>        pass.dispatch_workgroups(wg_x, wg_y, <span class="number">1</span>);
+<a href=#352 id=352 data-nosnippet>352</a>    }
+<a href=#353 id=353 data-nosnippet>353</a>
+<a href=#354 id=354 data-nosnippet>354</a>    <span class="doccomment">/// Copy output to history for next frame's temporal reprojection.
+<a href=#355 id=355 data-nosnippet>355</a>    </span><span class="kw">pub fn </span>copy_to_history(<span class="kw-2">&amp;</span><span class="self">self</span>, encoder: <span class="kw-2">&amp;mut </span>wgpu::CommandEncoder) {
+<a href=#356 id=356 data-nosnippet>356</a>        encoder.copy_texture_to_texture(
+<a href=#357 id=357 data-nosnippet>357</a>            wgpu::TexelCopyTextureInfo {
+<a href=#358 id=358 data-nosnippet>358</a>                texture: <span class="kw-2">&amp;</span><span class="self">self</span>.output_texture,
+<a href=#359 id=359 data-nosnippet>359</a>                mip_level: <span class="number">0</span>,
+<a href=#360 id=360 data-nosnippet>360</a>                origin: wgpu::Origin3d::ZERO,
+<a href=#361 id=361 data-nosnippet>361</a>                aspect: wgpu::TextureAspect::All,
+<a href=#362 id=362 data-nosnippet>362</a>            },
+<a href=#363 id=363 data-nosnippet>363</a>            wgpu::TexelCopyTextureInfo {
+<a href=#364 id=364 data-nosnippet>364</a>                texture: <span class="kw-2">&amp;</span><span class="self">self</span>.history_texture,
+<a href=#365 id=365 data-nosnippet>365</a>                mip_level: <span class="number">0</span>,
+<a href=#366 id=366 data-nosnippet>366</a>                origin: wgpu::Origin3d::ZERO,
+<a href=#367 id=367 data-nosnippet>367</a>                aspect: wgpu::TextureAspect::All,
+<a href=#368 id=368 data-nosnippet>368</a>            },
+<a href=#369 id=369 data-nosnippet>369</a>            wgpu::Extent3d {
+<a href=#370 id=370 data-nosnippet>370</a>                width: <span class="self">self</span>.width,
+<a href=#371 id=371 data-nosnippet>371</a>                height: <span class="self">self</span>.height,
+<a href=#372 id=372 data-nosnippet>372</a>                depth_or_array_layers: <span class="number">1</span>,
+<a href=#373 id=373 data-nosnippet>373</a>            },
+<a href=#374 id=374 data-nosnippet>374</a>        );
+<a href=#375 id=375 data-nosnippet>375</a>    }
+<a href=#376 id=376 data-nosnippet>376</a>
+<a href=#377 id=377 data-nosnippet>377</a>    <span class="doccomment">/// Resize output/history textures.
+<a href=#378 id=378 data-nosnippet>378</a>    </span><span class="kw">pub fn </span>resize(<span class="kw-2">&amp;mut </span><span class="self">self</span>, device: <span class="kw-2">&amp;</span>wgpu::Device, width: u32, height: u32) {
+<a href=#379 id=379 data-nosnippet>379</a>        <span class="kw">if </span><span class="self">self</span>.width == width &amp;&amp; <span class="self">self</span>.height == height {
+<a href=#380 id=380 data-nosnippet>380</a>            <span class="kw">return</span>;
+<a href=#381 id=381 data-nosnippet>381</a>        }
+<a href=#382 id=382 data-nosnippet>382</a>        <span class="kw-2">*</span><span class="self">self </span>= <span class="self">Self</span>::new(device, width, height);
+<a href=#383 id=383 data-nosnippet>383</a>    }
+<a href=#384 id=384 data-nosnippet>384</a>}
+<a href=#385 id=385 data-nosnippet>385</a>
+<a href=#386 id=386 data-nosnippet>386</a><span class="comment">// ---------------------------------------------------------------------------
+<a href=#387 id=387 data-nosnippet>387</a>// Bind group layout helpers
+<a href=#388 id=388 data-nosnippet>388</a>// ---------------------------------------------------------------------------
+<a href=#389 id=389 data-nosnippet>389</a>
+<a href=#390 id=390 data-nosnippet>390</a></span><span class="kw">fn </span>bgl_uniform(binding: u32) -&gt; wgpu::BindGroupLayoutEntry {
+<a href=#391 id=391 data-nosnippet>391</a>    wgpu::BindGroupLayoutEntry {
+<a href=#392 id=392 data-nosnippet>392</a>        binding,
+<a href=#393 id=393 data-nosnippet>393</a>        visibility: wgpu::ShaderStages::COMPUTE,
+<a href=#394 id=394 data-nosnippet>394</a>        ty: wgpu::BindingType::Buffer {
+<a href=#395 id=395 data-nosnippet>395</a>            ty: wgpu::BufferBindingType::Uniform,
+<a href=#396 id=396 data-nosnippet>396</a>            has_dynamic_offset: <span class="bool-val">false</span>,
+<a href=#397 id=397 data-nosnippet>397</a>            min_binding_size: <span class="prelude-val">None</span>,
+<a href=#398 id=398 data-nosnippet>398</a>        },
+<a href=#399 id=399 data-nosnippet>399</a>        count: <span class="prelude-val">None</span>,
+<a href=#400 id=400 data-nosnippet>400</a>    }
+<a href=#401 id=401 data-nosnippet>401</a>}
+<a href=#402 id=402 data-nosnippet>402</a>
+<a href=#403 id=403 data-nosnippet>403</a><span class="kw">fn </span>bgl_texture_2d(binding: u32) -&gt; wgpu::BindGroupLayoutEntry {
+<a href=#404 id=404 data-nosnippet>404</a>    wgpu::BindGroupLayoutEntry {
+<a href=#405 id=405 data-nosnippet>405</a>        binding,
+<a href=#406 id=406 data-nosnippet>406</a>        visibility: wgpu::ShaderStages::COMPUTE,
+<a href=#407 id=407 data-nosnippet>407</a>        ty: wgpu::BindingType::Texture {
+<a href=#408 id=408 data-nosnippet>408</a>            sample_type: wgpu::TextureSampleType::Float { filterable: <span class="bool-val">true </span>},
+<a href=#409 id=409 data-nosnippet>409</a>            view_dimension: wgpu::TextureViewDimension::D2,
+<a href=#410 id=410 data-nosnippet>410</a>            multisampled: <span class="bool-val">false</span>,
+<a href=#411 id=411 data-nosnippet>411</a>        },
+<a href=#412 id=412 data-nosnippet>412</a>        count: <span class="prelude-val">None</span>,
+<a href=#413 id=413 data-nosnippet>413</a>    }
+<a href=#414 id=414 data-nosnippet>414</a>}
+<a href=#415 id=415 data-nosnippet>415</a>
+<a href=#416 id=416 data-nosnippet>416</a><span class="kw">fn </span>bgl_storage_ro(binding: u32) -&gt; wgpu::BindGroupLayoutEntry {
+<a href=#417 id=417 data-nosnippet>417</a>    wgpu::BindGroupLayoutEntry {
+<a href=#418 id=418 data-nosnippet>418</a>        binding,
+<a href=#419 id=419 data-nosnippet>419</a>        visibility: wgpu::ShaderStages::COMPUTE,
+<a href=#420 id=420 data-nosnippet>420</a>        ty: wgpu::BindingType::Buffer {
+<a href=#421 id=421 data-nosnippet>421</a>            ty: wgpu::BufferBindingType::Storage { read_only: <span class="bool-val">true </span>},
+<a href=#422 id=422 data-nosnippet>422</a>            has_dynamic_offset: <span class="bool-val">false</span>,
+<a href=#423 id=423 data-nosnippet>423</a>            min_binding_size: <span class="prelude-val">None</span>,
+<a href=#424 id=424 data-nosnippet>424</a>        },
+<a href=#425 id=425 data-nosnippet>425</a>        count: <span class="prelude-val">None</span>,
+<a href=#426 id=426 data-nosnippet>426</a>    }
+<a href=#427 id=427 data-nosnippet>427</a>}
+<a href=#428 id=428 data-nosnippet>428</a>
+<a href=#429 id=429 data-nosnippet>429</a><span class="kw">fn </span>bgl_sampler(binding: u32) -&gt; wgpu::BindGroupLayoutEntry {
+<a href=#430 id=430 data-nosnippet>430</a>    wgpu::BindGroupLayoutEntry {
+<a href=#431 id=431 data-nosnippet>431</a>        binding,
+<a href=#432 id=432 data-nosnippet>432</a>        visibility: wgpu::ShaderStages::COMPUTE,
+<a href=#433 id=433 data-nosnippet>433</a>        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+<a href=#434 id=434 data-nosnippet>434</a>        count: <span class="prelude-val">None</span>,
+<a href=#435 id=435 data-nosnippet>435</a>    }
+<a href=#436 id=436 data-nosnippet>436</a>}
+<a href=#437 id=437 data-nosnippet>437</a>
+<a href=#438 id=438 data-nosnippet>438</a><span class="kw">fn </span>bgl_storage_tex_rw(binding: u32, format: wgpu::TextureFormat) -&gt; wgpu::BindGroupLayoutEntry {
+<a href=#439 id=439 data-nosnippet>439</a>    wgpu::BindGroupLayoutEntry {
+<a href=#440 id=440 data-nosnippet>440</a>        binding,
+<a href=#441 id=441 data-nosnippet>441</a>        visibility: wgpu::ShaderStages::COMPUTE,
+<a href=#442 id=442 data-nosnippet>442</a>        ty: wgpu::BindingType::StorageTexture {
+<a href=#443 id=443 data-nosnippet>443</a>            access: wgpu::StorageTextureAccess::WriteOnly,
+<a href=#444 id=444 data-nosnippet>444</a>            format,
+<a href=#445 id=445 data-nosnippet>445</a>            view_dimension: wgpu::TextureViewDimension::D2,
+<a href=#446 id=446 data-nosnippet>446</a>        },
+<a href=#447 id=447 data-nosnippet>447</a>        count: <span class="prelude-val">None</span>,
+<a href=#448 id=448 data-nosnippet>448</a>    }
+<a href=#449 id=449 data-nosnippet>449</a>}
+<a href=#450 id=450 data-nosnippet>450</a>
+<a href=#451 id=451 data-nosnippet>451</a><span class="attr">#[cfg(test)]
+<a href=#452 id=452 data-nosnippet>452</a></span><span class="kw">mod </span>tests {
+<a href=#453 id=453 data-nosnippet>453</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#454 id=454 data-nosnippet>454</a>
+<a href=#455 id=455 data-nosnippet>455</a>    <span class="attr">#[test]
+<a href=#456 id=456 data-nosnippet>456</a>    </span><span class="kw">fn </span>final_gather_params_size() {
+<a href=#457 id=457 data-nosnippet>457</a>        <span class="comment">// 2 mat4x4 (128) + 4 floats (16) + 3 floats + pad (16) + 3 u32 + pad (16) +
+<a href=#458 id=458 data-nosnippet>458</a>        // 4 floats (16) + 4 floats (16) = 208
+<a href=#459 id=459 data-nosnippet>459</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;FinalGatherParams&gt;(), <span class="number">208</span>);
+<a href=#460 id=460 data-nosnippet>460</a>    }
+<a href=#461 id=461 data-nosnippet>461</a>
+<a href=#462 id=462 data-nosnippet>462</a>    <span class="attr">#[test]
+<a href=#463 id=463 data-nosnippet>463</a>    </span><span class="kw">fn </span>default_config() {
+<a href=#464 id=464 data-nosnippet>464</a>        <span class="kw">let </span>c = FinalGatherConfig::default();
+<a href=#465 id=465 data-nosnippet>465</a>        <span class="macro">assert!</span>(c.enabled);
+<a href=#466 id=466 data-nosnippet>466</a>        <span class="macro">assert!</span>((c.ssgi_weight - <span class="number">0.6</span>).abs() &lt; <span class="number">1e-6</span>);
+<a href=#467 id=467 data-nosnippet>467</a>        <span class="macro">assert!</span>((c.probe_weight - <span class="number">0.4</span>).abs() &lt; <span class="number">1e-6</span>);
+<a href=#468 id=468 data-nosnippet>468</a>        <span class="macro">assert!</span>((c.dfao_weight - <span class="number">0.8</span>).abs() &lt; <span class="number">1e-6</span>);
+<a href=#469 id=469 data-nosnippet>469</a>        <span class="macro">assert!</span>((c.temporal_blend - <span class="number">0.9</span>).abs() &lt; <span class="number">1e-6</span>);
+<a href=#470 id=470 data-nosnippet>470</a>    }
+<a href=#471 id=471 data-nosnippet>471</a>
+<a href=#472 id=472 data-nosnippet>472</a>    <span class="attr">#[test]
+<a href=#473 id=473 data-nosnippet>473</a>    </span><span class="kw">fn </span>weights_sum_reasonable() {
+<a href=#474 id=474 data-nosnippet>474</a>        <span class="kw">let </span>c = FinalGatherConfig::default();
+<a href=#475 id=475 data-nosnippet>475</a>        <span class="kw">let </span>total = c.ssgi_weight + c.probe_weight;
+<a href=#476 id=476 data-nosnippet>476</a>        <span class="macro">assert!</span>(
+<a href=#477 id=477 data-nosnippet>477</a>            total &gt; <span class="number">0.5 </span>&amp;&amp; total &lt;= <span class="number">1.5</span>,
+<a href=#478 id=478 data-nosnippet>478</a>            <span class="string">"GI weights should sum to ~1.0: {total}"
+<a href=#479 id=479 data-nosnippet>479</a>        </span>);
+<a href=#480 id=480 data-nosnippet>480</a>    }
+<a href=#481 id=481 data-nosnippet>481</a>
+<a href=#482 id=482 data-nosnippet>482</a>    <span class="attr">#[test]
+<a href=#483 id=483 data-nosnippet>483</a>    </span><span class="kw">fn </span>final_gather_pass_creation() {
+<a href=#484 id=484 data-nosnippet>484</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
+<a href=#485 id=485 data-nosnippet>485</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#486 id=486 data-nosnippet>486</a>            power_preference: wgpu::PowerPreference::LowPower,
+<a href=#487 id=487 data-nosnippet>487</a>            compatible_surface: <span class="prelude-val">None</span>,
+<a href=#488 id=488 data-nosnippet>488</a>            force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#489 id=489 data-nosnippet>489</a>        }))
+<a href=#490 id=490 data-nosnippet>490</a>        .expect(<span class="string">"adapter"</span>);
+<a href=#491 id=491 data-nosnippet>491</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
+<a href=#492 id=492 data-nosnippet>492</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#493 id=493 data-nosnippet>493</a>                .expect(<span class="string">"device"</span>);
+<a href=#494 id=494 data-nosnippet>494</a>
+<a href=#495 id=495 data-nosnippet>495</a>        <span class="kw">let </span>pass = FinalGatherPass::new(<span class="kw-2">&amp;</span>device, <span class="number">1280</span>, <span class="number">720</span>);
+<a href=#496 id=496 data-nosnippet>496</a>        <span class="macro">assert_eq!</span>(pass.dimensions(), (<span class="number">1280</span>, <span class="number">720</span>));
+<a href=#497 id=497 data-nosnippet>497</a>    }
+<a href=#498 id=498 data-nosnippet>498</a>}</code></pre></div></section></main></body></html>

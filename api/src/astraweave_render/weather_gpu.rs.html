@@ -279,129 +279,138 @@
 <a href=#279 id=279 data-nosnippet>279</a>        <span class="macro">assert_eq!</span>(cfg.particle_type, WeatherParticleType::Snow);
 <a href=#280 id=280 data-nosnippet>280</a>        <span class="macro">assert!</span>(cfg.velocity.y &lt; <span class="number">0.0</span>, <span class="string">"snow should fall"</span>);
 <a href=#281 id=281 data-nosnippet>281</a>        <span class="macro">assert!</span>(cfg.velocity.y &gt; -<span class="number">5.0</span>, <span class="string">"snow falls slowly"</span>);
-<a href=#282 id=282 data-nosnippet>282</a>        <span class="macro">assert!</span>(cfg.lifetime &gt; cfg.velocity.y.abs() * <span class="number">0.1</span>, <span class="string">"snow should live long enough to be visible"</span>);
-<a href=#283 id=283 data-nosnippet>283</a>    }
-<a href=#284 id=284 data-nosnippet>284</a>
-<a href=#285 id=285 data-nosnippet>285</a>    <span class="attr">#[test]
-<a href=#286 id=286 data-nosnippet>286</a>    </span><span class="kw">fn </span>test_sandstorm_preset() {
-<a href=#287 id=287 data-nosnippet>287</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::sandstorm();
-<a href=#288 id=288 data-nosnippet>288</a>        <span class="macro">assert_eq!</span>(cfg.particle_type, WeatherParticleType::Sandstorm);
-<a href=#289 id=289 data-nosnippet>289</a>        <span class="macro">assert!</span>(cfg.velocity.x &gt; <span class="number">0.0</span>, <span class="string">"sandstorm blows horizontally"</span>);
-<a href=#290 id=290 data-nosnippet>290</a>        <span class="macro">assert!</span>(cfg.spawn_height_above_camera &lt; <span class="number">10.0</span>, <span class="string">"sandstorm near ground"</span>);
-<a href=#291 id=291 data-nosnippet>291</a>    }
-<a href=#292 id=292 data-nosnippet>292</a>
-<a href=#293 id=293 data-nosnippet>293</a>    <span class="attr">#[test]
-<a href=#294 id=294 data-nosnippet>294</a>    </span><span class="kw">fn </span>test_wind_trails_preset() {
-<a href=#295 id=295 data-nosnippet>295</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::wind_trails();
-<a href=#296 id=296 data-nosnippet>296</a>        <span class="macro">assert_eq!</span>(cfg.particle_type, WeatherParticleType::WindTrails);
-<a href=#297 id=297 data-nosnippet>297</a>        <span class="macro">assert!</span>(cfg.color[<span class="number">3</span>] &lt; <span class="number">0.5</span>, <span class="string">"wind trails are translucent"</span>);
-<a href=#298 id=298 data-nosnippet>298</a>    }
-<a href=#299 id=299 data-nosnippet>299</a>
-<a href=#300 id=300 data-nosnippet>300</a>    <span class="attr">#[test]
-<a href=#301 id=301 data-nosnippet>301</a>    </span><span class="kw">fn </span>test_preset_for() {
-<a href=#302 id=302 data-nosnippet>302</a>        <span class="kw">let </span>r = WeatherParticleConfig::preset_for(WeatherParticleType::Rain);
-<a href=#303 id=303 data-nosnippet>303</a>        <span class="macro">assert_eq!</span>(r.particle_type, WeatherParticleType::Rain);
-<a href=#304 id=304 data-nosnippet>304</a>        <span class="kw">let </span>s = WeatherParticleConfig::preset_for(WeatherParticleType::Snow);
-<a href=#305 id=305 data-nosnippet>305</a>        <span class="macro">assert_eq!</span>(s.particle_type, WeatherParticleType::Snow);
-<a href=#306 id=306 data-nosnippet>306</a>    }
-<a href=#307 id=307 data-nosnippet>307</a>
-<a href=#308 id=308 data-nosnippet>308</a>    <span class="attr">#[test]
-<a href=#309 id=309 data-nosnippet>309</a>    </span><span class="kw">fn </span>test_with_intensity_scales() {
-<a href=#310 id=310 data-nosnippet>310</a>        <span class="kw">let </span>full = WeatherParticleConfig::rain();
-<a href=#311 id=311 data-nosnippet>311</a>        <span class="kw">let </span>half = full.with_intensity(<span class="number">0.5</span>);
-<a href=#312 id=312 data-nosnippet>312</a>        <span class="macro">assert!</span>(half.spawn_rate &lt; full.spawn_rate);
-<a href=#313 id=313 data-nosnippet>313</a>        <span class="macro">assert!</span>(half.max_particles &lt; full.max_particles);
-<a href=#314 id=314 data-nosnippet>314</a>
-<a href=#315 id=315 data-nosnippet>315</a>        <span class="kw">let </span>zero = full.with_intensity(<span class="number">0.0</span>);
-<a href=#316 id=316 data-nosnippet>316</a>        <span class="macro">assert_eq!</span>(zero.spawn_rate, <span class="number">0</span>);
-<a href=#317 id=317 data-nosnippet>317</a>        <span class="macro">assert_eq!</span>(zero.max_particles, <span class="number">1</span>); <span class="comment">// clamped to at least 1
-<a href=#318 id=318 data-nosnippet>318</a>    </span>}
-<a href=#319 id=319 data-nosnippet>319</a>
-<a href=#320 id=320 data-nosnippet>320</a>    <span class="attr">#[test]
-<a href=#321 id=321 data-nosnippet>321</a>    </span><span class="kw">fn </span>test_with_intensity_clamps() {
-<a href=#322 id=322 data-nosnippet>322</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::rain();
-<a href=#323 id=323 data-nosnippet>323</a>        <span class="kw">let </span>over = cfg.with_intensity(<span class="number">5.0</span>);
-<a href=#324 id=324 data-nosnippet>324</a>        <span class="comment">// Should be clamped to 1.0 → same as the original
-<a href=#325 id=325 data-nosnippet>325</a>        </span><span class="macro">assert_eq!</span>(over.spawn_rate, cfg.spawn_rate);
-<a href=#326 id=326 data-nosnippet>326</a>    }
-<a href=#327 id=327 data-nosnippet>327</a>
-<a href=#328 id=328 data-nosnippet>328</a>    <span class="attr">#[test]
-<a href=#329 id=329 data-nosnippet>329</a>    </span><span class="kw">fn </span>test_to_emitter_params() {
-<a href=#330 id=330 data-nosnippet>330</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::rain();
-<a href=#331 id=331 data-nosnippet>331</a>        <span class="kw">let </span>camera = Vec3::new(<span class="number">100.0</span>, <span class="number">50.0</span>, <span class="number">200.0</span>);
-<a href=#332 id=332 data-nosnippet>332</a>        <span class="kw">let </span>wind_dir = Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">0.0</span>);
-<a href=#333 id=333 data-nosnippet>333</a>        <span class="kw">let </span>wind_strength = <span class="number">5.0</span>;
-<a href=#334 id=334 data-nosnippet>334</a>
-<a href=#335 id=335 data-nosnippet>335</a>        <span class="kw">let </span>params = cfg.to_emitter_params(camera, wind_dir, wind_strength, <span class="number">0.016</span>, <span class="number">42</span>);
-<a href=#336 id=336 data-nosnippet>336</a>
-<a href=#337 id=337 data-nosnippet>337</a>        <span class="comment">// Spawn position should be above camera
-<a href=#338 id=338 data-nosnippet>338</a>        </span><span class="macro">assert!</span>(params.position[<span class="number">1</span>] &gt; camera.y);
-<a href=#339 id=339 data-nosnippet>339</a>        <span class="comment">// Spawn radius stored in position.w
-<a href=#340 id=340 data-nosnippet>340</a>        </span><span class="macro">assert_eq!</span>(params.position[<span class="number">3</span>], cfg.spawn_radius);
-<a href=#341 id=341 data-nosnippet>341</a>        <span class="comment">// Velocity should include wind contribution
-<a href=#342 id=342 data-nosnippet>342</a>        </span><span class="macro">assert!</span>(params.velocity[<span class="number">0</span>] &gt; cfg.velocity.x);
-<a href=#343 id=343 data-nosnippet>343</a>        <span class="macro">assert_eq!</span>(params.lifetime, cfg.lifetime);
-<a href=#344 id=344 data-nosnippet>344</a>        <span class="macro">assert_eq!</span>(params.delta_time, <span class="number">0.016</span>);
-<a href=#345 id=345 data-nosnippet>345</a>        <span class="macro">assert_eq!</span>(params.random_seed, <span class="number">42</span>);
-<a href=#346 id=346 data-nosnippet>346</a>    }
-<a href=#347 id=347 data-nosnippet>347</a>
-<a href=#348 id=348 data-nosnippet>348</a>    <span class="attr">#[test]
-<a href=#349 id=349 data-nosnippet>349</a>    </span><span class="kw">fn </span>test_to_emitter_params_no_wind() {
-<a href=#350 id=350 data-nosnippet>350</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::snow();
-<a href=#351 id=351 data-nosnippet>351</a>        <span class="kw">let </span>params = cfg.to_emitter_params(Vec3::ZERO, Vec3::ZERO, <span class="number">0.0</span>, <span class="number">0.016</span>, <span class="number">0</span>);
-<a href=#352 id=352 data-nosnippet>352</a>        <span class="comment">// Without wind, velocity should equal base velocity
-<a href=#353 id=353 data-nosnippet>353</a>        </span><span class="macro">assert!</span>((params.velocity[<span class="number">0</span>] - cfg.velocity.x).abs() &lt; <span class="number">1e-6</span>);
-<a href=#354 id=354 data-nosnippet>354</a>        <span class="macro">assert!</span>((params.velocity[<span class="number">1</span>] - cfg.velocity.y).abs() &lt; <span class="number">1e-6</span>);
-<a href=#355 id=355 data-nosnippet>355</a>    }
-<a href=#356 id=356 data-nosnippet>356</a>
-<a href=#357 id=357 data-nosnippet>357</a>    <span class="attr">#[test]
-<a href=#358 id=358 data-nosnippet>358</a>    </span><span class="kw">fn </span>test_config_for_weather_rain() {
-<a href=#359 id=359 data-nosnippet>359</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
-<a href=#360 id=360 data-nosnippet>360</a>        <span class="kw">let </span>cfg = config_for_weather(WeatherType::Rain, <span class="number">0.7</span>, <span class="number">0.0</span>, <span class="number">0.4</span>);
-<a href=#361 id=361 data-nosnippet>361</a>        <span class="macro">assert!</span>(cfg.is_some());
-<a href=#362 id=362 data-nosnippet>362</a>        <span class="kw">let </span>c = cfg.unwrap();
-<a href=#363 id=363 data-nosnippet>363</a>        <span class="macro">assert_eq!</span>(c.particle_type, WeatherParticleType::Rain);
-<a href=#364 id=364 data-nosnippet>364</a>    }
-<a href=#365 id=365 data-nosnippet>365</a>
-<a href=#366 id=366 data-nosnippet>366</a>    <span class="attr">#[test]
-<a href=#367 id=367 data-nosnippet>367</a>    </span><span class="kw">fn </span>test_config_for_weather_clear_is_none() {
-<a href=#368 id=368 data-nosnippet>368</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
-<a href=#369 id=369 data-nosnippet>369</a>        <span class="macro">assert!</span>(config_for_weather(WeatherType::Clear, <span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">0.1</span>).is_none());
-<a href=#370 id=370 data-nosnippet>370</a>        <span class="macro">assert!</span>(config_for_weather(WeatherType::Cloudy, <span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">0.2</span>).is_none());
-<a href=#371 id=371 data-nosnippet>371</a>        <span class="macro">assert!</span>(config_for_weather(WeatherType::Fog, <span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">0.1</span>).is_none());
-<a href=#372 id=372 data-nosnippet>372</a>    }
-<a href=#373 id=373 data-nosnippet>373</a>
-<a href=#374 id=374 data-nosnippet>374</a>    <span class="attr">#[test]
-<a href=#375 id=375 data-nosnippet>375</a>    </span><span class="kw">fn </span>test_config_for_weather_storm() {
-<a href=#376 id=376 data-nosnippet>376</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
-<a href=#377 id=377 data-nosnippet>377</a>        <span class="kw">let </span>cfg = config_for_weather(WeatherType::Storm, <span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">0.8</span>).unwrap();
-<a href=#378 id=378 data-nosnippet>378</a>        <span class="macro">assert!</span>(cfg.velocity.y &lt; -<span class="number">20.0</span>, <span class="string">"storm rain falls faster"</span>);
-<a href=#379 id=379 data-nosnippet>379</a>        <span class="macro">assert_eq!</span>(cfg.wind_influence, <span class="number">1.0</span>);
-<a href=#380 id=380 data-nosnippet>380</a>    }
-<a href=#381 id=381 data-nosnippet>381</a>
-<a href=#382 id=382 data-nosnippet>382</a>    <span class="attr">#[test]
-<a href=#383 id=383 data-nosnippet>383</a>    </span><span class="kw">fn </span>test_config_for_weather_snow() {
-<a href=#384 id=384 data-nosnippet>384</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
-<a href=#385 id=385 data-nosnippet>385</a>        <span class="kw">let </span>cfg = config_for_weather(WeatherType::Snow, <span class="number">0.0</span>, <span class="number">0.8</span>, <span class="number">0.3</span>).unwrap();
-<a href=#386 id=386 data-nosnippet>386</a>        <span class="macro">assert_eq!</span>(cfg.particle_type, WeatherParticleType::Snow);
-<a href=#387 id=387 data-nosnippet>387</a>    }
-<a href=#388 id=388 data-nosnippet>388</a>
-<a href=#389 id=389 data-nosnippet>389</a>    <span class="attr">#[test]
-<a href=#390 id=390 data-nosnippet>390</a>    </span><span class="kw">fn </span>test_config_for_weather_sandstorm() {
-<a href=#391 id=391 data-nosnippet>391</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
-<a href=#392 id=392 data-nosnippet>392</a>        <span class="kw">let </span>cfg = config_for_weather(WeatherType::Sandstorm, <span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>).unwrap();
-<a href=#393 id=393 data-nosnippet>393</a>        <span class="macro">assert_eq!</span>(cfg.particle_type, WeatherParticleType::Sandstorm);
-<a href=#394 id=394 data-nosnippet>394</a>    }
-<a href=#395 id=395 data-nosnippet>395</a>
-<a href=#396 id=396 data-nosnippet>396</a>    <span class="attr">#[test]
-<a href=#397 id=397 data-nosnippet>397</a>    </span><span class="kw">fn </span>test_emitter_params_from_weather_clear() {
-<a href=#398 id=398 data-nosnippet>398</a>        <span class="kw">let </span>ws = <span class="kw">crate</span>::environment::WeatherSystem::new();
-<a href=#399 id=399 data-nosnippet>399</a>        <span class="kw">let </span>result = emitter_params_from_weather(<span class="kw-2">&amp;</span>ws, Vec3::ZERO, <span class="number">0.016</span>, <span class="number">0</span>);
-<a href=#400 id=400 data-nosnippet>400</a>        <span class="macro">assert!</span>(result.is_none(), <span class="string">"clear weather should not produce particles"</span>);
-<a href=#401 id=401 data-nosnippet>401</a>    }
-<a href=#402 id=402 data-nosnippet>402</a>
-<a href=#403 id=403 data-nosnippet>403</a>    <span class="attr">#[test]
-<a href=#404 id=404 data-nosnippet>404</a>    </span><span class="kw">fn </span>test_emitter_params_size() {
-<a href=#405 id=405 data-nosnippet>405</a>        <span class="macro">assert_eq!</span>(std::mem::size_of::&lt;EmitterParams&gt;(), <span class="number">80</span>);
-<a href=#406 id=406 data-nosnippet>406</a>    }
-<a href=#407 id=407 data-nosnippet>407</a>}</code></pre></div></section></main></body></html>
+<a href=#282 id=282 data-nosnippet>282</a>        <span class="macro">assert!</span>(
+<a href=#283 id=283 data-nosnippet>283</a>            cfg.lifetime &gt; cfg.velocity.y.abs() * <span class="number">0.1</span>,
+<a href=#284 id=284 data-nosnippet>284</a>            <span class="string">"snow should live long enough to be visible"
+<a href=#285 id=285 data-nosnippet>285</a>        </span>);
+<a href=#286 id=286 data-nosnippet>286</a>    }
+<a href=#287 id=287 data-nosnippet>287</a>
+<a href=#288 id=288 data-nosnippet>288</a>    <span class="attr">#[test]
+<a href=#289 id=289 data-nosnippet>289</a>    </span><span class="kw">fn </span>test_sandstorm_preset() {
+<a href=#290 id=290 data-nosnippet>290</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::sandstorm();
+<a href=#291 id=291 data-nosnippet>291</a>        <span class="macro">assert_eq!</span>(cfg.particle_type, WeatherParticleType::Sandstorm);
+<a href=#292 id=292 data-nosnippet>292</a>        <span class="macro">assert!</span>(cfg.velocity.x &gt; <span class="number">0.0</span>, <span class="string">"sandstorm blows horizontally"</span>);
+<a href=#293 id=293 data-nosnippet>293</a>        <span class="macro">assert!</span>(
+<a href=#294 id=294 data-nosnippet>294</a>            cfg.spawn_height_above_camera &lt; <span class="number">10.0</span>,
+<a href=#295 id=295 data-nosnippet>295</a>            <span class="string">"sandstorm near ground"
+<a href=#296 id=296 data-nosnippet>296</a>        </span>);
+<a href=#297 id=297 data-nosnippet>297</a>    }
+<a href=#298 id=298 data-nosnippet>298</a>
+<a href=#299 id=299 data-nosnippet>299</a>    <span class="attr">#[test]
+<a href=#300 id=300 data-nosnippet>300</a>    </span><span class="kw">fn </span>test_wind_trails_preset() {
+<a href=#301 id=301 data-nosnippet>301</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::wind_trails();
+<a href=#302 id=302 data-nosnippet>302</a>        <span class="macro">assert_eq!</span>(cfg.particle_type, WeatherParticleType::WindTrails);
+<a href=#303 id=303 data-nosnippet>303</a>        <span class="macro">assert!</span>(cfg.color[<span class="number">3</span>] &lt; <span class="number">0.5</span>, <span class="string">"wind trails are translucent"</span>);
+<a href=#304 id=304 data-nosnippet>304</a>    }
+<a href=#305 id=305 data-nosnippet>305</a>
+<a href=#306 id=306 data-nosnippet>306</a>    <span class="attr">#[test]
+<a href=#307 id=307 data-nosnippet>307</a>    </span><span class="kw">fn </span>test_preset_for() {
+<a href=#308 id=308 data-nosnippet>308</a>        <span class="kw">let </span>r = WeatherParticleConfig::preset_for(WeatherParticleType::Rain);
+<a href=#309 id=309 data-nosnippet>309</a>        <span class="macro">assert_eq!</span>(r.particle_type, WeatherParticleType::Rain);
+<a href=#310 id=310 data-nosnippet>310</a>        <span class="kw">let </span>s = WeatherParticleConfig::preset_for(WeatherParticleType::Snow);
+<a href=#311 id=311 data-nosnippet>311</a>        <span class="macro">assert_eq!</span>(s.particle_type, WeatherParticleType::Snow);
+<a href=#312 id=312 data-nosnippet>312</a>    }
+<a href=#313 id=313 data-nosnippet>313</a>
+<a href=#314 id=314 data-nosnippet>314</a>    <span class="attr">#[test]
+<a href=#315 id=315 data-nosnippet>315</a>    </span><span class="kw">fn </span>test_with_intensity_scales() {
+<a href=#316 id=316 data-nosnippet>316</a>        <span class="kw">let </span>full = WeatherParticleConfig::rain();
+<a href=#317 id=317 data-nosnippet>317</a>        <span class="kw">let </span>half = full.with_intensity(<span class="number">0.5</span>);
+<a href=#318 id=318 data-nosnippet>318</a>        <span class="macro">assert!</span>(half.spawn_rate &lt; full.spawn_rate);
+<a href=#319 id=319 data-nosnippet>319</a>        <span class="macro">assert!</span>(half.max_particles &lt; full.max_particles);
+<a href=#320 id=320 data-nosnippet>320</a>
+<a href=#321 id=321 data-nosnippet>321</a>        <span class="kw">let </span>zero = full.with_intensity(<span class="number">0.0</span>);
+<a href=#322 id=322 data-nosnippet>322</a>        <span class="macro">assert_eq!</span>(zero.spawn_rate, <span class="number">0</span>);
+<a href=#323 id=323 data-nosnippet>323</a>        <span class="macro">assert_eq!</span>(zero.max_particles, <span class="number">1</span>); <span class="comment">// clamped to at least 1
+<a href=#324 id=324 data-nosnippet>324</a>    </span>}
+<a href=#325 id=325 data-nosnippet>325</a>
+<a href=#326 id=326 data-nosnippet>326</a>    <span class="attr">#[test]
+<a href=#327 id=327 data-nosnippet>327</a>    </span><span class="kw">fn </span>test_with_intensity_clamps() {
+<a href=#328 id=328 data-nosnippet>328</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::rain();
+<a href=#329 id=329 data-nosnippet>329</a>        <span class="kw">let </span>over = cfg.with_intensity(<span class="number">5.0</span>);
+<a href=#330 id=330 data-nosnippet>330</a>        <span class="comment">// Should be clamped to 1.0 → same as the original
+<a href=#331 id=331 data-nosnippet>331</a>        </span><span class="macro">assert_eq!</span>(over.spawn_rate, cfg.spawn_rate);
+<a href=#332 id=332 data-nosnippet>332</a>    }
+<a href=#333 id=333 data-nosnippet>333</a>
+<a href=#334 id=334 data-nosnippet>334</a>    <span class="attr">#[test]
+<a href=#335 id=335 data-nosnippet>335</a>    </span><span class="kw">fn </span>test_to_emitter_params() {
+<a href=#336 id=336 data-nosnippet>336</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::rain();
+<a href=#337 id=337 data-nosnippet>337</a>        <span class="kw">let </span>camera = Vec3::new(<span class="number">100.0</span>, <span class="number">50.0</span>, <span class="number">200.0</span>);
+<a href=#338 id=338 data-nosnippet>338</a>        <span class="kw">let </span>wind_dir = Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">0.0</span>);
+<a href=#339 id=339 data-nosnippet>339</a>        <span class="kw">let </span>wind_strength = <span class="number">5.0</span>;
+<a href=#340 id=340 data-nosnippet>340</a>
+<a href=#341 id=341 data-nosnippet>341</a>        <span class="kw">let </span>params = cfg.to_emitter_params(camera, wind_dir, wind_strength, <span class="number">0.016</span>, <span class="number">42</span>);
+<a href=#342 id=342 data-nosnippet>342</a>
+<a href=#343 id=343 data-nosnippet>343</a>        <span class="comment">// Spawn position should be above camera
+<a href=#344 id=344 data-nosnippet>344</a>        </span><span class="macro">assert!</span>(params.position[<span class="number">1</span>] &gt; camera.y);
+<a href=#345 id=345 data-nosnippet>345</a>        <span class="comment">// Spawn radius stored in position.w
+<a href=#346 id=346 data-nosnippet>346</a>        </span><span class="macro">assert_eq!</span>(params.position[<span class="number">3</span>], cfg.spawn_radius);
+<a href=#347 id=347 data-nosnippet>347</a>        <span class="comment">// Velocity should include wind contribution
+<a href=#348 id=348 data-nosnippet>348</a>        </span><span class="macro">assert!</span>(params.velocity[<span class="number">0</span>] &gt; cfg.velocity.x);
+<a href=#349 id=349 data-nosnippet>349</a>        <span class="macro">assert_eq!</span>(params.lifetime, cfg.lifetime);
+<a href=#350 id=350 data-nosnippet>350</a>        <span class="macro">assert_eq!</span>(params.delta_time, <span class="number">0.016</span>);
+<a href=#351 id=351 data-nosnippet>351</a>        <span class="macro">assert_eq!</span>(params.random_seed, <span class="number">42</span>);
+<a href=#352 id=352 data-nosnippet>352</a>    }
+<a href=#353 id=353 data-nosnippet>353</a>
+<a href=#354 id=354 data-nosnippet>354</a>    <span class="attr">#[test]
+<a href=#355 id=355 data-nosnippet>355</a>    </span><span class="kw">fn </span>test_to_emitter_params_no_wind() {
+<a href=#356 id=356 data-nosnippet>356</a>        <span class="kw">let </span>cfg = WeatherParticleConfig::snow();
+<a href=#357 id=357 data-nosnippet>357</a>        <span class="kw">let </span>params = cfg.to_emitter_params(Vec3::ZERO, Vec3::ZERO, <span class="number">0.0</span>, <span class="number">0.016</span>, <span class="number">0</span>);
+<a href=#358 id=358 data-nosnippet>358</a>        <span class="comment">// Without wind, velocity should equal base velocity
+<a href=#359 id=359 data-nosnippet>359</a>        </span><span class="macro">assert!</span>((params.velocity[<span class="number">0</span>] - cfg.velocity.x).abs() &lt; <span class="number">1e-6</span>);
+<a href=#360 id=360 data-nosnippet>360</a>        <span class="macro">assert!</span>((params.velocity[<span class="number">1</span>] - cfg.velocity.y).abs() &lt; <span class="number">1e-6</span>);
+<a href=#361 id=361 data-nosnippet>361</a>    }
+<a href=#362 id=362 data-nosnippet>362</a>
+<a href=#363 id=363 data-nosnippet>363</a>    <span class="attr">#[test]
+<a href=#364 id=364 data-nosnippet>364</a>    </span><span class="kw">fn </span>test_config_for_weather_rain() {
+<a href=#365 id=365 data-nosnippet>365</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
+<a href=#366 id=366 data-nosnippet>366</a>        <span class="kw">let </span>cfg = config_for_weather(WeatherType::Rain, <span class="number">0.7</span>, <span class="number">0.0</span>, <span class="number">0.4</span>);
+<a href=#367 id=367 data-nosnippet>367</a>        <span class="macro">assert!</span>(cfg.is_some());
+<a href=#368 id=368 data-nosnippet>368</a>        <span class="kw">let </span>c = cfg.unwrap();
+<a href=#369 id=369 data-nosnippet>369</a>        <span class="macro">assert_eq!</span>(c.particle_type, WeatherParticleType::Rain);
+<a href=#370 id=370 data-nosnippet>370</a>    }
+<a href=#371 id=371 data-nosnippet>371</a>
+<a href=#372 id=372 data-nosnippet>372</a>    <span class="attr">#[test]
+<a href=#373 id=373 data-nosnippet>373</a>    </span><span class="kw">fn </span>test_config_for_weather_clear_is_none() {
+<a href=#374 id=374 data-nosnippet>374</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
+<a href=#375 id=375 data-nosnippet>375</a>        <span class="macro">assert!</span>(config_for_weather(WeatherType::Clear, <span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">0.1</span>).is_none());
+<a href=#376 id=376 data-nosnippet>376</a>        <span class="macro">assert!</span>(config_for_weather(WeatherType::Cloudy, <span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">0.2</span>).is_none());
+<a href=#377 id=377 data-nosnippet>377</a>        <span class="macro">assert!</span>(config_for_weather(WeatherType::Fog, <span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">0.1</span>).is_none());
+<a href=#378 id=378 data-nosnippet>378</a>    }
+<a href=#379 id=379 data-nosnippet>379</a>
+<a href=#380 id=380 data-nosnippet>380</a>    <span class="attr">#[test]
+<a href=#381 id=381 data-nosnippet>381</a>    </span><span class="kw">fn </span>test_config_for_weather_storm() {
+<a href=#382 id=382 data-nosnippet>382</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
+<a href=#383 id=383 data-nosnippet>383</a>        <span class="kw">let </span>cfg = config_for_weather(WeatherType::Storm, <span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">0.8</span>).unwrap();
+<a href=#384 id=384 data-nosnippet>384</a>        <span class="macro">assert!</span>(cfg.velocity.y &lt; -<span class="number">20.0</span>, <span class="string">"storm rain falls faster"</span>);
+<a href=#385 id=385 data-nosnippet>385</a>        <span class="macro">assert_eq!</span>(cfg.wind_influence, <span class="number">1.0</span>);
+<a href=#386 id=386 data-nosnippet>386</a>    }
+<a href=#387 id=387 data-nosnippet>387</a>
+<a href=#388 id=388 data-nosnippet>388</a>    <span class="attr">#[test]
+<a href=#389 id=389 data-nosnippet>389</a>    </span><span class="kw">fn </span>test_config_for_weather_snow() {
+<a href=#390 id=390 data-nosnippet>390</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
+<a href=#391 id=391 data-nosnippet>391</a>        <span class="kw">let </span>cfg = config_for_weather(WeatherType::Snow, <span class="number">0.0</span>, <span class="number">0.8</span>, <span class="number">0.3</span>).unwrap();
+<a href=#392 id=392 data-nosnippet>392</a>        <span class="macro">assert_eq!</span>(cfg.particle_type, WeatherParticleType::Snow);
+<a href=#393 id=393 data-nosnippet>393</a>    }
+<a href=#394 id=394 data-nosnippet>394</a>
+<a href=#395 id=395 data-nosnippet>395</a>    <span class="attr">#[test]
+<a href=#396 id=396 data-nosnippet>396</a>    </span><span class="kw">fn </span>test_config_for_weather_sandstorm() {
+<a href=#397 id=397 data-nosnippet>397</a>        <span class="kw">use </span><span class="kw">crate</span>::environment::WeatherType;
+<a href=#398 id=398 data-nosnippet>398</a>        <span class="kw">let </span>cfg = config_for_weather(WeatherType::Sandstorm, <span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>).unwrap();
+<a href=#399 id=399 data-nosnippet>399</a>        <span class="macro">assert_eq!</span>(cfg.particle_type, WeatherParticleType::Sandstorm);
+<a href=#400 id=400 data-nosnippet>400</a>    }
+<a href=#401 id=401 data-nosnippet>401</a>
+<a href=#402 id=402 data-nosnippet>402</a>    <span class="attr">#[test]
+<a href=#403 id=403 data-nosnippet>403</a>    </span><span class="kw">fn </span>test_emitter_params_from_weather_clear() {
+<a href=#404 id=404 data-nosnippet>404</a>        <span class="kw">let </span>ws = <span class="kw">crate</span>::environment::WeatherSystem::new();
+<a href=#405 id=405 data-nosnippet>405</a>        <span class="kw">let </span>result = emitter_params_from_weather(<span class="kw-2">&amp;</span>ws, Vec3::ZERO, <span class="number">0.016</span>, <span class="number">0</span>);
+<a href=#406 id=406 data-nosnippet>406</a>        <span class="macro">assert!</span>(
+<a href=#407 id=407 data-nosnippet>407</a>            result.is_none(),
+<a href=#408 id=408 data-nosnippet>408</a>            <span class="string">"clear weather should not produce particles"
+<a href=#409 id=409 data-nosnippet>409</a>        </span>);
+<a href=#410 id=410 data-nosnippet>410</a>    }
+<a href=#411 id=411 data-nosnippet>411</a>
+<a href=#412 id=412 data-nosnippet>412</a>    <span class="attr">#[test]
+<a href=#413 id=413 data-nosnippet>413</a>    </span><span class="kw">fn </span>test_emitter_params_size() {
+<a href=#414 id=414 data-nosnippet>414</a>        <span class="macro">assert_eq!</span>(std::mem::size_of::&lt;EmitterParams&gt;(), <span class="number">80</span>);
+<a href=#415 id=415 data-nosnippet>415</a>    }
+<a href=#416 id=416 data-nosnippet>416</a>}</code></pre></div></section></main></body></html>
