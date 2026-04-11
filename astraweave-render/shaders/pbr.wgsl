@@ -69,7 +69,7 @@ struct MainLightUbo {
 // Layout uses vec4 packing to avoid vec3 alignment mismatches between Rust and WGSL.
 struct SceneEnv {
     fog_color_density: vec4<f32>,   // .xyz = fog_color, .w = fog_density     (offset 0)
-    fog_range_pad: vec4<f32>,       // .x = fog_start, .y = fog_end           (offset 16)
+    fog_range_pad: vec4<f32>,       // .x = fog_start, .y = fog_end, .z = wetness, .w = snow_amount (offset 16)
     ambient_color_intensity: vec4<f32>, // .xyz = ambient_color, .w = intensity (offset 32)
     tint_color_alpha: vec4<f32>,    // .xyz = tint_color, .w = tint_alpha      (offset 48)
     blend_pad: vec4<f32>,           // .x = blend_factor, .yzw = padding       (offset 64)
@@ -210,7 +210,30 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     metallic = clamp(max(metallic, mr.r), 0.0, 1.0);
     roughness = clamp(min(roughness, max(mr.g, 0.04)), 0.04, 1.0);
 
-    let F0 = mix(vec3<f32>(0.04, 0.04, 0.04), base_color, metallic);
+    // ── Wet-surface PBR modulation ──────────────────────────────────────
+    // Only upward-facing surfaces accumulate water; wetness from scene env.
+    let wetness_global = uScene.fog_range_pad.z;
+    let up_facing = max(N.y, 0.0);
+    let wet = wetness_global * up_facing;
+    // Water fills micro-cavities → smoother surface (lower roughness).
+    roughness = max(roughness * (1.0 - wet * 0.7), 0.04);
+    // Wet surfaces absorb more light → darker albedo.
+    base_color = base_color * (1.0 - wet * 0.3);
+
+    // ── Snow accumulation PBR blend ─────────────────────────────────────
+    // Global snow amount from scene env (.w), modulated by surface orientation.
+    let snow_global = uScene.fog_range_pad.w;
+    let snow_raw = snow_global * saturate(up_facing + 0.1); // slight bias so near-vertical gets dusting
+    let snow_weight = saturate((snow_raw - 0.1) * 5.0);     // threshold 0.1, sharpness 5.0
+    // Blend base material toward snow properties.
+    let snow_albedo = vec3<f32>(0.95, 0.96, 0.98);          // slightly blue-white
+    base_color = mix(base_color, snow_albedo, snow_weight);
+    roughness = mix(roughness, 0.8, snow_weight);            // fresh snow roughness
+    metallic = mix(metallic, 0.0, snow_weight);              // snow is non-metallic
+
+    let F0_base = mix(vec3<f32>(0.04, 0.04, 0.04), base_color, metallic);
+    // Blend toward water F0 (IOR ≈ 1.33 → F0 ≈ 0.02) when wet.
+    let F0 = mix(F0_base, vec3<f32>(0.02, 0.02, 0.02), wet);
     let F = fresnel_schlick(max(dot(H, V), 0.0), F0);
     let D = distribution_ggx(N, H, roughness);
     let G = geometry_smith(N, V, L, roughness);

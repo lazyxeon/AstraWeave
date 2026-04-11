@@ -157,7 +157,12 @@ pub mod material_bindless; // Bindless texture array material system
 pub mod msaa; // MSAA anti-aliasing resources
 pub mod oit; // Weighted Blended Order-Independent Transparency
 pub mod overlay; // NEW (for cutscene fades/letterbox later)
+pub mod rain_occlusion; // GPU rain/weather particle occlusion via depth buffer
+pub mod snow_accumulation; // Per-chunk snow accumulation compute + snow material blending
 pub mod transparency; // Transparency depth sorting and render pass // Advanced post-processing (TAA, motion blur, DOF, color grading) // GPU compute SWE erosion
+pub mod vegetation_gpu; // GPU-instanced vegetation scatter and frustum cull pipeline
+pub mod vegetation_lod; // Tree LOD chain with billboard/impostor support
+pub mod weather_gpu; // GPU-accelerated weather particle emitter configurations
 
 // GPU memory management and SSAO
 pub mod bind_group_cache; // Generation-tracked bind group cache

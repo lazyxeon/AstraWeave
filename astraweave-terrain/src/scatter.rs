@@ -6,6 +6,55 @@ use glam::Vec3;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
+/// LOD-based density falloff configuration for vegetation.
+///
+/// Mirrors the editor `FoliageType` LOD settings. At each LOD band boundary
+/// the instance density is halved, and beyond `cull_distance` no instances
+/// are generated.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VegetationLodConfig {
+    /// Distance thresholds for each LOD level (up to 4 bands).
+    /// LOD0: [0, lod_distances[0]) — full density
+    /// LOD1: [lod_distances[0], lod_distances[1]) — 50% density
+    /// LOD2: [lod_distances[1], lod_distances[2]) — 25% density
+    /// LOD3: [lod_distances[2], lod_distances[3]) — 12.5% density
+    pub lod_distances: [f32; 4],
+    /// Beyond this distance, all instances are culled (density = 0).
+    pub cull_distance: f32,
+}
+
+impl Default for VegetationLodConfig {
+    fn default() -> Self {
+        Self {
+            lod_distances: [50.0, 150.0, 500.0, 1000.0],
+            cull_distance: 1500.0,
+        }
+    }
+}
+
+/// Compute the density multiplier for a vegetation instance at the given
+/// distance from the camera.
+///
+/// Returns a value in `[0.0, 1.0]` that should be used to probabilistically
+/// thin instances in the scatter pass.
+///
+/// - Within LOD0 range: 1.0 (full density)
+/// - Each successive LOD band halves the density
+/// - Beyond `cull_distance`: 0.0
+pub fn density_at_distance(dist: f32, lod: &VegetationLodConfig) -> f32 {
+    if dist > lod.cull_distance {
+        return 0.0;
+    }
+    let mut density = 1.0f32;
+    for &lod_dist in &lod.lod_distances {
+        if dist < lod_dist {
+            return density;
+        }
+        density *= 0.5;
+    }
+    density
+}
+
 /// A placed vegetation instance
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VegetationInstance {
@@ -117,6 +166,239 @@ impl VegetationScatter {
         }
 
         Ok(instances)
+    }
+
+    /// Hierarchical multi-pass vegetation scatter.
+    ///
+    /// Sorts vegetation types by `placement_priority` (trees first, then shrubs,
+    /// then grass) and performs separate Poisson-disk passes for each priority
+    /// tier.  Higher-priority (earlier) placements create exclusion zones that
+    /// later passes must respect.
+    ///
+    /// Falls back to `scatter_vegetation` when no types define priorities.
+    pub fn scatter_vegetation_hierarchical(
+        &self,
+        chunk: &TerrainChunk,
+        chunk_size: f32,
+        biome_config: &BiomeConfig,
+        seed: u64,
+    ) -> anyhow::Result<Vec<VegetationInstance>> {
+        let veg_types = &biome_config.vegetation.vegetation_types;
+        if veg_types.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Check if any type defines non-default priority
+        let has_priorities = veg_types.iter().any(|v| v.placement_priority != 0);
+        if !has_priorities {
+            // No hierarchical data — use the standard path
+            return self.scatter_vegetation(chunk, chunk_size, biome_config, seed);
+        }
+
+        // Group types by priority tier
+        let mut tiers: std::collections::BTreeMap<u8, Vec<usize>> =
+            std::collections::BTreeMap::new();
+        for (i, vt) in veg_types.iter().enumerate() {
+            tiers.entry(vt.placement_priority).or_default().push(i);
+        }
+
+        let chunk_origin = chunk.id().to_world_pos(chunk_size);
+
+        // Exclusion zones from earlier tiers: (position_xz, exclusion_radius²)
+        let mut exclusion_zones: Vec<(Vec3, f32)> = Vec::new();
+
+        // Spatial grid for fast exclusion lookups
+        let excl_cell_size = 4.0f32; // coarse grid for exclusion checks
+        let excl_grid_dim = ((chunk_size / excl_cell_size).ceil() as usize).max(1);
+        let mut excl_grid: Vec<Vec<usize>> = vec![Vec::new(); excl_grid_dim * excl_grid_dim];
+
+        let mut all_instances: Vec<VegetationInstance> = Vec::new();
+        let chunk_area = chunk_size * chunk_size;
+        let base_density = biome_config.vegetation.density;
+
+        let hmin = chunk.heightmap().min_height();
+        let hmax = chunk.heightmap().max_height();
+        let altitude_ceiling = hmin + (hmax - hmin) * 0.90;
+
+        for (_priority, type_indices) in &tiers {
+            // Build a sub-BiomeConfig with only this tier's types
+            let tier_weight_sum: f32 = type_indices
+                .iter()
+                .map(|&i| veg_types[i].weight)
+                .sum();
+
+            if tier_weight_sum <= 0.0 {
+                continue;
+            }
+
+            // Per-tier density scaled by weight fraction
+            let tier_density = base_density * tier_weight_sum;
+            let tier_target = (chunk_area * tier_density) as usize;
+            if tier_target == 0 {
+                continue;
+            }
+
+            // Per-species min_distance: use the smallest non-zero value in the tier
+            let tier_min_dist = type_indices
+                .iter()
+                .map(|&i| veg_types[i].min_distance)
+                .filter(|&d| d > 0.0)
+                .fold(self.config.min_distance, f32::min);
+
+            let min_dist_sq = tier_min_dist * tier_min_dist;
+
+            // Build placement grid for this tier
+            let cell_size = tier_min_dist;
+            let grid_dim = ((chunk_size / cell_size).ceil() as usize).max(1);
+            let mut grid: Vec<Vec<usize>> = vec![Vec::new(); grid_dim * grid_dim];
+
+            let mut rng = rand::rngs::StdRng::seed_from_u64(
+                seed.wrapping_add(self.config.seed_offset)
+                    .wrapping_add(*_priority as u64 * 0x9E37_79B9),
+            );
+
+            let effective_target = tier_target.min(16_384);
+            let max_attempts = effective_target * 15;
+            let mut attempts = 0;
+            let tier_start = all_instances.len();
+
+            while (all_instances.len() - tier_start) < effective_target && attempts < max_attempts {
+                attempts += 1;
+
+                let local_x = rng.random::<f32>() * chunk_size;
+                let local_z = rng.random::<f32>() * chunk_size;
+                let mut world_pos =
+                    Vec3::new(chunk_origin.x + local_x, 0.0, chunk_origin.z + local_z);
+
+                let height = match chunk.get_height_at_world_pos(world_pos, chunk_size) {
+                    Some(h) => h,
+                    None => continue,
+                };
+                world_pos.y = height;
+
+                // Altitude ceiling
+                if height > altitude_ceiling {
+                    continue;
+                }
+
+                // Height filter
+                if let Some((min_h, max_h)) = self.config.height_filter {
+                    if height < min_h || height > max_h {
+                        continue;
+                    }
+                }
+
+                // Slope + curvature
+                let (slope, terrain_normal) =
+                    self.estimate_slope_and_normal(chunk, world_pos, chunk_size);
+                if slope > self.config.max_slope {
+                    continue;
+                }
+                let curvature = self.estimate_curvature(chunk, world_pos, chunk_size);
+                if curvature > self.config.max_curvature {
+                    continue;
+                }
+
+                // Intra-tier minimum distance check
+                let gx = ((local_x / cell_size) as usize).min(grid_dim - 1);
+                let gz = ((local_z / cell_size) as usize).min(grid_dim - 1);
+                let x_min = gx.saturating_sub(1);
+                let x_max = (gx + 1).min(grid_dim - 1);
+                let z_min = gz.saturating_sub(1);
+                let z_max = (gz + 1).min(grid_dim - 1);
+
+                let mut too_close = false;
+                'intra: for nz in z_min..=z_max {
+                    for nx in x_min..=x_max {
+                        for &idx in &grid[nz * grid_dim + nx] {
+                            let diff = all_instances[idx].position - world_pos;
+                            if diff.x * diff.x + diff.z * diff.z < min_dist_sq {
+                                too_close = true;
+                                break 'intra;
+                            }
+                        }
+                    }
+                }
+                if too_close {
+                    continue;
+                }
+
+                // Exclusion zone check from earlier tiers
+                let egx = ((local_x / excl_cell_size) as usize).min(excl_grid_dim - 1);
+                let egz = ((local_z / excl_cell_size) as usize).min(excl_grid_dim - 1);
+                // Check 3×3 neighborhood for exclusion zones
+                let ex_min = egx.saturating_sub(1);
+                let ex_max = (egx + 1).min(excl_grid_dim - 1);
+                let ez_min = egz.saturating_sub(1);
+                let ez_max = (egz + 1).min(excl_grid_dim - 1);
+
+                let mut excluded = false;
+                'excl: for ez in ez_min..=ez_max {
+                    for ex in ex_min..=ex_max {
+                        for &ei in &excl_grid[ez * excl_grid_dim + ex] {
+                            let (epos, erad_sq) = exclusion_zones[ei];
+                            let diff = epos - world_pos;
+                            if diff.x * diff.x + diff.z * diff.z < erad_sq {
+                                excluded = true;
+                                break 'excl;
+                            }
+                        }
+                    }
+                }
+                if excluded {
+                    continue;
+                }
+
+                // Select type from this tier (weighted)
+                let type_roll = rng.random::<f32>() * tier_weight_sum;
+                let mut accum = 0.0f32;
+                let mut selected_idx = type_indices[0];
+                for &ti in type_indices {
+                    accum += veg_types[ti].weight;
+                    if type_roll <= accum {
+                        selected_idx = ti;
+                        break;
+                    }
+                }
+
+                let selected = &veg_types[selected_idx];
+
+                // Per-type slope tolerance check
+                if slope > selected.slope_tolerance {
+                    continue;
+                }
+
+                let scale = rng.random_range(selected.scale_range.0..=selected.scale_range.1);
+                let rotation = if biome_config.vegetation.random_rotation {
+                    rng.random::<f32>() * std::f32::consts::TAU
+                } else {
+                    0.0
+                };
+
+                let idx = all_instances.len();
+                all_instances.push(VegetationInstance {
+                    position: world_pos,
+                    rotation,
+                    scale,
+                    vegetation_type: selected.name.clone(),
+                    model_path: selected.model_path.clone(),
+                    terrain_normal,
+                });
+
+                // Register in intra-tier grid
+                grid[gz * grid_dim + gx].push(idx);
+
+                // Register exclusion zone for this instance
+                let excl_r = selected.exclusion_radius;
+                if excl_r > 0.0 {
+                    let excl_idx = exclusion_zones.len();
+                    exclusion_zones.push((world_pos, excl_r * excl_r));
+                    excl_grid[egz * excl_grid_dim + egx].push(excl_idx);
+                }
+            }
+        }
+
+        Ok(all_instances)
     }
 
     /// Generate scatter using Poisson disk sampling for natural distribution
@@ -629,5 +911,69 @@ mod tests {
 
         assert!(!result.is_empty());
         assert_eq!(result.total_count(), 1);
+    }
+
+    #[test]
+    fn test_density_at_distance_lod0() {
+        let lod = VegetationLodConfig::default();
+        // Within LOD0 range (0..50) → full density
+        assert_eq!(density_at_distance(0.0, &lod), 1.0);
+        assert_eq!(density_at_distance(25.0, &lod), 1.0);
+        assert_eq!(density_at_distance(49.9, &lod), 1.0);
+    }
+
+    #[test]
+    fn test_density_at_distance_lod1() {
+        let lod = VegetationLodConfig::default();
+        // Within LOD1 range (50..150) → 50% density
+        assert_eq!(density_at_distance(50.0, &lod), 0.5);
+        assert_eq!(density_at_distance(100.0, &lod), 0.5);
+        assert_eq!(density_at_distance(149.9, &lod), 0.5);
+    }
+
+    #[test]
+    fn test_density_at_distance_lod2() {
+        let lod = VegetationLodConfig::default();
+        // Within LOD2 range (150..500) → 25% density
+        assert_eq!(density_at_distance(150.0, &lod), 0.25);
+        assert_eq!(density_at_distance(300.0, &lod), 0.25);
+    }
+
+    #[test]
+    fn test_density_at_distance_lod3() {
+        let lod = VegetationLodConfig::default();
+        // Within LOD3 range (500..1000) → 12.5% density
+        assert_eq!(density_at_distance(500.0, &lod), 0.125);
+        assert_eq!(density_at_distance(750.0, &lod), 0.125);
+    }
+
+    #[test]
+    fn test_density_at_distance_beyond_lod3() {
+        let lod = VegetationLodConfig::default();
+        // Beyond LOD3 but under cull_distance (1000..1500) → 6.25%
+        assert_eq!(density_at_distance(1000.0, &lod), 0.0625);
+        assert_eq!(density_at_distance(1200.0, &lod), 0.0625);
+    }
+
+    #[test]
+    fn test_density_at_distance_culled() {
+        let lod = VegetationLodConfig::default();
+        // Beyond cull_distance → 0
+        assert_eq!(density_at_distance(1500.1, &lod), 0.0);
+        assert_eq!(density_at_distance(5000.0, &lod), 0.0);
+    }
+
+    #[test]
+    fn test_density_at_distance_custom_config() {
+        let lod = VegetationLodConfig {
+            lod_distances: [10.0, 20.0, 30.0, 40.0],
+            cull_distance: 50.0,
+        };
+        assert_eq!(density_at_distance(5.0, &lod), 1.0);
+        assert_eq!(density_at_distance(15.0, &lod), 0.5);
+        assert_eq!(density_at_distance(25.0, &lod), 0.25);
+        assert_eq!(density_at_distance(35.0, &lod), 0.125);
+        assert_eq!(density_at_distance(45.0, &lod), 0.0625);
+        assert_eq!(density_at_distance(55.0, &lod), 0.0);
     }
 }

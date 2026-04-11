@@ -10,16 +10,17 @@
 //! ```text
 //! SceneEnvironmentUBO (96 bytes, 16-byte aligned):
 //!   fog_color:        vec3<f32> + fog_density: f32   (16 bytes)  offset  0
-//!   fog_start:        f32 + fog_end: f32 + pad       (16 bytes)  offset 16
+//!   fog_start:        f32 + fog_end: f32 + wetness   (16 bytes)  offset 16
+//!     + snow_amount: f32
 //!   ambient_color:    vec3<f32> + ambient_intensity   (16 bytes)  offset 32
 //!   tint_color:       vec3<f32> + tint_alpha: f32     (16 bytes)  offset 48
 //!   blend_factor:     f32 + _pad_align: vec3<f32>     (16 bytes)  offset 64
-//!   _pad1:            vec3<f32> + _pad_struct: f32    (16 bytes)  offset 80
+//!   sun_color:        vec3<f32> + sun_intensity: f32  (16 bytes)  offset 80
 //! ```
 //!
-//! **Note:** The WGSL `SceneEnv` struct has `_pad1: vec3<f32>` which
-//! requires 16-byte alignment in WGSL, inserting implicit padding after
-//! `blend_factor`. The total struct size rounds up to 96 bytes.
+//! `wetness` (0.0–1.0) drives wet-surface PBR modulation (darker albedo,
+//! lower roughness, water F0). `snow_amount` (0.0–1.0) drives snow
+//! accumulation blending. Both are packed into the fog range vec4.
 //!
 //! Bind as `@group(4) @binding(0) var<uniform> uScene: SceneEnvironment;`
 //! in WGSL (once the pipeline is extended to support it).
@@ -48,8 +49,11 @@ pub struct SceneEnvironmentUBO {
     pub fog_start: f32,
     /// Fog distance where fog is fully opaque (linear fog).
     pub fog_end: f32,
-    /// Padding to maintain 16-byte alignment.
-    pub _pad0: [f32; 2],
+    /// Surface wetness (0.0–1.0). Drives PBR wet modulation in the shader:
+    /// lower roughness, darker albedo, water F0. Set via weather system.
+    pub wetness: f32,
+    /// Snow accumulation amount (0.0–1.0). Drives snow material blending.
+    pub snow_amount: f32,
 
     /// Ambient light color (linear RGB).
     pub ambient_color: [f32; 3],
@@ -92,7 +96,8 @@ impl SceneEnvironmentUBO {
             fog_density: visuals.fog_density,
             fog_start: visuals.fog_start,
             fog_end: visuals.fog_end,
-            _pad0: [0.0; 2],
+            wetness: 0.0,
+            snow_amount: 0.0,
             ambient_color: visuals.ambient_color.to_array(),
             ambient_intensity: visuals.ambient_intensity,
             tint_color,
@@ -151,6 +156,12 @@ pub struct SceneEnvironment {
     pub sun_color: [f32; 3],
     /// Directional sun intensity (set by editor world panel).
     pub sun_intensity: f32,
+    /// Surface wetness driven by rain (0.0–1.0).
+    /// Accumulates during rain, evaporates when dry.
+    pub wetness: f32,
+    /// Snow accumulation level (0.0–1.0).
+    /// Accumulates during snow, melts when warm.
+    pub snow_amount: f32,
 }
 
 impl Default for SceneEnvironment {
@@ -164,6 +175,8 @@ impl Default for SceneEnvironment {
             weather_ambient_multiplier: 1.0,
             sun_color: [1.0, 0.98, 0.9],
             sun_intensity: 1.0,
+            wetness: 0.0,
+            snow_amount: 0.0,
         }
     }
 }
@@ -198,6 +211,8 @@ impl SceneEnvironment {
         );
         ubo.sun_color = self.sun_color;
         ubo.sun_intensity = self.sun_intensity;
+        ubo.wetness = self.wetness.clamp(0.0, 1.0);
+        ubo.snow_amount = self.snow_amount.clamp(0.0, 1.0);
         ubo
     }
 
@@ -219,6 +234,37 @@ impl SceneEnvironment {
         };
         self.weather_fog_multiplier = fog_mul;
         self.weather_ambient_multiplier = ambient_mul;
+    }
+
+    /// Update surface wetness based on current weather.
+    ///
+    /// During rain, wetness accumulates at `accumulate_rate` per second
+    /// (default ≈ 0.5 → full wet in 2 s). When not raining, wetness
+    /// evaporates at `dry_rate` per second (default ≈ 0.1 → dry in 10 s).
+    ///
+    /// Call once per frame with `dt` = frame delta time.
+    pub fn update_wetness(&mut self, dt: f32, rain_active: bool) {
+        const ACCUMULATE_RATE: f32 = 0.5;
+        const DRY_RATE: f32 = 0.1;
+        if rain_active {
+            self.wetness = (self.wetness + ACCUMULATE_RATE * dt).min(1.0);
+        } else {
+            self.wetness = (self.wetness - DRY_RATE * dt).max(0.0);
+        }
+    }
+
+    /// Update snow accumulation based on current weather.
+    ///
+    /// During snow, accumulation increases at `accumulate_rate` per second.
+    /// When not snowing, snow melts at `melt_rate` per second.
+    pub fn update_snow(&mut self, dt: f32, snow_active: bool) {
+        const ACCUMULATE_RATE: f32 = 0.3;
+        const MELT_RATE: f32 = 0.05;
+        if snow_active {
+            self.snow_amount = (self.snow_amount + ACCUMULATE_RATE * dt).min(1.0);
+        } else {
+            self.snow_amount = (self.snow_amount - MELT_RATE * dt).max(0.0);
+        }
     }
 
     /// Derive ambient color and intensity from the time-of-day system.
@@ -257,7 +303,8 @@ struct SceneEnvironment {
     fog_density:        f32,
     fog_start:          f32,
     fog_end:            f32,
-    _pad0:              vec2<f32>,
+    wetness:            f32,
+    snow_amount:        f32,
     ambient_color:      vec3<f32>,
     ambient_intensity:  f32,
     tint_color:         vec3<f32>,
@@ -940,5 +987,112 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ── Wetness / snow accumulation tests ────────────────────────────────
+
+    #[test]
+    fn test_ubo_wetness_default_zero() {
+        let ubo = SceneEnvironmentUBO::default();
+        assert_eq!(ubo.wetness, 0.0);
+        assert_eq!(ubo.snow_amount, 0.0);
+    }
+
+    #[test]
+    fn test_ubo_wetness_from_scene_env() {
+        let mut env = SceneEnvironment::default();
+        env.wetness = 0.75;
+        env.snow_amount = 0.3;
+        let ubo = env.to_ubo();
+        assert!((ubo.wetness - 0.75).abs() < 1e-6);
+        assert!((ubo.snow_amount - 0.3).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_ubo_wetness_clamped_to_unit() {
+        let mut env = SceneEnvironment::default();
+        env.wetness = 2.0;
+        env.snow_amount = -0.5;
+        let ubo = env.to_ubo();
+        assert_eq!(ubo.wetness, 1.0);
+        assert_eq!(ubo.snow_amount, 0.0);
+    }
+
+    #[test]
+    fn test_update_wetness_accumulates_during_rain() {
+        let mut env = SceneEnvironment::default();
+        assert_eq!(env.wetness, 0.0);
+        env.update_wetness(1.0, true); // 1 second of rain
+        assert!((env.wetness - 0.5).abs() < 1e-6); // ACCUMULATE_RATE = 0.5
+    }
+
+    #[test]
+    fn test_update_wetness_saturates_at_one() {
+        let mut env = SceneEnvironment::default();
+        env.update_wetness(10.0, true); // 10 seconds
+        assert_eq!(env.wetness, 1.0);
+    }
+
+    #[test]
+    fn test_update_wetness_dries_when_not_raining() {
+        let mut env = SceneEnvironment::default();
+        env.wetness = 1.0;
+        env.update_wetness(5.0, false); // DRY_RATE=0.1 → 0.5
+        assert!((env.wetness - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_update_wetness_floors_at_zero() {
+        let mut env = SceneEnvironment::default();
+        env.wetness = 0.05;
+        env.update_wetness(10.0, false);
+        assert_eq!(env.wetness, 0.0);
+    }
+
+    #[test]
+    fn test_update_snow_accumulates() {
+        let mut env = SceneEnvironment::default();
+        env.update_snow(1.0, true); // ACCUMULATE_RATE = 0.3
+        assert!((env.snow_amount - 0.3).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_update_snow_melts() {
+        let mut env = SceneEnvironment::default();
+        env.snow_amount = 1.0;
+        env.update_snow(10.0, false); // MELT_RATE=0.05 → 0.5
+        assert!((env.snow_amount - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_wetness_byte_offset_in_ubo() {
+        // Verify wetness sits at byte offset 24 (fog_range_pad.z in WGSL).
+        let mut ubo = SceneEnvironmentUBO::zeroed();
+        ubo.wetness = 0.42;
+        let bytes = bytemuck::bytes_of(&ubo);
+        let val = f32::from_le_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]);
+        assert!((val - 0.42).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_snow_byte_offset_in_ubo() {
+        // Verify snow_amount sits at byte offset 28 (fog_range_pad.w in WGSL).
+        let mut ubo = SceneEnvironmentUBO::zeroed();
+        ubo.snow_amount = 0.77;
+        let bytes = bytemuck::bytes_of(&ubo);
+        let val = f32::from_le_bytes([bytes[28], bytes[29], bytes[30], bytes[31]]);
+        assert!((val - 0.77).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_wetness_survives_bytemuck_roundtrip() {
+        let mut env = SceneEnvironment::default();
+        env.wetness = 0.65;
+        env.snow_amount = 0.22;
+        let ubo = env.to_ubo();
+        let bytes = bytemuck::bytes_of(&ubo);
+        let back: &SceneEnvironmentUBO = bytemuck::from_bytes(bytes);
+        assert!((back.wetness - 0.65).abs() < 1e-6);
+        assert!((back.snow_amount - 0.22).abs() < 1e-6);
     }
 }

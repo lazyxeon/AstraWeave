@@ -70,7 +70,10 @@ pub use partition_integration::{
     PartitionCoord, VoxelPartitionConfig, VoxelPartitionEvent, VoxelPartitionManager,
     VoxelPartitionStats,
 };
-pub use scatter::{ScatterConfig, ScatterResult, VegetationInstance, VegetationScatter};
+pub use scatter::{
+    ScatterConfig, ScatterResult, VegetationInstance, VegetationLodConfig, VegetationScatter,
+    density_at_distance,
+};
 pub use solver::{ResolvedLocation, SolverError, TerrainSolver, ValidationStatus};
 pub use streaming_diagnostics::{
     ChunkLoadState, DiagnosticReport, FrameStats, HitchDetector, MemoryStats, StreamingDiagnostics,

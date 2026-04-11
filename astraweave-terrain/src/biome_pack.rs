@@ -510,6 +510,10 @@ impl BiomePack {
                 model_path: full_path.to_string_lossy().to_string(),
                 scale_range: a.scale_range,
                 slope_tolerance: a.slope_tolerance,
+                min_distance: 0.0,
+                cluster_factor: 0.0,
+                exclusion_radius: 0.0,
+                placement_priority: 0,
             }
         };
         let sort_desc = |v: &mut Vec<VegetationType>| {
