@@ -515,14 +515,14 @@ fn terrain_layer_gpu_default_values() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn terrain_material_gpu_size_320() {
-    assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 320);
+fn terrain_material_gpu_size_576() {
+    assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 576);
 }
 
 #[test]
 fn terrain_material_gpu_default_values() {
     let m = TerrainMaterialGpu::default();
-    assert_eq!(m.splat_map_index, 0);
+    assert_eq!(m.splat_map_index_0, 0);
     assert!((m.splat_uv_scale - 1.0).abs() < 1e-6);
     assert_eq!(m.triplanar_enabled, 1);
     assert_eq!(m.normal_blend_method, 1); // RNM

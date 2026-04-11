@@ -122,7 +122,13 @@ impl BrdfLutPass {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("brdf_lut_shader"),
-            source: wgpu::ShaderSource::Wgsl(concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/pbr/brdf_lut.wgsl")).into()),
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(
+                    include_str!("../shaders/constants.wgsl"),
+                    include_str!("../shaders/pbr/brdf_lut.wgsl")
+                )
+                .into(),
+            ),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("brdf_lut_pl"),

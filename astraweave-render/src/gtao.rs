@@ -140,8 +140,16 @@ impl GtaoPass {
 
     pub fn with_config(device: &wgpu::Device, width: u32, height: u32, config: GtaoConfig) -> Self {
         // Compute effective resolution (half-res if enabled)
-        let tex_w = if config.half_res { width.div_ceil(2) } else { width };
-        let tex_h = if config.half_res { height.div_ceil(2) } else { height };
+        let tex_w = if config.half_res {
+            width.div_ceil(2)
+        } else {
+            width
+        };
+        let tex_h = if config.half_res {
+            height.div_ceil(2)
+        } else {
+            height
+        };
 
         let ao_size = wgpu::Extent3d {
             width: tex_w,
@@ -334,7 +342,13 @@ impl GtaoPass {
         // Compute pipelines
         let ao_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("gtao_shader"),
-            source: wgpu::ShaderSource::Wgsl(concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/gtao.wgsl")).into()),
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(
+                    include_str!("../shaders/constants.wgsl"),
+                    include_str!("../shaders/gtao.wgsl")
+                )
+                .into(),
+            ),
         });
         let ao_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("gtao_ao_pl"),
@@ -594,8 +608,16 @@ impl GtaoPass {
 
     /// Resize AO textures (preserves current config including half_res).
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
-        let tex_w = if self.config.half_res { width.div_ceil(2) } else { width };
-        let tex_h = if self.config.half_res { height.div_ceil(2) } else { height };
+        let tex_w = if self.config.half_res {
+            width.div_ceil(2)
+        } else {
+            width
+        };
+        let tex_h = if self.config.half_res {
+            height.div_ceil(2)
+        } else {
+            height
+        };
         if self.width == tex_w && self.height == tex_h {
             return;
         }

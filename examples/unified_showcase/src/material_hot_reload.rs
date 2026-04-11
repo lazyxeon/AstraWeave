@@ -598,7 +598,7 @@ impl MaterialReloadManager {
 
             // Parse layers
             if let Some(layers) = terrain.get("layers").and_then(|v| v.as_array()) {
-                for (i, layer_value) in layers.iter().enumerate().take(4) {
+                for (i, layer_value) in layers.iter().enumerate().take(8) {
                     if let Some(layer) = layer_value.as_table() {
                         // Parse UV scale
                         if let Some(uv_scale) = layer.get("uv_scale").and_then(|v| v.as_array()) {

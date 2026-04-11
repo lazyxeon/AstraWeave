@@ -159,8 +159,7 @@ impl WeatherFx {
         }
         // Apply biome tint and upload
         let tint = self.biome_tint;
-        let raws: Vec<InstanceRaw> = self
-            .pool[..self.active_count]
+        let raws: Vec<InstanceRaw> = self.pool[..self.active_count]
             .iter()
             .map(|p| {
                 let m = Mat4::from_scale_rotation_translation(p.scale, glam::Quat::IDENTITY, p.pos);

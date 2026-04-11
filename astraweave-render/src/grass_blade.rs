@@ -102,11 +102,13 @@ impl GrassBladePass {
     /// `color_format`: the render target format (typically `Rgba16Float` or `Bgra8UnormSrgb`).
     /// `depth_format`: the depth buffer format (typically `Depth32Float`).
     /// `max_blades`: maximum number of grass blade instances.
+    /// `msaa`: MSAA mode — alpha-to-coverage is enabled when MSAA is active.
     pub fn new(
         device: &wgpu::Device,
         color_format: wgpu::TextureFormat,
         depth_format: wgpu::TextureFormat,
         max_blades: u32,
+        msaa: crate::msaa::MsaaMode,
     ) -> Result<Self> {
         // ── Shader ──────────────────────────────────────────────────────────
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -157,28 +159,27 @@ impl GrassBladePass {
         });
 
         // Group 1: Interaction stamp texture + sampler
-        let interaction_bgl =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("GrassBlade Interaction BGL"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
+        let interaction_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("GrassBlade Interaction BGL"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
 
         // ── Pipeline layout ─────────────────────────────────────────────────
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -210,7 +211,7 @@ impl GrassBladePass {
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
-            multisample: Default::default(),
+            multisample: msaa.multisample_state_alpha_to_coverage(),
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),

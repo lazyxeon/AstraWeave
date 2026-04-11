@@ -465,28 +465,27 @@ impl CsmRenderer {
         });
 
         // Alpha-tested shadow pipeline (for masked geometry)
-        let shadow_alpha_bgl =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Shadow Alpha BGL"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
+        let shadow_alpha_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Shadow Alpha BGL"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
 
         let shadow_alpha_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Shadow Alpha Pipeline Layout"),
@@ -640,14 +639,14 @@ impl CsmRenderer {
             let ndc_corners = [
                 // Near plane
                 Vec3::new(-1.0, -1.0, ndc_near),
-                Vec3::new( 1.0, -1.0, ndc_near),
-                Vec3::new(-1.0,  1.0, ndc_near),
-                Vec3::new( 1.0,  1.0, ndc_near),
+                Vec3::new(1.0, -1.0, ndc_near),
+                Vec3::new(-1.0, 1.0, ndc_near),
+                Vec3::new(1.0, 1.0, ndc_near),
                 // Far plane
                 Vec3::new(-1.0, -1.0, ndc_far),
-                Vec3::new( 1.0, -1.0, ndc_far),
-                Vec3::new(-1.0,  1.0, ndc_far),
-                Vec3::new( 1.0,  1.0, ndc_far),
+                Vec3::new(1.0, -1.0, ndc_far),
+                Vec3::new(-1.0, 1.0, ndc_far),
+                Vec3::new(1.0, 1.0, ndc_far),
             ];
 
             // Unproject NDC corners to world space
@@ -722,8 +721,9 @@ impl CsmRenderer {
             let snap_offset_y = snapped_y - ls_center_y;
 
             // Apply texel-snap offset to the view matrix (translate in light space)
-            cascade.view_matrix = Mat4::from_translation(Vec3::new(snap_offset_x, snap_offset_y, 0.0))
-                * cascade.view_matrix;
+            cascade.view_matrix =
+                Mat4::from_translation(Vec3::new(snap_offset_x, snap_offset_y, 0.0))
+                    * cascade.view_matrix;
 
             // Light-space depth range: ensure we capture geometry in front of and behind
             let ls_depth_range = ls_max.z - ls_min.z;
@@ -758,7 +758,10 @@ impl CsmRenderer {
             // Dirty detection: compare against previous frame's matrix
             // Use column-wise max-abs-diff for numerical stability
             let diff = cascade.view_proj_matrix - self.prev_view_proj[i];
-            let max_diff = diff.x_axis.abs().max_element()
+            let max_diff = diff
+                .x_axis
+                .abs()
+                .max_element()
                 .max(diff.y_axis.abs().max_element())
                 .max(diff.z_axis.abs().max_element())
                 .max(diff.w_axis.abs().max_element());

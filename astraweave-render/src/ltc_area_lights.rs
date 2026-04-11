@@ -31,7 +31,10 @@
 use bytemuck::{Pod, Zeroable};
 
 /// WGSL source for the LTC area lights shader module.
-pub const LTC_AREA_LIGHTS_WGSL: &str = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/ltc_area_lights.wgsl"));
+pub const LTC_AREA_LIGHTS_WGSL: &str = concat!(
+    include_str!("../shaders/constants.wgsl"),
+    include_str!("../shaders/ltc_area_lights.wgsl")
+);
 
 /// LTC LUT resolution (64×64 is the standard from Heitz 2016).
 pub const LTC_LUT_SIZE: u32 = 64;

@@ -19,17 +19,12 @@ impl PipelineCacheManager {
     ///
     /// Returns `None` if the device does not support `PIPELINE_CACHE`.
     pub fn create(device: &wgpu::Device, cache_dir: Option<&Path>) -> Option<Self> {
-        if !device
-            .features()
-            .contains(wgpu::Features::PIPELINE_CACHE)
-        {
+        if !device.features().contains(wgpu::Features::PIPELINE_CACHE) {
             return None;
         }
 
         let cache_path = cache_dir.map(|d| d.join("pipeline_cache.bin"));
-        let data = cache_path
-            .as_ref()
-            .and_then(|p| std::fs::read(p).ok());
+        let data = cache_path.as_ref().and_then(|p| std::fs::read(p).ok());
 
         // SAFETY: `data` either comes from a prior `PipelineCache::get_data()` call
         // persisted to disk, or is `None` (empty cache). We set `fallback: true` so
@@ -63,7 +58,10 @@ impl PipelineCacheManager {
             let _ = std::fs::create_dir_all(parent);
         }
         if let Err(e) = std::fs::write(path, &data) {
-            log::warn!("Failed to persist pipeline cache to {}: {e}", path.display());
+            log::warn!(
+                "Failed to persist pipeline cache to {}: {e}",
+                path.display()
+            );
         }
     }
 }
@@ -91,6 +89,9 @@ mod tests {
     fn cache_path_construction() {
         let dir = Path::new("/tmp/test_cache");
         let expected = dir.join("pipeline_cache.bin");
-        assert_eq!(expected.file_name().and_then(|n| n.to_str()), Some("pipeline_cache.bin"));
+        assert_eq!(
+            expected.file_name().and_then(|n| n.to_str()),
+            Some("pipeline_cache.bin")
+        );
     }
 }

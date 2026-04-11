@@ -94,74 +94,70 @@ impl VegetationInteraction {
         });
 
         // ── Bind group layout ───────────────────────────────────────────
-        let bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("VegInteraction BGL"),
-                entries: &[
-                    // 0: StampParams uniform
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("VegInteraction BGL"),
+            entries: &[
+                // 0: StampParams uniform
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    // 1: EntityPos storage (read)
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                    count: None,
+                },
+                // 1: EntityPos storage (read)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    // 2: Interaction texture (storage, read_write)
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::StorageTexture {
-                            access: wgpu::StorageTextureAccess::ReadWrite,
-                            format: wgpu::TextureFormat::R8Unorm,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                        },
-                        count: None,
+                    count: None,
+                },
+                // 2: Interaction texture (storage, read_write)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::ReadWrite,
+                        format: wgpu::TextureFormat::R8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
                     },
-                ],
-            });
+                    count: None,
+                },
+            ],
+        });
 
         // ── Pipeline layout ─────────────────────────────────────────────
-        let pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("VegInteraction PipelineLayout"),
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("VegInteraction PipelineLayout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
 
         // ── Compute pipelines ───────────────────────────────────────────
-        let decay_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("VegInteraction Decay"),
-                layout: Some(&pipeline_layout),
-                module: &shader,
-                entry_point: Some("decay"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let decay_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("VegInteraction Decay"),
+            layout: Some(&pipeline_layout),
+            module: &shader,
+            entry_point: Some("decay"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
 
-        let stamp_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("VegInteraction Stamp"),
-                layout: Some(&pipeline_layout),
-                module: &shader,
-                entry_point: Some("stamp"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let stamp_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("VegInteraction Stamp"),
+            layout: Some(&pipeline_layout),
+            module: &shader,
+            entry_point: Some("stamp"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
 
         // ── Interaction texture ─────────────────────────────────────────
         let interaction_texture = device.create_texture(&wgpu::TextureDescriptor {

@@ -24,7 +24,9 @@
 //! [`crate::renderer::Renderer`] methods. Full delegation is designed for
 //! incremental adoption.
 
-use crate::graph::{GraphContext, PassDecl, PassOutput, RenderGraph, RenderNode, TransientTextureDesc};
+use crate::graph::{
+    GraphContext, PassDecl, PassOutput, RenderGraph, RenderNode, TransientTextureDesc,
+};
 use anyhow::{Context, Result};
 
 // ---------------------------------------------------------------------------
@@ -44,6 +46,16 @@ pub struct FrameGraphConfig {
     pub cascade_count: u32,
     /// Whether clustered forward lighting is enabled.
     pub enable_clustered_lighting: bool,
+    /// Whether GTAO (ambient occlusion) is enabled.
+    pub enable_gtao: bool,
+    /// Whether screen-space global illumination is enabled.
+    pub enable_ssgi: bool,
+    /// Whether screen-space reflections are enabled.
+    pub enable_ssr: bool,
+    /// Whether bloom post-processing is enabled.
+    pub enable_bloom: bool,
+    /// Whether froxel-based volumetric fog is enabled.
+    pub enable_volumetric_fog: bool,
 }
 
 impl Default for FrameGraphConfig {
@@ -54,6 +66,11 @@ impl Default for FrameGraphConfig {
             shadow_resolution: 2048,
             cascade_count: 2,
             enable_clustered_lighting: true,
+            enable_gtao: true,
+            enable_ssgi: false,
+            enable_ssr: true,
+            enable_bloom: true,
+            enable_volumetric_fog: false,
         }
     }
 }
@@ -224,21 +241,192 @@ impl RenderNode for TonemapNode {
     }
 }
 
+/// Ground Truth Ambient Occlusion pass.
+///
+/// Reads the depth buffer and generates an AO texture using visibility
+/// bitmask sampling. Runs after the depth prepass / sky pass and feeds
+/// into the main scene pass.
+pub struct GtaoNode;
+
+impl GtaoNode {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for GtaoNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RenderNode for GtaoNode {
+    fn name(&self) -> &str {
+        "gtao"
+    }
+    fn run(&mut self, ctx: &mut GraphContext) -> Result<()> {
+        let _enc = ctx
+            .encoder
+            .as_deref_mut()
+            .context("GtaoNode requires encoder")?;
+        let _ = ctx.resources.view("depth")?;
+        Ok(())
+    }
+}
+
+/// Screen-Space Global Illumination pass.
+///
+/// Reads the depth and normals from the scene to compute indirect diffuse
+/// bounces. Produces an irradiance texture consumed by the main scene pass.
+pub struct SsgiNode;
+
+impl SsgiNode {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for SsgiNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RenderNode for SsgiNode {
+    fn name(&self) -> &str {
+        "ssgi"
+    }
+    fn run(&mut self, ctx: &mut GraphContext) -> Result<()> {
+        let _enc = ctx
+            .encoder
+            .as_deref_mut()
+            .context("SsgiNode requires encoder")?;
+        let _ = ctx.resources.view("depth")?;
+        let _ = ctx.resources.view("hdr_color")?;
+        Ok(())
+    }
+}
+
+/// Screen-Space Reflections pass.
+///
+/// Uses Hi-Z ray marching against the depth buffer to produce a reflection
+/// texture. Reads scene color + depth, outputs a reflection buffer that the
+/// main scene or a composite pass merges.
+pub struct SsrNode;
+
+impl SsrNode {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for SsrNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RenderNode for SsrNode {
+    fn name(&self) -> &str {
+        "ssr"
+    }
+    fn run(&mut self, ctx: &mut GraphContext) -> Result<()> {
+        let _enc = ctx
+            .encoder
+            .as_deref_mut()
+            .context("SsrNode requires encoder")?;
+        let _ = ctx.resources.view("scene_color")?;
+        let _ = ctx.resources.view("depth")?;
+        Ok(())
+    }
+}
+
+/// Bloom pass — physically-based bloom with 13-tap downsample and tent upsample.
+///
+/// Reads the HDR scene color and produces a bloom texture that is composited
+/// before tonemapping.
+pub struct BloomNode;
+
+impl BloomNode {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for BloomNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RenderNode for BloomNode {
+    fn name(&self) -> &str {
+        "bloom"
+    }
+    fn run(&mut self, ctx: &mut GraphContext) -> Result<()> {
+        let _enc = ctx
+            .encoder
+            .as_deref_mut()
+            .context("BloomNode requires encoder")?;
+        let _ = ctx.resources.view("scene_color")?;
+        Ok(())
+    }
+}
+
+/// Froxel-based volumetric fog pass.
+///
+/// Reads the depth buffer and shadow map to compute in-scattering and
+/// extinction per froxel. Produces a 3D fog volume that the main scene
+/// pass composites during forward rendering.
+pub struct VolumetricFogNode;
+
+impl VolumetricFogNode {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for VolumetricFogNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RenderNode for VolumetricFogNode {
+    fn name(&self) -> &str {
+        "volumetric_fog"
+    }
+    fn run(&mut self, ctx: &mut GraphContext) -> Result<()> {
+        let _enc = ctx
+            .encoder
+            .as_deref_mut()
+            .context("VolumetricFogNode requires encoder")?;
+        let _ = ctx.resources.view("depth")?;
+        let _ = ctx.resources.view("shadow_map")?;
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Graph Builder
 // ---------------------------------------------------------------------------
 
 /// Build the default frame render graph with proper DAG topology.
 ///
-/// The resulting graph encodes a forward+ pipeline:
+/// The resulting graph encodes a forward+ pipeline with optional post-processing:
 ///
 /// | Pass | Reads | Writes |
 /// |------|-------|--------|
 /// | `cluster_bin` | — | `cluster_data` |
 /// | `shadow` | — | `shadow_map` |
 /// | `sky` | — | `hdr_color`, `depth` |
-/// | `main_scene` | `shadow_map`, `hdr_color`, `depth`, `cluster_data` | `scene_color` |
-/// | `tonemap` | `scene_color` | — (writes to surface) |
+/// | `gtao` | `depth` | `ao_texture` |
+/// | `ssgi` | `depth`, `hdr_color` | `gi_irradiance` |
+/// | `volumetric_fog` | `depth`, `shadow_map` | `fog_volume` |
+/// | `main_scene` | `shadow_map`, `hdr_color`, `depth`, `cluster_data`, `ao_texture`, `gi_irradiance`, `fog_volume` | `scene_color` |
+/// | `ssr` | `scene_color`, `depth` | `ssr_reflections` |
+/// | `bloom` | `scene_color` | `bloom_texture` |
+/// | `tonemap` | `scene_color`, `ssr_reflections`, `bloom_texture` | — (writes to surface) |
 ///
 /// Resource dependencies create edges in the DAG that enforce correct
 /// execution ordering via topological sort.
@@ -295,14 +483,70 @@ pub fn build_default_graph(config: &FrameGraphConfig) -> RenderGraph {
         node: Box::new(SkyPassNode::new()),
     });
 
-    // Pass 4: Main scene rendering (reads upstream resources, produces scene_color)
-    let mut main_inputs = vec![
-        "shadow_map".into(),
-        "hdr_color".into(),
-        "depth".into(),
-    ];
+    // Pass 4 (optional): GTAO — ambient occlusion from depth
+    if config.enable_gtao {
+        graph.add_pass(PassDecl {
+            name: "gtao".into(),
+            inputs: vec!["depth".into()],
+            outputs: vec![PassOutput {
+                name: "ao_texture".into(),
+                desc: TransientTextureDesc::color(
+                    "ao_texture",
+                    config.width / 2,
+                    config.height / 2,
+                ),
+            }],
+            node: Box::new(GtaoNode::new()),
+        });
+    }
+
+    // Pass 5 (optional): SSGI — indirect diffuse from depth + color
+    if config.enable_ssgi {
+        graph.add_pass(PassDecl {
+            name: "ssgi".into(),
+            inputs: vec!["depth".into(), "hdr_color".into()],
+            outputs: vec![PassOutput {
+                name: "gi_irradiance".into(),
+                desc: TransientTextureDesc::color(
+                    "gi_irradiance",
+                    config.width / 2,
+                    config.height / 2,
+                ),
+            }],
+            node: Box::new(SsgiNode::new()),
+        });
+    }
+
+    // Pass 6 (optional): Volumetric fog — froxel scattering from depth + shadow
+    if config.enable_volumetric_fog {
+        graph.add_pass(PassDecl {
+            name: "volumetric_fog".into(),
+            inputs: vec!["depth".into(), "shadow_map".into()],
+            outputs: vec![PassOutput {
+                name: "fog_volume".into(),
+                desc: TransientTextureDesc::color(
+                    "fog_volume",
+                    config.width / 2,
+                    config.height / 2,
+                ),
+            }],
+            node: Box::new(VolumetricFogNode::new()),
+        });
+    }
+
+    // Pass 7: Main scene rendering (reads upstream resources, produces scene_color)
+    let mut main_inputs = vec!["shadow_map".into(), "hdr_color".into(), "depth".into()];
     if config.enable_clustered_lighting {
         main_inputs.push("cluster_data".into());
+    }
+    if config.enable_gtao {
+        main_inputs.push("ao_texture".into());
+    }
+    if config.enable_ssgi {
+        main_inputs.push("gi_irradiance".into());
+    }
+    if config.enable_volumetric_fog {
+        main_inputs.push("fog_volume".into());
     }
 
     graph.add_pass(PassDecl {
@@ -315,10 +559,48 @@ pub fn build_default_graph(config: &FrameGraphConfig) -> RenderGraph {
         node: Box::new(MainSceneNode::new()),
     });
 
-    // Pass 5: Tonemap (reads scene_color, writes to surface)
+    // Pass 8 (optional): SSR — screen-space reflections from scene_color + depth
+    if config.enable_ssr {
+        graph.add_pass(PassDecl {
+            name: "ssr".into(),
+            inputs: vec!["scene_color".into(), "depth".into()],
+            outputs: vec![PassOutput {
+                name: "ssr_reflections".into(),
+                desc: TransientTextureDesc::color("ssr_reflections", config.width, config.height),
+            }],
+            node: Box::new(SsrNode::new()),
+        });
+    }
+
+    // Pass 9 (optional): Bloom — physically-based bloom from scene_color
+    if config.enable_bloom {
+        graph.add_pass(PassDecl {
+            name: "bloom".into(),
+            inputs: vec!["scene_color".into()],
+            outputs: vec![PassOutput {
+                name: "bloom_texture".into(),
+                desc: TransientTextureDesc::color(
+                    "bloom_texture",
+                    config.width / 2,
+                    config.height / 2,
+                ),
+            }],
+            node: Box::new(BloomNode::new()),
+        });
+    }
+
+    // Pass 10: Tonemap (reads scene_color + post-process outputs, writes to surface)
+    let mut tonemap_inputs = vec!["scene_color".into()];
+    if config.enable_ssr {
+        tonemap_inputs.push("ssr_reflections".into());
+    }
+    if config.enable_bloom {
+        tonemap_inputs.push("bloom_texture".into());
+    }
+
     graph.add_pass(PassDecl {
         name: "tonemap".into(),
-        inputs: vec!["scene_color".into()],
+        inputs: tonemap_inputs,
         outputs: vec![],
         node: Box::new(TonemapNode::new()),
     });
@@ -349,7 +631,8 @@ mod tests {
         let cfg = FrameGraphConfig::default();
         let mut graph = build_default_graph(&cfg);
         let compiled = graph.compile().expect("graph should compile");
-        assert_eq!(compiled.execution_order.len(), 5);
+        // Default: cluster_bin + shadow + sky + gtao + main_scene + ssr + bloom + tonemap = 8
+        assert_eq!(compiled.execution_order.len(), 8);
     }
 
     #[test]
@@ -360,8 +643,8 @@ mod tests {
         };
         let mut graph = build_default_graph(&cfg);
         let compiled = graph.compile().expect("graph should compile");
-        // Without clustering: shadow, sky, main_scene, tonemap
-        assert_eq!(compiled.execution_order.len(), 4);
+        // Without clustering: shadow, sky, gtao, main_scene, ssr, bloom, tonemap = 7
+        assert_eq!(compiled.execution_order.len(), 7);
     }
 
     #[test]
@@ -383,7 +666,10 @@ mod tests {
         let cluster_bin_pos = pos("cluster_bin");
         let shadow_pos = pos("shadow");
         let sky_pos = pos("sky");
+        let gtao_pos = pos("gtao");
         let main_scene_pos = pos("main_scene");
+        let ssr_pos = pos("ssr");
+        let bloom_pos = pos("bloom");
         let tonemap_pos = pos("tonemap");
 
         // main_scene must come after all its producers
@@ -399,11 +685,22 @@ mod tests {
             cluster_bin_pos < main_scene_pos,
             "cluster_bin must execute before main_scene"
         );
-        // tonemap must come after main_scene
         assert!(
-            main_scene_pos < tonemap_pos,
-            "main_scene must execute before tonemap"
+            gtao_pos < main_scene_pos,
+            "gtao must execute before main_scene"
         );
+        // post-processing after main_scene
+        assert!(
+            main_scene_pos < ssr_pos,
+            "main_scene must execute before ssr"
+        );
+        assert!(
+            main_scene_pos < bloom_pos,
+            "main_scene must execute before bloom"
+        );
+        // tonemap after post-processing
+        assert!(ssr_pos < tonemap_pos, "ssr must execute before tonemap");
+        assert!(bloom_pos < tonemap_pos, "bloom must execute before tonemap");
     }
 
     #[test]
@@ -487,12 +784,16 @@ mod tests {
     fn node_names_correct() {
         let cfg = FrameGraphConfig::default();
         let graph = build_default_graph(&cfg);
-        assert_eq!(graph.node_count(), 5);
+        // Default: cluster_bin, shadow, sky, gtao, main_scene, ssr, bloom, tonemap = 8
+        assert_eq!(graph.node_count(), 8);
         assert_eq!(graph.node_name(0), Some("cluster_bin"));
         assert_eq!(graph.node_name(1), Some("shadow"));
         assert_eq!(graph.node_name(2), Some("sky"));
-        assert_eq!(graph.node_name(3), Some("main_scene"));
-        assert_eq!(graph.node_name(4), Some("tonemap"));
+        assert_eq!(graph.node_name(3), Some("gtao"));
+        assert_eq!(graph.node_name(4), Some("main_scene"));
+        assert_eq!(graph.node_name(5), Some("ssr"));
+        assert_eq!(graph.node_name(6), Some("bloom"));
+        assert_eq!(graph.node_name(7), Some("tonemap"));
     }
 
     #[test]
@@ -509,10 +810,45 @@ mod tests {
             height: 1,
             shadow_resolution: 64,
             cascade_count: 1,
-            enable_clustered_lighting: true,
+            ..Default::default()
         };
         let mut graph = build_default_graph(&cfg);
         graph.compile().expect("tiny resolution should compile");
+    }
+
+    #[test]
+    fn minimal_graph_compiles() {
+        let cfg = FrameGraphConfig {
+            enable_clustered_lighting: false,
+            enable_gtao: false,
+            enable_ssgi: false,
+            enable_ssr: false,
+            enable_bloom: false,
+            enable_volumetric_fog: false,
+            ..Default::default()
+        };
+        let mut graph = build_default_graph(&cfg);
+        let compiled = graph.compile().expect("minimal graph should compile");
+        // shadow, sky, main_scene, tonemap = 4
+        assert_eq!(compiled.execution_order.len(), 4);
+    }
+
+    #[test]
+    fn full_graph_compiles() {
+        let cfg = FrameGraphConfig {
+            enable_clustered_lighting: true,
+            enable_gtao: true,
+            enable_ssgi: true,
+            enable_ssr: true,
+            enable_bloom: true,
+            enable_volumetric_fog: true,
+            ..Default::default()
+        };
+        let mut graph = build_default_graph(&cfg);
+        let compiled = graph.compile().expect("full graph should compile");
+        // All passes: cluster_bin + shadow + sky + gtao + ssgi + volumetric_fog +
+        //             main_scene + ssr + bloom + tonemap = 10
+        assert_eq!(compiled.execution_order.len(), 10);
     }
 
     #[test]

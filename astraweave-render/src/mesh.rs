@@ -138,9 +138,10 @@ pub fn compute_tangents(mesh: &mut CpuMesh) {
     // MikkTSpace panics on degenerate triangles where all three indices
     // reference the same vertex (causes out-of-bounds in the algorithm).
     // Check for this and fall back to Lengyel if found.
-    let has_degenerate = mesh.indices.chunks_exact(3).any(|tri| {
-        tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2]
-    });
+    let has_degenerate = mesh
+        .indices
+        .chunks_exact(3)
+        .any(|tri| tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2]);
     if has_degenerate {
         compute_tangents_lengyel(mesh);
         return;

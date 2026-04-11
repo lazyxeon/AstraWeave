@@ -3,6 +3,10 @@
 // One-bounce indirect diffuse lighting via screen-space ray marching against
 // the Hi-Z depth buffer. Traces rays in random hemisphere directions from each
 // pixel's surface point, samples the color buffer at hit locations.
+//
+// Shared memory optimization: a 16×16 depth tile (4-pixel border around the
+// 8×8 workgroup) is cooperatively loaded. Ray march steps within the tile read
+// from shared memory, reducing global texture bandwidth for short-range bounces.
 
 struct SsgiParams {
     inv_proj: mat4x4<f32>,
@@ -25,6 +29,19 @@ struct SsgiParams {
 @group(0) @binding(3) var samp: sampler;
 @group(0) @binding(4) var<uniform> params: SsgiParams;
 @group(0) @binding(5) var gi_output: texture_storage_2d<rgba16float, write>;
+
+// -- Shared memory depth tile --
+// 16×16 tile = 256 entries, cooperatively loaded by 64 threads (4 loads each).
+// Provides a 4-pixel border around the 8×8 workgroup for short-range ray hits.
+const TILE_DIM: u32 = 16u;
+const TILE_TOTAL: u32 = 256u;
+const TILE_BORDER: i32 = 4;
+
+var<workgroup> tile_depth: array<f32, 256>;
+
+// Per-invocation tile state (set in entry point, accessed by helper functions).
+var<private> p_tile_origin: vec2<i32>;
+var<private> p_dims: vec2<i32>;
 
 // PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 
@@ -74,7 +91,18 @@ fn project_to_uv(view_pos: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(ndc.xy * 0.5 + 0.5, ndc.z);
 }
 
-// Screen-space ray march
+// Read depth from the shared tile when the ray lands within it; otherwise
+// fall back to the global depth texture.
+fn sample_depth_tiled(screen_uv: vec2<f32>) -> f32 {
+    let screen_pixel = vec2<i32>(screen_uv * vec2<f32>(p_dims));
+    let local = screen_pixel - p_tile_origin;
+    if (local.x >= 0 && u32(local.x) < TILE_DIM && local.y >= 0 && u32(local.y) < TILE_DIM) {
+        return tile_depth[u32(local.y) * TILE_DIM + u32(local.x)];
+    }
+    return textureSampleLevel(depth_tex, samp, screen_uv, 0.0).r;
+}
+
+// Screen-space ray march (uses shared depth tile for in-tile lookups)
 fn ray_march(
     origin: vec3<f32>,
     direction: vec3<f32>,
@@ -93,7 +121,7 @@ fn ray_march(
             break;
         }
 
-        let sampled_depth = textureSampleLevel(depth_tex, samp, screen_uv, 0.0).r;
+        let sampled_depth = sample_depth_tiled(screen_uv);
         let sampled_view_pos = reconstruct_view_pos(screen_uv, sampled_depth);
 
         // Depth comparison with thickness
@@ -113,15 +141,39 @@ override WG_X: u32 = 8u;
 override WG_Y: u32 = 8u;
 
 @compute @workgroup_size(WG_X, WG_Y, 1)
-fn ssgi_main(@builtin(global_invocation_id) gid: vec3<u32>) {
+fn ssgi_main(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(workgroup_id) wid: vec3<u32>,
+) {
+    p_dims = vec2<i32>(params.resolution);
+    p_tile_origin = vec2<i32>(wid.xy * vec2<u32>(WG_X, WG_Y)) - vec2<i32>(TILE_BORDER);
+    let local_idx = lid.y * WG_X + lid.x;
+
+    // Cooperative depth tile load: 64 threads load 256 values (4 each)
+    for (var k = local_idx; k < TILE_TOTAL; k += WG_X * WG_Y) {
+        let ty = i32(k / TILE_DIM);
+        let tx = i32(k % TILE_DIM);
+        let p = p_tile_origin + vec2<i32>(tx, ty);
+        let uv_p = (vec2<f32>(p) + 0.5) * params.inv_resolution;
+        if (p.x >= 0 && p.x < p_dims.x && p.y >= 0 && p.y < p_dims.y) {
+            tile_depth[k] = textureSampleLevel(depth_tex, samp, uv_p, 0.0).r;
+        } else {
+            tile_depth[k] = 1.0;
+        }
+    }
+    workgroupBarrier();
+
     let pixel = vec2<i32>(gid.xy);
-    let dims = vec2<i32>(params.resolution);
-    if (pixel.x >= dims.x || pixel.y >= dims.y) {
+    if (pixel.x >= p_dims.x || pixel.y >= p_dims.y) {
         return;
     }
 
+    // Read own pixel's depth from shared tile (offset by TILE_BORDER)
+    let own_x = u32(i32(lid.x) + TILE_BORDER);
+    let own_y = u32(i32(lid.y) + TILE_BORDER);
+    let depth = tile_depth[own_y * TILE_DIM + own_x];
     let uv = (vec2<f32>(pixel) + 0.5) * params.inv_resolution;
-    let depth = textureSampleLevel(depth_tex, samp, uv, 0.0).r;
 
     if (depth >= 1.0) {
         textureStore(gi_output, pixel, vec4<f32>(0.0));

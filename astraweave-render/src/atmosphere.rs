@@ -357,24 +357,30 @@ impl AtmospherePass {
             device,
             &lut_bgl,
             "atmo_lut",
-            concat!(include_str!("../shaders/constants.wgsl"),
-            include_str!("../shaders/atmosphere/transmittance_lut.wgsl")),
+            concat!(
+                include_str!("../shaders/constants.wgsl"),
+                include_str!("../shaders/atmosphere/transmittance_lut.wgsl")
+            ),
             "transmittance_lut",
         );
         let sky_pipeline = create_pipeline(
             device,
             &sky_bgl,
             "atmo_sky",
-            concat!(include_str!("../shaders/constants.wgsl"),
-            include_str!("../shaders/atmosphere/sky_render.wgsl")),
+            concat!(
+                include_str!("../shaders/constants.wgsl"),
+                include_str!("../shaders/atmosphere/sky_render.wgsl")
+            ),
             "sky_render_main",
         );
         let aerial_pipeline = create_pipeline(
             device,
             &aerial_bgl,
             "atmo_aerial",
-            concat!(include_str!("../shaders/constants.wgsl"),
-            include_str!("../shaders/atmosphere/aerial_perspective.wgsl")),
+            concat!(
+                include_str!("../shaders/constants.wgsl"),
+                include_str!("../shaders/atmosphere/aerial_perspective.wgsl")
+            ),
             "aerial_perspective_main",
         );
 

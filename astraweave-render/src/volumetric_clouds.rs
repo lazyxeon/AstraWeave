@@ -302,8 +302,10 @@ impl VolumetricCloudsPass {
             device,
             &raymarch_bgl,
             "cloud_raymarch",
-            concat!(include_str!("../shaders/constants.wgsl"),
-            include_str!("../shaders/volumetrics/cloud_raymarching.wgsl")),
+            concat!(
+                include_str!("../shaders/constants.wgsl"),
+                include_str!("../shaders/volumetrics/cloud_raymarching.wgsl")
+            ),
             "cloud_raymarch_main",
         );
         let composite_pipeline = create_compute_pipeline(
@@ -650,10 +652,7 @@ impl CloudShadowPass {
 
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("cloud_shadow_bgl"),
-            entries: &[
-                bgl_uniform(0),
-                bgl_storage_2d_rw(1, fmt),
-            ],
+            entries: &[bgl_uniform(0), bgl_storage_2d_rw(1, fmt)],
         });
 
         let pipeline = create_compute_pipeline(
@@ -775,11 +774,7 @@ impl CloudShadowPass {
                 .cached_bg
                 .get_or_rebuild(resource_gen, || unreachable!());
             pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups(
-                self.resolution.div_ceil(8),
-                self.resolution.div_ceil(8),
-                1,
-            );
+            pass.dispatch_workgroups(self.resolution.div_ceil(8), self.resolution.div_ceil(8), 1);
         }
     }
 }
@@ -917,7 +912,10 @@ mod tests {
 
     #[test]
     fn parse_cloud_raymarching_wgsl() {
-        let source = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/volumetrics/cloud_raymarching.wgsl"));
+        let source = concat!(
+            include_str!("../shaders/constants.wgsl"),
+            include_str!("../shaders/volumetrics/cloud_raymarching.wgsl")
+        );
         let module = naga::front::wgsl::parse_str(source);
         assert!(
             module.is_ok(),

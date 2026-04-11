@@ -152,7 +152,9 @@ impl InstanceBatch {
         // SAFETY: buffer is guaranteed Some — allocated in the `needs_realloc` branch above,
         // or pre-existing with sufficient capacity.
         queue.write_buffer(
-            self.buffer.as_ref().expect("instance buffer allocated above"),
+            self.buffer
+                .as_ref()
+                .expect("instance buffer allocated above"),
             0,
             bytemuck::cast_slice(&instance_data),
         );

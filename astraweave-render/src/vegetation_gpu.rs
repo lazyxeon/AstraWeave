@@ -30,7 +30,12 @@ pub struct WindUniforms {
 impl Default for WindUniforms {
     fn default() -> Self {
         Self {
-            wind_dir_strength_time: [std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2, 1.0, 0.0],
+            wind_dir_strength_time: [
+                std::f32::consts::FRAC_1_SQRT_2,
+                std::f32::consts::FRAC_1_SQRT_2,
+                1.0,
+                0.0,
+            ],
             sway_params: [0.02, 0.5, 0.05, 3.0],
         }
     }
@@ -98,7 +103,10 @@ pub struct DrawIndexedIndirectCommand {
 const MAX_INSTANCES_PER_CHUNK: u32 = 65_536;
 
 /// Scatter compute shader source (loaded at compile time).
-const SCATTER_SHADER_SRC: &str = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/vegetation_scatter.wgsl"));
+const SCATTER_SHADER_SRC: &str = concat!(
+    include_str!("../shaders/constants.wgsl"),
+    include_str!("../shaders/vegetation_scatter.wgsl")
+);
 
 /// Manages the GPU vegetation scatter and cull compute pipelines.
 pub struct VegetationGpuPipeline {
@@ -280,23 +288,21 @@ impl VegetationGpuPipeline {
                 push_constant_ranges: &[],
             });
 
-        let cull_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("VegCull PipelineLayout"),
-                bind_group_layouts: &[&cull_bind_group_layout],
-                push_constant_ranges: &[],
-            });
+        let cull_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("VegCull PipelineLayout"),
+            bind_group_layouts: &[&cull_bind_group_layout],
+            push_constant_ranges: &[],
+        });
 
         // ── Compute pipelines ────────────────────────────────────────────────
-        let scatter_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("VegScatter Pipeline"),
-                layout: Some(&scatter_pipeline_layout),
-                module: &shader_module,
-                entry_point: Some("scatter_vegetation"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let scatter_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("VegScatter Pipeline"),
+            layout: Some(&scatter_pipeline_layout),
+            module: &shader_module,
+            entry_point: Some("scatter_vegetation"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
 
         let cull_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("VegCull Pipeline"),
@@ -885,7 +891,10 @@ mod tests {
         let heights = vec![50.0f32; 129 * 129];
         let instances = cpu_scatter_vegetation(&params, &heights, &veg_types);
         // Should produce instances on flat terrain
-        assert!(!instances.is_empty(), "flat terrain should produce instances");
+        assert!(
+            !instances.is_empty(),
+            "flat terrain should produce instances"
+        );
         // All instances should be at height 50
         for inst in &instances {
             assert!(

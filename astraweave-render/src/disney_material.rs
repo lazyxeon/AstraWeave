@@ -26,7 +26,10 @@ pub const DISNEY_BRDF_WGSL: &str = concat!(
 );
 
 /// The BRDF LUT WGSL source.
-pub const BRDF_LUT_WGSL: &str = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/pbr/brdf_lut.wgsl"));
+pub const BRDF_LUT_WGSL: &str = concat!(
+    include_str!("../shaders/constants.wgsl"),
+    include_str!("../shaders/pbr/brdf_lut.wgsl")
+);
 
 /// CPU-side Disney BRDF evaluation result.
 #[derive(Debug, Clone, Copy)]

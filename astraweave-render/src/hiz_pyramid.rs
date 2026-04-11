@@ -133,9 +133,7 @@ impl HizPyramid {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::TextureView(
-                            &mip_views[(i + 1) as usize],
-                        ),
+                        resource: wgpu::BindingResource::TextureView(&mip_views[(i + 1) as usize]),
                     },
                 ],
             }));

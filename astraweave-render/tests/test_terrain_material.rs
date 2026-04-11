@@ -29,11 +29,11 @@ mod terrain_material_tests {
 
     #[test]
     fn test_terrain_material_size_and_alignment() {
-        // Verify TerrainMaterialGpu is exactly 320 bytes (4*64 + 64)
+        // Verify TerrainMaterialGpu is exactly 576 bytes (8*64 + 64)
         assert_eq!(
             std::mem::size_of::<TerrainMaterialGpu>(),
-            320,
-            "TerrainMaterialGpu must be 320 bytes (4 layers + common params)"
+            576,
+            "TerrainMaterialGpu must be 576 bytes (8 layers + common params)"
         );
         assert_eq!(
             std::mem::align_of::<TerrainMaterialGpu>(),
@@ -56,7 +56,7 @@ mod terrain_material_tests {
     #[test]
     fn test_pod_zeroable_terrain_material() {
         // Verify TerrainMaterialGpu implements Pod and Zeroable
-        let bytes = [0u8; 320];
+        let bytes = [0u8; 576];
         let material: TerrainMaterialGpu = bytemuck::cast(bytes);
 
         assert_eq!(material.splat_uv_scale, 0.0);
@@ -84,15 +84,15 @@ mod terrain_material_tests {
     fn test_default_terrain_material() {
         let material = TerrainMaterialGpu::default();
 
-        assert_eq!(material.splat_map_index, 0);
+        assert_eq!(material.splat_map_index_0, 0);
         assert_eq!(material.splat_uv_scale, 1.0);
         assert_eq!(material.triplanar_enabled, 1); // Enabled by default
         assert_eq!(material.normal_blend_method, 1); // RNM by default
         assert_eq!(material.triplanar_slope_threshold, 45.0);
         assert_eq!(material.height_blend_enabled, 1);
 
-        // Check all 4 layers initialized
-        for i in 0..4 {
+        // Check all 8 layers initialized
+        for i in 0..8 {
             assert_eq!(material.layers[i].uv_scale, [1.0, 1.0]);
         }
     }

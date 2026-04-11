@@ -182,8 +182,16 @@ impl SsgiPass {
         config: SsgiConfig,
     ) -> Self {
         // Trace resolution: half when half_res enabled
-        let trace_width = if config.half_res { (width / 2).max(1) } else { width };
-        let trace_height = if config.half_res { (height / 2).max(1) } else { height };
+        let trace_width = if config.half_res {
+            (width / 2).max(1)
+        } else {
+            width
+        };
+        let trace_height = if config.half_res {
+            (height / 2).max(1)
+        } else {
+            height
+        };
 
         let trace_size = wgpu::Extent3d {
             width: trace_width,
@@ -313,7 +321,13 @@ impl SsgiPass {
         // Pipelines
         let gi_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ssgi_shader"),
-            source: wgpu::ShaderSource::Wgsl(concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/ssgi.wgsl")).into()),
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(
+                    include_str!("../shaders/constants.wgsl"),
+                    include_str!("../shaders/ssgi.wgsl")
+                )
+                .into(),
+            ),
         });
         let gi_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("ssgi_gi_pl"),
@@ -422,7 +436,10 @@ impl SsgiPass {
             inv_proj: proj.inverse().to_cols_array_2d(),
             proj: proj.to_cols_array_2d(),
             resolution: [self.trace_width as f32, self.trace_height as f32],
-            inv_resolution: [1.0 / self.trace_width as f32, 1.0 / self.trace_height as f32],
+            inv_resolution: [
+                1.0 / self.trace_width as f32,
+                1.0 / self.trace_height as f32,
+            ],
             max_ray_distance: 50.0,
             ray_step_size: self.config.ray_step_size,
             num_rays: self.config.num_rays,
@@ -435,7 +452,10 @@ impl SsgiPass {
         queue.write_buffer(&self.params_buf, 0, bytemuck::bytes_of(&params));
 
         let denoise = SsgiDenoiseParams {
-            inv_resolution: [1.0 / self.trace_width as f32, 1.0 / self.trace_height as f32],
+            inv_resolution: [
+                1.0 / self.trace_width as f32,
+                1.0 / self.trace_height as f32,
+            ],
             temporal_blend: self.config.temporal_blend,
             ..SsgiDenoiseParams::default()
         };

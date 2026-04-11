@@ -221,17 +221,17 @@ mod tests {
     fn label_format() {
         assert_eq!(ShaderPermutation::NONE.label(), "base");
         assert_eq!(ShaderPermutation::CLEARCOAT.label(), "clearcoat");
-        assert_eq!(
-            ShaderPermutation::CAR_PAINT.label(),
-            "clearcoat"
-        );
+        assert_eq!(ShaderPermutation::CAR_PAINT.label(), "clearcoat");
         let multi = ShaderPermutation::CLEARCOAT.union(ShaderPermutation::SHEEN);
         assert_eq!(multi.label(), "clearcoat+sheen");
     }
 
     #[test]
     fn presets_correct_flags() {
-        assert_eq!(ShaderPermutation::OPAQUE_DIELECTRIC, ShaderPermutation::NONE);
+        assert_eq!(
+            ShaderPermutation::OPAQUE_DIELECTRIC,
+            ShaderPermutation::NONE
+        );
         assert!(ShaderPermutation::CAR_PAINT.contains(ShaderPermutation::CLEARCOAT));
         assert!(ShaderPermutation::FABRIC.contains(ShaderPermutation::SHEEN));
         assert!(ShaderPermutation::SKIN.contains(ShaderPermutation::SUBSURFACE));
@@ -275,15 +275,30 @@ mod tests {
         // Validate that key compute shaders use override workgroup sizes
         // for runtime tuning via PipelineCompilationOptions::constants.
         let shaders_2d: &[(&str, &str)] = &[
-            ("bloom_downsample", include_str!("../shaders/bloom_downsample.wgsl")),
-            ("bloom_upsample", include_str!("../shaders/bloom_upsample.wgsl")),
+            (
+                "bloom_downsample",
+                include_str!("../shaders/bloom_downsample.wgsl"),
+            ),
+            (
+                "bloom_upsample",
+                include_str!("../shaders/bloom_upsample.wgsl"),
+            ),
             ("hiz_pyramid", include_str!("../shaders/hiz_pyramid.wgsl")),
             ("ssr", include_str!("../shaders/ssr.wgsl")),
             ("ssgi", include_str!("../shaders/ssgi.wgsl")),
-            ("compute_noise", include_str!("../shaders/compute_noise.wgsl")),
-            ("snow_accumulation", include_str!("../shaders/snow_accumulation.wgsl")),
+            (
+                "compute_noise",
+                include_str!("../shaders/compute_noise.wgsl"),
+            ),
+            (
+                "snow_accumulation",
+                include_str!("../shaders/snow_accumulation.wgsl"),
+            ),
             ("gpu_erosion", include_str!("../shaders/gpu_erosion.wgsl")),
-            ("virtual_texture", include_str!("../shaders/virtual_texture.wgsl")),
+            (
+                "virtual_texture",
+                include_str!("../shaders/virtual_texture.wgsl"),
+            ),
         ];
         for (name, src) in shaders_2d {
             assert!(
@@ -301,9 +316,18 @@ mod tests {
         }
 
         let shaders_1d: &[(&str, &str)] = &[
-            ("vegetation_scatter", include_str!("../shaders/vegetation_scatter.wgsl")),
-            ("simulate", include_str!("../shaders/particles/simulate.wgsl")),
-            ("rain_occlusion", include_str!("../shaders/particles/rain_occlusion.wgsl")),
+            (
+                "vegetation_scatter",
+                include_str!("../shaders/vegetation_scatter.wgsl"),
+            ),
+            (
+                "simulate",
+                include_str!("../shaders/particles/simulate.wgsl"),
+            ),
+            (
+                "rain_occlusion",
+                include_str!("../shaders/particles/rain_occlusion.wgsl"),
+            ),
         ];
         for (name, src) in shaders_1d {
             assert!(
@@ -317,8 +341,14 @@ mod tests {
         }
 
         let shaders_3d: &[(&str, &str)] = &[
-            ("scatter", include_str!("../shaders/volumetrics/scatter.wgsl")),
-            ("fog_density", include_str!("../shaders/volumetrics/fog_density.wgsl")),
+            (
+                "scatter",
+                include_str!("../shaders/volumetrics/scatter.wgsl"),
+            ),
+            (
+                "fog_density",
+                include_str!("../shaders/volumetrics/fog_density.wgsl"),
+            ),
         ];
         for (name, src) in shaders_3d {
             assert!(

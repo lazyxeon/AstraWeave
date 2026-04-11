@@ -432,7 +432,7 @@ fn terrain_material_to_gpu_resolves_textures() {
         }
     };
     let gpu = desc.to_gpu(&resolver);
-    assert_eq!(gpu.splat_map_index, 100);
+    assert_eq!(gpu.splat_map_index_0, 100);
     assert_eq!(gpu.layers[0].texture_indices[0], 10); // grass albedo
     assert_eq!(gpu.layers[0].texture_indices[1], 11); // grass normal
 }

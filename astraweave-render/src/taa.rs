@@ -400,8 +400,10 @@ impl TaaPass {
                         },
                     ],
                 });
-                self.cached_sharpen_bg =
-                    crate::bind_group_cache::CachedBindGroup::with_bind_group(sharpen_bg, resource_gen);
+                self.cached_sharpen_bg = crate::bind_group_cache::CachedBindGroup::with_bind_group(
+                    sharpen_bg,
+                    resource_gen,
+                );
             }
 
             let mut sharpen_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {

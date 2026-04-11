@@ -69,8 +69,8 @@ pub mod culling_node; // Culling node for render graph
 pub mod disney_material; // Disney principled BRDF evaluation + WGSL source (Phase 9)
 pub mod distance_field; // Signed Distance Field generation + Distance-Field AO (Lumen Phase 5)
 pub mod final_gather; // Lumen final gather: multi-bounce diffuse indirect compositor
-pub mod god_rays; // Screen-space god rays / crepuscular light shafts (Phase 6)
 pub mod frame_graph; // Frame render graph: DAG-based pass pipeline builder
+pub mod god_rays; // Screen-space god rays / crepuscular light shafts (Phase 6)
 pub mod graph; // minimal render graph scaffolding (Phase 2)
 pub mod graph_adapter; // runs a graph on Renderer frames
 pub mod gtao; // Ground Truth Ambient Occlusion with visibility bitmask
@@ -97,10 +97,12 @@ pub mod shader_manager; // Shader hot-reload: hash-based change detection + pipe
 pub mod shader_permutation; // Compile-time permutation system for Disney BRDF lobes
 pub mod ssgi; // Screen-Space Global Illumination with temporal denoise
 pub mod ssr; // Screen-Space Reflections with Hi-Z ray marching
+pub mod stochastic_tiling; // Hex-tile stochastic sampling to break terrain texture repetition
 pub mod subgroup_ops; // Subgroup-optimized shader variants (auto-exposure, prefix sum, bitonic sort)
 pub mod surface_cache; // World-space irradiance probe grid (Lumen Phase 5)
 pub mod taa; // Temporal Anti-Aliasing with neighborhood clamping and RCAS sharpening
 pub mod temporal_upscale; // Temporal upscaling (TAA-U) — render at reduced internal res, resolve to native
+pub mod terrain_gpu_bridge; // Render-side impl of TerrainGpuAccelerator (GPU noise + erosion bridge)
 pub mod terrain_material;
 pub mod texture_streaming;
 pub mod velocity; // Motion vector / velocity buffer for temporal effects (TAA, motion blur, TSR)
@@ -150,6 +152,7 @@ pub mod deferred; // Deferred rendering pipeline
 pub mod effects; // NEW
 pub mod gpu_erosion;
 pub mod gpu_particles; // GPU compute-based particle system
+pub mod grass_blade; // Procedural per-blade grass geometry rendering
 pub mod material_bindless; // Bindless texture array material system
 pub mod msaa; // MSAA anti-aliasing resources
 pub mod oit; // Weighted Blended Order-Independent Transparency
@@ -160,7 +163,6 @@ pub mod rain_splash; // Rain impact splash particle spawner
 pub mod snow_accumulation; // Per-chunk snow accumulation compute + snow material blending
 pub mod snow_footprint; // Entity footprint depression in accumulated snow
 pub mod transparency; // Transparency depth sorting and render pass // Advanced post-processing (TAA, motion blur, DOF, color grading) // GPU compute SWE erosion
-pub mod grass_blade; // Procedural per-blade grass geometry rendering
 pub mod vegetation_gpu; // GPU-instanced vegetation scatter and frustum cull pipeline
 pub mod vegetation_interaction; // Entity proximity grass bending stamp system
 pub mod vegetation_lod; // Tree LOD chain with billboard/impostor support
@@ -172,10 +174,7 @@ pub mod gpu_memory; // GPU memory budget tracking and enforcement
 pub mod gpu_profiler; // GPU timestamp profiler for per-pass performance analysis
 pub mod staging_ring; // Per-frame ring buffer for transient GPU allocations
 
-pub use advanced_post::{
-    AdvancedPostFx, ColorGradingConfig, DofConfig, MotionBlurConfig,
-};
-pub use taa::TaaConfig;
+pub use advanced_post::{AdvancedPostFx, ColorGradingConfig, DofConfig, MotionBlurConfig};
 pub use asset_index::{AssetIndex, HdriRef as AssetHdriRef, MaterialSetEntry, TextureEntry};
 pub use atmosphere::{AtmosphereConfig, AtmospherePass};
 pub use bind_group_cache::{CachedBindGroup, CachedBindGroupSet, Generation};
@@ -238,6 +237,7 @@ pub use subgroup_ops::SubgroupCapabilities;
 pub use surface_cache::{
     DirectionalLightGpu, ProbeSH, SurfaceCacheConfig, SurfaceCacheParams, SurfaceCachePass,
 };
+pub use taa::TaaConfig;
 pub use temporal_upscale::{TemporalUpscalePass, UpscaleConfig, UpscaleQuality};
 pub use terrain_material::{
     TerrainLayerDesc, TerrainLayerGpu, TerrainMaterialDesc, TerrainMaterialGpu,

@@ -11917,7 +11917,7 @@ fn test_terrain_material_gpu_wave24() {
 
     // Test default
     let default_material = TerrainMaterialGpu::default();
-    assert_eq!(default_material.splat_map_index, 0);
+    assert_eq!(default_material.splat_map_index_0, 0);
     assert_eq!(default_material.splat_uv_scale, 1.0);
     assert_eq!(default_material.triplanar_enabled, 1);
     assert_eq!(default_material.normal_blend_method, 1);
@@ -11926,16 +11926,18 @@ fn test_terrain_material_gpu_wave24() {
 
     // Test custom material
     let custom_material = TerrainMaterialGpu {
-        layers: [TerrainLayerGpu::default(); 4],
-        splat_map_index: 5,
+        layers: [TerrainLayerGpu::default(); 8],
+        splat_map_index_0: 5,
+        splat_map_index_1: 0,
         splat_uv_scale: 2.0,
         triplanar_enabled: 0,
         normal_blend_method: 2,
         triplanar_slope_threshold: 60.0,
         height_blend_enabled: 0,
-        _pad: [0; 10],
+        active_layer_count: 4,
+        _pad: [0; 8],
     };
-    assert_eq!(custom_material.splat_map_index, 5);
+    assert_eq!(custom_material.splat_map_index_0, 5);
     assert_eq!(custom_material.triplanar_enabled, 0);
 
     // Test copy trait
@@ -11953,8 +11955,8 @@ fn test_terrain_material_gpu_wave24() {
     let debug_str = format!("{:?}", default_material);
     assert!(debug_str.contains("TerrainMaterialGpu"));
 
-    // Test bytemuck - size should be 320 bytes
-    assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 320);
+    // Test bytemuck - size should be 576 bytes
+    assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 576);
 
     println!("TerrainMaterialGpu wave24 tested.");
 }

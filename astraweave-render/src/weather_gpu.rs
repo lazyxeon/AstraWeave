@@ -279,7 +279,10 @@ mod tests {
         assert_eq!(cfg.particle_type, WeatherParticleType::Snow);
         assert!(cfg.velocity.y < 0.0, "snow should fall");
         assert!(cfg.velocity.y > -5.0, "snow falls slowly");
-        assert!(cfg.lifetime > cfg.velocity.y.abs() * 0.1, "snow should live long enough to be visible");
+        assert!(
+            cfg.lifetime > cfg.velocity.y.abs() * 0.1,
+            "snow should live long enough to be visible"
+        );
     }
 
     #[test]
@@ -287,7 +290,10 @@ mod tests {
         let cfg = WeatherParticleConfig::sandstorm();
         assert_eq!(cfg.particle_type, WeatherParticleType::Sandstorm);
         assert!(cfg.velocity.x > 0.0, "sandstorm blows horizontally");
-        assert!(cfg.spawn_height_above_camera < 10.0, "sandstorm near ground");
+        assert!(
+            cfg.spawn_height_above_camera < 10.0,
+            "sandstorm near ground"
+        );
     }
 
     #[test]
@@ -397,7 +403,10 @@ mod tests {
     fn test_emitter_params_from_weather_clear() {
         let ws = crate::environment::WeatherSystem::new();
         let result = emitter_params_from_weather(&ws, Vec3::ZERO, 0.016, 0);
-        assert!(result.is_none(), "clear weather should not produce particles");
+        assert!(
+            result.is_none(),
+            "clear weather should not produce particles"
+        );
     }
 
     #[test]

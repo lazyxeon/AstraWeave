@@ -265,7 +265,9 @@ impl NaniteCullingPipeline {
         // Uses u32 atomics with IEEE 754 float-to-u32 bitcast ordering.
         let atomic_depth_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Nanite Atomic Depth Buffer"),
-            size: (screen_width as u64) * (screen_height as u64) * std::mem::size_of::<u32>() as u64,
+            size: (screen_width as u64)
+                * (screen_height as u64)
+                * std::mem::size_of::<u32>() as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });

@@ -267,39 +267,43 @@ impl TerrainLayerGpu {
     }
 }
 
-/// Extended terrain material with 4 layers (320 bytes)
+/// Extended terrain material with 8 layers (576 bytes)
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug)]
 pub struct TerrainMaterialGpu {
-    pub layers: [TerrainLayerGpu; 4],   // 256 bytes
-    pub splat_map_index: u32,           // 4 bytes
+    pub layers: [TerrainLayerGpu; 8],   // 512 bytes
+    pub splat_map_index_0: u32,         // 4 bytes
+    pub splat_map_index_1: u32,         // 4 bytes
     pub splat_uv_scale: f32,            // 4 bytes
     pub triplanar_enabled: u32,         // 4 bytes
     pub normal_blend_method: u32,       // 4 bytes
     pub triplanar_slope_threshold: f32, // 4 bytes
     pub height_blend_enabled: u32,      // 4 bytes
-    pub _pad: [u32; 10],                // 40 bytes
+    pub active_layer_count: u32,        // 4 bytes
+    pub _pad: [u32; 8],                 // 32 bytes
 }
 
 impl Default for TerrainMaterialGpu {
     fn default() -> Self {
         Self {
-            layers: [TerrainLayerGpu::default(); 4],
-            splat_map_index: 0,
+            layers: [TerrainLayerGpu::default(); 8],
+            splat_map_index_0: 0,
+            splat_map_index_1: 0,
             splat_uv_scale: 1.0,
             triplanar_enabled: 1,
             normal_blend_method: 1, // RNM
             triplanar_slope_threshold: 45.0,
             height_blend_enabled: 1,
-            _pad: [0; 10],
+            active_layer_count: 4,
+            _pad: [0; 8],
         }
     }
 }
 
 impl TerrainMaterialGpu {
-    pub const SIZE: usize = 320;
+    pub const SIZE: usize = 576;
 
-    pub fn with_layers(layers: [TerrainLayerGpu; 4]) -> Self {
+    pub fn with_layers(layers: [TerrainLayerGpu; 8]) -> Self {
         Self {
             layers,
             ..Default::default()
@@ -313,7 +317,7 @@ impl TerrainMaterialGpu {
 
     #[inline]
     pub fn set_splat_map(&mut self, index: u32, uv_scale: f32) {
-        self.splat_map_index = index;
+        self.splat_map_index_0 = index;
         self.splat_uv_scale = uv_scale;
     }
 
@@ -993,6 +997,10 @@ fn bench_terrain_materials(c: &mut Criterion) {
             TerrainLayerGpu::new(4, 5, 6, 7, [2.0, 2.0]),
             TerrainLayerGpu::new(8, 9, 10, 11, [4.0, 4.0]),
             TerrainLayerGpu::new(12, 13, 14, 15, [8.0, 8.0]),
+            TerrainLayerGpu::default(),
+            TerrainLayerGpu::default(),
+            TerrainLayerGpu::default(),
+            TerrainLayerGpu::default(),
         ];
         b.iter(|| black_box(TerrainMaterialGpu::with_layers(black_box(layers))));
     });
@@ -1408,7 +1416,7 @@ fn bench_advanced_post_processing(c: &mut Criterion) {
 fn bench_combined_scenarios(c: &mut Criterion) {
     let mut group = c.benchmark_group("combined_scenarios");
 
-    // 1. Full terrain setup (4 layers + material)
+    // 1. Full terrain setup (8 layers + material)
     group.bench_function("terrain_full_setup", |b| {
         b.iter(|| {
             let layers = [
@@ -1416,6 +1424,10 @@ fn bench_combined_scenarios(c: &mut Criterion) {
                 TerrainLayerGpu::new(4, 5, 6, 7, [2.0, 2.0]),
                 TerrainLayerGpu::new(8, 9, 10, 11, [4.0, 4.0]),
                 TerrainLayerGpu::new(12, 13, 14, 15, [8.0, 8.0]),
+                TerrainLayerGpu::default(),
+                TerrainLayerGpu::default(),
+                TerrainLayerGpu::default(),
+                TerrainLayerGpu::default(),
             ];
             let mut mat = TerrainMaterialGpu::with_layers(layers);
             mat.set_splat_map(16, 0.5);

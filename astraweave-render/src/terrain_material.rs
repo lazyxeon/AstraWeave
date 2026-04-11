@@ -49,16 +49,19 @@ impl Default for TerrainLayerGpu {
     }
 }
 
-/// Extended terrain material supporting up to 4 layers with splat map blending
-/// Size: 320 bytes (256 for layers + 64 for common params)
+/// Extended terrain material supporting up to 8 layers with splat map blending
+/// Size: 576 bytes (512 for layers + 64 for common params)
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct TerrainMaterialGpu {
-    /// Four terrain layers (grass, rock, sand, snow, etc.)
-    pub layers: [TerrainLayerGpu; 4],
+    /// Eight terrain layers (grass, rock, sand, snow, etc.)
+    pub layers: [TerrainLayerGpu; 8],
 
-    /// Splat map texture index (R=layer0, G=layer1, B=layer2, A=layer3)
-    pub splat_map_index: u32,
+    /// Splat map 0 texture index (R=layer0, G=layer1, B=layer2, A=layer3)
+    pub splat_map_index_0: u32,
+
+    /// Splat map 1 texture index (R=layer4, G=layer5, B=layer6, A=layer7)
+    pub splat_map_index_1: u32,
 
     /// Global UV scale for splat map sampling
     pub splat_uv_scale: f32,
@@ -76,21 +79,26 @@ pub struct TerrainMaterialGpu {
     /// Height blend enable (use height maps for smoother transitions)
     pub height_blend_enabled: u32,
 
+    /// Number of active layers (1-8)
+    pub active_layer_count: u32,
+
     /// Padding to complete 64-byte common params block
-    pub _pad: [u32; 10],
+    pub _pad: [u32; 8],
 }
 
 impl Default for TerrainMaterialGpu {
     fn default() -> Self {
         Self {
-            layers: [TerrainLayerGpu::default(); 4],
-            splat_map_index: 0,
+            layers: [TerrainLayerGpu::default(); 8],
+            splat_map_index_0: 0,
+            splat_map_index_1: 0,
             splat_uv_scale: 1.0,
             triplanar_enabled: 1,   // Enable by default
             normal_blend_method: 1, // RNM by default (best quality)
             triplanar_slope_threshold: 45.0,
             height_blend_enabled: 1,
-            _pad: [0; 10],
+            active_layer_count: 4,
+            _pad: [0; 8],
         }
     }
 }
@@ -457,7 +465,7 @@ impl TerrainMaterialDesc {
 
         // Splat map
         if let Some(splat_path) = &self.splat_map {
-            gpu_material.splat_map_index = texture_resolver(splat_path);
+            gpu_material.splat_map_index_0 = texture_resolver(splat_path);
         }
 
         gpu_material.splat_uv_scale = self.splat_uv_scale;
@@ -465,9 +473,10 @@ impl TerrainMaterialDesc {
         gpu_material.normal_blend_method = self.normal_blend_to_gpu();
         gpu_material.triplanar_slope_threshold = self.triplanar_slope_threshold;
         gpu_material.height_blend_enabled = if self.height_blend_enabled { 1 } else { 0 };
+        gpu_material.active_layer_count = self.layers.len().min(8) as u32;
 
-        // Convert up to 4 layers
-        for (i, layer_desc) in self.layers.iter().take(4).enumerate() {
+        // Convert up to 8 layers
+        for (i, layer_desc) in self.layers.iter().take(8).enumerate() {
             let layer = &mut gpu_material.layers[i];
 
             // Texture indices
@@ -512,8 +521,8 @@ mod tests {
 
     #[test]
     fn test_terrain_material_size() {
-        // Verify TerrainMaterialGpu is exactly 320 bytes (4*64 + 64)
-        assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 320);
+        // Verify TerrainMaterialGpu is exactly 576 bytes (8*64 + 64)
+        assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 576);
         assert_eq!(std::mem::align_of::<TerrainMaterialGpu>(), 16);
     }
 
@@ -628,7 +637,7 @@ mod tests {
     #[test]
     fn test_pod_zeroable_terrain_material() {
         // Verify we can create from bytes (Pod requirement)
-        let bytes = [0u8; 320];
+        let bytes = [0u8; 576];
         let material: TerrainMaterialGpu = bytemuck::cast(bytes);
         assert_eq!(material.splat_uv_scale, 0.0);
     }
@@ -693,7 +702,7 @@ mod tests {
 
     #[test]
     fn test_more_than_four_layers() {
-        // EDGE CASE: More than 4 layers (should truncate to 4)
+        // EDGE CASE: More than 8 layers (should truncate to 8)
         let desc = TerrainMaterialDesc {
             name: "many_layers".to_string(),
             biome: "complex".to_string(),
@@ -708,17 +717,21 @@ mod tests {
                 TerrainLayerDesc::default(),
                 TerrainLayerDesc::default(),
                 TerrainLayerDesc::default(),
-                TerrainLayerDesc::default(), // 5th layer (should be ignored)
-                TerrainLayerDesc::default(), // 6th layer (should be ignored)
+                TerrainLayerDesc::default(),
+                TerrainLayerDesc::default(),
+                TerrainLayerDesc::default(),
+                TerrainLayerDesc::default(),
+                TerrainLayerDesc::default(), // 9th layer (should be ignored)
+                TerrainLayerDesc::default(), // 10th layer (should be ignored)
             ],
         };
 
         let resolver = |_: &PathBuf| -> u32 { 0 };
         let gpu = desc.to_gpu(&resolver);
 
-        // Only 4 layers should be in GPU struct
-        // (This is tested by not crashing and having exactly 4 layers in array)
-        assert_eq!(gpu.layers.len(), 4);
+        // Only 8 layers should be in GPU struct
+        // (This is tested by not crashing and having exactly 8 layers in array)
+        assert_eq!(gpu.layers.len(), 8);
     }
 
     #[test]

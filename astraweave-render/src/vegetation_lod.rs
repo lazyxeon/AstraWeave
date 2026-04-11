@@ -119,37 +119,46 @@ pub fn generate_cross_billboard(half_width: f32, height: f32) -> BillboardMesh {
     // Quad A (faces Z): 4 vertices
     let positions = vec![
         // Quad A — facing +Z/−Z
-        Vec3::new(-hw, 0.0, 0.0),  // 0: bottom-left
-        Vec3::new(hw, 0.0, 0.0),   // 1: bottom-right
-        Vec3::new(hw, h, 0.0),     // 2: top-right
-        Vec3::new(-hw, h, 0.0),    // 3: top-left
+        Vec3::new(-hw, 0.0, 0.0), // 0: bottom-left
+        Vec3::new(hw, 0.0, 0.0),  // 1: bottom-right
+        Vec3::new(hw, h, 0.0),    // 2: top-right
+        Vec3::new(-hw, h, 0.0),   // 3: top-left
         // Quad B — facing +X/−X (rotated 90° around Y)
-        Vec3::new(0.0, 0.0, -hw),  // 4: bottom-left
-        Vec3::new(0.0, 0.0, hw),   // 5: bottom-right
-        Vec3::new(0.0, h, hw),     // 6: top-right
-        Vec3::new(0.0, h, -hw),    // 7: top-left
+        Vec3::new(0.0, 0.0, -hw), // 4: bottom-left
+        Vec3::new(0.0, 0.0, hw),  // 5: bottom-right
+        Vec3::new(0.0, h, hw),    // 6: top-right
+        Vec3::new(0.0, h, -hw),   // 7: top-left
     ];
 
     let normals = vec![
-        Vec3::Z, Vec3::Z, Vec3::Z, Vec3::Z,       // Quad A
-        Vec3::X, Vec3::X, Vec3::X, Vec3::X,        // Quad B
+        Vec3::Z,
+        Vec3::Z,
+        Vec3::Z,
+        Vec3::Z, // Quad A
+        Vec3::X,
+        Vec3::X,
+        Vec3::X,
+        Vec3::X, // Quad B
     ];
 
     let uvs = vec![
-        [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0], // Quad A
-        [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0], // Quad B
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [1.0, 0.0],
+        [0.0, 0.0], // Quad A
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [1.0, 0.0],
+        [0.0, 0.0], // Quad B
     ];
 
     // Two triangles per quad, front face (CCW) + back face (CW) for
     // double-sided visibility
     let indices = vec![
         // Quad A front (CCW viewed from +Z)
-        0, 1, 2, 0, 2, 3,
-        // Quad A back (CW from +Z = CCW from −Z)
-        0, 2, 1, 0, 3, 2,
-        // Quad B front (CCW viewed from +X)
-        4, 5, 6, 4, 6, 7,
-        // Quad B back
+        0, 1, 2, 0, 2, 3, // Quad A back (CW from +Z = CCW from −Z)
+        0, 2, 1, 0, 3, 2, // Quad B front (CCW viewed from +X)
+        4, 5, 6, 4, 6, 7, // Quad B back
         4, 6, 5, 4, 7, 6,
     ];
 
@@ -184,17 +193,9 @@ pub fn generate_impostor_card(half_width: f32, height: f32) -> BillboardMesh {
 
     let normals = vec![Vec3::Z; 4];
 
-    let uvs = vec![
-        [0.0, 1.0],
-        [1.0, 1.0],
-        [1.0, 0.0],
-        [0.0, 0.0],
-    ];
+    let uvs = vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
 
-    let indices = vec![
-        0, 1, 2,
-        0, 2, 3,
-    ];
+    let indices = vec![0, 1, 2, 0, 2, 3];
 
     BillboardMesh {
         positions,
@@ -442,14 +443,8 @@ mod tests {
     #[test]
     fn test_select_lod_cross_billboard() {
         let d = TreeLodDistances::default();
-        assert_eq!(
-            select_lod(200.0, &d),
-            Some(VegetationLod::CrossBillboard)
-        );
-        assert_eq!(
-            select_lod(499.0, &d),
-            Some(VegetationLod::CrossBillboard)
-        );
+        assert_eq!(select_lod(200.0, &d), Some(VegetationLod::CrossBillboard));
+        assert_eq!(select_lod(499.0, &d), Some(VegetationLod::CrossBillboard));
     }
 
     #[test]
@@ -479,7 +474,11 @@ mod tests {
     fn test_cross_billboard_geometry() {
         let bb = generate_cross_billboard(2.0, 10.0);
         assert_eq!(bb.positions.len(), 8, "cross billboard: 8 vertices");
-        assert_eq!(bb.indices.len(), 24, "cross billboard: 24 indices (4 tris × 2 quads, double-sided)");
+        assert_eq!(
+            bb.indices.len(),
+            24,
+            "cross billboard: 24 indices (4 tris × 2 quads, double-sided)"
+        );
         // Bottom vertices at y=0, top at y=height
         assert_eq!(bb.positions[0].y, 0.0);
         assert_eq!(bb.positions[2].y, 10.0);
@@ -491,10 +490,7 @@ mod tests {
         // Quad A is in XY plane (z=0), Quad B is in YZ plane (x=0)
         for i in 0..4 {
             assert_eq!(bb.positions[i].z, 0.0, "Quad A should lie in z=0 plane");
-            assert_eq!(
-                bb.positions[i + 4].x, 0.0,
-                "Quad B should lie in x=0 plane"
-            );
+            assert_eq!(bb.positions[i + 4].x, 0.0, "Quad B should lie in x=0 plane");
         }
     }
 
@@ -598,7 +594,7 @@ mod tests {
         assert_eq!(buckets[1].len(), 1, "LOD1 bucket"); // 100m
         assert_eq!(buckets[2].len(), 1, "LOD2 bucket"); // 300m
         assert_eq!(buckets[3].len(), 1, "LOD3 bucket"); // 800m
-        // 2000m instance should be culled — not in any bucket
+                                                        // 2000m instance should be culled — not in any bucket
         let total: usize = buckets.iter().map(|b| b.len()).sum();
         assert_eq!(total, 4, "culled instance should not appear");
     }

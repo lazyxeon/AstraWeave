@@ -15,7 +15,10 @@ use crate::types::{Instance, InstanceRaw, Mesh};
 use astraweave_cinematics as awc;
 use astraweave_materials::MaterialPackage;
 
-pub(crate) const SHADER_SRC: &str = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/brdf_common.wgsl"), r#"
+pub(crate) const SHADER_SRC: &str = concat!(
+    include_str!("../shaders/constants.wgsl"),
+    include_str!("../shaders/brdf_common.wgsl"),
+    r#"
 struct VSIn {
     @location(0) position: vec3<f32>,
     @location(1) normal:   vec3<f32>,
@@ -308,7 +311,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
 
     return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
 }
-"#);
+"#
+);
 
 #[cfg(not(feature = "postfx"))]
 pub(crate) const POST_SHADER: &str = r#"
@@ -427,7 +431,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
 }
 "#;
 
-const SKINNED_SHADER_SRC: &str = concat!(include_str!("../shaders/constants.wgsl"), include_str!("../shaders/brdf_common.wgsl"), r#"
+const SKINNED_SHADER_SRC: &str = concat!(
+    include_str!("../shaders/constants.wgsl"),
+    include_str!("../shaders/brdf_common.wgsl"),
+    r#"
 struct VSIn {
   @location(0) position: vec3<f32>,
   @location(1) normal:   vec3<f32>,
@@ -598,7 +605,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let lit_color = brdf_result * radiance * shadow * cloud_shadow + base_color * 0.08;
     return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
 }
-"#);
+"#
+);
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -630,6 +638,11 @@ pub struct Renderer {
     surface: Option<wgpu::Surface<'static>>,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    /// Set to `true` by the error callback when an internal GPU error is
+    /// detected (driver crash, TDR, device removed).  Once set, the
+    /// renderer stops issuing GPU work and [`is_device_lost`] returns
+    /// `true` so the application can recreate it.
+    device_lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// Vulkan pipeline cache for faster shader compilation on subsequent launches.
     pipeline_cache: Option<wgpu::PipelineCache>,
     /// Keeps PipelineCacheManager alive for its Drop impl (persists cache to disk).
@@ -911,9 +924,20 @@ impl Renderer {
             .await?;
 
         // Register GPU error callback for validation errors and device loss.
-        device.on_uncaptured_error(Box::new(|error| {
-            log::error!("wgpu device error: {error}");
-        }));
+        let device_lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        {
+            let dl = device_lost.clone();
+            device.on_uncaptured_error(Box::new(move |error| {
+                log::error!("wgpu device error: {error}");
+                // Internal errors typically signal GPU device loss (TDR, driver
+                // crash, device removed).  Flag the renderer so the application
+                // can recreate it instead of continuing to submit broken work.
+                if matches!(error, wgpu::Error::Internal { .. }) {
+                    dl.store(true, std::sync::atomic::Ordering::SeqCst);
+                    log::error!("GPU device loss detected — renderer must be recreated");
+                }
+            }));
+        }
 
         let caps = surface.get_capabilities(&adapter);
         let format = caps
@@ -935,7 +959,7 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
-        Self::new_from_device(device, queue, Some(surface), config).await
+        Self::new_from_device_monitored(device, queue, Some(surface), config, device_lost).await
     }
 
     pub async fn new_headless(width: u32, height: u32) -> Result<Self> {
@@ -972,9 +996,17 @@ impl Renderer {
             .await?;
 
         // Register GPU error callback for validation errors and device loss.
-        device.on_uncaptured_error(Box::new(|error| {
-            log::error!("wgpu device error (headless): {error}");
-        }));
+        let device_lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        {
+            let dl = device_lost.clone();
+            device.on_uncaptured_error(Box::new(move |error| {
+                log::error!("wgpu device error (headless): {error}");
+                if matches!(error, wgpu::Error::Internal { .. }) {
+                    dl.store(true, std::sync::atomic::Ordering::SeqCst);
+                    log::error!("GPU device loss detected — renderer must be recreated");
+                }
+            }));
+        }
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -987,7 +1019,7 @@ impl Renderer {
             desired_maximum_frame_latency: 2,
         };
 
-        Self::new_from_device(device, queue, None, config).await
+        Self::new_from_device_monitored(device, queue, None, config, device_lost).await
     }
 
     pub async fn new_from_device(
@@ -995,6 +1027,17 @@ impl Renderer {
         queue: wgpu::Queue,
         surface: Option<wgpu::Surface<'static>>,
         config: wgpu::SurfaceConfiguration,
+    ) -> Result<Self> {
+        let device_lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        Self::new_from_device_monitored(device, queue, surface, config, device_lost).await
+    }
+
+    async fn new_from_device_monitored(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        surface: Option<wgpu::Surface<'static>>,
+        config: wgpu::SurfaceConfiguration,
+        device_lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<Self> {
         #[cfg(feature = "gpu-tests")]
         let timestamp_query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
@@ -1012,8 +1055,7 @@ impl Renderer {
 
         // Pipeline cache — Vulkan/DX12 pipeline cache for faster shader compilation.
         // Loads prior cache data from disk if available; saves on drop.
-        let pipeline_cache_mgr =
-            crate::pipeline_cache::PipelineCacheManager::create(&device, None);
+        let pipeline_cache_mgr = crate::pipeline_cache::PipelineCacheManager::create(&device, None);
         let pipeline_cache = pipeline_cache_mgr.as_ref().map(|m| m.cache().clone());
 
         // GPU timestamp profiler — created when TIMESTAMP_QUERY is available.
@@ -2003,7 +2045,11 @@ impl Renderer {
         // When no GI pass is active, this contributes zero indirect light.
         let gi_fallback_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("gi_fallback"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -2019,8 +2065,16 @@ impl Renderer {
                 aspect: wgpu::TextureAspect::All,
             },
             &[0u8; 8], // 4 x f16 = 8 bytes, all zero → black
-            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(8), rows_per_image: Some(1) },
-            wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(8),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
         );
         let gi_fallback_view = gi_fallback_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let gi_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -2689,10 +2743,17 @@ fn vs(input: VSIn) -> VSOut {
         let skinned_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("skinned pipeline layout"),
-                bind_group_layouts: &[&bind_layout, &material_bgl, &shadow_bgl, &tex_bgl, &scene_env_bgl, &ibl_params_bgl],
+                bind_group_layouts: &[
+                    &bind_layout,
+                    &material_bgl,
+                    &shadow_bgl,
+                    &tex_bgl,
+                    &scene_env_bgl,
+                    &ibl_params_bgl,
+                ],
                 push_constant_ranges: &[],
             });
-        let skinned_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor{
+        let skinned_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("skinned shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(SKINNED_SHADER_SRC)),
         });
@@ -3231,7 +3292,16 @@ fn vs(input: VSIn) -> VSOut {
             material_manager: crate::material::MaterialManager::new(),
             post_chain: crate::hdr_pipeline::PostProcessChain::default(),
             gpu_memory_budget: std::sync::Arc::new(crate::gpu_memory::GpuMemoryBudget::new()),
+            device_lost,
         })
+    }
+
+    /// Returns `true` if the GPU device has been lost (driver crash, TDR,
+    /// device removed).  When this returns `true` no further GPU work will
+    /// be submitted and the application should drop this `Renderer` and
+    /// create a new one.
+    pub fn is_device_lost(&self) -> bool {
+        self.device_lost.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Returns a reference to the pipeline cache, if available (Vulkan backends only).
@@ -3416,11 +3486,15 @@ fn vs(input: VSIn) -> VSOut {
                 },
                 wgpu::BindGroupEntry {
                     binding: 7,
-                    resource: wgpu::BindingResource::TextureView(self.cloud_shadow_pass.shadow_view()),
+                    resource: wgpu::BindingResource::TextureView(
+                        self.cloud_shadow_pass.shadow_view(),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 8,
-                    resource: wgpu::BindingResource::Sampler(self.cloud_shadow_pass.shadow_sampler()),
+                    resource: wgpu::BindingResource::Sampler(
+                        self.cloud_shadow_pass.shadow_sampler(),
+                    ),
                 },
             ],
         });
@@ -4057,7 +4131,8 @@ fn vs(input: VSIn) -> VSOut {
         roughness: f32,
         alpha_cutoff: f32,
     ) {
-        let ubo = crate::material::MaterialUboData::new(base_color, metallic, roughness, alpha_cutoff);
+        let ubo =
+            crate::material::MaterialUboData::new(base_color, metallic, roughness, alpha_cutoff);
         self.queue
             .write_buffer(&self.material_buf, 0, bytemuck::bytes_of(&ubo));
     }
@@ -4389,6 +4464,12 @@ fn vs(input: VSIn) -> VSOut {
     /// lost (after reconfiguration). Returns `Err` on OutOfMemory or other
     /// fatal errors.
     fn acquire_surface_texture(&self) -> Result<Option<(wgpu::SurfaceTexture, wgpu::TextureView)>> {
+        if self.is_device_lost() {
+            return Err(anyhow::anyhow!(
+                "GPU device lost — renderer must be recreated"
+            ));
+        }
+
         let surface = if let Some(s) = &self.surface {
             s
         } else {
@@ -5978,7 +6059,9 @@ fn vs(input: VSIn) -> VSOut {
 
         // SAFETY: ext_inst_buf is guaranteed Some — allocated just above if it was None or too small.
         self.queue.write_buffer(
-            self.ext_inst_buf.as_ref().expect("ext_inst_buf allocated above"),
+            self.ext_inst_buf
+                .as_ref()
+                .expect("ext_inst_buf allocated above"),
             0,
             bytemuck::cast_slice(&raw),
         );
@@ -6646,7 +6729,8 @@ mod tests {
         );
         // evaluate_brdf should delegate to evaluate_brdf_lod
         assert!(
-            brdf_src.contains("evaluate_brdf_lod(N, V, L, base_color, metallic, roughness, F0, 0u)"),
+            brdf_src
+                .contains("evaluate_brdf_lod(N, V, L, base_color, metallic, roughness, F0, 0u)"),
             "evaluate_brdf should delegate to evaluate_brdf_lod with LOD 0"
         );
     }

@@ -357,8 +357,10 @@ impl VolumetricFogPass {
             device,
             &scatter_bgl,
             "vol_scatter",
-            concat!(include_str!("../shaders/constants.wgsl"),
-            include_str!("../shaders/volumetrics/scatter.wgsl")),
+            concat!(
+                include_str!("../shaders/constants.wgsl"),
+                include_str!("../shaders/volumetrics/scatter.wgsl")
+            ),
             "scatter_main",
         );
         let integrate_pipeline = create_compute_pipeline(
