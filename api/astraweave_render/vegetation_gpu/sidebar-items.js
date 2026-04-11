@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["cpu_cull_vegetation","cpu_scatter_vegetation"],"struct":["DrawIndexedIndirectCommand","ScatterParams","ScatterParamsBuilder","VegetationGpuPipeline","VegetationInstanceGpu","VegetationTypeGpu","WindUniforms"]};

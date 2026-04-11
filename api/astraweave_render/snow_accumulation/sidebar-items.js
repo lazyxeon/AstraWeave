@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SNOW_ACCUMULATION_WGSL"],"struct":["SnowAccumulationConfig","SnowMaterial","SnowParamsGpu"]};

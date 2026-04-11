@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["WeatherParticleType"],"fn":["config_for_weather","emitter_params_from_weather"],"struct":["WeatherParticleConfig"]};

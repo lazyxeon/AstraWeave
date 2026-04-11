@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["VegetationLod"],"fn":["classify_instances_by_lod","generate_cross_billboard","generate_impostor_card","select_lod"],"struct":["AtlasRegion","AtlasRegionGpu","AtlasSpeciesEntry","BillboardMesh","ImpostorAtlasSpec","LodDistancesGpu","TreeLodDistances","VegetationLodChain"]};

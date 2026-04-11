@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["ScatterConfig","ScatterResult","VegetationInstance","VegetationScatter"]};
+window.SIDEBAR_ITEMS = {"fn":["density_at_distance"],"struct":["ScatterConfig","ScatterResult","VegetationInstance","VegetationLodConfig","VegetationScatter"]};
