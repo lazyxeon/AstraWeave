@@ -215,10 +215,17 @@ pub fn build_catalog() -> Vec<CatalogEntry> {
         }
     }
 
-    // Deduplicate by file path (multiple scan passes can find the same model)
+    // Deduplicate: first by exact file path, then by (display_name, pack) to
+    // eliminate the same model shipped in multiple format directories (e.g.
+    // GLB format/ and GLTF format/ under the same pack).
     {
         let mut seen_paths = std::collections::HashSet::new();
         entries.retain(|e| seen_paths.insert(e.path.clone()));
+    }
+    {
+        let mut seen_names: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        entries.retain(|e| seen_names.insert((e.display_name.clone(), e.pack.clone())));
     }
 
     entries.sort_by(|a, b| {
@@ -869,6 +876,66 @@ fn draw_prop_icon(pixels: &mut [u8], size: usize, r: u8, g: u8, b: u8) {
     }
 }
 
+/// Draw a short text label onto a pixel buffer using a tiny 3×5 pixel font.
+/// `x` and `y` are the top-left corner of the first character.
+fn draw_label(pixels: &mut [u8], size: usize, text: &str, x: usize, y: usize, r: u8, g: u8, b: u8) {
+    // 3×5 pixel font bitmaps for A-Z and 0-9. Each char is 5 rows of 3-bit patterns.
+    #[rustfmt::skip]
+    const GLYPHS: &[(char, [u8; 5])] = &[
+        ('A', [0b010, 0b101, 0b111, 0b101, 0b101]),
+        ('B', [0b110, 0b101, 0b110, 0b101, 0b110]),
+        ('C', [0b011, 0b100, 0b100, 0b100, 0b011]),
+        ('D', [0b110, 0b101, 0b101, 0b101, 0b110]),
+        ('E', [0b111, 0b100, 0b110, 0b100, 0b111]),
+        ('F', [0b111, 0b100, 0b110, 0b100, 0b100]),
+        ('G', [0b011, 0b100, 0b101, 0b101, 0b011]),
+        ('H', [0b101, 0b101, 0b111, 0b101, 0b101]),
+        ('I', [0b111, 0b010, 0b010, 0b010, 0b111]),
+        ('J', [0b001, 0b001, 0b001, 0b101, 0b010]),
+        ('K', [0b101, 0b110, 0b100, 0b110, 0b101]),
+        ('L', [0b100, 0b100, 0b100, 0b100, 0b111]),
+        ('M', [0b101, 0b111, 0b111, 0b101, 0b101]),
+        ('N', [0b101, 0b111, 0b111, 0b101, 0b101]),
+        ('O', [0b010, 0b101, 0b101, 0b101, 0b010]),
+        ('P', [0b110, 0b101, 0b110, 0b100, 0b100]),
+        ('Q', [0b010, 0b101, 0b101, 0b110, 0b011]),
+        ('R', [0b110, 0b101, 0b110, 0b101, 0b101]),
+        ('S', [0b011, 0b100, 0b010, 0b001, 0b110]),
+        ('T', [0b111, 0b010, 0b010, 0b010, 0b010]),
+        ('U', [0b101, 0b101, 0b101, 0b101, 0b010]),
+        ('V', [0b101, 0b101, 0b101, 0b010, 0b010]),
+        ('W', [0b101, 0b101, 0b111, 0b111, 0b101]),
+        ('X', [0b101, 0b101, 0b010, 0b101, 0b101]),
+        ('Y', [0b101, 0b101, 0b010, 0b010, 0b010]),
+        ('Z', [0b111, 0b001, 0b010, 0b100, 0b111]),
+        ('0', [0b010, 0b101, 0b101, 0b101, 0b010]),
+        ('1', [0b010, 0b110, 0b010, 0b010, 0b111]),
+        ('2', [0b110, 0b001, 0b010, 0b100, 0b111]),
+        ('3', [0b110, 0b001, 0b010, 0b001, 0b110]),
+        ('4', [0b101, 0b101, 0b111, 0b001, 0b001]),
+        ('5', [0b111, 0b100, 0b110, 0b001, 0b110]),
+        ('6', [0b011, 0b100, 0b110, 0b101, 0b010]),
+        ('7', [0b111, 0b001, 0b010, 0b010, 0b010]),
+        ('8', [0b010, 0b101, 0b010, 0b101, 0b010]),
+        ('9', [0b010, 0b101, 0b011, 0b001, 0b110]),
+    ];
+
+    let mut cx = x;
+    for ch in text.chars() {
+        let upper = ch.to_ascii_uppercase();
+        if let Some((_, rows)) = GLYPHS.iter().find(|(c, _)| *c == upper) {
+            for (row, bits) in rows.iter().enumerate() {
+                for col in 0..3u8 {
+                    if bits & (1 << (2 - col)) != 0 {
+                        set_pixel(pixels, size, cx + col as usize, y + row, r, g, b);
+                    }
+                }
+            }
+        }
+        cx += 4; // 3 pixels wide + 1 pixel gap
+    }
+}
+
 /// Try to load a companion thumbnail image for a model file.
 /// Searches for: Preview.png, Sample.png, thumbnail.png in the same directory,
 /// or a file with the same stem + _preview.png / _thumbnail.png.
@@ -1000,6 +1067,29 @@ fn generate_thumbnail(ctx: &egui::Context, entry: &CatalogEntry) -> TextureHandl
         | EntityCategory::Weapon
         | EntityCategory::Prop => draw_prop_icon(&mut pixels, size, r, g, b),
     }
+
+    // Draw file extension label at bottom (e.g. "GLB", "FBX")
+    if let Some(ext) = std::path::Path::new(&entry.path)
+        .extension()
+        .and_then(|e| e.to_str())
+    {
+        let ext_upper = ext.to_uppercase();
+        draw_label(&mut pixels, size, &ext_upper, 2, size - 8, 200, 200, 200);
+    }
+
+    // Draw category label at top-right corner
+    let cat_short = match entry.category {
+        EntityCategory::Character => "CHR",
+        EntityCategory::Building => "BLD",
+        EntityCategory::Vehicle => "VEH",
+        EntityCategory::Nature => "NAT",
+        EntityCategory::Furniture => "FUR",
+        EntityCategory::Food => "FOD",
+        EntityCategory::Weapon => "WPN",
+        EntityCategory::Infrastructure => "INF",
+        EntityCategory::Prop => "PRP",
+    };
+    draw_label(&mut pixels, size, cat_short, size - 22, 2, r, g, b);
 
     let color_image = ColorImage::from_rgba_unmultiplied([size, size], &pixels);
 

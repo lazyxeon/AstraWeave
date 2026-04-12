@@ -3793,6 +3793,10 @@ impl EditorApp {
                         "Entity {} position: ({:.2}, {:.2}, {:.2})",
                         entity_id, x, y, z
                     );
+                    // Force renderer to rebuild so the viewport reflects the new position
+                    if let Some(viewport) = &self.viewport {
+                        viewport.invalidate_entity_cache();
+                    }
                 }
                 tab_viewer::PanelEvent::TransformRotationChanged {
                     entity_id,
@@ -3825,6 +3829,10 @@ impl EditorApp {
                         entity_id,
                         rotation.to_degrees()
                     );
+                    // Force renderer to rebuild so the viewport reflects the new rotation
+                    if let Some(viewport) = &self.viewport {
+                        viewport.invalidate_entity_cache();
+                    }
                 }
                 tab_viewer::PanelEvent::TransformScaleChanged {
                     entity_id,
@@ -3858,6 +3866,10 @@ impl EditorApp {
                         "Entity {} scale: ({:.2}, {:.2}, {:.2})",
                         entity_id, scale_x, scale_y, scale_z
                     );
+                    // Force renderer to rebuild so the viewport reflects the new scale
+                    if let Some(viewport) = &self.viewport {
+                        viewport.invalidate_entity_cache();
+                    }
                 }
                 tab_viewer::PanelEvent::CreateEntity => {
                     // Create an empty entity via undo stack (undoable)
