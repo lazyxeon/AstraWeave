@@ -738,8 +738,7 @@ impl ViewportRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
         }))
     }
@@ -877,9 +876,7 @@ impl ViewportRenderer {
     }
 
     /// Get the active post-processing chain.
-    pub fn post_process_chain(
-        &self,
-    ) -> Option<&astraweave_render::hdr_pipeline::PostProcessChain> {
+    pub fn post_process_chain(&self) -> Option<&astraweave_render::hdr_pipeline::PostProcessChain> {
         self.engine_adapter.as_ref().map(|a| a.post_process_chain())
     }
 
@@ -909,7 +906,9 @@ impl ViewportRenderer {
     }
 
     pub fn handle_device_lost(&mut self) -> Result<()> {
-        tracing::error!("GPU device lost in ViewportRenderer - cleaning up ALL resources for recovery");
+        tracing::error!(
+            "GPU device lost in ViewportRenderer - cleaning up ALL resources for recovery"
+        );
 
         // Clear depth resources
         self.depth_texture = None;
@@ -1099,11 +1098,11 @@ impl ViewportRenderer {
         if !self.depth_read_pending {
             // Wrap encoder creation + submission in catch_unwind for device-lost safety
             let encoder_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let mut encoder = self
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("Depth Readback Encoder"),
-                    });
+                let mut encoder =
+                    self.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Depth Readback Encoder"),
+                        });
 
                 encoder.copy_texture_to_buffer(
                     wgpu::TexelCopyTextureInfo {

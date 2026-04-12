@@ -1048,7 +1048,7 @@ impl Panel for ProfilerPanel {
                 ui.separator();
                 ui.label("Target:");
                 egui::ComboBox::from_id_salt("target_fps")
-                    .width(60.0)
+                    .width(80.0)
                     .selected_text(format!("{:.0} FPS", self.target_fps))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.target_fps, 30.0, "30 FPS");
@@ -1069,7 +1069,10 @@ impl Panel for ProfilerPanel {
         // Tab bar
         ui.horizontal(|ui| {
             if ui
-                .selectable_label(self.selected_tab == ProfilerTab::Overview, "📈 Overview")
+                .selectable_label(
+                    self.selected_tab == ProfilerTab::Overview,
+                    "[Stats] Overview",
+                )
                 .clicked()
             {
                 self.selected_tab = ProfilerTab::Overview;

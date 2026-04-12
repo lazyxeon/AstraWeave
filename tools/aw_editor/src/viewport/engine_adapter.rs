@@ -703,9 +703,8 @@ impl EngineRenderAdapter {
                 }
                 let name = format!("terrain_c{bin_idx}_{sub}");
                 *sub += 1;
-                let mesh = renderer.create_mesh_from_full_arrays(
-                    positions, normals, tangents, uvs, indices,
-                );
+                let mesh = renderer
+                    .create_mesh_from_full_arrays(positions, normals, tangents, uvs, indices);
                 let instance = astraweave_render::Instance::from_pos_scale_color(
                     glam::Vec3::ZERO,
                     glam::Vec3::ONE,
@@ -1269,10 +1268,12 @@ impl EngineRenderAdapter {
                         // If a prior quadrant already uploaded the texture,
                         // share it instead of creating a duplicate GPU texture.
                         if let Some(ref source) = first_textured_quad {
-                            if self
-                                .renderer
-                                .add_model_sharing_texture(&sub_name, mesh.clone(), &instances, source)
-                            {
+                            if self.renderer.add_model_sharing_texture(
+                                &sub_name,
+                                mesh.clone(),
+                                &instances,
+                                source,
+                            ) {
                                 // Texture shared successfully — skip texture upload.
                             } else {
                                 // Source disappeared (shouldn't happen) — fall back.

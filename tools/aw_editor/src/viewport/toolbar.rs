@@ -285,7 +285,8 @@ impl ViewportToolbar {
             let stats_pos = viewport_rect.left_bottom() + egui::vec2(10.0, -160.0);
 
             egui::Area::new(egui::Id::new("viewport_stats"))
-                .fixed_pos(stats_pos)
+                .default_pos(stats_pos)
+                .movable(true)
                 .order(egui::Order::Foreground)
                 .show(ui.ctx(), |ui| {
                     egui::Frame::new()
@@ -357,7 +358,8 @@ impl ViewportToolbar {
             let info_pos = viewport_rect.right_top() + egui::vec2(-140.0, 10.0);
 
             egui::Area::new(egui::Id::new("viewport_info"))
-                .fixed_pos(info_pos)
+                .default_pos(info_pos)
+                .movable(true)
                 .order(egui::Order::Foreground)
                 .show(ui.ctx(), |ui| {
                     egui::Frame::new()

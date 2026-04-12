@@ -677,7 +677,6 @@ impl ViewportWidget {
 
             // Display texture via egui (GPU-direct, no CPU readback)
             if let Some(texture_id) = self.native_texture_id {
-
                 // Visual border for focus/hover states (✓ Implemented)
                 // Border rendering happens in viewport_frame() above
 

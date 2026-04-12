@@ -796,7 +796,7 @@ impl PostProcessPanel {
             let tabs = [
                 (PostProcessTab::Overview, "Overview"),
                 (PostProcessTab::Bloom, "Bloom"),
-                (PostProcessTab::DepthOfField, "📷 DoF"),
+                (PostProcessTab::DepthOfField, "[DoF] DoF"),
                 (PostProcessTab::MotionBlur, "[Dash] Motion"),
                 (PostProcessTab::ColorGrading, "Color"),
                 (PostProcessTab::Effects, "Effects"),
@@ -819,7 +819,9 @@ impl PostProcessPanel {
 
         // Profile info
         ui.horizontal(|ui| {
-            ui.label(format!("{}", self.current_profile.name));
+            let name = &self.current_profile.name;
+            let truncated = if name.len() > 24 { &name[..24] } else { name };
+            ui.label(truncated);
 
             ui.separator();
 
@@ -884,7 +886,7 @@ impl PostProcessPanel {
         ui.add_space(10.0);
 
         egui::ScrollArea::vertical()
-            .max_height(300.0)
+            .max_height((ui.available_height() - 20.0).max(100.0))
             .show(ui, |ui| {
                 // Global settings
                 ui.group(|ui| {
@@ -965,7 +967,7 @@ impl PostProcessPanel {
                     let effects = [
                         ("Bloom", self.current_profile.bloom.enabled),
                         (
-                            "📷 Depth of Field",
+                            "[DoF] Depth of Field",
                             self.current_profile.dof.mode != DofMode::Disabled,
                         ),
                         (
@@ -973,11 +975,11 @@ impl PostProcessPanel {
                             self.current_profile.motion_blur.enabled,
                         ),
                         ("Color Grading", self.current_profile.color_grading.enabled),
-                        ("🌑 Ambient Occlusion", self.current_profile.ao.enabled),
-                        ("🪞 SSR", self.current_profile.ssr.enabled),
-                        ("⭕ Vignette", self.current_profile.vignette.enabled),
+                        ("[AO] Ambient Occlusion", self.current_profile.ao.enabled),
+                        ("[SSR] SSR", self.current_profile.ssr.enabled),
+                        ("[Vig] Vignette", self.current_profile.vignette.enabled),
                         (
-                            "🌈 Chromatic Aberration",
+                            "[CA] Chromatic Aberration",
                             self.current_profile.chromatic_aberration.enabled,
                         ),
                         ("Film Grain", self.current_profile.film_grain.enabled),
@@ -1087,7 +1089,7 @@ impl PostProcessPanel {
     }
 
     fn show_dof_tab(&mut self, ui: &mut Ui) {
-        ui.heading("📷 Depth of Field");
+        ui.heading("[DoF] Depth of Field");
         ui.add_space(10.0);
 
         egui::ComboBox::from_id_salt("dof_mode")
@@ -1238,7 +1240,7 @@ impl PostProcessPanel {
 
         if self.current_profile.color_grading.enabled {
             egui::ScrollArea::vertical()
-                .max_height(300.0)
+                .max_height((ui.available_height() - 20.0).max(100.0))
                 .show(ui, |ui| {
                     // White balance
                     ui.group(|ui| {
@@ -1268,7 +1270,7 @@ impl PostProcessPanel {
 
                     // Tone
                     ui.group(|ui| {
-                        ui.label(RichText::new("🎚️ Tone").strong());
+                        ui.label(RichText::new("[Tone] Tone").strong());
 
                         egui::Grid::new("tone")
                             .num_columns(2)
@@ -1318,7 +1320,7 @@ impl PostProcessPanel {
 
                     // Curves
                     ui.group(|ui| {
-                        ui.label(RichText::new("📈 Curves").strong());
+                        ui.label(RichText::new("[Graph] Curves").strong());
 
                         egui::Grid::new("curves")
                             .num_columns(2)
@@ -1382,13 +1384,13 @@ impl PostProcessPanel {
         ui.add_space(10.0);
 
         egui::ScrollArea::vertical()
-            .max_height(320.0)
+            .max_height((ui.available_height() - 20.0).max(100.0))
             .show(ui, |ui| {
                 // Ambient Occlusion
                 ui.group(|ui| {
                     ui.checkbox(
                         &mut self.current_profile.ao.enabled,
-                        RichText::new("🌑 Ambient Occlusion").strong(),
+                        RichText::new("[AO] Ambient Occlusion").strong(),
                     );
 
                     if self.current_profile.ao.enabled {
@@ -1448,7 +1450,7 @@ impl PostProcessPanel {
                 ui.group(|ui| {
                     ui.checkbox(
                         &mut self.current_profile.ssr.enabled,
-                        RichText::new("🪞 Screen-Space Reflections").strong(),
+                        RichText::new("[SSR] Screen-Space Reflections").strong(),
                     );
 
                     if self.current_profile.ssr.enabled {
@@ -1486,7 +1488,7 @@ impl PostProcessPanel {
                 ui.group(|ui| {
                     ui.checkbox(
                         &mut self.current_profile.vignette.enabled,
-                        RichText::new("⭕ Vignette").strong(),
+                        RichText::new("[Vig] Vignette").strong(),
                     );
 
                     if self.current_profile.vignette.enabled {
@@ -1524,7 +1526,7 @@ impl PostProcessPanel {
                 ui.group(|ui| {
                     ui.checkbox(
                         &mut self.current_profile.chromatic_aberration.enabled,
-                        RichText::new("🌈 Chromatic Aberration").strong(),
+                        RichText::new("[CA] Chromatic Aberration").strong(),
                     );
 
                     if self.current_profile.chromatic_aberration.enabled {
@@ -1584,7 +1586,7 @@ impl PostProcessPanel {
         ui.add_space(10.0);
 
         egui::ScrollArea::vertical()
-            .max_height(280.0)
+            .max_height((ui.available_height() - 20.0).max(100.0))
             .show(ui, |ui| {
                 let mut current_category = String::new();
 

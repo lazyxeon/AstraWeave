@@ -907,11 +907,11 @@ impl LightingTab {
     pub fn icon(&self) -> &'static str {
         match self {
             Self::Lights => "[Lgt]",
-            Self::Shadows => "🌑",
-            Self::GI => "🌞",
+            Self::Shadows => "[Shd]",
+            Self::GI => "[GI]",
             Self::Probes => "[Orb]",
             Self::Environment => "[Glb]",
-            Self::Debug => "🐛",
+            Self::Debug => "[Bug]",
         }
     }
 
@@ -1114,7 +1114,7 @@ impl LightingPanel {
         ui.horizontal(|ui| {
             let tabs = [
                 (LightingTab::Lights, "Lights"),
-                (LightingTab::Shadows, "🌑 Shadows"),
+                (LightingTab::Shadows, "[Shd] Shadows"),
                 (LightingTab::GI, "[Glb] GI"),
                 (LightingTab::Probes, "Probes"),
                 (LightingTab::Environment, "[Cld] Environment"),
@@ -2966,11 +2966,11 @@ mod tests {
     #[test]
     fn test_lighting_tab_icon() {
         assert_eq!(LightingTab::Lights.icon(), "[Lgt]");
-        assert_eq!(LightingTab::Shadows.icon(), "🌑");
-        assert_eq!(LightingTab::GI.icon(), "🌞");
+        assert_eq!(LightingTab::Shadows.icon(), "[Shd]");
+        assert_eq!(LightingTab::GI.icon(), "[GI]");
         assert_eq!(LightingTab::Probes.icon(), "[Orb]");
         assert_eq!(LightingTab::Environment.icon(), "[Glb]");
-        assert_eq!(LightingTab::Debug.icon(), "🐛");
+        assert_eq!(LightingTab::Debug.icon(), "[Bug]");
     }
 
     // =====================================================================

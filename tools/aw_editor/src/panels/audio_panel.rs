@@ -623,11 +623,11 @@ impl AudioPanel {
     fn show_tab_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             let tabs = [
-                (AudioTab::Mixer, "🎚️ Mixer"),
+                (AudioTab::Mixer, "[Mix] Mixer"),
                 (AudioTab::Music, "Music"),
                 (AudioTab::Spatial, "Spatial"),
                 (AudioTab::Emitters, "Emitters"),
-                (AudioTab::Preview, "🎧 Preview"),
+                (AudioTab::Preview, "[Aud] Preview"),
             ];
 
             for (tab, label) in tabs {
@@ -647,7 +647,7 @@ impl AudioPanel {
     }
 
     fn show_mixer_tab(&mut self, ui: &mut Ui) {
-        ui.heading("🎚️ Audio Mixer");
+        ui.heading("[Mix] Audio Mixer");
         ui.add_space(10.0);
 
         // Snapshot values before egui widgets mutate them.
@@ -688,10 +688,11 @@ impl AudioPanel {
 
         ui.add_space(10.0);
 
-        // Channel volumes
-        ui.columns(3, |columns| {
-            // Music channel
-            columns[0].group(|ui| {
+        // Channel volumes — use vertical stacking when panel is narrow
+        let narrow = ui.available_width() < 360.0;
+        if narrow {
+            // Narrow layout: stack channels vertically
+            ui.group(|ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Music").strong());
                     if ui
@@ -701,8 +702,6 @@ impl AudioPanel {
                         self.music_muted = !self.music_muted;
                     }
                 });
-                ui.add_space(5.0);
-
                 let effective = if self.music_muted || self.master_muted {
                     0.0
                 } else {
@@ -710,11 +709,9 @@ impl AudioPanel {
                 };
                 Self::show_volume_slider_static(ui, &mut self.music_volume, effective);
             });
-
-            // Voice channel
-            columns[1].group(|ui| {
+            ui.group(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("🗣️ Voice").strong());
+                    ui.label(RichText::new("Voice").strong());
                     if ui
                         .button(if self.voice_muted { "[Mute]" } else { "[Snd]" })
                         .clicked()
@@ -722,8 +719,6 @@ impl AudioPanel {
                         self.voice_muted = !self.voice_muted;
                     }
                 });
-                ui.add_space(5.0);
-
                 let effective = if self.voice_muted || self.master_muted {
                     0.0
                 } else {
@@ -731,9 +726,7 @@ impl AudioPanel {
                 };
                 Self::show_volume_slider_static(ui, &mut self.voice_volume, effective);
             });
-
-            // SFX channel
-            columns[2].group(|ui| {
+            ui.group(|ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("[Hit] SFX").strong());
                     if ui
@@ -743,8 +736,6 @@ impl AudioPanel {
                         self.sfx_muted = !self.sfx_muted;
                     }
                 });
-                ui.add_space(5.0);
-
                 let effective = if self.sfx_muted || self.master_muted {
                     0.0
                 } else {
@@ -752,12 +743,77 @@ impl AudioPanel {
                 };
                 Self::show_volume_slider_static(ui, &mut self.sfx_volume, effective);
             });
-        });
+        } else {
+            ui.columns(3, |columns| {
+                // Music channel
+                columns[0].group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Music").strong());
+                        if ui
+                            .button(if self.music_muted { "[Mute]" } else { "[Snd]" })
+                            .clicked()
+                        {
+                            self.music_muted = !self.music_muted;
+                        }
+                    });
+                    ui.add_space(5.0);
+
+                    let effective = if self.music_muted || self.master_muted {
+                        0.0
+                    } else {
+                        self.music_volume * self.master_volume
+                    };
+                    Self::show_volume_slider_static(ui, &mut self.music_volume, effective);
+                });
+
+                // Voice channel
+                columns[1].group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Voice").strong());
+                        if ui
+                            .button(if self.voice_muted { "[Mute]" } else { "[Snd]" })
+                            .clicked()
+                        {
+                            self.voice_muted = !self.voice_muted;
+                        }
+                    });
+                    ui.add_space(5.0);
+
+                    let effective = if self.voice_muted || self.master_muted {
+                        0.0
+                    } else {
+                        self.voice_volume * self.master_volume
+                    };
+                    Self::show_volume_slider_static(ui, &mut self.voice_volume, effective);
+                });
+
+                // SFX channel
+                columns[2].group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("[Hit] SFX").strong());
+                        if ui
+                            .button(if self.sfx_muted { "[Mute]" } else { "[Snd]" })
+                            .clicked()
+                        {
+                            self.sfx_muted = !self.sfx_muted;
+                        }
+                    });
+                    ui.add_space(5.0);
+
+                    let effective = if self.sfx_muted || self.master_muted {
+                        0.0
+                    } else {
+                        self.sfx_volume * self.master_volume
+                    };
+                    Self::show_volume_slider_static(ui, &mut self.sfx_volume, effective);
+                });
+            });
+        }
 
         ui.add_space(15.0);
 
         // Voice Ducking section
-        ui.collapsing("🔉 Voice Ducking", |ui| {
+        ui.collapsing("[Vol] Voice Ducking", |ui| {
             ui.checkbox(&mut self.duck_enabled, "Enable voice ducking");
             ui.add_enabled(
                 self.duck_enabled,
@@ -1316,7 +1372,7 @@ impl AudioPanel {
     }
 
     fn show_preview_tab(&mut self, ui: &mut Ui) {
-        ui.heading("🎧 Audio Preview & Testing");
+        ui.heading("[Aud] Audio Preview & Testing");
         ui.add_space(10.0);
 
         // Test tone generator

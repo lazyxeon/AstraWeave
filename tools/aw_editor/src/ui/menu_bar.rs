@@ -138,10 +138,7 @@ impl MenuBar {
                 ui.close();
             }
             ui.separator();
-            if ui
-                .button("\u{1f4e6} Import .blend Scene...     Ctrl+I")
-                .clicked()
-            {
+            if ui.button("[Import] .blend Scene...     Ctrl+I").clicked() {
                 handler.on_import_blend_scene();
                 ui.close();
             }
@@ -151,17 +148,21 @@ impl MenuBar {
                 if files.is_empty() {
                     ui.label("No recent files");
                 } else {
-                    for path in files {
-                        let name = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("Unknown")
-                            .to_string();
-                        if ui.button(name).clicked() {
-                            handler.on_open_recent(path);
-                            ui.close();
-                        }
-                    }
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            for path in files {
+                                let name = path
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("Unknown")
+                                    .to_string();
+                                if ui.button(name).clicked() {
+                                    handler.on_open_recent(path);
+                                    ui.close();
+                                }
+                            }
+                        });
                     ui.separator();
                     if ui.button("Clear Recent Files").clicked() {
                         handler.on_clear_recent();
@@ -361,128 +362,140 @@ impl MenuBar {
             ui.separator();
             ui.label("Panels:");
 
-            for &panel_type in PanelType::all() {
-                let is_visible = handler.is_dock_panel_visible(panel_type);
-                if ui
-                    .selectable_label(is_visible, panel_type.title())
-                    .clicked()
-                {
-                    handler.toggle_dock_panel(panel_type);
-                }
-            }
+            egui::ScrollArea::vertical()
+                .max_height(400.0)
+                .show(ui, |ui| {
+                    for &panel_type in PanelType::all() {
+                        let is_visible = handler.is_dock_panel_visible(panel_type);
+                        if ui
+                            .selectable_label(is_visible, panel_type.title())
+                            .clicked()
+                        {
+                            handler.toggle_dock_panel(panel_type);
+                        }
+                    }
+                });
         });
 
         // Debug
         ui.menu_button("Debug", |ui| {
-            ui.label("Viewport Tests:");
+            egui::ScrollArea::vertical()
+                .max_height(400.0)
+                .show(ui, |ui| {
+                    ui.label("Viewport Tests:");
 
-            {
-                if ui.button("Load barrels.glb").clicked() {
-                    handler.on_load_test_model(
-                        "test_barrels",
-                        PathBuf::from("assets/models/barrels.glb"),
-                    );
-                    ui.close();
-                }
-                if ui.button("Load bed.glb").clicked() {
-                    handler.on_load_test_model("test_bed", PathBuf::from("assets/models/bed.glb"));
-                    ui.close();
-                }
-                if ui.button("Load Pine Tree").clicked() {
-                    handler.on_load_test_model("pine_tree", PathBuf::from("PINE_TREE_AUTO"));
-                    ui.close();
-                }
+                    {
+                        if ui.button("Load barrels.glb").clicked() {
+                            handler.on_load_test_model(
+                                "test_barrels",
+                                PathBuf::from("assets/models/barrels.glb"),
+                            );
+                            ui.close();
+                        }
+                        if ui.button("Load bed.glb").clicked() {
+                            handler.on_load_test_model(
+                                "test_bed",
+                                PathBuf::from("assets/models/bed.glb"),
+                            );
+                            ui.close();
+                        }
+                        if ui.button("Load Pine Tree").clicked() {
+                            handler
+                                .on_load_test_model("pine_tree", PathBuf::from("PINE_TREE_AUTO"));
+                            ui.close();
+                        }
 
-                if ui.button("Toggle Engine Rendering").clicked() {
-                    handler.on_toggle_engine_rendering();
-                    ui.close();
-                }
-            }
+                        if ui.button("Toggle Engine Rendering").clicked() {
+                            handler.on_toggle_engine_rendering();
+                            ui.close();
+                        }
+                    }
 
-            ui.separator();
-            ui.label("Diagnostics:");
-            if ui.button("Show Engine Info").clicked() {
-                handler.on_show_engine_info();
-                ui.close();
-            }
+                    ui.separator();
+                    ui.label("Diagnostics:");
+                    if ui.button("Show Engine Info").clicked() {
+                        handler.on_show_engine_info();
+                        ui.close();
+                    }
 
-            ui.separator();
-            ui.label("Material Testing:");
-            if ui.button("Red Material").clicked() {
-                handler.on_debug_material("Red");
-                ui.close();
-            }
-            if ui.button("Green Metallic").clicked() {
-                handler.on_debug_material("Green");
-                ui.close();
-            }
-            if ui.button("Blue Rough").clicked() {
-                handler.on_debug_material("Blue");
-                ui.close();
-            }
-            if ui.button("White Default").clicked() {
-                handler.on_debug_material("White");
-                ui.close();
-            }
+                    ui.separator();
+                    ui.label("Material Testing:");
+                    if ui.button("Red Material").clicked() {
+                        handler.on_debug_material("Red");
+                        ui.close();
+                    }
+                    if ui.button("Green Metallic").clicked() {
+                        handler.on_debug_material("Green");
+                        ui.close();
+                    }
+                    if ui.button("Blue Rough").clicked() {
+                        handler.on_debug_material("Blue");
+                        ui.close();
+                    }
+                    if ui.button("White Default").clicked() {
+                        handler.on_debug_material("White");
+                        ui.close();
+                    }
 
-            ui.separator();
-            ui.label("Lighting / Time of Day:");
-            ui.horizontal(|ui| {
-                if ui.button("Dawn (6:00)").clicked() {
-                    handler.on_debug_time_set(6.0);
-                }
-                if ui.button("Noon (12:00)").clicked() {
-                    handler.on_debug_time_set(12.0);
-                }
-            });
-            ui.horizontal(|ui| {
-                if ui.button("Sunset (18:00)").clicked() {
-                    handler.on_debug_time_set(18.0);
-                }
-                if ui.button("Midnight (0:00)").clicked() {
-                    handler.on_debug_time_set(0.0);
-                }
-            });
+                    ui.separator();
+                    ui.label("Lighting / Time of Day:");
+                    ui.horizontal(|ui| {
+                        if ui.button("Dawn (6:00)").clicked() {
+                            handler.on_debug_time_set(6.0);
+                        }
+                        if ui.button("Noon (12:00)").clicked() {
+                            handler.on_debug_time_set(12.0);
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Sunset (18:00)").clicked() {
+                            handler.on_debug_time_set(18.0);
+                        }
+                        if ui.button("Midnight (0:00)").clicked() {
+                            handler.on_debug_time_set(0.0);
+                        }
+                    });
 
-            let time = handler.get_time_of_day();
-            let hours = time.floor() as u32;
-            let minutes = ((time - time.floor()) * 60.0) as u32;
-            ui.label(format!(
-                "Current: {:02}:{:02} ({})",
-                hours,
-                minutes,
-                handler.get_time_period()
-            ));
+                    let time = handler.get_time_of_day();
+                    let hours = time.floor() as u32;
+                    let minutes = ((time - time.floor()) * 60.0) as u32;
+                    ui.label(format!(
+                        "Current: {:02}:{:02} ({})",
+                        hours,
+                        minutes,
+                        handler.get_time_period()
+                    ));
 
-            ui.horizontal(|ui| {
-                let shadows = handler.is_shadows_enabled();
-                let label = if shadows {
-                    "Shadows: ON"
-                } else {
-                    "Shadows: OFF"
-                };
-                if ui.button(label).clicked() {
-                    handler.set_shadows_enabled(!shadows);
-                }
-            });
+                    ui.horizontal(|ui| {
+                        let shadows = handler.is_shadows_enabled();
+                        let label = if shadows {
+                            "Shadows: ON"
+                        } else {
+                            "Shadows: OFF"
+                        };
+                        if ui.button(label).clicked() {
+                            handler.set_shadows_enabled(!shadows);
+                        }
+                    });
 
-            ui.separator();
-            ui.label("Model Discovery:");
+                    ui.separator();
+                    ui.label("Model Discovery:");
 
-            if ui.button("Scan For Models").clicked() {
-                handler.on_scan_for_models();
-                ui.close();
-            }
+                    if ui.button("Scan For Models").clicked() {
+                        handler.on_scan_for_models();
+                        ui.close();
+                    }
 
-            if ui.button("Diff Assets").clicked() {
-                handler.on_diff_assets();
-                ui.close();
-            }
+                    if ui.button("Diff Assets").clicked() {
+                        handler.on_diff_assets();
+                        ui.close();
+                    }
 
-            if ui.button("Clear Console").clicked() {
-                handler.on_clear_console();
-                ui.close();
-            }
+                    if ui.button("Clear Console").clicked() {
+                        handler.on_clear_console();
+                        ui.close();
+                    }
+                });
         });
 
         // Help menu
@@ -502,7 +515,7 @@ impl MenuBar {
         ui.separator();
         // Import .blend button
         if ui
-            .button(egui::RichText::new("\u{1f4e6} Import .blend").small())
+            .button(egui::RichText::new("[Import] .blend").small())
             .on_hover_text("Import a Blender .blend scene file (Ctrl+I)")
             .clicked()
         {
@@ -511,11 +524,11 @@ impl MenuBar {
         // Blueprint Mode toggle
         let bp_active = handler.is_blueprint_mode();
         let bp_label = if bp_active {
-            egui::RichText::new("\u{1f5fa} Blueprint ON")
+            egui::RichText::new("[Map] Blueprint ON")
                 .small()
                 .color(egui::Color32::from_rgb(100, 200, 255))
         } else {
-            egui::RichText::new("\u{1f5fa} Blueprint").small()
+            egui::RichText::new("[Map] Blueprint").small()
         };
         if ui
             .button(bp_label)
