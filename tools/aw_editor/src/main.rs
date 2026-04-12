@@ -2129,6 +2129,10 @@ impl EditorApp {
                     .undo(state.world_mut(), Some(&mut self.entity_manager));
                 self.status = "Undo successful".into();
                 self.toast_manager.info("Undone");
+                // Entity transforms may have changed — force renderer rebuild
+                if let Some(viewport) = &self.viewport {
+                    viewport.invalidate_entity_cache();
+                }
             }
         }
 
@@ -3574,6 +3578,7 @@ impl EditorApp {
         // Sync console logs + runtime stats (extracted to subsystems/docking_sync.rs)
         self.sync_console_logs_to_dock();
         self.sync_runtime_stats_to_dock();
+        self.sync_post_process_to_renderer();
 
         // Render the docking layout with EditorDrawContext for viewport integration
         // We need to carefully structure borrows to avoid conflicts
@@ -8191,6 +8196,10 @@ impl MenuActionHandler for EditorApp {
                     self.status = format!("Undo failed: {}", e);
                 } else {
                     self.status = "Undo".to_string();
+                    // Entity transforms may have changed — force renderer rebuild
+                    if let Some(viewport) = &self.viewport {
+                        viewport.invalidate_entity_cache();
+                    }
                 }
             }
         }
@@ -8204,6 +8213,10 @@ impl MenuActionHandler for EditorApp {
                     self.status = format!("Redo failed: {}", e);
                 } else {
                     self.status = "Redo".to_string();
+                    // Entity transforms may have changed — force renderer rebuild
+                    if let Some(viewport) = &self.viewport {
+                        viewport.invalidate_entity_cache();
+                    }
                 }
             }
         }

@@ -650,6 +650,16 @@ impl AudioPanel {
         ui.heading("🎚️ Audio Mixer");
         ui.add_space(10.0);
 
+        // Snapshot values before egui widgets mutate them.
+        let prev_master_vol = self.master_volume;
+        let prev_master_mute = self.master_muted;
+        let prev_music_vol = self.music_volume;
+        let prev_music_mute = self.music_muted;
+        let prev_voice_vol = self.voice_volume;
+        let prev_voice_mute = self.voice_muted;
+        let prev_sfx_vol = self.sfx_volume;
+        let prev_sfx_mute = self.sfx_muted;
+
         // Master Volume
         ui.group(|ui| {
             ui.horizontal(|ui| {
@@ -774,6 +784,33 @@ impl AudioPanel {
 
         // Audio Statistics
         self.show_audio_stats(ui);
+
+        // Queue actions for any volumes/mutes that changed so the audio bridge
+        // picks them up via tick_audio_subsystem().
+        if (self.master_volume - prev_master_vol).abs() > f32::EPSILON {
+            self.queue_action(AudioAction::SetMasterVolume(self.master_volume));
+        }
+        if self.master_muted != prev_master_mute {
+            self.queue_action(AudioAction::ToggleMasterMute(self.master_muted));
+        }
+        if (self.music_volume - prev_music_vol).abs() > f32::EPSILON {
+            self.queue_action(AudioAction::SetMusicVolume(self.music_volume));
+        }
+        if self.music_muted != prev_music_mute {
+            self.queue_action(AudioAction::ToggleMusicMute(self.music_muted));
+        }
+        if (self.voice_volume - prev_voice_vol).abs() > f32::EPSILON {
+            self.queue_action(AudioAction::SetVoiceVolume(self.voice_volume));
+        }
+        if self.voice_muted != prev_voice_mute {
+            self.queue_action(AudioAction::ToggleVoiceMute(self.voice_muted));
+        }
+        if (self.sfx_volume - prev_sfx_vol).abs() > f32::EPSILON {
+            self.queue_action(AudioAction::SetSfxVolume(self.sfx_volume));
+        }
+        if self.sfx_muted != prev_sfx_mute {
+            self.queue_action(AudioAction::ToggleSfxMute(self.sfx_muted));
+        }
     }
 
     fn show_volume_slider_labeled(ui: &mut Ui, label: &str, value: &mut f32, effective: f32) {

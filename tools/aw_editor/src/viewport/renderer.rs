@@ -876,6 +876,30 @@ impl ViewportRenderer {
             .unwrap_or_default()
     }
 
+    /// Get the active post-processing chain.
+    pub fn post_process_chain(
+        &self,
+    ) -> Option<&astraweave_render::hdr_pipeline::PostProcessChain> {
+        self.engine_adapter.as_ref().map(|a| a.post_process_chain())
+    }
+
+    /// Update the post-processing chain on the underlying renderer.
+    pub fn set_post_process_chain(
+        &mut self,
+        chain: astraweave_render::hdr_pipeline::PostProcessChain,
+    ) {
+        if let Some(adapter) = self.engine_adapter.as_mut() {
+            adapter.set_post_process_chain(chain);
+        }
+    }
+
+    /// Update bloom compute-pass parameters on the underlying renderer.
+    pub fn set_bloom_config(&mut self, config: astraweave_render::bloom::BloomConfig) {
+        if let Some(adapter) = self.engine_adapter.as_mut() {
+            adapter.set_bloom_config(config);
+        }
+    }
+
     /// Get GPU memory usage: (used_bytes, budget_bytes, percentage).
     pub fn gpu_memory_stats(&self) -> (u64, u64, f32) {
         self.engine_adapter

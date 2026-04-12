@@ -215,8 +215,9 @@ impl EngineRenderAdapter {
                 self.renderer.set_cascade_lambda(0.75);
 
                 // Full post-processing chain
-                // NOTE: ssao/ssr disabled until proper compute shaders exist;
-                // current passes reuse the tonemap pipeline causing double-tonemap.
+                // Bloom is dispatched by draw_into() via the BloomPass compute
+                // pipeline. SSAO/SSR/SSGI/GodRays remain disabled — draw_into()
+                // does not yet dispatch those passes.
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
                     ssao_enabled: false,
                     ssr_enabled: false,
@@ -238,8 +239,10 @@ impl EngineRenderAdapter {
                 self.renderer.set_shadows_enabled(false);
 
                 // Editor post-processing: only essential effects
+                // Bloom is active via draw_into(). Other passes (SSAO, SSR, etc.)
+                // are not yet dispatched.
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
-                    ssao_enabled: false, // SSAO disabled for terrain perf
+                    ssao_enabled: false,
                     ssr_enabled: false,
                     ssgi_enabled: false,
                     god_rays_enabled: false,
@@ -261,10 +264,8 @@ impl EngineRenderAdapter {
                 // set_terrain_ground_plane().
                 self.renderer.set_shadows_enabled(true);
 
-                // NOTE: ssao_enabled and ssr_enabled are set to false because
-                // the renderer's SSR/SSAO passes currently reuse the tonemap
-                // pipeline, which double-tonemaps the scene (dark/muddy output).
-                // Re-enable when proper compute-based SSAO/SSR shaders exist.
+                // Bloom is dispatched by draw_into(). SSAO/SSR/SSGI remain
+                // disabled — draw_into() does not yet dispatch those passes.
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
                     ssao_enabled: false,
                     ssr_enabled: false,
@@ -1486,6 +1487,24 @@ impl EngineRenderAdapter {
         let dir = (-glam::Vec3::from(params.sun_dir)).normalize();
         self.renderer
             .set_light_direction_override(dir, params.sun_intensity);
+    }
+
+    /// Update the post-processing chain (bloom/SSAO/SSR enable flags + tonemap).
+    pub fn set_post_process_chain(
+        &mut self,
+        chain: astraweave_render::hdr_pipeline::PostProcessChain,
+    ) {
+        self.renderer.set_post_process_chain(chain);
+    }
+
+    /// Get the current post-processing chain.
+    pub fn post_process_chain(&self) -> &astraweave_render::hdr_pipeline::PostProcessChain {
+        self.renderer.post_process_chain()
+    }
+
+    /// Update bloom compute-pass parameters (intensity, threshold, etc.).
+    pub fn set_bloom_config(&mut self, config: astraweave_render::bloom::BloomConfig) {
+        self.renderer.set_bloom_config(config);
     }
 
     /// Set water configuration on the engine renderer.

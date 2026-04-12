@@ -2521,6 +2521,14 @@ impl ViewportWidget {
         self.selected_entities.contains(&entity)
     }
 
+    /// Force the entity instance cache to rebuild on the next frame.
+    ///
+    /// Call after any operation that modifies entity transforms outside
+    /// the gizmo drag path (undo, redo, paste, duplicate, property edits).
+    pub fn invalidate_entity_cache(&self) {
+        self.with_renderer("invalidate_entity_cache", |r| r.invalidate_entity_cache());
+    }
+
     pub fn upload_terrain_chunks(&self, chunks: &[(Vec<super::types::TerrainVertex>, Vec<u32>)]) {
         self.with_renderer("upload_terrain_chunks", |r| r.upload_terrain_chunks(chunks));
     }
@@ -2665,6 +2673,8 @@ impl ViewportWidget {
                     let count = spawned.len();
                     self.selected_entities = spawned.into_iter().map(|id| id as u64).collect();
                     debug!("Pasted {} entities", count);
+                    // New entities with poses — force renderer rebuild
+                    self.invalidate_entity_cache();
                 }
                 Err(e) => {
                     debug!("Paste failed: {}", e);
@@ -2706,6 +2716,8 @@ impl ViewportWidget {
                 // For now, we don't have direct access to them after execute, so we'll
                 // keep the original selection (the new entities are in the world)
                 debug!("duplicate_selection: Command executed successfully");
+                // Duplicated entities have poses — force renderer rebuild
+                self.invalidate_entity_cache();
             }
             Err(e) => {
                 debug!("duplicate_selection failed: {}", e);
@@ -2731,6 +2743,8 @@ impl ViewportWidget {
             debug!("Delete failed: {}", e);
         }
 
+        // Entities removed — force renderer rebuild
+        self.invalidate_entity_cache();
         self.clear_selection();
 
         if self.gizmo_state.is_active() {

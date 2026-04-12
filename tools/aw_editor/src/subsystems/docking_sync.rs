@@ -151,4 +151,30 @@ impl crate::EditorApp {
             );
         }
     }
+
+    /// Forward post-process panel changes (bloom, tonemapper) to the viewport
+    /// renderer so they take effect on the next frame.
+    pub(crate) fn sync_post_process_to_renderer(&mut self) {
+        if let Some(settings) = self.dock_tab_viewer.take_post_process_update() {
+            if let Some(viewport) = &self.viewport {
+                if let Ok(mut renderer) = viewport.renderer().lock() {
+                    // Update the PostProcessChain bloom on/off flag.
+                    if let Some(existing) = renderer.post_process_chain() {
+                        let mut chain = existing.clone();
+                        chain.bloom_enabled = settings.bloom_enabled;
+                        renderer.set_post_process_chain(chain);
+                    }
+
+                    // Forward bloom-specific parameters to the compute pass.
+                    renderer.set_bloom_config(astraweave_render::bloom::BloomConfig {
+                        enabled: settings.bloom_enabled,
+                        threshold: settings.bloom_threshold,
+                        soft_knee: settings.bloom_soft_knee,
+                        intensity: settings.bloom_intensity,
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+    }
 }

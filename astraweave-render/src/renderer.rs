@@ -851,6 +851,14 @@ pub struct Renderer {
     /// Post-processing chain configuration (controls which effects are active).
     post_chain: crate::hdr_pipeline::PostProcessChain,
 
+    /// Bloom compute pass (created lazily when bloom is first enabled).
+    bloom_pass: Option<crate::bloom::BloomPass>,
+    /// Pending bloom config to apply when the bloom pass is lazily created.
+    pending_bloom_config: Option<crate::bloom::BloomConfig>,
+    /// Uniform buffer for HDR-blit post-effect compositing parameters.
+    /// Layout: `[bloom_intensity, 0.0, 0.0, 0.0]` (16 bytes, `vec4<f32>` in WGSL).
+    postfx_params_buf: wgpu::Buffer,
+
     /// GPU memory budget tracker (editor-specific budgets).
     gpu_memory_budget: std::sync::Arc<crate::gpu_memory::GpuMemoryBudget>,
 }
@@ -1245,6 +1253,14 @@ impl Renderer {
         );
         let postfx_dummy_view =
             postfx_dummy_tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Uniform buffer for HDR-blit post-effect compositing (bloom intensity, etc.).
+        let postfx_params_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("postfx params"),
+            size: 16, // vec4<f32>
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         #[cfg(feature = "postfx")]
         let hdr_aux = device.create_texture(&wgpu::TextureDescriptor {
@@ -2233,8 +2249,9 @@ impl Renderer {
 
         // HDR passthrough blit pipeline — used in editor mode (surface=None) to copy
         // the internal HDR buffer to an Rgba16Float external target without tonemapping.
-        // Uses its own bind group layout (texture + sampler only) so it works regardless
-        // of the postfx feature flag.
+        // When bloom is active, additively composites the bloom output into the HDR
+        // colour before writing.  When bloom is off, bloom_tex is a 1×1 black dummy
+        // and bloom_intensity is 0.0, so the shader path is a no-op passthrough.
         let hdr_blit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("hdr blit shader"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(
@@ -2251,8 +2268,14 @@ struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
 }
 @group(0) @binding(0) var hdr_tex: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
+@group(0) @binding(2) var bloom_tex: texture_2d<f32>;
+struct PostfxParams { bloom_intensity: f32, _pad1: f32, _pad2: f32, _pad3: f32, };
+@group(0) @binding(3) var<uniform> pfx: PostfxParams;
 @fragment fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
-    return textureSampleLevel(hdr_tex, samp, in.uv, 0.0);
+    var color = textureSampleLevel(hdr_tex, samp, in.uv, 0.0);
+    let bloom = textureSampleLevel(bloom_tex, samp, in.uv, 0.0);
+    color = vec4(color.rgb + bloom.rgb * pfx.bloom_intensity, color.a);
+    return color;
 }
 "#,
             )),
@@ -2276,6 +2299,26 @@ struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
         let hdr_blit_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -2289,6 +2332,14 @@ struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&hdr_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&postfx_dummy_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: postfx_params_buf.as_entire_binding(),
                 },
             ],
         });
@@ -3291,6 +3342,9 @@ fn vs(input: VSIn) -> VSOut {
             scene_env_bg,
             material_manager: crate::material::MaterialManager::new(),
             post_chain: crate::hdr_pipeline::PostProcessChain::default(),
+            bloom_pass: None,
+            pending_bloom_config: None,
+            postfx_params_buf,
             gpu_memory_budget: std::sync::Arc::new(crate::gpu_memory::GpuMemoryBudget::new()),
             device_lost,
         })
@@ -3865,7 +3919,16 @@ fn vs(input: VSIn) -> VSOut {
                 },
             ],
         });
-        // Recreate HDR blit bind group (references the new hdr_view)
+        // Resize bloom pass if active
+        if let Some(ref mut bloom) = self.bloom_pass {
+            bloom.resize(&self.device, new_w, new_h);
+        }
+        // Recreate HDR blit bind group (references the new hdr_view + bloom view)
+        let bloom_view = self
+            .bloom_pass
+            .as_ref()
+            .and_then(|b| b.bloom_view())
+            .unwrap_or(&self.postfx_dummy_view);
         self.hdr_blit_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("hdr blit bg"),
             layout: &self.hdr_blit_bgl,
@@ -3877,6 +3940,14 @@ fn vs(input: VSIn) -> VSOut {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&self.hdr_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(bloom_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.postfx_params_buf.as_entire_binding(),
                 },
             ],
         });
@@ -4434,6 +4505,22 @@ fn vs(input: VSIn) -> VSOut {
     /// Get the current post-processing chain configuration.
     pub fn post_process_chain(&self) -> &crate::hdr_pipeline::PostProcessChain {
         &self.post_chain
+    }
+
+    /// Update the bloom pass configuration (threshold, intensity, etc.).
+    ///
+    /// If no bloom pass exists yet (lazy creation), the config is stored and
+    /// applied on the next frame when the pass is created.
+    pub fn set_bloom_config(&mut self, config: crate::bloom::BloomConfig) {
+        if let Some(bloom) = self.bloom_pass.as_mut() {
+            bloom.set_config(config);
+        } else {
+            // Store for lazy init — next draw_into() will create the pass
+            // and it will pick up `post_chain.bloom_enabled` to decide whether
+            // to instantiate. We cache the config on a temporary field so it
+            // can be applied after creation.
+            self.pending_bloom_config = Some(config);
+        }
     }
 
     /// Get a shared reference to the GPU memory budget tracker.
@@ -5439,6 +5526,78 @@ fn vs(input: VSIn) -> VSOut {
                 rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
             }
         }
+
+        // --- Post-processing: bloom compute pass (runs on HDR, before blit) ---
+        let bloom_intensity = if self.post_chain.bloom_enabled {
+            // Lazily create the bloom pass on first use.
+            let first_create = self.bloom_pass.is_none();
+            if first_create {
+                self.bloom_pass = Some(crate::bloom::BloomPass::new(
+                    &self.device,
+                    self.config.width,
+                    self.config.height,
+                ));
+                // Apply any pending bloom config that was set before the pass existed.
+                if let Some(cfg) = self.pending_bloom_config.take() {
+                    self.bloom_pass.as_mut().expect("just created").set_config(cfg);
+                }
+            }
+            // Take the bloom pass out to satisfy the borrow checker — execute()
+            // needs &mut BloomPass while we also need &self.device, &self.queue, etc.
+            let mut bloom = self
+                .bloom_pass
+                .take()
+                .expect("bloom_pass was just ensured to be Some");
+            let cfg = bloom.config().clone();
+            bloom.execute(
+                &self.device,
+                &self.queue,
+                enc,
+                &self.hdr_view,
+                cfg.threshold,
+                cfg.intensity,
+                self.resource_generation,
+            );
+            let intensity = cfg.intensity;
+            // Rebuild the HDR blit bind group on first creation so it references
+            // the real bloom output texture instead of the dummy.
+            if first_create {
+                let bloom_view = bloom.bloom_view().unwrap_or(&self.postfx_dummy_view);
+                self.hdr_blit_bind_group =
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("hdr blit bg"),
+                        layout: &self.hdr_blit_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&self.hdr_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&self.hdr_sampler),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::TextureView(bloom_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: self.postfx_params_buf.as_entire_binding(),
+                            },
+                        ],
+                    });
+            }
+            self.bloom_pass = Some(bloom);
+            intensity
+        } else {
+            0.0
+        };
+        // Upload blit compositing params (16 bytes — always written, cheap).
+        self.queue.write_buffer(
+            &self.postfx_params_buf,
+            0,
+            bytemuck::bytes_of(&[bloom_intensity, 0.0f32, 0.0, 0.0]),
+        );
 
         // Blit internal HDR → external view.
         // Editor mode (surface=None): use passthrough blit (no tonemapping) —

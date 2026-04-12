@@ -14,6 +14,16 @@ use tracing::info;
 
 use crate::panels::Panel;
 
+/// Snapshot of post-process settings that need to be forwarded to the renderer.
+#[derive(Debug, Clone)]
+pub struct PostProcessPendingSettings {
+    pub bloom_enabled: bool,
+    pub bloom_intensity: f32,
+    pub bloom_threshold: f32,
+    pub bloom_soft_knee: f32,
+    pub tonemap: Tonemapper,
+}
+
 /// Tonemapping algorithm
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -198,7 +208,7 @@ impl DofMode {
 }
 
 /// Bloom settings
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BloomSettings {
     pub enabled: bool,
     pub intensity: f32,
@@ -671,6 +681,9 @@ pub struct PostProcessPanel {
 
     // ID counter
     next_id: u32,
+
+    // Dirty flag for renderer sync — set when any UI setting changes.
+    settings_dirty: bool,
 }
 
 impl Default for PostProcessPanel {
@@ -690,6 +703,8 @@ impl Default for PostProcessPanel {
             split_position: 0.5,
 
             next_id: 1,
+
+            settings_dirty: false,
         };
 
         panel
@@ -822,6 +837,8 @@ impl PostProcessPanel {
     fn show_overview_tab(&mut self, ui: &mut Ui) {
         ui.heading("Post-Processing Overview");
         ui.add_space(10.0);
+
+        let prev_tonemapper = self.current_profile.tonemapper;
 
         // Profile selector
         ui.horizontal(|ui| {
@@ -979,12 +996,17 @@ impl PostProcessPanel {
                     }
                 });
             });
+        // Mark dirty if tonemapper changed.
+        if self.current_profile.tonemapper != prev_tonemapper {
+            self.settings_dirty = true;
+        }
     }
 
     fn show_bloom_tab(&mut self, ui: &mut Ui) {
         ui.heading("Bloom");
         ui.add_space(10.0);
 
+        let before = self.current_profile.bloom.clone();
         let bloom_was_enabled = self.current_profile.bloom.enabled;
         ui.checkbox(&mut self.current_profile.bloom.enabled, "Enabled");
         if self.current_profile.bloom.enabled != bloom_was_enabled {
@@ -1057,6 +1079,10 @@ impl PostProcessPanel {
                     });
                 }
             });
+        }
+        // Mark dirty if any bloom setting changed.
+        if self.current_profile.bloom != before {
+            self.settings_dirty = true;
         }
     }
 
@@ -1641,10 +1667,35 @@ impl PostProcessPanel {
 
     pub fn set_bloom_intensity(&mut self, intensity: f32) {
         self.current_profile.bloom.intensity = intensity.clamp(0.0, 2.0);
+        self.settings_dirty = true;
     }
 
     pub fn set_exposure(&mut self, exposure: f32) {
         self.current_profile.color_grading.exposure = exposure.clamp(-5.0, 5.0);
+        self.settings_dirty = true;
+    }
+
+    /// Returns `true` if any post-process setting was changed since the last
+    /// call to [`take_pending_settings`].
+    pub fn is_dirty(&self) -> bool {
+        self.settings_dirty
+    }
+
+    /// If settings have changed, returns the current bloom settings and clears
+    /// the dirty flag.  The caller is responsible for forwarding to the renderer.
+    pub fn take_pending_settings(&mut self) -> Option<PostProcessPendingSettings> {
+        if !self.settings_dirty {
+            return None;
+        }
+        self.settings_dirty = false;
+        let bloom = &self.current_profile.bloom;
+        Some(PostProcessPendingSettings {
+            bloom_enabled: bloom.enabled,
+            bloom_intensity: bloom.intensity,
+            bloom_threshold: bloom.threshold,
+            bloom_soft_knee: bloom.soft_threshold,
+            tonemap: self.current_profile.tonemapper,
+        })
     }
 }
 

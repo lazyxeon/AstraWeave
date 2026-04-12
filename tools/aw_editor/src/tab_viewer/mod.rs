@@ -1529,6 +1529,19 @@ impl EditorTabViewer {
         self.audio_panel.take_actions()
     }
 
+    /// Drain pending lighting panel actions.
+    pub fn take_lighting_actions(&mut self) -> Vec<crate::panels::lighting_panel::LightingAction> {
+        self.lighting_panel.take_actions()
+    }
+
+    /// If post-process settings changed this frame, returns the pending settings
+    /// snapshot and clears the dirty flag.
+    pub fn take_post_process_update(
+        &mut self,
+    ) -> Option<crate::panels::post_process_panel::PostProcessPendingSettings> {
+        self.post_process_panel.take_pending_settings()
+    }
+
     /// Push live audio stats back into the panel for display.
     pub fn set_audio_stats(&mut self, stats: crate::panels::audio_panel::AudioStats) {
         self.audio_panel.set_audio_stats(stats);
