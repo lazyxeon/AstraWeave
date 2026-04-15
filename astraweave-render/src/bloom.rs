@@ -58,6 +58,10 @@ pub struct BloomPass {
     #[allow(dead_code)] // textures must be kept alive for views to remain valid
     mip_textures: Vec<wgpu::Texture>,
     mip_views: Vec<wgpu::TextureView>,
+    /// Separate upsample output textures (avoids read-write conflict on mip_views).
+    #[allow(dead_code)] // textures must be kept alive for views to remain valid
+    up_textures: Vec<wgpu::Texture>,
+    up_views: Vec<wgpu::TextureView>,
     /// Pre-allocated per-mip uniform buffers for downsample params (one per mip).
     down_params_bufs: Vec<wgpu::Buffer>,
     /// Pre-allocated per-mip uniform buffers for upsample params (one per mip).
@@ -100,6 +104,33 @@ impl BloomPass {
             mip_textures.push(tex);
             w /= 2;
             h /= 2;
+        }
+
+        // Create separate upsample output textures (same sizes as mip textures)
+        // to avoid read-write conflicts during upsample compute dispatches.
+        let mut up_textures = Vec::new();
+        let mut up_views = Vec::new();
+        let mut uw = width / 2;
+        let mut uh = height / 2;
+        for i in 0..config.mip_count {
+            let tex = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(&format!("bloom_up_{i}")),
+                size: wgpu::Extent3d {
+                    width: uw.max(1),
+                    height: uh.max(1),
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: fmt,
+                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            up_views.push(tex.create_view(&wgpu::TextureViewDescriptor::default()));
+            up_textures.push(tex);
+            uw /= 2;
+            uh /= 2;
         }
 
         let down_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -199,6 +230,8 @@ impl BloomPass {
             }),
             mip_textures,
             mip_views,
+            up_textures,
+            up_views,
             width,
             height,
             cached_down_bgs: crate::bind_group_cache::CachedBindGroupSet::new(mip_count),
@@ -223,7 +256,7 @@ impl BloomPass {
 
     /// Get the final bloom texture view (finest mip after upsample).
     pub fn bloom_view(&self) -> Option<&wgpu::TextureView> {
-        self.mip_views.first()
+        self.up_views.first()
     }
 
     /// Execute the bloom pass: progressive downsample then upsample.
@@ -287,19 +320,27 @@ impl BloomPass {
             src_height = (src_height / 2).max(1);
         }
 
-        // Upsample BGs
+        // Upsample BGs — use separate up_views for output to avoid read-write conflicts.
+        // binding 0 (lower_mip): previous upsample result (up_views[i+1]), or
+        //   mip_views[last] for the first iteration (coarsest mip has no prior upsample).
+        // binding 1 (current_mip): original downsampled data at this level (mip_views[i]).
+        // binding 4 (dst_tex): upsample output (up_views[i]).
         if self.mip_views.len() >= 2 {
-            for i in (0..self.mip_views.len() - 1).rev() {
+            let last = self.mip_views.len() - 1;
+            for i in (0..last).rev() {
                 if !self.cached_up_bgs.is_valid(i, resource_gen) {
+                    let lower_view = if i + 1 == last {
+                        &self.mip_views[last] // coarsest downsample mip
+                    } else {
+                        &self.up_views[i + 1] // previous upsample output
+                    };
                     let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("bloom_up_bg"),
                         layout: &self.up_bgl,
                         entries: &[
                             wgpu::BindGroupEntry {
                                 binding: 0,
-                                resource: wgpu::BindingResource::TextureView(
-                                    &self.mip_views[i + 1],
-                                ),
+                                resource: wgpu::BindingResource::TextureView(lower_view),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 1,
@@ -315,7 +356,7 @@ impl BloomPass {
                             },
                             wgpu::BindGroupEntry {
                                 binding: 4,
-                                resource: wgpu::BindingResource::TextureView(&self.mip_views[i]),
+                                resource: wgpu::BindingResource::TextureView(&self.up_views[i]),
                             },
                         ],
                     });
@@ -387,7 +428,7 @@ impl BloomPass {
     /// Returns `None` only if the bloom chain has zero mips (should never happen
     /// after construction, but callers must handle it gracefully).
     pub fn output_view(&self) -> Option<&wgpu::TextureView> {
-        self.mip_views.first()
+        self.up_views.first()
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {

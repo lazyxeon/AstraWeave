@@ -47,6 +47,7 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
                 vertices: Vec::with_capacity(positions.len()),
                 indices,
                 albedo_image: None,
+                texture_source_hint: None,
             };
             if let Some(t) = tangents_opt {
                 for ((p, n), (u, t4)) in positions
@@ -81,6 +82,39 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
                             pixels,
                         }
                     })
+                });
+
+            // Extract texture source hint for filesystem-based discovery.
+            // Even when the image data isn't embedded/loadable, the glTF
+            // material often references a URI like "../textures/bark_diff.png"
+            // which tells us which texture file to look for on disk.
+            cpu.texture_source_hint = prim
+                .material()
+                .pbr_metallic_roughness()
+                .base_color_texture()
+                .and_then(|info| {
+                    let src = info.texture().source().source();
+                    match src {
+                        gltf::image::Source::Uri { uri, .. } => {
+                            // Extract filename stem from URI path
+                            let path = std::path::Path::new(uri);
+                            path.file_stem()
+                                .and_then(|s| s.to_str())
+                                .map(|s| {
+                                    // Strip double-extension (.png.png → .png stem)
+                                    let p = std::path::Path::new(s);
+                                    p.file_stem()
+                                        .and_then(|ss| ss.to_str())
+                                        .unwrap_or(s)
+                                        .to_string()
+                                })
+                        }
+                        gltf::image::Source::View { .. } => None,
+                    }
+                })
+                .or_else(|| {
+                    // Fallback: use glTF material name as hint
+                    prim.material().name().map(|n| n.to_string())
                 });
 
             meshes_out.push(cpu);

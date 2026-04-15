@@ -207,14 +207,16 @@ pub(super) fn lighting_params(
 
 /// Compute fog/weather parameters from world settings.
 ///
-/// Returns `(fog_enabled, fog_density, weather_preset, particle_count_override)`.
+/// Returns `(fog_enabled, fog_density, fog_start, fog_end, weather_preset, particle_count_override)`.
 pub(super) fn fog_weather_params(
     world_fog_enabled: bool,
     world_fog_density: f32,
+    world_fog_start: f32,
+    world_fog_end: f32,
     world_weather_preset: usize,
     world_particle_count_override_enabled: bool,
     world_particle_count_value: u32,
-) -> (bool, f32, u32, Option<u32>) {
+) -> (bool, f32, f32, f32, u32, Option<u32>) {
     let particle_override = if world_particle_count_override_enabled {
         Some(world_particle_count_value)
     } else {
@@ -227,6 +229,8 @@ pub(super) fn fog_weather_params(
         } else {
             world_fog_density
         },
+        if world_weather_preset == 5 { 20.0 } else { world_fog_start },
+        if world_weather_preset == 5 { 150.0 } else { world_fog_end },
         world_weather_preset as u32,
         particle_override,
     )

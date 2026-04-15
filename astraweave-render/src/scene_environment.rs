@@ -310,7 +310,9 @@ struct SceneEnvironment {
     tint_color:         vec3<f32>,
     tint_alpha:         f32,
     blend_factor:       f32,
-    _pad1:              vec3<f32>,
+    _pad1x: f32, _pad1y: f32, _pad1z: f32,
+    sun_color:          vec3<f32>,
+    sun_intensity:      f32,
 };
 "#;
 

@@ -373,6 +373,35 @@ struct EditorApp {
     console_logs_synced_len: usize,
     /// Whether egui style has been applied (avoids cloning Style every frame).
     style_applied: bool,
+    /// Timestamp of the last update() return — measures eframe's present/event gap
+    last_update_end: Option<std::time::Instant>,
+    /// Measured gap between end of update() and start of next update() (ms)
+    measured_eframe_gap_ms: f32,
+    /// Tracks OS window focus state; used to detect Alt+Tab transitions and
+    /// recover cursor visibility + force repaint on focus regain.
+    window_had_focus: bool,
+    /// Counter: when >0, force repaint and decrement each frame.
+    /// Used to guarantee multiple repaints after focus regain so that the
+    /// DWM, cursor, and decoration state all converge.
+    focus_repaint_frames: u8,
+    /// Startup counter: when >0, continuously re-assert cursor visibility
+    /// and decorations via viewport commands each frame.  This covers the
+    /// critical window composed by DWM on Windows where the initial
+    /// maximize transition may leave decorations / cursor state stale.
+    startup_assert_frames: u8,
+    /// One-shot flag: when true, the first visible frame sends
+    /// `ViewportCommand::Maximized(true)` to force a genuine DWM maximize
+    /// transition (normal → maximized) instead of being born maximized
+    /// via `WS_MAXIMIZE` in `CreateWindowEx` which leaves DWM's non-client
+    /// area uninitialized.
+    initial_maximize_pending: bool,
+    /// Whether the last-sent window title matches cached_window_title.
+    /// Avoids sending ViewportCommand::Title every frame.
+    title_cmd_sent: bool,
+    /// HWND cache for Win32 DWM frame refresh (Windows only).
+    /// Zero means not yet captured.
+    #[cfg(target_os = "windows")]
+    hwnd_cache: isize,
     /// Cached window title inputs to avoid format!() every frame.
     cached_title_dirty: bool,
     cached_title_entity_count: usize,
@@ -577,6 +606,17 @@ impl Default for EditorApp {
             selected_entity_synced_generation: u64::MAX,
             console_logs_synced_len: usize::MAX,
             style_applied: false,
+            last_update_end: None,
+            measured_eframe_gap_ms: 0.0,
+            window_had_focus: false,
+            focus_repaint_frames: 0,
+            // 30 frames ≈ 0.5s @ 60Hz — covers the logo phase and gives
+            // DWM enough time to fully compose decorations + cursor.
+            startup_assert_frames: 30,
+            initial_maximize_pending: true,
+            title_cmd_sent: false,
+            #[cfg(target_os = "windows")]
+            hwnd_cache: 0,
             cached_title_dirty: false,
             cached_title_entity_count: usize::MAX,
             cached_title_path: None,
@@ -2391,6 +2431,170 @@ impl EditorApp {
         }
     }
 
+    /// Set the window class cursor to IDC_ARROW so that Windows displays
+    /// a default cursor immediately, even before the first mouse-move event.
+    ///
+    /// winit intentionally registers window classes with `hCursor = 0` so it
+    /// can manage cursors programmatically.  This leaves a gap on startup
+    /// (and after Alt+Tab) where the cursor is invisible because no
+    /// `WM_SETCURSOR` has fired yet.
+    #[cfg(target_os = "windows")]
+    fn set_window_class_cursor(hwnd: isize) {
+        // SAFETY: LoadCursorW and SetClassLongPtrW are safe Win32 FFI calls.
+        // We pass a valid HWND obtained from the eframe CreationContext and
+        // use the well-known IDC_ARROW system cursor resource.
+        #[allow(non_snake_case)]
+        unsafe {
+            extern "system" {
+                fn LoadCursorW(hinstance: isize, lpcursorname: *const u16) -> isize;
+                fn SetClassLongPtrW(hwnd: isize, nindex: i32, dwnewlong: isize) -> isize;
+            }
+            const IDC_ARROW: *const u16 = 32512 as *const u16;
+            const GCLP_HCURSOR: i32 = -12;
+
+            let arrow = LoadCursorW(0, IDC_ARROW);
+            if arrow != 0 {
+                SetClassLongPtrW(hwnd, GCLP_HCURSOR, arrow);
+            }
+        }
+    }
+
+    /// Force proper DWM composition for the editor window.
+    ///
+    /// # Problem
+    ///
+    /// On Windows, when a wgpu/D3D12 application's maximized window covers
+    /// the full screen, Windows may engage **Independent Flip** (a.k.a.
+    /// fullscreen optimizations): the DXGI swapchain presents directly to
+    /// the display hardware, bypassing DWM composition entirely.  This
+    /// causes three symptoms:
+    ///   1. Title bar (non-client area) invisible — DWM isn't compositing it
+    ///   2. Windows taskbar hidden — the window "owns" the display
+    ///   3. Cursor invisible — DWM hardware cursor compositing bypassed
+    ///
+    /// Diagnostic proof: pressing PrtSc opens the Snipping Tool overlay,
+    /// which breaks the Independent Flip condition (another window on top),
+    /// forcing DWM back into composed mode.  All symptoms resolve while
+    /// the overlay is visible and return when it's dismissed.
+    ///
+    /// # Fix
+    ///
+    /// 1. Verify and enforce `WS_OVERLAPPEDWINDOW | WS_VISIBLE` styles
+    /// 2. Force DWM NC rendering via `DwmSetWindowAttribute(NCRENDERING_POLICY)`
+    /// 3. Send `WM_NCACTIVATE(TRUE)` to force title bar painting
+    /// 4. Call `SetCursor(LoadCursorW(IDC_ARROW))` to force cursor display
+    /// 5. Call `SetWindowPos(SWP_FRAMECHANGED)` to notify of style changes
+    #[cfg(target_os = "windows")]
+    fn force_window_composition(hwnd: isize) {
+        if hwnd == 0 {
+            return;
+        }
+        // SAFETY: All functions are standard Win32 API calls.  We pass a
+        // valid HWND obtained from eframe's CreationContext.  The style
+        // enforcement only adds bits (never removes), and the DWM attribute
+        // uses the well-defined DWMWA_NCRENDERING_POLICY constant.
+        #[allow(non_snake_case)]
+        unsafe {
+            extern "system" {
+                fn GetWindowLongW(hwnd: isize, index: i32) -> i32;
+                fn SetWindowLongW(hwnd: isize, index: i32, new_long: i32) -> i32;
+                fn SetWindowPos(
+                    hwnd: isize,
+                    after: isize,
+                    x: i32,
+                    y: i32,
+                    cx: i32,
+                    cy: i32,
+                    flags: u32,
+                ) -> i32;
+                fn SendMessageW(
+                    hwnd: isize,
+                    msg: u32,
+                    wparam: usize,
+                    lparam: isize,
+                ) -> isize;
+                fn LoadCursorW(hinstance: isize, lpcursorname: *const u16) -> isize;
+                fn SetCursor(hcursor: isize) -> isize;
+                fn LoadLibraryW(name: *const u16) -> isize;
+                fn GetProcAddress(module: isize, name: *const u8) -> *const u8;
+            }
+
+            const GWL_STYLE: i32 = -16;
+            // WS_OVERLAPPEDWINDOW = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
+            //                       WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
+            const WS_OVERLAPPEDWINDOW: u32 = 0x00CF_0000;
+            const WS_VISIBLE: u32 = 0x1000_0000;
+            const SWP_NOSIZE: u32 = 0x0001;
+            const SWP_NOMOVE: u32 = 0x0002;
+            const SWP_NOZORDER: u32 = 0x0004;
+            const SWP_NOACTIVATE: u32 = 0x0010;
+            const SWP_FRAMECHANGED: u32 = 0x0020;
+            const WM_NCACTIVATE: u32 = 0x0086;
+            const IDC_ARROW: *const u16 = 32512 as *const u16;
+
+            // ── 1. Verify & enforce window styles ──────────────────────
+            let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+            let needed = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+            if (style & needed) != needed {
+                SetWindowLongW(hwnd, GWL_STYLE, (style | needed) as i32);
+                tracing::info!(
+                    "Window style enforcement: had 0x{:08X}, set to 0x{:08X}",
+                    style,
+                    style | needed
+                );
+            }
+
+            // ── 2. Force DWM NC rendering (prevents FSO bypass) ───────
+            // Load dwmapi.dll dynamically so we don't need a link-time dep.
+            // DWMWA_NCRENDERING_POLICY = 2, DWMNCRP_ENABLED = 2
+            let dll_name: [u16; 11] = [
+                b'd' as u16, b'w' as u16, b'm' as u16, b'a' as u16,
+                b'p' as u16, b'i' as u16, b'.' as u16, b'd' as u16,
+                b'l' as u16, b'l' as u16, 0,
+            ];
+            let module = LoadLibraryW(dll_name.as_ptr());
+            if module != 0 {
+                let proc_name = b"DwmSetWindowAttribute\0";
+                let proc = GetProcAddress(module, proc_name.as_ptr());
+                if !proc.is_null() {
+                    // DwmSetWindowAttribute(HWND, DWORD, LPCVOID, DWORD) -> HRESULT
+                    let dwm_set: unsafe extern "system" fn(
+                        isize, u32, *const u32, u32,
+                    ) -> i32 = std::mem::transmute(proc);
+                    let policy: u32 = 2; // DWMNCRP_ENABLED
+                    dwm_set(hwnd, 2, &policy, 4);
+                }
+            }
+
+            // ── 3. Notify window of frame change ──────────────────────
+            SetWindowPos(
+                hwnd,
+                0,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
+
+            // ── 4. Force non-client area activation painting ──────────
+            // SendMessage is synchronous — the window procedure processes
+            // WM_NCACTIVATE immediately, causing DWM to repaint the title
+            // bar.  wparam=1 means "activate", lparam=0 means "let
+            // DefWindowProc handle the full update region".
+            SendMessageW(hwnd, WM_NCACTIVATE, 1, 0);
+
+            // ── 5. Force cursor visibility ────────────────────────────
+            // SetCursor directly loads the cursor handle for the current
+            // thread's message queue.  This bypasses winit's and egui's
+            // pointer-position gates entirely.
+            let arrow = LoadCursorW(0, IDC_ARROW);
+            if arrow != 0 {
+                SetCursor(arrow);
+            }
+        }
+    }
+
     /// Create editor with CreationContext (for wgpu access)
     ///
     /// This method initializes the 3D viewport, which requires access to
@@ -2401,6 +2605,35 @@ impl EditorApp {
     /// Returns error if viewport initialization fails (missing wgpu support).
     fn new(cc: &eframe::CreationContext) -> Result<Self> {
         let mut app = Self::default();
+
+        // Windows: set the window class cursor to IDC_ARROW.
+        //
+        // winit registers the window class with hCursor=0 (null) so that
+        // it can manage cursor state programmatically via WM_SETCURSOR.
+        // However, egui-winit's set_cursor_icon() only calls
+        // window.set_cursor() when pointer_pos_in_points is Some —
+        // i.e. after the first WM_MOUSEMOVE / CursorMoved event.
+        // Until the user physically moves the mouse, no cursor is loaded
+        // and the pointer is invisible.
+        //
+        // Fix: use SetClassLongPtrW(GCL_HCURSOR) to give the window class
+        // a default cursor.  Windows will display it automatically even
+        // before any mouse event arrives.  Once winit processes its first
+        // WM_SETCURSOR (on mouse move), it takes over cursor management
+        // normally.
+        #[cfg(target_os = "windows")]
+        {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Ok(handle) = cc.window_handle() {
+                let raw = handle.as_raw();
+                if let RawWindowHandle::Win32(win32) = raw {
+                    let hwnd = win32.hwnd.get();
+                    Self::set_window_class_cursor(hwnd);
+                    Self::force_window_composition(hwnd);
+                    app.hwnd_cache = hwnd;
+                }
+            }
+        }
 
         // Load preferences again to ensure we have the latest
         let prefs = editor_preferences::EditorPreferences::load();
@@ -3687,11 +3920,13 @@ impl EditorApp {
 
             // Compute fog color from sky horizon (fog blends toward sky color)
             let fog_color = [sky_horizon[0], sky_horizon[1], sky_horizon[2]];
-            let (fog_enabled, fog_density, weather_type, particle_count_override) =
+            let (fog_enabled, fog_density, fog_start, fog_end, weather_type, particle_count_override) =
                 self.dock_tab_viewer.fog_weather_params();
             let fog_params = crate::viewport::types::TerrainFogParams {
                 fog_enabled,
                 fog_density,
+                fog_start,
+                fog_end,
                 fog_color,
                 weather_type,
                 particle_count_override,
@@ -4625,6 +4860,46 @@ impl EditorApp {
                     let src_chunks = self.dock_tab_viewer.terrain_gpu_chunks();
                     if let Some(viewport) = &self.viewport {
                         viewport.upload_terrain_chunks_raw(&src_chunks);
+
+                        // Verify engine adapter is initialized (terrain upload
+                        // auto-inits, but surface the result for diagnostics).
+                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                            if !renderer.engine_adapter_initialized() {
+                                self.console_logs.push(
+                                    "Engine adapter not ready after terrain upload — initializing explicitly...".into(),
+                                );
+                                use pollster::FutureExt;
+                                let init_result = std::panic::catch_unwind(
+                                    std::panic::AssertUnwindSafe(|| {
+                                        renderer.init_engine_adapter().block_on()
+                                    }),
+                                );
+                                match init_result {
+                                    Ok(Ok(())) => {
+                                        self.console_logs.push(
+                                            "Engine adapter initialized (explicit fallback)".into(),
+                                        );
+                                    }
+                                    Ok(Err(e)) => {
+                                        self.console_logs.push(format!(
+                                            "ERROR: Engine adapter init failed: {e:#}"
+                                        ));
+                                    }
+                                    Err(panic_info) => {
+                                        let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
+                                            s.clone()
+                                        } else if let Some(s) = panic_info.downcast_ref::<&str>() {
+                                            (*s).to_string()
+                                        } else {
+                                            "unknown panic".to_string()
+                                        };
+                                        self.console_logs.push(format!(
+                                            "ERROR: Engine adapter init panicked: {msg}"
+                                        ));
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Load biome-appropriate albedo texture.
@@ -4679,7 +4954,10 @@ impl EditorApp {
                         }
                     }
 
-                    // Use pre-computed scatter placements from background thread
+                    // Use pre-computed scatter placements from background thread.
+                    // All placements are uploaded to the GPU; the renderer's
+                    // per-model distance + frustum culling handles visibility
+                    // each frame (AAA-style: upload everything, cull at draw).
                     let scatter_placements = self.dock_tab_viewer.take_cached_scatter_placements();
                     let scatter_count = scatter_placements.len();
                     self.console_logs.push(format!(
@@ -4687,15 +4965,69 @@ impl EditorApp {
                         scatter_count
                     ));
                     if !scatter_placements.is_empty() {
+                        // Flush terrain GPU writes before starting scatter upload.
+                        // Without this, Desert biomes can exceed the Windows 2-second
+                        // TDR timeout because ~200 MB of terrain + scatter buffer
+                        // writes accumulate and are only flushed at the next present.
+                        if let Some(viewport) = &self.viewport {
+                            if let Ok(renderer) = viewport.renderer().lock() {
+                                if let Some(adapter) = renderer.engine_adapter() {
+                                    adapter.renderer().queue().submit(std::iter::empty());
+                                    tracing::debug!("Intermediate queue.submit between terrain and scatter");
+                                }
+                            }
+                        }
                         // Log a sample placement for debugging
                         if let Some(sample) = scatter_placements.first() {
+                            let sample_exists = std::path::Path::new(&sample.mesh_path).exists();
                             self.console_logs.push(format!(
-                                "  Sample: key='{}' path='{}'",
-                                sample.mesh_key, sample.mesh_path
+                                "  Sample: key='{}' path='{}' exists={}",
+                                sample.mesh_key, sample.mesh_path, sample_exists
                             ));
                         }
                         if let Some(viewport) = &self.viewport {
                             if let Ok(mut renderer) = viewport.renderer().lock() {
+                                // Diagnostic: verify adapter status before scatter
+                                let adapter_ready = renderer.engine_adapter_initialized();
+                                self.console_logs.push(format!(
+                                    "  Adapter status before scatter: {}",
+                                    if adapter_ready { "READY" } else { "NOT INITIALIZED" }
+                                ));
+
+                                if !adapter_ready {
+                                    // Last-resort init for scatter
+                                    use pollster::FutureExt;
+                                    let init_result = std::panic::catch_unwind(
+                                        std::panic::AssertUnwindSafe(|| {
+                                            renderer.init_engine_adapter().block_on()
+                                        }),
+                                    );
+                                    match init_result {
+                                        Ok(Ok(())) => {
+                                            self.console_logs.push(
+                                                "  Adapter initialized (scatter fallback)".into(),
+                                            );
+                                        }
+                                        Ok(Err(e)) => {
+                                            self.console_logs.push(format!(
+                                                "  ERROR: Adapter init for scatter failed: {e:#}"
+                                            ));
+                                        }
+                                        Err(panic_info) => {
+                                            let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
+                                                s.clone()
+                                            } else if let Some(s) = panic_info.downcast_ref::<&str>() {
+                                                (*s).to_string()
+                                            } else {
+                                                "unknown panic".to_string()
+                                            };
+                                            self.console_logs.push(format!(
+                                                "  ERROR: Adapter init panicked: {msg}"
+                                            ));
+                                        }
+                                    }
+                                }
+
                                 // Build diffuse texture map from BiomePack for
                                 // proper scatter texturing (decomposed GLBs have
                                 // no embedded materials).
@@ -6705,7 +7037,8 @@ impl EditorApp {
                         total_placements += count;
                     }
 
-                    // Apply ALL scatter at once so all zones render together
+                    // Apply ALL scatter at once so all zones render together.
+                    // All placements uploaded; renderer distance culling handles visibility.
                     if !all_scatter.is_empty() {
                         if let Some(viewport) = &self.viewport {
                             let diffuse_map = self
@@ -8628,8 +8961,81 @@ impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         astraweave_profiling::span!("editor_update");
 
+        // Measure time spent OUTSIDE update() — eframe's present/event loop gap
+        if let Some(prev_end) = self.last_update_end {
+            self.measured_eframe_gap_ms = prev_end.elapsed().as_secs_f32() * 1000.0;
+        }
+
         // Drain tracing events into the in-editor console panel each frame
         console_bridge::drain_log_sink(&mut self.console_panel);
+
+        // Detect OS window focus transitions (Alt+Tab recovery).
+        // When the window regains focus, force several repaints and reset
+        // cursor + decorations so neither the pointer nor the title bar
+        // appear invisible after the switch.
+        let window_focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
+        if window_focused && !self.window_had_focus {
+            // Kick off a burst of forced repaints so the DWM fully
+            // recomposes the title-bar decorations and cursor state.
+            self.focus_repaint_frames = 12;
+            ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::Default);
+            // Re-assert decorations — Windows DWM can lose the title bar
+            // chrome during certain Alt+Tab transitions.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(true));
+            // Directly force cursor visible on the native window.
+            // egui-winit's set_cursor_icon() silently skips the
+            // window.set_cursor_visible(true) call when pointer_pos_in_points
+            // is None (no CursorMoved event yet), which is common on startup
+            // and after Alt+Tab. CursorVisible bypasses that gate.
+            ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(true));
+            // Force proper DWM composition on focus regain.
+            #[cfg(target_os = "windows")]
+            Self::force_window_composition(self.hwnd_cache);
+        }
+        self.window_had_focus = window_focused;
+
+        // While the focus-repaint burst is active, force repaint each frame
+        // and re-assert cursor visibility — DWM may need multiple frames to
+        // fully recompose after focus transitions.
+        if self.focus_repaint_frames > 0 {
+            self.focus_repaint_frames -= 1;
+            ctx.request_repaint();
+            ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(true));
+        }
+
+        // Startup assertion: for the first ~30 frames, continuously re-assert
+        // cursor visibility and decorations.  Also handles the deferred
+        // maximize: the window was created non-maximized (to avoid the
+        // "born-maximized" DWM composition bug) and needs to be maximized
+        // via a genuine state transition after the first visible frame.
+        if self.startup_assert_frames > 0 {
+            self.startup_assert_frames -= 1;
+            ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(true));
+            ctx.request_repaint();
+            // On the first frame where the window is focused, send the
+            // deferred maximize command.  This creates a genuine
+            // normal→maximized DWM transition, causing DWM to fully
+            // compose the title bar, frame shadow, and taskbar exclusion.
+            if self.initial_maximize_pending && window_focused {
+                self.initial_maximize_pending = false;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+                // Force proper DWM composition after maximize.
+                #[cfg(target_os = "windows")]
+                Self::force_window_composition(self.hwnd_cache);
+            }
+        }
+
+        // Request continuous repaint.
+        // Always request to prevent the winit event loop from falling into
+        // WaitMessage (ControlFlow::Wait) which stalls at OS message-pump
+        // cadence (~5-10 FPS observed) instead of rendering as fast as possible.
+        // When unfocused, use request_repaint_after to limit to ~30 FPS.
+        if window_focused {
+            ctx.request_repaint();
+        } else {
+            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+        }
 
         // Apply editor style once (avoids cloning egui::Style every frame)
         if !self.style_applied {
@@ -8646,9 +9052,33 @@ impl eframe::App for EditorApp {
         // --- Startup splash screen (logo + cinematic video) ---
         if let Some(splash) = &mut self.splash {
             if splash.show(ctx) {
+                // Safeguard: keep cursor visible and decorations asserted
+                // throughout the splash.  The main viewport widget (which
+                // has its own cursor restoration) doesn't render during
+                // splash due to the early return below.  We use the
+                // ViewportCommand path because egui-winit's set_cursor_icon()
+                // silently drops cursor updates when pointer_pos_in_points
+                // is None (no CursorMoved event received yet — common on
+                // fresh startup before the user moves the mouse).
+                ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(true));
+                ctx.output_mut(|o| {
+                    if o.cursor_icon == egui::CursorIcon::None {
+                        o.cursor_icon = egui::CursorIcon::Default;
+                    }
+                });
                 return; // Splash still active
             }
             self.splash = None; // Splash finished, proceed to editor
+            // Splash just ended — kick a fresh assertion burst so that
+            // decorations and cursor are re-asserted now that the full
+            // editor UI is about to render for the first time.
+            self.focus_repaint_frames = self.focus_repaint_frames.max(10);
+            ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            // Force proper DWM composition now that the splash is done.
+            #[cfg(target_os = "windows")]
+            Self::force_window_composition(self.hwnd_cache);
         }
 
         // If pending_quit was set (e.g. from File > Exit with clean state), close immediately
@@ -8838,10 +9268,14 @@ impl eframe::App for EditorApp {
                     "AstraWeave Editor - {}{} ({} entities)",
                     file_name, dirty_marker, entity_count
                 );
+                self.title_cmd_sent = false; // title text changed, needs re-send
             }
-            ctx.send_viewport_cmd(egui::ViewportCommand::Title(
-                self.cached_window_title.clone(),
-            ));
+            if !self.title_cmd_sent {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Title(
+                    self.cached_window_title.clone(),
+                ));
+                self.title_cmd_sent = true;
+            }
         }
 
         // Week 7: Enhanced Auto-save with timestamped backups
@@ -8963,6 +9397,25 @@ impl eframe::App for EditorApp {
         astraweave_profiling::plot!("tick_ms", self.measured_tick_ms as f64);
         astraweave_profiling::plot!("ui_setup_ms", self.measured_ui_setup_ms as f64);
         astraweave_profiling::plot!("fps", self.current_fps as f64);
+        astraweave_profiling::plot!("eframe_gap_ms", self.measured_eframe_gap_ms as f64);
+
+        // Log frame breakdown every ~60 frames so we can diagnose stalls
+        static FRAME_CTR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let fc = FRAME_CTR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if fc % 60 == 0 {
+            tracing::info!(
+                "Frame {}: render={:.1}ms ui={:.1}ms tick={:.1}ms eframe_gap={:.1}ms total_frame={:.1}ms",
+                fc,
+                self.measured_render_ms,
+                self.measured_ui_setup_ms,
+                self.measured_tick_ms,
+                self.measured_eframe_gap_ms,
+                self.measured_render_ms + self.measured_ui_setup_ms
+                    + self.measured_tick_ms + self.measured_eframe_gap_ms,
+            );
+        }
+
+        self.last_update_end = Some(std::time::Instant::now());
         astraweave_profiling::frame_mark!();
     }
 }
@@ -8983,15 +9436,44 @@ fn main() -> Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_maximized(true)
+            // NOTE: Do NOT use .with_maximized(true) here.
+            // eframe creates windows hidden (visible=false) and shows them
+            // after the first paint.  When CreateWindowEx receives both
+            // WS_MAXIMIZE and !WS_VISIBLE, DWM never fully composes the
+            // non-client area (title bar, frame, shadow) because there is
+            // no genuine maximize *transition* — the window is "born
+            // maximized" and ShowWindow(SW_MAXIMIZE) is a no-op.
+            // Instead, we maximize via ViewportCommand::Maximized(true)
+            // on the first visible frame, creating a real normal→maximized
+            // DWM transition.
+            .with_decorations(true)
             .with_title("AstraWeave Level & Encounter Editor"),
         wgpu_options: egui_wgpu::WgpuConfiguration {
-            // Use Mailbox (low-latency, no tearing) with AutoVsync fallback
-            // for responsive editor interaction
-            present_mode: wgpu::PresentMode::AutoVsync,
+            // Mailbox: the swap chain maintains a single-entry queue.
+            // Each present replaces the pending frame — the compositor
+            // picks it up when ready.  This gives near-uncapped FPS
+            // without tearing on Vulkan, and avoids the latency spikes
+            // that PresentMode::Immediate can cause on some drivers.
+            present_mode: wgpu::PresentMode::Mailbox,
             wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(egui_wgpu::WgpuSetupCreateNew {
+                // Force Vulkan backend.  DX12 on Windows goes through DWM
+                // composition which blocks surface.get_current_texture() for
+                // ~126 ms/frame even with PresentMode::Immediate, capping the
+                // editor at ~7 FPS.  Vulkan's WSI bypasses DWM composition
+                // and achieves sub-1 ms present latency.
+                instance_descriptor: wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::VULKAN,
+                    ..Default::default()
+                },
+                // Force discrete GPU on dual-GPU laptops (NVIDIA > Intel UHD)
+                power_preference: wgpu::PowerPreference::HighPerformance,
                 device_descriptor: std::sync::Arc::new(|adapter| {
-                    let base_limits = if adapter.get_info().backend == wgpu::Backend::Gl {
+                    let info = adapter.get_info();
+                    tracing::info!(
+                        "[AW] wgpu adapter: {} (backend={:?}, type={:?})",
+                        info.name, info.backend, info.device_type
+                    );
+                    let base_limits = if info.backend == wgpu::Backend::Gl {
                         wgpu::Limits::downlevel_webgl2_defaults()
                     } else {
                         wgpu::Limits::default()

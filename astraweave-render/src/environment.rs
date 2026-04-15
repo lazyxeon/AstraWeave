@@ -190,6 +190,11 @@ pub struct SkyRenderer {
     equirect_pipeline: Option<wgpu::RenderPipeline>,
     equirect_bgl: Option<wgpu::BindGroupLayout>,
     index_count: u32,
+    // Cached per-frame GPU resources (avoid per-frame create_sampler/create_bind_group)
+    cached_eqr_sampler: Option<wgpu::Sampler>,
+    cached_eqr_bg: Option<wgpu::BindGroup>,
+    cached_cube_sampler: Option<wgpu::Sampler>,
+    cached_cube_bg: Option<wgpu::BindGroup>,
 }
 
 impl SkyRenderer {
@@ -208,6 +213,10 @@ impl SkyRenderer {
             equirect_pipeline: None,
             equirect_bgl: None,
             index_count: 0,
+            cached_eqr_sampler: None,
+            cached_eqr_bg: None,
+            cached_cube_sampler: None,
+            cached_cube_bg: None,
         }
     }
 
@@ -518,7 +527,7 @@ impl SkyRenderer {
 
     #[allow(clippy::too_many_arguments)]
     pub fn render(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         target_view: &wgpu::TextureView,
@@ -598,41 +607,52 @@ impl SkyRenderer {
             if let (Some(eqr_pipeline), Some(eqr_bgl)) =
                 (&self.equirect_pipeline, &self.equirect_bgl)
             {
-                let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-                    label: Some("Skybox Eqr Sampler"),
-                    mag_filter: wgpu::FilterMode::Linear,
-                    min_filter: wgpu::FilterMode::Linear,
-                    mipmap_filter: wgpu::FilterMode::Linear,
-                    address_mode_u: wgpu::AddressMode::Repeat, // Wrap horizontally
-                    address_mode_v: wgpu::AddressMode::ClampToEdge, // Clamp poles
-                    ..Default::default()
-                });
+                // Cache sampler + bind group across frames.  Only recreated
+                // when the texture view pointer changes (i.e. a new HDRI is
+                // loaded).  Previously these were created-and-dropped every
+                // frame, causing D3D12 descriptor heap churn.
+                let needs_rebuild = self.cached_eqr_bg.is_none();
+                if needs_rebuild {
+                    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                        label: Some("Skybox Eqr Sampler"),
+                        mag_filter: wgpu::FilterMode::Linear,
+                        min_filter: wgpu::FilterMode::Linear,
+                        mipmap_filter: wgpu::FilterMode::Linear,
+                        address_mode_u: wgpu::AddressMode::Repeat,
+                        address_mode_v: wgpu::AddressMode::ClampToEdge,
+                        ..Default::default()
+                    });
 
-                let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Sky Eqr BG"),
-                    layout: eqr_bgl,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: uniform_buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(eqr_tex),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::Sampler(&sampler),
-                        },
-                    ],
-                });
+                    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Sky Eqr BG"),
+                        layout: eqr_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: uniform_buffer.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(eqr_tex),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::Sampler(&sampler),
+                            },
+                        ],
+                    });
+                    self.cached_eqr_sampler = Some(sampler);
+                    self.cached_eqr_bg = Some(bg);
+                }
 
-                render_pass.set_pipeline(eqr_pipeline);
-                render_pass.set_bind_group(0, &bg, &[]);
-                render_pass.set_vertex_buffer(0, vertices.slice(..));
-                render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(0..self.index_count, 0, 0..1);
-                drawn = true;
+                if let Some(ref bg) = self.cached_eqr_bg {
+                    render_pass.set_pipeline(eqr_pipeline);
+                    render_pass.set_bind_group(0, bg, &[]);
+                    render_pass.set_vertex_buffer(0, vertices.slice(..));
+                    render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint16);
+                    render_pass.draw_indexed(0..self.index_count, 0, 0..1);
+                    drawn = true;
+                }
             }
         }
 
@@ -642,40 +662,47 @@ impl SkyRenderer {
                 if let (Some(tex_pipeline), Some(tex_bgl)) =
                     (&self.texture_pipeline, &self.texture_bgl)
                 {
-                    // Create sampler
-                    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-                        label: Some("Skybox Sampler"),
-                        mag_filter: wgpu::FilterMode::Linear,
-                        min_filter: wgpu::FilterMode::Linear,
-                        mipmap_filter: wgpu::FilterMode::Linear,
-                        ..Default::default()
-                    });
+                    // Cache sampler + bind group (same rationale as equirect path).
+                    let needs_rebuild = self.cached_cube_bg.is_none();
+                    if needs_rebuild {
+                        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                            label: Some("Skybox Sampler"),
+                            mag_filter: wgpu::FilterMode::Linear,
+                            min_filter: wgpu::FilterMode::Linear,
+                            mipmap_filter: wgpu::FilterMode::Linear,
+                            ..Default::default()
+                        });
 
-                    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("Sky Texture BG"),
-                        layout: tex_bgl,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: uniform_buffer.as_entire_binding(),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::TextureView(tex),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: wgpu::BindingResource::Sampler(&sampler),
-                            },
-                        ],
-                    });
+                        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("Sky Texture BG"),
+                            layout: tex_bgl,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: uniform_buffer.as_entire_binding(),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::TextureView(tex),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 2,
+                                    resource: wgpu::BindingResource::Sampler(&sampler),
+                                },
+                            ],
+                        });
+                        self.cached_cube_sampler = Some(sampler);
+                        self.cached_cube_bg = Some(bg);
+                    }
 
-                    render_pass.set_pipeline(tex_pipeline);
-                    render_pass.set_bind_group(0, &bg, &[]);
-                    render_pass.set_vertex_buffer(0, vertices.slice(..));
-                    render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint16);
-                    render_pass.draw_indexed(0..self.index_count, 0, 0..1);
-                    drawn = true;
+                    if let Some(ref bg) = self.cached_cube_bg {
+                        render_pass.set_pipeline(tex_pipeline);
+                        render_pass.set_bind_group(0, bg, &[]);
+                        render_pass.set_vertex_buffer(0, vertices.slice(..));
+                        render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint16);
+                        render_pass.draw_indexed(0..self.index_count, 0, 0..1);
+                        drawn = true;
+                    }
                 }
             }
         }
@@ -699,6 +726,15 @@ impl SkyRenderer {
     /// Get the current time of day system
     pub fn time_of_day(&self) -> &TimeOfDay {
         &self.time_of_day
+    }
+
+    /// Invalidate cached sky bind groups.  Must be called when the IBL
+    /// texture resources change (e.g. new HDRI loaded or cleared).
+    pub fn invalidate_sky_cache(&mut self) {
+        self.cached_eqr_sampler = None;
+        self.cached_eqr_bg = None;
+        self.cached_cube_sampler = None;
+        self.cached_cube_bg = None;
     }
 
     /// Get mutable reference to time of day system

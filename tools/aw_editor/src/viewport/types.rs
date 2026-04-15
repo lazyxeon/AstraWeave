@@ -69,6 +69,8 @@ impl TerrainVertex {
 pub struct TerrainFogParams {
     pub fog_enabled: bool,
     pub fog_density: f32,
+    pub fog_start: f32,
+    pub fog_end: f32,
     pub fog_color: [f32; 3],
     pub weather_type: u32,
     /// Optional override for particle count (None = use default for weather type)
@@ -79,7 +81,9 @@ impl Default for TerrainFogParams {
     fn default() -> Self {
         Self {
             fog_enabled: false,
-            fog_density: 0.01,
+            fog_density: 0.0,
+            fog_start: 800.0,
+            fog_end: 1800.0,
             particle_count_override: None,
             fog_color: [0.6, 0.6, 0.62],
             weather_type: 0,

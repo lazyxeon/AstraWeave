@@ -514,21 +514,21 @@ impl ViewportWidget {
             self.pending_game_input = Some(gi);
         }
 
-        // Request continuous repaint when viewport is hovered, focused, or weather
-        // effects are active. This keeps the editor at full frame rate (~120fps idle).
-        let effects_active = self
-            .renderer
-            .lock()
-            .map_or(false, |r| r.has_active_effects());
-        if response.hovered() || self.has_focus || effects_active {
-            ui.ctx().request_repaint();
-        }
+        // Request continuous repaint for the viewport.
+        // Always request — even when not hovered/focused — because the 3D
+        // scene must render every frame for smooth camera motion and animation.
+        // Without this, eframe's winit backend falls into ControlFlow::Wait
+        // and the viewport renders only when OS events arrive (~5 FPS).
+        ui.ctx().request_repaint();
 
-        // Restore default cursor when viewport is hovered (prevents cursor
-        // disappearing on alt-tab or during gizmo transforms)
-        if response.hovered() {
-            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Default);
-        }
+        // Restore default cursor whenever the viewport renders.
+        // Previously this was gated on response.hovered(), which missed
+        // cursor restoration after Alt+Tab (hover is false on focus regain).
+        ui.output_mut(|o| {
+            if o.cursor_icon == egui::CursorIcon::None {
+                o.cursor_icon = egui::CursorIcon::Default;
+            }
+        });
 
         // Update camera aspect ratio
         if viewport_size.x > 0.0 && viewport_size.y > 0.0 {

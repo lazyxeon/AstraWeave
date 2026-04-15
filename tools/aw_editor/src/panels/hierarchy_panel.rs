@@ -372,13 +372,22 @@ impl HierarchyPanel {
                     if ui.button(format!("  {}", name)).clicked() {
                         self.empty_node_counter += 1;
                         let entity_name = format!("{}_{}", name, self.empty_node_counter);
+                        // Spread entities along X so they don't stack at origin
+                        let offset = (self.empty_node_counter as i32 - 1) * 3;
                         let entity = world.spawn(
                             &entity_name,
-                            astraweave_core::IVec2 { x: 0, y: 0 },
+                            astraweave_core::IVec2 { x: offset, y: 0 },
                             astraweave_core::Team { id: *team },
                             *hp,
                             *ammo,
                         );
+                        // Raise entity above terrain surface so it's visible
+                        if let Some(pose) = world.pose_mut(entity) {
+                            pose.height = 5.0;
+                            pose.scale = 2.0;
+                            pose.scale_y = 2.0;
+                            pose.scale_z = 2.0;
+                        }
                         self.hierarchy.insert(
                             entity,
                             HierarchyNode {
@@ -398,13 +407,21 @@ impl HierarchyPanel {
                     if ui.button(format!("  {}", name)).clicked() {
                         self.empty_node_counter += 1;
                         let entity_name = format!("{}_{}", name, self.empty_node_counter);
+                        let offset = (self.empty_node_counter as i32 - 1) * 3;
                         let entity = world.spawn(
                             &entity_name,
-                            astraweave_core::IVec2 { x: 0, y: 0 },
+                            astraweave_core::IVec2 { x: offset, y: 0 },
                             astraweave_core::Team { id: 2 },
                             1,
                             0,
                         );
+                        // Raise entity above terrain surface so it's visible
+                        if let Some(pose) = world.pose_mut(entity) {
+                            pose.height = 5.0;
+                            pose.scale = 2.0;
+                            pose.scale_y = 2.0;
+                            pose.scale_z = 2.0;
+                        }
                         self.hierarchy.insert(
                             entity,
                             HierarchyNode {

@@ -27,6 +27,7 @@ egui = { workspace = true }
 egui-wgpu = "0.32.0"
 egui_dock = { workspace = true }
 wgpu = { workspace = true }
+raw-window-handle = "0.6"
 bytemuck = { version = "1.19", features = ["derive"] }
 petgraph = { workspace = true }
 serde = { workspace = true }

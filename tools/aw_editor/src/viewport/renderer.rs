@@ -77,6 +77,9 @@ pub struct ViewportRenderer {
     /// Engine renderer adapter for PBR mesh rendering
     engine_adapter: Option<EngineRenderAdapter>,
 
+    /// Whether engine adapter initialization was attempted and failed permanently
+    engine_adapter_init_failed: bool,
+
     /// Enable engine rendering (PBR meshes) vs cube rendering
     render_mode: RenderMode,
 
@@ -168,6 +171,7 @@ impl ViewportRenderer {
             physics_renderer: None,
             scatter_placements: Vec::new(),
             engine_adapter: None,
+            engine_adapter_init_failed: false,
             render_mode: RenderMode::EnginePBR,
             hdr_texture: None,
             hdr_view: None,
@@ -398,6 +402,44 @@ impl ViewportRenderer {
             }
         }
 
+        // Auto-initialize engine adapter on first render if not yet created.
+        // Previously the adapter was only lazy-initialized by terrain upload,
+        // scatter placement, or glTF model load — meaning scenes with only
+        // ECS-spawned entities (no terrain/glTF) would never get an adapter
+        // and the viewport would show a blank dark background.
+        if self.engine_adapter.is_none() && !self.engine_adapter_init_failed {
+            use pollster::FutureExt;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.init_engine_adapter().block_on()
+            }));
+            match result {
+                Ok(Ok(())) => {
+                    tracing::info!(
+                        target: "aw_editor::viewport",
+                        "Engine adapter auto-initialized on first render (size {:?})",
+                        self.size
+                    );
+                }
+                Ok(Err(e)) => {
+                    self.engine_adapter_init_failed = true;
+                    let msg = format!("Failed to auto-initialize engine adapter on render: {e:#}");
+                    tracing::error!(target: "aw_editor::viewport", "{msg}");
+                }
+                Err(panic_payload) => {
+                    self.engine_adapter_init_failed = true;
+                    let panic_msg = if let Some(s) = panic_payload.downcast_ref::<String>() {
+                        s.clone()
+                    } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                        s.to_string()
+                    } else {
+                        format!("{panic_payload:?}")
+                    };
+                    let msg = format!("Engine adapter auto-initialization panicked: {panic_msg}");
+                    tracing::error!(target: "aw_editor::viewport", "{msg}");
+                }
+            }
+        }
+
         // Take immutable reference after all &mut self calls above.
         // Guaranteed Some: the is_none() check + insertion above ensures this.
         let target_view = self
@@ -438,6 +480,24 @@ impl ViewportRenderer {
                     .context("Engine render failed")?;
             } else {
                 // Headless/fallback: clear to dark background when engine adapter unavailable
+                // Rate-limit this warning to avoid flooding the log (was ~60Hz previously)
+                {
+                    use std::sync::atomic::{AtomicU64, Ordering};
+                    static LAST_WARN: AtomicU64 = AtomicU64::new(0);
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let prev = LAST_WARN.load(Ordering::Relaxed);
+                    if now != prev {
+                        LAST_WARN.store(now, Ordering::Relaxed);
+                        tracing::warn!(
+                            target: "aw_editor::viewport",
+                            "Engine adapter unavailable (init_failed={}) — rendering headless fallback",
+                            self.engine_adapter_init_failed,
+                        );
+                    }
+                }
                 let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Headless Clear Pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -932,6 +992,7 @@ impl ViewportRenderer {
 
         // Clear engine adapter (holds its own GPU resources)
         self.engine_adapter = None;
+        self.engine_adapter_init_failed = false;
 
         // Clear optional sub-renderer (physics debug lines)
         self.physics_renderer = None;
@@ -958,6 +1019,29 @@ impl ViewportRenderer {
     }
 
     pub fn upload_terrain_chunks(&mut self, chunks: &[(Vec<TerrainVertex>, Vec<u32>)]) {
+        // Auto-initialize engine adapter if needed (same as upload_terrain_chunks_raw)
+        if self.engine_adapter.is_none() {
+            use pollster::FutureExt;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.init_engine_adapter().block_on()
+            }));
+            match result {
+                Ok(Ok(())) => {
+                    tracing::info!("Engine adapter auto-initialized for terrain chunk upload");
+                    self.load_default_terrain_texture();
+                }
+                Ok(Err(e)) => {
+                    tracing::error!("Failed to initialize engine adapter for terrain: {e}");
+                    return;
+                }
+                Err(_) => {
+                    tracing::error!(
+                        "Engine adapter initialization panicked — terrain upload skipped"
+                    );
+                    return;
+                }
+            }
+        }
         // Forward to engine adapter
         if let Some(adapter) = &mut self.engine_adapter {
             adapter.upload_terrain_chunks(chunks);
@@ -1278,10 +1362,41 @@ impl ViewportRenderer {
         placements: Vec<ScatterPlacement>,
         diffuse_textures: &std::collections::HashMap<String, std::path::PathBuf>,
     ) -> (u32, u32, u32, u32) {
+        // Auto-initialize the engine adapter if it hasn't been created yet.
+        // Scatter can arrive before the first model load if terrain generates
+        // vegetation placements early.
+        if self.engine_adapter.is_none() {
+            use pollster::FutureExt;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.init_engine_adapter().block_on()
+            }));
+            match result {
+                Ok(Ok(())) => {
+                    tracing::info!("Engine adapter auto-initialized for scatter rendering");
+                }
+                Ok(Err(e)) => {
+                    tracing::error!("Failed to initialize engine adapter for scatter: {e}");
+                    self.scatter_placements = placements;
+                    return (0, 0, 0, 0);
+                }
+                Err(_) => {
+                    tracing::error!(
+                        "Engine adapter initialization panicked — scatter upload skipped"
+                    );
+                    self.scatter_placements = placements;
+                    return (0, 0, 0, 0);
+                }
+            }
+        }
+
         // Forward scatter to engine adapter
         let result = if let Some(adapter) = &mut self.engine_adapter {
             adapter.upload_scatter_placements(&placements, diffuse_textures)
         } else {
+            tracing::warn!(
+                "set_scatter_placements: engine adapter still None after init — {} placements dropped",
+                placements.len()
+            );
             (0, 0, 0, 0)
         };
 

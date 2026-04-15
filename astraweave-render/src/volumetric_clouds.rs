@@ -616,8 +616,8 @@ impl CloudShadowPass {
     ///
     /// * `resolution` – shadow map size in pixels (square). 512 is a good default.
     /// * `extent` – half-extent in world units (1024.0 → covers 2048 m).
-    pub fn new(device: &wgpu::Device, resolution: u32, extent: f32) -> Self {
-        let fmt = wgpu::TextureFormat::R16Float;
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, resolution: u32, extent: f32) -> Self {
+        let fmt = wgpu::TextureFormat::Rgba16Float;
 
         let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("cloud_shadow_map"),
@@ -630,9 +630,47 @@ impl CloudShadowPass {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: fmt,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+
+        // Initialize to 1.0 (fully lit) so that when cloud shadows are disabled
+        // the shader samples 1.0 and direct sunlight is preserved.
+        {
+            let bytes_per_pixel = 8; // Rgba16Float = 4 channels × 2 bytes
+            let row_pixels = resolution;
+            let row_bytes = row_pixels * bytes_per_pixel;
+            let total_pixels = (resolution * resolution) as usize;
+            let mut init_data = Vec::with_capacity(total_pixels * bytes_per_pixel as usize);
+            let one_f16 = half::f16::from_f32(1.0).to_bits().to_le_bytes();
+            for _ in 0..total_pixels {
+                // R, G, B, A = 1.0
+                for _ in 0..4 {
+                    init_data.extend_from_slice(&one_f16);
+                }
+            }
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &shadow_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &init_data,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(row_bytes),
+                    rows_per_image: Some(resolution),
+                },
+                wgpu::Extent3d {
+                    width: resolution,
+                    height: resolution,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
         let shadow_view = shadow_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -681,8 +719,8 @@ impl CloudShadowPass {
     }
 
     /// Create with default resolution and extent.
-    pub fn new_default(device: &wgpu::Device) -> Self {
-        Self::new(device, CLOUD_SHADOW_RES, CLOUD_SHADOW_EXTENT)
+    pub fn new_default(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        Self::new(device, queue, CLOUD_SHADOW_RES, CLOUD_SHADOW_EXTENT)
     }
 
     /// Get the shadow map transmittance texture view (for binding in PBR/terrain shaders).

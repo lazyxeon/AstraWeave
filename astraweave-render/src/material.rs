@@ -122,7 +122,7 @@ impl Default for MaterialUboData {
         Self {
             base_color: [1.0, 1.0, 1.0, 1.0],
             metallic: 0.0,
-            roughness: 0.5,
+            roughness: 1.0,
             alpha_cutoff: 0.5,
             _pad: 0.0,
         }

@@ -768,10 +768,10 @@ impl TerrainState {
                     .map(Self::splat_weights_to_material_slots)
                     .unwrap_or(([0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]));
 
-                // Use world-space tiled UVs: one texture tile every 8 units
-                // gives ~256 texels/unit at 2048×2048, which produces crisp
-                // terrain detail without visible pixelation.
-                const TERRAIN_UV_TILE_SIZE: f32 = 8.0;
+                // One detail texture tile per chunk (256 units). This eliminates
+                // visible tiling/crosshatch from any camera height while the
+                // 512px multi-octave detail texture retains close-up detail.
+                const TERRAIN_UV_TILE_SIZE: f32 = 256.0;
                 let tiled_u = world_x / TERRAIN_UV_TILE_SIZE;
                 let tiled_v = world_z / TERRAIN_UV_TILE_SIZE;
 
@@ -808,7 +808,7 @@ impl TerrainState {
         // Drop each boundary vertex downward to create a "curtain" that
         // hides gaps between adjacent chunks and prevents the sky dome
         // from showing through the thin heightmap surface edges.
-        let skirt_drop = chunk_size * 0.15; // 15% of chunk size
+        let skirt_drop = chunk_size * 0.015; // tiny skirt — just enough to hide inter-chunk gaps
         let surface_vert_count = vertices.len() as u32;
 
         // Helper: duplicate a surface vertex with Y lowered by skirt_drop
@@ -846,25 +846,25 @@ impl TerrainState {
             }
         };
 
-        // Bottom edge (z=0): normal points -Z
+        // Bottom edge (z=0): normal points downward so skirt is in shadow
         let bottom_edge: Vec<u32> = (0..resolution).map(|x| x as u32).collect();
-        add_skirt(&mut vertices, &mut indices, &bottom_edge, [0.0, 0.0, -1.0]);
+        add_skirt(&mut vertices, &mut indices, &bottom_edge, [0.0, -1.0, 0.0]);
 
-        // Top edge (z=resolution-1): normal points +Z
+        // Top edge (z=resolution-1)
         let top_edge: Vec<u32> = (0..resolution)
             .map(|x| ((resolution - 1) * resolution + x) as u32)
             .collect();
-        add_skirt(&mut vertices, &mut indices, &top_edge, [0.0, 0.0, 1.0]);
+        add_skirt(&mut vertices, &mut indices, &top_edge, [0.0, -1.0, 0.0]);
 
-        // Left edge (x=0): normal points -X
+        // Left edge (x=0)
         let left_edge: Vec<u32> = (0..resolution).map(|z| (z * resolution) as u32).collect();
-        add_skirt(&mut vertices, &mut indices, &left_edge, [-1.0, 0.0, 0.0]);
+        add_skirt(&mut vertices, &mut indices, &left_edge, [0.0, -1.0, 0.0]);
 
-        // Right edge (x=resolution-1): normal points +X
+        // Right edge (x=resolution-1)
         let right_edge: Vec<u32> = (0..resolution)
             .map(|z| (z * resolution + resolution - 1) as u32)
             .collect();
-        add_skirt(&mut vertices, &mut indices, &right_edge, [1.0, 0.0, 0.0]);
+        add_skirt(&mut vertices, &mut indices, &right_edge, [0.0, -1.0, 0.0]);
 
         let _ = surface_vert_count; // suppress unused warning
 
@@ -2168,18 +2168,23 @@ impl TerrainState {
                 .get_biome_at_world_pos(chunk_center, chunk_size)
                 .unwrap_or(BiomeType::Grassland);
 
-            // Biome-dependent minimum distance: open biomes get wider spacing,
-            // dense biomes (forest, swamp) get tighter packing.
+            // Biome-dependent minimum distance fallback for the scatter
+            // Poisson disk.  In hierarchical mode this is the INITIAL value
+            // for the fold that computes per-tier spacing; per-species
+            // min_distance values (from BiomeConfig vegetation_types) will
+            // take precedence when they are smaller.  Kept at a moderate
+            // value so that any species missing an explicit min_distance
+            // doesn't collapse to zero spacing.
             let min_dist = match center_biome {
-                BiomeType::Forest => 18.0,
-                BiomeType::Swamp => 14.0,
-                BiomeType::River => 14.0,
-                BiomeType::Grassland => 18.0,
-                BiomeType::Mountain => 22.0,
-                BiomeType::Desert => 24.0,
-                BiomeType::Tundra => 22.0,
-                BiomeType::Beach => 20.0,
-                _ => 16.0,
+                BiomeType::Forest => 6.0,
+                BiomeType::Swamp => 5.0,
+                BiomeType::River => 5.0,
+                BiomeType::Grassland => 6.0,
+                BiomeType::Mountain => 8.0,
+                BiomeType::Desert => 10.0,
+                BiomeType::Tundra => 8.0,
+                BiomeType::Beach => 8.0,
+                _ => 6.0,
             };
             let scatter = VegetationScatter::new(ScatterConfig {
                 min_distance: min_dist,
@@ -2206,11 +2211,15 @@ impl TerrainState {
                 .wrapping_add((chunk_id.x as u64).wrapping_mul(1000))
                 .wrapping_add(chunk_id.z as u64);
 
-            // Generate vegetation instances via the terrain scatter system
+            // Generate vegetation instances via hierarchical scatter system.
+            // Hierarchical mode respects per-species placement_priority
+            // (trees first, then shrubs, then grass) with separate Poisson
+            // disk passes per tier.  Earlier tiers create exclusion zones
+            // preventing later placements from overlapping tree trunks.
             let veg_count = biome_config.vegetation.vegetation_types.len();
             let density = biome_config.vegetation.density;
             let vegetation =
-                match scatter.scatter_vegetation(chunk, chunk_size, &biome_config, seed) {
+                match scatter.scatter_vegetation_hierarchical(chunk, chunk_size, &biome_config, seed) {
                     Ok(v) => v,
                     Err(e) => {
                         tracing::warn!("Scatter failed for chunk {:?}: {e}", chunk_id);

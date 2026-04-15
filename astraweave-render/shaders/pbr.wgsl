@@ -207,8 +207,12 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     var metallic = clamp(uMaterial.metallic, 0.0, 1.0);
     var roughness = clamp(uMaterial.roughness, 0.04, 1.0);
     let mr = textureSample(mr_tex, mr_samp, tex_uv);
-    metallic = clamp(max(metallic, mr.r), 0.0, 1.0);
-    roughness = clamp(min(roughness, max(mr.g, 0.04)), 0.04, 1.0);
+    // Multiply blending (glTF standard): UBO values act as a factor on the
+    // texture sample.  This avoids the min/max problem where UBO defaults
+    // override the texture — e.g. roughness=0.6 in UBO would cap terrain
+    // (texture roughness=1.0) to 0.6, making it look shiny.
+    metallic = clamp(metallic * mr.r, 0.0, 1.0);
+    roughness = clamp(max(roughness * mr.g, 0.04), 0.04, 1.0);
 
     // ── Wet-surface PBR modulation ──────────────────────────────────────
     // Only upward-facing surfaces accumulate water; wetness from scene env.

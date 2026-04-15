@@ -94,7 +94,7 @@ struct SceneEnv {
     tint_color: vec3<f32>,
     tint_alpha: f32,
     blend_factor: f32,
-    _pad1: vec3<f32>,
+    _pad1x: f32, _pad1y: f32, _pad1z: f32,
     sun_color: vec3<f32>,
     sun_intensity: f32,
 };
@@ -139,8 +139,10 @@ fn apply_scene_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {
     let linear_fog = clamp((dist - uScene.fog_start) / max(uScene.fog_end - uScene.fog_start, 0.001), 0.0, 1.0);
     // Exponential fog component (denser -> more fog)
     let exp_fog = 1.0 - exp(-uScene.fog_density * dist);
-    // Combine: use linear as primary, exponential adds density
-    let fog_factor = clamp(max(linear_fog, exp_fog), 0.0, 1.0);
+    // Combine: use linear as primary, exponential adds density.
+    // Cap at 0.92 so distant terrain retains some color — prevents
+    // the "white void" effect at the horizon.
+    let fog_factor = clamp(max(linear_fog, exp_fog), 0.0, 0.92);
     return mix(color, uScene.fog_color, fog_factor);
 }
 
@@ -171,6 +173,8 @@ fn vs(input: VSIn) -> VSOut {
 }
 
 // IBL uses fresnel_schlick_roughness from brdf_common.wgsl
+// All samples use textureSampleLevel (explicit LOD) so this function
+// is safe inside non-uniform control flow (e.g., LOD branches).
 fn compute_ibl(
     N: vec3<f32>,
     V: vec3<f32>,
@@ -182,16 +186,16 @@ fn compute_ibl(
     let NdotV = max(dot(N, V), 0.0);
     let F = fresnel_schlick_roughness(NdotV, F0, roughness);
 
-    // Diffuse IBL: irradiance cubemap sampled by normal
+    // Diffuse IBL: irradiance cubemap sampled by normal (pre-convolved, mip 0)
     let kd = (vec3<f32>(1.0) - F) * (1.0 - metallic);
-    let irradiance = textureSample(ibl_irradiance, ibl_sampler, N).rgb;
+    let irradiance = textureSampleLevel(ibl_irradiance, ibl_sampler, N, 0.0).rgb;
     let diffuse_ibl = kd * base_color * irradiance;
 
     // Specular IBL: prefiltered environment map + BRDF LUT
     let R = reflect(-V, N);
     let mip = roughness * uIbl.max_spec_lod;
     let prefiltered = textureSampleLevel(ibl_specular, ibl_sampler, R, mip).rgb;
-    let brdf = textureSample(ibl_brdf_lut, ibl_sampler, vec2<f32>(NdotV, roughness)).rg;
+    let brdf = textureSampleLevel(ibl_brdf_lut, ibl_sampler, vec2<f32>(NdotV, roughness), 0.0).rg;
     let specular_ibl = prefiltered * (F * brdf.x + brdf.y);
 
     return (diffuse_ibl + specular_ibl) * uIbl.ibl_intensity;
@@ -230,23 +234,28 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let brdf_result = evaluate_brdf_lod(N, V, L, base_color, metallic, roughness, F0, mat_lod);
 
     let radiance = uScene.sun_color * uScene.sun_intensity; // from SceneEnv UBO
-        // Shadow sampling
-        // Cascaded shadow mapping (2 cascades) with edge fade.
-        // Use distance from camera for correct cascade selection.
-    let dist = length(input.world_pos - uCamera.camera_pos);
-    let shadow_far = uLight.splits.y;
-    let use_c0 = dist < uLight.splits.x;
-    var lvp: mat4x4<f32>;
-    if (use_c0) { lvp = uLight.view_proj0; } else { lvp = uLight.view_proj1; }
+
+    // Distance from camera — used for shadows, fog, and LOD.
+    // Computed once to avoid redundant length() per fragment.
+    let frag_dist = length(input.world_pos - uCamera.camera_pos);
+
+    // Shadow sampling — skip ALL shadow work when disabled (extras.x < 0).
+    // extras.x is uniform (same for every fragment), so the GPU skips the
+    // entire block for all warps — saves 9 PCF comparison samples + ALU.
+    var shadow: f32 = 1.0;
+    if (uLight.extras.x >= 0.0) {
+        let shadow_far = uLight.splits.y;
+        let use_c0 = frag_dist < uLight.splits.x;
+        var lvp: mat4x4<f32>;
+        if (use_c0) { lvp = uLight.view_proj0; } else { lvp = uLight.view_proj1; }
         let lp = lvp * vec4<f32>(input.world_pos, 1.0);
-    let ndc_shadow = lp.xyz / lp.w;
-    let uv = ndc_shadow.xy * 0.5 + vec2<f32>(0.5, 0.5);
-    let depth = ndc_shadow.z;
-    let slope = max(0.0, 1.0 - dot(N, L));
-    let base_bias = uLight.extras.y;
-    let bias = max(base_bias /* + slope_scale * slope */ , 0.00001);
-        var shadow: f32 = 1.0;
-        if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && dist < shadow_far) {
+        let ndc_shadow = lp.xyz / lp.w;
+        let uv = ndc_shadow.xy * 0.5 + vec2<f32>(0.5, 0.5);
+        let depth = ndc_shadow.z;
+        let base_bias = uLight.extras.y;
+        let bias = max(base_bias, 0.00001);
+
+        if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && frag_dist < shadow_far) {
             var layer: i32;
             if (use_c0) { layer = 0; } else { layer = 1; }
             // PCF 3x3 (scaled by pcf radius in texels from extras.x)
@@ -265,8 +274,8 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             // Fade shadow to 1.0 at cascade boundary edges to eliminate
             // the hard square cutoff. Fade in the outer 20% of shadow range.
             let fade_start = shadow_far * 0.8;
-            if (dist > fade_start) {
-                let fade = (dist - fade_start) / (shadow_far - fade_start);
+            if (frag_dist > fade_start) {
+                let fade = (frag_dist - fade_start) / (shadow_far - fade_start);
                 shadow = mix(shadow, 1.0, clamp(fade, 0.0, 1.0));
             }
 
@@ -276,17 +285,23 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
             let edge_fade = clamp(min(edge_fade_x, edge_fade_y), 0.0, 1.0);
             shadow = mix(1.0, shadow, edge_fade);
         }
-        // Debug override: force shadow off when extras.x is negative (sentinel from CPU)
-        if (uLight.extras.x < 0.0) {
-            shadow = 1.0;
-        }
+    }
     // Direct lighting (evaluate_brdf already includes NdotL)
     let cloud_shadow = sample_cloud_shadow(input.world_pos);
     var lit_color = brdf_result * radiance * shadow * cloud_shadow;
 
-    // IBL indirect lighting (replaces flat ambient)
-    let ibl_color = compute_ibl(N, V, base_color, metallic, roughness, F0);
-    lit_color = lit_color + ibl_color;
+    // IBL indirect lighting — skip for distant (LOD 2) fragments.
+    // At LOD 2, fragments are sub-pixel or far away: 3 cubemap samples
+    // are wasted on invisible detail. Use a cheap ambient approximation.
+    if (mat_lod < 2u) {
+        let ibl_color = compute_ibl(N, V, base_color, metallic, roughness, F0);
+        lit_color = lit_color + ibl_color;
+    } else {
+        // Approximate IBL as diffuse-only irradiance (1 cubemap sample).
+        let kd = (1.0 - metallic);
+        let approx_irr = textureSampleLevel(ibl_irradiance, ibl_sampler, N, 0.0).rgb;
+        lit_color = lit_color + base_color * kd * approx_irr * uIbl.ibl_intensity;
+    }
 
     // Screen-space GI: sample indirect diffuse from SSGI/Lumen pipeline.
     // When no GI pass is active, gi_tex is a 1x1 black texture → adds zero.
@@ -302,8 +317,6 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     // Clustered lighting disabled for this example build; use lit_color directly
 
     // Apply distance-based fog from biome scene environment.
-    // Use distance from camera (not origin) for correct view-dependent fog.
-    let frag_dist = length(input.world_pos - uCamera.camera_pos);
     lit_color = apply_scene_fog(lit_color, frag_dist);
 
     // Apply screen tint overlay (peaks during biome transitions)
@@ -493,7 +506,7 @@ struct SceneEnv {
     tint_color: vec3<f32>,
     tint_alpha: f32,
     blend_factor: f32,
-    _pad1: vec3<f32>,
+    _pad1x: f32, _pad1y: f32, _pad1z: f32,
     sun_color: vec3<f32>,
     sun_intensity: f32,
 };
@@ -718,6 +731,11 @@ pub struct Renderer {
     shadow_slope_scale: f32,
     /// Whether shadows are enabled for rendering
     shadows_enabled: bool,
+    /// Maximum draw distance for model culling (0.0 = use fog_end * 1.2 fallback).
+    /// When set to a positive value, models beyond this distance are skipped.
+    max_draw_distance: f32,
+    /// Number of models actually rendered in the last frame (after culling).
+    rendered_model_count: u32,
     /// Whether `set_terrain_ground_plane()` has positioned the plane for terrain.
     /// When true, `draw_into()` skips the default plane overwrite.
     terrain_ground_set: bool,
@@ -827,6 +845,9 @@ pub struct Renderer {
     gi_sampler: wgpu::Sampler,
     // Cloud shadow map generation and sampling resources (group 5 bindings 7-8).
     cloud_shadow_pass: crate::volumetric_clouds::CloudShadowPass,
+    /// Whether to dispatch the per-frame cloud shadow compute pass.
+    /// Disable in editor modes to avoid noisy shadow patterns on terrain.
+    cloud_shadows_enabled: bool,
 
     // Water rendering
     water_renderer: Option<crate::water::WaterRenderer>,
@@ -1141,8 +1162,12 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        // Seed the material buffer with a bright-ish default so geometry renders visibly out of the box.
-        let default_material: [f32; 8] = [0.85, 0.78, 0.72, 1.0, 0.05, 0.6, 0.5, 0.0];
+        // Seed the material buffer with default PBR values:
+        // base_color = off-white (0.85, 0.78, 0.72, 1.0)
+        // metallic = 0.0 (fully dielectric — terrain and most objects)
+        // roughness = 1.0 (fully rough — prevents unwanted specular on terrain)
+        // ao = 1.0, pad = 0.0
+        let default_material: [f32; 8] = [0.85, 0.78, 0.72, 1.0, 0.0, 1.0, 1.0, 0.0];
         queue.write_buffer(&material_buf, 0, bytemuck::cast_slice(&default_material));
 
         // Scene environment bind group layout (created early so it can be used in pipeline layout)
@@ -1486,7 +1511,7 @@ impl Renderer {
             label: Some("ssao bgl"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
@@ -1496,7 +1521,7 @@ impl Renderer {
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 2,
+                    binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
@@ -1509,11 +1534,11 @@ impl Renderer {
             layout: &ssao_bgl,
             entries: &[
                 wgpu::BindGroupEntry {
-                    binding: 1,
+                    binding: 0,
                     resource: wgpu::BindingResource::TextureView(&depth.view),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 2,
+                    binding: 1,
                     resource: wgpu::BindingResource::Sampler(&hdr_sampler),
                 },
             ],
@@ -1938,7 +1963,7 @@ impl Renderer {
             ],
         });
 
-        let cloud_shadow_pass = crate::volumetric_clouds::CloudShadowPass::new_default(&device);
+        let cloud_shadow_pass = crate::volumetric_clouds::CloudShadowPass::new_default(&device, &queue);
 
         // IBL params uniform buffer
         #[repr(C)]
@@ -2605,6 +2630,7 @@ fn vs(input: VSIn) -> VSOut {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Linear,
+            anisotropy_clamp: 16,
             ..Default::default()
         });
         // Initialize albedo with a 1x1 white texel so sampling yields visible color
@@ -3255,6 +3281,8 @@ fn vs(input: VSIn) -> VSOut {
             shadow_depth_bias: 0.0006,
             shadow_slope_scale: 0.002,
             shadows_enabled: true,         // Shadows enabled by default
+            max_draw_distance: 0.0,        // 0 = use fog_end fallback
+            rendered_model_count: 0,
             terrain_ground_set: false,     // No terrain ground plane set yet
             clustered_offsets_cache: None, // Force first-frame computation
             force_shadow_override: false,  // Normal runtime: use computed PCF shadows
@@ -3326,6 +3354,7 @@ fn vs(input: VSIn) -> VSOut {
             gi_fallback_view,
             gi_sampler,
             cloud_shadow_pass,
+            cloud_shadows_enabled: true,
             water_renderer: None,
             biome_system: crate::biome_material::BiomeMaterialSystem::new(
                 crate::biome_material::BiomeMaterialConfig::default(),
@@ -3472,6 +3501,10 @@ fn vs(input: VSIn) -> VSOut {
 
     /// Rebuild the IBL bind group from loaded IBL resources.
     fn rebuild_ibl_bind_group(&mut self, res: &crate::ibl::IblResources) {
+        // IBL texture pointers are changing — invalidate the sky renderer's
+        // cached bind groups so they get rebuilt with the new texture views.
+        self.sky.invalidate_sky_cache();
+
         let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("ibl_sampler"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -3494,6 +3527,12 @@ fn vs(input: VSIn) -> VSOut {
             Some(avg) if avg > 0.01 => (0.35 / avg).clamp(0.3, 3.0),
             _ => 1.0,
         };
+        log::info!(
+            "IBL bake: avg_luminance={:?}, ibl_intensity={:.3}, mips_specular={}",
+            res.avg_luminance,
+            ibl_intensity,
+            res.mips_specular,
+        );
         let params = IblParamsGpu {
             ibl_intensity,
             max_spec_lod: res.mips_specular.saturating_sub(1).max(1) as f32,
@@ -4491,6 +4530,21 @@ fn vs(input: VSIn) -> VSOut {
     /// Enable or disable shadow rendering
     pub fn set_shadows_enabled(&mut self, enabled: bool) {
         self.shadows_enabled = enabled;
+        // When shadows are disabled, set the force_shadow_override sentinel so
+        // the PBR shader skips PCF sampling entirely (extras.x = -1.0 → shader
+        // guard forces shadow = 1.0).  Without this, every fragment still
+        // executes 9 textureSampleCompare calls against the uncleared shadow
+        // map, wasting ~50% of per-fragment texture bandwidth AND producing
+        // grain from the undefined depth values.
+        self.force_shadow_override = !enabled;
+    }
+
+    /// Enable or disable the per-frame cloud shadow compute pass.
+    /// When disabled the cloud shadow texture retains its initial all-white
+    /// state (1.0 = fully lit), so direct sunlight is preserved without
+    /// the noisy pattern from the low-resolution 512x512 transmittance map.
+    pub fn set_cloud_shadows_enabled(&mut self, enabled: bool) {
+        self.cloud_shadows_enabled = enabled;
     }
 
     /// Set the post-processing chain configuration.
@@ -4865,7 +4919,9 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         // Update cloud shadow map for terrain/PBR sampling.
-        {
+        // Skipped when cloud_shadows_enabled is false — the 512×512 transmittance
+        // map produces a noisy pattern on terrain at this resolution.
+        if self.cloud_shadows_enabled {
             let cam_pos = glam::Vec3::new(
                 self.camera_ubo.camera_pos_pad[0],
                 self.camera_ubo.camera_pos_pad[1],
@@ -5372,7 +5428,9 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         // Update cloud shadow map for terrain/PBR sampling.
-        {
+        // Skipped when cloud_shadows_enabled is false — the 512×512 transmittance
+        // map produces a noisy pattern on terrain at this resolution.
+        if self.cloud_shadows_enabled {
             let cam_pos = glam::Vec3::new(
                 self.camera_ubo.camera_pos_pad[0],
                 self.camera_ubo.camera_pos_pad[1],
@@ -5469,15 +5527,29 @@ fn vs(input: VSIn) -> VSOut {
                 }
             }
 
-            // Render all named models (terrain, trees, rocks, etc.) with frustum culling
+            // Render all named models (terrain, trees, rocks, etc.) with frustum + distance culling
             {
                 let vp = self.cached_proj * self.cached_view;
                 let frustum = crate::culling::FrustumPlanes::from_view_proj(&vp);
+                let cam_pos = glam::Vec3::new(
+                    self.camera_ubo.camera_pos_pad[0],
+                    self.camera_ubo.camera_pos_pad[1],
+                    self.camera_ubo.camera_pos_pad[2],
+                );
+                // Max draw distance: use explicit limit if set, otherwise fall back
+                // to fog_end * 1.2. Objects beyond this are fully fogged / invisible.
+                let max_draw_dist = if self.max_draw_distance > 0.0 {
+                    self.max_draw_distance
+                } else {
+                    self.scene_env.visuals.fog_end * 1.2
+                };
+                let max_draw_dist_sq = max_draw_dist * max_draw_dist;
+                let mut drawn_models = 0u32;
                 for model in self.models.values() {
                     if model.instance_count == 0 {
                         continue;
                     }
-                    // Skip models whose AABB is entirely outside the frustum
+                    // Skip models whose AABB is entirely outside the frustum or beyond draw distance
                     if let Some((aabb_min, aabb_max)) = &model.aabb {
                         let center = glam::Vec3::new(
                             (aabb_min[0] + aabb_max[0]) * 0.5,
@@ -5489,6 +5561,13 @@ fn vs(input: VSIn) -> VSOut {
                             (aabb_max[1] - aabb_min[1]) * 0.5,
                             (aabb_max[2] - aabb_min[2]) * 0.5,
                         );
+                        // Distance cull: skip models entirely beyond draw distance
+                        let to_cam = center - cam_pos;
+                        let closest_dist_sq = (to_cam.x.abs() - extent.x).max(0.0).powi(2)
+                            + (to_cam.z.abs() - extent.z).max(0.0).powi(2);
+                        if closest_dist_sq > max_draw_dist_sq {
+                            continue;
+                        }
                         if !frustum.test_aabb(center, extent) {
                             continue;
                         }
@@ -5502,7 +5581,9 @@ fn vs(input: VSIn) -> VSOut {
                     rp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
                     rp.set_vertex_buffer(1, model.instance_buf.slice(..));
                     rp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
+                    drawn_models += 1;
                 }
+                self.rendered_model_count = drawn_models;
             }
 
             // Render water (transparent, after all opaque objects) — aligned with render()
@@ -5928,7 +6009,12 @@ fn vs(input: VSIn) -> VSOut {
 
     pub fn set_albedo_from_rgba8(&mut self, width: u32, height: u32, data: &[u8]) {
         assert_eq!(data.len() as u32, width * height * 4);
-        // Recreate texture with provided dimensions
+        let mip_count = if width > 1 && height > 1 {
+            (width.max(height) as f32).log2().floor() as u32 + 1
+        } else {
+            1
+        };
+        // Recreate texture with full mip chain
         self.albedo_tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("albedo"),
             size: wgpu::Extent3d {
@@ -5936,7 +6022,7 @@ fn vs(input: VSIn) -> VSOut {
                 height,
                 depth_or_array_layers: 1,
             },
-            mip_level_count: 1,
+            mip_level_count: mip_count,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -5946,6 +6032,7 @@ fn vs(input: VSIn) -> VSOut {
         self.albedo_view = self
             .albedo_tex
             .create_view(&wgpu::TextureViewDescriptor::default());
+        // Upload mip 0 (base level)
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &self.albedo_tex,
@@ -5965,6 +6052,87 @@ fn vs(input: VSIn) -> VSOut {
                 depth_or_array_layers: 1,
             },
         );
+        // Generate and upload remaining mip levels (sRGB-aware box filter)
+        if mip_count > 1 {
+            #[inline]
+            fn srgb_to_linear(v: u8) -> f32 {
+                let f = v as f32 / 255.0;
+                if f <= 0.04045 {
+                    f / 12.92
+                } else {
+                    ((f + 0.055) / 1.055).powf(2.4)
+                }
+            }
+            #[inline]
+            fn linear_to_srgb(v: f32) -> u8 {
+                let f = if v <= 0.0031308 {
+                    v * 12.92
+                } else {
+                    1.055 * v.powf(1.0 / 2.4) - 0.055
+                };
+                (f * 255.0).round().clamp(0.0, 255.0) as u8
+            }
+
+            let mut prev = data.to_vec();
+            let mut mip_w = width;
+            let mut mip_h = height;
+            for mip in 1..mip_count {
+                let new_w = (mip_w / 2).max(1);
+                let new_h = (mip_h / 2).max(1);
+                let mut next = vec![0u8; (new_w * new_h * 4) as usize];
+                for y in 0..new_h {
+                    for x in 0..new_w {
+                        let sx = x * 2;
+                        let sy = y * 2;
+                        let sx1 = (sx + 1).min(mip_w - 1);
+                        let sy1 = (sy + 1).min(mip_h - 1);
+                        // Sample 2x2 block indices
+                        let i00 = ((sy * mip_w + sx) * 4) as usize;
+                        let i10 = ((sy * mip_w + sx1) * 4) as usize;
+                        let i01 = ((sy1 * mip_w + sx) * 4) as usize;
+                        let i11 = ((sy1 * mip_w + sx1) * 4) as usize;
+                        let dst = ((y * new_w + x) * 4) as usize;
+                        // Average RGB in linear space (sRGB-aware)
+                        for c in 0..3 {
+                            let s0 = srgb_to_linear(prev[i00 + c]);
+                            let s1 = srgb_to_linear(prev[i10 + c]);
+                            let s2 = srgb_to_linear(prev[i01 + c]);
+                            let s3 = srgb_to_linear(prev[i11 + c]);
+                            next[dst + c] = linear_to_srgb((s0 + s1 + s2 + s3) * 0.25);
+                        }
+                        // Alpha averaged directly (linear)
+                        let a = (prev[i00 + 3] as u32
+                            + prev[i10 + 3] as u32
+                            + prev[i01 + 3] as u32
+                            + prev[i11 + 3] as u32)
+                            / 4;
+                        next[dst + 3] = a as u8;
+                    }
+                }
+                self.queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &self.albedo_tex,
+                        mip_level: mip,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &next,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(new_w * 4),
+                        rows_per_image: Some(new_h),
+                    },
+                    wgpu::Extent3d {
+                        width: new_w,
+                        height: new_h,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                prev = next;
+                mip_w = new_w;
+                mip_h = new_h;
+            }
+        }
         // Rebuild the combined tex+skin bind group with current views/samplers and skin buffer
         self.tex_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("combined tex bg"),
@@ -6617,6 +6785,23 @@ fn vs(input: VSIn) -> VSOut {
     /// Get the number of loaded models.
     pub fn model_count(&self) -> usize {
         self.models.len()
+    }
+
+    /// Set the maximum draw distance for model culling.
+    /// Models beyond this distance from the camera are skipped entirely.
+    /// Set to 0.0 to fall back to fog_end * 1.2 (the default).
+    pub fn set_max_draw_distance(&mut self, dist: f32) {
+        self.max_draw_distance = dist;
+    }
+
+    /// Get the current max draw distance setting (0.0 means fog-based fallback).
+    pub fn max_draw_distance(&self) -> f32 {
+        self.max_draw_distance
+    }
+
+    /// Number of models actually drawn in the last frame (after frustum + distance culling).
+    pub fn rendered_model_count(&self) -> u32 {
+        self.rendered_model_count
     }
 
     /// Get names of all loaded models.

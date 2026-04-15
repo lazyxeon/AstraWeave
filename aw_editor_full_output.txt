@@ -1,0 +1,270 @@
+   Compiling astraweave-render v0.1.0 (D:\AstraWeave-AI-Native-Gaming-Engine\astraweave-render)
+   Compiling aw_editor v0.1.0 (D:\AstraWeave-AI-Native-Gaming-Engine\tools\aw_editor)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 28.36s
+warning: the following packages contain code that will be rejected by a future version of Rust: nalgebra v0.26.2
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running `target\debug\aw_editor.exe`
+[2m2026-04-13T03:27:30.599872Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m InstanceFlags::VALIDATION requested, but unable to find layer: VK_LAYER_KHRONOS_validation
+[2m2026-04-13T03:27:30.600548Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	No valid vk_loader_settings.json file found, no loader settings will be active
+[2m2026-04-13T03:27:30.600651Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.600872Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_app_package_manifest_path: Failed to find mapping layers packages by family name
+[2m2026-04-13T03:27:30.600924Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.600961Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Checking for Layer Manifest files in Registry at HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\Vulkan\ImplicitLayers
+[2m2026-04-13T03:27:30.601001Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.601201Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_add_json_entry: Located json file "C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\nv-vk64.json" from PnP registry: E
+[2m2026-04-13T03:27:30.601251Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.601375Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Located json file "C:\Program Files (x86)\Steam\SteamOverlayVulkanLayer64.json" from registry "HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\Vulkan\ImplicitLayers"
+[2m2026-04-13T03:27:30.601415Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.601462Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Located json file "C:\Program Files (x86)\Steam\SteamFossilizeVulkanLayer64.json" from registry "HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\Vulkan\ImplicitLayers"
+[2m2026-04-13T03:27:30.601501Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.601743Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Found manifest file C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\nv-vk64.json (file version 1.0.1)
+[2m2026-04-13T03:27:30.601788Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.601885Z[0m [31mERROR[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	loader_get_json: Failed to open JSON file C:\Program Files (x86)\Steam\SteamOverlayVulkanLayer64.json
+[2m2026-04-13T03:27:30.601925Z[0m [31mERROR[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.602021Z[0m [31mERROR[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	loader_get_json: Failed to open JSON file C:\Program Files (x86)\Steam\SteamFossilizeVulkanLayer64.json
+[2m2026-04-13T03:27:30.602062Z[0m [31mERROR[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.602110Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Checking for Layer Manifest files in Registry at HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\Vulkan\ExplicitLayers
+[2m2026-04-13T03:27:30.602145Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.602354Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_files: opening device PCI\VEN_10DE&DEV_2191&SUBSYS_87AF103C&REV_A1\4&299b899f&0&0008
+[2m2026-04-13T03:27:30.602394Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.602472Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_entry: Device ID(1) Does not contain a value for "VulkanExplicitLayers"
+[2m2026-04-13T03:27:30.602509Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.602557Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_files: unable to open child-device error:13
+[2m2026-04-13T03:27:30.602593Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.602664Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_files: opening device PCI\VEN_8086&DEV_9BC4&SUBSYS_87AF103C&REV_05\3&11583659&2&10
+[2m2026-04-13T03:27:30.602703Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.602774Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_entry: Device ID(2) Does not contain a value for "VulkanExplicitLayers"
+[2m2026-04-13T03:27:30.602821Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.602870Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_files: Opening child device 4 - SWD\DRIVERENUM\CUI&4&1551C2A5&0
+[2m2026-04-13T03:27:30.602907Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.602990Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_entry: Device ID(4) Does not contain a value for "VulkanExplicitLayers"
+[2m2026-04-13T03:27:30.603032Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.603081Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_files: Opening child device 5 - SWD\DRIVERENUM\IGCC&4&1551C2A5&0
+[2m2026-04-13T03:27:30.603119Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.603202Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_entry: Device ID(5) Does not contain a value for "VulkanExplicitLayers"
+[2m2026-04-13T03:27:30.603243Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.603292Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_files: Opening child device 6 - DISPLAY\CMN1602\4&1551C2A5&0&UID265988
+[2m2026-04-13T03:27:30.603325Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.603375Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_device_registry_files: found no registry files
+[2m2026-04-13T03:27:30.603414Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.603512Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Found no registry files in HKEY_CURRENT_USER\SOFTWARE\Khronos\Vulkan\ExplicitLayers
+[2m2026-04-13T03:27:30.603549Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.603584Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_read_data_files_in_registry: Registry lookup failed to get layer manifest files.
+[2m2026-04-13T03:27:30.603620Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.603764Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_get_app_package_manifest_path: Failed to find mapping layers packages by family name
+[2m2026-04-13T03:27:30.603795Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.603817Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Checking for Driver Manifest files in Registry at HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\Vulkan\Drivers
+[2m2026-04-13T03:27:30.603837Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.604005Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_add_json_entry: Located json file "C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\nv-vk64.json" from PnP registry: E
+[2m2026-04-13T03:27:30.604055Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.604149Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	windows_add_json_entry: Located json file "C:\WINDOWS\System32\DriverStore\FileRepository\iigd_dch.inf_amd64_0c2fb894eee0c51f\igvk64.json" from PnP registry: E
+[2m2026-04-13T03:27:30.604198Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.604600Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Found no registry files in HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\Vulkan\Drivers
+[2m2026-04-13T03:27:30.604646Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.604889Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Found ICD manifest file C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\nv-vk64.json, version 1.0.1
+[2m2026-04-13T03:27:30.604947Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.605140Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Found ICD manifest file C:\WINDOWS\System32\DriverStore\FileRepository\iigd_dch.inf_amd64_0c2fb894eee0c51f\igvk64.json, version 1.0.0
+[2m2026-04-13T03:27:30.605186Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.605344Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Insert instance layer "VK_LAYER_NV_present" (C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\.\nvoglv64.dll)
+[2m2026-04-13T03:27:30.605388Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.605448Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Insert instance layer "VK_LAYER_NV_optimus" (C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\.\nvoglv64.dll)
+[2m2026-04-13T03:27:30.605486Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.605880Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	vkCreateInstance layer callstack setup to:
+[2m2026-04-13T03:27:30.605927Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.605959Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   <Application>
+[2m2026-04-13T03:27:30.605991Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606025Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	     ||
+[2m2026-04-13T03:27:30.606055Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606087Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   <Loader>
+[2m2026-04-13T03:27:30.606117Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606148Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	     ||
+[2m2026-04-13T03:27:30.606183Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606213Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   VK_LAYER_NV_optimus
+[2m2026-04-13T03:27:30.606246Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606271Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Type: Implicit
+[2m2026-04-13T03:27:30.606304Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606334Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Enabled By: Implicit Layer
+[2m2026-04-13T03:27:30.606369Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606397Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	               Disable Env Var:  DISABLE_LAYER_NV_OPTIMUS_1
+[2m2026-04-13T03:27:30.606438Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606472Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Manifest: C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\nv-vk64.json
+[2m2026-04-13T03:27:30.606510Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606543Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Library:  C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\.\nvoglv64.dll
+[2m2026-04-13T03:27:30.606580Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606614Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	     ||
+[2m2026-04-13T03:27:30.606647Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606678Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   VK_LAYER_NV_present
+[2m2026-04-13T03:27:30.606704Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606736Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Type: Implicit
+[2m2026-04-13T03:27:30.606775Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606831Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Enabled By: Implicit Layer
+[2m2026-04-13T03:27:30.606868Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606901Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	               Disable Env Var:  DISABLE_LAYER_NV_PRESENT_1
+[2m2026-04-13T03:27:30.606934Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.606966Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Manifest: C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\nv-vk64.json
+[2m2026-04-13T03:27:30.606999Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.607028Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Library:  C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\.\nvoglv64.dll
+[2m2026-04-13T03:27:30.607106Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.607140Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	     ||
+[2m2026-04-13T03:27:30.607173Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.607206Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   <Drivers>
+[2m2026-04-13T03:27:30.607258Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:30.704907Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m Enabling debug utils
+[2m2026-04-13T03:27:30.756643Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::adapter[0m[2m:[0m Disabling robustBufferAccess2 and robustImageAccess2: IntegratedGpu Intel Driver is outdated. Found with version 0x19211C, less than the known good version 0x194843 (31.0.101.2115)
+[2m2026-04-13T03:27:31.043243Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::adapter[0m[2m:[0m Disabling robustBufferAccess2 and robustImageAccess2: IntegratedGpu Intel Driver is outdated. Found with version 0x19211C, less than the known good version 0x194843 (31.0.101.2115)
+[2m2026-04-13T03:27:31.049967Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::conv[0m[2m:[0m Unrecognized present mode 1000361000
+[2m2026-04-13T03:27:31.053170Z[0m [32m INFO[0m [2megui_wgpu[0m[2m:[0m There were 6 available wgpu adapters: {backend: Vulkan, device_type: DiscreteGpu, name: "NVIDIA GeForce GTX 1660 Ti with Max-Q Design", driver: "NVIDIA", driver_info: "591.74", vendor: NVIDIA (0x10DE), device: 0x2191}, {backend: Vulkan, device_type: IntegratedGpu, name: "Intel(R) UHD Graphics", driver: "Intel Corporation", driver_info: "Intel driver", vendor: Intel (0x8086), device: 0x9BC4}, {backend: Dx12, device_type: IntegratedGpu, name: "Intel(R) UHD Graphics", driver: "27.20.100.8476", vendor: Intel (0x8086), device: 0x9BC4}, {backend: Dx12, device_type: DiscreteGpu, name: "NVIDIA GeForce GTX 1660 Ti with Max-Q Design", driver: "32.0.15.9174", vendor: NVIDIA (0x10DE), device: 0x2191}, {backend: Dx12, device_type: Cpu, name: "Microsoft Basic Render Driver", driver: "10.0.26100.8115", vendor: Unknown (0x1414), device: 0x8C}, {backend: Gl, device_type: IntegratedGpu, name: "Intel(R) UHD Graphics", driver_info: "4.6.0 - Build 27.20.100.8476", vendor: Intel (0x8086)}
+[2m2026-04-13T03:27:31.053623Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Inserted device layer "VK_LAYER_NV_present" (C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\.\nvoglv64.dll)
+[2m2026-04-13T03:27:31.053672Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.053710Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	Inserted device layer "VK_LAYER_NV_optimus" (C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\.\nvoglv64.dll)
+[2m2026-04-13T03:27:31.053750Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.053788Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	vkCreateDevice layer callstack setup to:
+[2m2026-04-13T03:27:31.053827Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.053864Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   <Application>
+[2m2026-04-13T03:27:31.053901Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.053935Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	     ||
+[2m2026-04-13T03:27:31.053970Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054005Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   <Loader>
+[2m2026-04-13T03:27:31.054040Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054075Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	     ||
+[2m2026-04-13T03:27:31.054110Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054143Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   VK_LAYER_NV_optimus
+[2m2026-04-13T03:27:31.054188Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054222Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Type: Implicit
+[2m2026-04-13T03:27:31.054266Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054303Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Enabled By: Implicit Layer
+[2m2026-04-13T03:27:31.054339Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054368Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	               Disable Env Var:  DISABLE_LAYER_NV_OPTIMUS_1
+[2m2026-04-13T03:27:31.054405Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054438Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Manifest: C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\nv-vk64.json
+[2m2026-04-13T03:27:31.054482Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054519Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Library:  C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\.\nvoglv64.dll
+[2m2026-04-13T03:27:31.054558Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054593Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	     ||
+[2m2026-04-13T03:27:31.054625Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054660Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   VK_LAYER_NV_present
+[2m2026-04-13T03:27:31.054693Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054728Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Type: Implicit
+[2m2026-04-13T03:27:31.054764Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054799Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Enabled By: Implicit Layer
+[2m2026-04-13T03:27:31.054834Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054870Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	               Disable Env Var:  DISABLE_LAYER_NV_PRESENT_1
+[2m2026-04-13T03:27:31.054909Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.054946Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Manifest: C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\nv-vk64.json
+[2m2026-04-13T03:27:31.054985Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.055020Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	           Library:  C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\.\nvoglv64.dll
+[2m2026-04-13T03:27:31.055053Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.055081Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	     ||
+[2m2026-04-13T03:27:31.055116Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.055154Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	   <Device>
+[2m2026-04-13T03:27:31.055190Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.055529Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [Loader Message (0x0)]
+	       Using "NVIDIA GeForce GTX 1660 Ti with Max-Q Design" with driver: "C:\WINDOWS\System32\DriverStore\FileRepository\nvhmi.inf_amd64_3c84615744c2eb80\.\nvoglv64.dll"
+[2m2026-04-13T03:27:31.055573Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0xb3854d0, name: ?)
+[2m2026-04-13T03:27:31.118998Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::conv[0m[2m:[0m Unrecognized present mode 1000361000
+[2m2026-04-13T03:27:31.124149Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::conv[0m[2m:[0m Unrecognized present mode 1000361000
+[2m2026-04-13T03:27:31.125385Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::conv[0m[2m:[0m Unrecognized present mode 1000361000
+[2m2026-04-13T03:27:31.244681Z[0m [32m INFO[0m [2maw_editor[0m[2m:[0m No asset manifest found ΓÇö starting with empty asset DB (use Asset Inspector to scan)
+[2m2026-04-13T03:27:33.915915Z[0m [32m INFO[0m [2maw_editor::panels::entity_catalog[0m[2m:[0m Entity catalog: 10002 entries loaded
+[2m2026-04-13T03:27:35.114488Z[0m [32m INFO[0m [2maw_editor[0m[2m:[0m Window style enforcement: had 0x06CF0000, set to 0x16CF0000
+[2m2026-04-13T03:27:35.121552Z[0m [32m INFO[0m [2maw_editor::viewport[0m[2m:[0m ViewportRenderer initialized (grid + gizmo sub-renderers)
+[2m2026-04-13T03:27:35.122941Z[0m [32m INFO[0m [2maw_editor::scene_state[0m[2m:[0m Full scene sync: 0 entities
+[2m2026-04-13T03:27:35.141463Z[0m [34mDEBUG[0m [2maw_editor::panels::scene_stats_panel[0m[2m:[0m scene_stats: updated [3mentities[0m[2m=[0m0 [3mtriangles[0m[2m=[0m0
+[2m2026-04-13T03:27:35.141857Z[0m [32m INFO[0m [2maw_editor::panels::performance_panel[0m[2m:[0m perf: alert triggered [3mseverity[0m[2m=[0mCritical [3mcategory[0m[2m=[0mFrame [3mmsg[0m[2m=[0mFrame time 3889.1ms (< 30 FPS)
+[2m2026-04-13T03:27:35.333724Z[0m [34mDEBUG[0m [2maw_editor::viewport::widget[0m[2m:[0m Selection check: clicked=false, pointer_over=false, gizmo_active=false
+[2m2026-04-13T03:27:35.460619Z[0m [32m INFO[0m [2mnaga::back::spv::writer[0m[2m:[0m Skip function Some("sample_cloud_shadow")
+[2m2026-04-13T03:27:35.460697Z[0m [32m INFO[0m [2mnaga::back::spv::writer[0m[2m:[0m Skip function Some("apply_scene_fog")
+[2m2026-04-13T03:27:35.460732Z[0m [32m INFO[0m [2mnaga::back::spv::writer[0m[2m:[0m Skip function Some("apply_scene_tint")
+[2m2026-04-13T03:27:35.460763Z[0m [32m INFO[0m [2mnaga::back::spv::writer[0m[2m:[0m Skip function Some("compute_ibl")
+[2m2026-04-13T03:27:35.474054Z[0m [32m INFO[0m [2mnaga::back::spv::writer[0m[2m:[0m Skip function Some("sample_cloud_shadow")
+[2m2026-04-13T03:27:35.487724Z[0m [32m INFO[0m [2maw_editor::viewport[0m[2m:[0m Quality preset changed to: EditorDefault
+[2m2026-04-13T03:27:35.487840Z[0m [32m INFO[0m [2maw_editor::viewport[0m[2m:[0m Engine adapter auto-initialized on first render (size (411, 312))
+[2m2026-04-13T03:27:35.488020Z[0m [34mDEBUG[0m [2maw_editor::viewport[0m[2m:[0m feed_entities: rebuilding ΓÇö 0 entities, 0 mesh assignments, 0 selected
+[2m2026-04-13T03:27:35.489304Z[0m [31mERROR[0m [2mwgpu::backend::wgpu_core[0m[2m:[0m Handling wgpu errors as fatal by default
+
+thread 'main' panicked at C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\wgpu-25.0.2\src\backend\wgpu_core.rs:3402:26:
+wgpu error: Validation Error
+
+Caused by:
+  In RenderPass::end
+    In a draw command, kind: Draw
+      Buffer is bound with size 96 where the shader expects 112 in group[4] compact index 0
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2m2026-04-13T03:27:35.490441Z[0m [34mDEBUG[0m [2maw_editor::viewport::renderer[0m[2m:[0m Dropping ViewportRenderer - cleaning up GPU resources (depth_texture: true)
+error: process didn't exit successfully: `target\debug\aw_editor.exe` (exit code: 101)

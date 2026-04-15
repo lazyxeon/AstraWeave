@@ -66,6 +66,11 @@ pub struct CpuMesh {
     pub indices: Vec<u32>,
     /// Base color texture from the glTF material (if present).
     pub albedo_image: Option<CpuImage>,
+    /// Hint for external texture discovery: the filename stem of the
+    /// glTF image source URI (e.g. `"island_tree_01_leaves_diff"`).
+    /// Populated even when the image data itself failed to load, so
+    /// that the scatter uploader can search for the file on disk.
+    pub texture_source_hint: Option<String>,
 }
 
 impl CpuMesh {

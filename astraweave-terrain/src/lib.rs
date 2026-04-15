@@ -129,7 +129,7 @@ impl Default for WorldConfig {
         Self {
             seed: 12345,
             chunk_size: 256.0,
-            heightmap_resolution: 128,
+            heightmap_resolution: 64,
             noise: NoiseConfig::default(),
             climate: ClimateConfig::default(),
             biomes: vec![

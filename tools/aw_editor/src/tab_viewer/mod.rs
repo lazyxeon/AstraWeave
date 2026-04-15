@@ -625,6 +625,10 @@ pub struct EditorTabViewer {
     world_fog_enabled: bool,
     /// World fog density
     world_fog_density: f32,
+    /// World fog start distance
+    world_fog_start: f32,
+    /// World fog end distance
+    world_fog_end: f32,
     /// World sun intensity
     world_sun_intensity: f32,
     /// World sun elevation (degrees)
@@ -933,7 +937,9 @@ impl EditorTabViewer {
             // World settings
             world_ambient_color: [0.65, 0.58, 0.50],
             world_fog_enabled: false,
-            world_fog_density: 0.01,
+            world_fog_density: 0.0,
+            world_fog_start: 800.0,
+            world_fog_end: 1800.0,
             world_sun_intensity: 2.2,
             world_sun_elevation: 55.0,
             world_sun_azimuth: 35.0,
@@ -1422,11 +1428,13 @@ impl EditorTabViewer {
         self.terrain_panel.apply_height_snapshot(snapshot);
     }
 
-    /// Returns (fog_enabled, fog_density, weather_preset, particle_count_override) for the current world settings.
-    pub fn fog_weather_params(&self) -> (bool, f32, u32, Option<u32>) {
+    /// Returns (fog_enabled, fog_density, fog_start, fog_end, weather_preset, particle_count_override) for the current world settings.
+    pub fn fog_weather_params(&self) -> (bool, f32, f32, f32, u32, Option<u32>) {
         sky_colors::fog_weather_params(
             self.world_fog_enabled,
             self.world_fog_density,
+            self.world_fog_start,
+            self.world_fog_end,
             self.world_weather_preset,
             self.world_particle_count_override_enabled,
             self.world_particle_count_value,
@@ -4470,16 +4478,29 @@ impl TabViewer for EditorTabViewer {
                             ui.checkbox(&mut self.world_fog_enabled, "Enable Fog");
                         });
 
-                        if self.world_fog_enabled {
-                            ui.horizontal(|ui| {
-                                ui.label("Fog Density:");
-                                ui.add(
-                                    egui::Slider::new(&mut self.world_fog_density, 0.001..=0.1)
-                                        .logarithmic(true)
-                                        .text(""),
-                                );
-                            });
-                        }
+                        ui.horizontal(|ui| {
+                            ui.label("Fog Start:");
+                            ui.add(
+                                egui::Slider::new(&mut self.world_fog_start, 10.0..=5000.0)
+                                    .suffix(" m")
+                                    .text(""),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Fog End:");
+                            ui.add(
+                                egui::Slider::new(&mut self.world_fog_end, 50.0..=10000.0)
+                                    .suffix(" m")
+                                    .text(""),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Fog Density:");
+                            ui.add(
+                                egui::Slider::new(&mut self.world_fog_density, 0.0..=0.05)
+                                    .text(""),
+                            );
+                        });
                     });
 
                 ui.add_space(4.0);

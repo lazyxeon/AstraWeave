@@ -4,7 +4,7 @@
 // on terrain and world geometry. Centered on the camera, projects cloud
 // density from the sun direction through the cloud layer.
 //
-// Output: R16Float texture (transmittance: 1.0 = fully lit, 0.0 = fully shadowed)
+// Output: Rgba16Float texture (transmittance in R: 1.0 = fully lit, 0.0 = fully shadowed)
 //
 // The noise functions are a simplified subset of the full raymarching shader
 // (fewer octaves, no detail erosion) to keep the shadow map cheap at
@@ -29,7 +29,7 @@ struct CloudShadowParams {
 };
 
 @group(0) @binding(0) var<uniform>  params:  CloudShadowParams;
-@group(0) @binding(1) var           t_out:   texture_storage_2d<r16float, write>;
+@group(0) @binding(1) var           t_out:   texture_storage_2d<rgba16float, write>;
 
 // PI constant (provided by constants.wgsl prepended on Rust side)
 

@@ -156,11 +156,32 @@ impl ViewportToolbar {
         viewport_rect: egui::Rect,
         camera: &mut super::camera::OrbitCamera,
     ) {
-        // Position at top-left of viewport
-        let toolbar_pos = viewport_rect.left_top() + egui::vec2(10.0, 10.0);
+        // Helper: check if area needs repositioning (first frame or drifted outside viewport)
+        let needs_reposition = |ctx: &egui::Context, id: egui::Id, vp: egui::Rect| -> bool {
+            ctx.memory(|mem| match mem.area_rect(id) {
+                None => true,
+                Some(rect) => !vp.intersects(rect),
+            })
+        };
 
-        egui::Area::new(egui::Id::new("viewport_toolbar"))
-            .fixed_pos(toolbar_pos)
+        // ── Toolbar: top-center of viewport ──
+        let toolbar_id = egui::Id::new("viewport_toolbar_v2");
+        // Approximate toolbar width ~600px; center it horizontally
+        let toolbar_pos = egui::pos2(
+            viewport_rect.center().x - 300.0,
+            viewport_rect.top() + 10.0,
+        );
+
+        let mut toolbar_area = egui::Area::new(toolbar_id)
+            .movable(true)
+            .constrain_to(viewport_rect)
+            .order(egui::Order::Foreground);
+        if needs_reposition(ui.ctx(), toolbar_id, viewport_rect) {
+            toolbar_area = toolbar_area.current_pos(toolbar_pos);
+        } else {
+            toolbar_area = toolbar_area.default_pos(toolbar_pos);
+        }
+        toolbar_area
             .show(ui.ctx(), |ui| {
                 egui::Frame::new()
                     .fill(egui::Color32::from_rgba_premultiplied(30, 30, 35, 230))
@@ -282,12 +303,19 @@ impl ViewportToolbar {
 
         // Performance stats panel (bottom-left, inside viewport)
         if self.show_stats {
-            let stats_pos = viewport_rect.left_bottom() + egui::vec2(10.0, -160.0);
+            let stats_id = egui::Id::new("viewport_stats_v2");
+            let stats_pos = viewport_rect.left_bottom() + egui::vec2(10.0, -200.0);
 
-            egui::Area::new(egui::Id::new("viewport_stats"))
-                .default_pos(stats_pos)
+            let mut stats_area = egui::Area::new(stats_id)
                 .movable(true)
-                .order(egui::Order::Foreground)
+                .constrain_to(viewport_rect)
+                .order(egui::Order::Foreground);
+            if needs_reposition(ui.ctx(), stats_id, viewport_rect) {
+                stats_area = stats_area.current_pos(stats_pos);
+            } else {
+                stats_area = stats_area.default_pos(stats_pos);
+            }
+            stats_area
                 .show(ui.ctx(), |ui| {
                     egui::Frame::new()
                         .fill(egui::Color32::from_rgba_premultiplied(20, 20, 25, 200))
@@ -355,12 +383,19 @@ impl ViewportToolbar {
 
         // Camera & Selection info panel (top-right, below toolbar)
         {
-            let info_pos = viewport_rect.right_top() + egui::vec2(-140.0, 10.0);
+            let info_id = egui::Id::new("viewport_info_v2");
+            let info_pos = viewport_rect.right_top() + egui::vec2(-150.0, 10.0);
 
-            egui::Area::new(egui::Id::new("viewport_info"))
-                .default_pos(info_pos)
+            let mut info_area = egui::Area::new(info_id)
                 .movable(true)
-                .order(egui::Order::Foreground)
+                .constrain_to(viewport_rect)
+                .order(egui::Order::Foreground);
+            if needs_reposition(ui.ctx(), info_id, viewport_rect) {
+                info_area = info_area.current_pos(info_pos);
+            } else {
+                info_area = info_area.default_pos(info_pos);
+            }
+            info_area
                 .show(ui.ctx(), |ui| {
                     egui::Frame::new()
                         .fill(egui::Color32::from_rgba_premultiplied(20, 20, 25, 200))
@@ -394,64 +429,7 @@ impl ViewportToolbar {
                 });
         }
 
-        // Play controls overlay (top-center of viewport, Unreal/Unity style)
-        {
-            let play_bar_width = 160.0;
-            let play_pos = egui::pos2(
-                viewport_rect.center().x - play_bar_width / 2.0,
-                viewport_rect.min.y + 10.0,
-            );
-
-            egui::Area::new(egui::Id::new("viewport_play_controls"))
-                .fixed_pos(play_pos)
-                .order(egui::Order::Foreground)
-                .show(ui.ctx(), |ui| {
-                    egui::Frame::new()
-                        .fill(egui::Color32::from_rgba_premultiplied(25, 25, 30, 220))
-                        .corner_radius(6.0)
-                        .inner_margin(4.0)
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let play_enabled = self.play_state == PlayState::Editing
-                                    || self.play_state == PlayState::Paused;
-                                if ui
-                                    .add_enabled(play_enabled, egui::Button::new("\u{25b6}"))
-                                    .on_hover_text("Play (F5)")
-                                    .clicked()
-                                {
-                                    self.play_action = Some(PlayAction::Play);
-                                }
-
-                                let pause_enabled = self.play_state == PlayState::Playing;
-                                if ui
-                                    .add_enabled(pause_enabled, egui::Button::new("\u{23f8}"))
-                                    .on_hover_text("Pause (F6)")
-                                    .clicked()
-                                {
-                                    self.play_action = Some(PlayAction::Pause);
-                                }
-
-                                let stop_enabled = self.play_state != PlayState::Editing;
-                                if ui
-                                    .add_enabled(stop_enabled, egui::Button::new("\u{23f9}"))
-                                    .on_hover_text("Stop (F7)")
-                                    .clicked()
-                                {
-                                    self.play_action = Some(PlayAction::Stop);
-                                }
-
-                                let step_enabled = self.play_state == PlayState::Paused;
-                                if ui
-                                    .add_enabled(step_enabled, egui::Button::new("\u{23ed}"))
-                                    .on_hover_text("Step Frame (F8)")
-                                    .clicked()
-                                {
-                                    self.play_action = Some(PlayAction::Step);
-                                }
-                            });
-                        });
-                });
-        }
+        // Play controls removed — redundant and non-functional.
     }
 
     /// Take the pending play action, if any

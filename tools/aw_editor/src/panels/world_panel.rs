@@ -336,9 +336,9 @@ impl Default for LightingSettings {
             shadow_softness: 0.5,
             fog_enabled: false,
             fog_color: [0.7, 0.75, 0.8],
-            fog_density: 0.01,
-            fog_start: 50.0,
-            fog_end: 500.0,
+            fog_density: 0.0,
+            fog_start: 800.0,
+            fog_end: 1800.0,
             exposure: 1.2,
             gamma: 2.2,
         }
@@ -1110,24 +1110,23 @@ impl WorldPanel {
                 ui.checkbox(&mut self.lighting.fog_enabled, "Enable Fog");
                 if self.lighting.fog_enabled {
                     ui.horizontal(|ui| {
-                        ui.label("Fog Density:");
-                        ui.add(
-                            egui::Slider::new(&mut self.lighting.fog_density, 0.001..=0.1)
-                                .logarithmic(true),
-                        );
-                    });
-                    ui.horizontal(|ui| {
                         ui.label("Fog Start:");
                         ui.add(
-                            egui::Slider::new(&mut self.lighting.fog_start, 0.0..=100.0)
+                            egui::Slider::new(&mut self.lighting.fog_start, 10.0..=2000.0)
                                 .suffix(" m"),
                         );
                     });
                     ui.horizontal(|ui| {
                         ui.label("Fog End:");
                         ui.add(
-                            egui::Slider::new(&mut self.lighting.fog_end, 50.0..=1000.0)
+                            egui::Slider::new(&mut self.lighting.fog_end, 50.0..=5000.0)
                                 .suffix(" m"),
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Fog Density:");
+                        ui.add(
+                            egui::Slider::new(&mut self.lighting.fog_density, 0.0..=0.05),
                         );
                     });
                 }
