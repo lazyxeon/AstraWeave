@@ -217,3 +217,45 @@ weave_mutation_results.txt
 
 # Proptest regression files
 *.proptest-regressions
+
+# Unity project auto-generated folders (never commit - regenerates on open)
+**/Library/
+**/Temp/
+**/Obj/
+**/Logs/
+**/UserSettings/
+**/MemoryCaptures/
+**/Build/
+**/Builds/
+**/[Ll]ibrary/
+**/[Tt]emp/
+**/[Oo]bj/
+**/[Bb]uild/
+**/[Bb]uilds/
+**/[Ll]ogs/
+**/[Uu]serSettings/
+
+# Unity generated IDE/solution files
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb.meta
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Visual Studio cache/options
+**/.vs/
+*.VC.db
+*.VC.opendb
+
+# Unity crash/asset server
+sysinfo.txt
+crashlytics-build.properties
