@@ -163,6 +163,8 @@ fn compute_tangents_xz_plane_tangent_direction() {
             ),
         ],
         indices: vec![0, 1, 2],
+        albedo_image: None,
+        texture_source_hint: None,
     };
     compute_tangents(&mut mesh);
     // Tangent along UV-u direction = +X world direction
@@ -184,6 +186,8 @@ fn compute_tangents_handedness_positive() {
             MeshVertex::from_arrays([0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0; 4], [0.0, 1.0]),
         ],
         indices: vec![0, 1, 2],
+        albedo_image: None,
+        texture_source_hint: None,
     };
     compute_tangents(&mut mesh);
     // For standard right-hand UV mapping the w component should be +1 or -1
@@ -204,6 +208,8 @@ fn compute_tangents_flipped_uv_flips_handedness() {
             MeshVertex::from_arrays([0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0; 4], [0.0, 1.0]),
         ],
         indices: vec![0, 1, 2],
+        albedo_image: None,
+        texture_source_hint: None,
     };
     // Reversed UV-v
     let mut mesh_b = CpuMesh {
@@ -213,6 +219,8 @@ fn compute_tangents_flipped_uv_flips_handedness() {
             MeshVertex::from_arrays([0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0; 4], [0.0, 0.0]),
         ],
         indices: vec![0, 1, 2],
+        albedo_image: None,
+        texture_source_hint: None,
     };
     compute_tangents(&mut mesh_a);
     compute_tangents(&mut mesh_b);
@@ -241,6 +249,8 @@ fn compute_tangents_incomplete_indices_noop() {
             ),
         ],
         indices: vec![0, 1], // NOT divisible by 3
+        albedo_image: None,
+        texture_source_hint: None,
     };
     compute_tangents(&mut mesh);
     // Tangents should be untouched
@@ -257,6 +267,8 @@ fn compute_tangents_degenerate_uv_finite() {
             MeshVertex::from_arrays([0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0; 4], [0.5, 0.5]),
         ],
         indices: vec![0, 1, 2],
+        albedo_image: None,
+        texture_source_hint: None,
     };
     compute_tangents(&mut mesh);
     for v in &mesh.vertices {
@@ -280,6 +292,8 @@ fn compute_tangents_quad_consistent() {
             MeshVertex::from_arrays([0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0; 4], [0.0, 1.0]),
         ],
         indices: vec![0, 1, 2, 0, 2, 3],
+        albedo_image: None,
+        texture_source_hint: None,
     };
     compute_tangents(&mut mesh);
     // All tangents for this flat quad should point roughly +X

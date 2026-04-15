@@ -1194,6 +1194,7 @@ mod mesh_tests {
             vertices,
             indices,
             albedo_image: None,
+            texture_source_hint: None,
         };
         assert_eq!(mesh.vertices.len(), 3);
         assert_eq!(mesh.indices.len(), 3);
@@ -1227,6 +1228,7 @@ mod mesh_tests {
             vertices,
             indices,
             albedo_image: None,
+            texture_source_hint: None,
         };
         compute_tangents(&mut mesh);
 
@@ -1267,6 +1269,7 @@ mod mesh_tests {
             vertices,
             indices,
             albedo_image: None,
+            texture_source_hint: None,
         };
         compute_tangents(&mut mesh);
 
@@ -1311,6 +1314,7 @@ mod mesh_tests {
             vertices,
             indices,
             albedo_image: None,
+            texture_source_hint: None,
         };
         compute_tangents(&mut mesh);
 

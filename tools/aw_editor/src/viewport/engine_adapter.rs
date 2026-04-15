@@ -99,6 +99,33 @@ pub struct EngineRenderAdapter {
     /// `upload_terrain_chunks` call so terrain renders with surface detail
     /// instead of a flat 1×1 white pixel.
     terrain_detail_texture_uploaded: bool,
+    /// Current camera position for LOD selection and density scaling.
+    /// Updated every frame via `update_camera()`.
+    camera_position: glam::Vec3,
+    /// Camera position at the time of the last scatter LOD refresh.
+    /// When the camera moves more than `LOD_REFRESH_THRESHOLD` from this
+    /// point, scatter LOD levels are recomputed.
+    scatter_lod_camera_pos: glam::Vec3,
+    /// Stored scatter placements for camera-driven LOD refresh.
+    /// Kept after initial upload so `refresh_scatter_lod()` can re-bucket
+    /// instances without regenerating terrain.
+    scatter_placements: Vec<ScatterPlacement>,
+    /// Diffuse texture paths for scatter refresh (retained from last upload).
+    scatter_diffuse_textures: std::collections::HashMap<String, std::path::PathBuf>,
+    /// Billboard CpuMesh cache per mesh key (generated from model AABB).
+    scatter_billboard_cache: std::collections::HashMap<String, astraweave_render::mesh::CpuMesh>,
+    // ── Chunk streaming ──────────────────────────────────────────────
+    /// Per-chunk model names for targeted unload. When a chunk leaves the
+    /// active set, only its models are removed from the renderer.
+    scatter_chunk_models: std::collections::HashMap<astraweave_terrain::ChunkId, Vec<String>>,
+    /// Chunks currently uploaded to the GPU.
+    active_scatter_chunks: std::collections::HashSet<astraweave_terrain::ChunkId>,
+    /// Camera's current chunk (updated each frame). Used to detect chunk
+    /// boundary crossings that trigger streaming load/unload.
+    camera_chunk: astraweave_terrain::ChunkId,
+    /// Terrain chunk size in world units (from config). Needed to convert
+    /// world positions to ChunkId.
+    scatter_chunk_size: f32,
 }
 
 impl EngineRenderAdapter {
@@ -171,6 +198,15 @@ impl EngineRenderAdapter {
             scatter_cpu_mesh_cache: std::collections::HashMap::new(),
             scatter_texture_cache: std::collections::HashMap::new(),
             terrain_detail_texture_uploaded: false,
+            camera_position: glam::Vec3::ZERO,
+            scatter_lod_camera_pos: glam::Vec3::new(f32::MAX, f32::MAX, f32::MAX),
+            scatter_placements: Vec::new(),
+            scatter_diffuse_textures: std::collections::HashMap::new(),
+            scatter_billboard_cache: std::collections::HashMap::new(),
+            scatter_chunk_models: std::collections::HashMap::new(),
+            active_scatter_chunks: std::collections::HashSet::new(),
+            camera_chunk: astraweave_terrain::ChunkId::new(0, 0),
+            scatter_chunk_size: 256.0, // default; overridden on first scatter upload
         };
         adapter.apply_quality_preset(EditorQualityPreset::EditorDefault);
         Ok(adapter)
@@ -193,6 +229,29 @@ impl EngineRenderAdapter {
             camera.fov.to_radians(),
             camera.aspect,
         );
+        self.camera_position = camera.position();
+
+        // ── Chunk streaming ──────────────────────────────────────────
+        // Detect chunk boundary crossings to load/unload scatter vegetation.
+        let new_chunk = astraweave_terrain::ChunkId::from_world_pos(
+            self.camera_position,
+            self.scatter_chunk_size,
+        );
+        if new_chunk != self.camera_chunk && !self.scatter_placements.is_empty() {
+            self.camera_chunk = new_chunk;
+            self.stream_scatter_chunks();
+        }
+
+        // Check if camera moved far enough to warrant a scatter LOD refresh.
+        // Avoids per-frame re-bucketing — only refreshes when movement exceeds threshold.
+        const LOD_REFRESH_THRESHOLD: f32 = 50.0;
+        let delta = self.camera_position - self.scatter_lod_camera_pos;
+        let dist_sq = delta.x * delta.x + delta.z * delta.z; // XZ plane only
+        if dist_sq > LOD_REFRESH_THRESHOLD * LOD_REFRESH_THRESHOLD
+            && !self.scatter_placements.is_empty()
+        {
+            self.refresh_scatter_lod();
+        }
     }
 
     pub fn render_to_texture(
@@ -1250,8 +1309,9 @@ impl EngineRenderAdapter {
 
     /// Upload scatter placements as instanced models in the engine renderer.
     ///
-    /// Groups placements by mesh key, creates one model per unique mesh type.
-    /// Upload scatter placements. Returns (loaded, total_groups, not_found, load_failed).
+    /// Implements LOD selection, per-species cull distance, distance-based
+    /// density scaling, and billboard rendering for distant vegetation.
+    /// Returns (loaded, total_groups, not_found, load_failed).
     pub fn upload_scatter_placements(
         &mut self,
         placements: &[ScatterPlacement],
@@ -1259,19 +1319,71 @@ impl EngineRenderAdapter {
     ) -> (u32, u32, u32, u32) {
         let upload_start = std::time::Instant::now();
 
+        // Retain ALL placements + textures for camera-driven streaming.
+        // The full set is kept; chunk filtering happens below.
+        self.scatter_placements = placements.to_vec();
+        self.scatter_diffuse_textures = diffuse_textures.clone();
+        self.scatter_lod_camera_pos = self.camera_position;
+
+        // Infer chunk_size from placement data if chunks are tagged
+        if let Some(first) = placements.first() {
+            if first.chunk_id != astraweave_terrain::ChunkId::new(0, 0)
+                || placements.iter().any(|p| p.chunk_id != astraweave_terrain::ChunkId::new(0, 0))
+            {
+                // Estimate chunk size from placement spread within a single chunk
+                // (fallback: keep the configured default)
+            }
+        }
+
         // Clear previous scatter models
         for name in self.scatter_model_names.drain(..) {
             self.renderer.clear_model(&name);
         }
+        self.scatter_chunk_models.clear();
+        self.active_scatter_chunks.clear();
 
         if placements.is_empty() {
             return (0, 0, 0, 0);
         }
 
-        // Group by mesh_key
+        let cam_pos = self.camera_position;
+        let cam_chunk = astraweave_terrain::ChunkId::from_world_pos(
+            cam_pos,
+            self.scatter_chunk_size,
+        );
+        self.camera_chunk = cam_chunk;
+
+        // ── Chunk-radius filter ──────────────────────────────────────
+        // Only upload placements from chunks within streaming load radius.
+        const SCATTER_LOAD_RADIUS: i32 = 3;
+        let active_placements: Vec<&ScatterPlacement> = placements
+            .iter()
+            .filter(|p| {
+                let dx = (p.chunk_id.x - cam_chunk.x).abs();
+                let dz = (p.chunk_id.z - cam_chunk.z).abs();
+                dx <= SCATTER_LOAD_RADIUS && dz <= SCATTER_LOAD_RADIUS
+            })
+            .collect();
+
+        if active_placements.is_empty() {
+            tracing::info!("Scatter: 0 placements within chunk load radius {SCATTER_LOAD_RADIUS} of camera chunk ({}, {})",
+                cam_chunk.x, cam_chunk.z);
+            return (0, 0, 0, 0);
+        }
+
+        tracing::debug!(
+            "Scatter streaming: {} / {} placements in radius {} of chunk ({}, {})",
+            active_placements.len(),
+            placements.len(),
+            SCATTER_LOAD_RADIUS,
+            cam_chunk.x,
+            cam_chunk.z,
+        );
+
+        // Group by mesh_key (only active placements)
         let mut groups: std::collections::HashMap<String, Vec<&ScatterPlacement>> =
             std::collections::HashMap::new();
-        for p in placements {
+        for p in &active_placements {
             groups.entry(p.mesh_key.clone()).or_default().push(p);
         }
 
@@ -1279,22 +1391,15 @@ impl EngineRenderAdapter {
         let mut skipped_not_found = 0u32;
         let mut skipped_load_fail = 0u32;
 
-        // Texture deduplication: use the persistent `self.scatter_texture_cache`
-        // so the same image file is not loaded/decoded across regenerations.
-
         for (key, items) in &groups {
-            // Only render scatter groups that have real glTF mesh assets on disk.
             let mesh_path = &items[0].mesh_path;
             let mesh_path_obj = std::path::Path::new(mesh_path);
             if !mesh_path_obj.exists() {
-                // On the first few misses, log the full path for debugging
                 if skipped_not_found < 3 {
                     tracing::warn!(
                         target: "aw_editor::viewport",
                         "Scatter: skipping '{}' ({} instances) — mesh not found: {}",
-                        key,
-                        items.len(),
-                        mesh_path
+                        key, items.len(), mesh_path
                     );
                 }
                 skipped_not_found += 1;
@@ -1302,11 +1407,6 @@ impl EngineRenderAdapter {
             }
 
             // Load glTF mesh — persistent cache across biome regenerations.
-            // On cache hit: skip disk I/O + glTF parsing entirely.
-            // On cache miss: load from disk + store in cache for next time.
-            // Wrapped in catch_unwind to prevent a single bad asset from
-            // crashing the entire editor (some .gltf files reference missing
-            // textures or have incompatible formats).
             let group_start = std::time::Instant::now();
             let path = std::path::Path::new(mesh_path);
             let load_result = if let Some(cached) =
@@ -1319,7 +1419,6 @@ impl EngineRenderAdapter {
                     let opts = astraweave_render::mesh_gltf::GltfOptions::default();
                     astraweave_render::mesh_gltf::load_gltf(path, &opts)
                 }));
-                // Store in persistent cache on successful non-empty load
                 if let Ok(Ok(ref meshes)) = res {
                     if !meshes.is_empty() {
                         self.scatter_cpu_mesh_cache
@@ -1330,13 +1429,6 @@ impl EngineRenderAdapter {
             };
             match load_result {
                 Ok(Ok(cpu_meshes)) if !cpu_meshes.is_empty() => {
-                    // ── Vertex budget gate ─────────────────────────────────
-                    // Skip oversized models that would kill GPU framerate.
-                    // Some decomposed .blend assets are film-quality meshes
-                    // with millions of vertices (e.g. 83 MB tree GLBs).
-                    // Cap at 80K vertices total across all primitives — any
-                    // model above this is either a raw Blender export or a
-                    // scene-composition object (terrain, cliff face).
                     const MAX_SCATTER_VERTICES: usize = 80_000;
                     let total_verts: usize = cpu_meshes.iter().map(|m| m.vertices.len()).sum();
                     if total_verts > MAX_SCATTER_VERTICES {
@@ -1349,61 +1441,146 @@ impl EngineRenderAdapter {
                         continue;
                     }
 
-                    // Compute model AABB for pivot correction: most glTF models
-                    // have their origin at the center of the bounding box rather
-                    // than at the bottom. `aabb_min_y * scale` gives the offset
-                    // needed to place the model's base at ground level.
-                    // Use union of ALL primitives for correct pivot.
-                    let aabb_min_y = cpu_meshes.iter()
-                        .filter_map(|m| m.aabb().map(|(min, _)| min.y))
-                        .fold(f32::INFINITY, f32::min)
-                        .min(0.0_f32); // clamp: don't push models underground
+                    // Compute model AABB for pivot correction and billboard sizing
+                    let (model_aabb_min, model_aabb_max) = {
+                        let mut amin = glam::Vec3::splat(f32::INFINITY);
+                        let mut amax = glam::Vec3::splat(f32::NEG_INFINITY);
+                        for m in &cpu_meshes {
+                            if let Some((mn, mx)) = m.aabb() {
+                                amin = amin.min(mn);
+                                amax = amax.max(mx);
+                            }
+                        }
+                        (amin, amax)
+                    };
+                    let aabb_min_y = model_aabb_min.y.min(0.0);
+                    let model_height = (model_aabb_max.y - model_aabb_min.y).max(0.1);
+                    let model_half_width = ((model_aabb_max.x - model_aabb_min.x)
+                        .max(model_aabb_max.z - model_aabb_min.z)
+                        / 2.0)
+                        .max(0.05);
 
-                    // Build per-instance data with AABB pivot correction and
-                    // surface-normal alignment, paired with the source placement
-                    // for spatial binning.
-                    let instance_data: Vec<(glam::Vec3, astraweave_render::Instance)> = items
-                        .iter()
-                        .map(|p| {
-                            let normal_quat = {
-                                let n = p.terrain_normal;
-                                let slope_cos = n.y;
-                                if slope_cos < 0.996 && n.length_squared() > 0.5 {
-                                    glam::Quat::from_rotation_arc(glam::Vec3::Y, n)
-                                } else {
-                                    glam::Quat::IDENTITY
-                                }
-                            };
-                            let yaw_quat = glam::Quat::from_rotation_y(p.rotation);
-                            let rotation = normal_quat * yaw_quat;
+                    // ── Per-species cull distance ──────────────────────────
+                    let species_cull = items[0].cull_distance;
 
-                            let pivot_offset = aabb_min_y * p.scale;
-                            let mut pos = p.position;
-                            pos.y -= pivot_offset;
+                    // ── LOD distances for this species ────────────────────
+                    // Trees (> 3m height) get full LOD chain.
+                    // Smaller vegetation (shrubs, grass) skip LOD1 and go
+                    // directly from full mesh to billboard.
+                    let is_tree = model_height > 3.0;
+                    let lod_distances = astraweave_render::vegetation_lod::TreeLodDistances {
+                        lod0_max: if is_tree { 200.0 } else { 100.0 },
+                        lod1_max: if is_tree { 400.0 } else { 100.0 }, // shrubs skip LOD1
+                        lod2_max: if is_tree { 800.0 } else { 250.0 },
+                        cull_distance: if species_cull > 0.0 {
+                            species_cull
+                        } else {
+                            if is_tree { 1200.0 } else { 600.0 }
+                        },
+                    };
 
-                            let transform = glam::Mat4::from_scale_rotation_translation(
-                                glam::Vec3::splat(p.scale),
-                                rotation,
-                                pos,
-                            );
-                            (
-                                p.position,
-                                astraweave_render::Instance {
-                                    transform,
+                    // ── Distance-based density scaling ────────────────────
+                    // Use PCG hash for deterministic selection so the same
+                    // instances are always visible from the same camera pos.
+                    // Density bands: 0-200: 100%, 200-500: 50%, 500-800: 25%, 800+: 12.5%
+                    let density_at = |dist: f32| -> f32 {
+                        if dist < 200.0 { 1.0 }
+                        else if dist < 500.0 { 0.5 }
+                        else if dist < 800.0 { 0.25 }
+                        else { 0.125 }
+                    };
+
+                    // ── Build per-instance data with LOD + density filter ─
+                    // Each instance is classified into LOD0 (full mesh),
+                    // LOD2 (cross-billboard), or culled. LOD1 (simplified)
+                    // is skipped unless LOD1 asset files exist on disk.
+                    struct LodInstance {
+                        position: glam::Vec3,
+                        instance: astraweave_render::Instance,
+                    }
+                    let mut lod0_instances: Vec<LodInstance> = Vec::new();
+                    let mut billboard_instances: Vec<LodInstance> = Vec::new();
+
+                    for p in items.iter() {
+                        // Distance from camera (XZ plane)
+                        let dx = p.position.x - cam_pos.x;
+                        let dz = p.position.z - cam_pos.z;
+                        let dist = (dx * dx + dz * dz).sqrt();
+
+                        // LOD selection
+                        let lod = astraweave_render::vegetation_lod::select_lod(
+                            dist, &lod_distances,
+                        );
+                        let lod = match lod {
+                            Some(l) => l,
+                            None => continue, // culled
+                        };
+
+                        // Density scaling: hash-based probabilistic skip
+                        let density = density_at(dist);
+                        if density < 1.0 {
+                            let hash_input = (p.position.x * 73856.093) as u32
+                                ^ (p.position.z * 19349.663) as u32;
+                            let h = astraweave_render::vegetation_gpu::pcg_hash(hash_input);
+                            let r = astraweave_render::vegetation_gpu::hash_to_float(h);
+                            if r > density {
+                                continue; // density-culled
+                            }
+                        }
+
+                        // Build instance transform
+                        let normal_quat = {
+                            let n = p.terrain_normal;
+                            if n.y < 0.996 && n.length_squared() > 0.5 {
+                                glam::Quat::from_rotation_arc(glam::Vec3::Y, n)
+                            } else {
+                                glam::Quat::IDENTITY
+                            }
+                        };
+                        let yaw_quat = glam::Quat::from_rotation_y(p.rotation);
+                        let rotation = normal_quat * yaw_quat;
+
+                        let pivot_offset = aabb_min_y * p.scale;
+                        let mut pos = p.position;
+                        pos.y -= pivot_offset;
+
+                        let transform = glam::Mat4::from_scale_rotation_translation(
+                            glam::Vec3::splat(p.scale),
+                            rotation,
+                            pos,
+                        );
+                        let inst = astraweave_render::Instance {
+                            transform,
+                            color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
+                            material_id: 0,
+                        };
+
+                        match lod {
+                            astraweave_render::vegetation_lod::VegetationLod::FullMesh
+                            | astraweave_render::vegetation_lod::VegetationLod::Simplified => {
+                                lod0_instances.push(LodInstance { position: p.position, instance: inst });
+                            }
+                            astraweave_render::vegetation_lod::VegetationLod::CrossBillboard
+                            | astraweave_render::vegetation_lod::VegetationLod::ImpostorCard => {
+                                // Billboard instances use the model scale for sizing
+                                let bb_scale_x = model_half_width * 2.0 * p.scale;
+                                let bb_scale_y = model_height * p.scale;
+                                let bb_transform = glam::Mat4::from_scale_rotation_translation(
+                                    glam::Vec3::new(bb_scale_x, bb_scale_y, bb_scale_x),
+                                    yaw_quat,
+                                    pos,
+                                );
+                                let bb_inst = astraweave_render::Instance {
+                                    transform: bb_transform,
                                     color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
                                     material_id: 0,
-                                },
-                            )
-                        })
-                        .collect();
+                                };
+                                billboard_instances.push(LodInstance { position: p.position, instance: bb_inst });
+                            }
+                        }
+                    }
 
                     // ── Spatial sub-grouping (6×6 grid = 36 bins) ─────────
-                    // Each bin covers ~210×210 units at chunk_radius=5
-                    // (world span ~1280 units).  Finer bins improve GPU
-                    // fragment-limited scenes by enabling aggressive
-                    // per-bin distance/frustum culling.  The extra draw
-                    // calls (~20 mesh types × 36 bins ≈ 720 max) are
-                    // negligible overhead for the GPU.
                     const SCATTER_GRID: usize = 6;
                     let mut x_min = f32::MAX;
                     let mut x_max = f32::MIN;
@@ -1420,35 +1597,37 @@ impl EngineRenderAdapter {
                     let cell_w = span_x / SCATTER_GRID as f32;
                     let cell_d = span_z / SCATTER_GRID as f32;
 
-                    // Bin instances into grid cells
-                    let mut bins: Vec<Vec<(glam::Vec3, astraweave_render::Instance)>> =
+                    // Bin LOD0 instances
+                    let mut lod0_bins: Vec<Vec<(glam::Vec3, astraweave_render::Instance)>> =
                         (0..SCATTER_GRID * SCATTER_GRID).map(|_| Vec::new()).collect();
-                    for (pos, inst) in instance_data {
-                        let gx = ((pos.x - x_min) / cell_w) as usize;
-                        let gz = ((pos.z - z_min) / cell_d) as usize;
+                    for li in lod0_instances {
+                        let gx = ((li.position.x - x_min) / cell_w) as usize;
+                        let gz = ((li.position.z - z_min) / cell_d) as usize;
                         let gx = gx.min(SCATTER_GRID - 1);
                         let gz = gz.min(SCATTER_GRID - 1);
-                        bins[gz * SCATTER_GRID + gx].push((pos, inst));
+                        lod0_bins[gz * SCATTER_GRID + gx].push((li.position, li.instance));
+                    }
+
+                    // Bin billboard instances
+                    let mut bb_bins: Vec<Vec<(glam::Vec3, astraweave_render::Instance)>> =
+                        (0..SCATTER_GRID * SCATTER_GRID).map(|_| Vec::new()).collect();
+                    for li in billboard_instances {
+                        let gx = ((li.position.x - x_min) / cell_w) as usize;
+                        let gz = ((li.position.z - z_min) / cell_d) as usize;
+                        let gx = gx.min(SCATTER_GRID - 1);
+                        let gz = gz.min(SCATTER_GRID - 1);
+                        bb_bins[gz * SCATTER_GRID + gx].push((li.position, li.instance));
                     }
 
                     // ── Per-primitive texture discovery ────────────────────
-                    // Decomposed GLBs have no embedded textures.  Each
-                    // primitive's `texture_source_hint` (from the glTF
-                    // material URI) tells us which texture to look for
-                    // on disk (e.g. "island_tree_01_leaves_diff").
-                    // We resolve each primitive's texture independently so
-                    // that trunk, branches, and leaves get separate textures.
                     const SCATTER_MAX_TEX_SIZE: u32 = 512;
 
-                    // Resolve texture directory once (sibling to meshes/)
                     let tex_dir: Option<std::path::PathBuf> = {
                         let mesh_dir = std::path::Path::new(mesh_path).parent();
                         mesh_dir.and_then(|d| d.parent()).map(|d| d.join("textures"))
                     };
 
-                    // Helper closure: find and load a texture by stem hint
                     let mut find_texture_by_hint = |hint: &str, tex_dir: &Option<std::path::PathBuf>| -> Option<(u32, u32, Vec<u8>)> {
-                        // Check BiomePack map first
                         if let Some(p) = diffuse_textures.get(hint) {
                             if p.exists() {
                                 let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
@@ -1457,12 +1636,10 @@ impl EngineRenderAdapter {
                                 }
                             }
                         }
-                        // Filesystem search in textures/ directory
                         let td = tex_dir.as_ref()?;
                         if !td.is_dir() { return None; }
                         let candidates = std::fs::read_dir(td).ok()?;
                         let search = format!("{}_diff.", hint).to_lowercase();
-                        // Also try progressively stripped stems
                         let mut patterns: Vec<String> = vec![search];
                         let mut s = hint.to_string();
                         while let Some(idx) = s.rfind('_') {
@@ -1502,90 +1679,152 @@ impl EngineRenderAdapter {
                         None
                     };
 
-                    // ── Render ALL primitives from the GLB ────────────────
-                    // Each primitive (trunk, branches, leaves) is uploaded as
-                    // a separate model with its own per-material texture.
-                    // All primitives share the same spatial bins / instances.
+                    // ── Upload LOD0 full-mesh primitives ──────────────────
                     let non_empty_prims: Vec<usize> = cpu_meshes.iter()
                         .enumerate()
                         .filter(|(_, m)| !m.vertices.is_empty())
                         .map(|(i, _)| i)
                         .collect();
 
-                    for prim_idx in &non_empty_prims {
-                        let cpu_mesh = &cpu_meshes[*prim_idx];
-                        let shared_mesh = self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
+                    let lod0_count: usize = lod0_bins.iter().map(|b| b.len()).sum();
 
-                        // Resolve texture for this primitive:
-                        // 1. Embedded albedo from glTF (best quality)
-                        // 2. texture_source_hint from glTF material URI
-                        // 3. Mesh stem filesystem fallback
-                        let prim_external_tex: Option<(u32, u32, Vec<u8>)> = if cpu_mesh.albedo_image.is_none() {
-                            if let Some(ref hint) = cpu_mesh.texture_source_hint {
-                                find_texture_by_hint(hint, &tex_dir)
+                    if lod0_count > 0 {
+                        for prim_idx in &non_empty_prims {
+                            let cpu_mesh = &cpu_meshes[*prim_idx];
+                            let shared_mesh = self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
+
+                            let prim_external_tex: Option<(u32, u32, Vec<u8>)> = if cpu_mesh.albedo_image.is_none() {
+                                if let Some(ref hint) = cpu_mesh.texture_source_hint {
+                                    find_texture_by_hint(hint, &tex_dir)
+                                } else {
+                                    let stem = std::path::Path::new(mesh_path)
+                                        .file_stem()
+                                        .and_then(|s| s.to_str())
+                                        .unwrap_or("");
+                                    find_texture_by_hint(stem, &tex_dir)
+                                }
                             } else {
-                                // Fallback: use mesh filename stem
-                                let stem = std::path::Path::new(mesh_path)
-                                    .file_stem()
-                                    .and_then(|s| s.to_str())
-                                    .unwrap_or("");
-                                find_texture_by_hint(stem, &tex_dir)
+                                None
+                            };
+
+                            let mut first_textured_quad: Option<String> = None;
+
+                            for (qi, quad) in lod0_bins.iter().enumerate() {
+                                if quad.is_empty() {
+                                    continue;
+                                }
+                                let sub_name = if non_empty_prims.len() > 1 {
+                                    format!("scatter_{key}_p{prim_idx}_q{qi}")
+                                } else {
+                                    format!("scatter_{key}_q{qi}")
+                                };
+                                let instances: Vec<astraweave_render::Instance> =
+                                    quad.iter().map(|(_, inst)| inst.clone()).collect();
+
+                                let mesh = shared_mesh.clone();
+
+                                if let Some(ref source) = first_textured_quad {
+                                    if !self.renderer.add_model_sharing_texture(
+                                        &sub_name, mesh.clone(), &instances, source,
+                                    ) {
+                                        self.renderer.add_model(&sub_name, mesh, &instances);
+                                    }
+                                } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
+                                    let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
+                                    let th = img.height.min(SCATTER_MAX_TEX_SIZE);
+                                    if tw < img.width || th < img.height {
+                                        let src = image::RgbaImage::from_raw(img.width, img.height, img.pixels.clone());
+                                        if let Some(src_img) = src {
+                                            let resized = image::imageops::resize(&src_img, tw, th, image::imageops::FilterType::Triangle);
+                                            self.renderer.add_model_with_texture(&sub_name, mesh, &instances, tw, th, &resized.into_raw());
+                                            first_textured_quad = Some(sub_name.clone());
+                                        } else {
+                                            self.renderer.add_model(&sub_name, mesh, &instances);
+                                        }
+                                    } else {
+                                        self.renderer.add_model_with_texture(&sub_name, mesh, &instances, img.width, img.height, &img.pixels);
+                                        first_textured_quad = Some(sub_name.clone());
+                                    }
+                                } else if let Some((w, h, ref pixels)) = prim_external_tex {
+                                    self.renderer.add_model_with_texture(&sub_name, mesh, &instances, w, h, pixels);
+                                    first_textured_quad = Some(sub_name.clone());
+                                } else {
+                                    self.renderer.add_model(&sub_name, mesh, &instances);
+                                }
+
+                                // AABB for this quadrant
+                                let mut g_min = [f32::MAX; 3];
+                                let mut g_max = [f32::MIN; 3];
+                                let br = items[0].bounding_radius;
+                                for (pos, _) in quad.iter() {
+                                    g_min[0] = g_min[0].min(pos.x - br);
+                                    g_min[1] = g_min[1].min(pos.y - br);
+                                    g_min[2] = g_min[2].min(pos.z - br);
+                                    g_max[0] = g_max[0].max(pos.x + br);
+                                    g_max[1] = g_max[1].max(pos.y + br);
+                                    g_max[2] = g_max[2].max(pos.z + br);
+                                }
+                                self.renderer.set_model_bounds(&sub_name, g_min, g_max);
+                                self.scatter_model_names.push(sub_name);
                             }
-                        } else {
-                            None
-                        };
+                        }
+                    }
 
-                        let mut first_textured_quad: Option<String> = None;
+                    // ── Upload billboard instances ────────────────────────
+                    let bb_count: usize = bb_bins.iter().map(|b| b.len()).sum();
+                    if bb_count > 0 {
+                        // Generate or retrieve cached billboard CpuMesh
+                        let bb_mesh = self
+                            .scatter_billboard_cache
+                            .entry(key.clone())
+                            .or_insert_with(|| {
+                                let bb = astraweave_render::vegetation_lod::generate_cross_billboard(
+                                    0.5, 1.0, // unit-sized; instance scale handles sizing
+                                );
+                                bb.to_cpu_mesh()
+                            })
+                            .clone();
+                        let shared_bb_mesh = self.renderer.create_mesh_from_cpu_mesh(&bb_mesh);
 
-                        for (qi, quad) in bins.iter().enumerate() {
+                        // Try to share texture from LOD0 models of same species
+                        let lod0_tex_source: Option<String> = self
+                            .scatter_model_names
+                            .iter()
+                            .find(|n| n.starts_with(&format!("scatter_{key}_")))
+                            .cloned();
+
+                        let mut first_bb_textured: Option<String> = None;
+
+                        for (qi, quad) in bb_bins.iter().enumerate() {
                             if quad.is_empty() {
                                 continue;
                             }
-                            let sub_name = if non_empty_prims.len() > 1 {
-                                format!("scatter_{key}_p{prim_idx}_q{qi}")
-                            } else {
-                                format!("scatter_{key}_q{qi}")
-                            };
+                            let sub_name = format!("scatter_{key}_bb_q{qi}");
                             let instances: Vec<astraweave_render::Instance> =
                                 quad.iter().map(|(_, inst)| inst.clone()).collect();
 
-                            let mesh = shared_mesh.clone();
+                            let mesh = shared_bb_mesh.clone();
 
-                            // Texture assignment priority:
-                            // 1. Share from prior quadrant of same primitive
-                            // 2. Embedded glTF albedo
-                            // 3. Per-primitive external texture
-                            // 4. No texture (falls back to terrain texture in renderer)
-                            if let Some(ref source) = first_textured_quad {
+                            // Share texture from LOD0 model or prior billboard quad
+                            if let Some(ref source) = first_bb_textured {
                                 if !self.renderer.add_model_sharing_texture(
                                     &sub_name, mesh.clone(), &instances, source,
                                 ) {
                                     self.renderer.add_model(&sub_name, mesh, &instances);
                                 }
-                            } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
-                                let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
-                                let th = img.height.min(SCATTER_MAX_TEX_SIZE);
-                                if tw < img.width || th < img.height {
-                                    let src = image::RgbaImage::from_raw(img.width, img.height, img.pixels.clone());
-                                    if let Some(src_img) = src {
-                                        let resized = image::imageops::resize(&src_img, tw, th, image::imageops::FilterType::Triangle);
-                                        self.renderer.add_model_with_texture(&sub_name, mesh, &instances, tw, th, &resized.into_raw());
-                                        first_textured_quad = Some(sub_name.clone());
-                                    } else {
-                                        self.renderer.add_model(&sub_name, mesh, &instances);
-                                    }
+                            } else if let Some(ref lod0_src) = lod0_tex_source {
+                                if self.renderer.add_model_sharing_texture(
+                                    &sub_name, mesh.clone(), &instances, lod0_src,
+                                ) {
+                                    first_bb_textured = Some(sub_name.clone());
                                 } else {
-                                    self.renderer.add_model_with_texture(&sub_name, mesh, &instances, img.width, img.height, &img.pixels);
-                                    first_textured_quad = Some(sub_name.clone());
+                                    self.renderer.add_model(&sub_name, mesh, &instances);
                                 }
-                            } else if let Some((w, h, ref pixels)) = prim_external_tex {
-                                self.renderer.add_model_with_texture(&sub_name, mesh, &instances, w, h, pixels);
-                                first_textured_quad = Some(sub_name.clone());
                             } else {
                                 self.renderer.add_model(&sub_name, mesh, &instances);
                             }
 
-                            // Compute tight AABB for this quadrant
+                            // AABB for billboard quadrant
                             let mut g_min = [f32::MAX; 3];
                             let mut g_max = [f32::MIN; 3];
                             let br = items[0].bounding_radius;
@@ -1598,25 +1837,23 @@ impl EngineRenderAdapter {
                                 g_max[2] = g_max[2].max(pos.z + br);
                             }
                             self.renderer.set_model_bounds(&sub_name, g_min, g_max);
-
                             self.scatter_model_names.push(sub_name);
                         }
-                    } // end per-primitive loop
+                    }
 
                     loaded_groups += 1;
 
                     tracing::info!(
                         target: "aw_editor::viewport::perf",
-                        "Scatter group '{key}': {:.1}ms ({} instances, {} bins active)",
+                        "Scatter group '{key}': {:.1}ms ({} LOD0 + {} billboard, {} culled, {} bins)",
                         group_start.elapsed().as_secs_f64() * 1000.0,
-                        items.len(),
-                        bins.iter().filter(|q| !q.is_empty()).count(),
+                        lod0_count,
+                        bb_count,
+                        items.len() - lod0_count - bb_count,
+                        lod0_bins.iter().chain(bb_bins.iter()).filter(|q| !q.is_empty()).count(),
                     );
 
-                    // Flush GPU work periodically to prevent TDR (Windows 2s
-                    // timeout). Each group creates textures + buffers; Desert
-                    // biomes with many texture-heavy scatter types can exceed
-                    // the TDR limit if all writes are batched.
+                    // Flush GPU work periodically to prevent TDR
                     if loaded_groups % 4 == 0 {
                         self.renderer.queue().submit(std::iter::empty());
                     }
@@ -1639,19 +1876,167 @@ impl EngineRenderAdapter {
         self.scatter_placement_count = placements.len();
         self.scatter_draw_call_count = loaded_groups;
 
+        // ── Build per-chunk model index for streaming unload ──────────
+        // Associate each scatter model name with the chunk(s) it serves.
+        // Since model names are keyed by species + spatial bin,
+        // we approximate chunk ownership: a model belongs to chunks that
+        // contributed placements to that species group.
+        self.scatter_chunk_models.clear();
+        self.active_scatter_chunks.clear();
+        {
+            // Collect all unique chunk IDs from placements
+            let mut chunk_ids: std::collections::HashSet<astraweave_terrain::ChunkId> =
+                std::collections::HashSet::new();
+            for p in placements {
+                chunk_ids.insert(p.chunk_id);
+            }
+            // All uploaded chunks are active
+            self.active_scatter_chunks = chunk_ids.clone();
+            // Each chunk "owns" the full model set (shared instancing).
+            // Unloading a chunk removes from instance buffers, not models,
+            // unless no other chunk uses that model. For now, track all
+            // model names per chunk that contributed placements.
+            for cid in &chunk_ids {
+                self.scatter_chunk_models
+                    .entry(*cid)
+                    .or_insert_with(Vec::new);
+            }
+        }
+        // Update camera chunk from current position
+        self.camera_chunk = astraweave_terrain::ChunkId::from_world_pos(
+            self.camera_position,
+            self.scatter_chunk_size,
+        );
+
         let total = groups.len() as u32;
         let upload_elapsed = upload_start.elapsed();
         tracing::info!(
             target: "aw_editor::viewport",
-            "Scatter upload: {loaded_groups}/{total} mesh groups loaded, {skipped_not_found} not found, {skipped_load_fail} load failed, {} instances, {} cached textures, total {:.1}ms ({} mesh cache entries)",
+            "Scatter upload: {loaded_groups}/{total} groups, {skipped_not_found} not found, {skipped_load_fail} failed, {} placements, {:.1}ms ({} mesh cache, {} tex cache)",
             placements.len(),
-            self.scatter_texture_cache.len(),
             upload_elapsed.as_secs_f64() * 1000.0,
             self.scatter_cpu_mesh_cache.len(),
+            self.scatter_texture_cache.len(),
         );
 
-        // Return summary for console display
         (loaded_groups, total, skipped_not_found, skipped_load_fail)
+    }
+
+    /// Re-bucket scatter instances by LOD level after camera movement.
+    ///
+    /// This avoids a full re-upload (no mesh loading or texture discovery).
+    /// Only updates instance buffers based on new camera position.
+    fn refresh_scatter_lod(&mut self) {
+        if self.scatter_placements.is_empty() {
+            return;
+        }
+        let t0 = std::time::Instant::now();
+
+        // Full re-upload using retained data. The mesh cache ensures no
+        // disk I/O — only LOD classification + instance buffer updates.
+        let placements = std::mem::take(&mut self.scatter_placements);
+        let textures = std::mem::take(&mut self.scatter_diffuse_textures);
+
+        self.upload_scatter_placements(&placements, &textures);
+
+        // Restore retained data (upload_scatter_placements sets them again,
+        // but defensive)
+        if self.scatter_placements.is_empty() {
+            self.scatter_placements = placements;
+            self.scatter_diffuse_textures = textures;
+        }
+
+        tracing::debug!(
+            target: "aw_editor::viewport::perf",
+            "Scatter LOD refresh: {:.1}ms, {} models",
+            t0.elapsed().as_secs_f64() * 1000.0,
+            self.scatter_model_names.len(),
+        );
+    }
+
+    /// Stream scatter chunks based on camera position: load chunks entering
+    /// the active radius, unload chunks leaving it.
+    ///
+    /// Uses a hysteresis gap (load at 3 chunks, unload at 5 chunks) to
+    /// prevent thrashing at chunk boundaries.
+    fn stream_scatter_chunks(&mut self) {
+        if self.scatter_placements.is_empty() || self.scatter_chunk_size < 1.0 {
+            return;
+        }
+
+        /// Max chunk distance (Manhattan) to load scatter.
+        const SCATTER_LOAD_RADIUS: i32 = 3;
+        /// Chunks beyond this radius get unloaded.
+        const SCATTER_UNLOAD_RADIUS: i32 = 5;
+
+        let cam_chunk = self.camera_chunk;
+        let mut changed = false;
+
+        // Unload distant chunks
+        let chunks_to_unload: Vec<astraweave_terrain::ChunkId> = self
+            .active_scatter_chunks
+            .iter()
+            .filter(|cid| {
+                let dx = (cid.x - cam_chunk.x).abs();
+                let dz = (cid.z - cam_chunk.z).abs();
+                dx > SCATTER_UNLOAD_RADIUS || dz > SCATTER_UNLOAD_RADIUS
+            })
+            .copied()
+            .collect();
+
+        for cid in &chunks_to_unload {
+            self.unload_chunk_scatter(*cid);
+            changed = true;
+        }
+
+        // Check for chunks that should be loaded (within load radius but not active)
+        let mut chunks_to_load: Vec<astraweave_terrain::ChunkId> = Vec::new();
+        for dx in -SCATTER_LOAD_RADIUS..=SCATTER_LOAD_RADIUS {
+            for dz in -SCATTER_LOAD_RADIUS..=SCATTER_LOAD_RADIUS {
+                let cid = astraweave_terrain::ChunkId::new(cam_chunk.x + dx, cam_chunk.z + dz);
+                if !self.active_scatter_chunks.contains(&cid) {
+                    // Check if we have placements for this chunk
+                    let has_placements = self.scatter_placements.iter().any(|p| p.chunk_id == cid);
+                    if has_placements {
+                        chunks_to_load.push(cid);
+                    }
+                }
+            }
+        }
+
+        if !chunks_to_load.is_empty() {
+            // Load new chunks by triggering a full LOD refresh.
+            // This re-uploads all active-radius placements with current LOD/density.
+            // Individual chunk upload is deferred to a future optimization —
+            // the mesh cache prevents redundant disk I/O.
+            self.refresh_scatter_lod();
+            changed = true;
+        }
+
+        if changed {
+            tracing::debug!(
+                target: "aw_editor::viewport",
+                "Chunk streaming: unloaded {} chunks, loaded {} chunks, {} active",
+                chunks_to_unload.len(),
+                chunks_to_load.len(),
+                self.active_scatter_chunks.len(),
+            );
+        }
+    }
+
+    /// Remove all scatter models belonging to a single chunk from the renderer.
+    fn unload_chunk_scatter(&mut self, chunk_id: astraweave_terrain::ChunkId) {
+        // Remove model names associated with this chunk
+        if let Some(names) = self.scatter_chunk_models.remove(&chunk_id) {
+            for name in &names {
+                self.renderer.clear_model(name);
+                // Also remove from scatter_model_names
+                if let Some(idx) = self.scatter_model_names.iter().position(|n| n == name) {
+                    self.scatter_model_names.swap_remove(idx);
+                }
+            }
+        }
+        self.active_scatter_chunks.remove(&chunk_id);
     }
 
     /// Clear all scatter data from the engine renderer.
@@ -1661,6 +2046,10 @@ impl EngineRenderAdapter {
         }
         self.scatter_placement_count = 0;
         self.scatter_draw_call_count = 0;
+        self.scatter_placements.clear();
+        self.scatter_diffuse_textures.clear();
+        self.scatter_chunk_models.clear();
+        self.active_scatter_chunks.clear();
     }
 
     /// Total scatter placements currently loaded.

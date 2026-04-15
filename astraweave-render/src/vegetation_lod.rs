@@ -102,6 +102,40 @@ pub struct BillboardMesh {
     pub indices: Vec<u32>,
 }
 
+impl BillboardMesh {
+    /// Convert this billboard mesh into a `CpuMesh` suitable for the renderer.
+    ///
+    /// Tangents are synthesized from normals (cross with Y-up fallback).
+    /// No albedo image is embedded — the caller should assign an external
+    /// texture via the scatter pipeline's texture discovery.
+    pub fn to_cpu_mesh(&self) -> crate::mesh::CpuMesh {
+        let vertices = self
+            .positions
+            .iter()
+            .zip(self.normals.iter())
+            .zip(self.uvs.iter())
+            .map(|((pos, norm), uv)| {
+                // Derive tangent from normal
+                let n = *norm;
+                let up = if n.y.abs() > 0.99 { Vec3::X } else { Vec3::Y };
+                let t = n.cross(up).normalize();
+                crate::mesh::MeshVertex {
+                    position: pos.to_array(),
+                    normal: norm.to_array(),
+                    tangent: [t.x, t.y, t.z, 1.0],
+                    uv: *uv,
+                }
+            })
+            .collect();
+        crate::mesh::CpuMesh {
+            vertices,
+            indices: self.indices.clone(),
+            albedo_image: None,
+            texture_source_hint: None,
+        }
+    }
+}
+
 /// Generate a cross-billboard: two quads at 90° forming an X shape.
 ///
 /// Both quads are centred at the origin with their base at `y = 0`.

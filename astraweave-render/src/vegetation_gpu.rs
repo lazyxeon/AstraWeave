@@ -829,13 +829,16 @@ pub fn cpu_cull_vegetation(
 
 // ── PCG hash (matches WGSL) ─────────────────────────────────────────────────
 
-fn pcg_hash(input: u32) -> u32 {
+/// PCG hash function matching the WGSL implementation.
+/// Produces a deterministic pseudo-random u32 from an input u32.
+pub fn pcg_hash(input: u32) -> u32 {
     let state = input.wrapping_mul(747796405).wrapping_add(2891336453);
     let word = ((state >> ((state >> 28).wrapping_add(4))) ^ state).wrapping_mul(277803737);
     (word >> 22) ^ word
 }
 
-fn hash_to_float(h: u32) -> f32 {
+/// Convert a PCG hash output to a float in [0..1].
+pub fn hash_to_float(h: u32) -> f32 {
     h as f32 / 4294967295.0
 }
 

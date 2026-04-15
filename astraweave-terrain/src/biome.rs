@@ -216,7 +216,8 @@ impl Default for BiomeVegetation {
                 cluster_factor: 0.0,
                 exclusion_radius: 0.0,
                 placement_priority: 0,
-                        altitude_range: None,
+                altitude_range: None,
+                cull_distance: 0.0,
             }],
             size_variation: (0.8, 1.5),
             random_rotation: true,
@@ -259,6 +260,11 @@ pub struct VegetationType {
     /// If set, instances are only placed within this altitude range.
     #[serde(default)]
     pub altitude_range: Option<(f32, f32)>,
+    /// Maximum distance from the camera at which this species is rendered.
+    /// Beyond this distance instances are culled entirely (not just LOD-swapped).
+    /// 0.0 = use the global `max_draw_distance` (no per-species cull).
+    #[serde(default)]
+    pub cull_distance: f32,
 }
 
 /// Complete biome configuration
@@ -328,6 +334,7 @@ impl BiomeConfig {
                         exclusion_radius: 5.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 1200.0,
                     },
                     VegetationType {
                         name: "dead_tree".to_string(),
@@ -340,6 +347,7 @@ impl BiomeConfig {
                         exclusion_radius: 5.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 1200.0,
                     },
                     VegetationType {
                         name: "dead_tree_02".to_string(),
@@ -352,6 +360,7 @@ impl BiomeConfig {
                         exclusion_radius: 5.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 1200.0,
                     },
                     VegetationType {
                         name: "dry_branches".to_string(),
@@ -364,6 +373,7 @@ impl BiomeConfig {
                         exclusion_radius: 3.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 1200.0,
                     },
                     // ── Shrubs (priority 1) ───────────────────────────────
                     // Sum ≈ 0.48 → ~126 shrubs/chunk → ~15,200 total.
@@ -378,6 +388,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.5,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 600.0,
                     },
                     VegetationType {
                         name: "shrub_01_b".to_string(),
@@ -390,6 +401,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.5,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 600.0,
                     },
                     VegetationType {
                         name: "shrub_01_d".to_string(),
@@ -402,6 +414,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.5,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 600.0,
                     },
                     VegetationType {
                         name: "shrub_02_a".to_string(),
@@ -414,6 +427,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 600.0,
                     },
                     VegetationType {
                         name: "shrub_02_c".to_string(),
@@ -426,6 +440,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 600.0,
                     },
                     VegetationType {
                         name: "shrub_03_a".to_string(),
@@ -438,6 +453,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 600.0,
                     },
                     VegetationType {
                         name: "shrub_03_b".to_string(),
@@ -450,6 +466,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 600.0,
                     },
                     VegetationType {
                         name: "shrub_04_a".to_string(),
@@ -462,6 +479,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 600.0,
                     },
                     VegetationType {
                         name: "shrub_04_b".to_string(),
@@ -474,6 +492,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 600.0,
                     },
                     // ── Grass & ground cover (priority 2) ─────────────────
                     // Sum ≈ 0.37 → ~97 grass/chunk → ~11,700 total.
@@ -488,6 +507,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 300.0,
                     },
                     VegetationType {
                         name: "grass_medium_b".to_string(),
@@ -500,6 +520,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 300.0,
                     },
                     VegetationType {
                         name: "grass_medium_c".to_string(),
@@ -512,6 +533,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 300.0,
                     },
                     VegetationType {
                         name: "grass_medium_d".to_string(),
@@ -524,6 +546,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 300.0,
                     },
                     VegetationType {
                         name: "grass_medium_e".to_string(),
@@ -536,6 +559,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 300.0,
                     },
                     // ── Rocks (priority 3) ────────────────────────────────
                     // Sum ≈ 0.10 → ~26 rocks/chunk → ~3,100 total.
@@ -550,6 +574,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.5,
                         placement_priority: 3,
                         altitude_range: None,
+                        cull_distance: 800.0,
                     },
                     VegetationType {
                         name: "rock_07".to_string(),
@@ -562,6 +587,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 3,
                         altitude_range: None,
+                        cull_distance: 800.0,
                     },
                     VegetationType {
                         name: "rock_08".to_string(),
@@ -574,6 +600,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.5,
                         placement_priority: 3,
                         altitude_range: None,
+                        cull_distance: 800.0,
                     },
                 ],
                 size_variation: (0.8, 1.5),
@@ -630,6 +657,7 @@ impl BiomeConfig {
                         exclusion_radius: 8.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "quiver_tree_02".to_string(),
@@ -642,6 +670,7 @@ impl BiomeConfig {
                         exclusion_radius: 8.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     // --- Shrubs (priority 1) ---
                     VegetationType {
@@ -655,6 +684,7 @@ impl BiomeConfig {
                         exclusion_radius: 2.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "searsia_lucida_c".to_string(),
@@ -667,6 +697,7 @@ impl BiomeConfig {
                         exclusion_radius: 2.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "didelta_large".to_string(),
@@ -679,6 +710,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.5,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "didelta_med".to_string(),
@@ -691,6 +723,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "didelta_small".to_string(),
@@ -703,6 +736,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.8,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     // --- Succulents & flowers (priority 2) ---
                     VegetationType {
@@ -716,6 +750,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.3,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "othonna_d".to_string(),
@@ -728,6 +763,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.3,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "flower_gazania_a".to_string(),
@@ -740,6 +776,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "flower_gazania_d".to_string(),
@@ -752,6 +789,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "flower_ursinia".to_string(),
@@ -764,6 +802,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "fine_leaf".to_string(),
@@ -776,6 +815,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     // --- Rocks & stones (priority 2) ---
                     VegetationType {
@@ -789,6 +829,7 @@ impl BiomeConfig {
                         exclusion_radius: 3.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "namaqualand_rocks".to_string(),
@@ -801,6 +842,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.5,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "namaqualand_stones".to_string(),
@@ -813,6 +855,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.5,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                 ],
                 size_variation: (0.5, 2.0),
@@ -869,6 +912,7 @@ impl BiomeConfig {
                         exclusion_radius: 5.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "island_tree_b".to_string(),
@@ -881,6 +925,7 @@ impl BiomeConfig {
                         exclusion_radius: 5.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "jacaranda_trunk".to_string(),
@@ -893,6 +938,7 @@ impl BiomeConfig {
                         exclusion_radius: 6.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "tree_small".to_string(),
@@ -905,6 +951,7 @@ impl BiomeConfig {
                         exclusion_radius: 3.5,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "dead_trunk".to_string(),
@@ -917,6 +964,7 @@ impl BiomeConfig {
                         exclusion_radius: 3.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     // --- Shrubs (priority 1) ---
                     VegetationType {
@@ -930,6 +978,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "shrub_02_c".to_string(),
@@ -942,6 +991,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "shrub_03_b".to_string(),
@@ -954,6 +1004,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "shrub_04_b".to_string(),
@@ -966,6 +1017,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     // --- Ground cover (priority 2) ---
                     VegetationType {
@@ -979,6 +1031,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "grass_medium_d".to_string(),
@@ -991,6 +1044,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "grass_debris".to_string(),
@@ -1003,6 +1057,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "sticks_debris".to_string(),
@@ -1015,6 +1070,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "rock_forest".to_string(),
@@ -1027,6 +1083,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.5,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "root_cluster".to_string(),
@@ -1039,6 +1096,7 @@ impl BiomeConfig {
                         exclusion_radius: 2.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                 ],
                 size_variation: (0.7, 1.8),
@@ -1097,6 +1155,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "tree_cone".to_string(),
@@ -1110,6 +1169,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "tree_bare".to_string(),
@@ -1123,6 +1183,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "grass_leafs".to_string(),
@@ -1137,6 +1198,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "rock_large".to_string(),
@@ -1151,6 +1213,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "rock_tall".to_string(),
@@ -1164,6 +1227,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "stone_large".to_string(),
@@ -1178,6 +1242,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "rock_kaykit".to_string(),
@@ -1192,6 +1257,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                 ],
                 size_variation: (0.6, 2.0),
@@ -1249,6 +1315,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "rock_small_flat".to_string(),
@@ -1263,6 +1330,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "stone_small".to_string(),
@@ -1277,6 +1345,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "plant_bush_small".to_string(),
@@ -1291,6 +1360,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "tree_bare_tall".to_string(),
@@ -1305,6 +1375,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "tree_bare_small".to_string(),
@@ -1319,6 +1390,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                 ],
                 size_variation: (0.4, 1.0),
@@ -1371,6 +1443,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "tree_swamp".to_string(),
@@ -1385,6 +1458,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "stump_old".to_string(),
@@ -1398,6 +1472,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "grass_leafs_large".to_string(),
@@ -1412,6 +1487,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "mushroom_red_tall".to_string(),
@@ -1426,6 +1502,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "mushroom_tan_tall".to_string(),
@@ -1440,6 +1517,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "lily_large".to_string(),
@@ -1453,6 +1531,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "hanging_moss".to_string(),
@@ -1467,6 +1546,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                 ],
                 size_variation: (0.6, 1.4),
@@ -1518,6 +1598,7 @@ impl BiomeConfig {
                         exclusion_radius: 2.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "didelta_coastal".to_string(),
@@ -1530,6 +1611,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.0,
                         placement_priority: 1,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     // --- Succulents (priority 2, coastal ground cover) ---
                     VegetationType {
@@ -1543,6 +1625,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.3,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "iceplant_c".to_string(),
@@ -1555,6 +1638,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.3,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "iceplant_f".to_string(),
@@ -1567,6 +1651,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.3,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "othonna_coastal".to_string(),
@@ -1579,6 +1664,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.3,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "tiny_succulent".to_string(),
@@ -1591,6 +1677,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "flower_heliophila".to_string(),
@@ -1603,6 +1690,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     // --- Stones (priority 2) ---
                     VegetationType {
@@ -1616,6 +1704,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.5,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "beach_stones_c".to_string(),
@@ -1628,6 +1717,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.5,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "beach_rocks".to_string(),
@@ -1640,6 +1730,7 @@ impl BiomeConfig {
                         exclusion_radius: 1.5,
                         placement_priority: 2,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                 ],
                 size_variation: (0.7, 1.2),
@@ -1689,6 +1780,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "tree_fat".to_string(),
@@ -1702,6 +1794,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "grass_large".to_string(),
@@ -1716,6 +1809,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "grass_leafs".to_string(),
@@ -1730,6 +1824,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "lily_small".to_string(),
@@ -1743,6 +1838,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                     VegetationType {
                         name: "rock_small".to_string(),
@@ -1757,6 +1853,7 @@ impl BiomeConfig {
                         exclusion_radius: 0.0,
                         placement_priority: 0,
                         altitude_range: None,
+                        cull_distance: 0.0,
                     },
                 ],
                 size_variation: (0.6, 1.3),

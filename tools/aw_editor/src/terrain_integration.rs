@@ -2262,8 +2262,23 @@ impl TerrainState {
             // large boost (~12x) to be visible, while large assets (cliffs ~20m)
             // get a minimal boost (~1x) to stay reasonably sized.
             let pack_ref = self.cached_pack.as_ref().map(|(_, p)| p);
+
+            // Build per-species cull_distance lookup from biome config
+            let cull_map: std::collections::HashMap<&str, f32> = biome_config
+                .vegetation
+                .vegetation_types
+                .iter()
+                .filter(|vt| vt.cull_distance > 0.0)
+                .map(|vt| (vt.name.as_str(), vt.cull_distance))
+                .collect();
+
             for vi in vegetation {
                 let mut placement = ScatterPlacement::from_zone_placement(&vi, pack_ref);
+
+                // Apply per-species cull distance from biome config
+                if let Some(&cd) = cull_map.get(vi.vegetation_type.as_str()) {
+                    placement.cull_distance = cd;
+                }
 
                 if pack_ref.is_some() {
                     // BiomePack assets use Blender meters, terrain uses world
@@ -2284,6 +2299,9 @@ impl TerrainState {
                     placement.scale *= PACK_SCALE_BOOST;
                     placement.bounding_radius *= PACK_SCALE_BOOST;
                 }
+
+                // Tag with source chunk for streaming
+                placement.chunk_id = *chunk_id;
 
                 placements.push(placement);
             }
@@ -2423,6 +2441,11 @@ pub struct ScatterPlacement {
     pub bounding_radius: f32,
     pub tint: [f32; 4],
     pub terrain_normal: Vec3,
+    /// Per-species cull distance. 0.0 = use global max_draw_distance.
+    pub cull_distance: f32,
+    /// Source chunk for streaming: identifies which terrain chunk this
+    /// placement belongs to, enabling per-chunk load/unload as the camera moves.
+    pub chunk_id: ChunkId,
 }
 
 impl ScatterPlacement {
@@ -2472,6 +2495,8 @@ impl ScatterPlacement {
             bounding_radius: world_scale * 2.0,
             tint,
             terrain_normal: vi.terrain_normal,
+            cull_distance: 0.0,
+            chunk_id: ChunkId::new(0, 0),
         }
     }
 
@@ -2556,6 +2581,8 @@ impl ScatterPlacement {
             bounding_radius,
             tint,
             terrain_normal: vi.terrain_normal,
+            cull_distance: 0.0,
+            chunk_id: ChunkId::new(0, 0),
         }
     }
 
