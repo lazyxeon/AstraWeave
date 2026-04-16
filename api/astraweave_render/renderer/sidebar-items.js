@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["RenderModel","Renderer"]};
+window.SIDEBAR_ITEMS = {"struct":["ModelSurfaceMaps","RenderModel","RenderModelPrimitive","Renderer"]};
