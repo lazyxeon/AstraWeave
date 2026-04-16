@@ -38,8 +38,8 @@ use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
 use super::physics_renderer::PhysicsDebugRenderer;
 use super::types::{
-    GltfAnimationClip, GltfSkeleton, ScatterPlacement, SceneLight, TerrainFogParams,
-    TerrainLightingParams, TerrainVertex, WaterStyle,
+    find_assets_dir, GltfAnimationClip, GltfSkeleton, ScatterPlacement, SceneLight,
+    TerrainFogParams, TerrainLightingParams, TerrainVertex, WaterStyle,
 };
 use crate::gizmo::GizmoState;
 use astraweave_core::{Entity, World};
@@ -1117,8 +1117,8 @@ impl ViewportRenderer {
 
     /// Incrementally update vertex data for a single terrain chunk on the GPU.
     ///
-    /// Delegates to the engine adapter's `update_terrain_chunk()` which replaces
-    /// the chunk model with fresh vertex data while reusing cached indices.
+    /// Delegates to the engine adapter's `update_terrain_chunk()` which refreshes
+    /// the owning clustered terrain model while reusing the chunk's cached topology.
     pub fn update_terrain_chunk_vertices(
         &mut self,
         chunk_index: usize,
@@ -1467,11 +1467,17 @@ impl ViewportRenderer {
 
     /// Total triangles rendered by the scatter renderer last frame.
     pub fn scatter_triangles(&self) -> usize {
+        if let Some(adapter) = &self.engine_adapter {
+            return adapter.scatter_triangles();
+        }
         0
     }
 
     /// Total vertices rendered by the scatter renderer last frame.
     pub fn scatter_vertices(&self) -> usize {
+        if let Some(adapter) = &self.engine_adapter {
+            return adapter.scatter_vertices();
+        }
         0
     }
 
@@ -1499,89 +1505,106 @@ impl ViewportRenderer {
         self.render_mode = mode;
     }
 
-    /// Load a terrain albedo texture with a robust fallback chain.
-    ///
-    /// Tries multiple texture paths in order. If all fail, creates a 4x4 white
-    /// fallback texture so terrain never renders black (the biome-tinted instance
-    /// color still provides correct coloring).
+    /// Load the default terrain surface maps with a robust fallback chain.
     fn load_default_terrain_texture(&mut self) {
         self.load_biome_terrain_texture("Grassland");
     }
 
-    /// Load the primary albedo texture for a specific biome.
+    /// Load the primary terrain surface maps for a specific biome.
     ///
-    /// Each biome maps to its dominant ground material texture. If the
-    /// biome-specific texture isn't found, falls back to the generic material
-    /// PNG, then to a 4x4 white texture.
+    /// The editor uses the first authored layer from the biome material pack so
+    /// terrain picks up matching albedo, normal, and MRA data instead of only a
+    /// flat color texture.
     pub fn load_biome_terrain_texture(&mut self, biome: &str) {
-        // Per-biome texture candidates: first high-res, then material PNG fallback
-        let candidates: Vec<&str> = match biome {
-            "Desert" => vec![
-                "assets/textures/aerial_beach_01_diff_4k.jpg",
-                "assets/materials/sand.png",
-            ],
-            "Mountain" => vec![
-                "assets/textures/aerial_rocks_01_diff_4k.jpg",
-                "assets/materials/mountain_rock.png",
-                "assets/materials/rock_slate.png",
-            ],
-            "Tundra" => vec!["assets/materials/snow.png", "assets/materials/ice.png"],
-            "Forest" => vec![
-                "assets/materials/forest_floor.png",
-                "assets/materials/moss.png",
-            ],
-            "Swamp" => vec!["assets/materials/mud.png", "assets/materials/dirt.png"],
-            "Beach" => vec![
-                "assets/textures/aerial_beach_01_diff_4k.jpg",
-                "assets/materials/sand.png",
-            ],
-            "River" => vec![
-                "assets/materials/gravel.png",
-                "assets/materials/cobblestone.png",
-            ],
-            "BiomePack" => vec![
-                // Namaqualand and other decomposed blend biome packs
-                "assets/imported/Namaqualand/textures/gravelly_sand_diff_4k.jpg.png",
-                "assets/imported/Namaqualand/textures/damp_sand_diff.png.png",
-                "assets/imported/Namaqualand/textures/cliff_side_diff_4k.jpg.png",
-                "assets/textures/aerial_beach_01_diff_4k.jpg",
-                "assets/materials/sand.png",
-            ],
-            _ => vec![
-                // Grassland default
-                "assets/textures/leafy_grass_diff_4k.jpg",
-                "assets/materials/grass.png",
-            ],
-        };
-
-        for path_str in &candidates {
-            let path = std::path::Path::new(path_str);
-            if !path.exists() {
-                continue;
-            }
-            match image::open(path) {
-                Ok(img) => {
-                    let rgba = img.to_rgba8();
-                    let (w, h) = (rgba.width(), rgba.height());
-                    if let Some(adapter) = &mut self.engine_adapter {
-                        adapter.renderer_mut().set_albedo_from_rgba8(w, h, &rgba);
-                        tracing::info!("Loaded {biome} terrain texture ({w}x{h}) from {path:?}");
-                    }
-                    return;
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to load terrain texture {path:?}: {e}");
-                }
-            }
+        #[derive(serde::Deserialize)]
+        struct TerrainMaterialDoc {
+            layer: Vec<TerrainMaterialLayer>,
         }
 
-        // Ultimate fallback: 4x4 white texture
-        tracing::warn!("No {biome} terrain texture found — using 4x4 white fallback");
+        #[derive(serde::Deserialize)]
+        struct TerrainMaterialLayer {
+            albedo: String,
+            normal: Option<String>,
+            mra: Option<String>,
+        }
+
+        let materials_root = find_assets_dir().join("materials");
+        let preferred_dir = match biome {
+            "Desert" => materials_root.join("desert"),
+            "Mountain" => materials_root.join("mountain"),
+            "Tundra" => materials_root.join("tundra"),
+            "Forest" | "BiomePack" => materials_root.join("forest"),
+            "Swamp" => materials_root.join("swamp"),
+            "Beach" => materials_root.join("beach"),
+            "River" => materials_root.join("river"),
+            _ => materials_root.join("grassland"),
+        };
+
+        let fallback_dir = materials_root.join("grassland");
+        let load_rgba = |path: &std::path::Path| -> Option<(u32, u32, Vec<u8>)> {
+            let image = image::open(path).ok()?.to_rgba8();
+            let (width, height) = image.dimensions();
+            Some((width, height, image.into_raw()))
+        };
+
+        for material_dir in [preferred_dir, fallback_dir] {
+            let manifest_path = material_dir.join("materials.toml");
+            let Ok(manifest_text) = std::fs::read_to_string(&manifest_path) else {
+                continue;
+            };
+            let Ok(manifest) = toml::from_str::<TerrainMaterialDoc>(&manifest_text) else {
+                tracing::warn!("Failed to parse terrain material manifest {manifest_path:?}");
+                continue;
+            };
+            let Some(layer) = manifest.layer.first() else {
+                continue;
+            };
+
+            let albedo_path = material_dir.join(&layer.albedo);
+            let Some(albedo) = load_rgba(&albedo_path) else {
+                tracing::warn!("Failed to load terrain albedo map {albedo_path:?}");
+                continue;
+            };
+
+            let normal = layer
+                .normal
+                .as_deref()
+                .and_then(|relative| load_rgba(&material_dir.join(relative)));
+            let metallic_roughness = layer
+                .mra
+                .as_deref()
+                .and_then(|relative| load_rgba(&material_dir.join(relative)));
+
+            if let Some(adapter) = &mut self.engine_adapter {
+                adapter.set_terrain_surface_maps(
+                    (albedo.0, albedo.1, &albedo.2),
+                    normal
+                        .as_ref()
+                        .map(|data| (data.0, data.1, data.2.as_slice())),
+                    metallic_roughness
+                        .as_ref()
+                        .map(|data| (data.0, data.1, data.2.as_slice())),
+                );
+                tracing::info!(
+                    "Loaded {biome} terrain surface maps from {material_dir} (albedo {albedo_width}x{albedo_height})",
+                    material_dir = material_dir.display(),
+                    albedo_width = albedo.0,
+                    albedo_height = albedo.1,
+                );
+            }
+            return;
+        }
+
+        tracing::warn!("No authored {biome} terrain material set found — using neutral fallback");
         let white_data = vec![255u8; 4 * 4 * 4];
+        let normal_data = [128u8, 128u8, 255u8, 255u8].repeat(16);
+        let mra_data = [0u8, 220u8, 255u8, 255u8].repeat(16);
         if let Some(adapter) = &mut self.engine_adapter {
-            adapter
-                .renderer_mut()
-                .set_albedo_from_rgba8(4, 4, &white_data);
+            adapter.set_terrain_surface_maps(
+                (4, 4, &white_data),
+                Some((4, 4, &normal_data)),
+                Some((4, 4, &mra_data)),
+            );
         }
     }
 

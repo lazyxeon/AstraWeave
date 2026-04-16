@@ -21,6 +21,7 @@ decals = []  # Screen-space decal system
 deferred = []  # Deferred rendering pipeline
 advanced-post = []  # Advanced post-processing (TAA, motion blur, DOF)
 camera-relative = []  # Camera-relative rendering for large-world precision
+terrain-splat-arrays = []  # Phase 2.2: 8-layer splat-array terrain pipeline (Issue #9 fix)
 gltf-assets = ["gltf", "assets"]
 obj-assets = ["tobj", "assets"]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]

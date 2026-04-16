@@ -220,7 +220,13 @@ impl StatusBar {
             ui.separator();
 
             ui.label(format!("Entities: {}", entity_count))
-                .on_hover_text("Total number of entities in the scene");
+                .on_hover_text(
+                    "ECS entities in the active scene.\n\n\
+                     Note: procedurally-scattered vegetation and terrain \
+                     chunks are rendered through a separate GPU pipeline \
+                     and are NOT counted here. This is expected — \
+                     they're not selectable as scene entities.",
+                );
             ui.separator();
 
             if let Some(path) = scene_path {
@@ -281,7 +287,13 @@ impl StatusBar {
             ui.separator();
 
             ui.label(format!("Entities: {}", entity_count))
-                .on_hover_text("Total number of entities in the scene");
+                .on_hover_text(
+                    "ECS entities in the active scene.\n\n\
+                     Note: procedurally-scattered vegetation and terrain \
+                     chunks are rendered through a separate GPU pipeline \
+                     and are NOT counted here. This is expected — \
+                     they're not selectable as scene entities.",
+                );
             ui.separator();
 
             if let Some(path) = scene_path {

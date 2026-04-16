@@ -48,6 +48,8 @@ mod renderer;
 pub mod toolbar;
 /// Shared viewport types (fog params, lighting params, terrain vertex, etc.)
 pub mod types;
+/// Phase 2.2 / T6: rasterise per-vertex biome weights into RGBA8 splat maps.
+pub mod terrain_splat_builder;
 mod widget;
 
 // Physics debug types are exported for external configuration

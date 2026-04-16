@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use super::camera::OrbitCamera;
 use super::types::{
-    ScatterPlacement, TerrainFogParams, TerrainLightingParams, TerrainVertex, WaterStyle,
+    find_assets_dir, ScatterPlacement, TerrainFogParams, TerrainLightingParams, TerrainVertex,
+    WaterStyle, MATERIAL_NAMES,
 };
 
 /// Render mode for the editor viewport.
@@ -54,29 +55,514 @@ impl Default for EditorQualityPreset {
     }
 }
 
+#[derive(Clone)]
+struct ScatterPrimitiveLodAssets {
+    full_mesh: astraweave_render::mesh::CpuMesh,
+    simplified_mesh: astraweave_render::mesh::CpuMesh,
+}
+
+#[derive(Clone)]
+struct ScatterLodAssets {
+    primitives: Vec<ScatterPrimitiveLodAssets>,
+    cross_billboard: astraweave_render::mesh::CpuMesh,
+    impostor_card: astraweave_render::mesh::CpuMesh,
+    aabb_min_y: f32,
+    model_height: f32,
+    model_half_width: f32,
+}
+
+const TERRAIN_CLUSTER_GRID: usize = 2;
+const TERRAIN_MAX_VERTICES_PER_CLUSTER: usize = 5_000_000;
+
+const TERRAIN_BIOME_TINTS: [[f32; 4]; 8] = [
+    [0.80, 1.00, 0.70, 1.0],
+    [1.10, 1.00, 0.75, 1.0],
+    [0.60, 0.85, 0.50, 1.0],
+    [0.85, 0.85, 0.80, 1.0],
+    [1.05, 1.05, 1.10, 1.0],
+    [0.70, 0.80, 0.55, 1.0],
+    [1.10, 1.05, 0.85, 1.0],
+    [0.75, 0.90, 0.85, 1.0],
+];
+
+const TERRAIN_MATERIAL_TINTS: [[f32; 4]; 22] = [
+    [0.80, 1.00, 0.70, 1.0],
+    [1.10, 1.00, 0.75, 1.0],
+    [0.72, 0.88, 0.58, 1.0],
+    [0.85, 0.85, 0.80, 1.0],
+    [1.05, 1.05, 1.10, 1.0],
+    [0.78, 0.68, 0.52, 1.0],
+    [0.92, 0.80, 0.62, 1.0],
+    [0.82, 0.84, 0.86, 1.0],
+    [0.72, 0.74, 0.78, 1.0],
+    [0.84, 0.74, 0.58, 1.0],
+    [0.80, 0.80, 0.82, 1.0],
+    [0.90, 0.86, 0.78, 1.0],
+    [0.92, 0.92, 0.92, 1.0],
+    [0.82, 0.80, 0.76, 1.0],
+    [0.86, 0.96, 1.08, 1.0],
+    [0.88, 0.70, 0.54, 1.0],
+    [0.70, 0.88, 0.60, 1.0],
+    [0.96, 0.94, 0.90, 1.0],
+    [0.76, 0.84, 0.70, 1.0],
+    [0.90, 0.62, 0.54, 1.0],
+    [0.72, 0.56, 0.42, 1.0],
+    [0.70, 0.92, 0.62, 1.0],
+];
+
+#[derive(Clone, Debug, Default)]
+struct TerrainSurfaceSummary {
+    biome_weights: [f32; 8],
+    material_weights: [f32; 22],
+}
+
+impl TerrainSurfaceSummary {
+    fn add_vertex(&mut self, vertex: &TerrainVertex) {
+        let biome_weights = [
+            vertex.biome_weights_0[0],
+            vertex.biome_weights_0[1],
+            vertex.biome_weights_0[2],
+            vertex.biome_weights_0[3],
+            vertex.biome_weights_1[0],
+            vertex.biome_weights_1[1],
+            vertex.biome_weights_1[2],
+            vertex.biome_weights_1[3],
+        ];
+        for (idx, weight) in biome_weights.iter().enumerate() {
+            self.biome_weights[idx] += weight.max(0.0);
+        }
+
+        for slot in 0..4 {
+            let weight = vertex.material_weights[slot].max(0.0);
+            if weight <= 0.0 {
+                continue;
+            }
+            let material_id = vertex.material_ids[slot].round();
+            if !material_id.is_finite() || material_id < 0.0 {
+                continue;
+            }
+            let material_idx = material_id as usize;
+            if material_idx < self.material_weights.len() {
+                self.material_weights[material_idx] += weight;
+            }
+        }
+    }
+
+    fn merge(&mut self, other: &Self) {
+        for (dst, src) in self
+            .biome_weights
+            .iter_mut()
+            .zip(other.biome_weights.iter())
+        {
+            *dst += *src;
+        }
+        for (dst, src) in self
+            .material_weights
+            .iter_mut()
+            .zip(other.material_weights.iter())
+        {
+            *dst += *src;
+        }
+    }
+
+    fn dominant_material_index(&self) -> Option<usize> {
+        self.material_weights
+            .iter()
+            .copied()
+            .enumerate()
+            .max_by(|(_, left), (_, right)| left.total_cmp(right))
+            .and_then(|(index, weight)| (weight > 0.0001).then_some(index))
+    }
+
+    fn resolve_tint(&self) -> [f32; 4] {
+        let biome_tint = weighted_palette_tint(&self.biome_weights, &TERRAIN_BIOME_TINTS);
+        let material_tint = weighted_palette_tint(&self.material_weights, &TERRAIN_MATERIAL_TINTS);
+
+        match (biome_tint, material_tint) {
+            (Some(biome), Some(material)) => blend_tints(biome, material, 0.65),
+            (Some(biome), None) => biome,
+            (None, Some(material)) => material,
+            (None, None) => [0.90, 0.90, 0.90, 1.0],
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct TerrainChunkRenderData {
+    positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    tangents: Vec<[f32; 4]>,
+    uvs: Vec<[f32; 2]>,
+    indices: Vec<u32>,
+    surface_summary: TerrainSurfaceSummary,
+    aabb_min: [f32; 3],
+    aabb_max: [f32; 3],
+}
+
+#[derive(Clone, Debug)]
+struct TerrainClusterRecord {
+    name: String,
+    chunk_indices: Vec<usize>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TerrainChunkPlanningInfo {
+    aabb_min: [f32; 3],
+    aabb_max: [f32; 3],
+    vertex_count: usize,
+}
+
+#[derive(Clone, Debug)]
+struct TerrainMaterialSurfaceSet {
+    albedo: (u32, u32, Vec<u8>),
+    normal: (u32, u32, Vec<u8>),
+    metallic_roughness: (u32, u32, Vec<u8>),
+}
+
+impl From<&TerrainChunkRenderData> for TerrainChunkPlanningInfo {
+    fn from(chunk: &TerrainChunkRenderData) -> Self {
+        Self {
+            aabb_min: chunk.aabb_min,
+            aabb_max: chunk.aabb_max,
+            vertex_count: chunk.positions.len(),
+        }
+    }
+}
+
+/// Coarse world-space regular grid of terrain heights, rebuilt from the
+/// full vertex set each time terrain chunks change.
+///
+/// Used by [`EngineRenderAdapter::upload_scatter_placements`] to re-sample
+/// each placement's Y against the live terrain surface — preventing the
+/// "floating / sunk scatter" artefact (Issue #6 from the 2026-04 editor
+/// audit) that occurs when vegetation is generated against a stale height
+/// or when the heightmap is edited after scatter generation.
+///
+/// # Sampling
+///
+/// Cells store the maximum height of any vertex within their XZ bounds,
+/// so the grid represents an upper envelope rather than an average. This
+/// keeps trees planted on top of micro-ridges instead of being sunk into
+/// the mean of neighbouring valley vertices — a better fit for visual
+/// grounding.
+///
+/// Missing cells (no vertex covered the cell) hold `f32::NAN`. Bilinear
+/// sampling falls back to nearest-neighbour when any of the 4 samples
+/// is `NaN` to handle sparse/edge coverage gracefully.
+///
+/// # Memory
+///
+/// Capped at `MAX_CELLS` (~4 M ≈ 16 MB). The grid is discarded in
+/// [`EngineRenderAdapter::clear_terrain`] and rebuilt from scratch on the
+/// next terrain upload — editing the heightmap already triggers a
+/// chunk re-upload, which naturally refreshes the grid.
+#[derive(Clone, Debug)]
+struct TerrainHeightGrid {
+    origin_x: f32,
+    origin_z: f32,
+    cell_size: f32,
+    width: usize,
+    height: usize,
+    /// Row-major. `data[z * width + x]`. `NaN` means "no sample".
+    data: Vec<f32>,
+}
+
+impl TerrainHeightGrid {
+    const MIN_CELL_SIZE: f32 = 0.5;
+    const MAX_CELL_SIZE: f32 = 8.0;
+    const MAX_CELLS: usize = 4 * 1024 * 1024;
+
+    /// Build a height grid from the full set of terrain vertices.
+    ///
+    /// Returns `None` when there are no vertices or the AABB degenerates
+    /// to a point.
+    fn build(chunks: &[TerrainChunkRenderData]) -> Option<Self> {
+        // Compute world-space AABB over XZ and estimate a reasonable cell size
+        // from the average vertex spacing so the grid matches heightmap
+        // resolution without over-blurring.
+        let mut min_x = f32::MAX;
+        let mut min_z = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_z = f32::MIN;
+        let mut total_verts = 0usize;
+        for chunk in chunks {
+            if chunk.positions.is_empty() {
+                continue;
+            }
+            total_verts += chunk.positions.len();
+            min_x = min_x.min(chunk.aabb_min[0]);
+            min_z = min_z.min(chunk.aabb_min[2]);
+            max_x = max_x.max(chunk.aabb_max[0]);
+            max_z = max_z.max(chunk.aabb_max[2]);
+        }
+        if total_verts == 0 {
+            return None;
+        }
+        let extent_x = (max_x - min_x).max(0.0);
+        let extent_z = (max_z - min_z).max(0.0);
+        if extent_x < 0.01 || extent_z < 0.01 {
+            return None;
+        }
+
+        // Target cell size = sqrt(area / verts) — matches vertex density.
+        // Clamp to [MIN_CELL_SIZE, MAX_CELL_SIZE] so coarse meshes still
+        // get a usable grid and dense meshes don't blow the memory cap.
+        let area = extent_x * extent_z;
+        let density_cell = (area / total_verts as f32).sqrt();
+        let mut cell_size =
+            density_cell.clamp(Self::MIN_CELL_SIZE, Self::MAX_CELL_SIZE);
+
+        let compute_dims = |cs: f32| -> (usize, usize) {
+            let w = ((extent_x / cs).ceil() as usize + 1).max(2);
+            let h = ((extent_z / cs).ceil() as usize + 1).max(2);
+            (w, h)
+        };
+        let (mut width, mut height) = compute_dims(cell_size);
+
+        // Enforce the memory cap by inflating cell_size if necessary.
+        while width.saturating_mul(height) > Self::MAX_CELLS
+            && cell_size < Self::MAX_CELL_SIZE
+        {
+            cell_size = (cell_size * 2.0).min(Self::MAX_CELL_SIZE);
+            let (w, h) = compute_dims(cell_size);
+            width = w;
+            height = h;
+        }
+
+        let cell_count = width.saturating_mul(height);
+        if cell_count == 0 || cell_count > Self::MAX_CELLS {
+            return None;
+        }
+
+        let mut data = vec![f32::NAN; cell_count];
+        let inv_cell = 1.0 / cell_size;
+        for chunk in chunks {
+            for pos in &chunk.positions {
+                let fx = (pos[0] - min_x) * inv_cell;
+                let fz = (pos[2] - min_z) * inv_cell;
+                if !fx.is_finite() || !fz.is_finite() {
+                    continue;
+                }
+                let ix = (fx as usize).min(width - 1);
+                let iz = (fz as usize).min(height - 1);
+                let idx = iz * width + ix;
+                let y = pos[1];
+                let cur = data[idx];
+                data[idx] = if cur.is_nan() { y } else { cur.max(y) };
+            }
+        }
+
+        Some(Self {
+            origin_x: min_x,
+            origin_z: min_z,
+            cell_size,
+            width,
+            height,
+            data,
+        })
+    }
+
+    /// Bilinear sample at world position. Returns `None` outside the grid
+    /// extent or when any of the 4 surrounding cells has no sample.
+    #[inline]
+    fn sample(&self, world_x: f32, world_z: f32) -> Option<f32> {
+        if self.width < 2 || self.height < 2 {
+            return None;
+        }
+        let inv_cell = 1.0 / self.cell_size;
+        let fx = (world_x - self.origin_x) * inv_cell;
+        let fz = (world_z - self.origin_z) * inv_cell;
+        if !fx.is_finite() || !fz.is_finite() {
+            return None;
+        }
+        if fx < 0.0 || fz < 0.0 {
+            return None;
+        }
+        let max_x = (self.width - 1) as f32;
+        let max_z = (self.height - 1) as f32;
+        if fx > max_x || fz > max_z {
+            return None;
+        }
+        let x0 = fx.floor() as usize;
+        let z0 = fz.floor() as usize;
+        let x1 = (x0 + 1).min(self.width - 1);
+        let z1 = (z0 + 1).min(self.height - 1);
+        let tx = fx - x0 as f32;
+        let tz = fz - z0 as f32;
+
+        let h00 = self.data[z0 * self.width + x0];
+        let h10 = self.data[z0 * self.width + x1];
+        let h01 = self.data[z1 * self.width + x0];
+        let h11 = self.data[z1 * self.width + x1];
+
+        // If any corner is missing, fall back to nearest valid corner so
+        // edge placements still get a reasonable height.
+        if h00.is_nan() || h10.is_nan() || h01.is_nan() || h11.is_nan() {
+            let mut best: Option<(f32, f32)> = None; // (dist², height)
+            for (dx, dz, h) in [
+                (tx, tz, h00),
+                (1.0 - tx, tz, h10),
+                (tx, 1.0 - tz, h01),
+                (1.0 - tx, 1.0 - tz, h11),
+            ] {
+                if h.is_nan() {
+                    continue;
+                }
+                let d2 = dx * dx + dz * dz;
+                match best {
+                    Some((bd, _)) if bd <= d2 => {}
+                    _ => best = Some((d2, h)),
+                }
+            }
+            return best.map(|(_, h)| h);
+        }
+
+        let hx0 = h00 * (1.0 - tx) + h10 * tx;
+        let hx1 = h01 * (1.0 - tx) + h11 * tx;
+        Some(hx0 * (1.0 - tz) + hx1 * tz)
+    }
+}
+
+fn weighted_palette_tint<const N: usize>(
+    weights: &[f32; N],
+    palette: &[[f32; 4]; N],
+) -> Option<[f32; 4]> {
+    let total_weight: f32 = weights.iter().copied().sum();
+    if total_weight <= 0.0001 {
+        return None;
+    }
+
+    let mut tint = [0.0; 4];
+    for (weight, color) in weights.iter().zip(palette.iter()) {
+        tint[0] += color[0] * *weight;
+        tint[1] += color[1] * *weight;
+        tint[2] += color[2] * *weight;
+    }
+
+    tint[0] /= total_weight;
+    tint[1] /= total_weight;
+    tint[2] /= total_weight;
+    tint[3] = 1.0;
+    Some(tint)
+}
+
+fn blend_tints(a: [f32; 4], b: [f32; 4], b_weight: f32) -> [f32; 4] {
+    let a_weight = 1.0 - b_weight;
+    [
+        a[0] * a_weight + b[0] * b_weight,
+        a[1] * a_weight + b[1] * b_weight,
+        a[2] * a_weight + b[2] * b_weight,
+        1.0,
+    ]
+}
+
+/// Derive a distance-fog colour from a procedural sky config so that
+/// fogged terrain edges blend seamlessly into the horizon.
+///
+/// Uses `day_color_horizon` directly — that is the colour the sky shader
+/// paints right at the horizon line, which is exactly where distant
+/// terrain fades out. Keeping this a function (rather than inlining the
+/// field read) makes the coupling explicit and gives a single place to
+/// evolve the derivation later (e.g. blend toward `sunset_color_horizon`
+/// based on time-of-day).
+fn fog_color_from_sky(sky: &astraweave_render::SkyConfig) -> glam::Vec3 {
+    sky.day_color_horizon
+}
+
+fn build_terrain_cluster_plan(
+    chunks: &[TerrainChunkPlanningInfo],
+    grid: usize,
+    max_vertices_per_cluster: usize,
+) -> Vec<Vec<usize>> {
+    if chunks.is_empty() || grid == 0 {
+        return Vec::new();
+    }
+
+    let mut global_aabb_min = [f32::MAX; 3];
+    let mut global_aabb_max = [f32::MIN; 3];
+    for chunk in chunks {
+        for axis in 0..3 {
+            global_aabb_min[axis] = global_aabb_min[axis].min(chunk.aabb_min[axis]);
+            global_aabb_max[axis] = global_aabb_max[axis].max(chunk.aabb_max[axis]);
+        }
+    }
+
+    let span_x = (global_aabb_max[0] - global_aabb_min[0]).max(1.0);
+    let span_z = (global_aabb_max[2] - global_aabb_min[2]).max(1.0);
+    let cell_w = span_x / grid as f32;
+    let cell_d = span_z / grid as f32;
+
+    let mut bins: Vec<Vec<usize>> = vec![Vec::new(); grid * grid];
+    for (chunk_index, chunk) in chunks.iter().enumerate() {
+        let center_x = (chunk.aabb_min[0] + chunk.aabb_max[0]) * 0.5;
+        let center_z = (chunk.aabb_min[2] + chunk.aabb_max[2]) * 0.5;
+        let gx = (((center_x - global_aabb_min[0]) / cell_w) as usize).min(grid - 1);
+        let gz = (((center_z - global_aabb_min[2]) / cell_d) as usize).min(grid - 1);
+        bins[gz * grid + gx].push(chunk_index);
+    }
+
+    let mut clusters = Vec::new();
+    for bin in bins {
+        if bin.is_empty() {
+            continue;
+        }
+
+        let mut chunk_indices = Vec::new();
+        let mut cluster_vertex_count = 0usize;
+        for chunk_index in bin {
+            let next_vertex_count = chunks[chunk_index].vertex_count;
+            if !chunk_indices.is_empty()
+                && cluster_vertex_count + next_vertex_count > max_vertices_per_cluster
+            {
+                clusters.push(std::mem::take(&mut chunk_indices));
+                cluster_vertex_count = 0;
+            }
+
+            chunk_indices.push(chunk_index);
+            cluster_vertex_count += next_vertex_count;
+        }
+
+        if !chunk_indices.is_empty() {
+            clusters.push(chunk_indices);
+        }
+    }
+
+    clusters
+}
+
 pub struct EngineRenderAdapter {
     renderer: astraweave_render::Renderer,
     initialized: bool,
-    /// Tracks which terrain chunk model names we've uploaded, so we can
-    /// clear stale chunks on re-upload.
+    /// Tracks which clustered terrain model names are currently uploaded.
     terrain_model_names: Vec<String>,
+    /// Converted source terrain chunks preserved in clustered upload order.
+    terrain_chunks: Vec<TerrainChunkRenderData>,
+    /// Maps logical source chunk indices to entries in `terrain_chunks`.
+    /// Empty logical chunks retain identity as `None` so incremental updates
+    /// do not misroute after clustered uploads.
+    terrain_chunk_slot_map: Vec<Option<usize>>,
+    /// Stable cluster ownership records used for targeted rebuilds after brush edits.
+    terrain_clusters: Vec<TerrainClusterRecord>,
+    /// Number of logical terrain chunks supplied by the editor.
+    terrain_source_chunk_count: usize,
     /// Tracks scatter model names for cleanup.
     scatter_model_names: Vec<String>,
     /// Total terrain triangles across all uploaded chunks.
     terrain_total_triangles: usize,
     /// Total terrain indices across all uploaded chunks.
     terrain_total_indices: usize,
-    /// Total scatter placements last uploaded.
+    /// Total scatter instances currently uploaded after LOD + density filtering.
     scatter_placement_count: usize,
-    /// Number of unique scatter draw groups (one draw call per mesh type).
+    /// Number of scatter submodels currently uploaded to the renderer.
     scatter_draw_call_count: u32,
+    /// Total scatter triangles represented by the currently uploaded models.
+    scatter_total_triangles: usize,
+    /// Total scatter vertices represented by the currently uploaded models.
+    scatter_total_vertices: usize,
     /// Whether weather effects are currently active.
     weather_active: bool,
     /// Whether water rendering is enabled.
     water_enabled: bool,
-    /// Cached index buffers per terrain chunk for incremental vertex updates.
-    /// Brush strokes only change heights/normals, not topology.
-    terrain_cached_indices: Vec<Vec<u32>>,
     /// Current editor quality preset (shadows + post-processing).
     quality_preset: EditorQualityPreset,
     /// Cached entity count + selection for dirty-skip in feed_entities
@@ -94,18 +580,29 @@ pub struct EngineRenderAdapter {
     /// Prevents the same diffuse texture from being decoded multiple times
     /// across regenerations.
     scatter_texture_cache: std::collections::HashMap<std::path::PathBuf, (u32, u32, Vec<u8>)>,
-    /// Whether the procedural terrain detail texture has been uploaded to
-    /// the global albedo slot.  Set once during the first
-    /// `upload_terrain_chunks` call so terrain renders with surface detail
-    /// instead of a flat 1×1 white pixel.
+    /// Persistent cache: mesh path -> derived LOD assets used by the editor's
+    /// shared-policy vegetation uploader.
+    scatter_lod_asset_cache: std::collections::HashMap<String, ScatterLodAssets>,
+    /// Whether terrain surface maps have been uploaded to the renderer's
+    /// global terrain material slots. This starts with a procedural fallback
+    /// and is later replaced by authored biome maps when available.
     terrain_detail_texture_uploaded: bool,
+    /// Cached decoded terrain surface triplets keyed by canonical material index.
+    terrain_material_surfaces: std::collections::HashMap<usize, TerrainMaterialSurfaceSet>,
+    /// Shared prototype models that own per-material terrain surface bind groups.
+    terrain_material_prototypes: std::collections::HashMap<usize, String>,
     /// Current camera position for LOD selection and density scaling.
     /// Updated every frame via `update_camera()`.
     camera_position: glam::Vec3,
+    /// Current camera yaw in radians. Used for impostor-card facing.
+    camera_yaw: f32,
     /// Camera position at the time of the last scatter LOD refresh.
-    /// When the camera moves more than `LOD_REFRESH_THRESHOLD` from this
-    /// point, scatter LOD levels are recomputed.
+    /// When the camera moves enough from this point, scatter LOD levels are
+    /// recomputed.
     scatter_lod_camera_pos: glam::Vec3,
+    /// Camera yaw at the last scatter LOD refresh. Impostor cards use this to
+    /// refresh facing without waiting for a large translation.
+    scatter_lod_camera_yaw: f32,
     /// Stored scatter placements for camera-driven LOD refresh.
     /// Kept after initial upload so `refresh_scatter_lod()` can re-bucket
     /// instances without regenerating terrain.
@@ -126,6 +623,15 @@ pub struct EngineRenderAdapter {
     /// Terrain chunk size in world units (from config). Needed to convert
     /// world positions to ChunkId.
     scatter_chunk_size: f32,
+    /// Monotonic wall-clock timestamp of the last scatter LOD refresh.
+    /// Used to rate-limit rebucketing during continuous camera motion.
+    /// `None` until the first refresh completes.
+    scatter_last_refresh: Option<std::time::Instant>,
+    /// Coarse world-space height grid rebuilt each time terrain chunks
+    /// are uploaded. Used to re-sample scatter Y so vegetation stays on
+    /// the surface after heightmap edits. `None` when no terrain is
+    /// loaded or the grid build failed.
+    terrain_height_grid: Option<TerrainHeightGrid>,
 }
 
 impl EngineRenderAdapter {
@@ -183,23 +689,33 @@ impl EngineRenderAdapter {
             renderer,
             initialized: true,
             terrain_model_names: Vec::new(),
+            terrain_chunks: Vec::new(),
+            terrain_chunk_slot_map: Vec::new(),
+            terrain_clusters: Vec::new(),
+            terrain_source_chunk_count: 0,
             scatter_model_names: Vec::new(),
             terrain_total_triangles: 0,
             terrain_total_indices: 0,
             scatter_placement_count: 0,
             scatter_draw_call_count: 0,
+            scatter_total_triangles: 0,
+            scatter_total_vertices: 0,
             weather_active: false,
             water_enabled: false,
-            terrain_cached_indices: Vec::new(),
             quality_preset: EditorQualityPreset::default(),
             cached_entity_feed_count: usize::MAX, // force first rebuild
             cached_entity_feed_selected: Vec::new(),
             cached_entity_feed_mesh_count: usize::MAX,
             scatter_cpu_mesh_cache: std::collections::HashMap::new(),
             scatter_texture_cache: std::collections::HashMap::new(),
+            scatter_lod_asset_cache: std::collections::HashMap::new(),
             terrain_detail_texture_uploaded: false,
+            terrain_material_surfaces: std::collections::HashMap::new(),
+            terrain_material_prototypes: std::collections::HashMap::new(),
             camera_position: glam::Vec3::ZERO,
+            camera_yaw: 0.0,
             scatter_lod_camera_pos: glam::Vec3::new(f32::MAX, f32::MAX, f32::MAX),
+            scatter_lod_camera_yaw: f32::MAX,
             scatter_placements: Vec::new(),
             scatter_diffuse_textures: std::collections::HashMap::new(),
             scatter_billboard_cache: std::collections::HashMap::new(),
@@ -207,6 +723,8 @@ impl EngineRenderAdapter {
             active_scatter_chunks: std::collections::HashSet::new(),
             camera_chunk: astraweave_terrain::ChunkId::new(0, 0),
             scatter_chunk_size: 256.0, // default; overridden on first scatter upload
+            scatter_last_refresh: None,
+            terrain_height_grid: None,
         };
         adapter.apply_quality_preset(EditorQualityPreset::EditorDefault);
         Ok(adapter)
@@ -230,26 +748,48 @@ impl EngineRenderAdapter {
             camera.aspect,
         );
         self.camera_position = camera.position();
+        let camera_yaw = camera.yaw();
+        self.camera_yaw = camera_yaw;
 
-        // ── Chunk streaming ──────────────────────────────────────────
-        // Detect chunk boundary crossings to load/unload scatter vegetation.
+        // Detect chunk boundary crossings so the active placement filter can
+        // be recomputed immediately.
         let new_chunk = astraweave_terrain::ChunkId::from_world_pos(
             self.camera_position,
             self.scatter_chunk_size,
         );
-        if new_chunk != self.camera_chunk && !self.scatter_placements.is_empty() {
-            self.camera_chunk = new_chunk;
+
+        let chunk_changed = new_chunk != self.camera_chunk;
+        self.camera_chunk = new_chunk;
+
+        if chunk_changed && !self.scatter_placements.is_empty() {
             self.stream_scatter_chunks();
         }
 
-        // Check if camera moved far enough to warrant a scatter LOD refresh.
-        // Avoids per-frame re-bucketing — only refreshes when movement exceeds threshold.
-        const LOD_REFRESH_THRESHOLD: f32 = 50.0;
-        let delta = self.camera_position - self.scatter_lod_camera_pos;
-        let dist_sq = delta.x * delta.x + delta.z * delta.z; // XZ plane only
-        if dist_sq > LOD_REFRESH_THRESHOLD * LOD_REFRESH_THRESHOLD
-            && !self.scatter_placements.is_empty()
-        {
+        // Rebucket vegetation only on meaningful translation. The prior
+        // implementation refreshed on every 1 m of movement OR 0.01 rad
+        // (~0.57°) of yaw change, which fired on essentially every camera
+        // input and caused a full re-upload per frame during motion.
+        //
+        // Key insight: LOD3 impostor `face_yaw` is derived from
+        // `(cam_pos - p.position)` per-instance — it does NOT depend on
+        // camera yaw — so yaw-only refreshes were pure waste. We drop the
+        // yaw trigger entirely, raise the translation threshold to 8 m
+        // (roughly a quarter of the minimum LOD distance for trees), and
+        // rate-limit refreshes to at most once per 250 ms during sustained
+        // motion to keep frame times stable.
+        const LOD_REFRESH_POSITION_THRESHOLD: f32 = 8.0;
+        const LOD_REFRESH_MIN_INTERVAL: std::time::Duration =
+            std::time::Duration::from_millis(250);
+        let position_delta = self.camera_position - self.scatter_lod_camera_pos;
+        let exceeded_distance = position_delta.length_squared()
+            > LOD_REFRESH_POSITION_THRESHOLD * LOD_REFRESH_POSITION_THRESHOLD;
+        let budget_elapsed = self
+            .scatter_last_refresh
+            .map(|t| t.elapsed() >= LOD_REFRESH_MIN_INTERVAL)
+            .unwrap_or(true);
+        let needs_scatter_refresh = exceeded_distance && budget_elapsed;
+
+        if needs_scatter_refresh && !self.scatter_placements.is_empty() {
             self.refresh_scatter_lod();
         }
     }
@@ -282,10 +822,8 @@ impl EngineRenderAdapter {
                     let total = prof.total_gpu_ms();
                     if total > 0.0 {
                         let map = prof.results_map();
-                        let breakdown: Vec<String> = map
-                            .iter()
-                            .map(|(k, v)| format!("{k}={v:.1}ms"))
-                            .collect();
+                        let breakdown: Vec<String> =
+                            map.iter().map(|(k, v)| format!("{k}={v:.1}ms")).collect();
                         tracing::info!(
                             target: "aw_editor::viewport::perf",
                             "GPU frame: {total:.1}ms total | {} | CPU draw_into: {elapsed_ms:.1}ms | {}/{} models drawn",
@@ -376,17 +914,31 @@ impl EngineRenderAdapter {
                 self.renderer.set_post_process_chain(chain);
             }
             EditorQualityPreset::EditorDefault => {
-                // Shadows + cloud shadows disabled for terrain performance
-                // (each shadow cascade costs ~2-3ms; with 121-chunk terrain this dominates;
-                //  cloud shadow 512×512 transmittance map produces noisy grain on terrain)
-                self.renderer.set_shadows_enabled(false);
+                // Enable a single tight shadow cascade so trees and props
+                // self-shadow and cast contact shadows on the terrain. Prior
+                // behaviour disabled shadows entirely to claw back frame
+                // time, which left the scene reading as ambient-only (every
+                // surface equally lit regardless of facing direction).
+                //
+                // Tight 40 m / 120 m extents keep the relevant cascade
+                // focused on the viewport vicinity; far geometry uses the
+                // second cascade (low cost because most pixels sample the
+                // first cascade at editor-camera distances).
+                self.renderer.set_shadows_enabled(true);
                 self.renderer.set_cloud_shadows_enabled(false);
+                self.renderer.set_cascade_extents(40.0, 120.0);
+                self.renderer.set_cascade_lambda(0.75);
+                self.renderer.set_shadow_filter(1.5, 0.005, 1.5);
                 self.renderer.set_max_draw_distance(1200.0);
                 // Bloom disabled — the multi-pass compute pipeline
                 // (downsample + upsample mip chain) adds ~1-3ms per frame
                 // from write_buffer + compute dispatch overhead.
+                //
+                // SSAO enabled at default quality: restores base-of-trunk
+                // darkening, crevice contact, and general shape definition
+                // without noticeable cost at 1920×1080.
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
-                    ssao_enabled: false,
+                    ssao_enabled: true,
                     ssr_enabled: false,
                     ssgi_enabled: false,
                     god_rays_enabled: false,
@@ -411,8 +963,12 @@ impl EngineRenderAdapter {
 
                 // Bloom disabled for terrain editing — the multi-pass compute
                 // pipeline adds constant overhead per frame.
+                //
+                // SSAO enabled: restores crevice/contact shading on the
+                // terrain and around scattered props without the cost of
+                // full shadow cascades.
                 let chain = astraweave_render::hdr_pipeline::PostProcessChain {
-                    ssao_enabled: false,
+                    ssao_enabled: true,
                     ssr_enabled: false,
                     ssgi_enabled: false,
                     god_rays_enabled: false,
@@ -478,10 +1034,10 @@ impl EngineRenderAdapter {
             cpu_meshes[0].indices.len()
         );
 
-        let mesh = self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0]);
         let instance =
             Instance::from_pos_scale_color(glam::Vec3::ZERO, glam::Vec3::ONE, [1.0, 1.0, 1.0, 1.0]);
-        self.renderer.add_model(&name, mesh, &[instance]);
+        self.renderer
+            .add_composite_model(&name, cpu_meshes, &[instance]);
         tracing::info!("Model '{}' added to renderer", name);
         Ok(())
     }
@@ -592,30 +1148,28 @@ impl EngineRenderAdapter {
             }
 
             // Slow path: first time seeing this model → load mesh and create GPU resources
-            let mesh = match mesh_key {
+            let used_composite_model = match mesh_key {
                 Some(path) => {
                     let opts = astraweave_render::mesh_gltf::GltfOptions::default();
                     match astraweave_render::mesh_gltf::load_gltf(Path::new(path), &opts) {
                         Ok(cpu_meshes) if !cpu_meshes.is_empty() => {
-                            self.renderer.create_mesh_from_cpu_mesh(&cpu_meshes[0])
+                            self.renderer
+                                .add_composite_model(&model_name, cpu_meshes, instances);
+                            true
                         }
-                        _ => {
-                            // Fallback: use simple cube arrays
-                            self.renderer.create_mesh_from_arrays(
-                                &CUBE_POSITIONS,
-                                &CUBE_NORMALS,
-                                &CUBE_INDICES,
-                            )
-                        }
+                        _ => false,
                     }
                 }
-                None => self.renderer.create_mesh_from_arrays(
+                None => false,
+            };
+            if !used_composite_model {
+                let mesh = self.renderer.create_mesh_from_arrays(
                     &CUBE_POSITIONS,
                     &CUBE_NORMALS,
                     &CUBE_INDICES,
-                ),
-            };
-            self.renderer.add_model(&model_name, mesh, instances);
+                );
+                self.renderer.add_model(&model_name, mesh, instances);
+            }
         }
 
         // Remove entity models that no longer have any instances
@@ -735,215 +1289,116 @@ impl EngineRenderAdapter {
 
     // ── Terrain chunk feeding ───────────────────────────────────────────
 
-    /// Upload terrain chunks to the engine renderer as named models.
+    /// Upload terrain chunks to the engine renderer as clustered models.
     ///
-    /// Each chunk is uploaded as a separate model named `"terrain_chunk_N"`.
-    /// Previous terrain data is cleared before uploading fresh chunks.
+    /// The adapter preserves one converted record per source chunk, then groups
+    /// those chunks into stable clustered models for culling. This keeps brush
+    /// updates compatible with clustered rendering because the affected cluster
+    /// can be rebuilt from its owned source chunks.
     pub fn upload_terrain_chunks(&mut self, chunks: &[(Vec<TerrainVertex>, Vec<u32>)]) {
         // Upload a procedural detail texture once so terrain is not rendered
         // with the default 1×1 white pixel (which makes it look flat/fuzzy).
+        // If authored biome maps were already loaded for the current terrain,
+        // preserve them instead of overwriting them with the fallback.
         if !self.terrain_detail_texture_uploaded {
-            let (w, h, data) = Self::generate_terrain_detail_texture();
-            self.renderer.set_albedo_from_rgba8(w, h, &data);
-            self.terrain_detail_texture_uploaded = true;
+            let (albedo_width, albedo_height, albedo) = Self::generate_terrain_detail_texture();
+            let (normal_width, normal_height, normal) =
+                Self::generate_default_terrain_normal_texture();
+            let (mra_width, mra_height, mra) = Self::generate_default_terrain_mra_texture();
+            self.set_terrain_surface_maps(
+                (albedo_width, albedo_height, &albedo),
+                Some((normal_width, normal_height, &normal)),
+                Some((mra_width, mra_height, &mra)),
+            );
         }
 
         // Clear previous terrain models
         for name in self.terrain_model_names.drain(..) {
             self.renderer.clear_model(&name);
         }
-
-        // Cache indices for incremental brush updates (topology doesn't change)
-        self.terrain_cached_indices = chunks.iter().map(|(_, idx)| idx.clone()).collect();
+        self.terrain_chunks.clear();
+        self.terrain_chunk_slot_map.clear();
+        self.terrain_clusters.clear();
+        self.terrain_source_chunk_count = chunks.len();
+        self.terrain_total_triangles = 0;
+        self.terrain_total_indices = 0;
 
         let total_verts: usize = chunks.iter().map(|(v, _)| v.len()).sum();
         let total_indices: usize = chunks.iter().map(|(_, i)| i.len()).sum();
 
         if total_verts == 0 || total_indices == 0 {
+            self.renderer.reset_ground_plane();
             return;
         }
 
-        // ── Convert each chunk and compute per-chunk AABB ──────────────
-        struct ConvertedChunk {
-            positions: Vec<[f32; 3]>,
-            normals: Vec<[f32; 3]>,
-            tangents: Vec<[f32; 4]>,
-            uvs: Vec<[f32; 2]>,
-            biome_tint: [f32; 4],
-            aabb_min: [f32; 3],
-            aabb_max: [f32; 3],
-            indices: Vec<u32>,
-        }
-
-        let converted: Vec<ConvertedChunk> = chunks
-            .iter()
-            .filter(|(v, i)| !v.is_empty() && !i.is_empty())
-            .map(|(vertices, indices)| {
-                let (positions, normals, tangents, uvs, biome_tint, aabb_min, aabb_max) =
-                    Self::convert_terrain_vertices(vertices);
-                ConvertedChunk {
-                    positions,
-                    normals,
-                    tangents,
-                    uvs,
-                    biome_tint,
-                    aabb_min,
-                    aabb_max,
-                    indices: indices.clone(),
-                }
-            })
-            .collect();
-
-        if converted.is_empty() {
-            return;
-        }
-
-        // ── Spatial clustering (grid) ──────────────────────────────────
-        // Instead of merging all 121 chunks into 1 draw call (no frustum
-        // culling possible) we bin them into a grid of clusters. Each
-        // cluster gets its own merged mesh + AABB → the renderer can cull
-        // most terrain when the camera faces one direction.
-        //
-        // We use an adaptive grid: start with 8×8 so that 121 chunks stay
-        // comfortably within wgpu's 256 MB buffer limit per draw call.
-        let mut global_aabb_min = [f32::MAX; 3];
-        let mut global_aabb_max = [f32::MIN; 3];
-        for cc in &converted {
-            for j in 0..3 {
-                global_aabb_min[j] = global_aabb_min[j].min(cc.aabb_min[j]);
-                global_aabb_max[j] = global_aabb_max[j].max(cc.aabb_max[j]);
-            }
-        }
-
-        const GRID: usize = 2;
-        // Maximum vertices per merged cluster.  48 bytes/vertex × 5M ≈ 240 MB,
-        // safely under wgpu's 256 MB default buffer limit.
-        const MAX_VERTICES_PER_BIN: usize = 5_000_000;
-        let span_x = (global_aabb_max[0] - global_aabb_min[0]).max(1.0);
-        let span_z = (global_aabb_max[2] - global_aabb_min[2]).max(1.0);
-        let cell_w = span_x / GRID as f32;
-        let cell_d = span_z / GRID as f32;
-
-        // Bin chunks into grid cells by their AABB center
-        let mut bins: Vec<Vec<usize>> = vec![Vec::new(); GRID * GRID];
-        for (ci, cc) in converted.iter().enumerate() {
-            let cx = ((cc.aabb_min[0] + cc.aabb_max[0]) * 0.5 - global_aabb_min[0]) / cell_w;
-            let cz = ((cc.aabb_min[2] + cc.aabb_max[2]) * 0.5 - global_aabb_min[2]) / cell_d;
-            let gx = (cx as usize).min(GRID - 1);
-            let gz = (cz as usize).min(GRID - 1);
-            bins[gz * GRID + gx].push(ci);
-        }
-
-        let mut dominant_tint = [0.9f32, 0.9, 0.9, 1.0];
-        let mut sub_idx = 0u32; // global sub-cluster counter for unique names
-        for (bin_idx, bin) in bins.iter().enumerate() {
-            if bin.is_empty() {
+        for (vertices, indices) in chunks {
+            if vertices.is_empty() || indices.is_empty() {
+                self.terrain_chunk_slot_map.push(None);
                 continue;
             }
 
-            let mut merged_positions = Vec::new();
-            let mut merged_normals = Vec::new();
-            let mut merged_tangents = Vec::new();
-            let mut merged_uvs = Vec::new();
-            let mut merged_indices = Vec::new();
-            let mut cluster_aabb_min = [f32::MAX; 3];
-            let mut cluster_aabb_max = [f32::MIN; 3];
-            let mut vertex_offset = 0u32;
+            let chunk_index = self.terrain_chunks.len();
+            self.terrain_chunks
+                .push(Self::convert_terrain_chunk(vertices, indices));
+            self.terrain_chunk_slot_map.push(Some(chunk_index));
+        }
 
-            // Helper closure: flush the current merged buffers into a GPU model
-            let flush = |positions: &mut Vec<[f32; 3]>,
-                         normals: &mut Vec<[f32; 3]>,
-                         tangents: &mut Vec<[f32; 4]>,
-                         uvs: &mut Vec<[f32; 2]>,
-                         indices: &mut Vec<u32>,
-                         aabb_min: &mut [f32; 3],
-                         aabb_max: &mut [f32; 3],
-                         tint: [f32; 4],
-                         renderer: &mut astraweave_render::Renderer,
-                         names: &mut Vec<String>,
-                         sub: &mut u32| {
-                if positions.is_empty() {
-                    return;
-                }
-                let name = format!("terrain_c{bin_idx}_{sub}");
-                *sub += 1;
-                let mesh = renderer
-                    .create_mesh_from_full_arrays(positions, normals, tangents, uvs, indices);
-                let instance = astraweave_render::Instance::from_pos_scale_color(
-                    glam::Vec3::ZERO,
-                    glam::Vec3::ONE,
-                    tint,
-                );
-                renderer.add_model_with_bounds(&name, mesh, &[instance], *aabb_min, *aabb_max);
-                names.push(name);
-                positions.clear();
-                normals.clear();
-                tangents.clear();
-                uvs.clear();
-                indices.clear();
-                *aabb_min = [f32::MAX; 3];
-                *aabb_max = [f32::MIN; 3];
-            };
+        if self.terrain_chunks.is_empty() {
+            self.renderer.reset_ground_plane();
+            return;
+        }
 
-            for &ci in bin {
-                let cc = &converted[ci];
+        let planning: Vec<_> = self
+            .terrain_chunks
+            .iter()
+            .map(TerrainChunkPlanningInfo::from)
+            .collect();
+        self.terrain_clusters = build_terrain_cluster_plan(
+            &planning,
+            TERRAIN_CLUSTER_GRID,
+            TERRAIN_MAX_VERTICES_PER_CLUSTER,
+        )
+        .into_iter()
+        .enumerate()
+        .map(|(cluster_index, chunk_indices)| TerrainClusterRecord {
+            name: format!("terrain_cluster_{cluster_index}"),
+            chunk_indices,
+        })
+        .collect();
+        self.terrain_model_names = self
+            .terrain_clusters
+            .iter()
+            .map(|cluster| cluster.name.clone())
+            .collect();
 
-                // If adding this chunk would exceed the per-buffer limit, flush first
-                if !merged_positions.is_empty()
-                    && merged_positions.len() + cc.positions.len() > MAX_VERTICES_PER_BIN
-                {
-                    vertex_offset = 0;
-                    flush(
-                        &mut merged_positions,
-                        &mut merged_normals,
-                        &mut merged_tangents,
-                        &mut merged_uvs,
-                        &mut merged_indices,
-                        &mut cluster_aabb_min,
-                        &mut cluster_aabb_max,
-                        dominant_tint,
-                        &mut self.renderer,
-                        &mut self.terrain_model_names,
-                        &mut sub_idx,
-                    );
-                }
+        for cluster_index in 0..self.terrain_clusters.len() {
+            self.rebuild_terrain_cluster(cluster_index);
+        }
 
-                for &idx in &cc.indices {
-                    merged_indices.push(idx + vertex_offset);
-                }
-                vertex_offset += cc.positions.len() as u32;
-
-                merged_positions.extend_from_slice(&cc.positions);
-                merged_normals.extend_from_slice(&cc.normals);
-                merged_tangents.extend_from_slice(&cc.tangents);
-                merged_uvs.extend_from_slice(&cc.uvs);
-
-                for j in 0..3 {
-                    cluster_aabb_min[j] = cluster_aabb_min[j].min(cc.aabb_min[j]);
-                    cluster_aabb_max[j] = cluster_aabb_max[j].max(cc.aabb_max[j]);
-                }
-                dominant_tint = cc.biome_tint;
+        let mut global_aabb_min = [f32::MAX; 3];
+        let mut global_aabb_max = [f32::MIN; 3];
+        for chunk in &self.terrain_chunks {
+            for axis in 0..3 {
+                global_aabb_min[axis] = global_aabb_min[axis].min(chunk.aabb_min[axis]);
+                global_aabb_max[axis] = global_aabb_max[axis].max(chunk.aabb_max[axis]);
             }
-
-            // Flush remaining
-            flush(
-                &mut merged_positions,
-                &mut merged_normals,
-                &mut merged_tangents,
-                &mut merged_uvs,
-                &mut merged_indices,
-                &mut cluster_aabb_min,
-                &mut cluster_aabb_max,
-                dominant_tint,
-                &mut self.renderer,
-                &mut self.terrain_model_names,
-                &mut sub_idx,
-            );
         }
 
         // Track stats for the scene stats panel
         self.terrain_total_indices = total_indices;
         self.terrain_total_triangles = total_indices / 3;
+
+        // Rebuild the coarse height grid from the freshly-uploaded vertex
+        // data. Used downstream by `upload_scatter_placements` to resample
+        // per-instance Y against the live surface (Issue #6 grounding).
+        self.terrain_height_grid = TerrainHeightGrid::build(&self.terrain_chunks);
+        if let Some(grid) = &self.terrain_height_grid {
+            tracing::debug!(
+                target: "aw_editor::viewport",
+                "Terrain height grid built: {}×{} cells, cell_size={:.2}m",
+                grid.width, grid.height, grid.cell_size,
+            );
+        }
 
         tracing::info!(
             target: "aw_editor::viewport",
@@ -967,32 +1422,11 @@ impl EngineRenderAdapter {
             let extent = global_max_extent + 100.0;
             self.renderer.set_terrain_ground_plane(ground_y, extent);
 
-            // ── Fog ────────────────────────────────────────────────────
-            // Distance fog fades terrain edges smoothly into the sky.
-            // The fog color MUST match the sky horizon color so the
-            // transition is seamless — a mismatch creates white void.
-            //
-            // fog_start / fog_end are biome-appropriate constants:
-            // generous viewing distance for open-world editing while
-            // distant terrain fades naturally into atmosphere.
-            let env = self.renderer.scene_environment_mut();
-            env.visuals.fog_color = glam::Vec3::new(0.75, 0.85, 1.0); // matches day_color_horizon
-            env.visuals.fog_start = 800.0;  // crystal clear viewing to 800 units
-            env.visuals.fog_end = 1800.0;   // fully fogged at 1800
-            env.visuals.fog_density = 0.0;   // pure linear fog (no exponential)
-                                                     // Ambient fill so shadowed areas aren't pitch black
-            env.visuals.ambient_color = glam::Vec3::new(0.45, 0.50, 0.55);
-            env.visuals.ambient_intensity = 0.35;
-            tracing::debug!(
-                "Ground fill plane set at Y={ground_y:.1}, extent={extent:.0}, \
-                 fog_start={:.0}, fog_density={:.5}",
-                env.visuals.fog_start,
-                env.visuals.fog_density,
-            );
-
             // ── Sky ────────────────────────────────────────────────────
-            // Activate the procedural sky renderer so the background shows
-            // a gradient sky instead of a flat white/grey void.
+            // Procedural sky config is the single source of truth for the
+            // horizon colour. Fog is derived from it below to guarantee
+            // they stay coherent — a mismatch creates a visible white
+            // void at the terrain fade (editor audit Issue #5).
             let sky = astraweave_render::SkyConfig {
                 day_color_top: glam::Vec3::new(0.25, 0.55, 1.0),
                 day_color_horizon: glam::Vec3::new(0.75, 0.85, 1.0),
@@ -1004,6 +1438,29 @@ impl EngineRenderAdapter {
                 cloud_speed: 0.01,
                 cloud_altitude: 800.0,
             };
+
+            // ── Fog ────────────────────────────────────────────────────
+            // Distance fog fades terrain edges smoothly into the sky.
+            // The fog colour is taken DIRECTLY from `sky.day_color_horizon`
+            // so the transition stays seamless even if the sky palette is
+            // tweaked here in the future.
+            let env = self.renderer.scene_environment_mut();
+            env.visuals.fog_color = fog_color_from_sky(&sky);
+            env.visuals.fog_start = 800.0; // crystal clear viewing to 800 units
+            env.visuals.fog_end = 1800.0; // fully fogged at 1800
+            env.visuals.fog_density = 0.0; // pure linear fog (no exponential)
+                                           // Ambient fill so shadowed areas aren't pitch black
+            env.visuals.ambient_color = glam::Vec3::new(0.45, 0.50, 0.55);
+            env.visuals.ambient_intensity = 0.35;
+            tracing::debug!(
+                "Ground fill plane set at Y={ground_y:.1}, extent={extent:.0}, \
+                 fog_start={:.0}, fog_density={:.5}",
+                env.visuals.fog_start,
+                env.visuals.fog_density,
+            );
+
+            // Activate the procedural sky renderer now that fog has been
+            // aligned with its horizon colour.
             self.renderer.set_sky_config(sky);
 
             // ── Sun ────────────────────────────────────────────────────
@@ -1030,40 +1487,196 @@ impl EngineRenderAdapter {
 
         tracing::debug!(
             "Uploaded {} terrain chunks ({} triangles) to engine renderer",
-            self.terrain_model_names.len(),
+            self.terrain_source_chunk_count,
             self.terrain_total_triangles,
         );
     }
 
-    /// Convert editor terrain vertices to engine mesh arrays in a single pass.
-    ///
-    /// Avoids the intermediate `Vec<astraweave_render::TerrainVertex>` allocation
-    /// and separates position/normal/tangent/UV in one iteration. Also computes
-    /// the dominant biome tint and world-space AABB for frustum culling.
-    fn convert_terrain_vertices(
+    fn rebuild_terrain_cluster(&mut self, cluster_index: usize) {
+        let Some(cluster) = self.terrain_clusters.get(cluster_index).cloned() else {
+            return;
+        };
+
+        let mut merged_positions = Vec::new();
+        let mut merged_normals = Vec::new();
+        let mut merged_tangents = Vec::new();
+        let mut merged_uvs = Vec::new();
+        let mut merged_indices = Vec::new();
+        let mut cluster_aabb_min = [f32::MAX; 3];
+        let mut cluster_aabb_max = [f32::MIN; 3];
+        let mut surface_summary = TerrainSurfaceSummary::default();
+        let mut vertex_offset = 0u32;
+
+        for chunk_index in cluster.chunk_indices {
+            let Some(chunk) = self.terrain_chunks.get(chunk_index) else {
+                continue;
+            };
+
+            for &idx in &chunk.indices {
+                merged_indices.push(idx + vertex_offset);
+            }
+            vertex_offset += chunk.positions.len() as u32;
+
+            merged_positions.extend_from_slice(&chunk.positions);
+            merged_normals.extend_from_slice(&chunk.normals);
+            merged_tangents.extend_from_slice(&chunk.tangents);
+            merged_uvs.extend_from_slice(&chunk.uvs);
+            surface_summary.merge(&chunk.surface_summary);
+
+            for axis in 0..3 {
+                cluster_aabb_min[axis] = cluster_aabb_min[axis].min(chunk.aabb_min[axis]);
+                cluster_aabb_max[axis] = cluster_aabb_max[axis].max(chunk.aabb_max[axis]);
+            }
+        }
+
+        if merged_positions.is_empty() {
+            self.renderer.clear_model(&cluster.name);
+            return;
+        }
+
+        let prototype_name = surface_summary
+            .dominant_material_index()
+            .and_then(|material_index| self.ensure_terrain_material_prototype(material_index));
+        let resolved_tint = surface_summary.resolve_tint();
+        let instance = astraweave_render::Instance::from_pos_scale_color(
+            glam::Vec3::ZERO,
+            glam::Vec3::ONE,
+            if prototype_name.is_some() {
+                blend_tints([1.0, 1.0, 1.0, 1.0], resolved_tint, 0.20)
+            } else {
+                resolved_tint
+            },
+        );
+        if let Some(prototype_name) = prototype_name.as_deref() {
+            let mesh = self.renderer.create_mesh_from_full_arrays(
+                &merged_positions,
+                &merged_normals,
+                &merged_tangents,
+                &merged_uvs,
+                &merged_indices,
+            );
+            if self.renderer.add_model_sharing_texture_with_bounds(
+                &cluster.name,
+                mesh,
+                &[instance.clone()],
+                prototype_name,
+                cluster_aabb_min,
+                cluster_aabb_max,
+            ) {
+                return;
+            }
+        }
+
+        let mesh = self.renderer.create_mesh_from_full_arrays(
+            &merged_positions,
+            &merged_normals,
+            &merged_tangents,
+            &merged_uvs,
+            &merged_indices,
+        );
+        self.renderer.add_model_with_bounds(
+            &cluster.name,
+            mesh,
+            &[instance],
+            cluster_aabb_min,
+            cluster_aabb_max,
+        );
+    }
+
+    fn rebuild_terrain_clusters_for_chunk(&mut self, chunk_index: usize) {
+        let affected_clusters: Vec<_> = self
+            .terrain_clusters
+            .iter()
+            .enumerate()
+            .filter_map(|(cluster_index, cluster)| {
+                cluster
+                    .chunk_indices
+                    .contains(&chunk_index)
+                    .then_some(cluster_index)
+            })
+            .collect();
+
+        for cluster_index in affected_clusters {
+            self.rebuild_terrain_cluster(cluster_index);
+        }
+    }
+
+    fn refresh_terrain_ground_plane(&mut self) {
+        if self.terrain_chunks.is_empty() {
+            self.renderer.reset_ground_plane();
+            return;
+        }
+
+        let mut global_aabb_min = [f32::MAX; 3];
+        let mut global_aabb_max = [f32::MIN; 3];
+        for chunk in &self.terrain_chunks {
+            for axis in 0..3 {
+                global_aabb_min[axis] = global_aabb_min[axis].min(chunk.aabb_min[axis]);
+                global_aabb_max[axis] = global_aabb_max[axis].max(chunk.aabb_max[axis]);
+            }
+        }
+
+        let global_min_y = global_aabb_min[1];
+        let global_max_extent = global_aabb_max[0]
+            .abs()
+            .max(global_aabb_max[2].abs())
+            .max(global_aabb_min[0].abs())
+            .max(global_aabb_min[2].abs());
+
+        if global_min_y < f32::MAX {
+            let ground_y = global_min_y - 5.0;
+            let extent = global_max_extent + 100.0;
+            self.renderer.set_terrain_ground_plane(ground_y, extent);
+        }
+    }
+
+    /// Convert editor terrain vertices to clustered render data in a single pass.
+    fn convert_terrain_chunk(
         vertices: &[TerrainVertex],
-    ) -> (
-        Vec<[f32; 3]>,
-        Vec<[f32; 3]>,
-        Vec<[f32; 4]>,
-        Vec<[f32; 2]>,
-        [f32; 4],
-        [f32; 3],
-        [f32; 3],
-    ) {
+        indices: &[u32],
+    ) -> TerrainChunkRenderData {
         let count = vertices.len();
         let mut positions = Vec::with_capacity(count);
         let mut normals = Vec::with_capacity(count);
         let mut tangents = Vec::with_capacity(count);
         let mut uvs = Vec::with_capacity(count);
-        let mut biome_counts = [0u32; 8];
+        let mut surface_summary = TerrainSurfaceSummary::default();
         let mut aabb_min = [f32::MAX; 3];
         let mut aabb_max = [f32::MIN; 3];
 
         for v in vertices {
             positions.push(v.position);
             normals.push(v.normal);
-            uvs.push(v.uv);
+
+            // World-space detail-UV tiling: the source `v.uv` maps 0..1 across
+            // an entire terrain chunk (commonly 128 m+), which stretches the
+            // global detail/biome texture into a near-uniform blur and is
+            // the primary cause of the "flat green" look reported in the
+            // visual audit (Issue #2). Overriding with position.xz * freq
+            // gives a regular world-space tile regardless of chunk size.
+            //
+            // `DETAIL_UV_FREQ` tunes the visible pattern:
+            //   * Too high (≥0.25, ≤4 m period): fine features read as a
+            //     countable polka-dot grid at close range (audit clip 2, #6).
+            //   * Too low (≤0.05, ≥20 m period): features become blurry
+            //     blobs that don't add detail.
+            //   * 0.125 (8 m period) is a pragmatic mid-point that reads
+            //     as low-frequency variation at typical editor camera
+            //     distances. The PROPER fix is the splat-array pipeline
+            //     (Phase 2.2 of the editor fidelity plan) which substitutes
+            //     authored per-material textures for this global tile.
+            //
+            // This is safe because:
+            //   * Tangents are computed from the normal only (below), not UV.
+            //   * The renderer samples a single global albedo/normal/MR via
+            //     these UVs and does not use them as a chunk-relative index.
+            //   * Per-vertex biome/material weights remain the sole source of
+            //     tint variation via `TerrainSurfaceSummary::resolve_tint`.
+            const DETAIL_UV_FREQ: f32 = 0.125; // 1 / 8 m
+            uvs.push([
+                v.position[0] * DETAIL_UV_FREQ,
+                v.position[2] * DETAIL_UV_FREQ,
+            ]);
 
             // Compute tangent from normal
             let n = glam::Vec3::from(v.normal);
@@ -1075,26 +1688,7 @@ impl EngineRenderAdapter {
             let t = n.cross(up).normalize();
             tangents.push([t.x, t.y, t.z, 1.0]);
 
-            // Track dominant biome
-            let weights = [
-                v.biome_weights_0[0],
-                v.biome_weights_0[1],
-                v.biome_weights_0[2],
-                v.biome_weights_0[3],
-                v.biome_weights_1[0],
-                v.biome_weights_1[1],
-                v.biome_weights_1[2],
-                v.biome_weights_1[3],
-            ];
-            let mut best_idx = 0;
-            let mut best_w = weights[0];
-            for (i, &w) in weights.iter().enumerate().skip(1) {
-                if w > best_w {
-                    best_w = w;
-                    best_idx = i;
-                }
-            }
-            biome_counts[best_idx.min(7)] += 1;
+            surface_summary.add_vertex(v);
 
             // AABB
             for j in 0..3 {
@@ -1103,34 +1697,296 @@ impl EngineRenderAdapter {
             }
         }
 
-        // Dominant biome tint
-        let dominant = biome_counts
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, &c)| c)
-            .map(|(i, _)| i)
-            .unwrap_or(0);
-        let tint = Self::biome_id_to_tint(dominant as u32);
-
-        (positions, normals, tangents, uvs, tint, aabb_min, aabb_max)
+        TerrainChunkRenderData {
+            positions,
+            normals,
+            tangents,
+            uvs,
+            indices: indices.to_vec(),
+            surface_summary,
+            aabb_min,
+            aabb_max,
+        }
     }
 
-    /// Map a biome ID (0-7) to an instance tint color.
-    ///
-    /// These multiply with the albedo texture (PBR shader: `base_color *= input.color`),
-    /// so values should be near 1.0 with a slight color bias — not dark colors.
-    fn biome_id_to_tint(biome_id: u32) -> [f32; 4] {
-        match biome_id {
-            0 => [0.80, 1.00, 0.70, 1.0], // Grassland — warm green boost
-            1 => [1.10, 1.00, 0.75, 1.0], // Desert — warm sandy shift
-            2 => [0.60, 0.85, 0.50, 1.0], // Forest — deeper green
-            3 => [0.85, 0.85, 0.80, 1.0], // Mountain — cool gray
-            4 => [1.05, 1.05, 1.10, 1.0], // Tundra — cool bright
-            5 => [0.70, 0.80, 0.55, 1.0], // Swamp — olive
-            6 => [1.10, 1.05, 0.85, 1.0], // Beach — warm sand
-            7 => [0.75, 0.90, 0.85, 1.0], // River — cool blue-green
-            _ => [0.90, 0.90, 0.90, 1.0], // Unknown — neutral
+    fn build_scatter_lod_assets(
+        key: &str,
+        cpu_meshes: &[astraweave_render::mesh::CpuMesh],
+    ) -> Option<ScatterLodAssets> {
+        let mut model_aabb_min = glam::Vec3::splat(f32::INFINITY);
+        let mut model_aabb_max = glam::Vec3::splat(f32::NEG_INFINITY);
+        for mesh in cpu_meshes {
+            if let Some((min, max)) = mesh.aabb() {
+                model_aabb_min = model_aabb_min.min(min);
+                model_aabb_max = model_aabb_max.max(max);
+            }
         }
+
+        if !model_aabb_min.is_finite() || !model_aabb_max.is_finite() {
+            return None;
+        }
+
+        let atlas_region = astraweave_render::vegetation_lod::AtlasRegion {
+            u_min: 0.0,
+            v_min: 0.0,
+            u_max: 1.0,
+            v_max: 1.0,
+        };
+
+        let aabb_min_y = model_aabb_min.y.min(0.0);
+        let model_height = (model_aabb_max.y - model_aabb_min.y).max(0.1);
+        let model_half_width =
+            ((model_aabb_max.x - model_aabb_min.x).max(model_aabb_max.z - model_aabb_min.z) / 2.0)
+                .max(0.05);
+
+        let mut primitives = Vec::new();
+        for mesh in cpu_meshes.iter().filter(|mesh| !mesh.vertices.is_empty()) {
+            let simplification_target = match mesh.vertices.len() {
+                0..=2_048 => 0.55,
+                2_049..=8_192 => 0.40,
+                8_193..=20_480 => 0.30,
+                _ => 0.20,
+            };
+            let lod_chain = astraweave_render::vegetation_lod::VegetationLodChain::build(
+                key,
+                astraweave_render::lod_generator::SimplificationMesh::from_cpu_mesh(mesh),
+                simplification_target,
+                0.5,
+                1.0,
+                atlas_region,
+            );
+            let simplified_mesh = lod_chain
+                .lod1_mesh
+                .to_cpu_mesh(mesh.albedo_image.clone(), mesh.texture_source_hint.clone());
+            primitives.push(ScatterPrimitiveLodAssets {
+                full_mesh: mesh.clone(),
+                simplified_mesh,
+            });
+        }
+
+        if primitives.is_empty() {
+            return None;
+        }
+
+        Some(ScatterLodAssets {
+            primitives,
+            cross_billboard: astraweave_render::vegetation_lod::generate_cross_billboard(0.5, 1.0)
+                .to_cpu_mesh(),
+            impostor_card: astraweave_render::vegetation_lod::generate_impostor_card(0.5, 1.0)
+                .to_cpu_mesh(),
+            aabb_min_y,
+            model_height,
+            model_half_width,
+        })
+    }
+
+    fn scatter_density_for_distance(
+        distances: &astraweave_render::vegetation_lod::TreeLodDistances,
+        distance: f32,
+    ) -> f32 {
+        if distance <= distances.lod1_max {
+            1.0
+        } else if distance <= distances.lod2_max {
+            0.5
+        } else if distance <= distances.cull_distance * 0.85 {
+            0.25
+        } else {
+            0.125
+        }
+    }
+
+    fn scatter_alpha_sidecar_path(diffuse_path: &std::path::Path) -> Option<std::path::PathBuf> {
+        let file_name = diffuse_path.file_name()?.to_str()?;
+        let mut candidates = Vec::new();
+
+        for needle in ["_diff", "_albedo", "_basecolor", "_color"] {
+            if file_name.contains(needle) {
+                candidates.push(file_name.replace(needle, "_alpha"));
+                candidates.push(file_name.replace(needle, "_mask"));
+            }
+        }
+
+        let parent = diffuse_path.parent()?;
+        for candidate in candidates {
+            let candidate_path = parent.join(candidate);
+            if candidate_path.exists() {
+                return Some(candidate_path);
+            }
+        }
+
+        None
+    }
+
+    fn load_scatter_texture_from_path(
+        path: &std::path::Path,
+        max_texture_size: u32,
+    ) -> Option<(u32, u32, Vec<u8>)> {
+        let mut rgba = image::open(path).ok()?.to_rgba8();
+
+        if let Some(alpha_path) = Self::scatter_alpha_sidecar_path(path) {
+            if let Ok(alpha_image) = image::open(&alpha_path) {
+                let mut alpha = alpha_image.to_luma8();
+                if alpha.dimensions() != rgba.dimensions() {
+                    alpha = image::imageops::resize(
+                        &alpha,
+                        rgba.width(),
+                        rgba.height(),
+                        image::imageops::FilterType::Triangle,
+                    );
+                }
+
+                for (pixel, alpha_pixel) in rgba.pixels_mut().zip(alpha.pixels()) {
+                    pixel[3] = alpha_pixel[0];
+                }
+            }
+        }
+
+        let (width, height) = rgba.dimensions();
+        if width > max_texture_size || height > max_texture_size {
+            let resized = image::imageops::resize(
+                &rgba,
+                width.min(max_texture_size),
+                height.min(max_texture_size),
+                image::imageops::FilterType::Triangle,
+            );
+            let (resized_width, resized_height) = resized.dimensions();
+            return Some((resized_width, resized_height, resized.into_raw()));
+        }
+
+        Some((width, height, rgba.into_raw()))
+    }
+
+    pub fn set_terrain_surface_maps(
+        &mut self,
+        albedo: (u32, u32, &[u8]),
+        normal: Option<(u32, u32, &[u8])>,
+        metallic_roughness: Option<(u32, u32, &[u8])>,
+    ) {
+        self.renderer
+            .set_albedo_from_rgba8(albedo.0, albedo.1, albedo.2);
+        if let Some((width, height, data)) = normal {
+            self.renderer.set_normal_from_rgba8(width, height, data);
+        }
+        if let Some((width, height, data)) = metallic_roughness {
+            self.renderer
+                .set_metallic_roughness_from_rgba8(width, height, data);
+        }
+        self.terrain_detail_texture_uploaded = true;
+    }
+
+    fn generate_default_terrain_normal_texture() -> (u32, u32, Vec<u8>) {
+        const SIZE: u32 = 4;
+        let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+        for _ in 0..(SIZE * SIZE) {
+            data.extend_from_slice(&[128, 128, 255, 255]);
+        }
+        (SIZE, SIZE, data)
+    }
+
+    fn generate_default_terrain_mra_texture() -> (u32, u32, Vec<u8>) {
+        const SIZE: u32 = 4;
+        let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+        for _ in 0..(SIZE * SIZE) {
+            data.extend_from_slice(&[0, 220, 255, 255]);
+        }
+        (SIZE, SIZE, data)
+    }
+
+    fn load_terrain_surface_texture(path: &std::path::Path) -> Option<(u32, u32, Vec<u8>)> {
+        let rgba = image::open(path).ok()?.to_rgba8();
+        let (width, height) = rgba.dimensions();
+        Some((width, height, rgba.into_raw()))
+    }
+
+    fn load_terrain_surface_or_fallback(
+        primary_path: &std::path::Path,
+        fallback_path: &std::path::Path,
+    ) -> Option<(u32, u32, Vec<u8>)> {
+        Self::load_terrain_surface_texture(primary_path)
+            .or_else(|| Self::load_terrain_surface_texture(fallback_path))
+    }
+
+    fn ensure_terrain_material_surface_set(
+        &mut self,
+        material_index: usize,
+    ) -> Option<&TerrainMaterialSurfaceSet> {
+        if self.terrain_material_surfaces.contains_key(&material_index) {
+            return self.terrain_material_surfaces.get(&material_index);
+        }
+
+        let material_name = MATERIAL_NAMES.get(material_index)?;
+        let root = find_assets_dir().join("materials");
+        let fallback_base = "default";
+
+        let albedo = Self::load_terrain_surface_or_fallback(
+            &root.join(format!("{material_name}.png")),
+            &root.join(format!("{fallback_base}.png")),
+        )?;
+        let normal = Self::load_terrain_surface_or_fallback(
+            &root.join(format!("{material_name}_n.png")),
+            &root.join(format!("{fallback_base}_n.png")),
+        )?;
+        let metallic_roughness = Self::load_terrain_surface_or_fallback(
+            &root.join(format!("{material_name}_mra.png")),
+            &root.join(format!("{fallback_base}_mra.png")),
+        )?;
+
+        self.terrain_material_surfaces.insert(
+            material_index,
+            TerrainMaterialSurfaceSet {
+                albedo,
+                normal,
+                metallic_roughness,
+            },
+        );
+
+        self.terrain_material_surfaces.get(&material_index)
+    }
+
+    fn ensure_terrain_material_prototype(&mut self, material_index: usize) -> Option<String> {
+        if let Some(name) = self.terrain_material_prototypes.get(&material_index) {
+            return Some(name.clone());
+        }
+
+        let surface_set = self
+            .ensure_terrain_material_surface_set(material_index)
+            .cloned()?;
+        let material_name = MATERIAL_NAMES.get(material_index)?;
+        let prototype_name = format!("__aw_editor_terrain_surface_{material_name}");
+
+        let prototype_mesh = self.renderer.create_mesh_from_full_arrays(
+            &[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+            &[[0.0, 1.0, 0.0]; 3],
+            &[[1.0, 0.0, 0.0, 1.0]; 3],
+            &[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+            &[0, 1, 2],
+        );
+        let surface_maps = astraweave_render::ModelSurfaceMaps {
+            albedo: (
+                surface_set.albedo.0,
+                surface_set.albedo.1,
+                &surface_set.albedo.2,
+            ),
+            normal: (
+                surface_set.normal.0,
+                surface_set.normal.1,
+                &surface_set.normal.2,
+            ),
+            metallic_roughness: (
+                surface_set.metallic_roughness.0,
+                surface_set.metallic_roughness.1,
+                &surface_set.metallic_roughness.2,
+            ),
+        };
+        self.renderer.add_model_with_pbr_textures(
+            &prototype_name,
+            prototype_mesh,
+            &[],
+            &surface_maps,
+        );
+        self.terrain_material_prototypes
+            .insert(material_index, prototype_name.clone());
+        Some(prototype_name)
     }
 
     /// Generate a seamlessly tiling procedural terrain detail texture.
@@ -1157,8 +2013,14 @@ impl EngineRenderAdapter {
             // 8 gradient directions (45° increments)
             let idx = h >> 29; // top 3 bits → 0..7
             const DIRS: [(f32, f32); 8] = [
-                (1.0, 0.0), (0.707, 0.707), (0.0, 1.0), (-0.707, 0.707),
-                (-1.0, 0.0), (-0.707, -0.707), (0.0, -1.0), (0.707, -0.707),
+                (1.0, 0.0),
+                (0.707, 0.707),
+                (0.0, 1.0),
+                (-0.707, 0.707),
+                (-1.0, 0.0),
+                (-0.707, -0.707),
+                (0.0, -1.0),
+                (0.707, -0.707),
             ];
             DIRS[idx as usize]
         }
@@ -1245,18 +2107,28 @@ impl EngineRenderAdapter {
         for name in self.terrain_model_names.drain(..) {
             self.renderer.clear_model(&name);
         }
+        for prototype_name in self.terrain_material_prototypes.values() {
+            self.renderer.clear_model(prototype_name);
+        }
+        self.terrain_chunks.clear();
+        self.terrain_chunk_slot_map.clear();
+        self.terrain_clusters.clear();
+        self.terrain_material_surfaces.clear();
+        self.terrain_material_prototypes.clear();
+        self.terrain_source_chunk_count = 0;
         self.terrain_total_triangles = 0;
         self.terrain_total_indices = 0;
-        self.terrain_cached_indices.clear();
         // Force re-upload of the terrain detail texture on next terrain load
         self.terrain_detail_texture_uploaded = false;
+        // Invalidate the height grid; it will be rebuilt on next terrain upload.
+        self.terrain_height_grid = None;
         // Restore default ground plane position
         self.renderer.reset_ground_plane();
     }
 
     /// Get the number of terrain chunks currently loaded in the engine.
     pub fn terrain_chunk_count(&self) -> usize {
-        self.terrain_model_names.len()
+        self.terrain_source_chunk_count
     }
 
     /// Total terrain triangles across all uploaded chunks.
@@ -1269,40 +2141,37 @@ impl EngineRenderAdapter {
         self.terrain_total_indices
     }
 
-    /// Incrementally update a single terrain chunk's vertices on the GPU.
+    /// Incrementally update a single source terrain chunk on the GPU.
     ///
-    /// Replaces the model named `terrain_chunk_{chunk_index}` with a fresh
-    /// mesh built from the provided vertices. Uses cached indices from the
-    /// initial upload (brush strokes change heights/normals, not topology).
+    /// The engine viewport clusters multiple source chunks into fewer render
+    /// models, so an update rebuilds the owning clustered model(s) instead of
+    /// attempting to replace a no-longer-existent one-chunk GPU model.
     pub fn update_terrain_chunk(&mut self, chunk_index: usize, vertices: &[TerrainVertex]) {
-        let name = format!("terrain_chunk_{chunk_index}");
         if vertices.is_empty() {
             return;
         }
 
-        let indices = match self.terrain_cached_indices.get(chunk_index) {
-            Some(idx) => idx,
+        let Some(Some(stored_chunk_index)) = self.terrain_chunk_slot_map.get(chunk_index).copied()
+        else {
+            tracing::warn!(
+                "update_terrain_chunk: unknown logical source chunk index {chunk_index} for clustered terrain"
+            );
+            return;
+        };
+
+        let indices = match self.terrain_chunks.get(stored_chunk_index) {
+            Some(chunk) => chunk.indices.clone(),
             None => {
-                tracing::warn!("update_terrain_chunk: no cached indices for chunk {chunk_index}");
+                tracing::warn!(
+                    "update_terrain_chunk: missing stored chunk {stored_chunk_index} for logical source chunk {chunk_index}"
+                );
                 return;
             }
         };
 
-        // Single-pass conversion (avoids intermediate Vec<TerrainVertex> allocation)
-        let (positions, normals, tangents, uvs, biome_tint, _, _) =
-            Self::convert_terrain_vertices(vertices);
-
-        let mesh = self
-            .renderer
-            .create_mesh_from_full_arrays(&positions, &normals, &tangents, &uvs, indices);
-        let instance = astraweave_render::Instance::from_pos_scale_color(
-            glam::Vec3::ZERO,
-            glam::Vec3::ONE,
-            biome_tint,
-        );
-
-        // add_model with the same name replaces the existing entry in the HashMap
-        self.renderer.add_model(&name, mesh, &[instance]);
+        self.terrain_chunks[stored_chunk_index] = Self::convert_terrain_chunk(vertices, &indices);
+        self.rebuild_terrain_clusters_for_chunk(stored_chunk_index);
+        self.refresh_terrain_ground_plane();
     }
 
     // ── Scatter / vegetation feeding ────────────────────────────────────
@@ -1320,52 +2189,83 @@ impl EngineRenderAdapter {
         let upload_start = std::time::Instant::now();
 
         // Retain ALL placements + textures for camera-driven streaming.
-        // The full set is kept; chunk filtering happens below.
         self.scatter_placements = placements.to_vec();
         self.scatter_diffuse_textures = diffuse_textures.clone();
         self.scatter_lod_camera_pos = self.camera_position;
+        self.scatter_lod_camera_yaw = self.camera_yaw;
 
-        // Infer chunk_size from placement data if chunks are tagged
-        if let Some(first) = placements.first() {
-            if first.chunk_id != astraweave_terrain::ChunkId::new(0, 0)
-                || placements.iter().any(|p| p.chunk_id != astraweave_terrain::ChunkId::new(0, 0))
-            {
-                // Estimate chunk size from placement spread within a single chunk
-                // (fallback: keep the configured default)
+        // Re-sample Y against the current terrain height grid so scatter
+        // stays planted on the surface even if the heightmap was edited
+        // after the scatter instances were generated. Placements whose XZ
+        // falls outside the grid (e.g. far edges, no terrain) keep their
+        // original Y. See `TerrainHeightGrid` for sampling strategy.
+        if let Some(grid) = &self.terrain_height_grid {
+            let mut resampled = 0usize;
+            for p in &mut self.scatter_placements {
+                if let Some(y) = grid.sample(p.position.x, p.position.z) {
+                    if (p.position.y - y).abs() > 0.001 {
+                        resampled += 1;
+                    }
+                    p.position.y = y;
+                }
+            }
+            if resampled > 0 {
+                tracing::debug!(
+                    target: "aw_editor::viewport",
+                    "Scatter Y resampled against terrain grid: {}/{} placements adjusted",
+                    resampled,
+                    self.scatter_placements.len(),
+                );
             }
         }
 
-        // Clear previous scatter models
-        for name in self.scatter_model_names.drain(..) {
-            self.renderer.clear_model(&name);
-        }
-        self.scatter_chunk_models.clear();
-        self.active_scatter_chunks.clear();
-
         if placements.is_empty() {
+            for name in self.scatter_model_names.drain(..) {
+                self.renderer.clear_model(&name);
+            }
+            self.scatter_chunk_models.clear();
+            self.active_scatter_chunks.clear();
+            self.scatter_placement_count = 0;
+            self.scatter_draw_call_count = 0;
+            self.scatter_total_triangles = 0;
+            self.scatter_total_vertices = 0;
             return (0, 0, 0, 0);
         }
 
         let cam_pos = self.camera_position;
-        let cam_chunk = astraweave_terrain::ChunkId::from_world_pos(
-            cam_pos,
-            self.scatter_chunk_size,
-        );
+        let cam_yaw = self.camera_yaw;
+        let cam_chunk =
+            astraweave_terrain::ChunkId::from_world_pos(cam_pos, self.scatter_chunk_size);
         self.camera_chunk = cam_chunk;
 
         // ── Chunk-radius filter ──────────────────────────────────────
-        // Only upload placements from chunks within streaming load radius.
         const SCATTER_LOAD_RADIUS: i32 = 3;
-        let active_placements: Vec<&ScatterPlacement> = placements
+        let has_chunk_tags = placements
             .iter()
-            .filter(|p| {
-                let dx = (p.chunk_id.x - cam_chunk.x).abs();
-                let dz = (p.chunk_id.z - cam_chunk.z).abs();
-                dx <= SCATTER_LOAD_RADIUS && dz <= SCATTER_LOAD_RADIUS
-            })
-            .collect();
+            .any(|p| p.chunk_id != astraweave_terrain::ChunkId::new(0, 0));
+        let active_placements: Vec<&ScatterPlacement> = if has_chunk_tags {
+            placements
+                .iter()
+                .filter(|p| {
+                    let dx = (p.chunk_id.x - cam_chunk.x).abs();
+                    let dz = (p.chunk_id.z - cam_chunk.z).abs();
+                    dx <= SCATTER_LOAD_RADIUS && dz <= SCATTER_LOAD_RADIUS
+                })
+                .collect()
+        } else {
+            placements.iter().collect()
+        };
 
         if active_placements.is_empty() {
+            for name in self.scatter_model_names.drain(..) {
+                self.renderer.clear_model(&name);
+            }
+            self.scatter_chunk_models.clear();
+            self.active_scatter_chunks.clear();
+            self.scatter_placement_count = 0;
+            self.scatter_draw_call_count = 0;
+            self.scatter_total_triangles = 0;
+            self.scatter_total_vertices = 0;
             tracing::info!("Scatter: 0 placements within chunk load radius {SCATTER_LOAD_RADIUS} of camera chunk ({}, {})",
                 cam_chunk.x, cam_chunk.z);
             return (0, 0, 0, 0);
@@ -1387,9 +2287,24 @@ impl EngineRenderAdapter {
             groups.entry(p.mesh_key.clone()).or_default().push(p);
         }
 
+        let active_chunk_ids: std::collections::HashSet<astraweave_terrain::ChunkId> =
+            active_placements.iter().map(|p| p.chunk_id).collect();
+        self.active_scatter_chunks = active_chunk_ids.clone();
+        self.scatter_chunk_models = active_chunk_ids
+            .iter()
+            .copied()
+            .map(|chunk_id| (chunk_id, Vec::new()))
+            .collect();
+
         let mut loaded_groups = 0u32;
         let mut skipped_not_found = 0u32;
         let mut skipped_load_fail = 0u32;
+        let mut actual_draw_calls = 0u32;
+        let mut actual_instance_count = 0usize;
+        let mut actual_triangle_count = 0usize;
+        let mut actual_vertex_count = 0usize;
+        let mut used_model_names: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for (key, items) in &groups {
             let mesh_path = &items[0].mesh_path;
@@ -1409,24 +2324,23 @@ impl EngineRenderAdapter {
             // Load glTF mesh — persistent cache across biome regenerations.
             let group_start = std::time::Instant::now();
             let path = std::path::Path::new(mesh_path);
-            let load_result = if let Some(cached) =
-                self.scatter_cpu_mesh_cache.get(mesh_path).cloned()
-            {
-                tracing::debug!("Scatter: mesh cache hit for '{key}'");
-                Ok(Ok(cached))
-            } else {
-                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let opts = astraweave_render::mesh_gltf::GltfOptions::default();
-                    astraweave_render::mesh_gltf::load_gltf(path, &opts)
-                }));
-                if let Ok(Ok(ref meshes)) = res {
-                    if !meshes.is_empty() {
-                        self.scatter_cpu_mesh_cache
-                            .insert(mesh_path.to_string(), meshes.clone());
+            let load_result =
+                if let Some(cached) = self.scatter_cpu_mesh_cache.get(mesh_path).cloned() {
+                    tracing::debug!("Scatter: mesh cache hit for '{key}'");
+                    Ok(Ok(cached))
+                } else {
+                    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        let opts = astraweave_render::mesh_gltf::GltfOptions::default();
+                        astraweave_render::mesh_gltf::load_gltf(path, &opts)
+                    }));
+                    if let Ok(Ok(ref meshes)) = res {
+                        if !meshes.is_empty() {
+                            self.scatter_cpu_mesh_cache
+                                .insert(mesh_path.to_string(), meshes.clone());
+                        }
                     }
-                }
-                res
-            };
+                    res
+                };
             match load_result {
                 Ok(Ok(cpu_meshes)) if !cpu_meshes.is_empty() => {
                     const MAX_SCATTER_VERTICES: usize = 80_000;
@@ -1441,94 +2355,66 @@ impl EngineRenderAdapter {
                         continue;
                     }
 
-                    // Compute model AABB for pivot correction and billboard sizing
-                    let (model_aabb_min, model_aabb_max) = {
-                        let mut amin = glam::Vec3::splat(f32::INFINITY);
-                        let mut amax = glam::Vec3::splat(f32::NEG_INFINITY);
-                        for m in &cpu_meshes {
-                            if let Some((mn, mx)) = m.aabb() {
-                                amin = amin.min(mn);
-                                amax = amax.max(mx);
-                            }
-                        }
-                        (amin, amax)
-                    };
-                    let aabb_min_y = model_aabb_min.y.min(0.0);
-                    let model_height = (model_aabb_max.y - model_aabb_min.y).max(0.1);
-                    let model_half_width = ((model_aabb_max.x - model_aabb_min.x)
-                        .max(model_aabb_max.z - model_aabb_min.z)
-                        / 2.0)
-                        .max(0.05);
-
-                    // ── Per-species cull distance ──────────────────────────
-                    let species_cull = items[0].cull_distance;
-
-                    // ── LOD distances for this species ────────────────────
-                    // Trees (> 3m height) get full LOD chain.
-                    // Smaller vegetation (shrubs, grass) skip LOD1 and go
-                    // directly from full mesh to billboard.
-                    let is_tree = model_height > 3.0;
-                    let lod_distances = astraweave_render::vegetation_lod::TreeLodDistances {
-                        lod0_max: if is_tree { 200.0 } else { 100.0 },
-                        lod1_max: if is_tree { 400.0 } else { 100.0 }, // shrubs skip LOD1
-                        lod2_max: if is_tree { 800.0 } else { 250.0 },
-                        cull_distance: if species_cull > 0.0 {
-                            species_cull
-                        } else {
-                            if is_tree { 1200.0 } else { 600.0 }
-                        },
+                    let lod_assets = if let Some(cached) =
+                        self.scatter_lod_asset_cache.get(mesh_path).cloned()
+                    {
+                        cached
+                    } else if let Some(built) = Self::build_scatter_lod_assets(key, &cpu_meshes) {
+                        self.scatter_lod_asset_cache
+                            .insert(mesh_path.to_string(), built.clone());
+                        built
+                    } else {
+                        tracing::warn!(
+                            "Scatter: skipping '{key}' — unable to derive LOD assets from {mesh_path}"
+                        );
+                        skipped_load_fail += 1;
+                        continue;
                     };
 
-                    // ── Distance-based density scaling ────────────────────
-                    // Use PCG hash for deterministic selection so the same
-                    // instances are always visible from the same camera pos.
-                    // Density bands: 0-200: 100%, 200-500: 50%, 500-800: 25%, 800+: 12.5%
-                    let density_at = |dist: f32| -> f32 {
-                        if dist < 200.0 { 1.0 }
-                        else if dist < 500.0 { 0.5 }
-                        else if dist < 800.0 { 0.25 }
-                        else { 0.125 }
-                    };
+                    let species_cull =
+                        (items[0].cull_distance > 0.0).then_some(items[0].cull_distance);
+                    let representative_scale = items
+                        .iter()
+                        .map(|placement| placement.scale)
+                        .fold(0.0_f32, f32::max)
+                        .max(1.0);
+                    let lod_distances = astraweave_render::vegetation_lod::adaptive_lod_distances(
+                        lod_assets.model_height * representative_scale,
+                        lod_assets.model_half_width * 2.0 * representative_scale,
+                        species_cull,
+                    );
 
-                    // ── Build per-instance data with LOD + density filter ─
-                    // Each instance is classified into LOD0 (full mesh),
-                    // LOD2 (cross-billboard), or culled. LOD1 (simplified)
-                    // is skipped unless LOD1 asset files exist on disk.
                     struct LodInstance {
                         position: glam::Vec3,
                         instance: astraweave_render::Instance,
                     }
                     let mut lod0_instances: Vec<LodInstance> = Vec::new();
-                    let mut billboard_instances: Vec<LodInstance> = Vec::new();
+                    let mut lod1_instances: Vec<LodInstance> = Vec::new();
+                    let mut lod2_instances: Vec<LodInstance> = Vec::new();
+                    let mut lod3_instances: Vec<LodInstance> = Vec::new();
 
                     for p in items.iter() {
-                        // Distance from camera (XZ plane)
-                        let dx = p.position.x - cam_pos.x;
-                        let dz = p.position.z - cam_pos.z;
-                        let dist = (dx * dx + dz * dz).sqrt();
+                        let dist = p.position.distance(cam_pos);
 
-                        // LOD selection
-                        let lod = astraweave_render::vegetation_lod::select_lod(
-                            dist, &lod_distances,
-                        );
+                        let lod =
+                            astraweave_render::vegetation_lod::select_lod(dist, &lod_distances);
                         let lod = match lod {
                             Some(l) => l,
                             None => continue, // culled
                         };
 
-                        // Density scaling: hash-based probabilistic skip
-                        let density = density_at(dist);
+                        let density = Self::scatter_density_for_distance(&lod_distances, dist);
                         if density < 1.0 {
                             let hash_input = (p.position.x * 73856.093) as u32
+                                ^ (p.position.y * 42191.271) as u32
                                 ^ (p.position.z * 19349.663) as u32;
                             let h = astraweave_render::vegetation_gpu::pcg_hash(hash_input);
                             let r = astraweave_render::vegetation_gpu::hash_to_float(h);
                             if r > density {
-                                continue; // density-culled
+                                continue;
                             }
                         }
 
-                        // Build instance transform
                         let normal_quat = {
                             let n = p.terrain_normal;
                             if n.y < 0.996 && n.length_squared() > 0.5 {
@@ -1540,47 +2426,93 @@ impl EngineRenderAdapter {
                         let yaw_quat = glam::Quat::from_rotation_y(p.rotation);
                         let rotation = normal_quat * yaw_quat;
 
-                        let pivot_offset = aabb_min_y * p.scale;
+                        let pivot_offset = lod_assets.aabb_min_y * p.scale;
                         let mut pos = p.position;
                         pos.y -= pivot_offset;
 
-                        let transform = glam::Mat4::from_scale_rotation_translation(
-                            glam::Vec3::splat(p.scale),
-                            rotation,
-                            pos,
-                        );
-                        let inst = astraweave_render::Instance {
-                            transform,
-                            color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
-                            material_id: 0,
-                        };
-
                         match lod {
-                            astraweave_render::vegetation_lod::VegetationLod::FullMesh
-                            | astraweave_render::vegetation_lod::VegetationLod::Simplified => {
-                                lod0_instances.push(LodInstance { position: p.position, instance: inst });
-                            }
-                            astraweave_render::vegetation_lod::VegetationLod::CrossBillboard
-                            | astraweave_render::vegetation_lod::VegetationLod::ImpostorCard => {
-                                // Billboard instances use the model scale for sizing
-                                let bb_scale_x = model_half_width * 2.0 * p.scale;
-                                let bb_scale_y = model_height * p.scale;
-                                let bb_transform = glam::Mat4::from_scale_rotation_translation(
-                                    glam::Vec3::new(bb_scale_x, bb_scale_y, bb_scale_x),
-                                    yaw_quat,
+                            astraweave_render::vegetation_lod::VegetationLod::FullMesh => {
+                                let transform = glam::Mat4::from_scale_rotation_translation(
+                                    glam::Vec3::splat(p.scale),
+                                    rotation,
                                     pos,
                                 );
-                                let bb_inst = astraweave_render::Instance {
-                                    transform: bb_transform,
-                                    color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
-                                    material_id: 0,
+                                lod0_instances.push(LodInstance {
+                                    position: p.position,
+                                    instance: astraweave_render::Instance {
+                                        transform,
+                                        color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
+                                        material_id: 0,
+                                    },
+                                });
+                            }
+                            astraweave_render::vegetation_lod::VegetationLod::Simplified => {
+                                let transform = glam::Mat4::from_scale_rotation_translation(
+                                    glam::Vec3::splat(p.scale),
+                                    rotation,
+                                    pos,
+                                );
+                                lod1_instances.push(LodInstance {
+                                    position: p.position,
+                                    instance: astraweave_render::Instance {
+                                        transform,
+                                        color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
+                                        material_id: 0,
+                                    },
+                                });
+                            }
+                            astraweave_render::vegetation_lod::VegetationLod::CrossBillboard => {
+                                let billboard_transform =
+                                    glam::Mat4::from_scale_rotation_translation(
+                                        glam::Vec3::new(
+                                            lod_assets.model_half_width * 2.0 * p.scale,
+                                            lod_assets.model_height * p.scale,
+                                            lod_assets.model_half_width * 2.0 * p.scale,
+                                        ),
+                                        yaw_quat,
+                                        pos,
+                                    );
+                                lod2_instances.push(LodInstance {
+                                    position: p.position,
+                                    instance: astraweave_render::Instance {
+                                        transform: billboard_transform,
+                                        color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
+                                        material_id: 0,
+                                    },
+                                });
+                            }
+                            astraweave_render::vegetation_lod::VegetationLod::ImpostorCard => {
+                                let to_camera = cam_pos - p.position;
+                                let face_yaw = if to_camera.x * to_camera.x
+                                    + to_camera.z * to_camera.z
+                                    > 1.0e-6
+                                {
+                                    to_camera.x.atan2(to_camera.z)
+                                } else {
+                                    cam_yaw
                                 };
-                                billboard_instances.push(LodInstance { position: p.position, instance: bb_inst });
+                                let impostor_transform =
+                                    glam::Mat4::from_scale_rotation_translation(
+                                        glam::Vec3::new(
+                                            lod_assets.model_half_width * 2.0 * p.scale,
+                                            lod_assets.model_height * p.scale,
+                                            1.0,
+                                        ),
+                                        glam::Quat::from_rotation_y(face_yaw),
+                                        pos,
+                                    );
+                                lod3_instances.push(LodInstance {
+                                    position: p.position,
+                                    instance: astraweave_render::Instance {
+                                        transform: impostor_transform,
+                                        color: [p.tint[0], p.tint[1], p.tint[2], 1.0],
+                                        material_id: 0,
+                                    },
+                                });
                             }
                         }
                     }
 
-                    // ── Spatial sub-grouping (6×6 grid = 36 bins) ─────────
                     const SCATTER_GRID: usize = 6;
                     let mut x_min = f32::MAX;
                     let mut x_max = f32::MIN;
@@ -1597,162 +2529,199 @@ impl EngineRenderAdapter {
                     let cell_w = span_x / SCATTER_GRID as f32;
                     let cell_d = span_z / SCATTER_GRID as f32;
 
-                    // Bin LOD0 instances
-                    let mut lod0_bins: Vec<Vec<(glam::Vec3, astraweave_render::Instance)>> =
-                        (0..SCATTER_GRID * SCATTER_GRID).map(|_| Vec::new()).collect();
-                    for li in lod0_instances {
-                        let gx = ((li.position.x - x_min) / cell_w) as usize;
-                        let gz = ((li.position.z - z_min) / cell_d) as usize;
-                        let gx = gx.min(SCATTER_GRID - 1);
-                        let gz = gz.min(SCATTER_GRID - 1);
-                        lod0_bins[gz * SCATTER_GRID + gx].push((li.position, li.instance));
-                    }
+                    let bin_instances = |instances: Vec<LodInstance>| {
+                        let mut bins: Vec<Vec<(glam::Vec3, astraweave_render::Instance)>> = (0
+                            ..SCATTER_GRID * SCATTER_GRID)
+                            .map(|_| Vec::new())
+                            .collect();
+                        for li in instances {
+                            let gx = ((li.position.x - x_min) / cell_w) as usize;
+                            let gz = ((li.position.z - z_min) / cell_d) as usize;
+                            let gx = gx.min(SCATTER_GRID - 1);
+                            let gz = gz.min(SCATTER_GRID - 1);
+                            bins[gz * SCATTER_GRID + gx].push((li.position, li.instance));
+                        }
+                        bins
+                    };
 
-                    // Bin billboard instances
-                    let mut bb_bins: Vec<Vec<(glam::Vec3, astraweave_render::Instance)>> =
-                        (0..SCATTER_GRID * SCATTER_GRID).map(|_| Vec::new()).collect();
-                    for li in billboard_instances {
-                        let gx = ((li.position.x - x_min) / cell_w) as usize;
-                        let gz = ((li.position.z - z_min) / cell_d) as usize;
-                        let gx = gx.min(SCATTER_GRID - 1);
-                        let gz = gz.min(SCATTER_GRID - 1);
-                        bb_bins[gz * SCATTER_GRID + gx].push((li.position, li.instance));
-                    }
+                    let lod0_bins = bin_instances(lod0_instances);
+                    let lod1_bins = bin_instances(lod1_instances);
+                    let lod2_bins = bin_instances(lod2_instances);
+                    let lod3_bins = bin_instances(lod3_instances);
 
-                    // ── Per-primitive texture discovery ────────────────────
                     const SCATTER_MAX_TEX_SIZE: u32 = 512;
 
                     let tex_dir: Option<std::path::PathBuf> = {
                         let mesh_dir = std::path::Path::new(mesh_path).parent();
-                        mesh_dir.and_then(|d| d.parent()).map(|d| d.join("textures"))
+                        mesh_dir
+                            .and_then(|d| d.parent())
+                            .map(|d| d.join("textures"))
                     };
+                    let mesh_hint = std::path::Path::new(mesh_path)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_string();
 
-                    let mut find_texture_by_hint = |hint: &str, tex_dir: &Option<std::path::PathBuf>| -> Option<(u32, u32, Vec<u8>)> {
-                        if let Some(p) = diffuse_textures.get(hint) {
-                            if p.exists() {
-                                let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
-                                if let Some(cached) = self.scatter_texture_cache.get(&canon) {
-                                    return Some(cached.clone());
+                    let mut find_texture_by_hint =
+                        |hint: &str,
+                         tex_dir: &Option<std::path::PathBuf>|
+                         -> Option<(u32, u32, Vec<u8>)> {
+                            if let Some(p) = diffuse_textures.get(hint) {
+                                if p.exists() {
+                                    let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
+                                    if let Some(cached) = self.scatter_texture_cache.get(&canon) {
+                                        return Some(cached.clone());
+                                    }
+                                    if let Some(loaded) = Self::load_scatter_texture_from_path(
+                                        p,
+                                        SCATTER_MAX_TEX_SIZE,
+                                    ) {
+                                        self.scatter_texture_cache.insert(canon, loaded.clone());
+                                        return Some(loaded);
+                                    }
                                 }
                             }
-                        }
-                        let td = tex_dir.as_ref()?;
-                        if !td.is_dir() { return None; }
-                        let candidates = std::fs::read_dir(td).ok()?;
-                        let search = format!("{}_diff.", hint).to_lowercase();
-                        let mut patterns: Vec<String> = vec![search];
-                        let mut s = hint.to_string();
-                        while let Some(idx) = s.rfind('_') {
-                            s.truncate(idx);
-                            patterns.push(format!("{}_diff.", s).to_lowercase());
-                        }
-                        for entry in candidates {
-                            if let Ok(e) = entry {
-                                let name = e.file_name().to_string_lossy().to_lowercase();
-                                for pat in &patterns {
-                                    if name.starts_with(pat.as_str()) {
-                                        let p = e.path();
-                                        let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
-                                        if let Some(cached) = self.scatter_texture_cache.get(&canon) {
-                                            return Some(cached.clone());
-                                        }
-                                        if let Ok(img) = image::open(&p) {
-                                            let rgba = img.to_rgba8();
-                                            let (w, h) = rgba.dimensions();
-                                            let (fw, fh, px) = if w > SCATTER_MAX_TEX_SIZE || h > SCATTER_MAX_TEX_SIZE {
-                                                let tw = w.min(SCATTER_MAX_TEX_SIZE);
-                                                let th = h.min(SCATTER_MAX_TEX_SIZE);
-                                                let resized = image::imageops::resize(&rgba, tw, th, image::imageops::FilterType::Triangle);
-                                                (tw, th, resized.into_raw())
-                                            } else {
-                                                (w, h, rgba.into_raw())
-                                            };
-                                            let entry = (fw, fh, px);
-                                            self.scatter_texture_cache.insert(canon, entry.clone());
-                                            tracing::debug!("Scatter: loaded texture {}×{} for hint '{hint}' from {}", fw, fh, p.display());
-                                            return Some(entry);
+                            let td = tex_dir.as_ref()?;
+                            if !td.is_dir() {
+                                return None;
+                            }
+                            let candidates = std::fs::read_dir(td).ok()?;
+                            let search = format!("{}_diff.", hint).to_lowercase();
+                            let mut patterns: Vec<String> = vec![search];
+                            let mut s = hint.to_string();
+                            while let Some(idx) = s.rfind('_') {
+                                s.truncate(idx);
+                                patterns.push(format!("{}_diff.", s).to_lowercase());
+                            }
+                            for entry in candidates {
+                                if let Ok(e) = entry {
+                                    let name = e.file_name().to_string_lossy().to_lowercase();
+                                    for pat in &patterns {
+                                        if name.starts_with(pat.as_str()) {
+                                            let path = e.path();
+                                            let canon = path
+                                                .canonicalize()
+                                                .unwrap_or_else(|_| path.clone());
+                                            if let Some(cached) =
+                                                self.scatter_texture_cache.get(&canon)
+                                            {
+                                                return Some(cached.clone());
+                                            }
+                                            if let Some(entry) =
+                                                Self::load_scatter_texture_from_path(
+                                                    &path,
+                                                    SCATTER_MAX_TEX_SIZE,
+                                                )
+                                            {
+                                                self.scatter_texture_cache
+                                                    .insert(canon, entry.clone());
+                                                tracing::debug!(
+                                                    "Scatter: loaded texture {}×{} for hint '{hint}' from {}",
+                                                    entry.0,
+                                                    entry.1,
+                                                    path.display(),
+                                                );
+                                                return Some(entry);
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        None
-                    };
-
-                    // ── Upload LOD0 full-mesh primitives ──────────────────
-                    let non_empty_prims: Vec<usize> = cpu_meshes.iter()
-                        .enumerate()
-                        .filter(|(_, m)| !m.vertices.is_empty())
-                        .map(|(i, _)| i)
-                        .collect();
+                            None
+                        };
 
                     let lod0_count: usize = lod0_bins.iter().map(|b| b.len()).sum();
+                    let lod1_count: usize = lod1_bins.iter().map(|b| b.len()).sum();
+                    let lod2_count: usize = lod2_bins.iter().map(|b| b.len()).sum();
+                    let lod3_count: usize = lod3_bins.iter().map(|b| b.len()).sum();
+                    let mut primitive_card_sources: Vec<Option<String>> =
+                        vec![None; lod_assets.primitives.len()];
+                    let mut primitive_lod2_sources: Vec<Option<String>> =
+                        vec![None; lod_assets.primitives.len()];
 
-                    if lod0_count > 0 {
-                        for prim_idx in &non_empty_prims {
-                            let cpu_mesh = &cpu_meshes[*prim_idx];
-                            let shared_mesh = self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
-
-                            let prim_external_tex: Option<(u32, u32, Vec<u8>)> = if cpu_mesh.albedo_image.is_none() {
-                                if let Some(ref hint) = cpu_mesh.texture_source_hint {
+                    for (prim_idx, primitive) in lod_assets.primitives.iter().enumerate() {
+                        let mut first_lod0_source: Option<String> = None;
+                        if lod0_count > 0 {
+                            let cpu_mesh = &primitive.full_mesh;
+                            let prim_external_tex: Option<(u32, u32, Vec<u8>)> =
+                                if let Some(hint) = cpu_mesh.texture_source_hint.as_deref() {
                                     find_texture_by_hint(hint, &tex_dir)
                                 } else {
-                                    let stem = std::path::Path::new(mesh_path)
-                                        .file_stem()
-                                        .and_then(|s| s.to_str())
-                                        .unwrap_or("");
-                                    find_texture_by_hint(stem, &tex_dir)
-                                }
-                            } else {
-                                None
-                            };
-
-                            let mut first_textured_quad: Option<String> = None;
+                                    find_texture_by_hint(&mesh_hint, &tex_dir)
+                                };
 
                             for (qi, quad) in lod0_bins.iter().enumerate() {
                                 if quad.is_empty() {
                                     continue;
                                 }
-                                let sub_name = if non_empty_prims.len() > 1 {
-                                    format!("scatter_{key}_p{prim_idx}_q{qi}")
+                                let sub_name = if lod_assets.primitives.len() > 1 {
+                                    format!("scatter_{key}_lod0_p{prim_idx}_q{qi}")
                                 } else {
-                                    format!("scatter_{key}_q{qi}")
+                                    format!("scatter_{key}_lod0_q{qi}")
                                 };
                                 let instances: Vec<astraweave_render::Instance> =
                                     quad.iter().map(|(_, inst)| inst.clone()).collect();
 
-                                let mesh = shared_mesh.clone();
-
-                                if let Some(ref source) = first_textured_quad {
-                                    if !self.renderer.add_model_sharing_texture(
-                                        &sub_name, mesh.clone(), &instances, source,
-                                    ) {
-                                        self.renderer.add_model(&sub_name, mesh, &instances);
-                                    }
-                                } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
-                                    let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
-                                    let th = img.height.min(SCATTER_MAX_TEX_SIZE);
-                                    if tw < img.width || th < img.height {
-                                        let src = image::RgbaImage::from_raw(img.width, img.height, img.pixels.clone());
-                                        if let Some(src_img) = src {
-                                            let resized = image::imageops::resize(&src_img, tw, th, image::imageops::FilterType::Triangle);
-                                            self.renderer.add_model_with_texture(&sub_name, mesh, &instances, tw, th, &resized.into_raw());
-                                            first_textured_quad = Some(sub_name.clone());
-                                        } else {
+                                if !self.renderer.update_model_instances(&sub_name, &instances) {
+                                    let mesh = self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
+                                    if let Some(ref source) = first_lod0_source {
+                                        if !self.renderer.add_model_sharing_texture(
+                                            &sub_name,
+                                            mesh.clone(),
+                                            &instances,
+                                            source,
+                                        ) {
                                             self.renderer.add_model(&sub_name, mesh, &instances);
                                         }
+                                    } else if let Some((w, h, pixels)) = prim_external_tex.as_ref()
+                                    {
+                                        self.renderer.add_model_with_texture(
+                                            &sub_name, mesh, &instances, *w, *h, pixels,
+                                        );
+                                    } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
+                                        let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
+                                        let th = img.height.min(SCATTER_MAX_TEX_SIZE);
+                                        if tw < img.width || th < img.height {
+                                            let src = image::RgbaImage::from_raw(
+                                                img.width,
+                                                img.height,
+                                                img.pixels.clone(),
+                                            );
+                                            if let Some(src_img) = src {
+                                                let resized = image::imageops::resize(
+                                                    &src_img,
+                                                    tw,
+                                                    th,
+                                                    image::imageops::FilterType::Triangle,
+                                                );
+                                                self.renderer.add_model_with_texture(
+                                                    &sub_name,
+                                                    mesh,
+                                                    &instances,
+                                                    tw,
+                                                    th,
+                                                    &resized.into_raw(),
+                                                );
+                                            } else {
+                                                self.renderer
+                                                    .add_model(&sub_name, mesh, &instances);
+                                            }
+                                        } else {
+                                            self.renderer.add_model_with_texture(
+                                                &sub_name,
+                                                mesh,
+                                                &instances,
+                                                img.width,
+                                                img.height,
+                                                &img.pixels,
+                                            );
+                                        }
                                     } else {
-                                        self.renderer.add_model_with_texture(&sub_name, mesh, &instances, img.width, img.height, &img.pixels);
-                                        first_textured_quad = Some(sub_name.clone());
+                                        self.renderer.add_model(&sub_name, mesh, &instances);
                                     }
-                                } else if let Some((w, h, ref pixels)) = prim_external_tex {
-                                    self.renderer.add_model_with_texture(&sub_name, mesh, &instances, w, h, pixels);
-                                    first_textured_quad = Some(sub_name.clone());
-                                } else {
-                                    self.renderer.add_model(&sub_name, mesh, &instances);
                                 }
 
-                                // AABB for this quadrant
                                 let mut g_min = [f32::MAX; 3];
                                 let mut g_max = [f32::MIN; 3];
                                 let br = items[0].bounding_radius;
@@ -1765,98 +2734,408 @@ impl EngineRenderAdapter {
                                     g_max[2] = g_max[2].max(pos.z + br);
                                 }
                                 self.renderer.set_model_bounds(&sub_name, g_min, g_max);
-                                self.scatter_model_names.push(sub_name);
+                                used_model_names.insert(sub_name.clone());
+                                if first_lod0_source.is_none() {
+                                    first_lod0_source = Some(sub_name.clone());
+                                }
+                                actual_draw_calls += 1;
+                                actual_instance_count += instances.len();
+                                actual_triangle_count +=
+                                    (cpu_mesh.indices.len() / 3) * instances.len();
+                                actual_vertex_count += cpu_mesh.vertices.len() * instances.len();
                             }
+                        }
+
+                        let mut first_lod1_source: Option<String> = None;
+                        if lod1_count > 0 {
+                            let cpu_mesh = &primitive.simplified_mesh;
+                            let prim_external_tex: Option<(u32, u32, Vec<u8>)> =
+                                if let Some(hint) = cpu_mesh.texture_source_hint.as_deref() {
+                                    find_texture_by_hint(hint, &tex_dir)
+                                } else {
+                                    find_texture_by_hint(&mesh_hint, &tex_dir)
+                                };
+
+                            for (qi, quad) in lod1_bins.iter().enumerate() {
+                                if quad.is_empty() {
+                                    continue;
+                                }
+                                let sub_name = if lod_assets.primitives.len() > 1 {
+                                    format!("scatter_{key}_lod1_p{prim_idx}_q{qi}")
+                                } else {
+                                    format!("scatter_{key}_lod1_q{qi}")
+                                };
+                                let instances: Vec<astraweave_render::Instance> =
+                                    quad.iter().map(|(_, inst)| inst.clone()).collect();
+
+                                if !self.renderer.update_model_instances(&sub_name, &instances) {
+                                    let mesh = self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
+                                    if let Some(ref source) = first_lod1_source {
+                                        if !self.renderer.add_model_sharing_texture(
+                                            &sub_name,
+                                            mesh.clone(),
+                                            &instances,
+                                            source,
+                                        ) {
+                                            self.renderer.add_model(&sub_name, mesh, &instances);
+                                        }
+                                    } else if let Some((w, h, pixels)) = prim_external_tex.as_ref()
+                                    {
+                                        self.renderer.add_model_with_texture(
+                                            &sub_name, mesh, &instances, *w, *h, pixels,
+                                        );
+                                    } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
+                                        let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
+                                        let th = img.height.min(SCATTER_MAX_TEX_SIZE);
+                                        if tw < img.width || th < img.height {
+                                            let src = image::RgbaImage::from_raw(
+                                                img.width,
+                                                img.height,
+                                                img.pixels.clone(),
+                                            );
+                                            if let Some(src_img) = src {
+                                                let resized = image::imageops::resize(
+                                                    &src_img,
+                                                    tw,
+                                                    th,
+                                                    image::imageops::FilterType::Triangle,
+                                                );
+                                                self.renderer.add_model_with_texture(
+                                                    &sub_name,
+                                                    mesh,
+                                                    &instances,
+                                                    tw,
+                                                    th,
+                                                    &resized.into_raw(),
+                                                );
+                                            } else {
+                                                self.renderer
+                                                    .add_model(&sub_name, mesh, &instances);
+                                            }
+                                        } else {
+                                            self.renderer.add_model_with_texture(
+                                                &sub_name,
+                                                mesh,
+                                                &instances,
+                                                img.width,
+                                                img.height,
+                                                &img.pixels,
+                                            );
+                                        }
+                                    } else {
+                                        self.renderer.add_model(&sub_name, mesh, &instances);
+                                    }
+                                }
+
+                                let mut g_min = [f32::MAX; 3];
+                                let mut g_max = [f32::MIN; 3];
+                                let br = items[0].bounding_radius;
+                                for (pos, _) in quad.iter() {
+                                    g_min[0] = g_min[0].min(pos.x - br);
+                                    g_min[1] = g_min[1].min(pos.y - br);
+                                    g_min[2] = g_min[2].min(pos.z - br);
+                                    g_max[0] = g_max[0].max(pos.x + br);
+                                    g_max[1] = g_max[1].max(pos.y + br);
+                                    g_max[2] = g_max[2].max(pos.z + br);
+                                }
+                                self.renderer.set_model_bounds(&sub_name, g_min, g_max);
+                                used_model_names.insert(sub_name.clone());
+                                if first_lod1_source.is_none() {
+                                    first_lod1_source = Some(sub_name.clone());
+                                }
+                                actual_draw_calls += 1;
+                                actual_instance_count += instances.len();
+                                actual_triangle_count +=
+                                    (cpu_mesh.indices.len() / 3) * instances.len();
+                                actual_vertex_count += cpu_mesh.vertices.len() * instances.len();
+                            }
+                        }
+
+                        primitive_card_sources[prim_idx] = first_lod1_source
+                            .clone()
+                            .or_else(|| first_lod0_source.clone());
+                    }
+
+                    if lod2_count > 0 {
+                        let cpu_mesh = &lod_assets.cross_billboard;
+                        for (prim_idx, primitive) in lod_assets.primitives.iter().enumerate() {
+                            let mut first_lod2_source: Option<String> = None;
+                            let primitive_card_source = primitive_card_sources[prim_idx].clone();
+                            let prim_external_tex: Option<(u32, u32, Vec<u8>)> =
+                                if primitive_card_source.is_none() {
+                                    if let Some(hint) =
+                                        primitive.full_mesh.texture_source_hint.as_deref()
+                                    {
+                                        find_texture_by_hint(hint, &tex_dir)
+                                    } else {
+                                        find_texture_by_hint(&mesh_hint, &tex_dir)
+                                    }
+                                } else {
+                                    None
+                                };
+
+                            for (qi, quad) in lod2_bins.iter().enumerate() {
+                                if quad.is_empty() {
+                                    continue;
+                                }
+                                let sub_name = if lod_assets.primitives.len() > 1 {
+                                    format!("scatter_{key}_lod2_p{prim_idx}_q{qi}")
+                                } else {
+                                    format!("scatter_{key}_lod2_q{qi}")
+                                };
+                                let instances: Vec<astraweave_render::Instance> =
+                                    quad.iter().map(|(_, inst)| inst.clone()).collect();
+
+                                if !self.renderer.update_model_instances(&sub_name, &instances) {
+                                    let mesh = self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
+                                    if let Some(ref source) = first_lod2_source {
+                                        if !self.renderer.add_model_sharing_texture(
+                                            &sub_name,
+                                            mesh.clone(),
+                                            &instances,
+                                            source,
+                                        ) {
+                                            self.renderer.add_model(&sub_name, mesh, &instances);
+                                        }
+                                    } else if let Some(ref source) = primitive_card_source {
+                                        if !self.renderer.add_model_sharing_texture(
+                                            &sub_name,
+                                            mesh.clone(),
+                                            &instances,
+                                            source,
+                                        ) {
+                                            self.renderer.add_model(&sub_name, mesh, &instances);
+                                        }
+                                    } else if let Some((w, h, pixels)) = prim_external_tex.as_ref()
+                                    {
+                                        self.renderer.add_model_with_texture(
+                                            &sub_name, mesh, &instances, *w, *h, pixels,
+                                        );
+                                    } else if let Some(img) =
+                                        primitive.full_mesh.albedo_image.as_ref()
+                                    {
+                                        let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
+                                        let th = img.height.min(SCATTER_MAX_TEX_SIZE);
+                                        if tw < img.width || th < img.height {
+                                            let src = image::RgbaImage::from_raw(
+                                                img.width,
+                                                img.height,
+                                                img.pixels.clone(),
+                                            );
+                                            if let Some(src_img) = src {
+                                                let resized = image::imageops::resize(
+                                                    &src_img,
+                                                    tw,
+                                                    th,
+                                                    image::imageops::FilterType::Triangle,
+                                                );
+                                                self.renderer.add_model_with_texture(
+                                                    &sub_name,
+                                                    mesh,
+                                                    &instances,
+                                                    tw,
+                                                    th,
+                                                    &resized.into_raw(),
+                                                );
+                                            } else {
+                                                self.renderer
+                                                    .add_model(&sub_name, mesh, &instances);
+                                            }
+                                        } else {
+                                            self.renderer.add_model_with_texture(
+                                                &sub_name,
+                                                mesh,
+                                                &instances,
+                                                img.width,
+                                                img.height,
+                                                &img.pixels,
+                                            );
+                                        }
+                                    } else {
+                                        self.renderer.add_model(&sub_name, mesh, &instances);
+                                    }
+                                }
+
+                                let mut g_min = [f32::MAX; 3];
+                                let mut g_max = [f32::MIN; 3];
+                                let br = items[0].bounding_radius;
+                                for (pos, _) in quad.iter() {
+                                    g_min[0] = g_min[0].min(pos.x - br);
+                                    g_min[1] = g_min[1].min(pos.y - br);
+                                    g_min[2] = g_min[2].min(pos.z - br);
+                                    g_max[0] = g_max[0].max(pos.x + br);
+                                    g_max[1] = g_max[1].max(pos.y + br);
+                                    g_max[2] = g_max[2].max(pos.z + br);
+                                }
+                                self.renderer.set_model_bounds(&sub_name, g_min, g_max);
+                                used_model_names.insert(sub_name.clone());
+                                if first_lod2_source.is_none() {
+                                    first_lod2_source = Some(sub_name.clone());
+                                }
+                                actual_draw_calls += 1;
+                                actual_instance_count += instances.len();
+                                actual_triangle_count +=
+                                    (cpu_mesh.indices.len() / 3) * instances.len();
+                                actual_vertex_count += cpu_mesh.vertices.len() * instances.len();
+                            }
+
+                            primitive_lod2_sources[prim_idx] = first_lod2_source;
                         }
                     }
 
-                    // ── Upload billboard instances ────────────────────────
-                    let bb_count: usize = bb_bins.iter().map(|b| b.len()).sum();
-                    if bb_count > 0 {
-                        // Generate or retrieve cached billboard CpuMesh
-                        let bb_mesh = self
-                            .scatter_billboard_cache
-                            .entry(key.clone())
-                            .or_insert_with(|| {
-                                let bb = astraweave_render::vegetation_lod::generate_cross_billboard(
-                                    0.5, 1.0, // unit-sized; instance scale handles sizing
-                                );
-                                bb.to_cpu_mesh()
-                            })
-                            .clone();
-                        let shared_bb_mesh = self.renderer.create_mesh_from_cpu_mesh(&bb_mesh);
-
-                        // Try to share texture from LOD0 models of same species
-                        let lod0_tex_source: Option<String> = self
-                            .scatter_model_names
-                            .iter()
-                            .find(|n| n.starts_with(&format!("scatter_{key}_")))
-                            .cloned();
-
-                        let mut first_bb_textured: Option<String> = None;
-
-                        for (qi, quad) in bb_bins.iter().enumerate() {
-                            if quad.is_empty() {
-                                continue;
-                            }
-                            let sub_name = format!("scatter_{key}_bb_q{qi}");
-                            let instances: Vec<astraweave_render::Instance> =
-                                quad.iter().map(|(_, inst)| inst.clone()).collect();
-
-                            let mesh = shared_bb_mesh.clone();
-
-                            // Share texture from LOD0 model or prior billboard quad
-                            if let Some(ref source) = first_bb_textured {
-                                if !self.renderer.add_model_sharing_texture(
-                                    &sub_name, mesh.clone(), &instances, source,
-                                ) {
-                                    self.renderer.add_model(&sub_name, mesh, &instances);
-                                }
-                            } else if let Some(ref lod0_src) = lod0_tex_source {
-                                if self.renderer.add_model_sharing_texture(
-                                    &sub_name, mesh.clone(), &instances, lod0_src,
-                                ) {
-                                    first_bb_textured = Some(sub_name.clone());
+                    if lod3_count > 0 {
+                        let cpu_mesh = &lod_assets.impostor_card;
+                        for (prim_idx, primitive) in lod_assets.primitives.iter().enumerate() {
+                            let mut first_lod3_source: Option<String> = None;
+                            let primitive_card_source = primitive_lod2_sources[prim_idx]
+                                .clone()
+                                .or_else(|| primitive_card_sources[prim_idx].clone());
+                            let prim_external_tex: Option<(u32, u32, Vec<u8>)> =
+                                if primitive_card_source.is_none() {
+                                    if let Some(hint) =
+                                        primitive.full_mesh.texture_source_hint.as_deref()
+                                    {
+                                        find_texture_by_hint(hint, &tex_dir)
+                                    } else {
+                                        find_texture_by_hint(&mesh_hint, &tex_dir)
+                                    }
                                 } else {
-                                    self.renderer.add_model(&sub_name, mesh, &instances);
-                                }
-                            } else {
-                                self.renderer.add_model(&sub_name, mesh, &instances);
-                            }
+                                    None
+                                };
 
-                            // AABB for billboard quadrant
-                            let mut g_min = [f32::MAX; 3];
-                            let mut g_max = [f32::MIN; 3];
-                            let br = items[0].bounding_radius;
-                            for (pos, _) in quad.iter() {
-                                g_min[0] = g_min[0].min(pos.x - br);
-                                g_min[1] = g_min[1].min(pos.y - br);
-                                g_min[2] = g_min[2].min(pos.z - br);
-                                g_max[0] = g_max[0].max(pos.x + br);
-                                g_max[1] = g_max[1].max(pos.y + br);
-                                g_max[2] = g_max[2].max(pos.z + br);
+                            for (qi, quad) in lod3_bins.iter().enumerate() {
+                                if quad.is_empty() {
+                                    continue;
+                                }
+                                let sub_name = if lod_assets.primitives.len() > 1 {
+                                    format!("scatter_{key}_lod3_p{prim_idx}_q{qi}")
+                                } else {
+                                    format!("scatter_{key}_lod3_q{qi}")
+                                };
+                                let instances: Vec<astraweave_render::Instance> =
+                                    quad.iter().map(|(_, inst)| inst.clone()).collect();
+
+                                if !self.renderer.update_model_instances(&sub_name, &instances) {
+                                    let mesh = self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
+                                    if let Some(ref source) = first_lod3_source {
+                                        if !self.renderer.add_model_sharing_texture(
+                                            &sub_name,
+                                            mesh.clone(),
+                                            &instances,
+                                            source,
+                                        ) {
+                                            self.renderer.add_model(&sub_name, mesh, &instances);
+                                        }
+                                    } else if let Some(ref source) = primitive_card_source {
+                                        if !self.renderer.add_model_sharing_texture(
+                                            &sub_name,
+                                            mesh.clone(),
+                                            &instances,
+                                            source,
+                                        ) {
+                                            self.renderer.add_model(&sub_name, mesh, &instances);
+                                        }
+                                    } else if let Some((w, h, pixels)) = prim_external_tex.as_ref()
+                                    {
+                                        self.renderer.add_model_with_texture(
+                                            &sub_name, mesh, &instances, *w, *h, pixels,
+                                        );
+                                    } else if let Some(img) =
+                                        primitive.full_mesh.albedo_image.as_ref()
+                                    {
+                                        let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
+                                        let th = img.height.min(SCATTER_MAX_TEX_SIZE);
+                                        if tw < img.width || th < img.height {
+                                            let src = image::RgbaImage::from_raw(
+                                                img.width,
+                                                img.height,
+                                                img.pixels.clone(),
+                                            );
+                                            if let Some(src_img) = src {
+                                                let resized = image::imageops::resize(
+                                                    &src_img,
+                                                    tw,
+                                                    th,
+                                                    image::imageops::FilterType::Triangle,
+                                                );
+                                                self.renderer.add_model_with_texture(
+                                                    &sub_name,
+                                                    mesh,
+                                                    &instances,
+                                                    tw,
+                                                    th,
+                                                    &resized.into_raw(),
+                                                );
+                                            } else {
+                                                self.renderer
+                                                    .add_model(&sub_name, mesh, &instances);
+                                            }
+                                        } else {
+                                            self.renderer.add_model_with_texture(
+                                                &sub_name,
+                                                mesh,
+                                                &instances,
+                                                img.width,
+                                                img.height,
+                                                &img.pixels,
+                                            );
+                                        }
+                                    } else {
+                                        self.renderer.add_model(&sub_name, mesh, &instances);
+                                    }
+                                }
+
+                                let mut g_min = [f32::MAX; 3];
+                                let mut g_max = [f32::MIN; 3];
+                                let br = items[0].bounding_radius;
+                                for (pos, _) in quad.iter() {
+                                    g_min[0] = g_min[0].min(pos.x - br);
+                                    g_min[1] = g_min[1].min(pos.y - br);
+                                    g_min[2] = g_min[2].min(pos.z - br);
+                                    g_max[0] = g_max[0].max(pos.x + br);
+                                    g_max[1] = g_max[1].max(pos.y + br);
+                                    g_max[2] = g_max[2].max(pos.z + br);
+                                }
+                                self.renderer.set_model_bounds(&sub_name, g_min, g_max);
+                                used_model_names.insert(sub_name.clone());
+                                if first_lod3_source.is_none() {
+                                    first_lod3_source = Some(sub_name.clone());
+                                }
+                                actual_draw_calls += 1;
+                                actual_instance_count += instances.len();
+                                actual_triangle_count +=
+                                    (cpu_mesh.indices.len() / 3) * instances.len();
+                                actual_vertex_count += cpu_mesh.vertices.len() * instances.len();
                             }
-                            self.renderer.set_model_bounds(&sub_name, g_min, g_max);
-                            self.scatter_model_names.push(sub_name);
                         }
                     }
 
                     loaded_groups += 1;
+                    let visible_count = lod0_count + lod1_count + lod2_count + lod3_count;
 
                     tracing::info!(
                         target: "aw_editor::viewport::perf",
-                        "Scatter group '{key}': {:.1}ms ({} LOD0 + {} billboard, {} culled, {} bins)",
+                        "Scatter group '{key}': {:.1}ms ({} LOD0 + {} LOD1 + {} LOD2 + {} LOD3, {} culled, {} bins)",
                         group_start.elapsed().as_secs_f64() * 1000.0,
                         lod0_count,
-                        bb_count,
-                        items.len() - lod0_count - bb_count,
-                        lod0_bins.iter().chain(bb_bins.iter()).filter(|q| !q.is_empty()).count(),
+                        lod1_count,
+                        lod2_count,
+                        lod3_count,
+                        items.len().saturating_sub(visible_count),
+                        lod0_bins
+                            .iter()
+                            .chain(lod1_bins.iter())
+                            .chain(lod2_bins.iter())
+                            .chain(lod3_bins.iter())
+                            .filter(|q| !q.is_empty())
+                            .count(),
                     );
 
-                    // Flush GPU work periodically to prevent TDR
-                    if loaded_groups % 4 == 0 {
-                        self.renderer.queue().submit(std::iter::empty());
-                    }
+                    // Previously submitted an empty command buffer every 4 groups
+                    // to "flush" the queue; this caused pipeline stalls with no
+                    // benefit now that we use update_model_instances instead of
+                    // re-creating buffers. Removed to eliminate a ~1-3 ms stall
+                    // per refresh during continuous camera motion.
                 }
                 Ok(Ok(_)) => {
                     tracing::warn!("Scatter: '{key}' glTF has no meshes: {mesh_path}");
@@ -1873,49 +3152,34 @@ impl EngineRenderAdapter {
             }
         }
 
-        self.scatter_placement_count = placements.len();
-        self.scatter_draw_call_count = loaded_groups;
-
-        // ── Build per-chunk model index for streaming unload ──────────
-        // Associate each scatter model name with the chunk(s) it serves.
-        // Since model names are keyed by species + spatial bin,
-        // we approximate chunk ownership: a model belongs to chunks that
-        // contributed placements to that species group.
-        self.scatter_chunk_models.clear();
-        self.active_scatter_chunks.clear();
-        {
-            // Collect all unique chunk IDs from placements
-            let mut chunk_ids: std::collections::HashSet<astraweave_terrain::ChunkId> =
-                std::collections::HashSet::new();
-            for p in placements {
-                chunk_ids.insert(p.chunk_id);
-            }
-            // All uploaded chunks are active
-            self.active_scatter_chunks = chunk_ids.clone();
-            // Each chunk "owns" the full model set (shared instancing).
-            // Unloading a chunk removes from instance buffers, not models,
-            // unless no other chunk uses that model. For now, track all
-            // model names per chunk that contributed placements.
-            for cid in &chunk_ids {
-                self.scatter_chunk_models
-                    .entry(*cid)
-                    .or_insert_with(Vec::new);
-            }
+        let stale_models: Vec<String> = self
+            .scatter_model_names
+            .iter()
+            .filter(|name| !used_model_names.contains(*name))
+            .cloned()
+            .collect();
+        for name in stale_models {
+            self.renderer.clear_model(&name);
         }
-        // Update camera chunk from current position
-        self.camera_chunk = astraweave_terrain::ChunkId::from_world_pos(
-            self.camera_position,
-            self.scatter_chunk_size,
-        );
+        let mut current_model_names: Vec<String> = used_model_names.into_iter().collect();
+        current_model_names.sort();
+        self.scatter_model_names = current_model_names;
+
+        self.scatter_placement_count = actual_instance_count;
+        self.scatter_draw_call_count = actual_draw_calls;
+        self.scatter_total_triangles = actual_triangle_count;
+        self.scatter_total_vertices = actual_vertex_count;
 
         let total = groups.len() as u32;
         let upload_elapsed = upload_start.elapsed();
         tracing::info!(
             target: "aw_editor::viewport",
-            "Scatter upload: {loaded_groups}/{total} groups, {skipped_not_found} not found, {skipped_load_fail} failed, {} placements, {:.1}ms ({} mesh cache, {} tex cache)",
-            placements.len(),
+            "Scatter upload: {loaded_groups}/{total} groups, {skipped_not_found} not found, {skipped_load_fail} failed, {} active instances, {} draws, {:.1}ms ({} mesh cache, {} lod cache, {} tex cache)",
+            actual_instance_count,
+            actual_draw_calls,
             upload_elapsed.as_secs_f64() * 1000.0,
             self.scatter_cpu_mesh_cache.len(),
+            self.scatter_lod_asset_cache.len(),
             self.scatter_texture_cache.len(),
         );
 
@@ -1946,6 +3210,9 @@ impl EngineRenderAdapter {
             self.scatter_diffuse_textures = textures;
         }
 
+        // Record completion time for the refresh-budget rate limiter.
+        self.scatter_last_refresh = Some(std::time::Instant::now());
+
         tracing::debug!(
             target: "aw_editor::viewport::perf",
             "Scatter LOD refresh: {:.1}ms, {} models",
@@ -1963,68 +3230,11 @@ impl EngineRenderAdapter {
         if self.scatter_placements.is_empty() || self.scatter_chunk_size < 1.0 {
             return;
         }
-
-        /// Max chunk distance (Manhattan) to load scatter.
-        const SCATTER_LOAD_RADIUS: i32 = 3;
-        /// Chunks beyond this radius get unloaded.
-        const SCATTER_UNLOAD_RADIUS: i32 = 5;
-
-        let cam_chunk = self.camera_chunk;
-        let mut changed = false;
-
-        // Unload distant chunks
-        let chunks_to_unload: Vec<astraweave_terrain::ChunkId> = self
-            .active_scatter_chunks
-            .iter()
-            .filter(|cid| {
-                let dx = (cid.x - cam_chunk.x).abs();
-                let dz = (cid.z - cam_chunk.z).abs();
-                dx > SCATTER_UNLOAD_RADIUS || dz > SCATTER_UNLOAD_RADIUS
-            })
-            .copied()
-            .collect();
-
-        for cid in &chunks_to_unload {
-            self.unload_chunk_scatter(*cid);
-            changed = true;
-        }
-
-        // Check for chunks that should be loaded (within load radius but not active)
-        let mut chunks_to_load: Vec<astraweave_terrain::ChunkId> = Vec::new();
-        for dx in -SCATTER_LOAD_RADIUS..=SCATTER_LOAD_RADIUS {
-            for dz in -SCATTER_LOAD_RADIUS..=SCATTER_LOAD_RADIUS {
-                let cid = astraweave_terrain::ChunkId::new(cam_chunk.x + dx, cam_chunk.z + dz);
-                if !self.active_scatter_chunks.contains(&cid) {
-                    // Check if we have placements for this chunk
-                    let has_placements = self.scatter_placements.iter().any(|p| p.chunk_id == cid);
-                    if has_placements {
-                        chunks_to_load.push(cid);
-                    }
-                }
-            }
-        }
-
-        if !chunks_to_load.is_empty() {
-            // Load new chunks by triggering a full LOD refresh.
-            // This re-uploads all active-radius placements with current LOD/density.
-            // Individual chunk upload is deferred to a future optimization —
-            // the mesh cache prevents redundant disk I/O.
-            self.refresh_scatter_lod();
-            changed = true;
-        }
-
-        if changed {
-            tracing::debug!(
-                target: "aw_editor::viewport",
-                "Chunk streaming: unloaded {} chunks, loaded {} chunks, {} active",
-                chunks_to_unload.len(),
-                chunks_to_load.len(),
-                self.active_scatter_chunks.len(),
-            );
-        }
+        self.refresh_scatter_lod();
     }
 
     /// Remove all scatter models belonging to a single chunk from the renderer.
+    #[allow(dead_code)]
     fn unload_chunk_scatter(&mut self, chunk_id: astraweave_terrain::ChunkId) {
         // Remove model names associated with this chunk
         if let Some(names) = self.scatter_chunk_models.remove(&chunk_id) {
@@ -2046,6 +3256,8 @@ impl EngineRenderAdapter {
         }
         self.scatter_placement_count = 0;
         self.scatter_draw_call_count = 0;
+        self.scatter_total_triangles = 0;
+        self.scatter_total_vertices = 0;
         self.scatter_placements.clear();
         self.scatter_diffuse_textures.clear();
         self.scatter_chunk_models.clear();
@@ -2060,6 +3272,16 @@ impl EngineRenderAdapter {
     /// Number of unique scatter draw calls (one per mesh type).
     pub fn scatter_draw_calls(&self) -> u32 {
         self.scatter_draw_call_count
+    }
+
+    /// Total scatter triangles represented by the currently uploaded models.
+    pub fn scatter_triangles(&self) -> usize {
+        self.scatter_total_triangles
+    }
+
+    /// Total scatter vertices represented by the currently uploaded models.
+    pub fn scatter_vertices(&self) -> usize {
+        self.scatter_total_vertices
     }
 
     // ── Sky / weather / environment ─────────────────────────────────────
@@ -2264,3 +3486,325 @@ const CUBE_INDICES: [u32; 36] = [
     16, 17, 18, 18, 19, 16,  // Right
     20, 21, 22, 22, 23, 20,  // Left
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn terrain_vertex(
+        position: [f32; 3],
+        biome_weights_0: [f32; 4],
+        biome_weights_1: [f32; 4],
+        material_ids: [f32; 4],
+        material_weights: [f32; 4],
+    ) -> TerrainVertex {
+        TerrainVertex {
+            position,
+            normal: [0.0, 1.0, 0.0],
+            uv: [position[0], position[2]],
+            biome_weights_0,
+            biome_weights_1,
+            material_ids,
+            material_weights,
+        }
+    }
+
+    fn assert_color_approx_eq(actual: [f32; 4], expected: [f32; 4]) {
+        for channel in 0..4 {
+            assert!(
+                (actual[channel] - expected[channel]).abs() < 0.0001,
+                "channel {channel} mismatch: actual={:?}, expected={:?}",
+                actual,
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn terrain_cluster_plan_covers_all_chunks_once() {
+        let chunks = [
+            TerrainChunkPlanningInfo {
+                aabb_min: [0.0, 0.0, 0.0],
+                aabb_max: [10.0, 1.0, 10.0],
+                vertex_count: 100,
+            },
+            TerrainChunkPlanningInfo {
+                aabb_min: [12.0, 0.0, 0.0],
+                aabb_max: [22.0, 1.0, 10.0],
+                vertex_count: 100,
+            },
+            TerrainChunkPlanningInfo {
+                aabb_min: [0.0, 0.0, 12.0],
+                aabb_max: [10.0, 1.0, 22.0],
+                vertex_count: 100,
+            },
+            TerrainChunkPlanningInfo {
+                aabb_min: [12.0, 0.0, 12.0],
+                aabb_max: [22.0, 1.0, 22.0],
+                vertex_count: 100,
+            },
+        ];
+
+        let mut planned_chunks: Vec<_> = build_terrain_cluster_plan(&chunks, 2, 10_000)
+            .into_iter()
+            .flatten()
+            .collect();
+        planned_chunks.sort_unstable();
+
+        assert_eq!(planned_chunks, vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn terrain_cluster_plan_splits_large_bins_by_vertex_budget() {
+        let chunks = [
+            TerrainChunkPlanningInfo {
+                aabb_min: [0.0, 0.0, 0.0],
+                aabb_max: [4.0, 1.0, 4.0],
+                vertex_count: 4,
+            },
+            TerrainChunkPlanningInfo {
+                aabb_min: [1.0, 0.0, 1.0],
+                aabb_max: [5.0, 1.0, 5.0],
+                vertex_count: 4,
+            },
+            TerrainChunkPlanningInfo {
+                aabb_min: [2.0, 0.0, 2.0],
+                aabb_max: [6.0, 1.0, 6.0],
+                vertex_count: 4,
+            },
+        ];
+
+        let plan = build_terrain_cluster_plan(&chunks, 1, 5);
+        assert_eq!(plan, vec![vec![0], vec![1], vec![2]]);
+    }
+
+    #[test]
+    fn terrain_surface_summary_blends_material_tint_over_biome_fallback() {
+        let mut summary = TerrainSurfaceSummary::default();
+        summary.add_vertex(&terrain_vertex(
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+        ));
+
+        let expected = blend_tints(TERRAIN_BIOME_TINTS[0], TERRAIN_MATERIAL_TINTS[1], 0.65);
+        assert_color_approx_eq(summary.resolve_tint(), expected);
+    }
+
+    #[test]
+    fn terrain_surface_summary_tracks_dominant_material_index() {
+        let mut summary = TerrainSurfaceSummary::default();
+        summary.add_vertex(&terrain_vertex(
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [3.0, 5.0, 0.0, 0.0],
+            [0.25, 0.75, 0.0, 0.0],
+        ));
+
+        assert_eq!(summary.dominant_material_index(), Some(5));
+    }
+
+    #[test]
+    fn convert_terrain_chunk_accumulates_surface_summary_across_vertices() {
+        let vertices = vec![
+            terrain_vertex(
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0],
+            ),
+            terrain_vertex(
+                [4.0, 2.0, 8.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0],
+            ),
+        ];
+
+        let chunk = EngineRenderAdapter::convert_terrain_chunk(&vertices, &[0, 1, 0]);
+        let mut expected_biomes = [0.0; 8];
+        expected_biomes[0] = 1.0;
+        expected_biomes[1] = 1.0;
+        let expected_tint = weighted_palette_tint(&expected_biomes, &TERRAIN_BIOME_TINTS)
+            .expect("expected biome tint");
+
+        assert_eq!(chunk.indices, vec![0, 1, 0]);
+        assert_eq!(chunk.aabb_min, [0.0, 0.0, 0.0]);
+        assert_eq!(chunk.aabb_max, [4.0, 2.0, 8.0]);
+        assert_color_approx_eq(chunk.surface_summary.resolve_tint(), expected_tint);
+    }
+
+    // ── TerrainHeightGrid (Phase 5.1 scatter Y grounding) ──────────────
+
+    /// Build a synthetic single-chunk render data with a flat-ish ramp so
+    /// the grid has a predictable shape for sampling assertions.
+    fn make_chunk(positions: Vec<[f32; 3]>) -> TerrainChunkRenderData {
+        let mut min = [f32::MAX, f32::MAX, f32::MAX];
+        let mut max = [f32::MIN, f32::MIN, f32::MIN];
+        for p in &positions {
+            for i in 0..3 {
+                min[i] = min[i].min(p[i]);
+                max[i] = max[i].max(p[i]);
+            }
+        }
+        let count = positions.len();
+        TerrainChunkRenderData {
+            positions,
+            normals: vec![[0.0, 1.0, 0.0]; count],
+            tangents: vec![[1.0, 0.0, 0.0, 1.0]; count],
+            uvs: vec![[0.0, 0.0]; count],
+            indices: Vec::new(),
+            surface_summary: TerrainSurfaceSummary::default(),
+            aabb_min: min,
+            aabb_max: max,
+        }
+    }
+
+    #[test]
+    fn height_grid_build_returns_none_for_empty_input() {
+        assert!(TerrainHeightGrid::build(&[]).is_none());
+        let empty = make_chunk(Vec::new());
+        assert!(TerrainHeightGrid::build(std::slice::from_ref(&empty)).is_none());
+    }
+
+    #[test]
+    fn height_grid_build_returns_none_for_degenerate_extent() {
+        // All vertices at the same XZ — zero extent on both axes.
+        let chunk = make_chunk(vec![
+            [5.0, 1.0, 5.0],
+            [5.0, 2.0, 5.0],
+            [5.0, 3.0, 5.0],
+        ]);
+        assert!(TerrainHeightGrid::build(std::slice::from_ref(&chunk)).is_none());
+    }
+
+    #[test]
+    fn height_grid_samples_flat_plane_exactly() {
+        // A 10×10 flat plane at Y=7 with a 2 m vertex spacing.
+        let mut positions = Vec::new();
+        for gz in 0..6 {
+            for gx in 0..6 {
+                positions.push([gx as f32 * 2.0, 7.0, gz as f32 * 2.0]);
+            }
+        }
+        let chunk = make_chunk(positions);
+        let grid = TerrainHeightGrid::build(std::slice::from_ref(&chunk))
+            .expect("grid should build from flat plane");
+
+        // Interior sample → exactly 7.0.
+        let y = grid.sample(5.0, 5.0).expect("interior sample");
+        assert!((y - 7.0).abs() < 1e-4, "expected 7.0, got {y}");
+
+        // Corner sample (still inside extent).
+        let y = grid.sample(0.0, 0.0).expect("corner sample");
+        assert!((y - 7.0).abs() < 1e-4, "expected 7.0, got {y}");
+
+        // Outside extent → None.
+        assert!(grid.sample(-1.0, 5.0).is_none());
+        assert!(grid.sample(5.0, 100.0).is_none());
+    }
+
+    #[test]
+    fn height_grid_bilinear_interpolates_ramp() {
+        // Build a ramp where Y = X. With cell size ≈ 1 m, bilinear sampling
+        // at mid-cell should give a value between neighbouring vertices.
+        let mut positions = Vec::new();
+        for gz in 0..4 {
+            for gx in 0..8 {
+                let x = gx as f32;
+                positions.push([x, x, gz as f32]);
+            }
+        }
+        let chunk = make_chunk(positions);
+        let grid = TerrainHeightGrid::build(std::slice::from_ref(&chunk))
+            .expect("grid should build from ramp");
+
+        // Monotonicity: a larger X sample must not return a smaller height
+        // than a smaller X sample on a non-decreasing ramp. This is the
+        // property scatter grounding actually needs (flat + ascending
+        // surfaces both get a height at or above the true vertex Y).
+        let y_low = grid.sample(1.5, 1.0).expect("low sample");
+        let y_mid = grid.sample(3.5, 1.0).expect("mid sample");
+        let y_high = grid.sample(5.5, 1.0).expect("high sample");
+        assert!(y_low <= y_mid + 1e-3, "non-monotonic: {y_low} > {y_mid}");
+        assert!(y_mid <= y_high + 1e-3, "non-monotonic: {y_mid} > {y_high}");
+        // All samples should be within the ramp range [0, 7] extended by
+        // at most one cell for max-Y rasterisation.
+        for y in [y_low, y_mid, y_high] {
+            assert!((0.0..=8.0).contains(&y), "sample {y} outside expected range");
+        }
+    }
+
+    #[test]
+    fn height_grid_clamps_cell_count_under_cap() {
+        // Realistic-ish 2 km × 2 km terrain at ~4 m vertex spacing
+        // (~250 k vertices) — the grid must stay under MAX_CELLS regardless
+        // of vertex density estimate.
+        let mut positions = Vec::new();
+        let step = 4.0_f32;
+        let extent_cells = 500; // 2000 m / 4 m
+        for gz in 0..extent_cells {
+            for gx in 0..extent_cells {
+                positions.push([gx as f32 * step, 1.0, gz as f32 * step]);
+            }
+        }
+        let chunk = make_chunk(positions);
+        let grid = TerrainHeightGrid::build(std::slice::from_ref(&chunk))
+            .expect("grid should build from dense terrain");
+        let cells = grid.width * grid.height;
+        assert!(
+            cells <= TerrainHeightGrid::MAX_CELLS,
+            "cell count {cells} exceeds cap {}",
+            TerrainHeightGrid::MAX_CELLS,
+        );
+        assert!(
+            grid.cell_size >= TerrainHeightGrid::MIN_CELL_SIZE - 1e-4,
+            "cell size {} below min",
+            grid.cell_size,
+        );
+        assert!(
+            grid.cell_size <= TerrainHeightGrid::MAX_CELL_SIZE + 1e-4,
+            "cell size {} above max",
+            grid.cell_size,
+        );
+    }
+
+    #[test]
+    fn height_grid_stores_max_y_per_cell() {
+        // Two vertices in the same cell with different heights — the
+        // grid must record the higher one so scatter sits on ridges.
+        let positions = vec![
+            [0.0, 1.0, 0.0],
+            [0.1, 9.0, 0.1], // same cell as (0,0) at 1 m resolution
+            [5.0, 5.0, 0.0],
+            [0.0, 5.0, 5.0],
+            [5.0, 5.0, 5.0],
+        ];
+        let chunk = make_chunk(positions);
+        let grid = TerrainHeightGrid::build(std::slice::from_ref(&chunk))
+            .expect("grid should build");
+        let y = grid.sample(0.05, 0.05).expect("sample near origin");
+        assert!(y >= 8.9, "expected max-Y ~9.0, got {y}");
+    }
+
+    #[test]
+    fn fog_color_from_sky_matches_day_horizon() {
+        let sky = astraweave_render::SkyConfig {
+            day_color_top: glam::Vec3::new(0.1, 0.2, 0.3),
+            day_color_horizon: glam::Vec3::new(0.4, 0.5, 0.6),
+            sunset_color_top: glam::Vec3::ZERO,
+            sunset_color_horizon: glam::Vec3::ZERO,
+            night_color_top: glam::Vec3::ZERO,
+            night_color_horizon: glam::Vec3::ZERO,
+            cloud_coverage: 0.0,
+            cloud_speed: 0.0,
+            cloud_altitude: 0.0,
+        };
+        assert_eq!(fog_color_from_sky(&sky), sky.day_color_horizon);
+    }
+}

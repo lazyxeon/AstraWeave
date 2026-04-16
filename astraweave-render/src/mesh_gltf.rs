@@ -98,16 +98,14 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
                         gltf::image::Source::Uri { uri, .. } => {
                             // Extract filename stem from URI path
                             let path = std::path::Path::new(uri);
-                            path.file_stem()
-                                .and_then(|s| s.to_str())
-                                .map(|s| {
-                                    // Strip double-extension (.png.png → .png stem)
-                                    let p = std::path::Path::new(s);
-                                    p.file_stem()
-                                        .and_then(|ss| ss.to_str())
-                                        .unwrap_or(s)
-                                        .to_string()
-                                })
+                            path.file_stem().and_then(|s| s.to_str()).map(|s| {
+                                // Strip double-extension (.png.png → .png stem)
+                                let p = std::path::Path::new(s);
+                                p.file_stem()
+                                    .and_then(|ss| ss.to_str())
+                                    .unwrap_or(s)
+                                    .to_string()
+                            })
                         }
                         gltf::image::Source::View { .. } => None,
                     }

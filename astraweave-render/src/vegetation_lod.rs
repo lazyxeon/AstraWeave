@@ -73,6 +73,39 @@ pub fn select_lod(distance: f32, config: &TreeLodDistances) -> Option<Vegetation
     }
 }
 
+/// Build size-aware LOD distances from final world-space vegetation bounds.
+///
+/// The editor viewport historically classified vegetation from raw import size,
+/// which caused aggressively scaled instances to remain in low-detail bands.
+/// This helper derives stable distance bands from the size that actually reaches
+/// the screen.
+pub fn adaptive_lod_distances(
+    world_height: f32,
+    world_width: f32,
+    cull_distance_override: Option<f32>,
+) -> TreeLodDistances {
+    let world_extent = world_height.max(world_width).max(0.25);
+
+    let lod0_max = (world_extent * 6.0).clamp(35.0, 500.0);
+    let lod1_max = (world_extent * 12.0).clamp(lod0_max + 20.0, 900.0);
+    let default_lod2_max = (world_extent * 24.0).clamp(lod1_max + 20.0, 1800.0);
+    let default_cull_distance = (world_extent * 42.0).clamp(default_lod2_max + 75.0, 3000.0);
+
+    let cull_distance = cull_distance_override
+        .filter(|distance| *distance > 0.0)
+        .map(|distance| distance.max(default_lod2_max + 50.0))
+        .unwrap_or(default_cull_distance);
+
+    let lod2_max = default_lod2_max.min((cull_distance - 25.0).max(lod1_max + 10.0));
+
+    TreeLodDistances {
+        lod0_max,
+        lod1_max,
+        lod2_max,
+        cull_distance,
+    }
+}
+
 // ── GPU LOD distances uniform ───────────────────────────────────────────────
 
 /// GPU-side LOD distances (16 bytes, matches WGSL `LodDistances`).
@@ -472,6 +505,25 @@ mod tests {
         assert_eq!(select_lod(50.1, &d), Some(VegetationLod::Simplified));
         assert_eq!(select_lod(100.0, &d), Some(VegetationLod::Simplified));
         assert_eq!(select_lod(149.9, &d), Some(VegetationLod::Simplified));
+    }
+
+    #[test]
+    fn test_adaptive_lod_distances_scale_with_world_size() {
+        let small = adaptive_lod_distances(2.0, 1.0, None);
+        let large = adaptive_lod_distances(24.0, 8.0, None);
+
+        assert!(large.lod0_max > small.lod0_max);
+        assert!(large.lod1_max > small.lod1_max);
+        assert!(large.lod2_max > small.lod2_max);
+        assert!(large.cull_distance > small.cull_distance);
+    }
+
+    #[test]
+    fn test_adaptive_lod_distances_respect_override() {
+        let distances = adaptive_lod_distances(12.0, 4.0, Some(900.0));
+
+        assert_eq!(distances.cull_distance, 900.0);
+        assert!(distances.lod2_max < distances.cull_distance);
     }
 
     #[test]

@@ -744,7 +744,7 @@ impl ViewportWidget {
                     (
                         renderer.scatter_instance_count() as usize,
                         renderer.scatter_draw_calls(),
-                        renderer.terrain_triangles() as u32,
+                        (renderer.terrain_triangles() + renderer.scatter_triangles()) as u32,
                     )
                 }) {
                     self.toolbar.stats.scatter_instances = si;

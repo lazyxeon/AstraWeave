@@ -167,10 +167,7 @@ impl ViewportToolbar {
         // ── Toolbar: top-center of viewport ──
         let toolbar_id = egui::Id::new("viewport_toolbar_v2");
         // Approximate toolbar width ~600px; center it horizontally
-        let toolbar_pos = egui::pos2(
-            viewport_rect.center().x - 300.0,
-            viewport_rect.top() + 10.0,
-        );
+        let toolbar_pos = egui::pos2(viewport_rect.center().x - 300.0, viewport_rect.top() + 10.0);
 
         let mut toolbar_area = egui::Area::new(toolbar_id)
             .movable(true)
@@ -181,125 +178,124 @@ impl ViewportToolbar {
         } else {
             toolbar_area = toolbar_area.default_pos(toolbar_pos);
         }
-        toolbar_area
-            .show(ui.ctx(), |ui| {
-                egui::Frame::new()
-                    .fill(egui::Color32::from_rgba_premultiplied(30, 30, 35, 230))
-                    .corner_radius(4.0)
-                    .inner_margin(8.0)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            // Shading Mode
-                            egui::ComboBox::from_id_salt("shading_mode")
-                                .selected_text(format!("{:?}", self.shading_mode))
-                                .width(90.0)
+        toolbar_area.show(ui.ctx(), |ui| {
+            egui::Frame::new()
+                .fill(egui::Color32::from_rgba_premultiplied(30, 30, 35, 230))
+                .corner_radius(4.0)
+                .inner_margin(8.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        // Shading Mode
+                        egui::ComboBox::from_id_salt("shading_mode")
+                            .selected_text(format!("{:?}", self.shading_mode))
+                            .width(90.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.shading_mode,
+                                    ShadingMode::Lit,
+                                    "Lit",
+                                );
+                                ui.selectable_value(
+                                    &mut self.shading_mode,
+                                    ShadingMode::Unlit,
+                                    "Unlit",
+                                );
+                                ui.selectable_value(
+                                    &mut self.shading_mode,
+                                    ShadingMode::Wireframe,
+                                    "Wireframe",
+                                );
+                            });
+
+                        ui.separator();
+
+                        ui.checkbox(&mut self.show_grid, "Grid");
+
+                        // Grid type selector (only show when grid is visible)
+                        if self.show_grid {
+                            egui::ComboBox::from_id_salt("grid_type")
+                                .selected_text(self.grid_type.name())
+                                .width(80.0)
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(
-                                        &mut self.shading_mode,
-                                        ShadingMode::Lit,
-                                        "Lit",
+                                        &mut self.grid_type,
+                                        GridType::Infinite,
+                                        "Infinite",
                                     );
                                     ui.selectable_value(
-                                        &mut self.shading_mode,
-                                        ShadingMode::Unlit,
-                                        "Unlit",
-                                    );
-                                    ui.selectable_value(
-                                        &mut self.shading_mode,
-                                        ShadingMode::Wireframe,
-                                        "Wireframe",
+                                        &mut self.grid_type,
+                                        GridType::Crosshair,
+                                        "Crosshair",
                                     );
                                 });
+                        }
 
-                            ui.separator();
+                        ui.separator();
 
-                            ui.checkbox(&mut self.show_grid, "Grid");
-
-                            // Grid type selector (only show when grid is visible)
-                            if self.show_grid {
-                                egui::ComboBox::from_id_salt("grid_type")
-                                    .selected_text(self.grid_type.name())
-                                    .width(80.0)
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(
-                                            &mut self.grid_type,
-                                            GridType::Infinite,
-                                            "Infinite",
-                                        );
-                                        ui.selectable_value(
-                                            &mut self.grid_type,
-                                            GridType::Crosshair,
-                                            "Crosshair",
-                                        );
-                                    });
+                        ui.checkbox(&mut self.snap_enabled, "Grid Snap");
+                        if self.snap_enabled {
+                            if ui
+                                .small_button("0.5")
+                                .on_hover_text("Grid size: 0.5 units")
+                                .clicked()
+                            {
+                                self.snap_size = 0.5;
                             }
-
-                            ui.separator();
-
-                            ui.checkbox(&mut self.snap_enabled, "Grid Snap");
-                            if self.snap_enabled {
-                                if ui
-                                    .small_button("0.5")
-                                    .on_hover_text("Grid size: 0.5 units")
-                                    .clicked()
-                                {
-                                    self.snap_size = 0.5;
-                                }
-                                if ui
-                                    .small_button("1.0")
-                                    .on_hover_text("Grid size: 1.0 units")
-                                    .clicked()
-                                {
-                                    self.snap_size = 1.0;
-                                }
-                                if ui
-                                    .small_button("2.0")
-                                    .on_hover_text("Grid size: 2.0 units")
-                                    .clicked()
-                                {
-                                    self.snap_size = 2.0;
-                                }
-                                ui.add(
-                                    egui::DragValue::new(&mut self.snap_size)
-                                        .speed(0.1)
-                                        .range(0.1..=10.0)
-                                        .suffix("m"),
-                                );
+                            if ui
+                                .small_button("1.0")
+                                .on_hover_text("Grid size: 1.0 units")
+                                .clicked()
+                            {
+                                self.snap_size = 1.0;
                             }
-
-                            ui.separator();
-
-                            ui.checkbox(&mut self.angle_snap_enabled, "Angle Snap");
-                            if self.angle_snap_enabled {
-                                if ui
-                                    .small_button("15°")
-                                    .on_hover_text("Angle snap: 15 degrees")
-                                    .clicked()
-                                {
-                                    self.angle_snap_degrees = 15.0;
-                                }
-                                if ui
-                                    .small_button("45°")
-                                    .on_hover_text("Angle snap: 45 degrees")
-                                    .clicked()
-                                {
-                                    self.angle_snap_degrees = 45.0;
-                                }
-                                if ui
-                                    .small_button("90°")
-                                    .on_hover_text("Angle snap: 90 degrees")
-                                    .clicked()
-                                {
-                                    self.angle_snap_degrees = 90.0;
-                                }
+                            if ui
+                                .small_button("2.0")
+                                .on_hover_text("Grid size: 2.0 units")
+                                .clicked()
+                            {
+                                self.snap_size = 2.0;
                             }
+                            ui.add(
+                                egui::DragValue::new(&mut self.snap_size)
+                                    .speed(0.1)
+                                    .range(0.1..=10.0)
+                                    .suffix("m"),
+                            );
+                        }
 
-                            ui.separator();
+                        ui.separator();
 
-                            ui.checkbox(&mut self.show_stats, "Stats");
-                        });
+                        ui.checkbox(&mut self.angle_snap_enabled, "Angle Snap");
+                        if self.angle_snap_enabled {
+                            if ui
+                                .small_button("15°")
+                                .on_hover_text("Angle snap: 15 degrees")
+                                .clicked()
+                            {
+                                self.angle_snap_degrees = 15.0;
+                            }
+                            if ui
+                                .small_button("45°")
+                                .on_hover_text("Angle snap: 45 degrees")
+                                .clicked()
+                            {
+                                self.angle_snap_degrees = 45.0;
+                            }
+                            if ui
+                                .small_button("90°")
+                                .on_hover_text("Angle snap: 90 degrees")
+                                .clicked()
+                            {
+                                self.angle_snap_degrees = 90.0;
+                            }
+                        }
+
+                        ui.separator();
+
+                        ui.checkbox(&mut self.show_stats, "Stats");
                     });
-            });
+                });
+        });
 
         // Performance stats panel (bottom-left, inside viewport)
         if self.show_stats {
@@ -315,70 +311,69 @@ impl ViewportToolbar {
             } else {
                 stats_area = stats_area.default_pos(stats_pos);
             }
-            stats_area
-                .show(ui.ctx(), |ui| {
-                    egui::Frame::new()
-                        .fill(egui::Color32::from_rgba_premultiplied(20, 20, 25, 200))
-                        .corner_radius(4.0)
-                        .inner_margin(6.0)
-                        .show(ui, |ui| {
-                            ui.style_mut().spacing.item_spacing = egui::vec2(4.0, 2.0);
-                            ui.label(egui::RichText::new("Performance").strong());
-                            ui.separator();
-                            ui.label(format!("FPS: {:.1}", self.stats.fps));
-                            ui.label(format!("Frame: {:.2}ms", self.stats.frame_time_ms));
-                            ui.label(format!("Entities: {}", self.stats.entity_count));
-                            ui.label(format!("Triangles: {}K", self.stats.triangle_count / 1000));
-                            ui.label(format!(
-                                "Scatter: {} inst / {} draws",
-                                self.stats.scatter_instances, self.stats.scatter_draw_calls
-                            ));
-                            ui.label(format!("Memory: {:.1} MB", self.stats.memory_usage_mb));
+            stats_area.show(ui.ctx(), |ui| {
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgba_premultiplied(20, 20, 25, 200))
+                    .corner_radius(4.0)
+                    .inner_margin(6.0)
+                    .show(ui, |ui| {
+                        ui.style_mut().spacing.item_spacing = egui::vec2(4.0, 2.0);
+                        ui.label(egui::RichText::new("Performance").strong());
+                        ui.separator();
+                        ui.label(format!("FPS: {:.1}", self.stats.fps));
+                        ui.label(format!("Frame: {:.2}ms", self.stats.frame_time_ms));
+                        ui.label(format!("Entities: {}", self.stats.entity_count));
+                        ui.label(format!("Triangles: {}K", self.stats.triangle_count / 1000));
+                        ui.label(format!(
+                            "Scatter: {} inst / {} draws",
+                            self.stats.scatter_instances, self.stats.scatter_draw_calls
+                        ));
+                        ui.label(format!("Memory: {:.1} MB", self.stats.memory_usage_mb));
 
-                            if !self.stats.frame_time_history.is_empty() {
-                                ui.separator();
-                                let graph_height = 30.0;
-                                let graph_width = 120.0;
-                                let (rect, _) = ui.allocate_exact_size(
-                                    egui::vec2(graph_width, graph_height),
-                                    egui::Sense::hover(),
-                                );
-                                let max_time = self
-                                    .stats
-                                    .frame_time_history
-                                    .iter()
-                                    .copied()
-                                    .fold(16.67f32, f32::max);
-                                let painter = ui.painter();
-                                painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(30, 30, 40));
-                                let target_line_y = rect.max.y - (16.67 / max_time) * graph_height;
+                        if !self.stats.frame_time_history.is_empty() {
+                            ui.separator();
+                            let graph_height = 30.0;
+                            let graph_width = 120.0;
+                            let (rect, _) = ui.allocate_exact_size(
+                                egui::vec2(graph_width, graph_height),
+                                egui::Sense::hover(),
+                            );
+                            let max_time = self
+                                .stats
+                                .frame_time_history
+                                .iter()
+                                .copied()
+                                .fold(16.67f32, f32::max);
+                            let painter = ui.painter();
+                            painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(30, 30, 40));
+                            let target_line_y = rect.max.y - (16.67 / max_time) * graph_height;
+                            painter.line_segment(
+                                [
+                                    egui::pos2(rect.min.x, target_line_y),
+                                    egui::pos2(rect.max.x, target_line_y),
+                                ],
+                                egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 80, 80)),
+                            );
+                            let history = &self.stats.frame_time_history;
+                            let step = graph_width / 60.0;
+                            for (i, &frame_time) in history.iter().enumerate() {
+                                let x = rect.min.x + (i as f32) * step;
+                                let h = (frame_time / max_time) * graph_height;
+                                let color = if frame_time <= 16.67 {
+                                    egui::Color32::GREEN
+                                } else if frame_time <= 33.33 {
+                                    egui::Color32::YELLOW
+                                } else {
+                                    egui::Color32::RED
+                                };
                                 painter.line_segment(
-                                    [
-                                        egui::pos2(rect.min.x, target_line_y),
-                                        egui::pos2(rect.max.x, target_line_y),
-                                    ],
-                                    egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 80, 80)),
+                                    [egui::pos2(x, rect.max.y), egui::pos2(x, rect.max.y - h)],
+                                    egui::Stroke::new(2.0, color),
                                 );
-                                let history = &self.stats.frame_time_history;
-                                let step = graph_width / 60.0;
-                                for (i, &frame_time) in history.iter().enumerate() {
-                                    let x = rect.min.x + (i as f32) * step;
-                                    let h = (frame_time / max_time) * graph_height;
-                                    let color = if frame_time <= 16.67 {
-                                        egui::Color32::GREEN
-                                    } else if frame_time <= 33.33 {
-                                        egui::Color32::YELLOW
-                                    } else {
-                                        egui::Color32::RED
-                                    };
-                                    painter.line_segment(
-                                        [egui::pos2(x, rect.max.y), egui::pos2(x, rect.max.y - h)],
-                                        egui::Stroke::new(2.0, color),
-                                    );
-                                }
                             }
-                        });
-                });
+                        }
+                    });
+            });
         }
 
         // Camera & Selection info panel (top-right, below toolbar)
@@ -395,38 +390,37 @@ impl ViewportToolbar {
             } else {
                 info_area = info_area.default_pos(info_pos);
             }
-            info_area
-                .show(ui.ctx(), |ui| {
-                    egui::Frame::new()
-                        .fill(egui::Color32::from_rgba_premultiplied(20, 20, 25, 200))
-                        .corner_radius(4.0)
-                        .inner_margin(6.0)
-                        .show(ui, |ui| {
-                            ui.style_mut().spacing.item_spacing = egui::vec2(4.0, 2.0);
-                            let [x, y, z] = self.stats.camera_position;
-                            ui.label(egui::RichText::new("Camera").strong());
-                            ui.label(format!("X: {:.1}", x));
-                            ui.label(format!("Y: {:.1}", y));
-                            ui.label(format!("Z: {:.1}", z));
-                            ui.separator();
-                            let sel = self.stats.selection_count;
-                            if sel == 0 {
-                                ui.label("No selection");
-                            } else if sel == 1 {
-                                ui.label("1 selected");
-                            } else {
-                                ui.label(format!("{} selected", sel));
-                            }
-                            ui.separator();
-                            if ui
-                                .button("Reset Camera")
-                                .on_hover_text("Reset camera to default position")
-                                .clicked()
-                            {
-                                camera.reset_to_origin();
-                            }
-                        });
-                });
+            info_area.show(ui.ctx(), |ui| {
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgba_premultiplied(20, 20, 25, 200))
+                    .corner_radius(4.0)
+                    .inner_margin(6.0)
+                    .show(ui, |ui| {
+                        ui.style_mut().spacing.item_spacing = egui::vec2(4.0, 2.0);
+                        let [x, y, z] = self.stats.camera_position;
+                        ui.label(egui::RichText::new("Camera").strong());
+                        ui.label(format!("X: {:.1}", x));
+                        ui.label(format!("Y: {:.1}", y));
+                        ui.label(format!("Z: {:.1}", z));
+                        ui.separator();
+                        let sel = self.stats.selection_count;
+                        if sel == 0 {
+                            ui.label("No selection");
+                        } else if sel == 1 {
+                            ui.label("1 selected");
+                        } else {
+                            ui.label(format!("{} selected", sel));
+                        }
+                        ui.separator();
+                        if ui
+                            .button("Reset Camera")
+                            .on_hover_text("Reset camera to default position")
+                            .clicked()
+                        {
+                            camera.reset_to_origin();
+                        }
+                    });
+            });
         }
 
         // Play controls removed — redundant and non-functional.

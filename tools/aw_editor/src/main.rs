@@ -2507,12 +2507,7 @@ impl EditorApp {
                     cy: i32,
                     flags: u32,
                 ) -> i32;
-                fn SendMessageW(
-                    hwnd: isize,
-                    msg: u32,
-                    wparam: usize,
-                    lparam: isize,
-                ) -> isize;
+                fn SendMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize;
                 fn LoadCursorW(hinstance: isize, lpcursorname: *const u16) -> isize;
                 fn SetCursor(hcursor: isize) -> isize;
                 fn LoadLibraryW(name: *const u16) -> isize;
@@ -2548,9 +2543,17 @@ impl EditorApp {
             // Load dwmapi.dll dynamically so we don't need a link-time dep.
             // DWMWA_NCRENDERING_POLICY = 2, DWMNCRP_ENABLED = 2
             let dll_name: [u16; 11] = [
-                b'd' as u16, b'w' as u16, b'm' as u16, b'a' as u16,
-                b'p' as u16, b'i' as u16, b'.' as u16, b'd' as u16,
-                b'l' as u16, b'l' as u16, 0,
+                b'd' as u16,
+                b'w' as u16,
+                b'm' as u16,
+                b'a' as u16,
+                b'p' as u16,
+                b'i' as u16,
+                b'.' as u16,
+                b'd' as u16,
+                b'l' as u16,
+                b'l' as u16,
+                0,
             ];
             let module = LoadLibraryW(dll_name.as_ptr());
             if module != 0 {
@@ -2558,9 +2561,8 @@ impl EditorApp {
                 let proc = GetProcAddress(module, proc_name.as_ptr());
                 if !proc.is_null() {
                     // DwmSetWindowAttribute(HWND, DWORD, LPCVOID, DWORD) -> HRESULT
-                    let dwm_set: unsafe extern "system" fn(
-                        isize, u32, *const u32, u32,
-                    ) -> i32 = std::mem::transmute(proc);
+                    let dwm_set: unsafe extern "system" fn(isize, u32, *const u32, u32) -> i32 =
+                        std::mem::transmute(proc);
                     let policy: u32 = 2; // DWMNCRP_ENABLED
                     dwm_set(hwnd, 2, &policy, 4);
                 }
@@ -3920,8 +3922,14 @@ impl EditorApp {
 
             // Compute fog color from sky horizon (fog blends toward sky color)
             let fog_color = [sky_horizon[0], sky_horizon[1], sky_horizon[2]];
-            let (fog_enabled, fog_density, fog_start, fog_end, weather_type, particle_count_override) =
-                self.dock_tab_viewer.fog_weather_params();
+            let (
+                fog_enabled,
+                fog_density,
+                fog_start,
+                fog_end,
+                weather_type,
+                particle_count_override,
+            ) = self.dock_tab_viewer.fog_weather_params();
             let fog_params = crate::viewport::types::TerrainFogParams {
                 fog_enabled,
                 fog_density,
@@ -4869,11 +4877,10 @@ impl EditorApp {
                                     "Engine adapter not ready after terrain upload — initializing explicitly...".into(),
                                 );
                                 use pollster::FutureExt;
-                                let init_result = std::panic::catch_unwind(
-                                    std::panic::AssertUnwindSafe(|| {
+                                let init_result =
+                                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                         renderer.init_engine_adapter().block_on()
-                                    }),
-                                );
+                                    }));
                                 match init_result {
                                     Ok(Ok(())) => {
                                         self.console_logs.push(
@@ -4886,7 +4893,9 @@ impl EditorApp {
                                         ));
                                     }
                                     Err(panic_info) => {
-                                        let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
+                                        let msg = if let Some(s) =
+                                            panic_info.downcast_ref::<String>()
+                                        {
                                             s.clone()
                                         } else if let Some(s) = panic_info.downcast_ref::<&str>() {
                                             (*s).to_string()
@@ -4902,31 +4911,111 @@ impl EditorApp {
                         }
                     }
 
-                    // Load biome-appropriate albedo texture.
-                    // For BiomePack biomes, load the pack's ground diffuse texture
-                    // directly. For standard biomes, use the material library.
+                    // Load biome-appropriate terrain surface maps.
+                    // For BiomePack biomes, load the pack's ground diffuse +
+                    // normal + roughness-derived MRA directly. For standard
+                    // biomes, use the authored material library.
                     let biome_name = self.dock_tab_viewer.terrain_primary_biome();
 
-                    // Try to load ground texture from the active BiomePack first
+                    // Try to load ground surface maps from the active BiomePack first.
                     let mut loaded_from_pack = false;
                     if let Some(pack) = self.dock_tab_viewer.cached_biome_pack() {
-                        // Find the first ground texture that has a diffuse channel
-                        let ground_diffuse = pack
-                            .ground_textures
-                            .iter()
-                            .find_map(|gt| gt.diffuse.as_ref().map(|d| pack.root_dir.join(d)));
-                        if let Some(tex_path) = ground_diffuse {
-                            if tex_path.exists() {
-                                if let Ok(img) = image::open(&tex_path) {
-                                    let rgba = img.to_rgba8();
-                                    let (w, h) = (rgba.width(), rgba.height());
+                        let ground_texture =
+                            pack.ground_textures.iter().find(|gt| gt.diffuse.is_some());
+                        if let Some(ground_texture) = ground_texture {
+                            let load_rgba = |relative_path: &str| {
+                                image::open(pack.root_dir.join(relative_path))
+                                    .map(|image| image.to_rgba8())
+                            };
+
+                            if let Some(diffuse_path) = ground_texture.diffuse.as_deref() {
+                                if let Ok(diffuse) = load_rgba(diffuse_path) {
+                                    let (albedo_width, albedo_height) = diffuse.dimensions();
+                                    let albedo = diffuse.into_raw();
+
+                                    let normal =
+                                        ground_texture.normal.as_deref().and_then(|path| {
+                                            if path.contains(".exr.") {
+                                                None
+                                            } else {
+                                                load_rgba(path).ok().map(|image| {
+                                                    let normal_image = if image.dimensions()
+                                                        == (albedo_width, albedo_height)
+                                                    {
+                                                        image
+                                                    } else {
+                                                        image::imageops::resize(
+                                                            &image,
+                                                            albedo_width,
+                                                            albedo_height,
+                                                            image::imageops::FilterType::Triangle,
+                                                        )
+                                                    };
+                                                    (
+                                                        albedo_width,
+                                                        albedo_height,
+                                                        normal_image.into_raw(),
+                                                    )
+                                                })
+                                            }
+                                        });
+
+                                    let metallic_roughness =
+                                        ground_texture.roughness.as_deref().and_then(|path| {
+                                            if path.contains(".exr.") {
+                                                None
+                                            } else {
+                                                load_rgba(path).ok().map(|image| {
+                                                    let roughness_image = if image.dimensions()
+                                                        == (albedo_width, albedo_height)
+                                                    {
+                                                        image
+                                                    } else {
+                                                        image::imageops::resize(
+                                                            &image,
+                                                            albedo_width,
+                                                            albedo_height,
+                                                            image::imageops::FilterType::Triangle,
+                                                        )
+                                                    };
+                                                    let mut mra = vec![
+                                                        0u8;
+                                                        (albedo_width * albedo_height * 4)
+                                                            as usize
+                                                    ];
+                                                    for (index, pixel) in roughness_image
+                                                        .as_raw()
+                                                        .chunks_exact(4)
+                                                        .enumerate()
+                                                    {
+                                                        mra[index * 4] = 0;
+                                                        mra[index * 4 + 1] = pixel[0];
+                                                        mra[index * 4 + 2] = 255;
+                                                        mra[index * 4 + 3] = 255;
+                                                    }
+                                                    (albedo_width, albedo_height, mra)
+                                                })
+                                            }
+                                        });
+
                                     if let Some(viewport) = &self.viewport {
                                         if let Ok(mut renderer) = viewport.renderer().lock() {
                                             if let Some(adapter) = renderer.engine_adapter_mut() {
-                                                adapter
-                                                    .renderer_mut()
-                                                    .set_albedo_from_rgba8(w, h, &rgba);
-                                                info!("Loaded BiomePack ground texture ({}x{}) from {:?}", w, h, tex_path);
+                                                adapter.set_terrain_surface_maps(
+                                                    (albedo_width, albedo_height, &albedo),
+                                                    normal.as_ref().map(|data| {
+                                                        (data.0, data.1, data.2.as_slice())
+                                                    }),
+                                                    metallic_roughness.as_ref().map(|data| {
+                                                        (data.0, data.1, data.2.as_slice())
+                                                    }),
+                                                );
+                                                info!(
+                                                    "Loaded BiomePack ground surface maps ({}x{}) from {:?}",
+                                                    albedo_width,
+                                                    albedo_height,
+                                                    pack.root_dir.join(diffuse_path)
+                                                );
                                                 loaded_from_pack = true;
                                             }
                                         }
@@ -4973,7 +5062,9 @@ impl EditorApp {
                             if let Ok(renderer) = viewport.renderer().lock() {
                                 if let Some(adapter) = renderer.engine_adapter() {
                                     adapter.renderer().queue().submit(std::iter::empty());
-                                    tracing::debug!("Intermediate queue.submit between terrain and scatter");
+                                    tracing::debug!(
+                                        "Intermediate queue.submit between terrain and scatter"
+                                    );
                                 }
                             }
                         }
@@ -4991,17 +5082,20 @@ impl EditorApp {
                                 let adapter_ready = renderer.engine_adapter_initialized();
                                 self.console_logs.push(format!(
                                     "  Adapter status before scatter: {}",
-                                    if adapter_ready { "READY" } else { "NOT INITIALIZED" }
+                                    if adapter_ready {
+                                        "READY"
+                                    } else {
+                                        "NOT INITIALIZED"
+                                    }
                                 ));
 
                                 if !adapter_ready {
                                     // Last-resort init for scatter
                                     use pollster::FutureExt;
-                                    let init_result = std::panic::catch_unwind(
-                                        std::panic::AssertUnwindSafe(|| {
-                                            renderer.init_engine_adapter().block_on()
-                                        }),
-                                    );
+                                    let init_result =
+                                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                                            || renderer.init_engine_adapter().block_on(),
+                                        ));
                                     match init_result {
                                         Ok(Ok(())) => {
                                             self.console_logs.push(
@@ -5014,9 +5108,13 @@ impl EditorApp {
                                             ));
                                         }
                                         Err(panic_info) => {
-                                            let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
+                                            let msg = if let Some(s) =
+                                                panic_info.downcast_ref::<String>()
+                                            {
                                                 s.clone()
-                                            } else if let Some(s) = panic_info.downcast_ref::<&str>() {
+                                            } else if let Some(s) =
+                                                panic_info.downcast_ref::<&str>()
+                                            {
                                                 (*s).to_string()
                                             } else {
                                                 "unknown panic".to_string()
@@ -9069,9 +9167,9 @@ impl eframe::App for EditorApp {
                 return; // Splash still active
             }
             self.splash = None; // Splash finished, proceed to editor
-            // Splash just ended — kick a fresh assertion burst so that
-            // decorations and cursor are re-asserted now that the full
-            // editor UI is about to render for the first time.
+                                // Splash just ended — kick a fresh assertion burst so that
+                                // decorations and cursor are re-asserted now that the full
+                                // editor UI is about to render for the first time.
             self.focus_repaint_frames = self.focus_repaint_frames.max(10);
             ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(true));
@@ -9471,7 +9569,9 @@ fn main() -> Result<()> {
                     let info = adapter.get_info();
                     tracing::info!(
                         "[AW] wgpu adapter: {} (backend={:?}, type={:?})",
-                        info.name, info.backend, info.device_type
+                        info.name,
+                        info.backend,
+                        info.device_type
                     );
                     let base_limits = if info.backend == wgpu::Backend::Gl {
                         wgpu::Limits::downlevel_webgl2_defaults()

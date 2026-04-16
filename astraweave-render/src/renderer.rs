@@ -630,21 +630,32 @@ struct CameraUBO {
 }
 
 /// A named model with its mesh and instance data for multi-model rendering.
-pub struct RenderModel {
-    /// The GPU mesh (vertex/index buffers).
+pub struct RenderModelPrimitive {
+    /// The GPU mesh (vertex/index buffers) for one primitive.
     pub mesh: Mesh,
+    /// Per-primitive texture bind group (group 3). When Some, overrides global tex_bg.
+    pub tex_bind_group: Option<wgpu::BindGroup>,
+    /// Retained GPU textures to keep the bind group's texture views alive.
+    pub _retained_textures: Vec<wgpu::Texture>,
+}
+
+pub struct RenderModel {
+    /// The GPU primitives that make up this model.
+    pub primitives: Vec<RenderModelPrimitive>,
     /// Instance buffer for this model.
     pub instance_buf: wgpu::Buffer,
     /// Number of instances.
     pub instance_count: u32,
     /// World-space AABB for frustum culling (None = always visible).
     pub aabb: Option<([f32; 3], [f32; 3])>,
-    /// Per-model texture bind group (group 3). When Some, overrides global tex_bg.
-    pub tex_bind_group: Option<wgpu::BindGroup>,
-    /// Retained GPU texture to keep the bind group's texture view alive.
-    pub _retained_tex: Option<wgpu::Texture>,
     /// GPU memory used by this model's texture (for budget tracking).
     pub tex_gpu_bytes: u64,
+}
+
+pub struct ModelSurfaceMaps<'a> {
+    pub albedo: (u32, u32, &'a [u8]),
+    pub normal: (u32, u32, &'a [u8]),
+    pub metallic_roughness: (u32, u32, &'a [u8]),
 }
 
 pub struct Renderer {
@@ -1963,7 +1974,8 @@ impl Renderer {
             ],
         });
 
-        let cloud_shadow_pass = crate::volumetric_clouds::CloudShadowPass::new_default(&device, &queue);
+        let cloud_shadow_pass =
+            crate::volumetric_clouds::CloudShadowPass::new_default(&device, &queue);
 
         // IBL params uniform buffer
         #[repr(C)]
@@ -3280,12 +3292,12 @@ fn vs(input: VSIn) -> VSOut {
             shadow_pcf_radius_px: 1.0,
             shadow_depth_bias: 0.0006,
             shadow_slope_scale: 0.002,
-            shadows_enabled: true,         // Shadows enabled by default
-            max_draw_distance: 0.0,        // 0 = use fog_end fallback
+            shadows_enabled: true,  // Shadows enabled by default
+            max_draw_distance: 0.0, // 0 = use fog_end fallback
             rendered_model_count: 0,
-            terrain_ground_set: false,     // No terrain ground plane set yet
+            terrain_ground_set: false, // No terrain ground plane set yet
             clustered_offsets_cache: None, // Force first-frame computation
-            force_shadow_override: false,  // Normal runtime: use computed PCF shadows
+            force_shadow_override: false, // Normal runtime: use computed PCF shadows
             albedo_tex,
             albedo_view,
             albedo_sampler,
@@ -4879,10 +4891,15 @@ fn vs(input: VSIn) -> VSOut {
                         continue;
                     }
                 }
-                sp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
-                sp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-                sp.set_vertex_buffer(1, model.instance_buf.slice(..));
-                sp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
+                for primitive in &model.primitives {
+                    sp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
+                    sp.set_index_buffer(
+                        primitive.mesh.index_buf.slice(..),
+                        wgpu::IndexFormat::Uint32,
+                    );
+                    sp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                    sp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
+                }
             }
         }
         // light_buf already contains the full [cascade0, cascade1, splits, extras]
@@ -5043,17 +5060,20 @@ fn vs(input: VSIn) -> VSOut {
                             continue;
                         }
                     }
-                    // Bind per-model texture if available, otherwise use global fallback
-                    // to prevent bind group bleed from the previous model.
-                    if let Some(ref mtex) = model.tex_bind_group {
-                        rp.set_bind_group(3, mtex, &[]);
-                    } else {
-                        rp.set_bind_group(3, &self.tex_bg, &[]);
+                    for primitive in &model.primitives {
+                        if let Some(ref mtex) = primitive.tex_bind_group {
+                            rp.set_bind_group(3, mtex, &[]);
+                        } else {
+                            rp.set_bind_group(3, &self.tex_bg, &[]);
+                        }
+                        rp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
+                        rp.set_index_buffer(
+                            primitive.mesh.index_buf.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        rp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                        rp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
                     }
-                    rp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
-                    rp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-                    rp.set_vertex_buffer(1, model.instance_buf.slice(..));
-                    rp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
                 }
             }
 
@@ -5383,10 +5403,15 @@ fn vs(input: VSIn) -> VSOut {
                         continue;
                     }
                 }
-                sp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
-                sp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-                sp.set_vertex_buffer(1, model.instance_buf.slice(..));
-                sp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
+                for primitive in &model.primitives {
+                    sp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
+                    sp.set_index_buffer(
+                        primitive.mesh.index_buf.slice(..),
+                        wgpu::IndexFormat::Uint32,
+                    );
+                    sp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                    sp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
+                }
             }
         }
         // light_buf already contains the full [cascade0, cascade1, splits, extras]
@@ -5572,15 +5597,20 @@ fn vs(input: VSIn) -> VSOut {
                             continue;
                         }
                     }
-                    if let Some(ref mtex) = model.tex_bind_group {
-                        rp.set_bind_group(3, mtex, &[]);
-                    } else {
-                        rp.set_bind_group(3, &self.tex_bg, &[]);
+                    for primitive in &model.primitives {
+                        if let Some(ref mtex) = primitive.tex_bind_group {
+                            rp.set_bind_group(3, mtex, &[]);
+                        } else {
+                            rp.set_bind_group(3, &self.tex_bg, &[]);
+                        }
+                        rp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
+                        rp.set_index_buffer(
+                            primitive.mesh.index_buf.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        rp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                        rp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
                     }
-                    rp.set_vertex_buffer(0, model.mesh.vertex_buf.slice(..));
-                    rp.set_index_buffer(model.mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-                    rp.set_vertex_buffer(1, model.instance_buf.slice(..));
-                    rp.draw_indexed(0..model.mesh.index_count, 0, 0..model.instance_count);
                     drawn_models += 1;
                 }
                 self.rendered_model_count = drawn_models;
@@ -5620,7 +5650,10 @@ fn vs(input: VSIn) -> VSOut {
                 ));
                 // Apply any pending bloom config that was set before the pass existed.
                 if let Some(cfg) = self.pending_bloom_config.take() {
-                    self.bloom_pass.as_mut().expect("just created").set_config(cfg);
+                    self.bloom_pass
+                        .as_mut()
+                        .expect("just created")
+                        .set_config(cfg);
                 }
             }
             // Take the bloom pass out to satisfy the borrow checker — execute()
@@ -6406,6 +6439,20 @@ fn vs(input: VSIn) -> VSOut {
         self.add_model_impl(name, mesh, instances, None);
     }
 
+    /// Add or replace a named model composed of multiple primitives.
+    ///
+    /// Each CPU mesh becomes a separate draw within the model while sharing
+    /// the same instance buffer. Embedded albedo textures are preserved on a
+    /// per-primitive basis.
+    pub fn add_composite_model(
+        &mut self,
+        name: impl Into<String>,
+        cpu_meshes: Vec<crate::mesh::CpuMesh>,
+        instances: &[Instance],
+    ) {
+        self.add_composite_model_impl(name, cpu_meshes, instances, None);
+    }
+
     /// Add or replace a named model with an explicit world-space AABB for
     /// frustum culling. Models outside the camera frustum are skipped.
     pub fn add_model_with_bounds(
@@ -6419,6 +6466,17 @@ fn vs(input: VSIn) -> VSOut {
         self.add_model_impl(name, mesh, instances, Some((aabb_min, aabb_max)));
     }
 
+    fn insert_model(&mut self, name: String, model: RenderModel) {
+        if let Some(old_model) = self.models.insert(name, model) {
+            if old_model.tex_gpu_bytes > 0 {
+                self.gpu_memory_budget.deallocate(
+                    crate::gpu_memory::MemoryCategory::Textures,
+                    old_model.tex_gpu_bytes,
+                );
+            }
+        }
+    }
+
     fn add_model_impl(
         &mut self,
         name: impl Into<String>,
@@ -6426,45 +6484,67 @@ fn vs(input: VSIn) -> VSOut {
         instances: &[Instance],
         aabb: Option<([f32; 3], [f32; 3])>,
     ) {
-        let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
-        let buf_bytes = (raw.len() * std::mem::size_of::<InstanceRaw>()) as u64;
-        let alloc_size = buf_bytes.next_power_of_two().max(256);
-        let instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("model-inst-buf"),
-            size: alloc_size,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        if !raw.is_empty() {
-            self.queue
-                .write_buffer(&instance_buf, 0, bytemuck::cast_slice(&raw));
-        }
+        let instance_buf = self.create_model_instance_buffer(instances);
         let model = RenderModel {
-            mesh,
+            primitives: vec![RenderModelPrimitive {
+                mesh,
+                tex_bind_group: None,
+                _retained_textures: Vec::new(),
+            }],
             instance_buf,
             instance_count: instances.len() as u32,
             aabb,
-            tex_bind_group: None,
-            _retained_tex: None,
             tex_gpu_bytes: 0,
         };
-        self.models.insert(name.into(), model);
+        self.insert_model(name.into(), model);
     }
 
-    /// Add a model with its own albedo texture (extracted from glTF).
-    ///
-    /// Creates a per-model texture bind group so the model renders with its
-    /// own albedo instead of the global terrain texture. The texture is
-    /// retained in the `RenderModel` to keep the bind group valid.
-    pub fn add_model_with_texture(
+    fn add_composite_model_impl(
         &mut self,
         name: impl Into<String>,
-        mesh: Mesh,
+        cpu_meshes: Vec<crate::mesh::CpuMesh>,
         instances: &[Instance],
-        albedo_width: u32,
-        albedo_height: u32,
-        albedo_rgba: &[u8],
+        aabb: Option<([f32; 3], [f32; 3])>,
     ) {
+        if cpu_meshes.is_empty() {
+            return;
+        }
+
+        let instance_buf = self.create_model_instance_buffer(instances);
+        let mut tex_gpu_bytes = 0;
+        let mut primitives = Vec::with_capacity(cpu_meshes.len());
+
+        for cpu_mesh in cpu_meshes {
+            let mesh = self.create_mesh_from_cpu_mesh(&cpu_mesh);
+            if let Some(img) = cpu_mesh.albedo_image.as_ref() {
+                let (tex_bg, textures, bytes) =
+                    self.create_model_albedo_bind_group(img.width, img.height, &img.pixels);
+                tex_gpu_bytes += bytes;
+                primitives.push(RenderModelPrimitive {
+                    mesh,
+                    tex_bind_group: Some(tex_bg),
+                    _retained_textures: textures,
+                });
+            } else {
+                primitives.push(RenderModelPrimitive {
+                    mesh,
+                    tex_bind_group: None,
+                    _retained_textures: Vec::new(),
+                });
+            }
+        }
+
+        let model = RenderModel {
+            primitives,
+            instance_buf,
+            instance_count: instances.len() as u32,
+            aabb,
+            tex_gpu_bytes,
+        };
+        self.insert_model(name.into(), model);
+    }
+
+    fn create_model_instance_buffer(&self, instances: &[Instance]) -> wgpu::Buffer {
         let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
         let buf_bytes = (raw.len() * std::mem::size_of::<InstanceRaw>()) as u64;
         let alloc_size = buf_bytes.next_power_of_two().max(256);
@@ -6478,114 +6558,169 @@ fn vs(input: VSIn) -> VSOut {
             self.queue
                 .write_buffer(&instance_buf, 0, bytemuck::cast_slice(&raw));
         }
+        instance_buf
+    }
 
-        // Create per-model albedo texture with mipmaps.
-        // Pre-compute GPU memory needed for the full mip chain so we can
-        // track it in the memory budget and log a warning if it's large.
-        let mip_count = (albedo_width.max(albedo_height) as f32).log2().floor() as u32 + 1;
-        {
-            let mut total_bytes: u64 = 0;
-            let (mut mw, mut mh) = (albedo_width as u64, albedo_height as u64);
-            for _ in 0..mip_count {
-                total_bytes += mw * mh * 4;
-                mw = (mw / 2).max(1);
-                mh = (mh / 2).max(1);
-            }
-            self.gpu_memory_budget
-                .try_allocate(crate::gpu_memory::MemoryCategory::Textures, total_bytes);
+    fn texture_mip_level_count(width: u32, height: u32) -> u32 {
+        (width.max(height) as f32).log2().floor() as u32 + 1
+    }
+
+    fn texture_mip_chain_bytes(width: u32, height: u32, mip_count: u32) -> u64 {
+        let mut total: u64 = 0;
+        let (mut mip_width, mut mip_height) = (width as u64, height as u64);
+        for _ in 0..mip_count {
+            total += mip_width * mip_height * 4;
+            mip_width = (mip_width / 2).max(1);
+            mip_height = (mip_height / 2).max(1);
         }
-        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("model albedo"),
+        total
+    }
+
+    fn build_rgba8_mip_chain(
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+        renormalize_xyz: bool,
+    ) -> Vec<(u32, u32, Vec<u8>)> {
+        assert_eq!(rgba.len() as u32, width * height * 4);
+
+        let mip_count = Self::texture_mip_level_count(width, height);
+        let mut levels = Vec::with_capacity(mip_count as usize);
+        let mut prev = rgba.to_vec();
+        let mut mip_width = width;
+        let mut mip_height = height;
+
+        levels.push((mip_width, mip_height, prev.clone()));
+
+        for _level in 1..mip_count {
+            let next_width = (mip_width / 2).max(1);
+            let next_height = (mip_height / 2).max(1);
+            let mut mip = vec![0u8; (next_width * next_height * 4) as usize];
+
+            for y in 0..next_height {
+                for x in 0..next_width {
+                    let src_x = (x * 2).min(mip_width - 1);
+                    let src_y = (y * 2).min(mip_height - 1);
+                    let src_x1 = (src_x + 1).min(mip_width - 1);
+                    let src_y1 = (src_y + 1).min(mip_height - 1);
+
+                    for channel in 0..4u32 {
+                        let i00 = ((src_y * mip_width + src_x) * 4 + channel) as usize;
+                        let i10 = ((src_y * mip_width + src_x1) * 4 + channel) as usize;
+                        let i01 = ((src_y1 * mip_width + src_x) * 4 + channel) as usize;
+                        let i11 = ((src_y1 * mip_width + src_x1) * 4 + channel) as usize;
+                        let avg = (prev[i00] as u16
+                            + prev[i10] as u16
+                            + prev[i01] as u16
+                            + prev[i11] as u16)
+                            / 4;
+                        mip[((y * next_width + x) * 4 + channel) as usize] = avg as u8;
+                    }
+
+                    if renormalize_xyz {
+                        let pixel_index = ((y * next_width + x) * 4) as usize;
+                        let decode = |value: u8| value as f32 / 127.5 - 1.0;
+                        let encode = |value: f32| {
+                            ((value * 0.5 + 0.5) * 255.0).round().clamp(0.0, 255.0) as u8
+                        };
+                        let mut normal = glam::Vec3::new(
+                            decode(mip[pixel_index]),
+                            decode(mip[pixel_index + 1]),
+                            decode(mip[pixel_index + 2]),
+                        );
+                        if normal.length_squared() > 1.0e-4 {
+                            normal = normal.normalize();
+                        } else {
+                            normal = glam::Vec3::Z;
+                        }
+                        mip[pixel_index] = encode(normal.x);
+                        mip[pixel_index + 1] = encode(normal.y);
+                        mip[pixel_index + 2] = encode(normal.z);
+                    }
+                }
+            }
+
+            levels.push((next_width, next_height, mip.clone()));
+            prev = mip;
+            mip_width = next_width;
+            mip_height = next_height;
+        }
+
+        levels
+    }
+
+    fn create_model_rgba_texture(
+        &mut self,
+        label: &'static str,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+        format: wgpu::TextureFormat,
+        renormalize_xyz: bool,
+    ) -> (wgpu::Texture, u64) {
+        let mip_chain = Self::build_rgba8_mip_chain(width, height, rgba, renormalize_xyz);
+        let mip_count = mip_chain.len() as u32;
+        let total_bytes = Self::texture_mip_chain_bytes(width, height, mip_count);
+
+        self.gpu_memory_budget
+            .try_allocate(crate::gpu_memory::MemoryCategory::Textures, total_bytes);
+
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
             size: wgpu::Extent3d {
-                width: albedo_width,
-                height: albedo_height,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: mip_count,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
 
-        // Upload mip level 0 (full resolution)
-        self.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &tex,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            albedo_rgba,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * albedo_width),
-                rows_per_image: Some(albedo_height),
-            },
-            wgpu::Extent3d {
-                width: albedo_width,
-                height: albedo_height,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        // Generate and upload mip chain via 2×2 box filter
-        {
-            let mut prev = albedo_rgba.to_vec();
-            let mut w = albedo_width;
-            let mut h = albedo_height;
-            for level in 1..mip_count {
-                let nw = (w / 2).max(1);
-                let nh = (h / 2).max(1);
-                let mut mip = vec![0u8; (nw * nh * 4) as usize];
-                for y in 0..nh {
-                    for x in 0..nw {
-                        let sx = (x * 2).min(w - 1);
-                        let sy = (y * 2).min(h - 1);
-                        let sx1 = (sx + 1).min(w - 1);
-                        let sy1 = (sy + 1).min(h - 1);
-                        for c in 0..4u32 {
-                            let i00 = ((sy * w + sx) * 4 + c) as usize;
-                            let i10 = ((sy * w + sx1) * 4 + c) as usize;
-                            let i01 = ((sy1 * w + sx) * 4 + c) as usize;
-                            let i11 = ((sy1 * w + sx1) * 4 + c) as usize;
-                            let avg = (prev[i00] as u16
-                                + prev[i10] as u16
-                                + prev[i01] as u16
-                                + prev[i11] as u16)
-                                / 4;
-                            mip[((y * nw + x) * 4 + c) as usize] = avg as u8;
-                        }
-                    }
-                }
-                self.queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &tex,
-                        mip_level: level,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &mip,
-                    wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(4 * nw),
-                        rows_per_image: Some(nh),
-                    },
-                    wgpu::Extent3d {
-                        width: nw,
-                        height: nh,
-                        depth_or_array_layers: 1,
-                    },
-                );
-                prev = mip;
-                w = nw;
-                h = nh;
-            }
+        for (level, (mip_width, mip_height, mip_rgba)) in mip_chain.iter().enumerate() {
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: level as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                mip_rgba,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * *mip_width),
+                    rows_per_image: Some(*mip_height),
+                },
+                wgpu::Extent3d {
+                    width: *mip_width,
+                    height: *mip_height,
+                    depth_or_array_layers: 1,
+                },
+            );
         }
-        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Build bind group matching tex_bgl (group 3): albedo, MR, normal, skin palette
+        (texture, total_bytes)
+    }
+
+    fn create_model_albedo_bind_group(
+        &mut self,
+        albedo_width: u32,
+        albedo_height: u32,
+        albedo_rgba: &[u8],
+    ) -> (wgpu::BindGroup, Vec<wgpu::Texture>, u64) {
+        let (albedo_texture, tex_gpu_bytes) = self.create_model_rgba_texture(
+            "model albedo",
+            albedo_width,
+            albedo_height,
+            albedo_rgba,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            false,
+        );
+        let view = albedo_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         let tex_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("model tex bg"),
             layout: &self.tex_bgl,
@@ -6621,34 +6756,178 @@ fn vs(input: VSIn) -> VSOut {
             ],
         });
 
-        // Compute total GPU memory for this texture (all mip levels, 4 bytes per pixel)
-        let tex_gpu_bytes = {
-            let mut total: u64 = 0;
-            let (mut mw, mut mh) = (albedo_width as u64, albedo_height as u64);
-            for _ in 0..mip_count {
-                total += mw * mh * 4;
-                mw = (mw / 2).max(1);
-                mh = (mh / 2).max(1);
-            }
-            total
-        };
+        (tex_bg, vec![albedo_texture], tex_gpu_bytes)
+    }
+
+    fn create_model_pbr_bind_group(
+        &mut self,
+        surface_maps: &ModelSurfaceMaps<'_>,
+    ) -> (wgpu::BindGroup, Vec<wgpu::Texture>, u64) {
+        let (albedo_texture, albedo_bytes) = self.create_model_rgba_texture(
+            "model pbr albedo",
+            surface_maps.albedo.0,
+            surface_maps.albedo.1,
+            surface_maps.albedo.2,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            false,
+        );
+        let (metallic_roughness_texture, metallic_roughness_bytes) = self
+            .create_model_rgba_texture(
+                "model pbr metallic roughness",
+                surface_maps.metallic_roughness.0,
+                surface_maps.metallic_roughness.1,
+                surface_maps.metallic_roughness.2,
+                wgpu::TextureFormat::Rgba8Unorm,
+                false,
+            );
+        let (normal_texture, normal_bytes) = self.create_model_rgba_texture(
+            "model pbr normal",
+            surface_maps.normal.0,
+            surface_maps.normal.1,
+            surface_maps.normal.2,
+            wgpu::TextureFormat::Rgba8Unorm,
+            true,
+        );
+
+        let albedo_view = albedo_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let metallic_roughness_view =
+            metallic_roughness_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let normal_view = normal_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let tex_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("model pbr tex bg"),
+            layout: &self.tex_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&albedo_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.albedo_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&metallic_roughness_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.mr_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&self.normal_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: self.skin_palette_buf.as_entire_binding(),
+                },
+            ],
+        });
+
+        (
+            tex_bg,
+            vec![albedo_texture, metallic_roughness_texture, normal_texture],
+            albedo_bytes + metallic_roughness_bytes + normal_bytes,
+        )
+    }
+
+    /// Add a model with its own albedo texture (extracted from glTF).
+    ///
+    /// Creates a per-model texture bind group so the model renders with its
+    /// own albedo instead of the global terrain texture. The texture is
+    /// retained in the `RenderModel` to keep the bind group valid.
+    pub fn add_model_with_texture(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        albedo_width: u32,
+        albedo_height: u32,
+        albedo_rgba: &[u8],
+    ) {
+        let instance_buf = self.create_model_instance_buffer(instances);
+        let (tex_bg, textures, tex_gpu_bytes) =
+            self.create_model_albedo_bind_group(albedo_width, albedo_height, albedo_rgba);
 
         let model = RenderModel {
-            mesh,
+            primitives: vec![RenderModelPrimitive {
+                mesh,
+                tex_bind_group: Some(tex_bg),
+                _retained_textures: textures,
+            }],
             instance_buf,
             instance_count: instances.len() as u32,
             aabb: None,
-            tex_bind_group: Some(tex_bg),
-            _retained_tex: Some(tex),
             tex_gpu_bytes,
         };
-        self.models.insert(name.into(), model);
+        self.insert_model(name.into(), model);
+    }
+
+    /// Add a model with dedicated albedo, normal, and metallic-roughness maps.
+    pub fn add_model_with_pbr_textures(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        surface_maps: &ModelSurfaceMaps<'_>,
+    ) {
+        self.add_model_with_pbr_textures_impl(name, mesh, instances, surface_maps, None);
+    }
+
+    /// Add a model with dedicated albedo, normal, and metallic-roughness maps and bounds.
+    pub fn add_model_with_pbr_textures_and_bounds(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        surface_maps: &ModelSurfaceMaps<'_>,
+        aabb_min: [f32; 3],
+        aabb_max: [f32; 3],
+    ) {
+        self.add_model_with_pbr_textures_impl(
+            name,
+            mesh,
+            instances,
+            surface_maps,
+            Some((aabb_min, aabb_max)),
+        );
+    }
+
+    fn add_model_with_pbr_textures_impl(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        surface_maps: &ModelSurfaceMaps<'_>,
+        aabb: Option<([f32; 3], [f32; 3])>,
+    ) {
+        let instance_buf = self.create_model_instance_buffer(instances);
+        let (tex_bg, textures, tex_gpu_bytes) = self.create_model_pbr_bind_group(surface_maps);
+
+        let model = RenderModel {
+            primitives: vec![RenderModelPrimitive {
+                mesh,
+                tex_bind_group: Some(tex_bg),
+                _retained_textures: textures,
+            }],
+            instance_buf,
+            instance_count: instances.len() as u32,
+            aabb,
+            tex_gpu_bytes,
+        };
+        self.insert_model(name.into(), model);
     }
 
     /// Add a model that shares the texture bind group from an existing model.
     ///
     /// This avoids creating duplicate GPU textures when multiple models use
     /// the same albedo (e.g., scatter quadrants from the same mesh group).
+    /// The source model is expected to be a single-primitive textured model.
     /// The texture bind group and retained GPU texture are cloned (wgpu
     /// resources are reference-counted, so this is cheap).
     ///
@@ -6662,33 +6941,57 @@ fn vs(input: VSIn) -> VSOut {
         instances: &[Instance],
         source_model: &str,
     ) -> bool {
-        let (shared_bg, shared_tex) = match self.models.get(source_model) {
-            Some(src) => (src.tex_bind_group.clone(), src._retained_tex.clone()),
+        self.add_model_sharing_texture_impl(name, mesh, instances, source_model, None)
+    }
+
+    /// Add a model that shares texture resources from an existing model while preserving bounds.
+    pub fn add_model_sharing_texture_with_bounds(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        source_model: &str,
+        aabb_min: [f32; 3],
+        aabb_max: [f32; 3],
+    ) -> bool {
+        self.add_model_sharing_texture_impl(
+            name,
+            mesh,
+            instances,
+            source_model,
+            Some((aabb_min, aabb_max)),
+        )
+    }
+
+    fn add_model_sharing_texture_impl(
+        &mut self,
+        name: impl Into<String>,
+        mesh: Mesh,
+        instances: &[Instance],
+        source_model: &str,
+        aabb: Option<([f32; 3], [f32; 3])>,
+    ) -> bool {
+        let (shared_bg, shared_textures) = match self
+            .models
+            .get(source_model)
+            .and_then(|src| src.primitives.first())
+        {
+            Some(src) => (src.tex_bind_group.clone(), src._retained_textures.clone()),
             None => return false,
         };
-        let raw: Vec<_> = instances.iter().map(|i| i.raw()).collect();
-        let buf_bytes = (raw.len() * std::mem::size_of::<InstanceRaw>()) as u64;
-        let alloc_size = buf_bytes.next_power_of_two().max(256);
-        let instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("model-inst-buf"),
-            size: alloc_size,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        if !raw.is_empty() {
-            self.queue
-                .write_buffer(&instance_buf, 0, bytemuck::cast_slice(&raw));
-        }
+        let instance_buf = self.create_model_instance_buffer(instances);
         let model = RenderModel {
-            mesh,
+            primitives: vec![RenderModelPrimitive {
+                mesh,
+                tex_bind_group: shared_bg,
+                _retained_textures: shared_textures,
+            }],
             instance_buf,
             instance_count: instances.len() as u32,
-            aabb: None,
-            tex_bind_group: shared_bg,
-            _retained_tex: shared_tex,
+            aabb,
             tex_gpu_bytes: 0, // Don't double-count — source owns the budget
         };
-        self.models.insert(name.into(), model);
+        self.insert_model(name.into(), model);
         true
     }
 
@@ -7007,6 +7310,20 @@ mod tests {
         assert!(min.x < max.x);
         assert!(min.y < max.y);
         assert!(min.z < max.z);
+    }
+
+    #[test]
+    fn test_build_rgba8_mip_chain_renormalizes_normal_maps() {
+        let normals = vec![
+            255, 128, 128, 255, 128, 255, 128, 255, 0, 128, 128, 255, 128, 0, 128, 255,
+        ];
+
+        let mip_chain = Renderer::build_rgba8_mip_chain(2, 2, &normals, true);
+
+        assert_eq!(mip_chain.len(), 2);
+        assert_eq!(mip_chain[1].0, 1);
+        assert_eq!(mip_chain[1].1, 1);
+        assert_eq!(mip_chain[1].2, vec![128, 128, 255, 255]);
     }
 
     /// Validates the shadow override sentinel logic:

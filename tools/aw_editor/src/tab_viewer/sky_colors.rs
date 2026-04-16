@@ -229,8 +229,16 @@ pub(super) fn fog_weather_params(
         } else {
             world_fog_density
         },
-        if world_weather_preset == 5 { 20.0 } else { world_fog_start },
-        if world_weather_preset == 5 { 150.0 } else { world_fog_end },
+        if world_weather_preset == 5 {
+            20.0
+        } else {
+            world_fog_start
+        },
+        if world_weather_preset == 5 {
+            150.0
+        } else {
+            world_fog_end
+        },
         world_weather_preset as u32,
         particle_override,
     )

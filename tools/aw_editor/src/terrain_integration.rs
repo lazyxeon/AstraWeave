@@ -2218,14 +2218,18 @@ impl TerrainState {
             // preventing later placements from overlapping tree trunks.
             let veg_count = biome_config.vegetation.vegetation_types.len();
             let density = biome_config.vegetation.density;
-            let vegetation =
-                match scatter.scatter_vegetation_hierarchical(chunk, chunk_size, &biome_config, seed) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::warn!("Scatter failed for chunk {:?}: {e}", chunk_id);
-                        continue;
-                    }
-                };
+            let vegetation = match scatter.scatter_vegetation_hierarchical(
+                chunk,
+                chunk_size,
+                &biome_config,
+                seed,
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("Scatter failed for chunk {:?}: {e}", chunk_id);
+                    continue;
+                }
+            };
 
             if placements.is_empty() && !vegetation.is_empty() {
                 // Log first successful chunk for diagnostics
@@ -2475,12 +2479,24 @@ impl ScatterPlacement {
             // Grass, ground cover — models ~0.2 units, OK at ~1–2 units
             _ => (3.5, [0.92, 0.95, 0.88, 1.0]),
         };
-        let world_scale = vi.scale * type_multiplier;
 
         // Per-instance tint variation: derive a deterministic hash from
         // position to add ±12% hue/value jitter, breaking the uniform
         // "plantation" look without requiring a persistent RNG.
         let tint = Self::jitter_tint(base_tint, vi.position);
+
+        // Force per-instance yaw + scale jitter. When the source rotation
+        // is zero (a biome with `vegetation.random_rotation` disabled), use
+        // the full ±π yaw to break clone lattices. When non-zero, apply an
+        // additive ±0.25 rad nudge on top so scale variance still kicks in
+        // without fighting the biome's intended orientation distribution.
+        let (rotation, scale_jitter) = if vi.rotation.abs() < f32::EPSILON {
+            Self::jitter_yaw_scale(vi.position)
+        } else {
+            let (yaw_delta, scale_mul) = Self::jitter_yaw_scale_additive(vi.position);
+            (vi.rotation + yaw_delta, scale_mul)
+        };
+        let world_scale = vi.scale * type_multiplier * scale_jitter;
 
         // NOTE: The old sink_factor hack has been removed. Pivot correction
         // is now done at render time in upload_scatter_placements() using the
@@ -2488,7 +2504,7 @@ impl ScatterPlacement {
         // model origin placement.
         Self {
             position: vi.position,
-            rotation: vi.rotation,
+            rotation,
             scale: world_scale,
             mesh_key: vi.vegetation_type.clone(),
             mesh_path: resolve_mesh_path(&vi.model_path),
@@ -2572,13 +2588,26 @@ impl ScatterPlacement {
         // NOTE: No sink_factor hack. Pivot correction is done at render time
         // using the actual model AABB in upload_scatter_placements().
 
+        // Apply deterministic per-instance yaw + scale jitter. Zero source
+        // rotation → full ±π yaw; non-zero → additive ±0.25 rad nudge. Scale
+        // jitter always applies so identical clones break up even when the
+        // biome already randomises rotation.
+        let (rotation, final_scale) = if vi.rotation.abs() < f32::EPSILON {
+            let (yaw, scale_mul) = Self::jitter_yaw_scale(vi.position);
+            (yaw, world_scale * scale_mul)
+        } else {
+            let (yaw_delta, scale_mul) = Self::jitter_yaw_scale_additive(vi.position);
+            (vi.rotation + yaw_delta, world_scale * scale_mul)
+        };
+        let final_radius = bounding_radius * (final_scale / world_scale.max(f32::EPSILON));
+
         Self {
             position: vi.position,
-            rotation: vi.rotation,
-            scale: world_scale,
+            rotation,
+            scale: final_scale,
             mesh_key: vi.vegetation_type.clone(),
             mesh_path: resolved_path,
-            bounding_radius,
+            bounding_radius: final_radius,
             tint,
             terrain_normal: vi.terrain_normal,
             cull_distance: 0.0,
@@ -2608,6 +2637,46 @@ impl ScatterPlacement {
             (base[2] + b_off).clamp(0.0, 1.5),
             base[3],
         ]
+    }
+
+    /// Deterministic per-instance yaw + scale jitter derived from world
+    /// position. Used when the source `VegetationInstance.rotation` is
+    /// zero (a common default when `biome_config.vegetation.random_rotation`
+    /// is off), which would otherwise produce a visible lattice of identical
+    /// clones at oblique viewing angles.
+    ///
+    /// - Yaw: full ±π range (uniform over the unit circle).
+    /// - Scale: ±10 % multiplicative variation (guarantees silhouette break-up
+    ///   even when a biome species uses a near-constant `scale_range`).
+    fn jitter_yaw_scale(pos: Vec3) -> (f32, f32) {
+        // Distinct mixing constants from `jitter_tint` so yaw and tint are
+        // uncorrelated.
+        let ix = (pos.x * 91.37) as i32;
+        let iz = (pos.z * 147.53) as i32;
+        let hash =
+            ((ix.wrapping_mul(2654435761u32 as i32)) ^ (iz.wrapping_mul(40503))).wrapping_add(2166136261u32 as i32);
+
+        let yaw_unit = ((hash as u32) & 0xFFFF) as f32 / 65535.0; // 0..1
+        let yaw = (yaw_unit - 0.5) * std::f32::consts::TAU; // -π..π
+        let scale_unit = (((hash as u32) >> 16) & 0xFFFF) as f32 / 65535.0; // 0..1
+        let scale_mul = 0.90 + scale_unit * 0.20; // 0.90..1.10
+        (yaw, scale_mul)
+    }
+
+    /// Deterministic additive yaw perturbation and scale multiplier to apply
+    /// *on top of* a non-zero source rotation.
+    ///
+    /// Used when the biome config already randomised rotation: the source
+    /// yaw gives orientation diversity but assets often still share scales,
+    /// so identical silhouettes read as a grid at oblique angles. This
+    /// function contributes a narrow ±0.25 rad (~±14°) yaw nudge plus the
+    /// same ±10 % scale variation used when no source rotation is present.
+    fn jitter_yaw_scale_additive(pos: Vec3) -> (f32, f32) {
+        let (full_yaw, scale_mul) = Self::jitter_yaw_scale(pos);
+        // Compress the full-range yaw into a narrow delta so we don't undo
+        // the biome's intentional orientation.
+        let yaw_delta = full_yaw * (0.25 / std::f32::consts::PI); // ±0.25 rad
+        (yaw_delta, scale_mul)
     }
 }
 

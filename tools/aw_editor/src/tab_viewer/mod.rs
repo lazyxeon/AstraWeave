@@ -4497,8 +4497,7 @@ impl TabViewer for EditorTabViewer {
                         ui.horizontal(|ui| {
                             ui.label("Fog Density:");
                             ui.add(
-                                egui::Slider::new(&mut self.world_fog_density, 0.0..=0.05)
-                                    .text(""),
+                                egui::Slider::new(&mut self.world_fog_density, 0.0..=0.05).text(""),
                             );
                         });
                     });

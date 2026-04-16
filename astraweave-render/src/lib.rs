@@ -104,6 +104,8 @@ pub mod taa; // Temporal Anti-Aliasing with neighborhood clamping and RCAS sharp
 pub mod temporal_upscale; // Temporal upscaling (TAA-U) — render at reduced internal res, resolve to native
 pub mod terrain_gpu_bridge; // Render-side impl of TerrainGpuAccelerator (GPU noise + erosion bridge)
 pub mod terrain_material;
+#[cfg(feature = "terrain-splat-arrays")]
+pub mod terrain_material_manager; // Phase 2.2: 8-layer splat-array terrain pipeline (Issue #9 fix)
 pub mod texture_streaming;
 pub mod velocity; // Motion vector / velocity buffer for temporal effects (TAA, motion blur, TSR)
 pub mod virtual_texture; // Sparse Virtual Texturing: tile-based page streaming with feedback + LRU cache
@@ -138,7 +140,7 @@ pub use environment::{
     SkyConfig, SkyRenderer, TimeOfDay, WeatherParticles, WeatherSystem, WeatherType,
 };
 pub use error::{RenderError, RenderResult};
-pub use renderer::Renderer;
+pub use renderer::{ModelSurfaceMaps, Renderer};
 pub use terrain::{TerrainMesh, TerrainRenderer, TerrainVertex, VegetationRenderInstance};
 pub use texture::Texture;
 pub use types::{Instance, Material, Mesh, SkinnedVertex, Vertex};
@@ -241,6 +243,11 @@ pub use taa::TaaConfig;
 pub use temporal_upscale::{TemporalUpscalePass, UpscaleConfig, UpscaleQuality};
 pub use terrain_material::{
     TerrainLayerDesc, TerrainLayerGpu, TerrainMaterialDesc, TerrainMaterialGpu,
+};
+#[cfg(feature = "terrain-splat-arrays")]
+pub use terrain_material_manager::{
+    ChunkKey, LayerTextures, TerrainMaterialConfig, TerrainMaterialManager, TerrainSplatVertex,
+    MAX_TERRAIN_LAYERS,
 };
 pub use texture_streaming::{TextureStreamingManager, TextureStreamingStats};
 pub use transparency::{create_blend_state, BlendMode, TransparencyManager, TransparentInstance};

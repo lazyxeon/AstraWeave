@@ -58,6 +58,64 @@ impl SimplificationMesh {
     pub fn triangle_count(&self) -> usize {
         self.indices.len() / 3
     }
+
+    /// Convert a canonical `CpuMesh` into a simplification mesh.
+    pub fn from_cpu_mesh(mesh: &crate::mesh::CpuMesh) -> Self {
+        Self {
+            positions: mesh
+                .vertices
+                .iter()
+                .map(|vertex| Vec3::from_array(vertex.position))
+                .collect(),
+            normals: mesh
+                .vertices
+                .iter()
+                .map(|vertex| Vec3::from_array(vertex.normal))
+                .collect(),
+            uvs: mesh.vertices.iter().map(|vertex| vertex.uv).collect(),
+            indices: mesh.indices.clone(),
+        }
+    }
+
+    /// Convert a simplification mesh back into a canonical `CpuMesh`.
+    pub fn to_cpu_mesh(
+        &self,
+        albedo_image: Option<crate::mesh::CpuImage>,
+        texture_source_hint: Option<String>,
+    ) -> crate::mesh::CpuMesh {
+        let mut mesh = crate::mesh::CpuMesh {
+            vertices: self
+                .positions
+                .iter()
+                .enumerate()
+                .map(|(index, position)| {
+                    let normal = self
+                        .normals
+                        .get(index)
+                        .copied()
+                        .unwrap_or(Vec3::Y)
+                        .normalize_or_zero();
+                    let normal = if normal.length_squared() > 0.0 {
+                        normal
+                    } else {
+                        Vec3::Y
+                    };
+                    let uv = self.uvs.get(index).copied().unwrap_or([0.0, 0.0]);
+                    crate::mesh::MeshVertex {
+                        position: position.to_array(),
+                        normal: normal.to_array(),
+                        tangent: [1.0, 0.0, 0.0, 1.0],
+                        uv,
+                    }
+                })
+                .collect(),
+            indices: self.indices.clone(),
+            albedo_image,
+            texture_source_hint,
+        };
+        crate::mesh::compute_tangents(&mut mesh);
+        mesh
+    }
 }
 
 /// Quadric error matrix (4x4 symmetric matrix for error metric)
