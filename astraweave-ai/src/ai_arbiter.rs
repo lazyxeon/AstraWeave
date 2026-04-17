@@ -382,6 +382,12 @@ impl AIArbiter {
     /// # }
     /// ```
     pub fn update(&mut self, snap: &WorldSnapshot) -> ActionStep {
+        // Allocation-measurement instrumentation (audit 2026-04-17, §2.3 #7,
+        // open questions #1-2). Includes cooldown-gated `snap.clone()` into
+        // `generate_plan_async` when the LLM cooldown elapses.
+        #[cfg(feature = "profiling")]
+        astraweave_profiling::measured_span!("ai.tick");
+
         let start = std::time::Instant::now();
 
         // Poll for LLM completion (non-blocking, <10 µs)

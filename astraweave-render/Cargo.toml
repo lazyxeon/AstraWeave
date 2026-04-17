@@ -22,9 +22,14 @@ deferred = []  # Deferred rendering pipeline
 advanced-post = []  # Advanced post-processing (TAA, motion blur, DOF)
 camera-relative = []  # Camera-relative rendering for large-world precision
 terrain-splat-arrays = []  # Phase 2.2: 8-layer splat-array terrain pipeline (Issue #9 fix)
+impostor-bake = []  # Phase 5.3: offline/lazy impostor atlas bake pipeline (Issue #8 fix)
+impostor-bake-cli = ["impostor-bake", "gltf-assets", "textures", "dep:clap", "dep:pollster"]  # Phase 5.3 T2: CLI binary for baking atlases from glTF
 gltf-assets = ["gltf", "assets"]
 obj-assets = ["tobj", "assets"]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
+# Pull in astraweave-profiling's alloc-counter for bench assertions. Optional dep
+# is only built when someone asks for counting.
+alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -58,6 +63,8 @@ serde_json = "1"
 rand = { workspace = true }
 mikktspace = "0.3"
 tokio = { version = "1", features = ["sync", "fs", "rt"] }
+clap = { version = "4.5", features = ["derive"], optional = true }
+pollster = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
@@ -71,6 +78,11 @@ approx = "0.5"
 naga = { version = "25.0.1", features = ["wgsl-in"] }
 glob = "0.3"
 image = "0.25"
+
+[[bench]]
+name = "alloc_measure"
+harness = false
+required-features = ["alloc-counter"]
 
 [[bench]]
 name = "mesh_optimization"
@@ -117,6 +129,11 @@ harness = false
 [[bench]]
 name = "nanite_shadow_csm"
 harness = false
+
+[[bin]]
+name = "aw-impostor-bake"
+path = "src/bin/aw_impostor_bake.rs"
+required-features = ["impostor-bake-cli"]
 
 [[bench]]
 name = "texture_streaming_vxgi"

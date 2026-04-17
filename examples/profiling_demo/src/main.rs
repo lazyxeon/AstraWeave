@@ -46,10 +46,18 @@ Press ESC to exit.
 use anyhow::Result;
 use astraweave_ecs::{App, Entity, Query2, Query2Mut, SystemStage, World};
 use astraweave_physics::{SpatialHash, AABB};
-use astraweave_profiling::{frame_mark, message, plot, span};
+use astraweave_profiling::{alloc_plot, frame_mark, message, plot, span, FrameAllocStats};
 use glam::Vec3;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+// Install `CountingAlloc` as the global allocator when the `alloc-counter` feature
+// is enabled. This feeds per-frame allocation counts into Tracy via `alloc_plot!`.
+// Zero cost when the feature is off (the item is entirely stripped).
+#[cfg(feature = "alloc-counter")]
+#[global_allocator]
+static ALLOC: astraweave_ecs::counting_alloc::CountingAlloc =
+    astraweave_ecs::counting_alloc::CountingAlloc;
 
 // Global timing storage (thread-safe for system access)
 lazy_static::lazy_static! {
@@ -233,6 +241,11 @@ impl GameState {
     fn tick(&mut self) -> Result<()> {
         span!("GameState::tick");
 
+        // Begin per-frame allocation measurement window. With `alloc-counter` off
+        // this is a cheap snapshot of zeroed counters; the `end_frame` delta will
+        // also be zero and `alloc_plot!` emits nothing when `profiling` is off.
+        let alloc_stats = FrameAllocStats::begin_frame();
+
         let frame_start = Instant::now();
 
         // Update frame metrics
@@ -300,6 +313,32 @@ impl GameState {
             );
             println!("Target (Week 8):     {:>6} µs (2.700 ms)", 2700);
             println!("FPS:                 {:.2}", fps);
+        }
+
+        // Close the allocation measurement window and emit `frame.allocs` /
+        // `frame.bytes` to Tracy. With `alloc-counter` off the delta is zero;
+        // with `profiling` off the emit is a no-op.
+        let alloc_delta = alloc_stats.end_frame();
+        alloc_plot!(
+            "frame",
+            alloc_delta.allocs,
+            alloc_delta.bytes_allocated
+        );
+
+        // When `alloc-counter` is enabled but Tracy is not running, print the
+        // delta every 100 frames so terminal output still yields data.
+        #[cfg(feature = "alloc-counter")]
+        {
+            if self.frame_count % 100 == 0 {
+                println!(
+                    "[alloc-measure] frame {}: allocs={} bytes={} reallocs={} net={}",
+                    self.frame_count,
+                    alloc_delta.allocs,
+                    alloc_delta.bytes_allocated,
+                    alloc_delta.reallocs,
+                    alloc_delta.net_allocs
+                );
+            }
         }
 
         frame_mark!();

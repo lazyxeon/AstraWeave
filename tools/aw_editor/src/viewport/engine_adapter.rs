@@ -632,6 +632,19 @@ pub struct EngineRenderAdapter {
     /// the surface after heightmap edits. `None` when no terrain is
     /// loaded or the grid build failed.
     terrain_height_grid: Option<TerrainHeightGrid>,
+    /// Phase 5.3 T7 stage 3c.2: per-scatter-mesh impostor atlas registry.
+    /// Populated lazily on the first LOD3 encounter (stage 3c.3 will wire
+    /// the LOD3 path to this). `None` means the feature is unavailable in
+    /// this build; `Some` means impostor-bake is compiled in and the
+    /// registry's disk cache root is reachable.
+    #[cfg(feature = "impostor-bake")]
+    impostor_registry: Option<super::impostor_registry::ImpostorRegistry>,
+    /// Phase 5.3 T7 stage 3c.2: keys of impostor passes currently installed
+    /// on `self.renderer`. Used by `clear_scatter` / LOD refresh to retire
+    /// passes whose underlying scatter is no longer loaded, mirroring the
+    /// `scatter_model_names` retirement pattern for PBR models.
+    #[cfg(feature = "impostor-bake")]
+    installed_impostor_keys: std::collections::HashSet<String>,
 }
 
 impl EngineRenderAdapter {
@@ -725,6 +738,12 @@ impl EngineRenderAdapter {
             scatter_chunk_size: 256.0, // default; overridden on first scatter upload
             scatter_last_refresh: None,
             terrain_height_grid: None,
+            #[cfg(feature = "impostor-bake")]
+            impostor_registry: Some(super::impostor_registry::ImpostorRegistry::new(
+                Self::default_impostor_cache_root(),
+            )),
+            #[cfg(feature = "impostor-bake")]
+            installed_impostor_keys: std::collections::HashSet::new(),
         };
         adapter.apply_quality_preset(EditorQualityPreset::EditorDefault);
         Ok(adapter)
@@ -750,6 +769,18 @@ impl EngineRenderAdapter {
         self.camera_position = camera.position();
         let camera_yaw = camera.yaw();
         self.camera_yaw = camera_yaw;
+
+        // Stage 3c.3-b: keep every installed `ImpostorPass`'s camera UBO in
+        // sync with the main camera every frame. Without this the billboards
+        // would pick their atlas cell from the camera position captured at
+        // refresh time and visibly snap when the camera rotates.
+        #[cfg(feature = "impostor-bake")]
+        {
+            let view_proj = self.renderer.current_view_proj();
+            let camera_pos = self.camera_position;
+            self.renderer
+                .update_all_impostor_cameras(view_proj, camera_pos);
+        }
 
         // Detect chunk boundary crossings so the active placement filter can
         // be recomputed immediately.
@@ -2305,6 +2336,13 @@ impl EngineRenderAdapter {
         let mut actual_vertex_count = 0usize;
         let mut used_model_names: std::collections::HashSet<String> =
             std::collections::HashSet::new();
+        // Stage 3c.3-b: live set of impostor-pass keys touched by this
+        // refresh. After the group loop we call
+        // `retire_stale_impostor_passes(&impostor_live_keys)` to drop passes
+        // whose meshes fell out of the active chunk set.
+        #[cfg(feature = "impostor-bake")]
+        let mut impostor_live_keys: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for (key, items) in &groups {
             let mesh_path = &items[0].mesh_path;
@@ -2392,6 +2430,14 @@ impl EngineRenderAdapter {
                     let mut lod1_instances: Vec<LodInstance> = Vec::new();
                     let mut lod2_instances: Vec<LodInstance> = Vec::new();
                     let mut lod3_instances: Vec<LodInstance> = Vec::new();
+                    // Stage 3c.3-b: raw instance buffer for the new ImpostorPass
+                    // path. Populated in lockstep with `lod3_instances` inside
+                    // the `ImpostorCard` match arm so both paths can coexist
+                    // until stage 3d removes the legacy fallback.
+                    #[cfg(feature = "impostor-bake")]
+                    let mut lod3_raw_instances: Vec<
+                        astraweave_render::impostor_lod3::Lod3InstanceRaw,
+                    > = Vec::new();
 
                     for p in items.iter() {
                         let dist = p.position.distance(cam_pos);
@@ -2509,6 +2555,23 @@ impl EngineRenderAdapter {
                                         material_id: 0,
                                     },
                                 });
+                                // Stage 3c.3-b: mirror this placement into the
+                                // `Lod3InstanceRaw` buffer used by the new
+                                // `ImpostorPass` path. The shader uses a
+                                // single scalar scale (unit quad, x ∈ [-0.5,
+                                // 0.5] × y ∈ [0, 1]); pick the vertical extent
+                                // so card height matches the baked atlas
+                                // footprint (see `fit_ortho_camera`).
+                                #[cfg(feature = "impostor-bake")]
+                                {
+                                    let card_scale = lod_assets.model_height * p.scale;
+                                    lod3_raw_instances.push(
+                                        astraweave_render::impostor_lod3::Lod3InstanceRaw {
+                                            position_scale: [pos.x, pos.y, pos.z, card_scale],
+                                            species_and_params: [0.0, 0.0, 0.0, 0.0],
+                                        },
+                                    );
+                                }
                             }
                         }
                     }
@@ -2636,8 +2699,6 @@ impl EngineRenderAdapter {
                     let lod2_count: usize = lod2_bins.iter().map(|b| b.len()).sum();
                     let lod3_count: usize = lod3_bins.iter().map(|b| b.len()).sum();
                     let mut primitive_card_sources: Vec<Option<String>> =
-                        vec![None; lod_assets.primitives.len()];
-                    let mut primitive_lod2_sources: Vec<Option<String>> =
                         vec![None; lod_assets.primitives.len()];
 
                     for (prim_idx, primitive) in lod_assets.primitives.iter().enumerate() {
@@ -2978,136 +3039,66 @@ impl EngineRenderAdapter {
                                     (cpu_mesh.indices.len() / 3) * instances.len();
                                 actual_vertex_count += cpu_mesh.vertices.len() * instances.len();
                             }
-
-                            primitive_lod2_sources[prim_idx] = first_lod2_source;
                         }
                     }
 
-                    if lod3_count > 0 {
-                        let cpu_mesh = &lod_assets.impostor_card;
+                    // Stage 3c.3-b: route LOD3 through the new `ImpostorPass`
+                    // path (baked atlas + alpha-tested billboard). Stage 3d
+                    // (April 2026) deleted the legacy PBR-quad fallback —
+                    // `--no-default-features` callers silently skip LOD3.
+                    #[cfg(feature = "impostor-bake")]
+                    if !lod3_raw_instances.is_empty() {
+                        let view_proj = self.renderer.current_view_proj();
+                        let camera_pos = self.camera_position;
+                        // Bake atlas size + angle count match the uniform spec
+                        // the `aw-impostor-bake` CLI defaults to. Keep these
+                        // in sync with `tools/aw-impostor-bake/src/bin/…`.
+                        const ATLAS_W: u32 = 512;
+                        const ATLAS_H: u32 = 512;
+                        const ANGLES: u32 = 8;
                         for (prim_idx, primitive) in lod_assets.primitives.iter().enumerate() {
-                            let mut first_lod3_source: Option<String> = None;
-                            let primitive_card_source = primitive_lod2_sources[prim_idx]
-                                .clone()
-                                .or_else(|| primitive_card_sources[prim_idx].clone());
-                            let prim_external_tex: Option<(u32, u32, Vec<u8>)> =
-                                if primitive_card_source.is_none() {
-                                    if let Some(hint) =
-                                        primitive.full_mesh.texture_source_hint.as_deref()
-                                    {
-                                        find_texture_by_hint(hint, &tex_dir)
-                                    } else {
-                                        find_texture_by_hint(&mesh_hint, &tex_dir)
-                                    }
-                                } else {
-                                    None
-                                };
-
-                            for (qi, quad) in lod3_bins.iter().enumerate() {
-                                if quad.is_empty() {
-                                    continue;
+                            let species_label = if lod_assets.primitives.len() > 1 {
+                                format!("{key}_p{prim_idx}")
+                            } else {
+                                key.clone()
+                            };
+                            match self.upload_impostor_pass_for_primitive(
+                                &primitive.full_mesh,
+                                &lod3_raw_instances,
+                                &species_label,
+                                view_proj,
+                                camera_pos,
+                                ATLAS_W,
+                                ATLAS_H,
+                                ANGLES,
+                            ) {
+                                Ok(installed_key) => {
+                                    impostor_live_keys.insert(installed_key);
+                                    // Instrumentation: 1 indirect-free draw
+                                    // call per pass, 2 triangles (quad) and 4
+                                    // vertices per instance.
+                                    actual_draw_calls += 1;
+                                    actual_instance_count += lod3_raw_instances.len();
+                                    actual_triangle_count += 2 * lod3_raw_instances.len();
+                                    actual_vertex_count += 4 * lod3_raw_instances.len();
                                 }
-                                let sub_name = if lod_assets.primitives.len() > 1 {
-                                    format!("scatter_{key}_lod3_p{prim_idx}_q{qi}")
-                                } else {
-                                    format!("scatter_{key}_lod3_q{qi}")
-                                };
-                                let instances: Vec<astraweave_render::Instance> =
-                                    quad.iter().map(|(_, inst)| inst.clone()).collect();
-
-                                if !self.renderer.update_model_instances(&sub_name, &instances) {
-                                    let mesh = self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
-                                    if let Some(ref source) = first_lod3_source {
-                                        if !self.renderer.add_model_sharing_texture(
-                                            &sub_name,
-                                            mesh.clone(),
-                                            &instances,
-                                            source,
-                                        ) {
-                                            self.renderer.add_model(&sub_name, mesh, &instances);
-                                        }
-                                    } else if let Some(ref source) = primitive_card_source {
-                                        if !self.renderer.add_model_sharing_texture(
-                                            &sub_name,
-                                            mesh.clone(),
-                                            &instances,
-                                            source,
-                                        ) {
-                                            self.renderer.add_model(&sub_name, mesh, &instances);
-                                        }
-                                    } else if let Some((w, h, pixels)) = prim_external_tex.as_ref()
-                                    {
-                                        self.renderer.add_model_with_texture(
-                                            &sub_name, mesh, &instances, *w, *h, pixels,
-                                        );
-                                    } else if let Some(img) =
-                                        primitive.full_mesh.albedo_image.as_ref()
-                                    {
-                                        let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
-                                        let th = img.height.min(SCATTER_MAX_TEX_SIZE);
-                                        if tw < img.width || th < img.height {
-                                            let src = image::RgbaImage::from_raw(
-                                                img.width,
-                                                img.height,
-                                                img.pixels.clone(),
-                                            );
-                                            if let Some(src_img) = src {
-                                                let resized = image::imageops::resize(
-                                                    &src_img,
-                                                    tw,
-                                                    th,
-                                                    image::imageops::FilterType::Triangle,
-                                                );
-                                                self.renderer.add_model_with_texture(
-                                                    &sub_name,
-                                                    mesh,
-                                                    &instances,
-                                                    tw,
-                                                    th,
-                                                    &resized.into_raw(),
-                                                );
-                                            } else {
-                                                self.renderer
-                                                    .add_model(&sub_name, mesh, &instances);
-                                            }
-                                        } else {
-                                            self.renderer.add_model_with_texture(
-                                                &sub_name,
-                                                mesh,
-                                                &instances,
-                                                img.width,
-                                                img.height,
-                                                &img.pixels,
-                                            );
-                                        }
-                                    } else {
-                                        self.renderer.add_model(&sub_name, mesh, &instances);
-                                    }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "ImpostorPass upload failed for '{key}' p{prim_idx}: {e:#}"
+                                    );
                                 }
-
-                                let mut g_min = [f32::MAX; 3];
-                                let mut g_max = [f32::MIN; 3];
-                                let br = items[0].bounding_radius;
-                                for (pos, _) in quad.iter() {
-                                    g_min[0] = g_min[0].min(pos.x - br);
-                                    g_min[1] = g_min[1].min(pos.y - br);
-                                    g_min[2] = g_min[2].min(pos.z - br);
-                                    g_max[0] = g_max[0].max(pos.x + br);
-                                    g_max[1] = g_max[1].max(pos.y + br);
-                                    g_max[2] = g_max[2].max(pos.z + br);
-                                }
-                                self.renderer.set_model_bounds(&sub_name, g_min, g_max);
-                                used_model_names.insert(sub_name.clone());
-                                if first_lod3_source.is_none() {
-                                    first_lod3_source = Some(sub_name.clone());
-                                }
-                                actual_draw_calls += 1;
-                                actual_instance_count += instances.len();
-                                actual_triangle_count +=
-                                    (cpu_mesh.indices.len() / 3) * instances.len();
-                                actual_vertex_count += cpu_mesh.vertices.len() * instances.len();
                             }
                         }
+                    }
+
+                    #[cfg(not(feature = "impostor-bake"))]
+                    {
+                        // Stage 3d (April 2026): legacy PBR-quad LOD3 fallback
+                        // deleted. Under `--no-default-features`, LOD3 simply
+                        // does not render — LOD0/1/2 tiers still cover
+                        // near/mid-range scatter. Re-enable LOD3 by building
+                        // with `--features impostor-bake`.
+                        let _ = (lod3_count, &lod3_bins);
                     }
 
                     loaded_groups += 1;
@@ -3164,6 +3155,12 @@ impl EngineRenderAdapter {
         let mut current_model_names: Vec<String> = used_model_names.into_iter().collect();
         current_model_names.sort();
         self.scatter_model_names = current_model_names;
+
+        // Stage 3c.3-b: drop impostor passes whose meshes fell out of this
+        // refresh's live set. Passes still in `impostor_live_keys` remain
+        // installed and will be refreshed next time they're encountered.
+        #[cfg(feature = "impostor-bake")]
+        self.retire_stale_impostor_passes(&impostor_live_keys);
 
         self.scatter_placement_count = actual_instance_count;
         self.scatter_draw_call_count = actual_draw_calls;
@@ -3262,6 +3259,170 @@ impl EngineRenderAdapter {
         self.scatter_diffuse_textures.clear();
         self.scatter_chunk_models.clear();
         self.active_scatter_chunks.clear();
+        #[cfg(feature = "impostor-bake")]
+        self.retire_all_impostor_passes();
+    }
+
+    /// Canonical on-disk cache root for baked impostor atlases
+    /// (`assets/cache/impostors/`). Relative to the process cwd; the
+    /// [`super::impostor_registry::ImpostorRegistry`] creates per-hash
+    /// subdirectories under this root on first bake.
+    #[cfg(feature = "impostor-bake")]
+    fn default_impostor_cache_root() -> std::path::PathBuf {
+        std::path::PathBuf::from("assets").join("cache").join("impostors")
+    }
+
+    /// Retire every impostor pass currently installed on the renderer
+    /// (stage 3c.2). Mirrors the `scatter_model_names` drain in
+    /// [`Self::clear_scatter`]: keys tracked in
+    /// `installed_impostor_keys` are dropped both from the renderer
+    /// (releasing GPU resources) and from the tracking set.
+    #[cfg(feature = "impostor-bake")]
+    fn retire_all_impostor_passes(&mut self) {
+        for key in self.installed_impostor_keys.drain() {
+            self.renderer.remove_impostor_pass(&key);
+        }
+    }
+
+    /// Retire any impostor passes whose keys are not in the given
+    /// `live_keys` set (stage 3c.2). Called at the end of a scatter LOD
+    /// refresh to clean up passes for meshes that are no longer present
+    /// (e.g. after a biome regen or chunk unload). Keys still in
+    /// `live_keys` remain installed so their GPU resources are reused.
+    #[cfg(feature = "impostor-bake")]
+    #[allow(dead_code)] // consumed in stage 3c.3
+    fn retire_stale_impostor_passes(&mut self, live_keys: &std::collections::HashSet<String>) {
+        let stale: Vec<String> = self
+            .installed_impostor_keys
+            .iter()
+            .filter(|k| !live_keys.contains(k.as_str()))
+            .cloned()
+            .collect();
+        for key in stale {
+            self.renderer.remove_impostor_pass(&key);
+            self.installed_impostor_keys.remove(&key);
+        }
+    }
+
+    /// Number of impostor passes currently installed on the renderer
+    /// (stage 3c.2 instrumentation). Returns 0 when the feature is off.
+    #[cfg(feature = "impostor-bake")]
+    pub fn installed_impostor_pass_count(&self) -> usize {
+        self.installed_impostor_keys.len()
+    }
+
+    #[cfg(not(feature = "impostor-bake"))]
+    pub fn installed_impostor_pass_count(&self) -> usize {
+        0
+    }
+
+    /// Ensure an [`ImpostorPass`] is installed on the renderer for the given
+    /// primitive's content hash, then upload its per-frame camera matrices
+    /// and instance buffer (stage 3c.3-a).
+    ///
+    /// Flow on **first encounter** for a mesh hash:
+    /// 1. `primitive_mesh_hash(full_mesh)` → content-addressed `MeshHash`.
+    /// 2. `registry.ensure(hash, spec, bake_fn)` → baked RGBA8 pixels (lazy
+    ///    disk + mem cache via `astraweave_render::impostor_bake::load_or_bake_atlas`).
+    /// 3. `ImpostorPass::new(…, renderer.hdr_format(), Some(renderer.depth_format()))`
+    ///    constructs the pipeline + atlas + instance buffer.
+    /// 4. `renderer.install_impostor_pass(hash.as_str(), pass)` registers the
+    ///    pass under the stable hash key and tracks it in
+    ///    `installed_impostor_keys`.
+    ///
+    /// On **subsequent encounters** (pass already installed), steps 1-4 are
+    /// skipped: we lookup the existing pass via `impostor_pass_mut` and only
+    /// refresh camera + instances.
+    ///
+    /// The `species_name` argument is the single-species label baked into the
+    /// atlas sidecar. Pass a stable identifier (typically the scatter group's
+    /// mesh key) so disk-cached atlases remain recognisable.
+    ///
+    /// # Returns
+    ///
+    /// The key the pass was installed under (a clone of `hash.as_str()`). The
+    /// caller should record it in its live-keys set so
+    /// [`Self::retire_stale_impostor_passes`] can drop it when the mesh falls
+    /// out of the active scatter set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// * the primitive has no vertices (hash + bake would fail),
+    /// * the atlas fails to bake (propagated from `bake_primitive_pixels`),
+    /// * `ImpostorPass::new` rejects the bake result (format mismatch, etc.).
+    #[cfg(feature = "impostor-bake")]
+    pub fn upload_impostor_pass_for_primitive(
+        &mut self,
+        primitive_full_mesh: &astraweave_render::mesh::CpuMesh,
+        raw_instances: &[astraweave_render::impostor_lod3::Lod3InstanceRaw],
+        species_name: &str,
+        view_proj: glam::Mat4,
+        camera_pos: glam::Vec3,
+        atlas_width: u32,
+        atlas_height: u32,
+        angle_count: u32,
+    ) -> Result<String> {
+        use super::impostor_wiring::{bake_primitive_pixels, primitive_mesh_hash};
+        use astraweave_render::impostor_pass::ImpostorPass;
+        use astraweave_render::vegetation_lod::ImpostorAtlasSpec;
+
+        let hash = primitive_mesh_hash(primitive_full_mesh);
+        let key = hash.as_str().to_string();
+
+        // Cheap Arc-backed clones so we can hold refs while `impostor_pass_mut`
+        // takes a &mut borrow of the renderer.
+        let device_clone = self.renderer.device().clone();
+        let queue_clone = self.renderer.queue().clone();
+
+        // Fast path: pass already installed — just refresh dynamic state.
+        if self.renderer.has_impostor_pass(&key) {
+            if let Some(pass) = self.renderer.impostor_pass_mut(&key) {
+                pass.update_camera(&queue_clone, view_proj, camera_pos);
+                pass.upload_instances(&device_clone, &queue_clone, raw_instances);
+            }
+            self.installed_impostor_keys.insert(key.clone());
+            return Ok(key);
+        }
+
+        // Slow path: bake (or disk-load) the atlas, then build + install the pass.
+        let registry = self
+            .impostor_registry
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("impostor registry not initialised"))?;
+
+        let spec = ImpostorAtlasSpec::uniform(atlas_width, atlas_height, angle_count, &[species_name]);
+
+        // Clone cheap Arc-backed device/queue handles so the bake closure can
+        // own them without conflicting with `registry`'s &mut borrow on self.
+        let bake_device = device_clone.clone();
+        let bake_queue = queue_clone.clone();
+        let loaded = registry.ensure(&hash, &spec, move |s| {
+            bake_primitive_pixels(&bake_device, &bake_queue, primitive_full_mesh, s, species_name)
+        })?;
+
+        let pass = ImpostorPass::new(
+            &device_clone,
+            &queue_clone,
+            &loaded.pixels,
+            loaded.width,
+            loaded.height,
+            loaded.spec.clone(),
+            self.renderer.hdr_format(),
+            Some(self.renderer.depth_format()),
+        )
+        .context("constructing ImpostorPass from baked atlas")?;
+
+        self.renderer.install_impostor_pass(key.clone(), pass);
+        self.installed_impostor_keys.insert(key.clone());
+
+        // Upload initial camera + instances now that the pass is installed.
+        if let Some(pass_mut) = self.renderer.impostor_pass_mut(&key) {
+            pass_mut.update_camera(&queue_clone, view_proj, camera_pos);
+            pass_mut.upload_instances(&device_clone, &queue_clone, raw_instances);
+        }
+
+        Ok(key)
     }
 
     /// Total scatter placements currently loaded.
@@ -3490,6 +3651,20 @@ const CUBE_INDICES: [u32; 36] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "impostor-bake")]
+    #[test]
+    fn default_impostor_cache_root_is_assets_cache_impostors() {
+        let root = EngineRenderAdapter::default_impostor_cache_root();
+        let components: Vec<&str> = root
+            .components()
+            .filter_map(|c| match c {
+                std::path::Component::Normal(s) => s.to_str(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(components, vec!["assets", "cache", "impostors"]);
+    }
 
     fn terrain_vertex(
         position: [f32; 3],

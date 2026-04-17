@@ -43,6 +43,16 @@ pub mod camera;
 mod engine_adapter;
 mod gizmo_renderer;
 mod grid_renderer;
+/// Phase 5.3 T7 stage 3a: per-scatter-mesh impostor atlas registry
+/// (content-hashed lazy bake + on-disk cache). Only compiled when the
+/// upstream bake pipeline is enabled via the `impostor-bake` feature.
+#[cfg(feature = "impostor-bake")]
+pub mod impostor_registry;
+/// Phase 5.3 T7 stage 3c.1: editor wiring helpers that bridge scatter LOD3
+/// primitives to the shared impostor bake + pass infrastructure. Gated
+/// alongside [`impostor_registry`] on the `impostor-bake` feature.
+#[cfg(feature = "impostor-bake")]
+pub mod impostor_wiring;
 mod physics_renderer;
 mod renderer;
 pub mod toolbar;
@@ -50,6 +60,8 @@ pub mod toolbar;
 pub mod types;
 /// Phase 2.2 / T6: rasterise per-vertex biome weights into RGBA8 splat maps.
 pub mod terrain_splat_builder;
+/// Phase 2.2 / T7: editor-side wrapper around TerrainMaterialManager.
+pub mod terrain_splat;
 mod widget;
 
 // Physics debug types are exported for external configuration

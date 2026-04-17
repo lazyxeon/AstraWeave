@@ -30,6 +30,11 @@ profiling-sampling = ["profiling", "tracy-client/sampling"]
 profiling-system = ["profiling", "tracy-client/system-tracing"]
 # Full profiling with all features
 profiling-full = ["profiling", "profiling-sampling", "profiling-system"]
+# Enable process-wide allocation counters (for use with CountingAlloc in astraweave-ecs).
+# When off, all counter functions are no-ops and return zeros. Independent of `profiling`:
+# you can count allocations without Tracy, or plot allocations via Tracy without counting
+# (e.g. if some other global allocator is feeding tracy-client's alloc tracking).
+alloc-counter = []
 
 [lib]
 name = "astraweave_profiling"

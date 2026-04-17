@@ -228,6 +228,11 @@ impl ParallelSchedule {
     /// doesn't conflict with. O(n²) in system count per stage, which is fine
     /// since stages typically have <20 systems.
     fn build_groups(systems: &[SystemDescriptor]) -> Vec<Vec<usize>> {
+        // Allocation-measurement instrumentation (audit 2026-04-17, §2.3 #6).
+        // Called every `run()` per stage — the plot shows per-tick alloc churn.
+        #[cfg(feature = "profiling")]
+        astraweave_profiling::measured_span!("ecs.schedule.build_groups");
+
         let mut groups: Vec<Vec<usize>> = vec![];
 
         for (i, sys) in systems.iter().enumerate() {
@@ -254,8 +259,11 @@ impl ParallelSchedule {
     /// Run all stages sequentially. Within each stage, non-conflicting systems
     /// run in parallel (when the `parallel` feature is enabled).
     pub fn run(&self, world: &mut World) {
+        // Allocation-measurement instrumentation (audit 2026-04-17, §2.3 #6).
+        // `measured_span!` replaces the previous bare `span!` so Tracy also sees
+        // per-tick allocation counts via `ecs.schedule.run.allocs`/`.bytes`.
         #[cfg(feature = "profiling")]
-        astraweave_profiling::span!("ECS::ParallelSchedule::run");
+        astraweave_profiling::measured_span!("ecs.schedule.run");
 
         for stage in &self.stages {
             if stage.systems.is_empty() {

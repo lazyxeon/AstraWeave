@@ -21,3 +21,6 @@ profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/ena
 profiling-sampling = ["profiling", "astraweave-profiling/profiling-sampling", "tracy-client/sampling"]
 profiling-system = ["profiling", "astraweave-profiling/profiling-system", "tracy-client/system-tracing"]
 profiling-full = ["astraweave-profiling/profiling-full", "profiling", "profiling-sampling", "profiling-system"]
+# Install `CountingAlloc` as the global allocator and emit per-frame alloc plots via
+# astraweave-profiling. Combine with `profiling` to see the plots in Tracy.
+alloc-counter = ["astraweave-ecs/alloc-counter", "astraweave-profiling/alloc-counter"]

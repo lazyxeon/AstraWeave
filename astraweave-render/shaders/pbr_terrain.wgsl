@@ -31,7 +31,11 @@ struct TerrainParams {
     triplanar_slope_threshold: f32,
     height_blend_enabled: u32,
     active_layer_count: u32,
-    _pad: array<u32, 8>,
+    // WGSL uniform-address-space arrays require element stride >= 16.
+    // Previously `array<u32, 8>` (stride 4); naga rightly rejected this.
+    // `array<vec4<u32>, 2>` is 32 bytes with correct stride, matching the
+    // Rust side's `[u32; 8]` layout byte-for-byte.
+    _pad: array<vec4<u32>, 2>,
 }
 
 struct CameraUniforms {
@@ -76,7 +80,13 @@ fn triplanar_weights(normal: vec3<f32>, sharpness: f32) -> vec3<f32> {
     return w / max(total, 0.0001);
 }
 
-// Sample a texture layer using triplanar projection.
+// Sample a texture layer using triplanar projection with EXPLICIT gradients.
+//
+// The gradients must be supplied by the caller (computed via dpdx/dpdy of the
+// world-space coordinates in UNIFORM control flow — i.e. outside any loop
+// whose iteration count depends on a uniform). This avoids the FXC / DXC
+// failure mode where implicit derivatives inside a varying-count loop cannot
+// be unrolled.
 fn sample_triplanar(
     tex: texture_2d_array<f32>,
     samp: sampler,
@@ -84,27 +94,35 @@ fn sample_triplanar(
     world_pos: vec3<f32>,
     uv_scale: vec2<f32>,
     tri_w: vec3<f32>,
+    ddx_yz: vec2<f32>,
+    ddy_yz: vec2<f32>,
+    ddx_xz: vec2<f32>,
+    ddy_xz: vec2<f32>,
+    ddx_xy: vec2<f32>,
+    ddy_xy: vec2<f32>,
 ) -> vec4<f32> {
     let uv_x = world_pos.yz * uv_scale;
     let uv_y = world_pos.xz * uv_scale;
     let uv_z = world_pos.xy * uv_scale;
 
-    let s_x = textureSample(tex, samp, uv_x, layer_index);
-    let s_y = textureSample(tex, samp, uv_y, layer_index);
-    let s_z = textureSample(tex, samp, uv_z, layer_index);
+    let s_x = textureSampleGrad(tex, samp, uv_x, layer_index, ddx_yz * uv_scale, ddy_yz * uv_scale);
+    let s_y = textureSampleGrad(tex, samp, uv_y, layer_index, ddx_xz * uv_scale, ddy_xz * uv_scale);
+    let s_z = textureSampleGrad(tex, samp, uv_z, layer_index, ddx_xy * uv_scale, ddy_xy * uv_scale);
 
     return s_x * tri_w.x + s_y * tri_w.y + s_z * tri_w.z;
 }
 
-// Sample a texture layer using standard UV.
+// Sample a texture layer using standard UV with EXPLICIT gradients.
 fn sample_planar(
     tex: texture_2d_array<f32>,
     samp: sampler,
     layer_index: u32,
     uv: vec2<f32>,
     uv_scale: vec2<f32>,
+    ddx_uv: vec2<f32>,
+    ddy_uv: vec2<f32>,
 ) -> vec4<f32> {
-    return textureSample(tex, samp, uv * uv_scale, layer_index);
+    return textureSampleGrad(tex, samp, uv * uv_scale, layer_index, ddx_uv * uv_scale, ddy_uv * uv_scale);
 }
 
 // Height-based blending: sharpen weights using per-layer height map values.
@@ -187,15 +205,35 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     // Triplanar blend weights (if applicable)
     let tri_w = triplanar_weights(N, 4.0);
 
+    // Pre-compute screen-space derivatives ONCE, in uniform control flow.
+    // `textureSampleGrad` inside the per-layer loops consumes these, which
+    // (a) matches WGSL spec requirements for derivatives at non-uniform call
+    // sites and (b) avoids the FXC "gradient instruction in varying loop"
+    // unroll failure on DX11 / fallback software adapters.
+    let ddx_uv = dpdx(in.uv);
+    let ddy_uv = dpdy(in.uv);
+    let ddx_yz = dpdx(in.world_pos.yz);
+    let ddy_yz = dpdy(in.world_pos.yz);
+    let ddx_xz = dpdx(in.world_pos.xz);
+    let ddy_xz = dpdy(in.world_pos.xz);
+    let ddx_xy = dpdx(in.world_pos.xy);
+    let ddy_xy = dpdy(in.world_pos.xy);
+
     // Sample height maps for height blending
     var layer_heights: array<f32, 8>;
     for (var i: u32 = 0u; i < count; i++) {
         let layer = terrain.layers[i];
         let h_idx = layer.texture_indices.w;
         if (use_triplanar) {
-            layer_heights[i] = sample_triplanar(layer_height, terrain_sampler, h_idx, in.world_pos, layer.uv_scale, tri_w).r;
+            layer_heights[i] = sample_triplanar(
+                layer_height, terrain_sampler, h_idx, in.world_pos, layer.uv_scale, tri_w,
+                ddx_yz, ddy_yz, ddx_xz, ddy_xz, ddx_xy, ddy_xy,
+            ).r;
         } else {
-            layer_heights[i] = sample_planar(layer_height, terrain_sampler, h_idx, in.uv, layer.uv_scale).r;
+            layer_heights[i] = sample_planar(
+                layer_height, terrain_sampler, h_idx, in.uv, layer.uv_scale,
+                ddx_uv, ddy_uv,
+            ).r;
         }
     }
 
@@ -228,13 +266,28 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         var orm_sample: vec4<f32>;
 
         if (use_triplanar) {
-            albedo = sample_triplanar(layer_albedo, terrain_sampler, a_idx, in.world_pos, layer.uv_scale, tri_w);
-            normal_sample = sample_triplanar(layer_normal, terrain_sampler, n_idx, in.world_pos, layer.uv_scale, tri_w);
-            orm_sample = sample_triplanar(layer_orm, terrain_sampler, o_idx, in.world_pos, layer.uv_scale, tri_w);
+            albedo = sample_triplanar(
+                layer_albedo, terrain_sampler, a_idx, in.world_pos, layer.uv_scale, tri_w,
+                ddx_yz, ddy_yz, ddx_xz, ddy_xz, ddx_xy, ddy_xy,
+            );
+            normal_sample = sample_triplanar(
+                layer_normal, terrain_sampler, n_idx, in.world_pos, layer.uv_scale, tri_w,
+                ddx_yz, ddy_yz, ddx_xz, ddy_xz, ddx_xy, ddy_xy,
+            );
+            orm_sample = sample_triplanar(
+                layer_orm, terrain_sampler, o_idx, in.world_pos, layer.uv_scale, tri_w,
+                ddx_yz, ddy_yz, ddx_xz, ddy_xz, ddx_xy, ddy_xy,
+            );
         } else {
-            albedo = sample_planar(layer_albedo, terrain_sampler, a_idx, in.uv, layer.uv_scale);
-            normal_sample = sample_planar(layer_normal, terrain_sampler, n_idx, in.uv, layer.uv_scale);
-            orm_sample = sample_planar(layer_orm, terrain_sampler, o_idx, in.uv, layer.uv_scale);
+            albedo = sample_planar(
+                layer_albedo, terrain_sampler, a_idx, in.uv, layer.uv_scale, ddx_uv, ddy_uv,
+            );
+            normal_sample = sample_planar(
+                layer_normal, terrain_sampler, n_idx, in.uv, layer.uv_scale, ddx_uv, ddy_uv,
+            );
+            orm_sample = sample_planar(
+                layer_orm, terrain_sampler, o_idx, in.uv, layer.uv_scale, ddx_uv, ddy_uv,
+            );
         }
 
         final_albedo += albedo.rgb * w;

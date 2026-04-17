@@ -39,6 +39,11 @@ pub fn bin_lights_cpu(
     far: f32,
     fov_y: f32,
 ) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
+    // Allocation-measurement instrumentation (audit 2026-04-17, §2.3 #3).
+    // Expected to show ~4 allocations per call (counts, offsets, indices, cursors).
+    #[cfg(feature = "profiling")]
+    astraweave_profiling::measured_span!("render.bin_lights_cpu");
+
     let (width, height) = screen;
     let aspect = width.max(1) as f32 / height.max(1) as f32;
     let fy = 1.0 / (0.5 * fov_y).tan();

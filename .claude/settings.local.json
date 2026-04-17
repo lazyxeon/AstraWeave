@@ -71,7 +71,10 @@
       "WebFetch(domain:bruop.github.io)",
       "Bash(ls -d \"C:\\\\Users\\\\pv2br\\\\AstraWeave-AI-Native-Gaming-Engine\"/astraweave-*)",
       "Bash(git add:*)",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(find docs/audits -type f)",
+      "Bash(ls docs/audits/)",
+      "Bash(cargo bench *)"
     ]
   }
 }

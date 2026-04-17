@@ -837,6 +837,28 @@ cargo run -p hello_companion --release
 cargo run -p hello_companion --release
 ```
 
+**Status (April 2026)**: LOD0–LOD2 shipped with the `vegetation_lod` module.
+LOD3 atlas pipeline landed in `astraweave-render` behind the `impostor-bake`
+feature as the sub-task breakdown below:
+
+| Sub-task | Scope | Landed |
+|----------|-------|--------|
+| T1 | `ImpostorBaker` + bake shader (`impostor_bake.rs`) | ✅ |
+| T3 | Atlas PNG + TOML sidecar I/O | ✅ |
+| T4 | LOD3 sampling shader + `Lod3Pipeline` + `Lod3Resources` upload helper (`impostor_lod3.rs`) | ✅ |
+| T5 | `fit_ortho_camera` AABB fitter | ✅ |
+| T6 | `load_or_bake_atlas` lazy-bake orchestrator | ✅ |
+| T8 | GPU integration tests (bake 8 + sampling 5 = 13) | ✅ |
+| T2 | `aw-impostor-bake` CLI (`[[bin]]` in `astraweave-render` behind `impostor-bake-cli` feature) — sidesteps `render → aw_asset_cli` circular dep | ✅ |
+| T7 stage 1 | `ImpostorPass` reusable draw helper (`src/impostor_pass.rs`) — owns pipeline + resources + camera UBO + auto-growing instance buffer; `record()` into any active `wgpu::RenderPass` | ✅ |
+| T7 stage 2 | `Renderer::install_impostor_pass` hook — plumb the helper into `astraweave-render::Renderer` + invoke `record` in the main draw path | ✅ |
+| T7 stage 3 | Editor `engine_adapter.rs` rewrite — replace the current per-quad PBR LOD3 path (~line 2986) with `install_impostor_pass` calls | ⏸ (3a ✅: `viewport::impostor_registry` content-hashed lazy-bake plumbing + 8 unit tests; 3b/3c pending) |
+| T9 | Documentation roll-up (this table) | ✅ |
+
+Total: 36 lib unit tests + 13 GPU integration tests = 49 new tests green.
+Full integration recipe for T7 lives in the module-doc of
+`astraweave-render/src/impostor_lod3.rs`.
+
 ---
 
 ### Work Stream 2B: Weather Integration

@@ -893,6 +893,19 @@ pub struct Renderer {
 
     /// GPU memory budget tracker (editor-specific budgets).
     gpu_memory_budget: std::sync::Arc<crate::gpu_memory::GpuMemoryBudget>,
+
+    /// LOD3 impostor passes keyed by caller-chosen string (typically a
+    /// mesh-content hash — see `tools/aw_editor/src/viewport/impostor_registry.rs`).
+    /// Each entry is recorded in the main forward pass after opaque objects
+    /// and before transparent water/foliage, in `HashMap` iteration order
+    /// (stable within a single frame; irrelevant for correctness since all
+    /// passes use the same alpha-blend + depth-test state).
+    ///
+    /// Phase 5.3 T7 stage 2 (rev 2: was `Option<ImpostorPass>`; widened to
+    /// keyed map to support multi-species scatter without per-frame
+    /// atlas-mega-merging).
+    #[cfg(feature = "impostor-bake")]
+    impostor_passes: std::collections::HashMap<String, crate::impostor_pass::ImpostorPass>,
 }
 
 impl Renderer {
@@ -3388,6 +3401,8 @@ fn vs(input: VSIn) -> VSOut {
             postfx_params_buf,
             gpu_memory_budget: std::sync::Arc::new(crate::gpu_memory::GpuMemoryBudget::new()),
             device_lost,
+            #[cfg(feature = "impostor-bake")]
+            impostor_passes: std::collections::HashMap::new(),
         })
     }
 
@@ -4648,6 +4663,12 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     pub fn render(&mut self) -> Result<()> {
+        // Allocation-measurement instrumentation (audit 2026-04-17, §2.3 #4, #5).
+        // Emits Tracy span + `render.submit.allocs` / `render.submit.bytes` plots
+        // when built with `--features profiling,alloc-counter`.
+        #[cfg(feature = "profiling")]
+        astraweave_profiling::measured_span!("render.submit");
+
         let (frame, view) = match self.acquire_surface_texture()? {
             Some(pair) => pair,
             None => return Ok(()),
@@ -5074,6 +5095,17 @@ fn vs(input: VSIn) -> VSOut {
                         rp.set_vertex_buffer(1, model.instance_buf.slice(..));
                         rp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
                     }
+                }
+            }
+
+            // LOD3 impostor passes (Phase 5.3 T7): run after opaque LOD0/1/2
+            // draws and before transparent water so that billboarded card
+            // geometry occludes water that falls behind it while still being
+            // alpha-blended on top of the opaque hdr target.
+            #[cfg(feature = "impostor-bake")]
+            for ip in self.impostor_passes.values() {
+                if ip.instance_count() > 0 {
+                    ip.record(&mut rp);
                 }
             }
 
@@ -5616,6 +5648,15 @@ fn vs(input: VSIn) -> VSOut {
                 self.rendered_model_count = drawn_models;
             }
 
+            // LOD3 impostor passes (Phase 5.3 T7): run after opaque LOD0/1/2
+            // draws and before transparent water. Mirrored from `render()`.
+            #[cfg(feature = "impostor-bake")]
+            for ip in self.impostor_passes.values() {
+                if ip.instance_count() > 0 {
+                    ip.record(&mut rp);
+                }
+            }
+
             // Render water (transparent, after all opaque objects) — aligned with render()
             if let Some(ref water) = self.water_renderer {
                 water.render(&mut rp);
@@ -5783,6 +5824,105 @@ fn vs(input: VSIn) -> VSOut {
 
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.config.format
+    }
+
+    /// Format of the internal HDR render target (`Rgba16Float`). LOD3 impostor
+    /// passes must be built with this as their `color_format` so their
+    /// pipeline matches the main forward pass layout.
+    pub fn hdr_format(&self) -> wgpu::TextureFormat {
+        wgpu::TextureFormat::Rgba16Float
+    }
+
+    /// Format of the depth target (`Depth32Float`). LOD3 impostor passes must
+    /// pass this as their `depth_format` if they want depth testing.
+    pub fn depth_format(&self) -> wgpu::TextureFormat {
+        self.depth.format
+    }
+
+    /// Current combined view-projection matrix, as last set by
+    /// [`Renderer::update_camera`] / [`Renderer::update_camera_matrices`].
+    ///
+    /// Callers that need to keep external camera UBOs (e.g. installed
+    /// `ImpostorPass` instances) in sync with the main camera should pull
+    /// this value every frame.
+    pub fn current_view_proj(&self) -> glam::Mat4 {
+        self.cached_proj * self.cached_view
+    }
+
+    /// Install (or replace) an LOD3 impostor pass under `key`, to be
+    /// recorded during the main forward render pass (after opaque objects,
+    /// before transparent water).
+    ///
+    /// The pass must have been built with [`Renderer::hdr_format`] as its
+    /// color format and [`Renderer::depth_format`] as its depth format; the
+    /// pipeline layout is otherwise incompatible with the main pass and
+    /// recording will fault at draw time.
+    ///
+    /// `key` should uniquely identify the source atlas — typical callers
+    /// use a content hash of the source mesh (see
+    /// `tools/aw_editor/src/viewport/impostor_registry.rs::MeshHash`). Calling
+    /// this a second time with the same key replaces the previous pass,
+    /// dropping its GPU resources.
+    ///
+    /// Phase 5.3 T7 stage 2 (rev 2: HashMap-keyed).
+    #[cfg(feature = "impostor-bake")]
+    pub fn install_impostor_pass(
+        &mut self,
+        key: impl Into<String>,
+        pass: crate::impostor_pass::ImpostorPass,
+    ) {
+        self.impostor_passes.insert(key.into(), pass);
+    }
+
+    /// Remove (and return) a previously installed impostor pass.
+    #[cfg(feature = "impostor-bake")]
+    pub fn remove_impostor_pass(
+        &mut self,
+        key: &str,
+    ) -> Option<crate::impostor_pass::ImpostorPass> {
+        self.impostor_passes.remove(key)
+    }
+
+    /// Drop every installed impostor pass.
+    #[cfg(feature = "impostor-bake")]
+    pub fn clear_impostor_passes(&mut self) {
+        self.impostor_passes.clear();
+    }
+
+    /// Mutable handle to a specific installed impostor pass, for per-frame
+    /// camera/instance updates. Returns `None` if `key` is not installed.
+    #[cfg(feature = "impostor-bake")]
+    pub fn impostor_pass_mut(
+        &mut self,
+        key: &str,
+    ) -> Option<&mut crate::impostor_pass::ImpostorPass> {
+        self.impostor_passes.get_mut(key)
+    }
+
+    /// `true` iff an impostor pass is currently installed under `key`.
+    #[cfg(feature = "impostor-bake")]
+    pub fn has_impostor_pass(&self, key: &str) -> bool {
+        self.impostor_passes.contains_key(key)
+    }
+
+    /// Number of currently installed impostor passes.
+    #[cfg(feature = "impostor-bake")]
+    pub fn impostor_pass_count(&self) -> usize {
+        self.impostor_passes.len()
+    }
+
+    /// Update the camera UBO of every installed impostor pass in one shot.
+    /// Call this per frame after [`Renderer::update_camera`] so the billboards
+    /// pick the correct atlas cell based on the *current* camera direction.
+    #[cfg(feature = "impostor-bake")]
+    pub fn update_all_impostor_cameras(
+        &mut self,
+        view_proj: glam::Mat4,
+        camera_pos: glam::Vec3,
+    ) {
+        for pass in self.impostor_passes.values_mut() {
+            pass.update_camera(&self.queue, view_proj, camera_pos);
+        }
     }
 
     pub fn render_with<F>(&mut self, f: F) -> Result<()>
@@ -5962,6 +6102,10 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     fn build_visible_instances(&self) -> (Vec<InstanceRaw>, usize) {
+        // Allocation-measurement instrumentation (audit 2026-04-17, §2.3 #5).
+        #[cfg(feature = "profiling")]
+        astraweave_profiling::measured_span!("render.visible_instances");
+
         let m = Mat4::from_cols_array_2d(&self.camera_ubo.view_proj);
         let mt = m.transpose();
         let r0 = mt.x_axis;

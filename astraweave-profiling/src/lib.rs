@@ -316,6 +316,407 @@ impl Profiler {
     }
 }
 
+// ============================================================================
+// Allocation counters + FrameAllocStats (for measurement instrumentation)
+// ============================================================================
+
+/// Process-wide allocation counters.
+///
+/// These counters are updated by a registered `#[global_allocator]` — in AstraWeave,
+/// that is `astraweave_ecs::counting_alloc::CountingAlloc`, which forwards every
+/// `alloc`/`dealloc`/`realloc` call into the `record_*` functions below.
+///
+/// When the `alloc-counter` feature is off, all `record_*` functions are no-ops and
+/// all readers return zero. This keeps instrumentation calls cost-free in release
+/// builds that do not opt in.
+pub mod counters {
+    #[cfg(feature = "alloc-counter")]
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
+    #[cfg(feature = "alloc-counter")]
+    static ALLOCS: AtomicUsize = AtomicUsize::new(0);
+    #[cfg(feature = "alloc-counter")]
+    static DEALLOCS: AtomicUsize = AtomicUsize::new(0);
+    #[cfg(feature = "alloc-counter")]
+    static REALLOCS: AtomicUsize = AtomicUsize::new(0);
+    #[cfg(feature = "alloc-counter")]
+    static BYTES_ALLOCATED: AtomicUsize = AtomicUsize::new(0);
+    #[cfg(feature = "alloc-counter")]
+    static BYTES_DEALLOCATED: AtomicUsize = AtomicUsize::new(0);
+
+    /// A snapshot of the allocation counters at a point in time.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct AllocSnapshot {
+        pub allocs: usize,
+        pub deallocs: usize,
+        pub reallocs: usize,
+        pub bytes_allocated: usize,
+        pub bytes_deallocated: usize,
+    }
+
+    /// Record an allocation of `size` bytes. No-op when `alloc-counter` is off.
+    #[inline]
+    pub fn record_alloc(_size: usize) {
+        #[cfg(feature = "alloc-counter")]
+        {
+            ALLOCS.fetch_add(1, Ordering::Relaxed);
+            BYTES_ALLOCATED.fetch_add(_size, Ordering::Relaxed);
+        }
+    }
+
+    /// Record a deallocation of `size` bytes. No-op when `alloc-counter` is off.
+    #[inline]
+    pub fn record_dealloc(_size: usize) {
+        #[cfg(feature = "alloc-counter")]
+        {
+            DEALLOCS.fetch_add(1, Ordering::Relaxed);
+            BYTES_DEALLOCATED.fetch_add(_size, Ordering::Relaxed);
+        }
+    }
+
+    /// Record a reallocation from `old_size` to `new_size` bytes. No-op when
+    /// `alloc-counter` is off.
+    #[inline]
+    pub fn record_realloc(_old_size: usize, _new_size: usize) {
+        #[cfg(feature = "alloc-counter")]
+        {
+            // A realloc is one alloc + one dealloc, consistent with CountingAlloc's
+            // original bookkeeping. It also counts as its own "realloc" event for
+            // visibility into resize vs. fresh-alloc patterns.
+            ALLOCS.fetch_add(1, Ordering::Relaxed);
+            DEALLOCS.fetch_add(1, Ordering::Relaxed);
+            REALLOCS.fetch_add(1, Ordering::Relaxed);
+            BYTES_ALLOCATED.fetch_add(_new_size, Ordering::Relaxed);
+            BYTES_DEALLOCATED.fetch_add(_old_size, Ordering::Relaxed);
+        }
+    }
+
+    /// Total alloc events since last reset.
+    #[inline]
+    pub fn allocs() -> usize {
+        #[cfg(feature = "alloc-counter")]
+        {
+            ALLOCS.load(Ordering::Relaxed)
+        }
+        #[cfg(not(feature = "alloc-counter"))]
+        {
+            0
+        }
+    }
+
+    /// Total dealloc events since last reset.
+    #[inline]
+    pub fn deallocs() -> usize {
+        #[cfg(feature = "alloc-counter")]
+        {
+            DEALLOCS.load(Ordering::Relaxed)
+        }
+        #[cfg(not(feature = "alloc-counter"))]
+        {
+            0
+        }
+    }
+
+    /// Total realloc events since last reset.
+    #[inline]
+    pub fn reallocs() -> usize {
+        #[cfg(feature = "alloc-counter")]
+        {
+            REALLOCS.load(Ordering::Relaxed)
+        }
+        #[cfg(not(feature = "alloc-counter"))]
+        {
+            0
+        }
+    }
+
+    /// Total bytes allocated (sum of `size` across `alloc` and `realloc` new sizes).
+    #[inline]
+    pub fn bytes_allocated() -> usize {
+        #[cfg(feature = "alloc-counter")]
+        {
+            BYTES_ALLOCATED.load(Ordering::Relaxed)
+        }
+        #[cfg(not(feature = "alloc-counter"))]
+        {
+            0
+        }
+    }
+
+    /// Total bytes deallocated (sum of `size` across `dealloc` and `realloc` old sizes).
+    #[inline]
+    pub fn bytes_deallocated() -> usize {
+        #[cfg(feature = "alloc-counter")]
+        {
+            BYTES_DEALLOCATED.load(Ordering::Relaxed)
+        }
+        #[cfg(not(feature = "alloc-counter"))]
+        {
+            0
+        }
+    }
+
+    /// Net live allocations (allocs − deallocs). Positive = leak or live data growth.
+    #[inline]
+    pub fn net_allocs() -> isize {
+        allocs() as isize - deallocs() as isize
+    }
+
+    /// Snapshot all counters atomically-ish. Values are read with `Relaxed` ordering
+    /// so they are not guaranteed to be consistent with each other in the strict sense,
+    /// but every counter monotonically increases — so differences across a snapshot
+    /// pair are lower-bounded by the true deltas and are good enough for frame-level
+    /// diagnostics.
+    #[inline]
+    pub fn snapshot() -> AllocSnapshot {
+        AllocSnapshot {
+            allocs: allocs(),
+            deallocs: deallocs(),
+            reallocs: reallocs(),
+            bytes_allocated: bytes_allocated(),
+            bytes_deallocated: bytes_deallocated(),
+        }
+    }
+
+    /// Reset all counters to zero. Use at the start of a measurement window.
+    #[inline]
+    pub fn reset() {
+        #[cfg(feature = "alloc-counter")]
+        {
+            ALLOCS.store(0, Ordering::SeqCst);
+            DEALLOCS.store(0, Ordering::SeqCst);
+            REALLOCS.store(0, Ordering::SeqCst);
+            BYTES_ALLOCATED.store(0, Ordering::SeqCst);
+            BYTES_DEALLOCATED.store(0, Ordering::SeqCst);
+        }
+    }
+}
+
+/// Delta of allocation activity across a measurement window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FrameAllocDelta {
+    /// Number of `alloc` + `realloc` events during the window.
+    pub allocs: usize,
+    /// Number of `dealloc` + `realloc` events during the window.
+    pub deallocs: usize,
+    /// Number of `realloc` events during the window (subset of allocs AND deallocs).
+    pub reallocs: usize,
+    /// Net allocations (allocs − deallocs). Positive values indicate growth; near-zero
+    /// steady state indicates churn without leak.
+    pub net_allocs: isize,
+    /// Bytes allocated during the window.
+    pub bytes_allocated: usize,
+    /// Bytes deallocated during the window.
+    pub bytes_deallocated: usize,
+}
+
+impl FrameAllocDelta {
+    /// Net bytes allocated (bytes_allocated − bytes_deallocated).
+    #[inline]
+    pub fn net_bytes(&self) -> isize {
+        self.bytes_allocated as isize - self.bytes_deallocated as isize
+    }
+}
+
+/// RAII-style helper for measuring allocation activity across a frame or scope.
+///
+/// Construct with `begin_frame` at the start of the window, call `end_frame` at the
+/// end to get a `FrameAllocDelta`. When the `alloc-counter` feature is off, all
+/// deltas are zero and the type carries no runtime cost beyond a few `usize`
+/// snapshots (which the compiler typically elides).
+///
+/// # Example
+/// ```
+/// use astraweave_profiling::FrameAllocStats;
+///
+/// let stats = FrameAllocStats::begin_frame();
+/// // ... do work ...
+/// let delta = stats.end_frame();
+/// // With alloc-counter off: delta.allocs == 0
+/// // With alloc-counter on: delta.allocs reflects real allocation activity.
+/// assert!(delta.allocs >= 0);
+/// ```
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FrameAllocStats {
+    start: counters::AllocSnapshot,
+}
+
+impl FrameAllocStats {
+    /// Snapshot the counters and return a new measurement window.
+    #[inline]
+    pub fn begin_frame() -> Self {
+        Self {
+            start: counters::snapshot(),
+        }
+    }
+
+    /// End the measurement window and compute the delta against the starting snapshot.
+    /// Consumes `self` to discourage reusing a stale start snapshot.
+    #[inline]
+    pub fn end_frame(self) -> FrameAllocDelta {
+        let now = counters::snapshot();
+        FrameAllocDelta {
+            allocs: now.allocs.saturating_sub(self.start.allocs),
+            deallocs: now.deallocs.saturating_sub(self.start.deallocs),
+            reallocs: now.reallocs.saturating_sub(self.start.reallocs),
+            net_allocs: (now.allocs as isize - now.deallocs as isize)
+                - (self.start.allocs as isize - self.start.deallocs as isize),
+            bytes_allocated: now
+                .bytes_allocated
+                .saturating_sub(self.start.bytes_allocated),
+            bytes_deallocated: now
+                .bytes_deallocated
+                .saturating_sub(self.start.bytes_deallocated),
+        }
+    }
+
+    /// Peek the delta without consuming the stats, for mid-frame diagnostics.
+    #[inline]
+    pub fn peek_delta(&self) -> FrameAllocDelta {
+        let now = counters::snapshot();
+        FrameAllocDelta {
+            allocs: now.allocs.saturating_sub(self.start.allocs),
+            deallocs: now.deallocs.saturating_sub(self.start.deallocs),
+            reallocs: now.reallocs.saturating_sub(self.start.reallocs),
+            net_allocs: (now.allocs as isize - now.deallocs as isize)
+                - (self.start.allocs as isize - self.start.deallocs as isize),
+            bytes_allocated: now
+                .bytes_allocated
+                .saturating_sub(self.start.bytes_allocated),
+            bytes_deallocated: now
+                .bytes_deallocated
+                .saturating_sub(self.start.bytes_deallocated),
+        }
+    }
+}
+
+/// Emit a Tracy plot for an allocation rate: `{name}.allocs` (count) and `{name}.bytes`.
+///
+/// Prefer `measured_span!` when wrapping a code block. Use `alloc_plot!` directly when
+/// you already hold a `FrameAllocDelta` or want to emit a specific count/bytes pair.
+///
+/// When the `profiling` feature is off, this macro is a no-op.
+///
+/// # Example
+/// ```
+/// use astraweave_profiling::{alloc_plot, FrameAllocStats};
+///
+/// let stats = FrameAllocStats::begin_frame();
+/// // ... work ...
+/// let delta = stats.end_frame();
+/// alloc_plot!("frame", delta.allocs, delta.bytes_allocated);
+/// ```
+#[macro_export]
+macro_rules! alloc_plot {
+    ($name:expr, $count:expr, $bytes:expr) => {{
+        // Always evaluate arguments at the call site so callers' local bindings
+        // (e.g. `let delta = stats.end_frame()`) are considered used even when the
+        // `profiling` feature is disabled and the Tracy emit block is stripped.
+        let __aw_alloc_plot_count = $count;
+        let __aw_alloc_plot_bytes = $bytes;
+        #[cfg(feature = "profiling")]
+        {
+            // NOTE: We leak the name strings via Tracy's `PlotName::new_leak` because
+            // Tracy requires `'static`-equivalent storage. This is consistent with the
+            // existing `plot!` macro in this crate and incurs a small one-time cost per
+            // unique plot name.
+            $crate::tracy_client::Client::running()
+                .expect("Tracy client should be running")
+                .plot(
+                    $crate::tracy_client::PlotName::new_leak(
+                        ::std::format!("{}.allocs", $name),
+                    ),
+                    __aw_alloc_plot_count as f64,
+                );
+            $crate::tracy_client::Client::running()
+                .expect("Tracy client should be running")
+                .plot(
+                    $crate::tracy_client::PlotName::new_leak(
+                        ::std::format!("{}.bytes", $name),
+                    ),
+                    __aw_alloc_plot_bytes as f64,
+                );
+        }
+        #[cfg(not(feature = "profiling"))]
+        {
+            // Suppress unused-variable warnings when the Tracy block is stripped.
+            let _ = __aw_alloc_plot_count;
+            let _ = __aw_alloc_plot_bytes;
+        }
+    }};
+}
+
+/// Combined span + alloc-delta-emit helper.
+///
+/// Opens a Tracy span named `$name` for the current scope AND, on scope exit, emits
+/// an `alloc_plot!` under the same name with the allocation delta accumulated during
+/// the span.
+///
+/// Both the span and the alloc plot are no-ops when their respective features are off:
+/// - `profiling` off → no Tracy span, no Tracy plot.
+/// - `alloc-counter` off → delta is always zero (plot still emitted if `profiling` is on,
+///   so rate charts remain consistent).
+///
+/// # Example
+/// ```
+/// use astraweave_profiling::measured_span;
+///
+/// fn tick() {
+///     measured_span!("ecs.tick");
+///     // ... work ...
+///     // On scope exit: a Tracy span ended AND a `ecs.tick.allocs` / `ecs.tick.bytes`
+///     // pair is plotted if both features are on.
+/// }
+/// ```
+#[macro_export]
+macro_rules! measured_span {
+    ($name:expr) => {
+        // Span is emitted by the existing `span!` macro; keep its behavior unchanged.
+        $crate::span!($name);
+
+        // RAII guard that snapshots allocation counters at entry and emits a plot at
+        // exit. When `profiling` is off, the plot emission is a no-op; when
+        // `alloc-counter` is off, the delta is always zero.
+        let __aw_alloc_guard =
+            $crate::MeasuredSpanGuard::new($name, $crate::FrameAllocStats::begin_frame());
+        // Suppress unused-variable warning when neither feature is enabled.
+        let _ = &__aw_alloc_guard;
+    };
+}
+
+/// Internal guard used by `measured_span!`. Emits `alloc_plot!` on drop.
+///
+/// Not part of the stable API surface — subject to change. Prefer `measured_span!`.
+#[doc(hidden)]
+pub struct MeasuredSpanGuard {
+    // Fields are only read when `profiling` is enabled; silence dead-code warning
+    // for release builds without the feature.
+    #[allow(dead_code)]
+    name: &'static str,
+    #[allow(dead_code)]
+    stats: FrameAllocStats,
+}
+
+impl MeasuredSpanGuard {
+    #[doc(hidden)]
+    #[inline]
+    pub fn new(name: &'static str, stats: FrameAllocStats) -> Self {
+        Self { name, stats }
+    }
+}
+
+impl Drop for MeasuredSpanGuard {
+    #[inline]
+    fn drop(&mut self) {
+        #[cfg(feature = "profiling")]
+        {
+            let delta = self.stats.peek_delta();
+            // Forward to alloc_plot! so we share the same emit path.
+            crate::alloc_plot!(self.name, delta.allocs, delta.bytes_allocated);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

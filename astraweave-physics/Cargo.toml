@@ -9,6 +9,12 @@ default = []
 async-physics = ["rayon"]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
 ecs = ["astraweave-ecs", "astraweave-scene"]
+# Pull in astraweave-profiling's alloc-counter for bench assertions. The dep is
+# optional by default; this feature cascades `dep:astraweave-profiling` so the
+# crate is only built when someone actually asks for counting. The bench-side
+# global allocator installation uses a small ad-hoc wrapper (see
+# `benches/alloc_measure.rs`) to avoid a runtime dep on astraweave-ecs.
+alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -63,3 +69,8 @@ harness = false
 [[bench]]
 name = "gravity"
 harness = false
+
+[[bench]]
+name = "alloc_measure"
+harness = false
+required-features = ["alloc-counter"]

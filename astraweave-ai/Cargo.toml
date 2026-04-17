@@ -36,6 +36,8 @@ ai-bt = []
 planner_advanced = []
 rag = []
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
+# Pull in astraweave-profiling's alloc-counter for bench assertions.
+alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter"]
 veilweaver_slice = ["dep:astraweave-behavior", "dep:astraweave-observability"]
 
 [dependencies.astraweave-llm]
@@ -57,6 +59,11 @@ harness = false
 [[bench]]
 name = "goap_bench"
 harness = false
+
+[[bench]]
+name = "alloc_measure"
+harness = false
+required-features = ["alloc-counter", "planner_advanced"]
 
 [[bench]]
 name = "arbiter_bench"

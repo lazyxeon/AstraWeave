@@ -168,6 +168,12 @@ pub mod transparency; // Transparency depth sorting and render pass // Advanced 
 pub mod vegetation_gpu; // GPU-instanced vegetation scatter and frustum cull pipeline
 pub mod vegetation_interaction; // Entity proximity grass bending stamp system
 pub mod vegetation_lod; // Tree LOD chain with billboard/impostor support
+#[cfg(feature = "impostor-bake")]
+pub mod impostor_bake; // Phase 5.3: offline/lazy impostor atlas bake pipeline
+#[cfg(feature = "impostor-bake")]
+pub mod impostor_lod3; // Phase 5.3 T4: LOD3 live draw sampling pipeline
+#[cfg(feature = "impostor-bake")]
+pub mod impostor_pass; // Phase 5.3 T7 (stage 1): reusable LOD3 draw helper
 pub mod weather_gpu; // GPU-accelerated weather particle emitter configurations
 
 // GPU memory management

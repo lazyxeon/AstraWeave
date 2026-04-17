@@ -164,6 +164,29 @@ struct ChunkSplat {
     dims: (u32, u32),
 }
 
+/// CPU mirror of `CameraUniforms` in `pbr_terrain.wgsl` (80 bytes).
+///
+/// Matches the shader exactly:
+/// * `view_proj`: mat4x4 (64 B)
+/// * `camera_pos`: vec3 + padding (16 B)
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+struct CameraUniformsGpu {
+    view_proj: [[f32; 4]; 4],
+    camera_pos: [f32; 3],
+    _pad0: f32,
+}
+
+impl Default for CameraUniformsGpu {
+    fn default() -> Self {
+        Self {
+            view_proj: [[0.0; 4]; 4],
+            camera_pos: [0.0; 3],
+            _pad0: 0.0,
+        }
+    }
+}
+
 /// Shared texture arrays + sampler + uniform buffer living behind the pipeline.
 struct SharedResources {
     layer_albedo: wgpu::TextureView,
@@ -176,46 +199,61 @@ struct SharedResources {
     _height_tex: wgpu::Texture,
     sampler: wgpu::Sampler,
     material_uniform: wgpu::Buffer,
+    camera_uniform: wgpu::Buffer,
 }
 
 /// Terrain splat-array material pipeline manager.
 ///
 /// Owns the shared GPU resources and (lazily) the render pipeline; caches
-/// per-chunk splat bind groups keyed by [`ChunkKey`].
+/// per-chunk splat bind groups keyed by [`ChunkKey`]. The manager owns its
+/// own camera uniform buffer + bind group so it can be driven standalone
+/// without coupling to an external renderer's camera layout.
 pub struct TerrainMaterialManager {
     config: TerrainMaterialConfig,
     shared: SharedResources,
 
-    // Bind group layouts (group 1 = terrain uniform, group 2 = splats + arrays).
+    // Bind group layouts.
+    camera_bgl: wgpu::BindGroupLayout,
     terrain_bgl: wgpu::BindGroupLayout,
     splat_bgl: wgpu::BindGroupLayout,
-    /// Caller-supplied camera bind group layout (group 0).
-    camera_bgl: wgpu::BindGroupLayout,
 
-    /// Group 1 bind group (single uniform buffer; never changes per-draw).
+    /// Group 0 bind group (camera UBO; updated via `update_camera`).
+    camera_bg: wgpu::BindGroup,
+    /// Group 1 bind group (terrain uniform; single UBO; never changes per-draw).
     terrain_bg: wgpu::BindGroup,
 
     chunk_splats: HashMap<ChunkKey, ChunkSplat>,
     pipeline: Option<wgpu::RenderPipeline>,
     pipeline_formats: Option<(wgpu::TextureFormat, Option<wgpu::TextureFormat>)>,
     material_cache: TerrainMaterialGpu,
+    camera_cache: CameraUniformsGpu,
 }
 
 impl TerrainMaterialManager {
     /// Create a new manager and allocate shared layer arrays + sampler.
     ///
-    /// `camera_bgl` is the caller-owned bind group layout that provides group 0
-    /// (a uniform buffer matching `CameraUniforms` in `pbr_terrain.wgsl`).
-    pub fn new(
-        device: &wgpu::Device,
-        camera_bgl: wgpu::BindGroupLayout,
-        config: TerrainMaterialConfig,
-    ) -> Result<Self> {
+    /// The manager internally creates its own camera bind group layout (group 0)
+    /// matching `CameraUniforms` in `pbr_terrain.wgsl`.
+    pub fn new(device: &wgpu::Device, config: TerrainMaterialConfig) -> Result<Self> {
         config
             .validate()
             .context("invalid TerrainMaterialConfig")?;
 
         let shared = create_shared_resources(device, &config);
+
+        let camera_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("terrain-splat-camera-bgl"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
 
         let terrain_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("terrain-splat-uniform-bgl"),
@@ -280,17 +318,28 @@ impl TerrainMaterialManager {
             }],
         });
 
+        let camera_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("terrain-splat-camera-bg"),
+            layout: &camera_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: shared.camera_uniform.as_entire_binding(),
+            }],
+        });
+
         Ok(Self {
             config,
             shared,
+            camera_bgl,
             terrain_bgl,
             splat_bgl,
-            camera_bgl,
+            camera_bg,
             terrain_bg,
             chunk_splats: HashMap::new(),
             pipeline: None,
             pipeline_formats: None,
             material_cache: TerrainMaterialGpu::default(),
+            camera_cache: CameraUniformsGpu::default(),
         })
     }
 
@@ -307,6 +356,34 @@ impl TerrainMaterialManager {
     /// Drop all per-chunk splat bind groups (e.g. on biome reload).
     pub fn clear_chunks(&mut self) {
         self.chunk_splats.clear();
+    }
+
+    /// Update the camera uniform buffer. Must be called at least once before
+    /// the first draw.
+    ///
+    /// Only `view_proj` and `camera_pos` are written — the shader's
+    /// `CameraUniforms` struct contains nothing else. Additional fields
+    /// (view/forward/right) are accepted for API symmetry but currently
+    /// ignored; they will be wired when the shader grows to need them.
+    pub fn update_camera(
+        &mut self,
+        queue: &wgpu::Queue,
+        view_proj: glam::Mat4,
+        _view: glam::Mat4,
+        camera_pos: glam::Vec3,
+        _camera_forward: glam::Vec3,
+        _camera_right: glam::Vec3,
+    ) {
+        self.camera_cache = CameraUniformsGpu {
+            view_proj: view_proj.to_cols_array_2d(),
+            camera_pos: camera_pos.into(),
+            _pad0: 0.0,
+        };
+        queue.write_buffer(
+            &self.shared.camera_uniform,
+            0,
+            bytemuck::bytes_of(&self.camera_cache),
+        );
     }
 
     /// Upload the eight layer textures and write the `TerrainMaterialGpu`
@@ -605,8 +682,8 @@ impl TerrainMaterialManager {
 
     /// Issue a draw call for a chunk that has had its splats uploaded.
     ///
-    /// `camera_bg` is the caller's group 0 bind group (matching the layout
-    /// passed to [`Self::new`]). Returns `false` when the chunk has no
+    /// Uses the manager's internal camera bind group (see
+    /// [`Self::update_camera`]). Returns `false` when the chunk has no
     /// registered splat pair (caller should fall back to the legacy path).
     pub fn draw_chunk<'a>(
         &'a self,
@@ -615,7 +692,6 @@ impl TerrainMaterialManager {
         vertex_buffer: &'a wgpu::Buffer,
         index_buffer: &'a wgpu::Buffer,
         index_count: u32,
-        camera_bg: &'a wgpu::BindGroup,
     ) -> bool {
         let Some(pipeline) = self.pipeline.as_ref() else {
             return false;
@@ -624,7 +700,7 @@ impl TerrainMaterialManager {
             return false;
         };
         rpass.set_pipeline(pipeline);
-        rpass.set_bind_group(0, camera_bg, &[]);
+        rpass.set_bind_group(0, &self.camera_bg, &[]);
         rpass.set_bind_group(1, &self.terrain_bg, &[]);
         rpass.set_bind_group(2, &splat.bind_group, &[]);
         rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
@@ -737,6 +813,12 @@ fn create_shared_resources(
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
 
+    let camera_uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("terrain-splat-camera-ubo"),
+        contents: bytemuck::bytes_of(&CameraUniformsGpu::default()),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
     SharedResources {
         layer_albedo,
         layer_normal,
@@ -748,6 +830,7 @@ fn create_shared_resources(
         _height_tex: height_tex,
         sampler,
         material_uniform,
+        camera_uniform,
     }
 }
 

@@ -10,7 +10,7 @@ license = "MIT"
 unwrap_used = "allow"
 
 [features]
-default = ["editor-core"]
+default = ["editor-core", "impostor-bake"]
 editor-core = []
 editor-graphs = ["editor-core"]
 editor-materials = ["editor-core"]
@@ -20,6 +20,13 @@ editor-sim = ["editor-core"]
 editor-full = ["editor-graphs", "editor-materials", "editor-terrain", "editor-nav", "editor-sim"]
 profiling = ["astraweave-profiling/profiling"]
 kittest = ["dep:egui_kittest"]
+# Phase 2.2: enable the 8-layer splat-array terrain material pipeline.
+terrain-splat-arrays = ["astraweave-render/terrain-splat-arrays"]
+# Phase 5.3 T7: enable the LOD3 impostor bake / draw pipeline. Flipped into
+# `default` in stage 3d (April 2026): the new `ImpostorPass` path is now the
+# only LOD3 scatter renderer; disabling this feature via `--no-default-features`
+# gives graceful LOD0/1/2 degradation (no LOD3 billboards).
+impostor-bake = ["astraweave-render/impostor-bake"]
 
 [dependencies]
 eframe = { workspace = true, features = ["wgpu"] }
@@ -40,6 +47,7 @@ thiserror = { workspace = true }
 image = "0.25"
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
+sha2 = { workspace = true }
 winit = { workspace = true }
 gltf = { version = "1.4", features = ["import", "extensions"] }
 glam = { workspace = true }

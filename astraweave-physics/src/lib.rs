@@ -1068,6 +1068,12 @@ impl PhysicsWorld {
     /// Internal physics step (shared by sync and async paths)
     /// When called with async scheduler enabled, Rapier3D uses Rayon for parallel solving
     fn step_internal(&mut self) {
+        // Allocation-measurement instrumentation (audit 2026-04-17, open question #7).
+        // `physics.step.allocs` exposes whether Rapier3D's per-step allocation count
+        // grows with simulation time — the audit could not answer this statically.
+        #[cfg(feature = "profiling")]
+        astraweave_profiling::measured_span!("physics.step");
+
         #[cfg(feature = "profiling")]
         {
             span!("Physics::Rapier::pipeline");

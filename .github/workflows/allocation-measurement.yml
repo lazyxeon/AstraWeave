@@ -1,0 +1,114 @@
+name: Allocation Measurement
+
+# Non-blocking measurement job. Runs allocation-count benches with
+# `--features alloc-counter` and uploads the output as an artifact so
+# regressions can be spotted manually. Intentionally NOT part of the
+# required check set — the goal is "detect regression," not "force optimization,"
+# until enough baseline data exists to pick tight thresholds.
+#
+# See `docs/audits/allocation_measurement_plan_2026-04-17.md` for the
+# current thresholds per path.
+
+on:
+  push:
+    branches:
+      - measurement
+      - 'measurement/**'
+  workflow_dispatch:
+
+jobs:
+  alloc-benches:
+    name: Allocation-count benches (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: astraweave-ecs
+            features: alloc-counter
+          - crate: astraweave-physics
+            features: alloc-counter
+          - crate: astraweave-render
+            features: alloc-counter
+          - crate: astraweave-ai
+            features: alloc-counter,planner_advanced
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.89.0
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-alloc-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-alloc-bench-
+
+      - name: Run allocation benches
+        id: bench
+        shell: bash
+        run: |
+          mkdir -p bench-output
+          cargo bench \
+            -p ${{ matrix.crate }} \
+            --features ${{ matrix.features }} \
+            --bench alloc_measure \
+            -- --test 2>&1 | tee bench-output/${{ matrix.crate }}.log
+
+      - name: Extract alloc-measure summary lines
+        if: always()
+        shell: bash
+        run: |
+          grep '\[alloc-measure\]' bench-output/${{ matrix.crate }}.log \
+            > bench-output/${{ matrix.crate }}-summary.txt || true
+          cat bench-output/${{ matrix.crate }}-summary.txt || true
+
+      - name: Upload bench output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alloc-measure-${{ matrix.crate }}
+          path: bench-output/
+          retention-days: 30
+
+  # Aggregates summaries from each crate so a reviewer sees a single diff.
+  summarise:
+    name: Summarise allocation measurements
+    runs-on: ubuntu-latest
+    needs: alloc-benches
+    if: always()
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Collate summaries
+        shell: bash
+        run: |
+          echo "# Allocation Measurement Summary" > summary.md
+          echo "" >> summary.md
+          echo "Triggered by: ${{ github.event_name }} @ ${{ github.sha }}" >> summary.md
+          echo "" >> summary.md
+          for f in artifacts/**/*-summary.txt; do
+            crate="$(basename "$(dirname "$f")")"
+            echo "## $crate" >> summary.md
+            echo '```' >> summary.md
+            cat "$f" >> summary.md
+            echo '```' >> summary.md
+            echo "" >> summary.md
+          done
+          cat summary.md
+
+      - name: Upload combined summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: alloc-measure-summary
+          path: summary.md
+          retention-days: 90

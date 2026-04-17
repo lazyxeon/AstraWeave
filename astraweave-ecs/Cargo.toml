@@ -13,7 +13,11 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
-astraweave-profiling = { path = "../astraweave-profiling", optional = true }
+# astraweave-profiling is non-optional because its counters module is the
+# process-wide source of truth for allocation measurement. When no features are
+# enabled, the only non-optional transitive dep is `anyhow`, which ecs already
+# pulls in — so this adds zero new build cost.
+astraweave-profiling = { path = "../astraweave-profiling" }
 tracy-client = { version = "0.18", optional = true }
 rayon = { version = "1.10", optional = true }
 
@@ -21,7 +25,10 @@ rayon = { version = "1.10", optional = true }
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
 parallel = ["dep:rayon"]
 loom = []
-alloc-counter = []
+# Enables `CountingAlloc` and cascades to astraweave-profiling's `alloc-counter`
+# so that `FrameAllocStats` and `alloc_plot!` see the CountingAlloc's recorded
+# allocations.
+alloc-counter = ["astraweave-profiling/alloc-counter"]
 
 [dev-dependencies]
 serde = { workspace = true, features = ["derive"] }
@@ -37,3 +44,8 @@ harness = false
 [[bench]]
 name = "ecs_benchmarks"
 harness = false
+
+[[bench]]
+name = "alloc_measure"
+harness = false
+required-features = ["alloc-counter"]

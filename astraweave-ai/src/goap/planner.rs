@@ -223,6 +223,13 @@ impl AdvancedGOAP {
 
     /// Direct A* planning (non-hierarchical)
     fn plan_direct(&self, start: &WorldState, goal: &Goal) -> Option<Vec<String>> {
+        // Allocation-measurement instrumentation (audit 2026-04-17, §2.3 #1,
+        // open question #2). This is the highest-volume inferred allocation site
+        // in the engine — A* per-expansion clones `WorldState`, `Vec<String>` path,
+        // and allocates a `String` per action name. The plot reveals actual counts.
+        #[cfg(feature = "profiling")]
+        astraweave_profiling::measured_span!("ai.goap.plan");
+
         let mut open_set = BinaryHeap::new();
         let mut closed_set = HashSet::new();
 
