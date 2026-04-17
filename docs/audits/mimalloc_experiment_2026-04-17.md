@@ -1,6 +1,6 @@
 # mimalloc Experiment — 2026-04-17
 
-**Status**: Complete and **MERGED**. See §4 for the landing record.
+**Status**: Complete. Recommendation follows at §3.5.
 **Scope**: A paired measurement of the default system allocator vs. `mimalloc` as `#[global_allocator]` across AstraWeave's four instrumented hot paths and the `profiling_demo` workload. No change to any allocation pattern in user code.
 
 ---
@@ -207,40 +207,3 @@ for i in 1 2 3; do cargo run --release -p profiling_demo --features alloc-counte
 ```
 
 Raw Criterion output trees: `target/criterion/ecs.schedule.run/`, `target/criterion/physics.step/`, `target/criterion/render.bin_lights_cpu/`, `target/criterion/ai.goap.plan/`. Not committed.
-
----
-
-## 4. Merged — 2026-04-17
-
-The Phase 3.5 recommendation was accepted and landed the same day. Changes:
-
-| File | Change |
-|---|---|
-| `examples/profiling_demo/Cargo.toml:18-24` | `default = ["fast-alloc"]` |
-| `examples/hello_companion/Cargo.toml:43-49` | `default = ["fast-alloc"]` |
-| `tools/aw_editor/Cargo.toml:12-17` | `default = ["editor-core", "impostor-bake", "fast-alloc"]` |
-
-Opt-out path for every affected binary: `cargo run --no-default-features [-p X] [--features …]` (preserved and verified — see below).
-
-### Post-merge verification
-
-Same 1000-entity × 1000-frame profiling_demo workload, same machine, three independent processes per cell:
-
-| Configuration | Run 1 FPS | Run 2 FPS | Run 3 FPS | Median |
-|---|---:|---:|---:|---:|
-| Default build (mimalloc) | 1458.05 | 1294.60 | 1650.83 | **1458** |
-| `--no-default-features --features alloc-counter` (System) | 844.45 | 945.64 | 854.72 | **855** |
-
-The default (mimalloc) median of 1458 FPS lands in the mimalloc range measured pre-merge (1336–1488). The opt-out median of 855 FPS lands in the baseline range (906–1089, slightly slower this session — consistent with observed run-to-run variance). Both paths behave as predicted by §3.3.
-
-Compile verification (§3.2 re-run after the default-feature change): all six feature combinations on `profiling_demo` still succeed, plus the three new default-features paths on each binary, plus the three `--no-default-features` paths.
-
-### Scope guard-rails preserved
-
-- Library crates are unchanged. `astraweave-ecs`, `astraweave-physics`, `astraweave-render`, `astraweave-ai`, and `astraweave-profiling` still have `fast-alloc` off by default. Downstream crates that depend on them continue to get the platform default allocator unless a *binary* opts in.
-- Allocation-counting benches (`cargo bench … --features alloc-counter`) still run against the platform default by default, since the bench crates' `fast-alloc` feature is opt-in. This preserves the invariant from §3.3: alloc counts are the sanity-check baseline, and the sanity check is trustworthy only if measurements run on an unswapped allocator by default.
-- `--no-default-features` is documented in the Cargo.toml comments at each merge site as the escape hatch for platform-specific tools (heap profilers, leak checkers) that need the platform default.
-
-### Next follow-up
-
-Per the appendix of this report: paired measurement on `unified_showcase` is the highest-value next step. The `fast-alloc` plumbing extends there by adding one feature line and one macro call — not in scope for this merge but queued as the natural continuation.
