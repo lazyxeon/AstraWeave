@@ -65,6 +65,14 @@
 
 ## Recently Completed
 
+### Allocation Measurement + mimalloc Merge ✅ (April 17, 2026)
+- **Audit**: `docs/audits/allocation_audit_2026-04-17.md` — static survey confirmed no external allocator, arena, pool, or GPU sub-allocator crate anywhere; hot allocation sites catalogued with file:line citations.
+- **Instrumentation**: `docs/audits/allocation_measurement_plan_2026-04-17.md` — added `alloc_plot!`/`measured_span!` macros + `FrameAllocStats` to `astraweave-profiling` (§1.3 of that plan), extended `CountingAlloc` in `astraweave-ecs` with `reallocs()`/`bytes_allocated()`/`reset()`, wired eight Tracy span+plot pairs into the four hot paths (`render.submit`, `render.visible_instances`, `render.bin_lights_cpu`, `physics.step`, `ai.tick`, `ai.goap.plan`, `ecs.schedule.run`, `ecs.schedule.build_groups`), added four `alloc_measure` criterion benches (ecs/physics/render/ai) with allocation-count assertions, and a non-blocking `.github/workflows/allocation-measurement.yml`. Every symbol is feature-gated; release builds without `alloc-counter` or `profiling` are zero-cost.
+- **Experiment**: `docs/audits/mimalloc_experiment_2026-04-17.md` — paired baseline vs. mimalloc measurement, three independent runs per cell. Results: `ecs.schedule.run` −23%, `ai.goap.plan` **−52%**, `profiling_demo` FPS **+43%** (956 → 1369 median at 1000 entities). `physics.step` and `render.bin_lights_cpu` changed within noise. Allocs/bytes/reallocs/frame identical across allocators (sanity check passes).
+- **Merged**: `fast-alloc` on by default in `examples/profiling_demo`, `examples/hello_companion`, `tools/aw_editor`. Library crates (`astraweave-ecs`, `-physics`, `-render`, `-ai`, `-profiling`) unchanged — they keep `fast-alloc` opt-in. Opt-out path `--no-default-features` preserved and verified (opt-out median 855 FPS vs default 1458 FPS; matches pre-merge ranges).
+- **New crate**: `crates/astraweave-alloc` — tiny single-purpose crate. `MiMalloc` re-export behind `fast-alloc` feature + `setup_global_allocator!()` macro. MIT-licensed (mimalloc is Microsoft-maintained MIT, no extra build deps on Windows/Linux/macOS).
+- **Incidental fix**: pre-existing `moved_count` typo in `examples/profiling_demo/src/main.rs:448` that blocked the `profiling,alloc-counter` compile-combo (latent since the profiling instrumentation landed). Minimal rename, preserved `#[allow(unused_variables)]` for the `profiling`-off case.
+
 ### Impostor Atlas Bake + LOD3 Sampling Pipeline ✅ (April 16, 2026)
 - **Scope**: Task 2A-5 (tree LOD chain billboard/impostor) from `RENDERING_REMEDIATION_PLAN.md`. Closes the visual gap where distant scatter instances rendered as untextured "gray monolith" impostor cards.
 - **Crate**: `astraweave-render` behind `impostor-bake` feature (off by default for lean builds).

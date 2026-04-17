@@ -105,6 +105,7 @@ members = [
   "astraweave-persistence-ecs",
   "crates/astraweave-persistence-player",
   "crates/astraweave-blend",
+  "crates/astraweave-alloc",
   "astraweave-stress-test",
   "astraweave-security",
   "astraweave-observability",
@@ -216,6 +217,11 @@ astraweave-security = { path = "astraweave-security" }
 astraweave-observability = { path = "astraweave-observability" }
 astraweave-profiling = { path = "astraweave-profiling" }
 astraweave-scripting = { path = "astraweave-scripting" }
+astraweave-alloc = { path = "crates/astraweave-alloc" }
+# mimalloc as an optional workspace dep so astraweave-alloc and any binary can
+# reference it via the `fast-alloc` feature cascade. MIT-licensed; Microsoft-
+# maintained; supports Windows/Linux/macOS with no extra build deps.
+mimalloc = { version = "0.1", default-features = false }
 
 # ============================================================================
 # Build profiles — optimize for fast iteration and reasonable release builds

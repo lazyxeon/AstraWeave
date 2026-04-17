@@ -20,6 +20,10 @@ rand = { workspace = true }
 astraweave-profiling = { path = "../astraweave-profiling" }
 tracy-client = { version = "0.18", optional = true }
 rayon = { version = "1.10", optional = true }
+# Optional — only pulled in when `fast-alloc` is enabled. Allows CountingAlloc
+# to forward to MiMalloc instead of the System allocator for the mimalloc
+# experiment.
+astraweave-alloc = { workspace = true, optional = true }
 
 [features]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
@@ -29,6 +33,10 @@ loom = []
 # so that `FrameAllocStats` and `alloc_plot!` see the CountingAlloc's recorded
 # allocations.
 alloc-counter = ["astraweave-profiling/alloc-counter"]
+# When enabled alongside `alloc-counter`, CountingAlloc's backing allocator is
+# MiMalloc instead of `std::alloc::System`. Does nothing on its own (you still
+# need `alloc-counter` to activate CountingAlloc).
+fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 
 [dev-dependencies]
 serde = { workspace = true, features = ["derive"] }

@@ -15,6 +15,9 @@ ecs = ["astraweave-ecs", "astraweave-scene"]
 # global allocator installation uses a small ad-hoc wrapper (see
 # `benches/alloc_measure.rs`) to avoid a runtime dep on astraweave-ecs.
 alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter"]
+# Bench-only: swap the inner allocator of the bench's BenchAlloc to MiMalloc.
+# Does nothing to the library itself.
+fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -29,6 +32,7 @@ tracy-client = { version = "0.18", optional = true }
 rustc-hash = "2.0"  # Phase B optimization: FxHashMap provides better performance (3.77ms vs 5.61ms with Tracy)
 astraweave-ecs = { path = "../astraweave-ecs", optional = true }
 astraweave-scene = { path = "../astraweave-scene", optional = true }
+astraweave-alloc = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

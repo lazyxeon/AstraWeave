@@ -31,6 +31,10 @@
 // Suppress dead code warnings for CLI-mode code when visual feature is active
 #![cfg_attr(feature = "visual", allow(dead_code))]
 
+// Global allocator selection — opt-in mimalloc. No-op when `fast-alloc` is off.
+#[cfg(feature = "fast-alloc")]
+astraweave_alloc::setup_global_allocator!();
+
 // Visual demo modules (enabled with --features visual)
 #[cfg(feature = "visual")]
 mod chat_ui;

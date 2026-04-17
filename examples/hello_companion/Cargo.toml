@@ -10,6 +10,8 @@ astraweave-core = { path = "../../astraweave-core" }
 astraweave-ecs = { path = "../../astraweave-ecs" }
 astraweave-ai = { path = "../../astraweave-ai" }
 astraweave-behavior = { path = "../../astraweave-behavior" }
+# Optional — only pulled in when `fast-alloc` is enabled.
+astraweave-alloc = { workspace = true, optional = true }
 
 # LLM integration (optional - enable with --features llm)
 astraweave-llm = { path = "../../astraweave-llm", optional = true }
@@ -36,7 +38,13 @@ egui-wgpu = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 
 [features]
-default = []
+# mimalloc is on by default per the 2026-04-17 experiment (+43% FPS on the
+# profiling_demo reference workload; no regression on any measured bench). Opt
+# out with `cargo run -p hello_companion --no-default-features` if the platform
+# default allocator is needed.
+default = ["fast-alloc"]
+# Replace the global allocator with mimalloc.
+fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 llm = ["astraweave-llm", "astraweave-llm/llm_cache", "tokio"]
 ollama = ["llm", "astraweave-llm/ollama", "reqwest", "serde_json"]
 metrics = ["serde", "serde_json", "chrono"]

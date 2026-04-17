@@ -10,7 +10,11 @@ license = "MIT"
 unwrap_used = "allow"
 
 [features]
-default = ["editor-core", "impostor-bake"]
+# `fast-alloc` is on by default per the 2026-04-17 mimalloc experiment. Opt out
+# with `--no-default-features --features editor-core,impostor-bake` if the
+# platform default allocator is required (e.g. profiling a heap leak with a
+# platform-specific tool).
+default = ["editor-core", "impostor-bake", "fast-alloc"]
 editor-core = []
 editor-graphs = ["editor-core"]
 editor-materials = ["editor-core"]
@@ -19,6 +23,8 @@ editor-nav = ["editor-core"]
 editor-sim = ["editor-core"]
 editor-full = ["editor-graphs", "editor-materials", "editor-terrain", "editor-nav", "editor-sim"]
 profiling = ["astraweave-profiling/profiling"]
+# Replace the global allocator with mimalloc. Off by default.
+fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 kittest = ["dep:egui_kittest"]
 # Phase 2.2: enable the 8-layer splat-array terrain material pipeline.
 terrain-splat-arrays = ["astraweave-render/terrain-splat-arrays"]
@@ -61,6 +67,8 @@ astract = { path = "../../crates/astract" }
 astraweave-core = { path = "../../astraweave-core" }
 astraweave-ecs = { path = "../../astraweave-ecs" }
 astraweave-profiling = { path = "../../astraweave-profiling" }
+# Optional — only pulled in when `fast-alloc` is enabled.
+astraweave-alloc = { workspace = true, optional = true }
 astraweave-render = { path = "../../astraweave-render", features = ["gltf-assets", "textures"] }
 astraweave-author = { path = "../../astraweave-author" }
 astraweave-asset = { path = "../../astraweave-asset", features = ["blend"] }

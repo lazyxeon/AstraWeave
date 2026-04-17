@@ -11,30 +11,36 @@
 //! cargo bench -p astraweave-physics --features alloc-counter --bench alloc_measure
 //! ```
 
-// A tiny `System`-forwarding counting allocator. Lives in the bench to avoid a
-// runtime dep on astraweave-ecs from astraweave-physics (kept optional).
+// A tiny counting allocator. Lives in the bench to avoid a runtime dep on
+// astraweave-ecs from astraweave-physics (kept optional). Inner allocator is
+// `System` by default, `MiMalloc` with `--features fast-alloc`.
 #[cfg(feature = "alloc-counter")]
 mod bench_alloc {
-    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::alloc::{GlobalAlloc, Layout};
+
+    #[cfg(not(feature = "fast-alloc"))]
+    static INNER: std::alloc::System = std::alloc::System;
+    #[cfg(feature = "fast-alloc")]
+    static INNER: astraweave_alloc::MiMalloc = astraweave_alloc::MiMalloc;
 
     pub struct BenchAlloc;
 
     unsafe impl GlobalAlloc for BenchAlloc {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             astraweave_profiling::counters::record_alloc(layout.size());
-            System.alloc(layout)
+            INNER.alloc(layout)
         }
         unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
             astraweave_profiling::counters::record_dealloc(layout.size());
-            System.dealloc(ptr, layout)
+            INNER.dealloc(ptr, layout)
         }
         unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
             astraweave_profiling::counters::record_alloc(layout.size());
-            System.alloc_zeroed(layout)
+            INNER.alloc_zeroed(layout)
         }
         unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
             astraweave_profiling::counters::record_realloc(layout.size(), new_size);
-            System.realloc(ptr, layout, new_size)
+            INNER.realloc(ptr, layout, new_size)
         }
     }
 }

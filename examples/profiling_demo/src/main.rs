@@ -51,13 +51,21 @@ use glam::Vec3;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-// Install `CountingAlloc` as the global allocator when the `alloc-counter` feature
-// is enabled. This feeds per-frame allocation counts into Tracy via `alloc_plot!`.
-// Zero cost when the feature is off (the item is entirely stripped).
+// Global allocator selection. Rust allows exactly one `#[global_allocator]` per
+// binary, so the features are mutually exclusive at the install site:
+//
+//   - `alloc-counter` on → install `CountingAlloc`. With `fast-alloc` also on,
+//     CountingAlloc internally delegates to MiMalloc (see astraweave-ecs).
+//   - `alloc-counter` off, `fast-alloc` on → install MiMalloc directly via
+//     astraweave-alloc's `setup_global_allocator!` macro.
+//   - Neither on → the platform default allocator is used.
 #[cfg(feature = "alloc-counter")]
 #[global_allocator]
 static ALLOC: astraweave_ecs::counting_alloc::CountingAlloc =
     astraweave_ecs::counting_alloc::CountingAlloc;
+
+#[cfg(all(feature = "fast-alloc", not(feature = "alloc-counter")))]
+astraweave_alloc::setup_global_allocator!();
 
 // Global timing storage (thread-safe for system access)
 lazy_static::lazy_static! {
@@ -436,8 +444,11 @@ fn movement_system(world: &mut World) {
     // Note: We use a manual counter because enumerate() would require additional iterator machinery
     // and we need the final count for profiling metrics
     #[allow(clippy::explicit_counter_loop)]
+    // `moved_count` is unused when the `profiling` feature is off because `plot!`
+    // expands to a no-op. It is intentionally bound without an underscore prefix
+    // so the non-underscored reference below compiles when `profiling` is on.
     #[allow(unused_variables)]
-    let _moved_count = {
+    let moved_count = {
         let mut count = 0_usize;
         for (_entity, pos, vel) in query {
             count += 1;

@@ -7,6 +7,10 @@
 // warnings, confirming all suppressed items are exercised through tests.
 #![warn(dead_code)]
 
+// Global allocator selection — opt-in mimalloc. No-op when `fast-alloc` is off.
+#[cfg(feature = "fast-alloc")]
+astraweave_alloc::setup_global_allocator!();
+
 // These modules are shared with lib.rs where they form the public API used by
 // tests and benchmarks. Items appear "dead" in the binary but are exercised
 // through the library target. allow(dead_code) suppresses binary-only warnings.

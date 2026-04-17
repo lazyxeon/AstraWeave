@@ -9,6 +9,8 @@ astraweave-profiling.workspace = true
 astraweave-ecs.workspace = true
 astraweave-physics.workspace = true
 astraweave-math.workspace = true
+# Optional — only pulled in when `fast-alloc` is enabled.
+astraweave-alloc = { workspace = true, optional = true }
 anyhow.workspace = true
 glam.workspace = true
 rayon = "1.10"
@@ -16,7 +18,11 @@ lazy_static = "1.5"
 tracy-client = { version = "0.18", optional = true, default-features = false }
 
 [features]
-default = []
+# mimalloc is on by default in release binaries per the 2026-04-17 experiment
+# (+43% FPS at 1000 entities, −52% on ai.goap.plan, no regression). Opt out with
+# `cargo run -p profiling_demo --no-default-features` if the platform default
+# allocator is needed.
+default = ["fast-alloc"]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
 profiling-sampling = ["profiling", "astraweave-profiling/profiling-sampling", "tracy-client/sampling"]
 profiling-system = ["profiling", "astraweave-profiling/profiling-system", "tracy-client/system-tracing"]
@@ -24,3 +30,6 @@ profiling-full = ["astraweave-profiling/profiling-full", "profiling", "profiling
 # Install `CountingAlloc` as the global allocator and emit per-frame alloc plots via
 # astraweave-profiling. Combine with `profiling` to see the plots in Tracy.
 alloc-counter = ["astraweave-ecs/alloc-counter", "astraweave-profiling/alloc-counter"]
+# Replace the global allocator with mimalloc. When combined with `alloc-counter`,
+# `CountingAlloc` wraps MiMalloc instead of System (see astraweave-ecs/counting_alloc).
+fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc", "astraweave-ecs/fast-alloc"]

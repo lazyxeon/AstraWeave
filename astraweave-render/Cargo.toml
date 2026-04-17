@@ -30,6 +30,8 @@ profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/ena
 # Pull in astraweave-profiling's alloc-counter for bench assertions. Optional dep
 # is only built when someone asks for counting.
 alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter"]
+# Bench-only allocator swap for the mimalloc experiment.
+fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -44,6 +46,7 @@ astraweave-materials = { path = "../astraweave-materials" }
 astraweave-cinematics = { path = "../astraweave-cinematics" }
 astraweave-terrain = { path = "../astraweave-terrain" }
 astraweave-profiling = { path = "../astraweave-profiling", optional = true }
+astraweave-alloc = { workspace = true, optional = true }
 tracy-client = { version = "0.18", optional = true }
 log = "0.4"
 egui = { workspace = true }

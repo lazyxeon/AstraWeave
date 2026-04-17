@@ -21,6 +21,26 @@
 //! Both sets are updated with `Relaxed` ordering (for the counters themselves) and
 //! `SeqCst` ordering for `reset` — identical to the pre-existing semantics.
 //!
+//! # Allocator precedence (mimalloc experiment)
+//!
+//! Rust allows only one `#[global_allocator]` per binary. `CountingAlloc` is a
+//! wrapper that delegates to an inner allocator chosen at compile time:
+//!
+//! - Default (no `fast-alloc` feature): inner = `std::alloc::System`.
+//! - With `fast-alloc`: inner = `astraweave_alloc::MiMalloc`.
+//!
+//! This lets the same `#[global_allocator] CountingAlloc` installation be used in
+//! both baseline and mimalloc-paired measurement runs. The binary-side rule is:
+//!
+//! - If `alloc-counter` is on → install `CountingAlloc` (via a `#[global_allocator]`
+//!   static in the binary's `main.rs`). Inner allocator follows the `fast-alloc`
+//!   feature.
+//! - If `alloc-counter` is off and `fast-alloc` is on → call
+//!   `astraweave_alloc::setup_global_allocator!()` instead, which installs
+//!   `MiMalloc` directly with no counting overhead.
+//! - If neither feature is on → no explicit global allocator; the platform
+//!   default is used.
+//!
 //! # Usage
 //!
 //! In test files, enable the counting allocator with `--features alloc-counter`:
@@ -38,8 +58,16 @@
 //! This is only enabled with the `alloc-counter` feature to avoid overhead in
 //! production builds.
 
-use std::alloc::{GlobalAlloc, Layout, System};
+use std::alloc::{GlobalAlloc, Layout};
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+// Compile-time selection of the inner allocator. Both `System` and `MiMalloc`
+// are unit structs implementing `GlobalAlloc`, so using them through a static
+// keeps the call sites identical.
+#[cfg(not(feature = "fast-alloc"))]
+static INNER: std::alloc::System = std::alloc::System;
+#[cfg(feature = "fast-alloc")]
+static INNER: astraweave_alloc::MiMalloc = astraweave_alloc::MiMalloc;
 
 /// Local allocation counter (preserved for backward-compatible API).
 static ALLOCS: AtomicUsize = AtomicUsize::new(0);
@@ -71,7 +99,7 @@ unsafe impl GlobalAlloc for CountingAlloc {
         ALLOCS.fetch_add(1, Ordering::Relaxed);
         BYTES_ALLOCATED.fetch_add(size, Ordering::Relaxed);
         astraweave_profiling::counters::record_alloc(size);
-        System.alloc(layout)
+        INNER.alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -79,7 +107,7 @@ unsafe impl GlobalAlloc for CountingAlloc {
         DEALLOCS.fetch_add(1, Ordering::Relaxed);
         BYTES_DEALLOCATED.fetch_add(size, Ordering::Relaxed);
         astraweave_profiling::counters::record_dealloc(size);
-        System.dealloc(ptr, layout)
+        INNER.dealloc(ptr, layout)
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
@@ -87,7 +115,7 @@ unsafe impl GlobalAlloc for CountingAlloc {
         ALLOCS.fetch_add(1, Ordering::Relaxed);
         BYTES_ALLOCATED.fetch_add(size, Ordering::Relaxed);
         astraweave_profiling::counters::record_alloc(size);
-        System.alloc_zeroed(layout)
+        INNER.alloc_zeroed(layout)
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
@@ -102,7 +130,7 @@ unsafe impl GlobalAlloc for CountingAlloc {
         BYTES_DEALLOCATED.fetch_add(old_size, Ordering::Relaxed);
         BYTES_ALLOCATED.fetch_add(new_size, Ordering::Relaxed);
         astraweave_profiling::counters::record_realloc(old_size, new_size);
-        System.realloc(ptr, layout, new_size)
+        INNER.realloc(ptr, layout, new_size)
     }
 }
 
