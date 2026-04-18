@@ -1,5 +1,7 @@
 # ParallelSchedule Adoption Experiment — profiling_demo — 2026-04-18
 
+> **Status note (2026-04-18)**: The `ParallelSchedule` scheduler exercised by this experiment was removed from the workspace on 2026-04-18. See [`parallel_schedule_removal_2026-04-18.md`](parallel_schedule_removal_2026-04-18.md) for the deletion report and rationale. This audit remains in place as historical record; do not treat it as describing current engine state. The `parallel-schedule` feature referenced throughout this document no longer exists.
+
 **Status**: Complete. Recommendation at §3.8.
 **Scope**: Wire `astraweave_ecs::parallel::ParallelSchedule` into `examples/profiling_demo` behind a `parallel-schedule` feature flag, measure FPS and per-frame allocation delta against the sequential baseline at 1000 entities and across a scaling sweep, report. No other binary touched. No scheduler code modified.
 **Context**: Executes job-system audit recommendation #1 (`docs/audits/job_system_audit_2026-04-18.md`). Prior context: `docs/audits/allocation_audit_2026-04-17.md`, `docs/audits/allocation_measurement_plan_2026-04-17.md`, `docs/audits/mimalloc_experiment_2026-04-17.md`.

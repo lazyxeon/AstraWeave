@@ -1,5 +1,7 @@
 # Binary Inventory for ParallelSchedule Adoption — 2026-04-18
 
+> **Status note (2026-04-18)**: The `ParallelSchedule` scheduler analyzed in this audit was removed from the workspace on 2026-04-18. See [`parallel_schedule_removal_2026-04-18.md`](parallel_schedule_removal_2026-04-18.md) for the deletion report and rationale. This audit remains in place as historical record; do not treat it as describing current engine state.
+
 **Status**: Discovery complete. Read-only audit.
 **Deliverable**: Shortlist of binaries whose registered-system topology could make the `ParallelSchedule` code path (specifically `run_group_parallel` → `rayon::scope`) execute with at least one disjoint-access pair. No code changes; recommendations at §3.
 **Related**: `docs/audits/job_system_audit_2026-04-18.md`, `docs/audits/parallel_schedule_experiment_2026-04-18.md` (prior experiment on `profiling_demo` showed the binary has 1 system per stage → rayon never invoked).

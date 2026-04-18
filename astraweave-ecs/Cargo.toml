@@ -19,7 +19,6 @@ rand = { workspace = true }
 # pulls in — so this adds zero new build cost.
 astraweave-profiling = { path = "../astraweave-profiling" }
 tracy-client = { version = "0.18", optional = true }
-rayon = { version = "1.10", optional = true }
 # Optional — only pulled in when `fast-alloc` is enabled. Allows CountingAlloc
 # to forward to MiMalloc instead of the System allocator for the mimalloc
 # experiment.
@@ -27,7 +26,10 @@ astraweave-alloc = { workspace = true, optional = true }
 
 [features]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
-parallel = ["dep:rayon"]
+# `parallel` feature and the `ParallelSchedule` it enabled were removed
+# 2026-04-18. See docs/audits/parallel_schedule_removal_2026-04-18.md.
+# AstraWeave's ECS is deterministic single-threaded; parallelism lives at
+# subsystem level (rayon in terrain/fluids, tokio in async I/O).
 loom = []
 # Enables `CountingAlloc` and cascades to astraweave-profiling's `alloc-counter`
 # so that `FrameAllocStats` and `alloc_plot!` see the CountingAlloc's recorded
@@ -52,8 +54,3 @@ harness = false
 [[bench]]
 name = "ecs_benchmarks"
 harness = false
-
-[[bench]]
-name = "alloc_measure"
-harness = false
-required-features = ["alloc-counter"]

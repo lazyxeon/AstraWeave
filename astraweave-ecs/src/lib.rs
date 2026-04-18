@@ -40,7 +40,6 @@ pub mod command_buffer;
 pub mod component_meta;
 pub mod entity_allocator;
 pub mod events;
-pub mod parallel;
 pub mod rng;
 pub mod sparse_set;
 mod system_param;
@@ -76,7 +75,9 @@ pub use command_buffer::CommandBuffer;
 use component_meta::ComponentMetaRegistry;
 pub use entity_allocator::{Entity, EntityAllocator};
 pub use events::{Event, EventReader, Events};
-pub use parallel::{ParallelSchedule, SystemAccess, SystemDescriptor};
+// `ParallelSchedule`, `SystemAccess`, and `SystemDescriptor` were removed
+// 2026-04-18 along with `astraweave-ecs/src/parallel.rs`. AstraWeave's ECS is
+// deterministic single-threaded; see `docs/audits/parallel_schedule_removal_2026-04-18.md`.
 pub use rng::Rng;
 pub use system_param::{Query, Query2, Query2Mut, SystemParam};
 pub use type_registry::TypeRegistry;

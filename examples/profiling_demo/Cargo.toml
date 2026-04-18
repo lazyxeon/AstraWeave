@@ -33,7 +33,3 @@ alloc-counter = ["astraweave-ecs/alloc-counter", "astraweave-profiling/alloc-cou
 # Replace the global allocator with mimalloc. When combined with `alloc-counter`,
 # `CountingAlloc` wraps MiMalloc instead of System (see astraweave-ecs/counting_alloc).
 fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc", "astraweave-ecs/fast-alloc"]
-# Swap the sequential `Schedule` for `ParallelSchedule` (rayon-scope within stages).
-# Per the 2026-04-18 job-system audit recommendation #1, this is an opt-in
-# measurement flag — does not change default behavior.
-parallel-schedule = ["astraweave-ecs/parallel"]

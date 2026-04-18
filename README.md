@@ -146,14 +146,18 @@ flowchart TB
   **Generative AI**: **Experimental** Asset generation pipeline (`astraweave-ai-gen`).
 
 ### ⚙️ Core Engine
-  **Deterministic ECS**: 100% bit-identical replay validation, **Miri-validated memory safety**.
-  
+  **Deterministic ECS**: Single-threaded archetype scheduler with 100% bit-identical replay validation and **Miri-validated memory safety**. Systems execute in a fixed stage order on one thread per tick; parallelism lives at the subsystem level, not inside the schedule. See [`docs/audits/parallel_schedule_removal_2026-04-18.md`](docs/audits/parallel_schedule_removal_2026-04-18.md) for the rationale behind the single-threaded-ECS choice.
+
+  **Subsystem parallelism**: rayon drives terrain chunk meshing ([`astraweave-terrain`](astraweave-terrain/)) and optional SPH fluid simulation ([`astraweave-fluids`](astraweave-fluids/)); tokio drives async asset streaming, LLM inference, and network I/O. GPU compute handles rendering and shader work. Where the engine spends multi-core budget today is these subsystems — not the ECS tick loop.
+
   **Memory Safety**: All unsafe code validated with Miri (977 tests, 0 UB).
-  
+
+  **Sequential throughput**: at 1000 entities on the reference `profiling_demo` workload, sequential ECS median ~1 760 FPS with `fast-alloc` (mimalloc), ~1 200 FPS on the platform default allocator — measured with allocation-counter instrumentation active, across three runs each, per [`docs/audits/schedule_stage_fix_2026-04-18.md`](docs/audits/schedule_stage_fix_2026-04-18.md) §4. Scaling is approximately inverse to entity count (200e ≈ 10 k FPS, 2000e ≈ 940 FPS, 4000e ≈ 449 FPS). These numbers are measurement baselines, not shipping numbers.
+
   **Performance**: Fixed 60Hz simulation, SIMD acceleration (glam), cache-friendly archetype storage.
-  
+
   **Networking**: Client-server architecture with delta encoding and state synchronization.
-  
+
   **Persistence**: ECS world save/load with version migration.
 
 ### 🎨 Rendering (wgpu)

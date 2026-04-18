@@ -115,10 +115,11 @@
 ### Core
 
 **astraweave-ecs**
-- Types: `World`, `Entity`, `EntityAllocator`, `CommandBuffer`, `Events`, `EventReader`, `Query`, `Query2`, `Query2Mut`, `Rng`, `ParallelSchedule`, `TypeRegistry`
+- Types: `World`, `Entity`, `EntityAllocator`, `CommandBuffer`, `Events`, `EventReader`, `Query`, `Query2`, `Query2Mut`, `Rng`, `TypeRegistry`
 - Traits: `Component`, `Resource`, `SystemParam`
-- Stages: `PRE_SIMULATION`, `PERCEPTION`, `SIMULATION`, `AI_PLANNING`, `PHYSICS`, `POST_SIMULATION`
-- Modules: archetype, blob_vec, command_buffer, component_meta, entity_allocator, events, parallel, rng, sparse_set, type_registry
+- Stages: `PRE_SIMULATION`, `PERCEPTION`, `SIMULATION`, `SYNC`, `AI_PLANNING`, `PHYSICS`, `POST_SIMULATION`, `PRESENTATION` — executed deterministically on a single thread per tick.
+- Modules: archetype, blob_vec, command_buffer, component_meta, entity_allocator, events, rng, sparse_set, type_registry
+- **Note (2026-04-18)**: `ParallelSchedule` was removed from this crate. See `docs/audits/parallel_schedule_removal_2026-04-18.md`.
 
 **astraweave-math**
 - SIMD batch ops: Vec3/Vec4 dot/cross/normalize, Mat4 multiply/transpose, Quat multiply/normalize/slerp

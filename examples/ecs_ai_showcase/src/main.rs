@@ -12,6 +12,20 @@ use astraweave_ecs::{App, Entity, Event, Events, World};
 use glam::Vec3;
 use std::collections::HashMap;
 
+// Global allocator selection — same pattern as examples/profiling_demo.
+// - `alloc-counter` on → CountingAlloc is the global allocator (wraps MiMalloc
+//   when `fast-alloc` is also on, otherwise wraps System).
+// - `alloc-counter` off, `fast-alloc` on → MiMalloc installed directly via
+//   astraweave-alloc's `setup_global_allocator!`.
+// - Neither on → platform default.
+#[cfg(feature = "alloc-counter")]
+#[global_allocator]
+static ALLOC: astraweave_ecs::counting_alloc::CountingAlloc =
+    astraweave_ecs::counting_alloc::CountingAlloc;
+
+#[cfg(all(feature = "fast-alloc", not(feature = "alloc-counter")))]
+astraweave_alloc::setup_global_allocator!();
+
 // ============================================================================
 // Components
 // ============================================================================
@@ -469,7 +483,7 @@ fn stats_display_system(world: &mut World) {
 // Setup and Main
 // ============================================================================
 
-fn setup_world(app: &mut App) {
+fn setup_world(app: &mut App, enemy_count: usize) {
     // Insert resources
     app.world.insert_resource(GameTime {
         tick: 0,
@@ -503,7 +517,7 @@ fn setup_world(app: &mut App) {
     app.world.insert(player, Team::Player);
 
     // Spawn enemies
-    for i in 0..5 {
+    for i in 0..enemy_count {
         let enemy = app.world.spawn();
         app.world.insert(
             enemy,
@@ -532,16 +546,109 @@ fn setup_world(app: &mut App) {
 
     println!("🎮 ECS AI Showcase initialized!");
     println!("   Player: 1");
-    println!("   Enemies: 5");
+    println!("   Enemies: {}", enemy_count);
     println!("   Running AI-native game loop: Perception → Planning → Simulation\n");
 }
 
+/// Parse `-e <count>` and `-f <ticks>` CLI args, matching profiling_demo.
+/// Defaults (5 enemies, 300 ticks) preserve historical behaviour.
+fn parse_args() -> (usize, u64) {
+    let args: Vec<String> = std::env::args().collect();
+    let mut enemy_count: usize = 5;
+    let mut tick_count: u64 = 300;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--entities" | "-e" => {
+                if i + 1 < args.len() {
+                    enemy_count = args[i + 1].parse().unwrap_or(5);
+                    i += 1;
+                }
+            }
+            "--frames" | "-f" => {
+                if i + 1 < args.len() {
+                    tick_count = args[i + 1].parse().unwrap_or(300);
+                    i += 1;
+                }
+            }
+            "--help" | "-h" => {
+                println!("ECS AI Showcase");
+                println!("Usage: ecs_ai_showcase [OPTIONS]");
+                println!("  -e, --entities <N>  Number of enemies to spawn (default: 5)");
+                println!("  -f, --frames   <N>  Number of ticks to run (default: 300)");
+                std::process::exit(0);
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    (enemy_count, tick_count)
+}
+
+/// Deterministic state checksum for scheduler correctness diffing.
+///
+/// Hashes every entity's Position / Velocity / Health / AIAgent-state plus the
+/// `GameStats` resource. The GameStats inclusion (per the task caveat) surfaces
+/// any ordering sensitivity in `combat_system`'s damage-event processing: if
+/// the sequential and parallel paths differ on event ordering, GameStats hash
+/// will diverge while per-entity hashes (which are entity-ID-keyed) would not.
+fn print_state_checksum(world: &World, frame: u64) {
+    let mut pos_bits: u64 = 0;
+    let mut vel_bits: u64 = 0;
+    let mut health_bits: u64 = 0;
+    let mut ai_bits: u64 = 0;
+
+    let entities: Vec<Entity> = world.entities_with::<Position>();
+    for e in entities {
+        let eid = e.id() as u64;
+        if let Some(p) = world.get::<Position>(e) {
+            pos_bits = pos_bits.wrapping_add((p.pos.x.to_bits() as u64).wrapping_mul(eid.wrapping_add(1)));
+            pos_bits = pos_bits.wrapping_add((p.pos.y.to_bits() as u64).wrapping_mul(eid.wrapping_add(2)));
+            pos_bits = pos_bits.wrapping_add((p.pos.z.to_bits() as u64).wrapping_mul(eid.wrapping_add(3)));
+        }
+        if let Some(v) = world.get::<Velocity>(e) {
+            vel_bits = vel_bits.wrapping_add((v.vel.x.to_bits() as u64).wrapping_mul(eid.wrapping_add(4)));
+            vel_bits = vel_bits.wrapping_add((v.vel.y.to_bits() as u64).wrapping_mul(eid.wrapping_add(5)));
+            vel_bits = vel_bits.wrapping_add((v.vel.z.to_bits() as u64).wrapping_mul(eid.wrapping_add(6)));
+        }
+        if let Some(h) = world.get::<Health>(e) {
+            health_bits = health_bits.wrapping_add((h.current as u64).wrapping_mul(eid.wrapping_add(7)));
+            health_bits = health_bits.wrapping_add((h.max as u64).wrapping_mul(eid.wrapping_add(8)));
+        }
+        if let Some(a) = world.get::<AIAgent>(e) {
+            let disc: u64 = match a.state {
+                AIState::Idle => 0,
+                AIState::Patrolling => 1,
+                AIState::Chasing => 2,
+                AIState::Attacking => 3,
+                AIState::Fleeing => 4,
+            };
+            ai_bits = ai_bits.wrapping_add(disc.wrapping_mul(eid.wrapping_add(9)));
+            ai_bits = ai_bits.wrapping_add((a.target.map(|t| t.id() as u64).unwrap_or(u64::MAX))
+                .wrapping_mul(eid.wrapping_add(10)));
+        }
+    }
+    let mut stats_bits: u64 = 0;
+    if let Some(s) = world.get_resource::<GameStats>() {
+        stats_bits = (s.enemies_defeated as u64).wrapping_mul(97);
+        stats_bits = stats_bits.wrapping_add((s.player_deaths as u64).wrapping_mul(193));
+        stats_bits = stats_bits.wrapping_add((s.total_damage_dealt as u64).wrapping_mul(389));
+    }
+
+    println!(
+        "[state-checksum] frame {}: pos={:016x} vel={:016x} health={:016x} ai={:016x} stats={:016x}",
+        frame, pos_bits, vel_bits, health_bits, ai_bits, stats_bits
+    );
+}
+
 fn main() -> Result<()> {
+    let (enemy_count, tick_count) = parse_args();
+
     let mut app = App::new();
 
-    // Register systems in AI-native order:
-    // Perception → AI Planning → Simulation → Post-Simulation
-
+    // Register systems in AI-native order. The ECS schedule is deterministic
+    // single-threaded; see docs/audits/parallel_schedule_removal_2026-04-18.md
+    // for the rationale behind the single-threaded-ECS choice.
     app.add_system("perception", ai_perception_system);
     app.add_system("ai_planning", ai_planning_system);
     app.add_system("simulation", ai_behavior_system);
@@ -549,27 +656,60 @@ fn main() -> Result<()> {
     app.add_system("simulation", combat_system);
     app.add_system("post_simulation", stats_display_system);
 
-    setup_world(&mut app);
+    setup_world(&mut app, enemy_count);
+
+    use astraweave_profiling::FrameAllocStats;
+    use std::time::Instant;
 
     // Run simulation
-    println!("🚀 Starting simulation...\n");
+    println!("🚀 Starting simulation ({} ticks)...\n", tick_count);
+    let start = Instant::now();
 
-    for _ in 0..300 {
+    for _ in 0..tick_count {
+        let alloc_stats = FrameAllocStats::begin_frame();
+
         // Update game time
         if let Some(time) = app.world.get_resource_mut::<GameTime>() {
             time.tick += 1;
         }
 
-        // Run all systems (NEW API: schedule.run directly)
+        // Run all systems via the sequential schedule.
         app.schedule.run(&mut app.world);
 
         // Update events
         if let Some(events) = app.world.get_resource_mut::<Events>() {
             events.update();
         }
+
+        let tick = app.world.get_resource::<GameTime>().map(|t| t.tick).unwrap_or(0);
+        let alloc_delta = alloc_stats.end_frame();
+
+        // State checksum every 100 ticks for sequential↔parallel diffing.
+        if tick % 100 == 0 && tick > 0 {
+            print_state_checksum(&app.world, tick);
+            #[cfg(feature = "alloc-counter")]
+            println!(
+                "[alloc-measure] frame {}: allocs={} bytes={} reallocs={} net={}",
+                tick,
+                alloc_delta.allocs,
+                alloc_delta.bytes_allocated,
+                alloc_delta.reallocs,
+                alloc_delta.net_allocs
+            );
+            #[cfg(not(feature = "alloc-counter"))]
+            let _ = alloc_delta;
+        }
     }
 
+    let elapsed = start.elapsed();
+    let avg_fps = tick_count as f64 / elapsed.as_secs_f64();
+    let avg_frame_ms = elapsed.as_millis() as f64 / tick_count as f64;
+
     println!("\n✅ Simulation complete!");
+    println!("Configuration: {} enemies, {} ticks", enemy_count, tick_count);
+    println!("Total time: {:.2}s", elapsed.as_secs_f64());
+    println!("Average FPS: {:.2}", avg_fps);
+    println!("Average frame time: {:.3}ms", avg_frame_ms);
 
     Ok(())
 }

@@ -7,5 +7,18 @@ edition = "2021"
 astraweave-ecs = { path = "../../astraweave-ecs" }
 astraweave-core = { path = "../../astraweave-core" }
 astraweave-ai = { path = "../../astraweave-ai" }
+# Optional — only pulled in when `fast-alloc` is enabled. Follows the same
+# pattern as examples/profiling_demo.
+astraweave-alloc = { workspace = true, optional = true }
 anyhow = { workspace = true }
 glam = { workspace = true }
+
+[features]
+# Install `CountingAlloc` as the global allocator and emit per-frame alloc stats.
+alloc-counter = ["astraweave-ecs/alloc-counter", "astraweave-profiling/alloc-counter"]
+# Replace the global allocator with mimalloc. When combined with `alloc-counter`,
+# `CountingAlloc` wraps MiMalloc instead of System (see astraweave-ecs/counting_alloc).
+fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc", "astraweave-ecs/fast-alloc"]
+
+[dependencies.astraweave-profiling]
+workspace = true

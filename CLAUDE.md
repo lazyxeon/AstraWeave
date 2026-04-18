@@ -233,13 +233,18 @@ WorldSnapshot  AI Model   PlanIntent  Tool Validation
 
 ### ECS System Stages (60 Hz deterministic tick)
 
+The ECS scheduler is **deterministic single-threaded** per tick. Systems within a stage execute in the order they were registered; stages execute in canonical order (below). A prior `ParallelSchedule` scheduler was removed 2026-04-18 after a soundness audit — see `docs/audits/parallel_schedule_removal_2026-04-18.md` and the safety audit it references. Parallelism in AstraWeave lives at the subsystem level (rayon for terrain meshing and fluids SPH; tokio for async I/O, LLM inference, asset streaming; GPU compute for rendering).
+
+`App::new()` registers eight stages; the canonical execution order is:
+
 1. **PRE_SIMULATION** — Setup, initialization
 2. **PERCEPTION** — Build WorldSnapshots, update AI sensors
 3. **SIMULATION** — Game logic, cooldowns, state updates
-4. **AI_PLANNING** — Generate PlanIntents from orchestrators
-5. **PHYSICS** — Apply forces, resolve collisions
-6. **POST_SIMULATION** — Cleanup, constraint resolution
-7. **PRESENTATION** — Rendering, audio, UI updates
+4. **SYNC** — ECS→legacy-World propagation (for `astraweave-core::ecs_adapter::build_app` consumers)
+5. **AI_PLANNING** — Generate PlanIntents from orchestrators
+6. **PHYSICS** — Apply forces, resolve collisions
+7. **POST_SIMULATION** — Cleanup, constraint resolution
+8. **PRESENTATION** — Rendering, audio, UI updates
 
 ### Key Crate Domains
 

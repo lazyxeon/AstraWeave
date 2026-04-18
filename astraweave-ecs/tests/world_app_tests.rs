@@ -179,13 +179,17 @@ fn test_schedule_run_empty() {
 fn test_app_new() {
     let app = App::new();
 
-    // Verify default stages
-    assert_eq!(app.schedule.stages.len(), 5);
-    assert_eq!(app.schedule.stages[0].name, "perception");
-    assert_eq!(app.schedule.stages[1].name, "simulation");
-    assert_eq!(app.schedule.stages[2].name, "ai_planning");
-    assert_eq!(app.schedule.stages[3].name, "physics");
-    assert_eq!(app.schedule.stages[4].name, "presentation");
+    // Verify default stages — 8 canonical stages per the 2026-04-18 schedule-stage-fix
+    // (commit 70266b74e). See `docs/audits/schedule_stage_fix_2026-04-18.md` §2.1.
+    assert_eq!(app.schedule.stages.len(), 8);
+    assert_eq!(app.schedule.stages[0].name, "pre_simulation");
+    assert_eq!(app.schedule.stages[1].name, "perception");
+    assert_eq!(app.schedule.stages[2].name, "simulation");
+    assert_eq!(app.schedule.stages[3].name, "sync");
+    assert_eq!(app.schedule.stages[4].name, "ai_planning");
+    assert_eq!(app.schedule.stages[5].name, "physics");
+    assert_eq!(app.schedule.stages[6].name, "post_simulation");
+    assert_eq!(app.schedule.stages[7].name, "presentation");
 }
 
 #[test]
@@ -193,7 +197,7 @@ fn test_app_default() {
     let app = App::default();
 
     // Default should match new()
-    assert_eq!(app.schedule.stages.len(), 5);
+    assert_eq!(app.schedule.stages.len(), 8);
 }
 
 #[test]
