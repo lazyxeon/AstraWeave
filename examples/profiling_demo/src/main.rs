@@ -45,6 +45,8 @@ Press ESC to exit.
 
 use anyhow::Result;
 use astraweave_ecs::{App, Entity, Query2, Query2Mut, SystemStage, World};
+#[cfg(feature = "parallel-schedule")]
+use astraweave_ecs::parallel::{ParallelSchedule, SystemDescriptor};
 use astraweave_physics::{SpatialHash, AABB};
 use astraweave_profiling::{alloc_plot, frame_mark, message, plot, span, FrameAllocStats};
 use glam::Vec3;
@@ -175,12 +177,87 @@ struct SystemTimings {
 /// Game state
 struct GameState {
     app: App,
+    #[cfg(feature = "parallel-schedule")]
+    parallel_schedule: ParallelSchedule,
     #[allow(dead_code)]
     entity_count: usize,
     frame_count: u64,
     start_time: Instant,
     #[allow(dead_code)]
     timings: SystemTimings,
+}
+
+/// Build a `ParallelSchedule` with the same stage order and the same systems
+/// as `App::new() + add_system(...)`, but with explicit `.reads::<T>()` /
+/// `.writes::<T>()` access annotations derived from static inspection of each
+/// system.
+///
+/// Annotation derivation (see audit report §3.1):
+/// - `ai_perception_system`: `Query2::<Position, AIAgent>` read-only iteration
+///   → reads Position, reads AIAgent.
+/// - `ai_planning_system`: reads Position via Query2, then `get_mut::<AIAgent>`
+///   to rotate state → reads Position, writes AIAgent.
+/// - `movement_system`: `Query2Mut::<Position, Velocity>` gives `&mut Position`
+///   and `&Velocity` → writes Position, reads Velocity.
+/// - `physics_system`: `Query2::<Position, RigidBody>` then spatial-hash-only
+///   work; no world mutation → reads Position, reads RigidBody.
+/// - `cleanup_system`: no world access. Marked `.exclusive()` as the safe
+///   default; it runs alone but this is free since it is a no-op and every
+///   stage in `profiling_demo` has only one system anyway.
+/// - `rendering_system`: `Query2::<Renderable, Position>` read-only
+///   → reads Renderable, reads Position.
+#[cfg(feature = "parallel-schedule")]
+fn build_parallel_schedule() -> ParallelSchedule {
+    let mut s = ParallelSchedule::new();
+    s.add_stage(SystemStage::PRE_SIMULATION);
+    s.add_stage(SystemStage::AI_PLANNING);
+    s.add_stage(SystemStage::SIMULATION);
+    s.add_stage(SystemStage::PHYSICS);
+    s.add_stage(SystemStage::POST_SIMULATION);
+    s.add_stage(SystemStage::PRESENTATION);
+
+    s.add_system(
+        SystemStage::PRE_SIMULATION,
+        SystemDescriptor::new(ai_perception_system)
+            .reads::<Position>()
+            .reads::<AIAgent>()
+            .named("ai_perception_system"),
+    );
+    s.add_system(
+        SystemStage::AI_PLANNING,
+        SystemDescriptor::new(ai_planning_system)
+            .reads::<Position>()
+            .writes::<AIAgent>()
+            .named("ai_planning_system"),
+    );
+    s.add_system(
+        SystemStage::SIMULATION,
+        SystemDescriptor::new(movement_system)
+            .writes::<Position>()
+            .reads::<Velocity>()
+            .named("movement_system"),
+    );
+    s.add_system(
+        SystemStage::PHYSICS,
+        SystemDescriptor::new(physics_system)
+            .reads::<Position>()
+            .reads::<RigidBody>()
+            .named("physics_system"),
+    );
+    s.add_system(
+        SystemStage::POST_SIMULATION,
+        SystemDescriptor::new(cleanup_system)
+            .exclusive()
+            .named("cleanup_system"),
+    );
+    s.add_system(
+        SystemStage::PRESENTATION,
+        SystemDescriptor::new(rendering_system)
+            .reads::<Renderable>()
+            .reads::<Position>()
+            .named("rendering_system"),
+    );
+    s
 }
 
 impl GameState {
@@ -239,6 +316,8 @@ impl GameState {
 
         Ok(Self {
             app,
+            #[cfg(feature = "parallel-schedule")]
+            parallel_schedule: build_parallel_schedule(),
             entity_count,
             frame_count: 0,
             start_time: Instant::now(),
@@ -265,10 +344,62 @@ impl GameState {
         plot!("EntityCount", self.entity_count as f64);
         plot!("FrameNumber", self.frame_count as f64);
 
-        // Run ECS systems
+        // Run ECS systems. Under `parallel-schedule`, drive the rayon-scope
+        // schedule with per-system access annotations; otherwise use the
+        // sequential `Schedule` unchanged.
         {
             span!("schedule_run");
-            self.app.schedule.run(&mut self.app.world);
+            #[cfg(feature = "parallel-schedule")]
+            {
+                self.parallel_schedule.run(&mut self.app.world);
+            }
+            #[cfg(not(feature = "parallel-schedule"))]
+            {
+                self.app.schedule.run(&mut self.app.world);
+            }
+        }
+
+        // Deterministic world-state checksum for scheduler correctness checks.
+        // Emitted every 100 frames alongside the timing breakdown. Printed to
+        // stdout so both schedulers' outputs can be diffed at matching frame
+        // numbers. Uses bit-casts to include exact f32 bit patterns; wrapping
+        // add tolerates any entity count.
+        if self.frame_count % 100 == 0 {
+            let mut pos_bits: u64 = 0;
+            let mut vel_bits: u64 = 0;
+            let pq = Query2::<Position, Velocity>::new(&self.app.world);
+            for (entity, pos, vel) in pq {
+                let eid = entity.id() as u64;
+                pos_bits = pos_bits.wrapping_add(
+                    (pos.0.x.to_bits() as u64).wrapping_mul(eid.wrapping_add(1)),
+                );
+                pos_bits = pos_bits.wrapping_add(
+                    (pos.0.y.to_bits() as u64).wrapping_mul(eid.wrapping_add(2)),
+                );
+                pos_bits = pos_bits.wrapping_add(
+                    (pos.0.z.to_bits() as u64).wrapping_mul(eid.wrapping_add(3)),
+                );
+                vel_bits = vel_bits.wrapping_add(
+                    (vel.0.x.to_bits() as u64).wrapping_mul(eid.wrapping_add(4)),
+                );
+                vel_bits = vel_bits.wrapping_add(
+                    (vel.0.y.to_bits() as u64).wrapping_mul(eid.wrapping_add(5)),
+                );
+            }
+            let mut agent_bits: u64 = 0;
+            let aq = Query2::<Position, AIAgent>::new(&self.app.world);
+            for (entity, _pos, agent) in aq {
+                let disc = match agent.state {
+                    AgentState::Idle => 0_u64,
+                    AgentState::Moving => 1_u64,
+                    AgentState::Attacking => 2_u64,
+                };
+                agent_bits = agent_bits.wrapping_add(disc.wrapping_mul(entity.id() as u64 + 1));
+            }
+            println!(
+                "[state-checksum] frame {}: pos={:016x} vel={:016x} agent={:016x}",
+                self.frame_count, pos_bits, vel_bits, agent_bits
+            );
         }
 
         // Calculate total frame time

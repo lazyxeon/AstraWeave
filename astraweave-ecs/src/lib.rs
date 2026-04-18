@@ -707,6 +707,19 @@ impl Schedule {
     pub fn add_system(&mut self, stage: &'static str, sys: SystemFn) {
         if let Some(s) = self.stages.iter_mut().find(|s| s.name == stage) {
             s.systems.push(sys);
+        } else {
+            // Silent-drop historically masked stage-name typos and caused
+            // shipping binaries to run without systems the authors believed
+            // were registered (see docs/audits/parallel_schedule_binary_inventory_2026-04-18.md §4).
+            // In debug builds we now make the failure loud. Release builds still
+            // silent-drop for backward compatibility with call sites that register
+            // to optional custom stages that may or may not have been added.
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[astraweave-ecs] Schedule::add_system: stage '{}' is not registered; system will not execute. \
+                 Call `schedule.add_stage(\"{}\")` or `Schedule::with_stage(\"{}\")` first, or use App::new() which provides the canonical stages.",
+                stage, stage, stage
+            );
         }
     }
     pub fn run(&self, world: &mut World) {
@@ -754,12 +767,27 @@ impl Default for App {
 
 impl App {
     pub fn new() -> Self {
+        // Canonical stage order. `pre_simulation`, `sync`, and `post_simulation`
+        // were added on 2026-04-18 after the binary-inventory audit surfaced
+        // that `Schedule::add_system` silently dropped systems registered to
+        // those stage names. See `docs/audits/schedule_stage_fix_2026-04-18.md`.
+        //
+        // Placement reasoning:
+        // - `pre_simulation`: pre-tick setup (matches `SystemStage::PRE_SIMULATION`).
+        // - `sync`: between `simulation` and `ai_planning` so ECS→legacy-World
+        //   state propagation (as in `astraweave_core::ecs_adapter::build_app`'s
+        //   `sys_bridge_sync` / `sys_sync_to_legacy`) happens after component
+        //   mutations but before planners read the legacy `World` resource.
+        // - `post_simulation`: post-tick cleanup (matches `SystemStage::POST_SIMULATION`).
         let mut schedule = Schedule::default();
         schedule = schedule
+            .with_stage("pre_simulation")
             .with_stage("perception")
             .with_stage("simulation")
+            .with_stage("sync")
             .with_stage("ai_planning")
             .with_stage("physics")
+            .with_stage("post_simulation")
             .with_stage("presentation");
         Self {
             world: World::new(),
@@ -1255,7 +1283,187 @@ mod tests {
     fn test_app_creation() {
         let app = App::new();
         assert_eq!(app.world.entity_count(), 0);
-        assert_eq!(app.schedule.stages.len(), 5);
+        // 8 canonical stages after the 2026-04-18 stage-fix:
+        // pre_simulation, perception, simulation, sync, ai_planning, physics,
+        // post_simulation, presentation. See `App::new` doc comment.
+        assert_eq!(app.schedule.stages.len(), 8);
+    }
+
+    #[test]
+    fn test_app_default_stages_canonical_order() {
+        let app = App::new();
+        let names: Vec<&str> = app.schedule.stages.iter().map(|s| s.name).collect();
+        assert_eq!(
+            names,
+            vec![
+                "pre_simulation",
+                "perception",
+                "simulation",
+                "sync",
+                "ai_planning",
+                "physics",
+                "post_simulation",
+                "presentation",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_previously_dropped_stages_now_execute() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        // Unique resource per stage. Before the 2026-04-18 fix, systems
+        // registered to `pre_simulation`, `sync`, or `post_simulation` were
+        // silently dropped by `Schedule::add_system` because App::new did not
+        // create those stages.
+        static PRE_SIM_COUNT: AtomicU32 = AtomicU32::new(0);
+        static SYNC_COUNT: AtomicU32 = AtomicU32::new(0);
+        static POST_SIM_COUNT: AtomicU32 = AtomicU32::new(0);
+        PRE_SIM_COUNT.store(0, Ordering::SeqCst);
+        SYNC_COUNT.store(0, Ordering::SeqCst);
+        POST_SIM_COUNT.store(0, Ordering::SeqCst);
+
+        fn pre_sim(_: &mut World) {
+            PRE_SIM_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+        fn sync_sys(_: &mut World) {
+            SYNC_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+        fn post_sim(_: &mut World) {
+            POST_SIM_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+
+        let mut app = App::new();
+        app.add_system(SystemStage::PRE_SIMULATION, pre_sim);
+        app.add_system("sync", sync_sys);
+        app.add_system(SystemStage::POST_SIMULATION, post_sim);
+        let _ = app.run_fixed(3);
+
+        assert_eq!(PRE_SIM_COUNT.load(Ordering::SeqCst), 3);
+        assert_eq!(SYNC_COUNT.load(Ordering::SeqCst), 3);
+        assert_eq!(POST_SIM_COUNT.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_stage_execution_order_respects_canonical() {
+        use std::sync::Mutex;
+        // Record the order in which systems run across a single tick to verify
+        // that new pre_simulation / sync / post_simulation slots are in the
+        // canonical positions (not just present).
+        static SEQ: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+        SEQ.lock().unwrap().clear();
+
+        fn mark(name: &'static str) {
+            SEQ.lock().unwrap().push(name);
+        }
+
+        fn pre_sim_sys(_: &mut World) { mark("pre_simulation"); }
+        fn perception_sys(_: &mut World) { mark("perception"); }
+        fn simulation_sys(_: &mut World) { mark("simulation"); }
+        fn sync_sys(_: &mut World) { mark("sync"); }
+        fn ai_planning_sys(_: &mut World) { mark("ai_planning"); }
+        fn physics_sys(_: &mut World) { mark("physics"); }
+        fn post_sim_sys(_: &mut World) { mark("post_simulation"); }
+        fn presentation_sys(_: &mut World) { mark("presentation"); }
+
+        let mut app = App::new();
+        // Register in reverse to prove scheduling is stage-ordered, not registration-ordered.
+        app.add_system("presentation", presentation_sys);
+        app.add_system("post_simulation", post_sim_sys);
+        app.add_system("physics", physics_sys);
+        app.add_system("ai_planning", ai_planning_sys);
+        app.add_system("sync", sync_sys);
+        app.add_system("simulation", simulation_sys);
+        app.add_system("perception", perception_sys);
+        app.add_system("pre_simulation", pre_sim_sys);
+        let _ = app.run_fixed(1);
+
+        let seq = SEQ.lock().unwrap().clone();
+        assert_eq!(
+            seq,
+            vec![
+                "pre_simulation",
+                "perception",
+                "simulation",
+                "sync",
+                "ai_planning",
+                "physics",
+                "post_simulation",
+                "presentation",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_add_system_with_unknown_stage_is_still_dropped() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        // The fix expands the canonical stage set but does not change the
+        // silent-drop contract for truly-unknown stage names. This keeps
+        // the "custom stage via add_stage" workflow functional and avoids
+        // panicking call sites that registered to long-gone stage names.
+        // (Debug builds emit an `eprintln!` diagnostic — not asserted here
+        // to keep the test portable across build profiles.)
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        COUNTER.store(0, Ordering::SeqCst);
+        fn never_runs(_: &mut World) {
+            COUNTER.fetch_add(1, Ordering::SeqCst);
+        }
+
+        let mut app = App::new();
+        app.add_system("definitely_not_a_stage", never_runs);
+        let _ = app.run_fixed(5);
+
+        assert_eq!(COUNTER.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_empty_new_stages_are_no_ops() {
+        // Legal no-op: construct App::new and run without adding any systems.
+        // The 3 newly-added default stages (pre_simulation/sync/post_simulation)
+        // must not produce spurious work.
+        let app = App::new().run_fixed(10);
+        assert_eq!(app.world.entity_count(), 0);
+        for stage in &app.schedule.stages {
+            assert!(
+                stage.systems.is_empty(),
+                "Default stage '{}' should have no systems registered",
+                stage.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_existing_5_stage_registrations_still_work() {
+        // Regression guard: the five stages that existed before the fix must
+        // still receive their systems exactly as before.
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static PER: AtomicU32 = AtomicU32::new(0);
+        static SIM: AtomicU32 = AtomicU32::new(0);
+        static AI: AtomicU32 = AtomicU32::new(0);
+        static PHY: AtomicU32 = AtomicU32::new(0);
+        static PRESENT: AtomicU32 = AtomicU32::new(0);
+        for a in [&PER, &SIM, &AI, &PHY, &PRESENT] {
+            a.store(0, Ordering::SeqCst);
+        }
+
+        fn per(_: &mut World) { PER.fetch_add(1, Ordering::SeqCst); }
+        fn sim(_: &mut World) { SIM.fetch_add(1, Ordering::SeqCst); }
+        fn ai(_: &mut World)  { AI.fetch_add(1, Ordering::SeqCst); }
+        fn phy(_: &mut World) { PHY.fetch_add(1, Ordering::SeqCst); }
+        fn pre(_: &mut World) { PRESENT.fetch_add(1, Ordering::SeqCst); }
+
+        let mut app = App::new();
+        app.add_system("perception", per);
+        app.add_system("simulation", sim);
+        app.add_system("ai_planning", ai);
+        app.add_system("physics", phy);
+        app.add_system("presentation", pre);
+        let _ = app.run_fixed(4);
+
+        assert_eq!(PER.load(Ordering::SeqCst), 4);
+        assert_eq!(SIM.load(Ordering::SeqCst), 4);
+        assert_eq!(AI.load(Ordering::SeqCst), 4);
+        assert_eq!(PHY.load(Ordering::SeqCst), 4);
+        assert_eq!(PRESENT.load(Ordering::SeqCst), 4);
     }
 
     #[test]
