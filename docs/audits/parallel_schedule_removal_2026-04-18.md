@@ -1,4 +1,5 @@
 # ParallelSchedule removal — 2026-04-18
+Committed as 617c14de8
 
 **Status**: Complete. `ParallelSchedule` and its two opt-in consumers have been removed from the workspace. AstraWeave is now documented as a deterministic single-threaded ECS with subsystem-level parallelism.
 **Driver**: Execution of Rev 2 §5.3 Framing Y recommendation in [`docs/audits/parallel_schedule_safety_audit_2026-04-18.md`](parallel_schedule_safety_audit_2026-04-18.md) — "execute Option E now" given the evidence that no default-features consumer exists and the opt-in consumers produce observed-incorrect output.
