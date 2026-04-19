@@ -436,7 +436,7 @@ These items are intentionally not part of Path C and are logged here to prevent 
 
 This section must be updated in the same commit that completes each phase.
 
-**Phase 1 — Splat pipeline activation (forward-lit per Option D): COMPLETE 2026-04-19, commit `<this commit hash>`.**
+**Phase 1 — Splat pipeline activation (forward-lit per Option D): COMPLETE 2026-04-19, commit `7edb15515`.**
 
 Sub-steps landed (in order):
   - 1.A (commit `1233537fe`) — feature flag flipped to default on.
@@ -453,7 +453,7 @@ Sub-steps landed (in order):
   - 1.E.4.b (commit `5289902ae`) — lazy one-time init of `terrain_forward` + placeholder-material upload inside `upload_terrain_chunks`, guarded by `renderer.terrain_forward().is_none()`.
   - 1.E.4.c (commit `b963bb071`) — per-chunk routing through `Renderer::upload_terrain_chunk`: builds `TerrainSplatVertex` with normalized [0, 1] per-chunk UVs, filters surface-triangle indices to drop skirt, calls the upload. Legacy cluster-building + `rebuild_terrain_cluster` gated on `!forward_active` so the forward path fully replaces it when live.
   - 1.E.5 (commit `b5fafc8ae`) — `EditorTerrainSplat` field removed from `EngineRenderAdapter`; import, init, struct entry, and the two 1.C usage sites deleted. The `terrain_splat.rs` module stays on disk flagged SUPERSEDED. §9 updated with the supersession deviation entry.
-  - 1.F (this commit) — final verification pass, §7 closed, document header updated.
+  - 1.F (commit `7edb15515`) — final verification pass, §7 closed, document header updated.
 
 **Phase 2 — Per-vertex material data extension:** NOT STARTED
 **Phase 3 — Settings, wizard, conflict dialog, final polish:** NOT STARTED
