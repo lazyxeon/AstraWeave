@@ -156,6 +156,21 @@ const TERRAIN_SPLAT_SHADER: &str = concat!(
     include_str!("../shaders/pbr_terrain_vs.wgsl"),
 );
 
+/// Concatenated WGSL source for the Phase 1 forward-lit splat pipeline.
+///
+/// Composed as `constants.wgsl` + `brdf_common.wgsl` + `pbr_terrain_forward.wgsl`,
+/// the same ordering the shader-validation test uses (see
+/// `astraweave-render/tests/shader_validation.rs::test_pbr_terrain_forward_validates_with_prefix`).
+/// The forward shader references `PI` from constants.wgsl and calls
+/// `evaluate_brdf_lod` + `compute_material_lod` from brdf_common.wgsl.
+const TERRAIN_FORWARD_SHADER: &str = concat!(
+    include_str!("../shaders/constants.wgsl"),
+    "\n",
+    include_str!("../shaders/brdf_common.wgsl"),
+    "\n",
+    include_str!("../shaders/pbr_terrain_forward.wgsl"),
+);
+
 /// Per-chunk bind group storing the two splat maps (group 2 bindings 1 & 2).
 struct ChunkSplat {
     _splat_0: wgpu::Texture,
@@ -329,26 +344,21 @@ pub struct TerrainMaterialManager {
     // remains untouched. Built eagerly in `new`; `forward_pipeline` is
     // lazy and is populated on first call to `ensure_forward_pipeline`.
     // `#[allow(dead_code)]` covers the gap between 1.E.1.b (field declaration)
-    // and 1.E.1.c / 1.E.2 (use sites); removed as soon as the methods land.
-    #[allow(dead_code)]
+    // and 1.E.1.c / 1.E.2 (use sites); attributes are removed as methods land.
     forward_camera_bgl: wgpu::BindGroupLayout,
-    #[allow(dead_code)]
     forward_terrain_bgl: wgpu::BindGroupLayout,
-    #[allow(dead_code)]
     forward_splat_bgl: wgpu::BindGroupLayout,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // read by update_forward_camera (1.E.2)
     forward_camera_buffer: wgpu::Buffer,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // read by update_forward_scene (1.E.2)
     forward_scene_buffer: wgpu::Buffer,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // read by draw_chunk_forward (1.E.2)
     forward_camera_bg: wgpu::BindGroup,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // read by draw_chunk_forward (1.E.2)
     forward_terrain_bg: wgpu::BindGroup,
-    #[allow(dead_code)]
     forward_pipeline: Option<wgpu::RenderPipeline>,
-    #[allow(dead_code)]
     forward_pipeline_formats: Option<(wgpu::TextureFormat, Option<wgpu::TextureFormat>)>,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // read by set_chunk_splat_forward / draw_chunk_forward (1.E.2)
     forward_chunk_splats: HashMap<ChunkKey, ChunkSplatForward>,
 }
 
@@ -974,6 +984,98 @@ impl TerrainMaterialManager {
         self.pipeline = Some(pipeline);
         self.pipeline_formats = Some((color_format, depth_format));
         self.pipeline.as_ref().expect("pipeline just populated")
+    }
+
+    /// Lazily build the Phase 1 forward-lit splat pipeline (Option D).
+    ///
+    /// Unlike [`Self::ensure_pipeline`] (which builds the dormant deferred
+    /// pipeline with three g-buffer color targets), this builds a pipeline
+    /// that writes a single lit HDR color to `@location(0)`, compatible with
+    /// the engine's forward `hdr_view` attachment (Rgba16Float).
+    ///
+    /// The pipeline is cached by `(color_format, depth_format)`; calling
+    /// with the same formats is a no-op. Called from `Renderer::draw_into`
+    /// once the renderer knows its HDR + depth formats.
+    pub fn ensure_forward_pipeline(
+        &mut self,
+        device: &wgpu::Device,
+        color_format: wgpu::TextureFormat,
+        depth_format: Option<wgpu::TextureFormat>,
+    ) -> &wgpu::RenderPipeline {
+        if self.forward_pipeline_formats == Some((color_format, depth_format))
+            && self.forward_pipeline.is_some()
+        {
+            return self
+                .forward_pipeline
+                .as_ref()
+                .expect("forward_pipeline populated when formats match");
+        }
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("terrain-forward-shader"),
+            source: wgpu::ShaderSource::Wgsl(TERRAIN_FORWARD_SHADER.into()),
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("terrain-forward-pipeline-layout"),
+            bind_group_layouts: &[
+                &self.forward_camera_bgl,
+                &self.forward_terrain_bgl,
+                &self.forward_splat_bgl,
+            ],
+            push_constant_ranges: &[],
+        });
+
+        let depth_stencil = depth_format.map(|format| wgpu::DepthStencilState {
+            format,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        });
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("terrain-forward-pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[TerrainSplatVertex::LAYOUT],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: color_format,
+                    // REPLACE: terrain is opaque and writes over whatever
+                    // geometry has already been drawn to this pixel.
+                    // Depth test gates occlusion correctness.
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        self.forward_pipeline = Some(pipeline);
+        self.forward_pipeline_formats = Some((color_format, depth_format));
+        self.forward_pipeline
+            .as_ref()
+            .expect("forward_pipeline just populated")
     }
 
     /// Issue a draw call for a chunk that has had its splats uploaded.

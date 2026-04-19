@@ -295,3 +295,42 @@ fn terrain_manager_full_pipeline_records_draw_without_validation_errors() {
         }
     });
 }
+
+/// Phase 1.E.1.c — verify the forward-lit splat pipeline builds without
+/// wgpu validation errors on a headless device. Complements the naga-level
+/// `test_pbr_terrain_forward_validates_with_prefix` in `shader_validation.rs`:
+/// naga catches WGSL bugs; this catches bind-group-layout and pipeline-state
+/// mismatches that only surface at pipeline creation time.
+#[test]
+fn terrain_manager_forward_pipeline_builds_without_validation_errors() {
+    pollster::block_on(async {
+        let (device, _queue) = test_utils::create_headless_device().await;
+        let config = TerrainMaterialConfig {
+            albedo_resolution: 16,
+            aux_resolution: 16,
+            layer_count: MAX_TERRAIN_LAYERS,
+        };
+        let mut manager = TerrainMaterialManager::new(&device, config).expect("manager");
+
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+
+        // Build for the engine's forward-pass targets: Rgba16Float HDR +
+        // Depth32Float (same as `hdr_view` / `depth` in Renderer).
+        let _pipeline = manager.ensure_forward_pipeline(
+            &device,
+            wgpu::TextureFormat::Rgba16Float,
+            Some(wgpu::TextureFormat::Depth32Float),
+        );
+
+        // Calling with the same formats must be idempotent.
+        let _pipeline2 = manager.ensure_forward_pipeline(
+            &device,
+            wgpu::TextureFormat::Rgba16Float,
+            Some(wgpu::TextureFormat::Depth32Float),
+        );
+
+        if let Some(err) = device.pop_error_scope().await {
+            panic!("GPU validation error during forward pipeline build: {err}");
+        }
+    });
+}
