@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_TERRAIN_LAYERS"],"struct":["LayerTextures","TerrainMaterialConfig","TerrainMaterialManager","TerrainSplatVertex"],"type":["ChunkKey"]};
