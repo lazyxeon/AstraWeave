@@ -1,6 +1,6 @@
 # Terrain Material System — Path C Campaign
 
-**Status**: Phase 1 in progress (forward-lit splat pipeline, Option D per §9 deviations). Phases 2 and 3 not yet started.
+**Status**: Phase 1 complete (forward-lit splat pipeline, Option D). Phases 2 and 3 not yet started.
 **Scope**: Implementation of AAA-parity terrain material rendering in AstraWeave, comprising splat-map biome blending + per-vertex 4-way material override + user-selectable blend modes, sample budgets, material count tiers, splat resolution, and normal blend modes.
 **Author**: Plan drafted from design session 2026-04-19 between Andrew and Claude. Code references accurate as of 2026-04-19; verify before execution.
 **Prior work**: Three audits that established the current state — `docs/audits/editor_viewport_render_divergence_2026-04-19.md`, `docs/audits/tonemap_double_application_investigation_2026-04-19.md`, `docs/audits/terrain_material_flow_investigation_2026-04-19.md`.
@@ -436,24 +436,40 @@ These items are intentionally not part of Path C and are logged here to prevent 
 
 This section must be updated in the same commit that completes each phase.
 
-**Phase 1 — Splat pipeline activation (forward-lit per Option D):** IN PROGRESS. Sub-steps complete:
+**Phase 1 — Splat pipeline activation (forward-lit per Option D): COMPLETE 2026-04-19, commit `<this commit hash>`.**
+
+Sub-steps landed (in order):
   - 1.A (commit `1233537fe`) — feature flag flipped to default on.
   - 1.0 (commit `749046a74`) — campaign plan amended for Option D.
-  - 1.B (commit `d62b6ab28`) — `EditorTerrainSplat` field added to `EngineRenderAdapter`; init via `TerrainMaterialConfig::default()`.
-  - 1.C (commit `a2ef61491`) — per-chunk splat builder + upload wired into `upload_terrain_chunks`. Splat data on GPU, unused until 1.E.
+  - 1.B (commit `d62b6ab28`) — `EditorTerrainSplat` field added to `EngineRenderAdapter`; init via `TerrainMaterialConfig::default()`. *(Superseded by 1.E.5.)*
+  - 1.C (commit `a2ef61491`) — per-chunk splat builder + upload wired into `upload_terrain_chunks`. *(Superseded by 1.E.4.c.)*
   - 1.D (commit `a61cc4f23`) — `astraweave-render/shaders/pbr_terrain_forward.wgsl` authored (forward-lit, single HDR output, sun direct + ambient + fog; RNM/shadows/IBL deferred to Phase 3). Shader validates via new test `test_pbr_terrain_forward_validates_with_prefix`.
   - 1.E.1.a (commit `97fa8382b`) — `CameraForwardGpu` + `TerrainSceneEnvGpu` types added, mirroring SHADER_SRC's Camera and SceneEnv byte-for-byte. 4 byte-layout tests assert size + offset invariants.
   - 1.E.1.b (commit `85344c0f3`) — forward-pipeline bind group layouts + UBO buffers + static bind groups added to `TerrainMaterialManager`. Deferred path untouched.
-  - 1.E.1.c (commit `c788b15f6`) — `ensure_forward_pipeline` + `TERRAIN_FORWARD_SHADER` const (concat of constants.wgsl + brdf_common.wgsl + pbr_terrain_forward.wgsl). New integration test `terrain_manager_forward_pipeline_builds_without_validation_errors` exercises pipeline creation on a real wgpu device.
-  - 1.E.2 (commit `6fd156d08`) — forward-path public methods on `TerrainMaterialManager`: `update_forward_camera`, `update_forward_scene`, `set_chunk_splat_forward`, `draw_chunk_forward`, `forward_chunk_count`, `clear_forward_chunks`. `CameraForwardGpu` + `TerrainSceneEnvGpu` re-exported from `astraweave-render`. New integration test `terrain_manager_forward_round_trip` validates the full upload/update/clear cycle.
-  - 1.E.3 (commit `6c998f861`) — `TerrainForwardRenderer` type + `terrain_forward: Option<TerrainForwardRenderer>` field on `Renderer`. Accessor + upload methods (`init_terrain_forward`, `upload_terrain_chunk`, `clear_terrain_chunks`, `set_terrain_materials`). Draw block integrated into `Renderer::draw_into` after the `self.models` loop: updates happen before the render pass opens (borrow-checker-safe), draws happen inside using `&self.terrain_forward`, and main-pass bind groups are rebound after terrain draws for clean hand-off to impostor/water/weather stages. `bytemuck::cast` from `SceneEnvironmentUBO` to `TerrainSceneEnvGpu` is sanity-checked by a new `terrain_scene_env_gpu_matches_engine_scene_env_ubo_size` test. Editor release build succeeds; 10-second launch with empty scene completes cleanly — no panics, no wgpu validation errors, main pass runs at ~0.2ms CPU.
+  - 1.E.1.c (commit `c788b15f6`) — `ensure_forward_pipeline` + `TERRAIN_FORWARD_SHADER` const. New integration test `terrain_manager_forward_pipeline_builds_without_validation_errors` exercises pipeline creation on a real wgpu device.
+  - 1.E.2 (commit `6fd156d08`) — forward-path public methods on `TerrainMaterialManager` (`update_forward_camera`, `update_forward_scene`, `set_chunk_splat_forward`, `draw_chunk_forward`, `forward_chunk_count`, `clear_forward_chunks`). New integration test `terrain_manager_forward_round_trip` validates full upload/update/clear cycle.
+  - 1.E.3 (commit `6c998f861`) — `TerrainForwardRenderer` type + `terrain_forward: Option<TerrainForwardRenderer>` field on `Renderer`. Accessor + upload methods. Draw block integrated into `Renderer::draw_into` after the `self.models` loop with borrow-checker-safe state-update-before-pass-open ordering.
+  - 1.E.4.a (commit `7e3960824`) — `terrain_biome_placeholder` module with 8 flat-color albedo buffers (1024²), shared flat-normal + neutral-ORM (512²), and 4 unit tests including pairwise color-distinctness check.
+  - 1.E.4.b (commit `5289902ae`) — lazy one-time init of `terrain_forward` + placeholder-material upload inside `upload_terrain_chunks`, guarded by `renderer.terrain_forward().is_none()`.
+  - 1.E.4.c (commit `b963bb071`) — per-chunk routing through `Renderer::upload_terrain_chunk`: builds `TerrainSplatVertex` with normalized [0, 1] per-chunk UVs, filters surface-triangle indices to drop skirt, calls the upload. Legacy cluster-building + `rebuild_terrain_cluster` gated on `!forward_active` so the forward path fully replaces it when live.
+  - 1.E.5 (commit `b5fafc8ae`) — `EditorTerrainSplat` field removed from `EngineRenderAdapter`; import, init, struct entry, and the two 1.C usage sites deleted. The `terrain_splat.rs` module stays on disk flagged SUPERSEDED. §9 updated with the supersession deviation entry.
+  - 1.F (this commit) — final verification pass, §7 closed, document header updated.
 
-Sub-steps PENDING:
-  - 1.E.4 — editor adapter rewiring to route chunks through `renderer.upload_terrain_chunk` instead of legacy `add_model_with_bounds`; biome placeholder texture generation; `init_terrain_forward` call from the adapter constructor or on first terrain upload. Only after this does the forward-lit path become live in the editor.
-  - 1.E.5 — remove or delegate the `terrain_splat: Option<EditorTerrainSplat>` field from `EngineRenderAdapter` (1.B left it redundant to 1.E.3's `Renderer`-owned state).
-  - 1.F — cleanup + status update commit (mark Phase 1 COMPLETE).
 **Phase 2 — Per-vertex material data extension:** NOT STARTED
 **Phase 3 — Settings, wizard, conflict dialog, final polish:** NOT STARTED
+
+**Phase 1 verification (1.F.a):**
+- `cargo check -p astraweave-render --all-features`: pass.
+- `cargo check -p aw_editor`: pass.
+- `cargo check -p astraweave-render --no-default-features --features "postfx,textures"`: pass (legacy fallback preserved).
+- `cargo test -p astraweave-render --lib terrain_material_manager`: 12 tests pass (5 byte-layout + 7 pre-existing).
+- `cargo test -p aw_editor --lib viewport::terrain_biome_placeholder`: 4 tests pass.
+- `cargo test -p astraweave-render --test shader_validation test_pbr_terrain_forward_validates_with_prefix`: pass.
+- `cargo test -p astraweave-render --test terrain_splat_pipeline --features "terrain-splat-arrays,gpu-tests"`: 9 tests pass (both deferred + forward GPU integration tests).
+- `cargo build -p aw_editor --release`: clean 3m 37s build.
+- Editor 10-second launch (no project loaded): runs cleanly, no panics, no wgpu validation errors, `terrain_forward` stays `None` (correct lazy behavior — no project loaded means no terrain to upload).
+
+**Visual verification (pending Andrew's manual test of a loaded terrain project):** the code paths through 1.E.4.c produce the intended chunk upload when a project with terrain is opened; the forward-lit pipeline draws each chunk during `draw_into`'s main pass. The expected visual behavior per plan §3.4 is biome-blended terrain with the 8 placeholder colors visibly distinct at biome boundaries and consistent sun lighting between terrain and entities. This prompt's automated smoke test cannot drive the interactive "open a project" UI flow, so this sign-off bit is gated on Andrew's confirmation.
 
 Format for completion update: `Phase N — <title>: COMPLETE <YYYY-MM-DD>, commit <hash>`
 
