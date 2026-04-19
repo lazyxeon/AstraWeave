@@ -3,11 +3,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::camera::OrbitCamera;
-use super::terrain_splat::EditorTerrainSplat;
-#[cfg(feature = "terrain-splat-arrays")]
-use astraweave_render::TerrainMaterialConfig;
-#[cfg(not(feature = "terrain-splat-arrays"))]
-use super::terrain_splat::TerrainMaterialConfig;
+// Phase 1.B (`EditorTerrainSplat`) was superseded by
+// `Renderer::terrain_forward` in 1.E.3. The wrapper type stays on disk
+// as reference material; the adapter no longer imports it. See §9 of
+// `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` for the supersession
+// deviation entry.
 use super::types::{
     find_assets_dir, ScatterPlacement, TerrainFogParams, TerrainLightingParams, TerrainVertex,
     WaterStyle, MATERIAL_NAMES,
@@ -637,13 +637,6 @@ pub struct EngineRenderAdapter {
     /// the surface after heightmap edits. `None` when no terrain is
     /// loaded or the grid build failed.
     terrain_height_grid: Option<TerrainHeightGrid>,
-    /// Terrain Material System campaign — Phase 1 (Option D, forward-lit
-    /// splat pipeline). Wrapper over `TerrainMaterialManager`. `None` means
-    /// initialization failed or the feature-off stub was constructed without
-    /// initialization; in either case the legacy terrain rendering path is used.
-    /// When `Some`, the wrapper holds the GPU resources for 8-biome splat
-    /// blending and the forward-lit pipeline (registered in Phase 1.E).
-    terrain_splat: Option<EditorTerrainSplat>,
     /// Phase 5.3 T7 stage 3c.2: per-scatter-mesh impostor atlas registry.
     /// Populated lazily on the first LOD3 encounter (stage 3c.3 will wire
     /// the LOD3 path to this). `None` means the feature is unavailable in
@@ -710,25 +703,10 @@ impl EngineRenderAdapter {
             }
         };
 
-        // Terrain Material System campaign — Phase 1 (Option D).
-        // Construct the splat-array terrain manager. Allocation failure is
-        // logged but non-fatal: on `None`, the adapter falls through to the
-        // legacy terrain rendering path. Phase 1.E wires the new pipeline.
-        let terrain_splat = {
-            let mut splat = EditorTerrainSplat::new();
-            let splat_config = TerrainMaterialConfig::default();
-            match splat.initialize(&device, splat_config) {
-                Ok(()) => Some(splat),
-                Err(e) => {
-                    tracing::warn!(
-                        target: "aw_editor::viewport::terrain_splat",
-                        "EditorTerrainSplat initialization failed; legacy terrain path \
-                         will be used for this session: {e:#}"
-                    );
-                    None
-                }
-            }
-        };
+        // Terrain Material System campaign — Phase 1.E.5.
+        // The Phase 1.B `EditorTerrainSplat` field was removed here; its
+        // role is now played by `Renderer::terrain_forward`, initialized
+        // lazily in `upload_terrain_chunks` via `renderer.init_terrain_forward()`.
 
         let mut adapter = Self {
             renderer,
@@ -770,7 +748,6 @@ impl EngineRenderAdapter {
             scatter_chunk_size: 256.0, // default; overridden on first scatter upload
             scatter_last_refresh: None,
             terrain_height_grid: None,
-            terrain_splat,
             #[cfg(feature = "impostor-bake")]
             impostor_registry: Some(super::impostor_registry::ImpostorRegistry::new(
                 Self::default_impostor_cache_root(),
@@ -1387,14 +1364,6 @@ impl EngineRenderAdapter {
         self.terrain_total_triangles = 0;
         self.terrain_total_indices = 0;
 
-        // Terrain Material System campaign — Phase 1.C.
-        // Drop any stale per-chunk splat textures so the upload loop below
-        // builds a fresh set for the current terrain state. Safe no-op when
-        // the feature is off or initialization failed.
-        if let Some(splat) = self.terrain_splat.as_mut() {
-            splat.clear_chunks();
-        }
-
         // Terrain Material System campaign — Phase 1.E.4.b.
         // Lazy one-time init of the forward-lit splat path + upload of the
         // 8 placeholder biome material texture sets. Subsequent calls skip
@@ -1482,53 +1451,6 @@ impl EngineRenderAdapter {
             self.terrain_chunks
                 .push(Self::convert_terrain_chunk(vertices, indices));
             self.terrain_chunk_slot_map.push(Some(chunk_index));
-
-            // Terrain Material System campaign — Phase 1.C.
-            // Build + upload the per-chunk splat textures from the
-            // editor-authored biome_weights_0/1. The data sits on the GPU
-            // unused until Phase 1.E wires the forward-lit pipeline.
-            //
-            // Editor terrain chunks carry a square surface grid plus edge
-            // skirt vertices appended at the end (see
-            // `terrain_integration.rs:812+`). The splat builder requires
-            // exactly `width * height` vertices, so we take the largest
-            // square prefix. The skirt samples are omitted — they duplicate
-            // boundary-row biome weights with lowered Y and therefore add no
-            // splat information. Phase 3 will decouple splat resolution
-            // from the vertex grid entirely.
-            if let Some(splat) = self.terrain_splat.as_mut() {
-                let grid_dim =
-                    (vertices.len() as f64).sqrt().floor() as u32;
-                if grid_dim >= 2 {
-                    let grid_verts = (grid_dim as usize) * (grid_dim as usize);
-                    let device = self.renderer.device();
-                    let queue = self.renderer.queue();
-                    let chunk_key = chunk_index as u64;
-                    match splat.upload_chunk_from_vertices(
-                        device,
-                        queue,
-                        chunk_key,
-                        &vertices[..grid_verts],
-                        grid_dim,
-                        grid_dim,
-                    ) {
-                        Ok(()) => {
-                            log::debug!(
-                                target: "aw_editor::viewport::terrain_splat",
-                                "Phase 1 splat upload: chunk {chunk_key} {grid_dim}x{grid_dim} \
-                                 ({grid_verts}/{} surface verts)",
-                                vertices.len(),
-                            );
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                target: "aw_editor::viewport::terrain_splat",
-                                "Phase 1 splat upload failed for chunk {chunk_key}: {e:#}"
-                            );
-                        }
-                    }
-                }
-            }
 
             // Terrain Material System campaign — Phase 1.E.4.c.
             // Route the chunk through the forward-lit splat pipeline on the

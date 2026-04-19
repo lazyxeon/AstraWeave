@@ -522,6 +522,34 @@ The three prior audits (`docs/audits/terrain_material_flow_investigation_2026-04
 
 **Impact:** Phase 1 scope grows from plumbing-only to plumbing + one new shader file (`pbr_terrain_forward.wgsl`) + one potential new vertex shader file + forward-pipeline registration in `TerrainMaterialManager` + an integration point in `Renderer::draw_into`. Phase 2 extends the new shader rather than the old one. Phase 3 unaffected. Campaign end-state unchanged. The dormant deferred pipeline (`pbr_terrain.wgsl`, `pbr_terrain_vs.wgsl`, `TerrainMaterialManager::ensure_pipeline` / `draw_chunk` methods) stays on disk and in code as reference material; no deletion until a follow-up task decides its fate.
 
+### 2026-04-19, Phase 1, commit TBD (1.E.5 supersession)
+
+**Deviation:** The `terrain_splat: Option<EditorTerrainSplat>` field added
+to `EngineRenderAdapter` in Phase 1.B (commit `d62b6ab28`) is removed in
+Phase 1.E.5. Its role — holding editor-side splat state — is now played
+by `Renderer::terrain_forward` (commit `6c998f861`), which owns the same
+information on the render-crate side where it can share GPU resources
+with the forward pipeline. The import, constructor init block, struct
+initializer entry, and the two usage sites (clear before upload; per-chunk
+upload inside the accept loop) are all removed from
+`tools/aw_editor/src/viewport/engine_adapter.rs`.
+
+**Rationale:** Phase 1.B was stepping-stone infrastructure. Its shape was
+correct for an editor-owned-splat design; the actual landed design from
+Phase 1.E.3 moved splat state to the renderer to share bind groups and
+pipeline state with the main forward pass. Keeping the field after 1.E.3
+would mean duplicate GPU allocations: the editor's `EditorTerrainSplat`
+would hold a `TerrainMaterialManager` (its own layer arrays + sampler +
+material UBO), and the renderer's `TerrainForwardRenderer` would hold
+another. The fields are superseded.
+
+**Impact:** None on later phases. The `EditorTerrainSplat` type in
+`tools/aw_editor/src/viewport/terrain_splat.rs` stays on disk as
+reference material (its design informed the renderer-side shape); its
+module docstring was updated to flag it as SUPERSEDED so future
+contributors don't reintroduce it. Phase 2/3 use
+`Renderer::upload_terrain_chunk` + `set_terrain_materials` directly.
+
 ---
 
 ## 10. References

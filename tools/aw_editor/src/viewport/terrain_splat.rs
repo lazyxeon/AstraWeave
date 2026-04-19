@@ -1,5 +1,17 @@
 //! Editor-side wrapper around `astraweave_render::TerrainMaterialManager` (T7).
 //!
+//! **SUPERSEDED** (Phase 1.E.5, Terrain Material System Campaign): the
+//! active terrain rendering path no longer uses this wrapper. Ownership
+//! of the `TerrainMaterialManager` moved to `astraweave_render::Renderer`
+//! via the `terrain_forward: Option<TerrainForwardRenderer>` field; the
+//! editor adapter calls `renderer.init_terrain_forward()`,
+//! `renderer.upload_terrain_chunk(...)`, etc. directly. This file is
+//! retained on disk as reference material (the wrapper's design motivated
+//! the `TerrainForwardRenderer` shape) and because its unit tests still
+//! validate `build_chunk_splat_maps` integration. Do not reintroduce it
+//! into the active rendering path without updating §9 of
+//! `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md`.
+//!
 //! Owns an optional [`TerrainMaterialManager`] plus a cache of the most
 //! recently uploaded per-chunk splat dimensions so the editor can inspect
 //! GPU state without touching the manager directly.
