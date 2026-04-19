@@ -436,7 +436,16 @@ These items are intentionally not part of Path C and are logged here to prevent 
 
 This section must be updated in the same commit that completes each phase.
 
-**Phase 1 — Splat pipeline activation (forward-lit per Option D):** IN PROGRESS — sub-step 1.A complete at commit `1233537fe` (feature flag flipped to default on, Cargo.toml changes only). Sub-steps 1.B–1.F pending (Option D plumbing + new forward-lit shader + pipeline registration).
+**Phase 1 — Splat pipeline activation (forward-lit per Option D):** IN PROGRESS. Sub-steps complete:
+  - 1.A (commit `1233537fe`) — feature flag flipped to default on.
+  - 1.0 (commit `749046a74`) — campaign plan amended for Option D.
+  - 1.B (commit `d62b6ab28`) — `EditorTerrainSplat` field added to `EngineRenderAdapter`; init via `TerrainMaterialConfig::default()`.
+  - 1.C (commit `a2ef61491`) — per-chunk splat builder + upload wired into `upload_terrain_chunks`. Splat data on GPU, unused until 1.E.
+  - 1.D — `astraweave-render/shaders/pbr_terrain_forward.wgsl` authored (forward-lit, single HDR output, sun direct + ambient + fog; RNM/shadows/IBL deferred to Phase 3). Shader validates via new test `test_pbr_terrain_forward_validates_with_prefix`.
+
+Sub-steps PENDING:
+  - 1.E — register the forward-lit pipeline in `TerrainMaterialManager` (add `ensure_forward_pipeline`, `update_forward_camera`, `update_forward_scene`, `set_chunk_splat_forward`, `draw_chunk_forward`); move terrain state ownership to `Renderer` (new `terrain_forward: Option<TerrainForwardRenderer>` field); integrate the draw call into `Renderer::draw_into`'s main forward pass after the `self.models` loop; adapter `upload_terrain_chunks` routes chunks via renderer instead of legacy `add_model_with_bounds` when the feature is on; load 8 biome material texture sets at project open. See `docs/current/TERRAIN_MATERIAL_SYSTEM_PHASE_1E_HANDOFF.md` for the design sketch and remaining work inventory.
+  - 1.F — cleanup + status update commit.
 **Phase 2 — Per-vertex material data extension:** NOT STARTED
 **Phase 3 — Settings, wizard, conflict dialog, final polish:** NOT STARTED
 
