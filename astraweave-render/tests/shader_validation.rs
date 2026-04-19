@@ -116,6 +116,22 @@ fn test_all_shaders_compile() {
             continue;
         }
 
+        // Skip the forward-lit terrain shader — it depends on constants.wgsl
+        // and brdf_common.wgsl prepended at pipeline-build time. It is
+        // validated as a concatenated unit in
+        // `test_pbr_terrain_forward_validates_with_prefix`.
+        if relative_path
+            .to_string_lossy()
+            .contains("pbr_terrain_forward.wgsl")
+        {
+            println!(
+                "⏭️  {} (Concatenated shader - skipped; see dedicated test)",
+                relative_path.display()
+            );
+            success_count += 1;
+            continue;
+        }
+
         // Parse shader with naga
         match wgsl::parse_str(&source) {
             Ok(module) => {
@@ -265,4 +281,39 @@ fn test_shader_entry_points() {
 
     // Informational only, not a failure.
     println!("Entry point check complete");
+}
+
+/// Validate the forward-lit terrain shader as its concatenation with
+/// `constants.wgsl` + `brdf_common.wgsl`, matching how the pipeline
+/// build-step composes the source at runtime. See Phase 1 of the
+/// Terrain Material System Campaign.
+#[test]
+fn test_pbr_terrain_forward_validates_with_prefix() {
+    let current_dir = std::env::current_dir().unwrap();
+    let workspace_root = if current_dir.ends_with("astraweave-render") {
+        current_dir.parent().unwrap().to_path_buf()
+    } else {
+        current_dir
+    };
+
+    let shaders_dir = workspace_root.join("astraweave-render").join("shaders");
+    let constants = std::fs::read_to_string(shaders_dir.join("constants.wgsl"))
+        .expect("read constants.wgsl");
+    let brdf_common = std::fs::read_to_string(shaders_dir.join("brdf_common.wgsl"))
+        .expect("read brdf_common.wgsl");
+    let terrain_forward = std::fs::read_to_string(shaders_dir.join("pbr_terrain_forward.wgsl"))
+        .expect("read pbr_terrain_forward.wgsl");
+
+    let concatenated = format!("{}{}{}", constants, brdf_common, terrain_forward);
+
+    let module = wgsl::parse_str(&concatenated)
+        .unwrap_or_else(|e| panic!("forward-lit terrain shader failed to parse: {e}"));
+
+    let mut validator = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::all(),
+    );
+    validator
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("forward-lit terrain shader failed to validate: {e}"));
 }
