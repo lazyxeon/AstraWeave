@@ -3,6 +3,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::camera::OrbitCamera;
+use super::terrain_splat::EditorTerrainSplat;
+#[cfg(feature = "terrain-splat-arrays")]
+use astraweave_render::TerrainMaterialConfig;
+#[cfg(not(feature = "terrain-splat-arrays"))]
+use super::terrain_splat::TerrainMaterialConfig;
 use super::types::{
     find_assets_dir, ScatterPlacement, TerrainFogParams, TerrainLightingParams, TerrainVertex,
     WaterStyle, MATERIAL_NAMES,
@@ -632,6 +637,13 @@ pub struct EngineRenderAdapter {
     /// the surface after heightmap edits. `None` when no terrain is
     /// loaded or the grid build failed.
     terrain_height_grid: Option<TerrainHeightGrid>,
+    /// Terrain Material System campaign — Phase 1 (Option D, forward-lit
+    /// splat pipeline). Wrapper over `TerrainMaterialManager`. `None` means
+    /// initialization failed or the feature-off stub was constructed without
+    /// initialization; in either case the legacy terrain rendering path is used.
+    /// When `Some`, the wrapper holds the GPU resources for 8-biome splat
+    /// blending and the forward-lit pipeline (registered in Phase 1.E).
+    terrain_splat: Option<EditorTerrainSplat>,
     /// Phase 5.3 T7 stage 3c.2: per-scatter-mesh impostor atlas registry.
     /// Populated lazily on the first LOD3 encounter (stage 3c.3 will wire
     /// the LOD3 path to this). `None` means the feature is unavailable in
@@ -698,6 +710,26 @@ impl EngineRenderAdapter {
             }
         };
 
+        // Terrain Material System campaign — Phase 1 (Option D).
+        // Construct the splat-array terrain manager. Allocation failure is
+        // logged but non-fatal: on `None`, the adapter falls through to the
+        // legacy terrain rendering path. Phase 1.E wires the new pipeline.
+        let terrain_splat = {
+            let mut splat = EditorTerrainSplat::new();
+            let splat_config = TerrainMaterialConfig::default();
+            match splat.initialize(&device, splat_config) {
+                Ok(()) => Some(splat),
+                Err(e) => {
+                    tracing::warn!(
+                        target: "aw_editor::viewport::terrain_splat",
+                        "EditorTerrainSplat initialization failed; legacy terrain path \
+                         will be used for this session: {e:#}"
+                    );
+                    None
+                }
+            }
+        };
+
         let mut adapter = Self {
             renderer,
             initialized: true,
@@ -738,6 +770,7 @@ impl EngineRenderAdapter {
             scatter_chunk_size: 256.0, // default; overridden on first scatter upload
             scatter_last_refresh: None,
             terrain_height_grid: None,
+            terrain_splat,
             #[cfg(feature = "impostor-bake")]
             impostor_registry: Some(super::impostor_registry::ImpostorRegistry::new(
                 Self::default_impostor_cache_root(),
