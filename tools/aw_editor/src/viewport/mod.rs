@@ -62,6 +62,8 @@ pub mod types;
 pub mod terrain_splat_builder;
 /// Phase 2.2 / T7: editor-side wrapper around TerrainMaterialManager.
 pub mod terrain_splat;
+/// Phase 1 (Option D): flat-color placeholder biome textures for forward-lit splat rendering.
+pub mod terrain_biome_placeholder;
 mod widget;
 
 // Physics debug types are exported for external configuration
