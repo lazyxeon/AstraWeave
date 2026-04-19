@@ -658,6 +658,36 @@ pub struct ModelSurfaceMaps<'a> {
     pub metallic_roughness: (u32, u32, &'a [u8]),
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 1 forward-lit terrain state (Terrain Material System Campaign,
+// Option D). Feature-gated — when `terrain-splat-arrays` is off, the
+// whole concept is compiled out and the legacy `self.models`-based
+// terrain path is used.
+
+/// Per-chunk GPU buffers for the forward-lit terrain pipeline.
+///
+/// Holds the vertex and index buffers owned by a single terrain chunk.
+/// Splat textures + bind groups live inside `TerrainMaterialManager`,
+/// keyed by the same chunk id.
+#[cfg(feature = "terrain-splat-arrays")]
+pub struct TerrainChunkGpu {
+    pub vertex_buffer: wgpu::Buffer,
+    pub index_buffer: wgpu::Buffer,
+    pub index_count: u32,
+}
+
+/// Owns the forward-lit terrain rendering state inside `Renderer`.
+///
+/// `manager` holds the pipeline, shared layer arrays, UBOs, and per-chunk
+/// splat bind groups. `chunks` holds per-chunk vertex/index buffers.
+/// Constructed lazily via [`Renderer::init_terrain_forward`]; `None` until
+/// the editor opts in (Phase 1.E.4 is the caller).
+#[cfg(feature = "terrain-splat-arrays")]
+pub struct TerrainForwardRenderer {
+    pub manager: crate::terrain_material_manager::TerrainMaterialManager,
+    pub chunks: std::collections::HashMap<u64, TerrainChunkGpu>,
+}
+
 pub struct Renderer {
     surface: Option<wgpu::Surface<'static>>,
     device: wgpu::Device,
@@ -906,6 +936,17 @@ pub struct Renderer {
     /// atlas-mega-merging).
     #[cfg(feature = "impostor-bake")]
     impostor_passes: std::collections::HashMap<String, crate::impostor_pass::ImpostorPass>,
+
+    /// Phase 1 forward-lit terrain state (Terrain Material System Campaign,
+    /// Option D). `None` until `init_terrain_forward` is called — at which
+    /// point the manager's pipeline + shared texture arrays are allocated
+    /// and per-chunk state can be uploaded via `upload_terrain_chunk`.
+    ///
+    /// When `None`, the `draw_into` main forward pass skips the terrain-
+    /// forward draw block entirely, falling back to the legacy
+    /// `self.models`-based terrain path (registered via `add_model_with_bounds`).
+    #[cfg(feature = "terrain-splat-arrays")]
+    pub(crate) terrain_forward: Option<TerrainForwardRenderer>,
 }
 
 impl Renderer {
@@ -3403,6 +3444,8 @@ fn vs(input: VSIn) -> VSOut {
             device_lost,
             #[cfg(feature = "impostor-bake")]
             impostor_passes: std::collections::HashMap::new(),
+            #[cfg(feature = "terrain-splat-arrays")]
+            terrain_forward: None,
         })
     }
 
@@ -5513,6 +5556,49 @@ fn vs(input: VSIn) -> VSOut {
                 .execute(&self.device, enc, self.resource_generation);
         }
 
+        // Phase 1 — prepare forward-lit terrain state for this frame
+        // (Terrain Material System Campaign, Option D). All &mut self
+        // operations happen here, before the `rp` borrow opens below,
+        // to avoid borrow-checker conflicts during the draw phase.
+        #[cfg(feature = "terrain-splat-arrays")]
+        {
+            if self.terrain_forward.is_some() {
+                let color_format = wgpu::TextureFormat::Rgba16Float; // hdr_view
+                let depth_format = Some(self.depth.format);
+                let view_proj = self.cached_proj * self.cached_view;
+                let light_dir = glam::Vec3::new(
+                    self.camera_ubo.light_dir_pad[0],
+                    self.camera_ubo.light_dir_pad[1],
+                    self.camera_ubo.light_dir_pad[2],
+                );
+                let camera_pos = glam::Vec3::new(
+                    self.camera_ubo.camera_pos_pad[0],
+                    self.camera_ubo.camera_pos_pad[1],
+                    self.camera_ubo.camera_pos_pad[2],
+                );
+                // Reinterpret the engine's SceneEnvironmentUBO as
+                // TerrainSceneEnvGpu. Byte-layout equality is asserted by
+                // the `camera_forward_gpu_field_offsets_match_shader_src`
+                // test family; the two structs differ only in field names
+                // (wetness/snow_amount vs. _pad0; _pad_align vs. _pad1).
+                let engine_scene_ubo = self.scene_env.to_ubo();
+                let terrain_scene_gpu: crate::terrain_material_manager::TerrainSceneEnvGpu =
+                    bytemuck::cast(engine_scene_ubo);
+
+                if let Some(tf) = self.terrain_forward.as_mut() {
+                    tf.manager
+                        .ensure_forward_pipeline(&self.device, color_format, depth_format);
+                    tf.manager.update_forward_camera(
+                        &self.queue,
+                        view_proj,
+                        light_dir,
+                        camera_pos,
+                    );
+                    tf.manager.update_forward_scene(&self.queue, &terrain_scene_gpu);
+                }
+            }
+        }
+
         {
             let main_ts = di_ts_main.and_then(|(b, e)| {
                 Some(wgpu::RenderPassTimestampWrites {
@@ -5646,6 +5732,39 @@ fn vs(input: VSIn) -> VSOut {
                     drawn_models += 1;
                 }
                 self.rendered_model_count = drawn_models;
+            }
+
+            // Phase 1 — forward-lit terrain draws (Option D).
+            // Runs after opaque models, before impostor / water / weather.
+            // All &mut state updates happened before the render pass was
+            // opened; here we only need &self.terrain_forward. When the
+            // field is None (1.E.4 hasn't opted in yet), the block is a
+            // no-op and terrain renders via the legacy `self.models` path
+            // above (which includes the editor's terrain_cluster_* entries).
+            #[cfg(feature = "terrain-splat-arrays")]
+            if let Some(tf) = self.terrain_forward.as_ref() {
+                for (key, chunk_gpu) in &tf.chunks {
+                    let _ = tf.manager.draw_chunk_forward(
+                        &mut rp,
+                        *key,
+                        &chunk_gpu.vertex_buffer,
+                        &chunk_gpu.index_buffer,
+                        chunk_gpu.index_count,
+                    );
+                }
+                // After terrain draws, the bind groups are dirty. Rebind
+                // the main pass state so anything that follows (impostors,
+                // water, weather) inherits the pipeline/bindings it
+                // expects. Cheap — each set_bind_group is O(1).
+                if !tf.chunks.is_empty() {
+                    rp.set_pipeline(&self.pipeline);
+                    rp.set_bind_group(0, &self.camera_bind_group, &[]);
+                    rp.set_bind_group(1, &self.material_bg, &[]);
+                    rp.set_bind_group(2, &self.light_bg, &[]);
+                    rp.set_bind_group(3, &self.tex_bg, &[]);
+                    rp.set_bind_group(4, &self.scene_env_bg, &[]);
+                    rp.set_bind_group(5, &self.ibl_bind_group, &[]);
+                }
             }
 
             // LOD3 impostor passes (Phase 5.3 T7): run after opaque LOD0/1/2
@@ -5847,6 +5966,134 @@ fn vs(input: VSIn) -> VSOut {
     /// this value every frame.
     pub fn current_view_proj(&self) -> glam::Mat4 {
         self.cached_proj * self.cached_view
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Phase 1 forward-lit terrain API (Terrain Material System
+    // Campaign, Option D). All methods feature-gated. When the
+    // feature is off, the renderer has no `terrain_forward` field
+    // and terrain rendering falls through to the legacy
+    // `self.models`-based path.
+
+    /// Immutable accessor for the forward-lit terrain renderer.
+    /// Returns `None` until `init_terrain_forward` has been called.
+    #[cfg(feature = "terrain-splat-arrays")]
+    pub fn terrain_forward(&self) -> Option<&TerrainForwardRenderer> {
+        self.terrain_forward.as_ref()
+    }
+
+    /// Mutable accessor for the forward-lit terrain renderer.
+    #[cfg(feature = "terrain-splat-arrays")]
+    pub fn terrain_forward_mut(&mut self) -> Option<&mut TerrainForwardRenderer> {
+        self.terrain_forward.as_mut()
+    }
+
+    /// Initialize the forward-lit terrain state. Allocates shared layer
+    /// arrays, UBO buffers, bind groups, and bind group layouts. The
+    /// pipeline itself is built lazily on first frame via
+    /// `ensure_forward_pipeline`. Idempotent: repeat calls are a no-op.
+    #[cfg(feature = "terrain-splat-arrays")]
+    pub fn init_terrain_forward(&mut self) -> Result<()> {
+        if self.terrain_forward.is_some() {
+            return Ok(());
+        }
+        let config = crate::terrain_material_manager::TerrainMaterialConfig::default();
+        let manager =
+            crate::terrain_material_manager::TerrainMaterialManager::new(&self.device, config)?;
+        self.terrain_forward = Some(TerrainForwardRenderer {
+            manager,
+            chunks: std::collections::HashMap::new(),
+        });
+        Ok(())
+    }
+
+    /// Upload a single terrain chunk's GPU state (vertex + index buffers +
+    /// splat textures) into the forward renderer. The chunk becomes visible
+    /// on the next frame's draw. Requires `init_terrain_forward` to have
+    /// been called.
+    ///
+    /// `splat_0` and `splat_1` must each be `splat_dims.0 * splat_dims.1 * 4`
+    /// bytes of RGBA8 data, rasterized from per-vertex biome weights.
+    #[cfg(feature = "terrain-splat-arrays")]
+    pub fn upload_terrain_chunk(
+        &mut self,
+        key: u64,
+        vertices: &[crate::terrain_material_manager::TerrainSplatVertex],
+        indices: &[u32],
+        splat_0: &[u8],
+        splat_1: &[u8],
+        splat_dims: (u32, u32),
+    ) -> Result<()> {
+        use wgpu::util::DeviceExt;
+
+        let tf = self
+            .terrain_forward
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!(
+                "terrain_forward not initialized; call init_terrain_forward first"
+            ))?;
+
+        let vertex_buffer = self.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("terrain-forward-chunk-vertices"),
+                contents: bytemuck::cast_slice(vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        );
+        let index_buffer = self.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("terrain-forward-chunk-indices"),
+                contents: bytemuck::cast_slice(indices),
+                usage: wgpu::BufferUsages::INDEX,
+            },
+        );
+
+        tf.manager.set_chunk_splat_forward(
+            &self.device,
+            &self.queue,
+            key,
+            splat_0,
+            splat_1,
+            splat_dims,
+        )?;
+
+        tf.chunks.insert(
+            key,
+            TerrainChunkGpu {
+                vertex_buffer,
+                index_buffer,
+                index_count: indices.len() as u32,
+            },
+        );
+        Ok(())
+    }
+
+    /// Drop all per-chunk terrain-forward state — vertex/index buffers and
+    /// splat bind groups. The shared layer arrays + pipeline remain.
+    /// Intended for use on terrain reload or project close.
+    #[cfg(feature = "terrain-splat-arrays")]
+    pub fn clear_terrain_chunks(&mut self) {
+        if let Some(tf) = self.terrain_forward.as_mut() {
+            tf.chunks.clear();
+            tf.manager.clear_forward_chunks();
+        }
+    }
+
+    /// Upload the 8 biome layer textures + material UBO into the manager's
+    /// shared arrays. See `TerrainMaterialManager::set_material` for the
+    /// `layers` contract (missing channels are padded with neutral grey /
+    /// flat-blue / mid-ORM defaults). Requires `init_terrain_forward`.
+    #[cfg(feature = "terrain-splat-arrays")]
+    pub fn set_terrain_materials(
+        &mut self,
+        gpu_material: &crate::terrain_material::TerrainMaterialGpu,
+        layers: &[crate::terrain_material_manager::LayerTextures<'_>],
+    ) -> Result<()> {
+        let tf = self
+            .terrain_forward
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("terrain_forward not initialized"))?;
+        tf.manager.set_material(&self.queue, gpu_material, layers)
     }
 
     /// Install (or replace) an LOD3 impostor pass under `key`, to be

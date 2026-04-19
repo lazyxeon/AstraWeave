@@ -1507,6 +1507,21 @@ mod tests {
     }
 
     #[test]
+    fn terrain_scene_env_gpu_matches_engine_scene_env_ubo_size() {
+        // Renderer::draw_into casts `SceneEnvironmentUBO` (the engine's
+        // live scene env) into `TerrainSceneEnvGpu` via `bytemuck::cast`.
+        // That cast compiles only when both types are the same size. If
+        // this test fails, the cast in `renderer.rs:draw_into` will fail
+        // to compile too — but failing here makes the reason obvious.
+        assert_eq!(
+            std::mem::size_of::<TerrainSceneEnvGpu>(),
+            std::mem::size_of::<crate::scene_environment::SceneEnvironmentUBO>(),
+            "TerrainSceneEnvGpu must match SceneEnvironmentUBO byte size so \
+             Renderer::draw_into can bytemuck::cast between them",
+        );
+    }
+
+    #[test]
     fn terrain_scene_env_gpu_field_offsets_match_shader_src() {
         use std::mem::offset_of;
         assert_eq!(offset_of!(TerrainSceneEnvGpu, fog_color), 0);
