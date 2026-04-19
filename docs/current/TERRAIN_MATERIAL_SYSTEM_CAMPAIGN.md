@@ -1,6 +1,6 @@
 # Terrain Material System — Path C Campaign
 
-**Status**: PLAN — not yet started.
+**Status**: Phase 1 in progress (forward-lit splat pipeline, Option D per §9 deviations). Phases 2 and 3 not yet started.
 **Scope**: Implementation of AAA-parity terrain material rendering in AstraWeave, comprising splat-map biome blending + per-vertex 4-way material override + user-selectable blend modes, sample budgets, material count tiers, splat resolution, and normal blend modes.
 **Author**: Plan drafted from design session 2026-04-19 between Andrew and Claude. Code references accurate as of 2026-04-19; verify before execution.
 **Prior work**: Three audits that established the current state — `docs/audits/editor_viewport_render_divergence_2026-04-19.md`, `docs/audits/tonemap_double_application_investigation_2026-04-19.md`, `docs/audits/terrain_material_flow_investigation_2026-04-19.md`.
@@ -254,7 +254,7 @@ Enable the existing splat-map infrastructure end-to-end so that terrain renders 
   - Call the existing `terrain_splat_builder::build_chunk_splat_maps` per chunk.
   - Upload the resulting splat textures via `EditorTerrainSplat`.
   - Register the chunk's terrain mesh with `TerrainMaterialManager` rather than via the generic `add_model_with_bounds` path.
-- Drive terrain rendering through `TerrainMaterialManager::draw_chunk` (or its equivalent pipeline entry point) instead of the generic PBR shader.
+- Author a new forward-lit terrain fragment shader `pbr_terrain_forward.wgsl` based on `SHADER_SRC`'s existing forward lighting model (sun + shadow cascades + IBL + fog + cloud shadows), extended with splat-based 8-biome material sampling from `TerrainMaterialManager`'s texture arrays. Register a forward-lit pipeline variant in `TerrainMaterialManager` alongside the existing deferred pipeline. Integrate the forward-lit terrain draw into `Renderer::draw_into`'s terrain draw point, writing a single lit HDR color to `hdr_view`.
 - Load the 8 biome material texture sets (albedo / normal / MR for each of grassland, desert, forest, mountain, tundra, swamp, beach, river) into the material texture arrays at project open. Hardcode the texture paths to `assets/materials/{biome_name}/` (match existing convention).
 - Hardcode splat resolution to Standard (0.2 m/pixel) for Phase 1. Settings come in Phase 3.
 
@@ -266,6 +266,8 @@ Enable the existing splat-map infrastructure end-to-end so that terrain renders 
 - Normal blend mode choice — use Reoriented as a hardcoded default (Phase 3 exposes the setting).
 - Material count tier — compile with Standard (16 layers) hardcoded. Only 8 are used in Phase 1 (biomes); the other 8 slots sit unused until Phase 2.
 - Brush authoring updates — the brush continues to author what it already authors; the splat builder reads the biome weights that are already being produced.
+- No modifications to existing shaders (`SHADER_SRC`, `pbr_terrain.wgsl`, `pbr_terrain_vs.wgsl`). Those remain untouched. Phase 1 authors new shader files; it does not edit existing ones.
+- Deletion of the dormant deferred `pbr_terrain.wgsl` / `pbr_terrain_vs.wgsl`. They remain on disk as reference material; a follow-up task decides their fate.
 
 ### 3.3 Existing code to reference
 
@@ -275,6 +277,7 @@ Enable the existing splat-map infrastructure end-to-end so that terrain renders 
 - `astraweave-render/shaders/pbr_terrain.wgsl` and `pbr_terrain_vs.wgsl` — the existing shaders. Phase 1 uses them roughly as-is; Phase 2 extends the vertex shader.
 - `tools/aw_editor/src/viewport/engine_adapter.rs:1329` — `upload_terrain_chunks` entry point. Around lines 1371–1375 is the chunk-accept loop where splat upload needs to integrate.
 - `tools/aw_editor/src/viewport/engine_adapter.rs:1665-1729` — `convert_terrain_chunk`. This function must continue to produce a valid `MeshVertex` buffer for any code path that still uses it, but Phase 1 adds a parallel path that also builds splat data and routes rendering through the manager.
+- `astraweave-render/src/renderer.rs:18-445` — the engine's main PBR shader `SHADER_SRC`, used as the lighting-model reference for the new forward-lit terrain shader. `SHADER_SRC` is a WGSL source assembled from multiple parts (including `shaders/constants.wgsl`, `shaders/brdf_common.wgsl`, and inline WGSL in renderer.rs). Trace the composition in renderer.rs before copying logic.
 
 **All line numbers above are accurate as of 2026-04-19. Verify before use.**
 
@@ -282,7 +285,7 @@ Enable the existing splat-map infrastructure end-to-end so that terrain renders 
 
 - `cargo check -p astraweave-render --all-features` passes.
 - `cargo check -p aw_editor` passes with `terrain-splat-arrays` enabled by default.
-- Editor opens, loads a test project, renders terrain. The terrain rendering uses the `pbr_terrain.wgsl` pipeline (confirmed by shader pipeline introspection or debug logging).
+- Editor opens, loads a test project, renders terrain. The terrain rendering uses the new forward-lit terrain pipeline (confirmed by shader pipeline introspection or debug logging). The new shader emits a single lit HDR color to `hdr_view`, consistent with the rest of the forward pass.
 - Splat textures are generated per chunk and uploaded to the GPU. Visible by either:
   - A debug view in the editor that displays the splat texture as a colored overlay, OR
   - Confirmed via GPU inspection tools (RenderDoc) that the splat texture binding is non-empty.
@@ -295,6 +298,7 @@ Enable the existing splat-map infrastructure end-to-end so that terrain renders 
 - Revert feature flag default changes to restore prior build behavior.
 - The code paths that Phase 1 adds should be gated such that if `terrain-splat-arrays` is disabled, the old `convert_terrain_chunk` → `create_mesh_from_full_arrays` path is taken. This preserves a working fallback.
 - Git revert of the Phase 1 commit should cleanly restore pre-Phase-1 behavior.
+- The dormant deferred `pbr_terrain.wgsl` / `pbr_terrain_vs.wgsl` are not touched by Phase 1, so no pre-Phase-1 deferred-renderer work needs rollback. The new forward-lit shader is a net-addition file; removing it and reverting `TerrainMaterialManager`'s forward-pipeline registration is a clean rollback.
 
 ### 3.6 Testing expectations
 
@@ -307,7 +311,9 @@ Enable the existing splat-map infrastructure end-to-end so that terrain renders 
 
 ### 4.1 Goal
 
-Extend the terrain vertex layout and shader to carry and consume per-vertex `material_ids[4]` and `material_weights[4]`. Produce per-vertex 4-way material blending visible in the shader's fragment output. Still hardcoded defaults — no settings infrastructure yet.
+Extend the forward-lit terrain shader authored in Phase 1 (`pbr_terrain_forward.wgsl`) and its matching vertex layout to carry and consume per-vertex `material_ids[4]` and `material_weights[4]`. Produce per-vertex 4-way material blending visible in the shader's fragment output. Still hardcoded defaults — no settings infrastructure yet.
+
+(Historical note: prior to the 2026-04-19 Phase 1 amendment this section referred to `pbr_terrain.wgsl` and `pbr_terrain_vs.wgsl`. Per §9, the deferred shader is now reference-only; Phase 2 extends the forward-lit shader instead.)
 
 ### 4.2 Scope
 
@@ -379,7 +385,7 @@ Ship all five settings, the first-open wizard, the import conflict dialog, and t
 - **Project file schema:** Add the `TerrainMaterialSettings` struct to the project file format. Load on project open, write on change.
 - **First-open wizard:** On new project creation, or first open of a project that has no `TerrainMaterialSettings`, show a wizard that surfaces the five settings with explanatory text for each. Default values populate. User confirms or adjusts.
 - **Import conflict dialog:** When importing a terrain whose material count exceeds the project's tier, show the Auto-drop / Change tier / Cancel dialog described in design session. Manual Remap is logged as future-phase feature (see §8).
-- **Documentation update:** Update `docs/current/ARCHITECTURE_MAP.md` in the same commit as Phase 3 completion, to describe the new terrain material system accurately.
+- **Documentation update:** Update `docs/current/ARCHITECTURE_MAP.md` in the same commit as Phase 3 completion, to describe the new terrain material system accurately. Document the forward-vs-deferred decision in the terrain section: state that AstraWeave renders terrain forward-lit via `pbr_terrain_forward.wgsl` and that the dormant deferred `pbr_terrain.wgsl` is reference-only material, not part of the active pipeline.
 
 **Out of scope for Phase 3:**
 - Manual Remap import workflow (future-phase, §8).
@@ -422,6 +428,7 @@ These items are intentionally not part of Path C and are logged here to prevent 
 - **Vertex-painted color on terrain.** Distinct from material painting; would be vertex color modulating the final lit output. Not in this campaign.
 - **Shader permutations beyond material count tier.** No quality tiers for rendering fidelity (low / medium / high / epic). The three settings handle quality implicitly.
 - **Changes to existing non-terrain rendering.** Entities, scatter, sky, shadows, post-processing — none of these are touched by this campaign. If a change is needed in any of them during execution, it is out of scope and must be logged as a deviation (§9) or deferred to a follow-on task.
+- **Introducing a deferred renderer.** Forward rendering is AstraWeave's architecture. If a deferred renderer is ever wanted, it is a separate decision with separate scope. The dormant `pbr_terrain.wgsl` / `pbr_terrain_vs.wgsl` that predate this campaign shipped a deferred-style output; per the Option D decision (§9), they are treated as reference-only and the campaign authors new forward-lit shaders instead.
 
 ---
 
@@ -429,7 +436,7 @@ These items are intentionally not part of Path C and are logged here to prevent 
 
 This section must be updated in the same commit that completes each phase.
 
-**Phase 1 — Splat pipeline activation:** NOT STARTED
+**Phase 1 — Splat pipeline activation (forward-lit per Option D):** IN PROGRESS — sub-step 1.A complete at commit `1233537fe` (feature flag flipped to default on, Cargo.toml changes only). Sub-steps 1.B–1.F pending (Option D plumbing + new forward-lit shader + pipeline registration).
 **Phase 2 — Per-vertex material data extension:** NOT STARTED
 **Phase 3 — Settings, wizard, conflict dialog, final polish:** NOT STARTED
 
@@ -448,6 +455,7 @@ Format for completion update: `Phase N — <title>: COMPLETE <YYYY-MM-DD>, commi
 This section records any design decisions made during execution that deviate from this plan. Every deviation must be recorded here before or in the same commit as the deviation itself.
 
 Format for entries:
+
 ```
 ### <YYYY-MM-DD>, Phase <N>, commit <hash>
 **Deviation:** <short description>
@@ -491,6 +499,14 @@ The three prior audits (`docs/audits/terrain_material_flow_investigation_2026-04
 
 **Why this was caught here and not at plan-write time:** the three prior audits established *that* the splat pipeline was dormant and catalogued *which* call sites were missing, but did not inspect the shader's fragment-output signature or the pipeline's `ColorTargetState` count. A full read of `pbr_terrain.wgsl:165-169` plus `terrain_material_manager.rs:640-660` during Phase 1.B's adapter-field planning step surfaced the three-output architecture and its incompatibility with the forward renderer. Suggest updating the next campaign's plan-drafting protocol to require a shader-signature cross-check against the target render-pass's attachment layout before declaring infrastructure "dormant but ready."
 
+### 2026-04-19, Phase 1, commit TBD (this amendment)
+
+**Deviation:** Phase 1 spec in §3 amended to adopt Option A from the prior deviation's recommendations (referred to as "Option D" in the revised execution prompt): author a new forward-lit splat shader `pbr_terrain_forward.wgsl` rather than activate the dormant deferred `pbr_terrain.wgsl`. §3.2 scope, §3.3 references, §3.4 success criteria, and §3.5 reversibility updated accordingly. §4.1 (Phase 2 goal) updated to point the per-vertex extension work at the new forward-lit shader. §5.2 (Phase 3 docs update) and §6 (campaign out-of-scope) updated to record the forward-rendering architectural decision.
+
+**Rationale:** Andrew's decision, resolving the prior deviation at commit `6bb50bc83`. The forward-lit approach matches the engine's existing rendering architecture (`astraweave_render::Renderer::draw_into` writes a single lit HDR color to `hdr_view`) and avoids the larger question of introducing a deferred renderer, which is explicitly now out of campaign scope per the §6 amendment.
+
+**Impact:** Phase 1 scope grows from plumbing-only to plumbing + one new shader file (`pbr_terrain_forward.wgsl`) + one potential new vertex shader file + forward-pipeline registration in `TerrainMaterialManager` + an integration point in `Renderer::draw_into`. Phase 2 extends the new shader rather than the old one. Phase 3 unaffected. Campaign end-state unchanged. The dormant deferred pipeline (`pbr_terrain.wgsl`, `pbr_terrain_vs.wgsl`, `TerrainMaterialManager::ensure_pipeline` / `draw_chunk` methods) stays on disk and in code as reference material; no deletion until a follow-up task decides its fate.
+
 ---
 
 ## 10. References
@@ -503,4 +519,4 @@ The three prior audits (`docs/audits/terrain_material_flow_investigation_2026-04
 
 ---
 
-*End of plan.*
+*End of plan*
