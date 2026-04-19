@@ -1395,6 +1395,75 @@ impl EngineRenderAdapter {
             splat.clear_chunks();
         }
 
+        // Terrain Material System campaign — Phase 1.E.4.b.
+        // Lazy one-time init of the forward-lit splat path + upload of the
+        // 8 placeholder biome material texture sets. Subsequent calls skip
+        // this block because `renderer.terrain_forward()` is Some after
+        // the first successful init. Phase 3 replaces placeholders with
+        // real materials loaded from `assets/materials/{biome}/`.
+        #[cfg(feature = "terrain-splat-arrays")]
+        if self.renderer.terrain_forward().is_none() {
+            use super::terrain_biome_placeholder as biome_ph;
+
+            match self.renderer.init_terrain_forward() {
+                Ok(()) => {
+                    let albedos = biome_ph::generate_biome_placeholder_albedos();
+                    let flat_normal = biome_ph::generate_flat_normal_map();
+                    let neutral_orm = biome_ph::generate_neutral_orm_map();
+
+                    let layers: Vec<astraweave_render::LayerTextures<'_>> = (0..8)
+                        .map(|i| astraweave_render::LayerTextures {
+                            albedo: Some(&albedos[i]),
+                            normal: Some(&flat_normal),
+                            orm: Some(&neutral_orm),
+                            height: None,
+                        })
+                        .collect();
+
+                    let mut gpu_material =
+                        astraweave_render::TerrainMaterialGpu::default();
+                    // Each biome is one layer (one albedo texture). Set the
+                    // per-layer material factors so roughness/metallic come
+                    // from the neutral ORM map unchanged.
+                    gpu_material.active_layer_count = 8;
+                    // Point each layer at its own array slice (0..7) for
+                    // albedo/normal/orm. texture_indices = [a, n, o, h].
+                    for (i, layer) in gpu_material.layers.iter_mut().enumerate() {
+                        layer.texture_indices = [i as u32, i as u32, i as u32, i as u32];
+                    }
+
+                    if let Err(e) =
+                        self.renderer.set_terrain_materials(&gpu_material, &layers)
+                    {
+                        tracing::warn!(
+                            target: "aw_editor::viewport::terrain_forward",
+                            "Phase 1.E.4 set_terrain_materials failed: {e:#}"
+                        );
+                    } else {
+                        tracing::info!(
+                            target: "aw_editor::viewport::terrain_forward",
+                            "Phase 1 forward-lit terrain activated with 8 biome \
+                             placeholder materials (1024² albedo, 512² normal/ORM)"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "aw_editor::viewport::terrain_forward",
+                        "Phase 1.E.4 init_terrain_forward failed; legacy terrain path \
+                         will remain active: {e:#}"
+                    );
+                }
+            }
+        }
+
+        // Terrain Material System campaign — Phase 1.E.4.c.
+        // Clear per-chunk forward state for the new terrain upload.
+        #[cfg(feature = "terrain-splat-arrays")]
+        if self.renderer.terrain_forward().is_some() {
+            self.renderer.clear_terrain_chunks();
+        }
+
         let total_verts: usize = chunks.iter().map(|(v, _)| v.len()).sum();
         let total_indices: usize = chunks.iter().map(|(_, i)| i.len()).sum();
 
