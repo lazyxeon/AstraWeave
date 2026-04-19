@@ -187,6 +187,102 @@ impl Default for CameraUniformsGpu {
     }
 }
 
+/// CPU mirror of SHADER_SRC's `Camera` struct at
+/// `astraweave-render/src/renderer.rs:48-54`. **Must remain byte-identical
+/// to that shader struct** — see the Phase 1.E handoff §5 for why.
+///
+/// Layout (96 bytes, align 16):
+/// * `view_proj`  — mat4x4<f32>           offset 0,  size 64
+/// * `light_dir`  — vec3<f32>             offset 64, size 12
+/// * `_pad0`      — f32                   offset 76, size 4  → 80
+/// * `camera_pos` — vec3<f32>             offset 80, size 12
+/// * `_pad1`      — f32                   offset 92, size 4  → 96
+///
+/// Used by the forward-lit splat terrain pipeline (Phase 1.E, Option D).
+/// Distinct from `CameraUniformsGpu` above, which is 80 B and matches the
+/// dormant deferred-pipeline shader's `CameraUniforms` struct.
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct CameraForwardGpu {
+    pub view_proj: [[f32; 4]; 4],
+    pub light_dir: [f32; 3],
+    pub _pad0: f32,
+    pub camera_pos: [f32; 3],
+    pub _pad1: f32,
+}
+
+impl Default for CameraForwardGpu {
+    fn default() -> Self {
+        Self {
+            view_proj: [[0.0; 4]; 4],
+            light_dir: [0.0, -1.0, 0.0],
+            _pad0: 0.0,
+            camera_pos: [0.0; 3],
+            _pad1: 0.0,
+        }
+    }
+}
+
+/// CPU mirror of SHADER_SRC's `SceneEnv` struct at
+/// `astraweave-render/src/renderer.rs:86-100`. **Must remain byte-identical
+/// to that shader struct.** This mirrors SHADER_SRC's full field set
+/// (Option 1 per the Phase 1.E handoff §1.E.1.a): `tint_color`, `tint_alpha`,
+/// `blend_factor` are included even though Phase 1's forward shader does not
+/// currently read them, so that future shader revisions adding screen tint
+/// consume the correct bytes without a UBO redefinition.
+///
+/// Layout (96 bytes, align 16):
+/// * `fog_color`        — vec3<f32>   offset 0,  size 12
+/// * `fog_density`      — f32         offset 12, size 4  → 16
+/// * `fog_start`        — f32         offset 16, size 4
+/// * `fog_end`          — f32         offset 20, size 4
+/// * `_pad0`            — vec2<f32>   offset 24, size 8  → 32
+/// * `ambient_color`    — vec3<f32>   offset 32, size 12
+/// * `ambient_intensity`— f32         offset 44, size 4  → 48
+/// * `tint_color`       — vec3<f32>   offset 48, size 12
+/// * `tint_alpha`       — f32         offset 60, size 4  → 64
+/// * `blend_factor`     — f32         offset 64, size 4
+/// * `_pad1`            — [f32; 3]    offset 68, size 12 → 80
+/// * `sun_color`        — vec3<f32>   offset 80, size 12
+/// * `sun_intensity`    — f32         offset 92, size 4  → 96
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct TerrainSceneEnvGpu {
+    pub fog_color: [f32; 3],
+    pub fog_density: f32,
+    pub fog_start: f32,
+    pub fog_end: f32,
+    pub _pad0: [f32; 2],
+    pub ambient_color: [f32; 3],
+    pub ambient_intensity: f32,
+    pub tint_color: [f32; 3],
+    pub tint_alpha: f32,
+    pub blend_factor: f32,
+    pub _pad1: [f32; 3],
+    pub sun_color: [f32; 3],
+    pub sun_intensity: f32,
+}
+
+impl Default for TerrainSceneEnvGpu {
+    fn default() -> Self {
+        Self {
+            fog_color: [0.5, 0.55, 0.6],
+            fog_density: 0.0,
+            fog_start: 500.0,
+            fog_end: 2000.0,
+            _pad0: [0.0; 2],
+            ambient_color: [0.5, 0.55, 0.6],
+            ambient_intensity: 0.35,
+            tint_color: [1.0, 1.0, 1.0],
+            tint_alpha: 0.0,
+            blend_factor: 0.0,
+            _pad1: [0.0; 3],
+            sun_color: [1.0, 0.98, 0.92],
+            sun_intensity: 1.5,
+        }
+    }
+}
+
 /// Shared texture arrays + sampler + uniform buffer living behind the pipeline.
 struct SharedResources {
     layer_albedo: wgpu::TextureView,
@@ -913,6 +1009,52 @@ fn build_neutral_orm(resolution: u32) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Phase 1.E.1.a — byte-layout invariants for the forward-path UBO types.
+    // A drift from SHADER_SRC's `Camera` / `SceneEnv` structs would produce
+    // a shader that compiles but reads garbage from UBO memory. Catch any
+    // such drift at test time rather than at render time. See the Phase
+    // 1.E handoff §5 "Camera UBO byte layout".
+
+    #[test]
+    fn camera_forward_gpu_is_96_bytes_align_16() {
+        assert_eq!(std::mem::size_of::<CameraForwardGpu>(), 96);
+        assert_eq!(std::mem::align_of::<CameraForwardGpu>(), 16);
+    }
+
+    #[test]
+    fn terrain_scene_env_gpu_is_96_bytes_align_16() {
+        assert_eq!(std::mem::size_of::<TerrainSceneEnvGpu>(), 96);
+        assert_eq!(std::mem::align_of::<TerrainSceneEnvGpu>(), 16);
+    }
+
+    #[test]
+    fn camera_forward_gpu_field_offsets_match_shader_src() {
+        use std::mem::offset_of;
+        assert_eq!(offset_of!(CameraForwardGpu, view_proj), 0);
+        assert_eq!(offset_of!(CameraForwardGpu, light_dir), 64);
+        assert_eq!(offset_of!(CameraForwardGpu, _pad0), 76);
+        assert_eq!(offset_of!(CameraForwardGpu, camera_pos), 80);
+        assert_eq!(offset_of!(CameraForwardGpu, _pad1), 92);
+    }
+
+    #[test]
+    fn terrain_scene_env_gpu_field_offsets_match_shader_src() {
+        use std::mem::offset_of;
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, fog_color), 0);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, fog_density), 12);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, fog_start), 16);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, fog_end), 20);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, _pad0), 24);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, ambient_color), 32);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, ambient_intensity), 44);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, tint_color), 48);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, tint_alpha), 60);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, blend_factor), 64);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, _pad1), 68);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, sun_color), 80);
+        assert_eq!(offset_of!(TerrainSceneEnvGpu, sun_intensity), 92);
+    }
 
     #[test]
     fn config_validates_power_of_two() {

@@ -69,8 +69,13 @@ struct TerrainParams {
     _pad: array<vec4<u32>, 2>,
 }
 
-// Scene env UBO — mirrors `SceneEnv` in SHADER_SRC (renderer.rs:86-100).
-// Populated per-frame by `TerrainMaterialManager::update_scene`.
+// Scene env UBO — mirrors `SceneEnv` in SHADER_SRC (renderer.rs:86-100)
+// **byte-for-byte** per Phase 1.E handoff §5 "Option 1". `tint_color`,
+// `tint_alpha`, `blend_factor`, and the `_pad1` triplet are declared here
+// even though Phase 1's fragment shader doesn't read them — preserving the
+// layout keeps this UBO in sync with SHADER_SRC so future shader revisions
+// adding screen tint won't need a silent byte-offset update.
+// 96 bytes total, align 16.
 struct TerrainSceneEnv {
     fog_color: vec3<f32>,
     fog_density: f32,
@@ -79,6 +84,12 @@ struct TerrainSceneEnv {
     _pad0: vec2<f32>,
     ambient_color: vec3<f32>,
     ambient_intensity: f32,
+    tint_color: vec3<f32>,
+    tint_alpha: f32,
+    blend_factor: f32,
+    _pad1x: f32,
+    _pad1y: f32,
+    _pad1z: f32,
     sun_color: vec3<f32>,
     sun_intensity: f32,
 }
