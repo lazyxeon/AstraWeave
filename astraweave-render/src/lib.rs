@@ -252,8 +252,8 @@ pub use terrain_material::{
 };
 #[cfg(feature = "terrain-splat-arrays")]
 pub use terrain_material_manager::{
-    ChunkKey, LayerTextures, TerrainMaterialConfig, TerrainMaterialManager, TerrainSplatVertex,
-    MAX_TERRAIN_LAYERS,
+    CameraForwardGpu, ChunkKey, LayerTextures, TerrainMaterialConfig, TerrainMaterialManager,
+    TerrainSceneEnvGpu, TerrainSplatVertex, MAX_TERRAIN_LAYERS,
 };
 pub use texture_streaming::{TextureStreamingManager, TextureStreamingStats};
 pub use transparency::{create_blend_state, BlendMode, TransparencyManager, TransparentInstance};

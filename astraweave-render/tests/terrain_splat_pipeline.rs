@@ -296,6 +296,81 @@ fn terrain_manager_full_pipeline_records_draw_without_validation_errors() {
     });
 }
 
+/// Phase 1.E.2 — round-trip the forward-path upload/update APIs end-to-end
+/// on a real wgpu device. Exercises `update_forward_camera`,
+/// `update_forward_scene`, `set_chunk_splat_forward`, `forward_chunk_count`,
+/// and `clear_forward_chunks`. Does **not** issue a draw — that requires a
+/// full render pass setup and is covered in the editor-launch path in 1.E.3.
+#[test]
+fn terrain_manager_forward_round_trip() {
+    pollster::block_on(async {
+        let (device, queue) = test_utils::create_headless_device().await;
+        let config = TerrainMaterialConfig {
+            albedo_resolution: 16,
+            aux_resolution: 16,
+            layer_count: MAX_TERRAIN_LAYERS,
+        };
+        let mut manager = TerrainMaterialManager::new(&device, config).expect("manager");
+        assert_eq!(manager.forward_chunk_count(), 0);
+
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+
+        // 1. Build the pipeline (HDR forward target + depth).
+        let _pipeline = manager.ensure_forward_pipeline(
+            &device,
+            wgpu::TextureFormat::Rgba16Float,
+            Some(wgpu::TextureFormat::Depth32Float),
+        );
+
+        // 2. Write camera + scene UBOs with sensible defaults.
+        manager.update_forward_camera(
+            &queue,
+            glam::Mat4::IDENTITY,
+            glam::Vec3::new(0.0, -1.0, 0.0),
+            glam::Vec3::ZERO,
+        );
+        let scene = astraweave_render::TerrainSceneEnvGpu::default();
+        manager.update_forward_scene(&queue, &scene);
+
+        // 3. Upload two small splat maps for one chunk.
+        let splat_bytes = vec![128u8; 8 * 8 * 4];
+        manager
+            .set_chunk_splat_forward(&device, &queue, 42, &splat_bytes, &splat_bytes, (8, 8))
+            .expect("set_chunk_splat_forward");
+        assert_eq!(manager.forward_chunk_count(), 1);
+
+        // 4. Bad-dim error path.
+        let err = manager
+            .set_chunk_splat_forward(&device, &queue, 43, &[], &[], (0, 8))
+            .unwrap_err();
+        assert!(format!("{err}").contains("non-zero"), "unexpected error: {err}");
+
+        // 5. Payload size mismatch error path.
+        let err = manager
+            .set_chunk_splat_forward(
+                &device,
+                &queue,
+                44,
+                &splat_bytes,
+                &splat_bytes[..10],
+                (8, 8),
+            )
+            .unwrap_err();
+        assert!(
+            format!("{err}").contains("payload mismatch"),
+            "unexpected error: {err}"
+        );
+
+        // 6. Clear resets the count.
+        manager.clear_forward_chunks();
+        assert_eq!(manager.forward_chunk_count(), 0);
+
+        if let Some(err) = device.pop_error_scope().await {
+            panic!("GPU validation error during forward round trip: {err}");
+        }
+    });
+}
+
 /// Phase 1.E.1.c — verify the forward-lit splat pipeline builds without
 /// wgpu validation errors on a headless device. Complements the naga-level
 /// `test_pbr_terrain_forward_validates_with_prefix` in `shader_validation.rs`:

@@ -343,31 +343,29 @@ pub struct TerrainMaterialManager {
     // Campaign). Additive to the fields above; the deferred pipeline
     // remains untouched. Built eagerly in `new`; `forward_pipeline` is
     // lazy and is populated on first call to `ensure_forward_pipeline`.
-    // `#[allow(dead_code)]` covers the gap between 1.E.1.b (field declaration)
-    // and 1.E.1.c / 1.E.2 (use sites); attributes are removed as methods land.
     forward_camera_bgl: wgpu::BindGroupLayout,
     forward_terrain_bgl: wgpu::BindGroupLayout,
     forward_splat_bgl: wgpu::BindGroupLayout,
-    #[allow(dead_code)] // read by update_forward_camera (1.E.2)
     forward_camera_buffer: wgpu::Buffer,
-    #[allow(dead_code)] // read by update_forward_scene (1.E.2)
     forward_scene_buffer: wgpu::Buffer,
-    #[allow(dead_code)] // read by draw_chunk_forward (1.E.2)
     forward_camera_bg: wgpu::BindGroup,
-    #[allow(dead_code)] // read by draw_chunk_forward (1.E.2)
     forward_terrain_bg: wgpu::BindGroup,
     forward_pipeline: Option<wgpu::RenderPipeline>,
     forward_pipeline_formats: Option<(wgpu::TextureFormat, Option<wgpu::TextureFormat>)>,
-    #[allow(dead_code)] // read by set_chunk_splat_forward / draw_chunk_forward (1.E.2)
     forward_chunk_splats: HashMap<ChunkKey, ChunkSplatForward>,
 }
 
-/// Per-chunk splat bind group for the forward-lit pipeline. References the
-/// same underlying splat textures owned by `ChunkSplat` above, just with a
-/// different bind group layout (2 bindings instead of 7).
-#[allow(dead_code)] // Used starting in 1.E.2.
+/// Per-chunk splat bind group for the forward-lit pipeline.
+///
+/// Owns its own splat textures — kept separate from `ChunkSplat` above to
+/// avoid coupling the forward and deferred paths. In Phase 1 only the
+/// forward path is active; `chunk_splats` stays empty. A future
+/// optimization could share underlying textures between the two paths.
 struct ChunkSplatForward {
+    _splat_0: wgpu::Texture,
+    _splat_1: wgpu::Texture,
     bind_group: wgpu::BindGroup,
+    #[allow(dead_code)] // reserved for introspection/tests
     dims: (u32, u32),
 }
 
@@ -1076,6 +1074,174 @@ impl TerrainMaterialManager {
         self.forward_pipeline
             .as_ref()
             .expect("forward_pipeline just populated")
+    }
+
+    /// Write the Phase 1 forward-path camera UBO (96 B, matches SHADER_SRC Camera).
+    ///
+    /// Call once per frame from `Renderer::draw_into`, before issuing any
+    /// `draw_chunk_forward` calls. The UBO persists across calls — the shader
+    /// reads the most recently written values.
+    pub fn update_forward_camera(
+        &self,
+        queue: &wgpu::Queue,
+        view_proj: glam::Mat4,
+        light_dir: glam::Vec3,
+        camera_pos: glam::Vec3,
+    ) {
+        let gpu = CameraForwardGpu {
+            view_proj: view_proj.to_cols_array_2d(),
+            light_dir: light_dir.to_array(),
+            _pad0: 0.0,
+            camera_pos: camera_pos.to_array(),
+            _pad1: 0.0,
+        };
+        queue.write_buffer(
+            &self.forward_camera_buffer,
+            0,
+            bytemuck::bytes_of(&gpu),
+        );
+    }
+
+    /// Write the Phase 1 forward-path scene-env UBO (96 B, matches SHADER_SRC SceneEnv).
+    ///
+    /// Call once per frame from `Renderer::draw_into`. The caller is
+    /// responsible for composing `TerrainSceneEnvGpu` from whatever the
+    /// engine's live scene_env state is — see the corresponding helper in
+    /// `Renderer` (added in 1.E.3).
+    pub fn update_forward_scene(&self, queue: &wgpu::Queue, scene_env: &TerrainSceneEnvGpu) {
+        queue.write_buffer(
+            &self.forward_scene_buffer,
+            0,
+            bytemuck::bytes_of(scene_env),
+        );
+    }
+
+    /// Upload per-chunk splat textures and build the forward-path bind group.
+    ///
+    /// Called by `Renderer::upload_terrain_chunk` (Phase 1.E.3). The two
+    /// RGBA8 buffers are rasterized from the editor's per-vertex biome
+    /// weights by `terrain_splat_builder::build_chunk_splat_maps`.
+    ///
+    /// `splat_0`: R=biome0 weight, G=biome1 weight, B=biome2, A=biome3.
+    /// `splat_1`: R=biome4, G=biome5, B=biome6, A=biome7.
+    pub fn set_chunk_splat_forward(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        chunk: ChunkKey,
+        splat_0: &[u8],
+        splat_1: &[u8],
+        dims: (u32, u32),
+    ) -> Result<()> {
+        let (w, h) = dims;
+        if w == 0 || h == 0 {
+            anyhow::bail!("forward chunk splat dims must be non-zero, got {w}x{h}");
+        }
+        let expected = (w as usize) * (h as usize) * BYTES_PER_TEXEL as usize;
+        if splat_0.len() != expected || splat_1.len() != expected {
+            anyhow::bail!(
+                "forward chunk splat payload mismatch: expected {} bytes, got {} / {}",
+                expected,
+                splat_0.len(),
+                splat_1.len()
+            );
+        }
+
+        let tex_desc = wgpu::TextureDescriptor {
+            label: Some("terrain-forward-chunk-splat"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        };
+
+        let tex_0 = device.create_texture(&tex_desc);
+        let tex_1 = device.create_texture(&tex_desc);
+        upload_full_2d(queue, &tex_0, w, h, splat_0);
+        upload_full_2d(queue, &tex_1, w, h, splat_1);
+
+        let view_0 = tex_0.create_view(&wgpu::TextureViewDescriptor::default());
+        let view_1 = tex_1.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("terrain-forward-chunk-splat-bg"),
+            layout: &self.forward_splat_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view_0),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&view_1),
+                },
+            ],
+        });
+
+        self.forward_chunk_splats.insert(
+            chunk,
+            ChunkSplatForward {
+                _splat_0: tex_0,
+                _splat_1: tex_1,
+                bind_group,
+                dims,
+            },
+        );
+        Ok(())
+    }
+
+    /// Number of chunks currently registered in the forward path.
+    pub fn forward_chunk_count(&self) -> usize {
+        self.forward_chunk_splats.len()
+    }
+
+    /// Drop every per-chunk forward splat (e.g. on terrain reload).
+    pub fn clear_forward_chunks(&mut self) {
+        self.forward_chunk_splats.clear();
+    }
+
+    /// Issue a draw call for a chunk's forward-lit splat render.
+    ///
+    /// Prerequisites (caller must have satisfied):
+    /// 1. [`Self::ensure_forward_pipeline`] was called with a compatible format.
+    /// 2. [`Self::update_forward_camera`] and [`Self::update_forward_scene`]
+    ///    were called earlier this frame (or sensible defaults are in the UBOs).
+    /// 3. [`Self::set_chunk_splat_forward`] was called for this chunk key.
+    ///
+    /// Returns `false` when any prerequisite is missing; the caller can fall
+    /// through to the legacy path without further state changes. Returns
+    /// `true` when the draw was issued. The render pass itself must be
+    /// configured for the `color_format` + `depth_format` passed to
+    /// `ensure_forward_pipeline` — a mismatch is a wgpu validation error.
+    pub fn draw_chunk_forward<'a>(
+        &'a self,
+        rpass: &mut wgpu::RenderPass<'a>,
+        chunk: ChunkKey,
+        vertex_buffer: &'a wgpu::Buffer,
+        index_buffer: &'a wgpu::Buffer,
+        index_count: u32,
+    ) -> bool {
+        let Some(pipeline) = self.forward_pipeline.as_ref() else {
+            return false;
+        };
+        let Some(splat) = self.forward_chunk_splats.get(&chunk) else {
+            return false;
+        };
+        rpass.set_pipeline(pipeline);
+        rpass.set_bind_group(0, &self.forward_camera_bg, &[]);
+        rpass.set_bind_group(1, &self.forward_terrain_bg, &[]);
+        rpass.set_bind_group(2, &splat.bind_group, &[]);
+        rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
+        rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        rpass.draw_indexed(0..index_count, 0, 0..1);
+        true
     }
 
     /// Issue a draw call for a chunk that has had its splats uploaded.
