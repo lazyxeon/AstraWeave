@@ -1387,6 +1387,14 @@ impl EngineRenderAdapter {
         self.terrain_total_triangles = 0;
         self.terrain_total_indices = 0;
 
+        // Terrain Material System campaign — Phase 1.C.
+        // Drop any stale per-chunk splat textures so the upload loop below
+        // builds a fresh set for the current terrain state. Safe no-op when
+        // the feature is off or initialization failed.
+        if let Some(splat) = self.terrain_splat.as_mut() {
+            splat.clear_chunks();
+        }
+
         let total_verts: usize = chunks.iter().map(|(v, _)| v.len()).sum();
         let total_indices: usize = chunks.iter().map(|(_, i)| i.len()).sum();
 
@@ -1405,6 +1413,53 @@ impl EngineRenderAdapter {
             self.terrain_chunks
                 .push(Self::convert_terrain_chunk(vertices, indices));
             self.terrain_chunk_slot_map.push(Some(chunk_index));
+
+            // Terrain Material System campaign — Phase 1.C.
+            // Build + upload the per-chunk splat textures from the
+            // editor-authored biome_weights_0/1. The data sits on the GPU
+            // unused until Phase 1.E wires the forward-lit pipeline.
+            //
+            // Editor terrain chunks carry a square surface grid plus edge
+            // skirt vertices appended at the end (see
+            // `terrain_integration.rs:812+`). The splat builder requires
+            // exactly `width * height` vertices, so we take the largest
+            // square prefix. The skirt samples are omitted — they duplicate
+            // boundary-row biome weights with lowered Y and therefore add no
+            // splat information. Phase 3 will decouple splat resolution
+            // from the vertex grid entirely.
+            if let Some(splat) = self.terrain_splat.as_mut() {
+                let grid_dim =
+                    (vertices.len() as f64).sqrt().floor() as u32;
+                if grid_dim >= 2 {
+                    let grid_verts = (grid_dim as usize) * (grid_dim as usize);
+                    let device = self.renderer.device();
+                    let queue = self.renderer.queue();
+                    let chunk_key = chunk_index as u64;
+                    match splat.upload_chunk_from_vertices(
+                        device,
+                        queue,
+                        chunk_key,
+                        &vertices[..grid_verts],
+                        grid_dim,
+                        grid_dim,
+                    ) {
+                        Ok(()) => {
+                            log::debug!(
+                                target: "aw_editor::viewport::terrain_splat",
+                                "Phase 1 splat upload: chunk {chunk_key} {grid_dim}x{grid_dim} \
+                                 ({grid_verts}/{} surface verts)",
+                                vertices.len(),
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                target: "aw_editor::viewport::terrain_splat",
+                                "Phase 1 splat upload failed for chunk {chunk_key}: {e:#}"
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         if self.terrain_chunks.is_empty() {
