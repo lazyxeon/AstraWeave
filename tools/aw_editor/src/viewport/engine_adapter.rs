@@ -1529,6 +1529,90 @@ impl EngineRenderAdapter {
                     }
                 }
             }
+
+            // Terrain Material System campaign — Phase 1.E.4.c.
+            // Route the chunk through the forward-lit splat pipeline on the
+            // engine side. Builds a `TerrainSplatVertex` buffer with
+            // normalized per-chunk [0, 1] UVs (distinct from the legacy
+            // world-scaled UVs at `engine_adapter.rs:1706-1710` — those
+            // were a workaround for the single-texture legacy path), filters
+            // the surface-triangle indices (drops skirt triangles appended
+            // after the surface grid in `terrain_integration.rs:812+`), and
+            // hands everything to `Renderer::upload_terrain_chunk` which
+            // uploads the vertex/index buffers + splat textures and
+            // registers the chunk with the forward pipeline. No-op when
+            // `terrain_forward` isn't initialized (feature off or init
+            // failed) — legacy cluster registration below picks up.
+            #[cfg(feature = "terrain-splat-arrays")]
+            if self.renderer.terrain_forward().is_some() {
+                let grid_dim_u32 = (vertices.len() as f64).sqrt().floor() as u32;
+                if grid_dim_u32 >= 2 {
+                    let grid_dim = grid_dim_u32 as usize;
+                    let grid_verts = grid_dim * grid_dim;
+                    let surface_verts = &vertices[..grid_verts];
+
+                    match super::terrain_splat_builder::build_chunk_splat_maps(
+                        surface_verts,
+                        grid_dim_u32,
+                        grid_dim_u32,
+                    ) {
+                        Ok(splat_maps) => {
+                            // Build per-vertex [0, 1] UVs from grid position.
+                            // Vertices are row-major: vertex i lives at
+                            // column (i % grid_dim), row (i / grid_dim).
+                            let grid_span = (grid_dim - 1) as f32;
+                            let splat_vertices: Vec<astraweave_render::TerrainSplatVertex> =
+                                (0..grid_verts)
+                                    .map(|i| {
+                                        let v = &surface_verts[i];
+                                        let gx = (i % grid_dim) as f32;
+                                        let gy = (i / grid_dim) as f32;
+                                        astraweave_render::TerrainSplatVertex {
+                                            position: v.position,
+                                            normal: v.normal,
+                                            uv: [gx / grid_span, gy / grid_span],
+                                        }
+                                    })
+                                    .collect();
+
+                            // Surface triangles only: first (grid_dim-1)²
+                            // quads × 2 triangles × 3 indices. Skirt
+                            // triangles come after in the editor's index
+                            // buffer; they reference indices >= grid_verts.
+                            let surface_idx_count =
+                                (grid_dim - 1) * (grid_dim - 1) * 6;
+                            let surface_indices: Vec<u32> = indices
+                                .iter()
+                                .copied()
+                                .take(surface_idx_count)
+                                .collect();
+
+                            let chunk_key = chunk_index as u64;
+                            if let Err(e) = self.renderer.upload_terrain_chunk(
+                                chunk_key,
+                                &splat_vertices,
+                                &surface_indices,
+                                &splat_maps.splat_0,
+                                &splat_maps.splat_1,
+                                (splat_maps.width, splat_maps.height),
+                            ) {
+                                tracing::warn!(
+                                    target: "aw_editor::viewport::terrain_forward",
+                                    "Phase 1.E.4.c upload_terrain_chunk failed \
+                                     for chunk {chunk_key}: {e:#}"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                target: "aw_editor::viewport::terrain_forward",
+                                "Phase 1.E.4.c build_chunk_splat_maps failed \
+                                 for chunk {chunk_index}: {e:#}"
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         if self.terrain_chunks.is_empty() {
@@ -1536,31 +1620,56 @@ impl EngineRenderAdapter {
             return;
         }
 
-        let planning: Vec<_> = self
-            .terrain_chunks
-            .iter()
-            .map(TerrainChunkPlanningInfo::from)
-            .collect();
-        self.terrain_clusters = build_terrain_cluster_plan(
-            &planning,
-            TERRAIN_CLUSTER_GRID,
-            TERRAIN_MAX_VERTICES_PER_CLUSTER,
-        )
-        .into_iter()
-        .enumerate()
-        .map(|(cluster_index, chunk_indices)| TerrainClusterRecord {
-            name: format!("terrain_cluster_{cluster_index}"),
-            chunk_indices,
-        })
-        .collect();
-        self.terrain_model_names = self
-            .terrain_clusters
-            .iter()
-            .map(|cluster| cluster.name.clone())
-            .collect();
+        // Terrain Material System campaign — Phase 1.E.4.c.
+        // When the forward-lit splat path is active AND has uploaded at
+        // least one chunk, skip the legacy cluster-building + model
+        // registration. The forward path renders terrain directly inside
+        // `Renderer::draw_into` via its own pipeline; no cluster models
+        // are needed. `terrain_clusters` and `terrain_model_names` stay
+        // empty — downstream cluster rebuild paths (brush edits, etc.)
+        // are inert until per-vertex material authoring reaches the
+        // shader in Phase 2.
+        //
+        // When the feature is off, or `init_terrain_forward` failed, or
+        // chunk upload failed for every chunk, the legacy path runs
+        // unchanged — preserves the feature-off fallback and the
+        // reversibility promise in plan §3.5.
+        #[cfg(feature = "terrain-splat-arrays")]
+        let forward_active = self
+            .renderer
+            .terrain_forward()
+            .map(|tf| !tf.chunks.is_empty())
+            .unwrap_or(false);
+        #[cfg(not(feature = "terrain-splat-arrays"))]
+        let forward_active = false;
 
-        for cluster_index in 0..self.terrain_clusters.len() {
-            self.rebuild_terrain_cluster(cluster_index);
+        if !forward_active {
+            let planning: Vec<_> = self
+                .terrain_chunks
+                .iter()
+                .map(TerrainChunkPlanningInfo::from)
+                .collect();
+            self.terrain_clusters = build_terrain_cluster_plan(
+                &planning,
+                TERRAIN_CLUSTER_GRID,
+                TERRAIN_MAX_VERTICES_PER_CLUSTER,
+            )
+            .into_iter()
+            .enumerate()
+            .map(|(cluster_index, chunk_indices)| TerrainClusterRecord {
+                name: format!("terrain_cluster_{cluster_index}"),
+                chunk_indices,
+            })
+            .collect();
+            self.terrain_model_names = self
+                .terrain_clusters
+                .iter()
+                .map(|cluster| cluster.name.clone())
+                .collect();
+
+            for cluster_index in 0..self.terrain_clusters.len() {
+                self.rebuild_terrain_cluster(cluster_index);
+            }
         }
 
         let mut global_aabb_min = [f32::MAX; 3];
