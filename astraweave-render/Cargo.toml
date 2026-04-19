@@ -5,7 +5,7 @@ edition = "2021"
 license.workspace = true
 
 [features]
-default = ["postfx", "textures"]
+default = ["postfx", "textures", "terrain-splat-arrays"]
 postfx = []
 gpu-tests = []
 textures = ["image"]

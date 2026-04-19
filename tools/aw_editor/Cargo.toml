@@ -14,7 +14,7 @@ unwrap_used = "allow"
 # with `--no-default-features --features editor-core,impostor-bake` if the
 # platform default allocator is required (e.g. profiling a heap leak with a
 # platform-specific tool).
-default = ["editor-core", "impostor-bake", "fast-alloc"]
+default = ["editor-core", "impostor-bake", "fast-alloc", "terrain-splat-arrays"]
 editor-core = []
 editor-graphs = ["editor-core"]
 editor-materials = ["editor-core"]
