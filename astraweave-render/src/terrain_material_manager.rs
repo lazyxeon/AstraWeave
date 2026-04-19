@@ -323,6 +323,42 @@ pub struct TerrainMaterialManager {
     pipeline_formats: Option<(wgpu::TextureFormat, Option<wgpu::TextureFormat>)>,
     material_cache: TerrainMaterialGpu,
     camera_cache: CameraUniformsGpu,
+
+    // Phase 1.E forward-pipeline state (Option D, Terrain Material System
+    // Campaign). Additive to the fields above; the deferred pipeline
+    // remains untouched. Built eagerly in `new`; `forward_pipeline` is
+    // lazy and is populated on first call to `ensure_forward_pipeline`.
+    // `#[allow(dead_code)]` covers the gap between 1.E.1.b (field declaration)
+    // and 1.E.1.c / 1.E.2 (use sites); removed as soon as the methods land.
+    #[allow(dead_code)]
+    forward_camera_bgl: wgpu::BindGroupLayout,
+    #[allow(dead_code)]
+    forward_terrain_bgl: wgpu::BindGroupLayout,
+    #[allow(dead_code)]
+    forward_splat_bgl: wgpu::BindGroupLayout,
+    #[allow(dead_code)]
+    forward_camera_buffer: wgpu::Buffer,
+    #[allow(dead_code)]
+    forward_scene_buffer: wgpu::Buffer,
+    #[allow(dead_code)]
+    forward_camera_bg: wgpu::BindGroup,
+    #[allow(dead_code)]
+    forward_terrain_bg: wgpu::BindGroup,
+    #[allow(dead_code)]
+    forward_pipeline: Option<wgpu::RenderPipeline>,
+    #[allow(dead_code)]
+    forward_pipeline_formats: Option<(wgpu::TextureFormat, Option<wgpu::TextureFormat>)>,
+    #[allow(dead_code)]
+    forward_chunk_splats: HashMap<ChunkKey, ChunkSplatForward>,
+}
+
+/// Per-chunk splat bind group for the forward-lit pipeline. References the
+/// same underlying splat textures owned by `ChunkSplat` above, just with a
+/// different bind group layout (2 bindings instead of 7).
+#[allow(dead_code)] // Used starting in 1.E.2.
+struct ChunkSplatForward {
+    bind_group: wgpu::BindGroup,
+    dims: (u32, u32),
 }
 
 impl TerrainMaterialManager {
@@ -423,6 +459,160 @@ impl TerrainMaterialManager {
             }],
         });
 
+        // ── Phase 1.E forward-pipeline bind group layouts ───────────────
+        // Group 0 (camera): one uniform binding holding CameraForwardGpu (96 B).
+        let forward_camera_bgl = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                label: Some("terrain-forward-camera-bgl"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            },
+        );
+
+        // Group 1 (terrain): TerrainMaterialGpu UBO + TerrainSceneEnvGpu UBO +
+        // sampler + 3 layer arrays (albedo, normal, orm). 6 bindings under
+        // the default 8-per-group limit.
+        let forward_terrain_bgl = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                label: Some("terrain-forward-terrain-bgl"),
+                entries: &[
+                    // 0: TerrainMaterialGpu UBO
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // 1: TerrainSceneEnvGpu UBO
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // 2: sampler (filtering — needed for smooth biome blending
+                    // across splat textures and mipmap transitions in layer arrays)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(
+                            wgpu::SamplerBindingType::Filtering,
+                        ),
+                        count: None,
+                    },
+                    // 3-5: layer arrays (albedo, normal, orm). Height is
+                    // omitted — Phase 1's forward shader doesn't use it.
+                    array_entry(3),
+                    array_entry(4),
+                    array_entry(5),
+                ],
+            },
+        );
+
+        // Group 2 (per-chunk splat): 2 texture bindings (splat_0, splat_1).
+        let forward_splat_bgl = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                label: Some("terrain-forward-splat-bgl"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float {
+                                filterable: true,
+                            },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float {
+                                filterable: true,
+                            },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                ],
+            },
+        );
+
+        // Forward-path UBO buffers (zero-initialized; written per frame by
+        // update_forward_camera / update_forward_scene).
+        let forward_camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("terrain-forward-camera-ubo"),
+            size: std::mem::size_of::<CameraForwardGpu>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let forward_scene_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("terrain-forward-scene-ubo"),
+            size: std::mem::size_of::<TerrainSceneEnvGpu>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let forward_camera_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("terrain-forward-camera-bg"),
+            layout: &forward_camera_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: forward_camera_buffer.as_entire_binding(),
+            }],
+        });
+
+        let forward_terrain_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("terrain-forward-terrain-bg"),
+            layout: &forward_terrain_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: shared.material_uniform.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: forward_scene_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&shared.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&shared.layer_albedo),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&shared.layer_normal),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&shared.layer_orm),
+                },
+            ],
+        });
+
         Ok(Self {
             config,
             shared,
@@ -436,6 +626,16 @@ impl TerrainMaterialManager {
             pipeline_formats: None,
             material_cache: TerrainMaterialGpu::default(),
             camera_cache: CameraUniformsGpu::default(),
+            forward_camera_bgl,
+            forward_terrain_bgl,
+            forward_splat_bgl,
+            forward_camera_buffer,
+            forward_scene_buffer,
+            forward_camera_bg,
+            forward_terrain_bg,
+            forward_pipeline: None,
+            forward_pipeline_formats: None,
+            forward_chunk_splats: HashMap::new(),
         })
     }
 
