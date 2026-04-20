@@ -12,6 +12,7 @@ pub mod biome_pack;
 pub mod blueprint_zone;
 pub mod chunk;
 pub mod climate;
+pub mod elevation_biome; // Phase 1.5: heightmap-driven multi-biome generation
 pub mod collision;
 pub mod compressed_voxels; // P4-8: Palette compression + RLE for voxel chunks
 pub mod erosion;
@@ -48,6 +49,7 @@ pub use blueprint_zone::{
 pub use chunk::{ChunkId, ChunkManager, TerrainChunk};
 pub use collision::{collision_mesh_from_chunk, collision_mesh_from_heightmap, CollisionMesh};
 pub use climate::{ClimateConfig, ClimateMap};
+pub use elevation_biome::{elevation_to_biome_weights, ClimateBias, SEA_LEVEL}; // Phase 1.5
 pub use gpu_bridge::{
     GpuErosionRequest, GpuHeightmapRequest, GpuHeightmapResult, GpuNoiseRequest,
     TerrainGpuAccelerator,
