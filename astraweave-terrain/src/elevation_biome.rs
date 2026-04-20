@@ -118,43 +118,53 @@ struct BiomeBand {
 // Band tables. All `peak` / `start` values are elevations *relative to
 // sea level* (not absolute world Y) so climates remain valid regardless
 // of SEA_LEVEL adjustments.
+//
+// Phase 1.5-T tuning (2026-04-20): bands were retuned against the
+// measured heightmap Y range for seed `12345`, radius 5:
+// span ≈ 125 units (sea level −3.84 to peak +121.38), mean ≈ 31,
+// with ~99% of vertices below abs Y = 90. See
+// docs/audits/phase_1_5_tuning_investigation_2026-04-20.md for the
+// measurement and retune rationale. Widened Forest from width=10 to
+// width=20 and raised Mountain's HighPass start from 30 to 38 so the
+// visible distribution produces crisp Beach/Grassland/Forest/Mountain
+// bands rather than a gradual Forest-to-Mountain washout.
 
 const TEMPERATE_BANDS: &[BiomeBand] = &[
-    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 1.0, width: 3.0 } },     // Beach
-    BiomeBand { slot: 0, shape: BandShape::Pulse { peak: 8.0, width: 6.0 } },     // Grassland
-    BiomeBand { slot: 2, shape: BandShape::Pulse { peak: 22.0, width: 10.0 } },   // Forest
-    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 30.0, ramp: 30.0 } }, // Mountain
+    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 2.0, width: 4.0 } },      // Beach
+    BiomeBand { slot: 0, shape: BandShape::Pulse { peak: 10.0, width: 8.0 } },     // Grassland
+    BiomeBand { slot: 2, shape: BandShape::Pulse { peak: 24.0, width: 20.0 } },    // Forest
+    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 38.0, ramp: 22.0 } }, // Mountain
 ];
 
 const COLD_BANDS: &[BiomeBand] = &[
-    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 1.0, width: 3.0 } },     // Beach
-    BiomeBand { slot: 4, shape: BandShape::Pulse { peak: 10.0, width: 25.0 } },   // Tundra
-    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 30.0, ramp: 30.0 } }, // Mountain
+    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 2.0, width: 4.0 } },      // Beach
+    BiomeBand { slot: 4, shape: BandShape::Pulse { peak: 18.0, width: 25.0 } },    // Tundra
+    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 38.0, ramp: 22.0 } }, // Mountain
 ];
 
 const ARID_BANDS: &[BiomeBand] = &[
-    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 1.0, width: 3.0 } },     // Beach
-    BiomeBand { slot: 1, shape: BandShape::Pulse { peak: 10.0, width: 25.0 } },   // Desert
-    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 30.0, ramp: 30.0 } }, // Mountain
+    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 2.0, width: 4.0 } },      // Beach
+    BiomeBand { slot: 1, shape: BandShape::Pulse { peak: 18.0, width: 25.0 } },    // Desert
+    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 38.0, ramp: 22.0 } }, // Mountain
 ];
 
 const TROPICAL_BANDS: &[BiomeBand] = &[
-    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 1.0, width: 3.0 } },     // Beach
-    BiomeBand { slot: 2, shape: BandShape::Pulse { peak: 15.0, width: 30.0 } },   // Forest (heavy)
-    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 50.0, ramp: 30.0 } }, // Mountain
+    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 2.0, width: 4.0 } },      // Beach
+    BiomeBand { slot: 2, shape: BandShape::Pulse { peak: 22.0, width: 30.0 } },    // Forest (heavy)
+    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 55.0, ramp: 25.0 } }, // Mountain
 ];
 
 const WETLAND_BANDS: &[BiomeBand] = &[
-    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 1.0, width: 3.0 } },     // Beach
-    BiomeBand { slot: 5, shape: BandShape::Pulse { peak: 5.0, width: 10.0 } },    // Swamp (lowland)
-    BiomeBand { slot: 0, shape: BandShape::Pulse { peak: 15.0, width: 10.0 } },   // Grassland
-    BiomeBand { slot: 2, shape: BandShape::Pulse { peak: 35.0, width: 20.0 } },   // Forest
-    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 50.0, ramp: 30.0 } }, // Mountain
+    BiomeBand { slot: 6, shape: BandShape::Pulse { peak: 2.0, width: 4.0 } },      // Beach
+    BiomeBand { slot: 5, shape: BandShape::Pulse { peak: 7.0, width: 8.0 } },      // Swamp (lowland)
+    BiomeBand { slot: 0, shape: BandShape::Pulse { peak: 18.0, width: 12.0 } },    // Grassland
+    BiomeBand { slot: 2, shape: BandShape::Pulse { peak: 35.0, width: 20.0 } },    // Forest
+    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 50.0, ramp: 22.0 } }, // Mountain
 ];
 
 const HIGHLAND_BANDS: &[BiomeBand] = &[
-    BiomeBand { slot: 0, shape: BandShape::Pulse { peak: 3.0, width: 15.0 } },    // Grassland (low)
-    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 5.0, ramp: 40.0 } }, // Mountain (dominant)
+    BiomeBand { slot: 0, shape: BandShape::Pulse { peak: 4.0, width: 20.0 } },     // Grassland (low)
+    BiomeBand { slot: 3, shape: BandShape::HighPass { start: 8.0, ramp: 35.0 } },  // Mountain (dominant)
 ];
 
 /// Smoothstep function `3t² - 2t³` clamped to `[0, 1]`.
