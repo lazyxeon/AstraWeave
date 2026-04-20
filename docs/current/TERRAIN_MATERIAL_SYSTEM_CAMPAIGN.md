@@ -1,6 +1,6 @@
 # Terrain Material System — Path C Campaign
 
-**Status**: Phase 1 complete (forward-lit splat pipeline, Option D). Phases 2 and 3 not yet started.
+**Status**: Phase 1 landed with known regression (triangle streak bug). Remediation in progress. Phases 2 and 3 not yet started.
 **Scope**: Implementation of AAA-parity terrain material rendering in AstraWeave, comprising splat-map biome blending + per-vertex 4-way material override + user-selectable blend modes, sample budgets, material count tiers, splat resolution, and normal blend modes.
 **Author**: Plan drafted from design session 2026-04-19 between Andrew and Claude. Code references accurate as of 2026-04-19; verify before execution.
 **Prior work**: Three audits that established the current state — `docs/audits/editor_viewport_render_divergence_2026-04-19.md`, `docs/audits/tonemap_double_application_investigation_2026-04-19.md`, `docs/audits/terrain_material_flow_investigation_2026-04-19.md`.
@@ -436,7 +436,7 @@ These items are intentionally not part of Path C and are logged here to prevent 
 
 This section must be updated in the same commit that completes each phase.
 
-**Phase 1 — Splat pipeline activation (forward-lit per Option D): COMPLETE 2026-04-19, commit `7edb15515`.**
+**Phase 1 — Splat pipeline activation (forward-lit per Option D): LANDED 2026-04-19, commit `7edb15515` — REGRESSION FOUND, remediation in progress. Not yet re-marked COMPLETE.**
 
 Sub-steps landed (in order):
   - 1.A (commit `1233537fe`) — feature flag flipped to default on.
@@ -565,6 +565,39 @@ reference material (its design informed the renderer-side shape); its
 module docstring was updated to flag it as SUPERSEDED so future
 contributors don't reintroduce it. Phase 2/3 use
 `Renderer::upload_terrain_chunk` + `set_terrain_materials` directly.
+
+### 2026-04-19, Phase 1 post-completion, commit TBD (this revert)
+
+**Deviation:** Phase 1 COMPLETE status reverted. Visual inspection after
+the 1.F commit (`7edb15515`) surfaced a rendering regression: long thin
+triangular green streaks extending across the scene at terrain-surface
+height, visible from multiple viewing angles, passing through trees and
+other geometry. Reads as individual oversized/degenerate triangles — most
+likely from index filtering leaving references to dropped skirt vertices
+in the index buffer produced by Phase 1.E.4.c's prefix-take filter on the
+editor's full index buffer.
+
+Secondary observation: the test project (seed `12345`, Primary Biome
+Grassland) renders as near-uniformly Grassland-colored across the full
+visible extent. No visible Desert/Mountain/Forest/etc. placeholder colors
+appear in any tested camera position. May be expected authoring behavior
+for this seed or a rendering bug collapsing biome weights to Grassland.
+Task 3 of the remediation prompt disambiguates via a biome-weight
+histogram diagnostic.
+
+**Rationale:** §0's ground-truth-over-planned-state discipline requires
+that §7 reflect the editor's actual state. The editor does not render
+cleanly (plan §3.4 success criterion "Terrain renders with visible biome
+blending. No panics, no wgpu validation errors" is not met); therefore
+Phase 1 is not complete. The COMPLETE marker at `7edb15515` was premature.
+
+**Impact:** Phase 2 work does not begin until Phase 1 is re-marked
+COMPLETE following triangle-streak remediation. The Phase 1.E.5 `terrain_splat`
+field cleanup and the 1.F document-header + sub-step log updates remain
+landed and correct; only the COMPLETE marker in §7 + the document header
+line are reverted. A subsequent remediation commit closes the triangle-streak
+regression and re-marks Phase 1 complete, referencing both the 1.F hash
+and the triangle-fix hash on the §7 COMPLETE line.
 
 ---
 
