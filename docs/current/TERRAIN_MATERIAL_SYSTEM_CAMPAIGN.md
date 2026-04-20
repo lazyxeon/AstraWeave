@@ -349,6 +349,25 @@ call site). Reverting Phase 1.5 restores single-biome generation. The Phase 1
 splat pipeline continues to work in either state — it just has trivial weights
 to render under reversion.
 
+### 3.5.5 Tuning notes (post-completion)
+
+After initial Phase 1.5 landing at commit `77bd4adf6`, visual inspection
+suggested the elevation band constants produced Beach/Grassland-dominated
+terrain instead of the full geological spread. A tuning pass on 2026-04-20
+measured the actual heightmap output (seed `12345`, radius 5: Y range
+`[-3.84, +121.38]`, span 125 units, mean +30.99) and confirmed the
+heightmap produces a healthy range — the issue was band placement, not
+heightmap deficit. Chunk radius was kept at the editor default of 5.
+The Temperate bands were retuned (Forest widened from `width=10` to
+`width=20`, Mountain `HighPass start` raised from 30 to 38), with
+proportional adjustments to Cold/Arid/Tropical/Wetland/Highland. The
+post-retune distribution on the canonical Temperate test case is
+Beach 18.26%, Grassland 12.05%, Forest 38.91%, Mountain 30.79% —
+all four biomes clearly represented, with Forest expanded and Mountain
+pulled back from the pre-retune 26.75% / 44.01% split. See
+`docs/audits/phase_1_5_tuning_investigation_2026-04-20.md` for the
+measurement data and retune rationale.
+
 ---
 
 ## 4. Phase 2 — Per-vertex material data extension
@@ -500,7 +519,7 @@ Sub-steps landed (in order):
   - 1.E.5 (commit `b5fafc8ae`) — `EditorTerrainSplat` field removed from `EngineRenderAdapter`; import, init, struct entry, and the two 1.C usage sites deleted. The `terrain_splat.rs` module stays on disk flagged SUPERSEDED. §9 updated with the supersession deviation entry.
   - 1.F (commit `7edb15515`) — final verification pass, §7 closed, document header updated.
 
-**Phase 1.5 — Heightmap-driven multi-biome generation: COMPLETE 2026-04-20, commits `92c7f02af` (plan), `e160b8894` (elevation_biome module), `2590c0b87` (chunk-gen wiring), and the closeout commit that lands this status update. Per-vertex biome weights now come from `astraweave_terrain::elevation_to_biome_weights(world_y, SEA_LEVEL, ClimateBias::from_primary_biome_str(primary_biome))` in `tools/aw_editor/src/terrain_integration.rs::generate_heightmap_mesh`. `terrain_primary_biome` field semantics changed from single-biome selector to climate bias.**
+**Phase 1.5 — Heightmap-driven multi-biome generation: COMPLETE 2026-04-20, commits `92c7f02af` (plan), `e160b8894` (elevation_biome module), `2590c0b87` (chunk-gen wiring), `77bd4adf6` (initial close-out) + tuning pass `fa01f44a7` (Y-range investigation), `990dbac63` (band retune), and the final closeout commit that lands this status update. Per-vertex biome weights now come from `astraweave_terrain::elevation_to_biome_weights(world_y, SEA_LEVEL, ClimateBias::from_primary_biome_str(primary_biome))` in `tools/aw_editor/src/terrain_integration.rs::generate_heightmap_mesh`. `terrain_primary_biome` field semantics changed from single-biome selector to climate bias. Post-tuning distribution on seed `12345` Temperate: Beach 18.26% / Grassland 12.05% / Forest 38.91% / Mountain 30.79%.**
 
 Sub-steps landed (in order):
   - 1.5.A (commit `92c7f02af`) — campaign plan amended to add Phase 1.5 spec (§3.5, §7 status line, §6 scope clarification).
