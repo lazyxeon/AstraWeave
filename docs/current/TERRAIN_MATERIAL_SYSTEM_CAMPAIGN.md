@@ -1,6 +1,6 @@
 # Terrain Material System — Path C Campaign
 
-**Status**: Phase 1 landed with known regression (triangle streak bug). Remediation in progress. Phases 2 and 3 not yet started.
+**Status**: Phase 1 complete (forward-lit splat pipeline, Option D, with post-completion triangle-streak fix). Phases 2 and 3 not yet started.
 **Scope**: Implementation of AAA-parity terrain material rendering in AstraWeave, comprising splat-map biome blending + per-vertex 4-way material override + user-selectable blend modes, sample budgets, material count tiers, splat resolution, and normal blend modes.
 **Author**: Plan drafted from design session 2026-04-19 between Andrew and Claude. Code references accurate as of 2026-04-19; verify before execution.
 **Prior work**: Three audits that established the current state — `docs/audits/editor_viewport_render_divergence_2026-04-19.md`, `docs/audits/tonemap_double_application_investigation_2026-04-19.md`, `docs/audits/terrain_material_flow_investigation_2026-04-19.md`.
@@ -436,7 +436,7 @@ These items are intentionally not part of Path C and are logged here to prevent 
 
 This section must be updated in the same commit that completes each phase.
 
-**Phase 1 — Splat pipeline activation (forward-lit per Option D): LANDED 2026-04-19, commit `7edb15515` — REGRESSION FOUND, remediation in progress. Not yet re-marked COMPLETE.**
+**Phase 1 — Splat pipeline activation (forward-lit per Option D): COMPLETE 2026-04-20, commits `7edb15515` (1.F initial close-out) + `bb70d0d8b` (post-completion triangle-streak fix). Re-marked complete after post-completion regression fix.**
 
 Sub-steps landed (in order):
   - 1.A (commit `1233537fe`) — feature flag flipped to default on.
@@ -664,6 +664,74 @@ re-classified as Outcome #2. The static trace above locates the
 remaining suspect entirely within the authoring layer
 (`astraweave-terrain` biome mixer + `terrain_integration.rs`
 chunk-build path), NOT in the Phase 1 rendering pipeline.
+
+### 2026-04-20, Phase 1 post-completion, commit TBD (close-out)
+
+**Status transition:** Phase 1 re-marked COMPLETE. Header changed back
+from "Phase 1 landed with known regression" to "Phase 1 complete
+(forward-lit splat pipeline, Option D, with post-completion triangle-
+streak fix)". §7 Phase 1 line changed from "LANDED 2026-04-19, commit
+`7edb15515` — REGRESSION FOUND, remediation in progress" to "COMPLETE
+2026-04-20, commits `7edb15515` + `bb70d0d8b`".
+
+**Deliverables landed in the post-completion remediation:**
+
+1. Triangle-streak bug root-caused (commit `0530b38ba`): the 1.E.4.c
+   prefix-take filter used `floor(sqrt(vertex_count))` which overshoots
+   to `N+2` for the editor's `N² + 4N` with-skirts layout; the extra
+   indices were skirt triangles whose corners pointed out-of-bounds
+   past the truncated surface vertex buffer.
+2. Fix landed (commit `bb70d0d8b`): replaced the broken calculation
+   with closed-form `N = sqrt(vertex_count + 4) - 2` via the new
+   `infer_surface_grid_dim` helper. Added defensive
+   `filter_surface_triangles` that drops any triangle whose corners
+   reference non-surface vertices regardless of index buffer ordering.
+   8 new unit tests assert both helpers handle the editor's layouts
+   and reject malformed input.
+3. Uniform-green question statically ruled out as a rendering bug
+   (commit `9809d9225`): end-to-end trace from CPU splat encoding
+   through GPU material upload to shader sampling confirms all 8
+   biome channels are preserved. Existing tests in
+   `terrain_splat_builder.rs` + `terrain_biome_placeholder.rs` cover
+   the byte-level invariants. Outcome classified as #1 ("expected for
+   test seed"), pending Andrew's interactive confirmation.
+
+**Code-level verification (all passing at close-out):**
+- 3× `cargo check` (all-features, default, feature-off fallback).
+- `cargo test -p astraweave-render --lib terrain_material_manager`:
+  12 tests.
+- `cargo test -p aw_editor --lib viewport::terrain_splat_builder`:
+  7 tests.
+- `cargo test -p aw_editor --lib viewport::terrain_biome_placeholder`:
+  4 tests.
+- `cargo test -p aw_editor --lib viewport::engine_adapter::tests`:
+  21 tests (including 8 new for the index-filter helpers).
+- `cargo test -p astraweave-render --test shader_validation
+  test_pbr_terrain_forward_validates_with_prefix`: passes.
+- `cargo test -p astraweave-render --test terrain_splat_pipeline
+  --features "terrain-splat-arrays,gpu-tests"`: 9 tests including
+  forward pipeline build + round-trip GPU integration.
+- `cargo build -p aw_editor --release`: clean 4m 54s build.
+- Editor launch smoke test (no project loaded): runs cleanly, no
+  panics, no wgpu validation errors, `terrain_forward` stays `None`
+  (correct lazy behavior).
+
+**Visual verification gate pending Andrew's hands-on test:**
+launching the editor against the seed `12345` Grassland-primary
+project should now show:
+- No triangle streaks from any camera angle (this is what the fix
+  addresses — code-level unit tests confirm the filter works; live
+  rendering confirmation requires interactive GUI).
+- Terrain rendering as a continuous surface with no floating or
+  stretched triangles.
+- Uniform-Grassland appearance is expected for this seed per the
+  Task 3 static analysis; visible biome blending requires a mixed-
+  biome seed.
+
+If visual testing turns up a fresh regression (e.g., the fix
+introduces new holes, or a different camera angle reveals new
+artifacts), open a new §9 entry and re-open the completion marker
+per §0 discipline.
 
 ---
 
