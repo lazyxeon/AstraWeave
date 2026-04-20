@@ -1530,71 +1530,92 @@ impl EngineRenderAdapter {
             // failed) — legacy cluster registration below picks up.
             #[cfg(feature = "terrain-splat-arrays")]
             if self.renderer.terrain_forward().is_some() {
-                let grid_dim_u32 = (vertices.len() as f64).sqrt().floor() as u32;
-                if grid_dim_u32 >= 2 {
-                    let grid_dim = grid_dim_u32 as usize;
-                    let grid_verts = grid_dim * grid_dim;
-                    let surface_verts = &vertices[..grid_verts];
+                // Phase 1 post-completion fix: the original 1.E.4.c code used
+                // `floor(sqrt(vertices.len()))` to infer the surface grid
+                // dimension. For the editor's `N² + 4N` with-skirts layout,
+                // that returns `N+2` and produced a `surface_idx_count` that
+                // pulled skirt triangles into the filtered set, causing
+                // long streaky degenerate triangles (skirt indices pointed
+                // past the end of the truncated vertex buffer and read
+                // out-of-bounds memory as vertex positions). Using the
+                // closed-form `sqrt(total + 4) - 2` inverse of the skirts
+                // formula gives the correct N.
+                let grid_dim = match infer_surface_grid_dim(vertices.len()) {
+                    Some(n) if n >= 2 => n,
+                    _ => {
+                        tracing::warn!(
+                            target: "aw_editor::viewport::terrain_forward",
+                            "chunk {chunk_index}: could not infer surface grid \
+                             dim from vertex count {}; skipping forward upload",
+                            vertices.len(),
+                        );
+                        continue;
+                    }
+                };
+                let grid_dim_u32 = grid_dim as u32;
+                let grid_verts = grid_dim * grid_dim;
+                let surface_verts = &vertices[..grid_verts];
 
-                    match super::terrain_splat_builder::build_chunk_splat_maps(
-                        surface_verts,
-                        grid_dim_u32,
-                        grid_dim_u32,
-                    ) {
-                        Ok(splat_maps) => {
-                            // Build per-vertex [0, 1] UVs from grid position.
-                            // Vertices are row-major: vertex i lives at
-                            // column (i % grid_dim), row (i / grid_dim).
-                            let grid_span = (grid_dim - 1) as f32;
-                            let splat_vertices: Vec<astraweave_render::TerrainSplatVertex> =
-                                (0..grid_verts)
-                                    .map(|i| {
-                                        let v = &surface_verts[i];
-                                        let gx = (i % grid_dim) as f32;
-                                        let gy = (i / grid_dim) as f32;
-                                        astraweave_render::TerrainSplatVertex {
-                                            position: v.position,
-                                            normal: v.normal,
-                                            uv: [gx / grid_span, gy / grid_span],
-                                        }
-                                    })
-                                    .collect();
-
-                            // Surface triangles only: first (grid_dim-1)²
-                            // quads × 2 triangles × 3 indices. Skirt
-                            // triangles come after in the editor's index
-                            // buffer; they reference indices >= grid_verts.
-                            let surface_idx_count =
-                                (grid_dim - 1) * (grid_dim - 1) * 6;
-                            let surface_indices: Vec<u32> = indices
-                                .iter()
-                                .copied()
-                                .take(surface_idx_count)
+                match super::terrain_splat_builder::build_chunk_splat_maps(
+                    surface_verts,
+                    grid_dim_u32,
+                    grid_dim_u32,
+                ) {
+                    Ok(splat_maps) => {
+                        // Build per-vertex [0, 1] UVs from grid position.
+                        // Vertices are row-major: vertex i lives at
+                        // column (i % grid_dim), row (i / grid_dim).
+                        let grid_span = (grid_dim - 1) as f32;
+                        let splat_vertices: Vec<astraweave_render::TerrainSplatVertex> =
+                            (0..grid_verts)
+                                .map(|i| {
+                                    let v = &surface_verts[i];
+                                    let gx = (i % grid_dim) as f32;
+                                    let gy = (i / grid_dim) as f32;
+                                    astraweave_render::TerrainSplatVertex {
+                                        position: v.position,
+                                        normal: v.normal,
+                                        uv: [gx / grid_span, gy / grid_span],
+                                    }
+                                })
                                 .collect();
 
-                            let chunk_key = chunk_index as u64;
-                            if let Err(e) = self.renderer.upload_terrain_chunk(
-                                chunk_key,
-                                &splat_vertices,
-                                &surface_indices,
-                                &splat_maps.splat_0,
-                                &splat_maps.splat_1,
-                                (splat_maps.width, splat_maps.height),
-                            ) {
-                                tracing::warn!(
-                                    target: "aw_editor::viewport::terrain_forward",
-                                    "Phase 1.E.4.c upload_terrain_chunk failed \
-                                     for chunk {chunk_key}: {e:#}"
-                                );
-                            }
-                        }
-                        Err(e) => {
+                        // Triangle-by-triangle filter: keep only triangles
+                        // whose three corners all reference surface
+                        // vertices (indices < grid_verts). Skirt triangles
+                        // (which have two skirt-vertex corners) are
+                        // dropped. Works whether the editor's index buffer
+                        // is partitioned (all surface triangles first,
+                        // then all skirt triangles — current behavior per
+                        // `terrain_integration.rs:790-867`) or interleaved
+                        // (a future edit that mixes them). Belt-and-
+                        // suspenders against the prefix-take bug pattern.
+                        let surface_vert_count = grid_verts as u32;
+                        let surface_indices =
+                            filter_surface_triangles(indices, surface_vert_count);
+
+                        let chunk_key = chunk_index as u64;
+                        if let Err(e) = self.renderer.upload_terrain_chunk(
+                            chunk_key,
+                            &splat_vertices,
+                            &surface_indices,
+                            &splat_maps.splat_0,
+                            &splat_maps.splat_1,
+                            (splat_maps.width, splat_maps.height),
+                        ) {
                             tracing::warn!(
                                 target: "aw_editor::viewport::terrain_forward",
-                                "Phase 1.E.4.c build_chunk_splat_maps failed \
-                                 for chunk {chunk_index}: {e:#}"
+                                "Phase 1.E.4.c upload_terrain_chunk failed \
+                                 for chunk {chunk_key}: {e:#}"
                             );
                         }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "aw_editor::viewport::terrain_forward",
+                            "Phase 1.E.4.c build_chunk_splat_maps failed \
+                             for chunk {chunk_index}: {e:#}"
+                        );
                     }
                 }
             }
@@ -3902,6 +3923,127 @@ const CUBE_INDICES: [u32; 36] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Phase 1 post-completion fix — triangle streak regression.
+    // The editor's terrain chunks have `N² + 4N` vertices (N² surface +
+    // 4N edge skirts) and the surface triangle indices come first,
+    // followed by skirt triangle indices that reference vertices
+    // `≥ N²`. The 1.E.4.c prefix-take filter mis-computed N from
+    // `floor(sqrt(total))` which overshoots to `N+2`, causing 1542
+    // skirt indices to leak into the forward upload and reference
+    // out-of-bounds vertices (the streaks).
+
+    #[test]
+    fn infer_surface_grid_dim_handles_with_skirts() {
+        // N=129, typical editor chunk resolution.
+        let vertex_count = 129 * 129 + 4 * 129; // 17157
+        assert_eq!(infer_surface_grid_dim(vertex_count), Some(129));
+
+        // Smaller cases to exercise the algorithm.
+        assert_eq!(infer_surface_grid_dim(2 * 2 + 4 * 2), Some(2));       // 12
+        assert_eq!(infer_surface_grid_dim(3 * 3 + 4 * 3), Some(3));       // 21
+        assert_eq!(infer_surface_grid_dim(4 * 4 + 4 * 4), Some(4));       // 32
+        assert_eq!(infer_surface_grid_dim(17 * 17 + 4 * 17), Some(17));   // 357
+        assert_eq!(infer_surface_grid_dim(65 * 65 + 4 * 65), Some(65));   // 4485
+        assert_eq!(infer_surface_grid_dim(257 * 257 + 4 * 257), Some(257)); // 67077
+    }
+
+    #[test]
+    fn infer_surface_grid_dim_handles_plain_squares() {
+        // Test-fixture chunks without skirts.
+        assert_eq!(infer_surface_grid_dim(4), Some(2));
+        assert_eq!(infer_surface_grid_dim(9), Some(3));
+        assert_eq!(infer_surface_grid_dim(16), Some(4));
+        assert_eq!(infer_surface_grid_dim(129 * 129), Some(129));
+    }
+
+    #[test]
+    fn infer_surface_grid_dim_rejects_nonmatching_shapes() {
+        // Neither N² nor N² + 4N.
+        assert_eq!(infer_surface_grid_dim(0), None);
+        assert_eq!(infer_surface_grid_dim(1), None);
+        assert_eq!(infer_surface_grid_dim(3), None);
+        assert_eq!(infer_surface_grid_dim(5), None);
+        assert_eq!(infer_surface_grid_dim(17155), None); // close to 129² + 4·129 but off
+        assert_eq!(infer_surface_grid_dim(17158), None); // one past it
+    }
+
+    #[test]
+    fn infer_surface_grid_dim_prefers_skirts_over_plain_when_ambiguous() {
+        // No real collisions exist between N² and M² + 4M for integer N, M
+        // in practical sizes, but the algorithm tries the with-skirts form
+        // first — verify the precedence doesn't accidentally shadow a
+        // plain-square match. Using N=10: 100 = 10² (plain); check the
+        // with-skirts discriminant 104, sqrt≈10.2, rounded to 10, N=8,
+        // 8² + 32 = 96 ≠ 100, so the skirts form correctly rejects.
+        assert_eq!(infer_surface_grid_dim(100), Some(10));
+    }
+
+    #[test]
+    fn filter_surface_triangles_drops_skirt_triangles() {
+        // Mock a tiny editor index buffer: 2 surface triangles then 2
+        // skirt triangles. Surface vertex count = 4.
+        let indices: Vec<u32> = vec![
+            // Surface triangles — all indices < 4.
+            0, 1, 2,
+            1, 3, 2,
+            // Skirt triangles — each has a corner at index 4 or 5.
+            0, 4, 1,
+            1, 4, 5,
+        ];
+        let out = filter_surface_triangles(&indices, 4);
+        assert_eq!(out, vec![0, 1, 2, 1, 3, 2]);
+    }
+
+    #[test]
+    fn filter_surface_triangles_handles_interleaved() {
+        // Skirts interleaved with surface triangles — the filter must
+        // drop the right ones regardless of ordering.
+        let indices: Vec<u32> = vec![
+            0, 1, 2,  // surface
+            0, 4, 1,  // skirt
+            2, 3, 0,  // surface
+            1, 5, 4,  // skirt
+        ];
+        let out = filter_surface_triangles(&indices, 4);
+        assert_eq!(out, vec![0, 1, 2, 2, 3, 0]);
+    }
+
+    #[test]
+    fn filter_surface_triangles_preserves_triangle_count_for_editor_layout() {
+        // Replicate the editor's layout: N=5 produces 5²=25 surface
+        // vertices, (5-1)²·2=32 surface triangles (96 indices), and
+        // 4·(5-1)·2 = 32 skirt triangles (96 indices). The filter
+        // should keep exactly 96 surface indices and drop 96 skirt
+        // indices.
+        let mut indices = Vec::new();
+        // 32 surface triangles with all indices < 25.
+        for i in 0..32u32 {
+            indices.extend_from_slice(&[0, 1, 2]);
+            let _ = i;
+        }
+        // 32 skirt triangles with at least one index ≥ 25.
+        for i in 0..32u32 {
+            indices.extend_from_slice(&[0, 1, 25 + (i % 20)]);
+        }
+        let out = filter_surface_triangles(&indices, 25);
+        assert_eq!(out.len(), 32 * 3);
+        assert!(out.chunks_exact(3).all(|t| {
+            t[0] < 25 && t[1] < 25 && t[2] < 25
+        }));
+    }
+
+    #[test]
+    fn filter_surface_triangles_handles_empty_and_trailing_stray() {
+        // Empty input.
+        assert!(filter_surface_triangles(&[], 4).is_empty());
+
+        // Trailing 1-2 stray indices (not a full triangle) are silently
+        // dropped by `chunks_exact(3)`.
+        let indices = vec![0u32, 1, 2, 0, 1];
+        let out = filter_surface_triangles(&indices, 4);
+        assert_eq!(out, vec![0, 1, 2]);
+    }
 
     #[cfg(feature = "impostor-bake")]
     #[test]
