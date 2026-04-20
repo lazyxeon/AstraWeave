@@ -1,8 +1,6 @@
 # Terrain Material System — Path C Campaign
 
-**Status**: Phase 1 complete (forward-lit splat pipeline with post-completion fix).
-Phase 1.5 in progress (heightmap-driven multi-biome generation).
-Phases 2 and 3 not yet started.
+**Status**: Phase 1 + 1.5 complete. Phase 2 and 3 not yet started.
 **Scope**: Implementation of AAA-parity terrain material rendering in AstraWeave, comprising splat-map biome blending + per-vertex 4-way material override + user-selectable blend modes, sample budgets, material count tiers, splat resolution, and normal blend modes.
 **Author**: Plan drafted from design session 2026-04-19 between Andrew and Claude. Code references accurate as of 2026-04-19; verify before execution.
 **Prior work**: Three audits that established the current state — `docs/audits/editor_viewport_render_divergence_2026-04-19.md`, `docs/audits/tonemap_double_application_investigation_2026-04-19.md`, `docs/audits/terrain_material_flow_investigation_2026-04-19.md`.
@@ -502,7 +500,25 @@ Sub-steps landed (in order):
   - 1.E.5 (commit `b5fafc8ae`) — `EditorTerrainSplat` field removed from `EngineRenderAdapter`; import, init, struct entry, and the two 1.C usage sites deleted. The `terrain_splat.rs` module stays on disk flagged SUPERSEDED. §9 updated with the supersession deviation entry.
   - 1.F (commit `7edb15515`) — final verification pass, §7 closed, document header updated.
 
-**Phase 1.5 — Heightmap-driven multi-biome generation:** NOT STARTED
+**Phase 1.5 — Heightmap-driven multi-biome generation: COMPLETE 2026-04-20, commits `92c7f02af` (plan), `e160b8894` (elevation_biome module), `2590c0b87` (chunk-gen wiring), and the closeout commit that lands this status update. Per-vertex biome weights now come from `astraweave_terrain::elevation_to_biome_weights(world_y, SEA_LEVEL, ClimateBias::from_primary_biome_str(primary_biome))` in `tools/aw_editor/src/terrain_integration.rs::generate_heightmap_mesh`. `terrain_primary_biome` field semantics changed from single-biome selector to climate bias.**
+
+Sub-steps landed (in order):
+  - 1.5.A (commit `92c7f02af`) — campaign plan amended to add Phase 1.5 spec (§3.5, §7 status line, §6 scope clarification).
+  - 1.5.B (commit `e160b8894`) — new module `astraweave-terrain/src/elevation_biome.rs` (`ClimateBias`, `elevation_to_biome_weights`, `SEA_LEVEL = 2.0`). 7 unit tests covering sum-to-one invariant, Beach-near-sea-level dominance, Mountain-high-elevation dominance, climate-distinct mid-elevation biomes, string mapping, smoothstep endpoints, and below-sea-level fallback.
+  - 1.5.C (commit `2590c0b87`) — `generate_heightmap_mesh` in `terrain_integration.rs` rewired to call `elevation_to_biome_weights` per vertex. `BiomeBlender` setup + `packed_biome_to_weight_sets` helper removed as now-dead code.
+  - 1.5.D (folded into 1.5.E) — no tuning pass was required; static code-level verification is complete. Interactive visual verification is Andrew's hands-on gate (no automated editor-GUI drive exists in this environment).
+  - 1.5.E (this commit) — closeout: plan header + §7 updated to COMPLETE.
+
+**Phase 1.5 verification:**
+- `cargo check -p astraweave-render --all-features`: pass.
+- `cargo check -p aw_editor`: pass.
+- `cargo check -p astraweave-render --no-default-features --features "postfx,textures"`: pass (legacy fallback preserved).
+- `cargo test -p astraweave-terrain --lib`: 657 tests pass (including 7 new `elevation_biome` tests).
+- `cargo test -p aw_editor --lib`: 3945 tests pass.
+- `cargo build -p aw_editor --release`: clean 5m 36s build.
+
+**Interactive visual verification (Andrew's gate):** launching the editor against a terrain project with seed `12345` Grassland-primary should now show a Beach band near Y=2.0, Grassland in lowlands, Forest at mid-elevation, and Mountain at high elevation, with smooth transitions between them. Changing `terrain_primary_biome` to `"tundra"` should produce a colder distribution (no Forest, more Tundra). Testing with `primary_biome = "grassland"` rather than `"beach"/"river"/"swamp"` avoids the corrupt water overlay from water audit incidental #1 (`EngineRenderAdapter::update_water` has no caller in the editor).
+
 **Phase 2 — Per-vertex material data extension:** NOT STARTED
 **Phase 3 — Settings, wizard, conflict dialog, final polish:** NOT STARTED
 
