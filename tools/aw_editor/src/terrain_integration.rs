@@ -1,10 +1,10 @@
 use astraweave_terrain::{
-    BiomeBlendConfig, BiomeBlender, BiomeConfig, BiomePack, BiomePackAsset, BiomeType, ChunkId,
-    Heightmap, HeightmapPatch, PackedBiomeBlend, ScatterConfig, SplatConfig, SplatMapGenerator,
+    elevation_to_biome_weights, BiomeConfig, BiomePack, BiomePackAsset, BiomeType, ChunkId,
+    ClimateBias, Heightmap, HeightmapPatch, ScatterConfig, SplatConfig, SplatMapGenerator,
     SplatRule, SplatWeights, TerrainChunk, VegetationInstance, VegetationScatter, WorldConfig,
-    WorldGenerator,
+    WorldGenerator, SEA_LEVEL,
 };
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 use std::collections::HashMap;
 use tracing::{debug, info};
 
@@ -713,13 +713,17 @@ impl TerrainState {
     ) -> (Vec<TerrainVertex>, Vec<u32>) {
         let resolution = heightmap.resolution() as usize;
         let cell_size = chunk_size / (resolution - 1) as f32;
-        let blender = BiomeBlender::new(BiomeBlendConfig::default(), seed);
-        let biome_blends = blender.blend_chunk(
-            heightmap,
-            biome_map,
-            chunk_size,
-            Vec2::new(world_offset.x, world_offset.z),
-        );
+        // Phase 1.5 (Terrain Material System Campaign §3.5): `primary_biome`
+        // now acts as a climate bias for heightmap-driven biome assignment.
+        // Set to "grassland" for temperate, "tundra" for cold, "desert" for
+        // arid, etc. Replaces the prior single-biome-selector behavior —
+        // biome weights are now elevation-driven per-vertex (see
+        // `astraweave_terrain::elevation_to_biome_weights`) and `biome_map`
+        // is retained only for downstream splat-map generation (material
+        // rules rather than biome weights).
+        let _ = biome_map; // reserved for future multi-biome-per-chunk work
+        let _ = seed; // reserved; biome bands are seed-independent in Phase 1.5
+        let climate = ClimateBias::from_primary_biome_str(primary_biome.as_str());
         let mut heights = Vec::with_capacity(resolution * resolution);
         let mut normals = Vec::with_capacity(resolution * resolution);
         for z in 0..resolution {
@@ -746,22 +750,18 @@ impl TerrainState {
 
                 let normal = normals.get(biome_idx).copied().unwrap_or(Vec3::Y);
 
-                // Fallback uses the primary biome (e.g., Desert=index 1) not Grassland
-                let primary_biome_id = Self::biome_to_id(primary_biome) as usize;
-                let mut fallback_w0 = [0.0f32; 4];
-                let mut fallback_w1 = [0.0f32; 4];
-                if primary_biome_id < 4 {
-                    fallback_w0[primary_biome_id] = 1.0;
-                } else if primary_biome_id < 8 {
-                    fallback_w1[primary_biome_id - 4] = 1.0;
-                } else {
-                    fallback_w0[0] = 1.0;
-                }
-                let (biome_weights_0, biome_weights_1) = biome_blends
-                    .get(biome_idx)
-                    .copied()
-                    .map(Self::packed_biome_to_weight_sets)
-                    .unwrap_or((fallback_w0, fallback_w1));
+                // Phase 1.5: per-vertex biome weights are driven by vertex
+                // world-space elevation relative to sea level, biased by the
+                // climate derived from `primary_biome`. The 8-slot output is
+                // split slots [0..4] → biome_weights_0, [4..8] → biome_weights_1
+                // matching the TerrainVertex packing consumed by the Phase 1
+                // forward-lit splat pipeline.
+                let biome_weights_8 =
+                    elevation_to_biome_weights(height, SEA_LEVEL, climate);
+                let mut biome_weights_0 = [0.0f32; 4];
+                let mut biome_weights_1 = [0.0f32; 4];
+                biome_weights_0.copy_from_slice(&biome_weights_8[0..4]);
+                biome_weights_1.copy_from_slice(&biome_weights_8[4..8]);
                 let (material_ids, material_weights) = splat_map
                     .get(biome_idx)
                     .copied()
@@ -1040,36 +1040,6 @@ impl TerrainState {
             BiomeType::River => 7,
             _ => 0, // Fallback for future biome types
         }
-    }
-
-    fn packed_biome_to_weight_sets(blend: PackedBiomeBlend) -> ([f32; 4], [f32; 4]) {
-        let mut weights_0 = [0.0; 4];
-        let mut weights_1 = [0.0; 4];
-
-        for index in 0..4 {
-            let biome_id = blend.biome_ids[index] as usize;
-            let weight = blend.weights[index];
-            if biome_id < 4 {
-                weights_0[biome_id] += weight;
-            } else if biome_id < 8 {
-                weights_1[biome_id - 4] += weight;
-            }
-        }
-
-        let total: f32 =
-            weights_0.iter().copied().sum::<f32>() + weights_1.iter().copied().sum::<f32>();
-        if total > 0.0001 {
-            for weight in &mut weights_0 {
-                *weight /= total;
-            }
-            for weight in &mut weights_1 {
-                *weight /= total;
-            }
-        } else {
-            weights_0[0] = 1.0;
-        }
-
-        (weights_0, weights_1)
     }
 
     /// Convert 8-channel SplatWeights into top-4 material slots (ids + weights).
