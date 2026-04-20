@@ -474,6 +474,69 @@ fn fog_color_from_sky(sky: &astraweave_render::SkyConfig) -> glam::Vec3 {
     sky.day_color_horizon
 }
 
+/// Infer the square-surface-grid dimension `N` from a terrain chunk's
+/// total vertex count, including any edge skirts the editor appends after
+/// the surface grid.
+///
+/// Editor chunks have one of two layouts:
+/// * `N² + 4N` vertices when all 4 edge skirts are present (the default
+///   produced by `terrain_integration::TerrainState::build_chunk_mesh`).
+/// * `N²` vertices when no skirts are attached (e.g., test fixtures).
+///
+/// The "with skirts" shape is the inverse of `total = N² + 4N`, which
+/// rearranges to `(N+2)² = total + 4`, so `N = sqrt(total + 4) - 2`.
+///
+/// Returns `None` if `vertex_count` doesn't match either layout exactly —
+/// a defensive guard against malformed input that would otherwise produce
+/// incorrect index filtering (the Phase 1 post-completion regression
+/// originated from `floor(sqrt(N² + 4N))` = `N+2` overshooting and
+/// producing a `surface_idx_count` that pulled skirt triangles into the
+/// filtered set).
+fn infer_surface_grid_dim(vertex_count: usize) -> Option<usize> {
+    // With-skirts layout: (N+2)² = total + 4.
+    let sqrt_disc = ((vertex_count + 4) as f64).sqrt().round() as usize;
+    if sqrt_disc >= 4 {
+        let n = sqrt_disc - 2;
+        if n >= 2 && n.checked_mul(n).and_then(|nn| nn.checked_add(4 * n)) == Some(vertex_count) {
+            return Some(n);
+        }
+    }
+    // Plain-square layout: total = N².
+    let n_plain = (vertex_count as f64).sqrt().round() as usize;
+    if n_plain >= 2 && n_plain.checked_mul(n_plain) == Some(vertex_count) {
+        return Some(n_plain);
+    }
+    None
+}
+
+/// Filter an editor-side terrain index buffer to triangles whose three
+/// corners all reference valid surface vertices (indices `< surface_vert_count`).
+///
+/// Used by Phase 1's forward-path chunk upload: the editor's index buffer
+/// contains both surface triangles (all 3 corners reference surface
+/// vertices in `[0, surface_vert_count)`) and skirt triangles (2 corners
+/// are surface vertices, 2 are skirt vertices at indices `≥ surface_vert_count`).
+/// Skirt triangles must be dropped because the forward path's vertex
+/// buffer is the surface prefix only; leaving them would index past the
+/// end of the truncated buffer and produce degenerate triangles.
+///
+/// Processes the input in triangle-sized chunks. Silently drops a
+/// trailing partial triangle (1-2 stray indices) if present. The caller
+/// already ensured `indices.len() % 3 == 0` in practice, but the defensive
+/// handling keeps this helper robust to future edits.
+fn filter_surface_triangles(indices: &[u32], surface_vert_count: u32) -> Vec<u32> {
+    let mut out = Vec::with_capacity(indices.len());
+    for tri in indices.chunks_exact(3) {
+        if tri[0] < surface_vert_count
+            && tri[1] < surface_vert_count
+            && tri[2] < surface_vert_count
+        {
+            out.extend_from_slice(tri);
+        }
+    }
+    out
+}
+
 fn build_terrain_cluster_plan(
     chunks: &[TerrainChunkPlanningInfo],
     grid: usize,
