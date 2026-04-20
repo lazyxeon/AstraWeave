@@ -599,6 +599,72 @@ line are reverted. A subsequent remediation commit closes the triangle-streak
 regression and re-marks Phase 1 complete, referencing both the 1.F hash
 and the triangle-fix hash on the §7 COMPLETE line.
 
+### 2026-04-20, Phase 1 post-completion, commit TBD (Task 3 diagnostic)
+
+**Diagnostic (not a deviation):** Static-analysis investigation of the
+secondary observation from the revert entry above — terrain renders as
+near-uniformly Grassland-colored despite the 8-biome splat pipeline
+being wired. Original prompt specified a temporary `log::info!` biome-
+weight histogram at `upload_terrain_chunks`, observed live in the editor
+against seed `12345` Grassland-primary world. Interactive GUI observation
+isn't available in this automated environment, so the investigation was
+done via code-path trace + existing test coverage review.
+
+**Finding (Outcome #1 under the prompt's taxonomy, pending Andrew's
+interactive confirmation):** All 8 biome channels are preserved from
+authoring through to the shader. The uniform-green appearance is almost
+certainly an authoring-side property of seed `12345` Grassland-primary,
+not a rendering bug. Evidence:
+
+1. **CPU splat encoding (`terrain_splat_builder.rs:64-71`):** writes all
+   8 per-vertex biome weights — `biome_weights_0[0..4]` into splat_0's
+   RGBA channels, `biome_weights_1[0..4]` into splat_1's RGBA channels.
+   No reduction, no argmax, no channel dropping.
+2. **Existing CPU tests pass:**
+   - `encodes_single_vertex_grid` verifies all 8 channels end up at the
+     correct bytes in the splat buffers.
+   - `row_major_layout_matches_input_order` verifies per-vertex layout.
+   - `dominant_weight_preserved_through_encoding` verifies the dominant
+     biome's byte is the maximum in its splat channel.
+3. **GPU material upload (`engine_adapter.rs:1.E.4.b` init block):**
+   uploads 8 distinct placeholder albedos, one per biome, with
+   `active_layer_count = 8` and `layer.texture_indices = [i, i, i, i]`
+   so layer `i` reads array slice `i`. All 8 biomes are bound.
+4. **Shader sampling (`pbr_terrain_forward.wgsl:178-191`):** samples
+   BOTH splat maps and reads all 8 RGBA channels into the
+   `raw_weights[0..8]` array. Per-fragment blend loop iterates
+   `uTerrain.active_layer_count` (set to 8) and accumulates all
+   contributing biomes. No collapse to Grassland-only.
+5. **UV propagation:** the 1.E.4.c vertex conversion assigns normalized
+   `[0, 1]` per-chunk UVs based on row-major grid position, and the
+   shader's `splat_uv = in.uv * uTerrain.splat_uv_scale` (scale = 1.0
+   from `TerrainMaterialGpu::default`) samples the splat texture across
+   its full extent. UV does vary per fragment.
+
+Together these rule out the Outcome #2 "rendering bug collapsing biome
+weights" scenario. The remaining explanation is Outcome #1: the test
+seed happens to produce Grassland weights at or near 1.0 everywhere on
+every vertex, so every splat texel encodes near-pure Grassland, and
+the shader correctly renders that as uniform green.
+
+**Impact:** No Phase 1 blocker. Seed `12345` Grassland-primary is not a
+useful test case for visible biome blending because it produces
+monoculture authoring. Recommendation for visual verification: use a
+seed or explicit configuration that produces mixed biomes (e.g., a
+seed that covers the full biome palette or a synthetic multi-biome
+chunk constructed in a unit test). Deferring this to a Phase 2/3
+visual-QA pass where the per-vertex material authoring and real
+material textures are both in play — at that point a meaningfully-
+mixed terrain is needed to validate the blending anyway.
+
+**If Andrew's interactive observation later reveals the histogram
+shows > 5% weights for non-Grassland biomes in any chunk** (overturning
+the Outcome #1 assumption above), this entry should be re-opened and
+re-classified as Outcome #2. The static trace above locates the
+remaining suspect entirely within the authoring layer
+(`astraweave-terrain` biome mixer + `terrain_integration.rs`
+chunk-build path), NOT in the Phase 1 rendering pipeline.
+
 ---
 
 ## 10. References
