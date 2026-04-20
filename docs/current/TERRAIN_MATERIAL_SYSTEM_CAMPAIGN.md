@@ -1,6 +1,8 @@
 # Terrain Material System — Path C Campaign
 
-**Status**: Phase 1 complete (forward-lit splat pipeline, Option D, with post-completion triangle-streak fix). Phases 2 and 3 not yet started.
+**Status**: Phase 1 complete (forward-lit splat pipeline with post-completion fix).
+Phase 1.5 in progress (heightmap-driven multi-biome generation).
+Phases 2 and 3 not yet started.
 **Scope**: Implementation of AAA-parity terrain material rendering in AstraWeave, comprising splat-map biome blending + per-vertex 4-way material override + user-selectable blend modes, sample budgets, material count tiers, splat resolution, and normal blend modes.
 **Author**: Plan drafted from design session 2026-04-19 between Andrew and Claude. Code references accurate as of 2026-04-19; verify before execution.
 **Prior work**: Three audits that established the current state — `docs/audits/editor_viewport_render_divergence_2026-04-19.md`, `docs/audits/tonemap_double_application_investigation_2026-04-19.md`, `docs/audits/terrain_material_flow_investigation_2026-04-19.md`.
@@ -307,6 +309,50 @@ Enable the existing splat-map infrastructure end-to-end so that terrain renders 
 
 ---
 
+## 3.5 — Phase 1.5: Heightmap-driven multi-biome generation
+
+### 3.5.1 Goal
+
+Extend the terrain generator to produce mixed biome weights per vertex
+based on heightmap elevation bands, so the Phase 1 splat pipeline has
+varied biome data to render. Visible outcome: generated terrain shows
+multiple biomes blending across elevation, regardless of `terrain_primary_biome`.
+
+### 3.5.2 Scope
+
+- Heightmap-to-biome-weights function in `astraweave-terrain` that maps
+  vertex elevation (with `terrain_primary_biome` as climate bias) to
+  normalized 8-slot weights.
+- Wire the function into the existing chunk-generation path so
+  `TerrainVertex.biome_weights_0/1` are populated per vertex.
+- `terrain_primary_biome` field semantics change from "single biome
+  selector" to "climate bias parameter."
+
+Out of scope for Phase 1.5: multi-axis biome influence (moisture/temperature),
+Voronoi region biomes, manual blueprint painting, water-system changes,
+any rendering or shader work.
+
+### 3.5.3 Success criteria
+
+- Generated terrain (default seed `12345`, default `terrain_primary_biome = "grassland"`)
+  shows multiple biome colors visible in the editor: Beach near sea level
+  (narrow tan band), Grassland in lowlands (muted green), Forest at mid-elevation
+  (dark green), Mountain at high elevation (cool gray).
+- Changing `terrain_primary_biome` to `"tundra"` produces a colder distribution
+  using the same heightmap.
+- All three `cargo check` invocations pass.
+- All existing tests pass; new unit tests added for the biome assignment function.
+- Editor launches cleanly, renders terrain without panics or wgpu validation errors.
+
+### 3.5.4 Reversibility
+
+The changes are localized to `astraweave-terrain` (and the `terrain_integration.rs`
+call site). Reverting Phase 1.5 restores single-biome generation. The Phase 1
+splat pipeline continues to work in either state — it just has trivial weights
+to render under reversion.
+
+---
+
 ## 4. Phase 2 — Per-vertex material data extension
 
 ### 4.1 Goal
@@ -429,6 +475,7 @@ These items are intentionally not part of Path C and are logged here to prevent 
 - **Shader permutations beyond material count tier.** No quality tiers for rendering fidelity (low / medium / high / epic). The three settings handle quality implicitly.
 - **Changes to existing non-terrain rendering.** Entities, scatter, sky, shadows, post-processing — none of these are touched by this campaign. If a change is needed in any of them during execution, it is out of scope and must be logged as a deviation (§9) or deferred to a follow-on task.
 - **Introducing a deferred renderer.** Forward rendering is AstraWeave's architecture. If a deferred renderer is ever wanted, it is a separate decision with separate scope. The dormant `pbr_terrain.wgsl` / `pbr_terrain_vs.wgsl` that predate this campaign shipped a deferred-style output; per the Option D decision (§9), they are treated as reference-only and the campaign authors new forward-lit shaders instead.
+- **Multi-axis biome influence (moisture + temperature axes), Voronoi region biomes, and manual blueprint painting.** Phase 1.5's heightmap-driven biome assignment is the intentionally-narrow scope. Multi-axis biome influence (moisture, temperature noise), Voronoi region biomes, and manual blueprint painting are all explicitly deferred to future work outside this campaign.
 
 ---
 
@@ -455,6 +502,7 @@ Sub-steps landed (in order):
   - 1.E.5 (commit `b5fafc8ae`) — `EditorTerrainSplat` field removed from `EngineRenderAdapter`; import, init, struct entry, and the two 1.C usage sites deleted. The `terrain_splat.rs` module stays on disk flagged SUPERSEDED. §9 updated with the supersession deviation entry.
   - 1.F (commit `7edb15515`) — final verification pass, §7 closed, document header updated.
 
+**Phase 1.5 — Heightmap-driven multi-biome generation:** NOT STARTED
 **Phase 2 — Per-vertex material data extension:** NOT STARTED
 **Phase 3 — Settings, wizard, conflict dialog, final polish:** NOT STARTED
 
