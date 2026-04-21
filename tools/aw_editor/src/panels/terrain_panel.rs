@@ -1891,6 +1891,9 @@ impl TerrainPanel {
                 erosion_strength: 0.2,
             },
             "forest" => BiomeNoisePreset {
+                // Hilly woodland. Phase 1.6-F.1.B: mountains_amplitude raised
+                // from 25 → 40 to move span comfortably clear of the 60-unit
+                // floor (was 60.8 — too close to assertion boundary).
                 base_scale: 0.004,
                 base_amplitude: 40.0,
                 base_octaves: 5,
@@ -1898,7 +1901,7 @@ impl TerrainPanel {
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
                 mountains_scale: 0.003,
-                mountains_amplitude: 25.0,
+                mountains_amplitude: 40.0,
                 mountains_octaves: 4,
                 detail_enabled: true,
                 detail_scale: 0.02,
@@ -1907,30 +1910,40 @@ impl TerrainPanel {
                 erosion_strength: 0.3,
             },
             "tundra" => BiomeNoisePreset {
+                // Cold-alpine terrain. ClimateBias::Cold maps to Mountain
+                // erosion preset per plan §2.2; topology must match. Phase
+                // 1.6-F.1.B: base_amplitude 30 → 55, mountains_amplitude
+                // 40 → 150, mountains_octaves 5 → 6 to reach the 150-unit
+                // dramatic-preset floor (was 64.2).
                 base_scale: 0.003,
-                base_amplitude: 30.0,
-                base_octaves: 4,
-                base_persistence: 0.40,
+                base_amplitude: 55.0,
+                base_octaves: 5,
+                base_persistence: 0.45,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
                 mountains_scale: 0.002,
-                mountains_amplitude: 40.0,
-                mountains_octaves: 5,
+                mountains_amplitude: 150.0,
+                mountains_octaves: 6,
                 detail_enabled: true,
                 detail_scale: 0.015,
-                detail_amplitude: 4.0,
+                detail_amplitude: 5.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
             },
             "swamp" => BiomeNoisePreset {
+                // Wetland — gentle bogs amid low rolling hills. Phase
+                // 1.6-F.1.B: base_amplitude 8 → 40, mountains enabled at
+                // amp 45 so span clears the 60-unit floor with margin
+                // (was 10.4 pre-F.1, 53.8 after second iteration) while
+                // preserving the flat-wetland character.
                 base_scale: 0.006,
-                base_amplitude: 8.0,
+                base_amplitude: 40.0,
                 base_octaves: 4,
-                base_persistence: 0.60,
+                base_persistence: 0.55,
                 base_lacunarity: 1.8,
-                mountains_enabled: false,
-                mountains_scale: 0.002,
-                mountains_amplitude: 0.0,
+                mountains_enabled: true,
+                mountains_scale: 0.003,
+                mountains_amplitude: 45.0,
                 mountains_octaves: 3,
                 detail_enabled: true,
                 detail_scale: 0.03,
@@ -1939,30 +1952,38 @@ impl TerrainPanel {
                 erosion_strength: 0.3,
             },
             "beach" => BiomeNoisePreset {
+                // Coastal — sandy flats with bluffs and offshore stacks.
+                // Phase 1.6-F.1.B: base_amplitude 5 → 32, mountains enabled
+                // at amp 35 so span clears the 60-unit floor (was 8.3
+                // pre-F.1, 55.3 after first iteration) while still reading
+                // as coastal relief.
                 base_scale: 0.008,
-                base_amplitude: 5.0,
-                base_octaves: 3,
-                base_persistence: 0.30,
+                base_amplitude: 32.0,
+                base_octaves: 4,
+                base_persistence: 0.40,
                 base_lacunarity: 2.0,
-                mountains_enabled: false,
-                mountains_scale: 0.002,
-                mountains_amplitude: 0.0,
+                mountains_enabled: true,
+                mountains_scale: 0.003,
+                mountains_amplitude: 35.0,
                 mountains_octaves: 3,
                 detail_enabled: true,
                 detail_scale: 0.05,
-                detail_amplitude: 1.5,
+                detail_amplitude: 2.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
             },
             "river" => BiomeNoisePreset {
+                // River valley — floodplain with bluffs. Phase 1.6-F.1.B:
+                // base_amplitude 25 → 35, mountains_amplitude 20 → 35 so
+                // span clears the 60-unit floor (was 44.8).
                 base_scale: 0.004,
-                base_amplitude: 25.0,
+                base_amplitude: 35.0,
                 base_octaves: 5,
                 base_persistence: 0.45,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
                 mountains_scale: 0.003,
-                mountains_amplitude: 20.0,
+                mountains_amplitude: 35.0,
                 mountains_octaves: 4,
                 detail_enabled: true,
                 detail_scale: 0.025,

@@ -64,6 +64,139 @@ fn grassland_preset() -> BiomeNoisePreset {
     }
 }
 
+fn mountain_preset() -> BiomeNoisePreset {
+    BiomeNoisePreset {
+        base_scale: 0.003,
+        base_amplitude: 55.0,
+        base_octaves: 6,
+        base_persistence: 0.55,
+        base_lacunarity: 2.2,
+        mountains_enabled: true,
+        mountains_scale: 0.002,
+        mountains_amplitude: 210.0,
+        mountains_octaves: 8,
+        detail_enabled: true,
+        detail_scale: 0.03,
+        detail_amplitude: 8.0,
+        erosion_enabled: false,
+        erosion_strength: 0.0,
+    }
+}
+
+fn desert_preset() -> BiomeNoisePreset {
+    BiomeNoisePreset {
+        base_scale: 0.004,
+        base_amplitude: 45.0,
+        base_octaves: 5,
+        base_persistence: 0.45,
+        base_lacunarity: 2.2,
+        mountains_enabled: true,
+        mountains_scale: 0.0015,
+        mountains_amplitude: 35.0,
+        mountains_octaves: 4,
+        detail_enabled: true,
+        detail_scale: 0.06,
+        detail_amplitude: 6.0,
+        erosion_enabled: true,
+        erosion_strength: 0.2,
+    }
+}
+
+fn forest_preset() -> BiomeNoisePreset {
+    BiomeNoisePreset {
+        base_scale: 0.004,
+        base_amplitude: 40.0,
+        base_octaves: 5,
+        base_persistence: 0.50,
+        base_lacunarity: 2.0,
+        mountains_enabled: true,
+        mountains_scale: 0.003,
+        mountains_amplitude: 40.0,
+        mountains_octaves: 4,
+        detail_enabled: true,
+        detail_scale: 0.02,
+        detail_amplitude: 6.0,
+        erosion_enabled: true,
+        erosion_strength: 0.3,
+    }
+}
+
+fn tundra_preset() -> BiomeNoisePreset {
+    BiomeNoisePreset {
+        base_scale: 0.003,
+        base_amplitude: 55.0,
+        base_octaves: 5,
+        base_persistence: 0.45,
+        base_lacunarity: 2.0,
+        mountains_enabled: true,
+        mountains_scale: 0.002,
+        mountains_amplitude: 150.0,
+        mountains_octaves: 6,
+        detail_enabled: true,
+        detail_scale: 0.015,
+        detail_amplitude: 5.0,
+        erosion_enabled: true,
+        erosion_strength: 0.3,
+    }
+}
+
+fn swamp_preset() -> BiomeNoisePreset {
+    BiomeNoisePreset {
+        base_scale: 0.006,
+        base_amplitude: 40.0,
+        base_octaves: 4,
+        base_persistence: 0.55,
+        base_lacunarity: 1.8,
+        mountains_enabled: true,
+        mountains_scale: 0.003,
+        mountains_amplitude: 45.0,
+        mountains_octaves: 3,
+        detail_enabled: true,
+        detail_scale: 0.03,
+        detail_amplitude: 2.0,
+        erosion_enabled: true,
+        erosion_strength: 0.3,
+    }
+}
+
+fn beach_preset() -> BiomeNoisePreset {
+    BiomeNoisePreset {
+        base_scale: 0.008,
+        base_amplitude: 32.0,
+        base_octaves: 4,
+        base_persistence: 0.40,
+        base_lacunarity: 2.0,
+        mountains_enabled: true,
+        mountains_scale: 0.003,
+        mountains_amplitude: 35.0,
+        mountains_octaves: 3,
+        detail_enabled: true,
+        detail_scale: 0.05,
+        detail_amplitude: 2.0,
+        erosion_enabled: true,
+        erosion_strength: 0.3,
+    }
+}
+
+fn river_preset() -> BiomeNoisePreset {
+    BiomeNoisePreset {
+        base_scale: 0.004,
+        base_amplitude: 35.0,
+        base_octaves: 5,
+        base_persistence: 0.45,
+        base_lacunarity: 2.0,
+        mountains_enabled: true,
+        mountains_scale: 0.003,
+        mountains_amplitude: 35.0,
+        mountains_octaves: 4,
+        detail_enabled: true,
+        detail_scale: 0.025,
+        detail_amplitude: 4.0,
+        erosion_enabled: true,
+        erosion_strength: 0.3,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Shared diagnostic helpers.
 // ---------------------------------------------------------------------------
@@ -222,5 +355,85 @@ fn phase_1_6_f1_grassland_preset_y_span() {
     assert!(
         span >= 100.0,
         "Grassland preset produces Y span {span:.2} — expected >= 100 for Phase 1.5 bands to express"
+    );
+}
+
+#[test]
+fn phase_1_6_f1_mountain_preset_y_span() {
+    let stats = run_preset("mountain", mountain_preset());
+    print_stats("mountain", &stats);
+    let span = stats.y_max - stats.y_min;
+    assert!(
+        span >= 150.0,
+        "Mountain preset produces Y span {span:.2} — expected >= 150 (dramatic-preset floor)"
+    );
+}
+
+#[test]
+fn phase_1_6_f1_desert_preset_y_span() {
+    let stats = run_preset("desert", desert_preset());
+    print_stats("desert", &stats);
+    let span = stats.y_max - stats.y_min;
+    assert!(
+        span >= 60.0,
+        "Desert preset produces Y span {span:.2} — expected >= 60 (general-preset floor)"
+    );
+}
+
+#[test]
+fn phase_1_6_f1_forest_preset_y_span() {
+    let stats = run_preset("forest", forest_preset());
+    print_stats("forest", &stats);
+    let span = stats.y_max - stats.y_min;
+    assert!(
+        span >= 60.0,
+        "Forest preset produces Y span {span:.2} — expected >= 60 (general-preset floor)"
+    );
+}
+
+#[test]
+fn phase_1_6_f1_tundra_preset_y_span() {
+    let stats = run_preset("tundra", tundra_preset());
+    print_stats("tundra", &stats);
+    let span = stats.y_max - stats.y_min;
+    // Tundra maps to ClimateBias::Cold which uses Mountain-style erosion per
+    // plan §2.2. Tundra terrain is typically mountainous — apply the dramatic
+    // floor.
+    assert!(
+        span >= 150.0,
+        "Tundra preset produces Y span {span:.2} — expected >= 150 (dramatic-preset floor)"
+    );
+}
+
+#[test]
+fn phase_1_6_f1_swamp_preset_y_span() {
+    let stats = run_preset("swamp", swamp_preset());
+    print_stats("swamp", &stats);
+    let span = stats.y_max - stats.y_min;
+    assert!(
+        span >= 60.0,
+        "Swamp preset produces Y span {span:.2} — expected >= 60 (general-preset floor)"
+    );
+}
+
+#[test]
+fn phase_1_6_f1_beach_preset_y_span() {
+    let stats = run_preset("beach", beach_preset());
+    print_stats("beach", &stats);
+    let span = stats.y_max - stats.y_min;
+    assert!(
+        span >= 60.0,
+        "Beach preset produces Y span {span:.2} — expected >= 60 (general-preset floor)"
+    );
+}
+
+#[test]
+fn phase_1_6_f1_river_preset_y_span() {
+    let stats = run_preset("river", river_preset());
+    print_stats("river", &stats);
+    let span = stats.y_max - stats.y_min;
+    assert!(
+        span >= 60.0,
+        "River preset produces Y span {span:.2} — expected >= 60 (general-preset floor)"
     );
 }
