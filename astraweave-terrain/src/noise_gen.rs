@@ -427,10 +427,10 @@ impl TerrainNoise {
     }
 
     /// Phase 1.6-F.2 §2.6: sample the continental noise field at a world
-    /// position, mapped to [0, 1]. Made `pub(crate)` so module-internal
-    /// diagnostic tests can inspect the field directly without running the
-    /// full heightmap pipeline.
-    #[cfg(test)]
+    /// position, mapped to [0, 1]. Promoted from `#[cfg(test)]` to permanent
+    /// `pub(crate)` during F.2-T so downstream diagnostic tests (and future
+    /// tuning investigations) can inspect the field directly without running
+    /// the full heightmap pipeline.
     pub(crate) fn sample_continental_01(&self, x: f64, z: f64) -> f32 {
         let raw = self.continental.get([
             x * self.config.continental_scale as f64,
@@ -438,6 +438,66 @@ impl TerrainNoise {
             z * self.config.continental_scale as f64,
         ]) as f32;
         ((raw + 1.0) * 0.5).clamp(0.0, 1.0)
+    }
+
+    /// Phase 1.6-F.2-T: diagnostic accessor returning per-layer contributions
+    /// to the final sampled height, plus the continental field's [0, 1]
+    /// sample at the same position. Mirrors `sample_height`'s math exactly
+    /// so downstream diagnostics can test hypotheses about layer dominance
+    /// (e.g. detail layer masking mountain layer in lowlands).
+    ///
+    /// Returns: `(base_contrib, mountain_raw_contrib, mountain_effective_contrib, detail_contrib, continental_01)`.
+    pub(crate) fn sample_per_layer(&self, x: f64, z: f64) -> (f32, f32, f32, f32, f32) {
+        let base_contrib = if self.config.base_elevation.enabled {
+            let v = self.base_elevation.get([
+                x * self.config.base_elevation.scale,
+                0.0,
+                z * self.config.base_elevation.scale,
+            ]) as f32;
+            v * self.config.base_elevation.amplitude
+        } else {
+            0.0
+        };
+
+        let continental_01 = self.sample_continental_01(x, z);
+
+        let (mountain_raw, mountain_effective) = if self.config.mountains.enabled {
+            let v = self.mountains.get([
+                x * self.config.mountains.scale,
+                0.0,
+                z * self.config.mountains.scale,
+            ]) as f32;
+            let raw = v.abs() * self.config.mountains.amplitude;
+            let effective = if self.config.continental_enabled {
+                let multiplier = self.config.continental_min
+                    + (1.0 - self.config.continental_min) * continental_01;
+                raw * multiplier
+            } else {
+                raw
+            };
+            (raw, effective)
+        } else {
+            (0.0, 0.0)
+        };
+
+        let detail_contrib = if self.config.detail.enabled {
+            let v = self.detail.get([
+                x * self.config.detail.scale,
+                0.0,
+                z * self.config.detail.scale,
+            ]) as f32;
+            v * self.config.detail.amplitude
+        } else {
+            0.0
+        };
+
+        (
+            base_contrib,
+            mountain_raw,
+            mountain_effective,
+            detail_contrib,
+            continental_01,
+        )
     }
 
     /// Sample 3D density for isosurface extraction (caves, overhangs).
@@ -859,6 +919,249 @@ mod tests {
             differ_count >= 50,
             "DomainWarped matched Perlin at too many positions: only {differ_count}/100 differ (expected >= 50)"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 1.6-F.2-T diagnostics (temporary — removed at F.2-T.D closeout).
+    //
+    // These three tests establish which of H1 (detail dominance in lowlands),
+    // H2 (continental field too narrow at editor extent), and H3 (DomainWarp
+    // iterations=1 too spiky) drive the visual regression observed after F.2
+    // landed. They are diagnostic, not gating — they print statistics that
+    // inform F.2-T.B tuning decisions and then assert only on pathological
+    // baselines that the regression would have to overcome to be real.
+    // -----------------------------------------------------------------------
+
+    /// H2 test: measure the continental field's output distribution across
+    /// the editor's actual terrain extent (11×11 chunks × 256 units ≈ 2816
+    /// world units, matching `terrain_integration::TerrainState` at
+    /// `chunk_radius = 5`). If the field's max is < 0.7 across this extent,
+    /// the terrain has no highland regions — continental modulation becomes
+    /// a near-uniform multiplier in the lowland range, which suppresses
+    /// mountains globally instead of producing the intended regional
+    /// clustering.
+    #[test]
+    fn phase_1_6_f2_t_continental_field_distribution_at_editor_extent() {
+        let mut config = NoiseConfig::default();
+        config.continental_enabled = true;
+        let noise = TerrainNoise::new(&config, 12345);
+
+        // 11×11 chunks × 64 vertices per side = 704×704 = 495,616 samples.
+        // Using the editor's actual chunk size of 256 world units.
+        let chunk_size = 256.0f64;
+        let verts_per_side = 64i32;
+        let chunk_radius = 5i32;
+
+        let mut samples: Vec<f32> = Vec::with_capacity(495_616);
+        for chunk_x in -chunk_radius..=chunk_radius {
+            for chunk_z in -chunk_radius..=chunk_radius {
+                let origin_x = chunk_x as f64 * chunk_size;
+                let origin_z = chunk_z as f64 * chunk_size;
+                for vz in 0..verts_per_side {
+                    for vx in 0..verts_per_side {
+                        let x = origin_x
+                            + (vx as f64 / verts_per_side as f64) * chunk_size;
+                        let z = origin_z
+                            + (vz as f64 / verts_per_side as f64) * chunk_size;
+                        samples.push(noise.sample_continental_01(x, z));
+                    }
+                }
+            }
+        }
+
+        samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let n = samples.len();
+        let min = samples[0];
+        let max = *samples.last().unwrap();
+        let mean = samples.iter().sum::<f32>() / n as f32;
+        let p05 = samples[(n as f32 * 0.05) as usize];
+        let p50 = samples[n / 2];
+        let p95 = samples[(n as f32 * 0.95) as usize];
+
+        let mut histogram = [0u32; 20];
+        for s in &samples {
+            let bucket = (s * 19.9) as usize;
+            histogram[bucket.min(19)] += 1;
+        }
+        let bottom_30pct: u32 = histogram[..6].iter().sum();
+        let bottom_pct = bottom_30pct as f32 / n as f32;
+
+        println!("======================================================");
+        println!("H2 continental field distribution at editor extent:");
+        println!("  samples: {n} (11x11 chunks, 64 verts/side, 256 units/chunk)");
+        println!("  min={min:.3} p05={p05:.3} p50={p50:.3} p95={p95:.3} max={max:.3}");
+        println!("  mean={mean:.3}");
+        println!("  histogram (20 buckets, 0.05 each):");
+        for (i, c) in histogram.iter().enumerate() {
+            let low = i as f32 * 0.05;
+            let pct = 100.0 * (*c as f64) / n as f64;
+            println!("    [{i:2}] {low:.2}..{:.2}  {c:>7}  ({pct:>5.2}%)", low + 0.05);
+        }
+        println!("  bottom 30% of range holds {:.1}% of vertices", bottom_pct * 100.0);
+        if max < 0.7 {
+            println!("  *** H2 CONFIRMED: max {max:.3} < 0.7 — NO highland regions in visible terrain ***");
+        } else if max < 0.8 {
+            println!("  *** H2 PARTIAL: max {max:.3} < 0.8 — sparse highland regions ***");
+        } else {
+            println!("  H2 rejected: max {max:.3} >= 0.8 — highland regions should exist");
+        }
+        println!("======================================================");
+
+        // Non-pathological gate: the field must not be degenerate (constant).
+        assert!(
+            (max - min) >= 0.3,
+            "continental range {:.3} too narrow to test H2 meaningfully",
+            max - min
+        );
+    }
+
+    /// H1 test: measure per-layer contributions at lowland vs highland
+    /// positions. If `detail / mountain_effective` ratio in lowlands is > 0.5,
+    /// the detail layer is comparable to or larger than the modulated mountain
+    /// layer — detail's intrinsic spikiness then dominates the visible
+    /// surface character.
+    #[test]
+    fn phase_1_6_f2_t_per_layer_contribution_in_lowlands() {
+        let mut config = NoiseConfig::default();
+        config.continental_enabled = true;
+        // Use F.2-B grassland-preset-like amplitudes so the comparison matches
+        // the editor's actual behavior.
+        config.base_elevation.amplitude = 50.0;
+        config.mountains.amplitude = 80.0;
+        config.detail.amplitude = 8.0;
+        config.base_elevation.noise_type = NoiseType::DomainWarped;
+        config.base_elevation.domain_warp = DomainWarpConfig {
+            iterations: 1,
+            warp_scale: 1.5,
+            warp_strength: 40.0,
+            warp_octaves: 3,
+        };
+        let noise = TerrainNoise::new(&config, 12345);
+
+        // Sample a 200×200 grid at 14 world units per step (~ terrain extent).
+        let mut lowland: Vec<(f32, f32, f32, f32, f32)> = Vec::new();
+        let mut highland: Vec<(f32, f32, f32, f32, f32)> = Vec::new();
+        'outer: for i in 0..200 {
+            for j in 0..200 {
+                let x = i as f64 * 14.0 - 1400.0;
+                let z = j as f64 * 14.0 - 1400.0;
+                let s = noise.sample_per_layer(x, z);
+                if s.4 < 0.3 && lowland.len() < 50 {
+                    lowland.push(s);
+                } else if s.4 > 0.7 && highland.len() < 50 {
+                    highland.push(s);
+                }
+                if lowland.len() >= 50 && highland.len() >= 50 {
+                    break 'outer;
+                }
+            }
+        }
+
+        let print_stats = |label: &str, samples: &[(f32, f32, f32, f32, f32)]| {
+            if samples.is_empty() {
+                println!("{label}: NO samples found — continental field never reaches this range.");
+                return None;
+            }
+            let n = samples.len() as f32;
+            let avg_base = samples.iter().map(|s| s.0).sum::<f32>() / n;
+            let avg_mtn_raw = samples.iter().map(|s| s.1).sum::<f32>() / n;
+            let avg_mtn_eff = samples.iter().map(|s| s.2).sum::<f32>() / n;
+            let avg_detail_abs = samples.iter().map(|s| s.3.abs()).sum::<f32>() / n;
+            let avg_cont = samples.iter().map(|s| s.4).sum::<f32>() / n;
+            let ratio = avg_detail_abs / avg_mtn_eff.max(0.01);
+            println!("{label} ({} samples, avg cont_01={avg_cont:.3}):", samples.len());
+            println!(
+                "  base={avg_base:.2}  mountain_raw={avg_mtn_raw:.2}  mountain_effective={avg_mtn_eff:.2}  detail_abs={avg_detail_abs:.2}"
+            );
+            println!("  detail_abs / mountain_effective ratio: {ratio:.2}");
+            Some(ratio)
+        };
+
+        println!("======================================================");
+        println!("H1 per-layer contribution:");
+        let lowland_ratio = print_stats("LOWLANDS (cont<0.3)", &lowland);
+        let highland_ratio = print_stats("HIGHLANDS (cont>0.7)", &highland);
+        if let Some(r) = lowland_ratio {
+            if r > 0.5 {
+                println!("  *** H1 CONFIRMED: detail is {:.0}% of effective mountain in lowlands ***", r * 100.0);
+            } else {
+                println!("  H1 rejected: detail is {:.0}% of effective mountain in lowlands", r * 100.0);
+            }
+        }
+        if highland_ratio.is_some() {
+            println!("  (Highland comparison is for context; H1 only applies to lowlands.)");
+        }
+        println!("======================================================");
+    }
+
+    /// H3 test: compare local curvature (a spikiness measure) of DomainWarped
+    /// output at `iterations=1` vs `iterations=2` at the same seed. If iter=1
+    /// is >20% spikier, F.2.D's performance tuning may have caused the
+    /// bed-of-nails appearance in lowlands.
+    #[test]
+    fn phase_1_6_f2_t_domain_warp_iterations_effect() {
+        let build = |iterations: u32| -> TerrainNoise {
+            let mut config = NoiseConfig::default();
+            config.continental_enabled = false;
+            config.base_elevation.noise_type = NoiseType::DomainWarped;
+            config.base_elevation.domain_warp = DomainWarpConfig {
+                iterations,
+                warp_scale: 1.5,
+                warp_strength: 40.0,
+                warp_octaves: 3,
+            };
+            TerrainNoise::new(&config, 12345)
+        };
+
+        let noise_iter1 = build(1);
+        let noise_iter2 = build(2);
+
+        let grid_dim = 100usize;
+        let mut h_iter1 = vec![0f32; grid_dim * grid_dim];
+        let mut h_iter2 = vec![0f32; grid_dim * grid_dim];
+        for i in 0..grid_dim {
+            for j in 0..grid_dim {
+                let x = i as f64 * 2.0;
+                let z = j as f64 * 2.0;
+                h_iter1[i * grid_dim + j] = noise_iter1.sample_height(x, z);
+                h_iter2[i * grid_dim + j] = noise_iter2.sample_height(x, z);
+            }
+        }
+
+        let curvature = |heights: &[f32]| -> f32 {
+            let mut total = 0.0f32;
+            let mut count = 0u32;
+            for i in 1..grid_dim - 1 {
+                for j in 1..grid_dim - 1 {
+                    let center = heights[i * grid_dim + j];
+                    let n = heights[(i - 1) * grid_dim + j]
+                        + heights[(i + 1) * grid_dim + j]
+                        + heights[i * grid_dim + j - 1]
+                        + heights[i * grid_dim + j + 1];
+                    total += (center - n / 4.0).abs();
+                    count += 1;
+                }
+            }
+            total / count as f32
+        };
+
+        let c1 = curvature(&h_iter1);
+        let c2 = curvature(&h_iter2);
+        let ratio = c1 / c2.max(1e-6);
+
+        println!("======================================================");
+        println!("H3 DomainWarp iterations effect on local curvature:");
+        println!("  iter=1 curvature: {c1:.3}");
+        println!("  iter=2 curvature: {c2:.3}");
+        println!("  ratio (iter1 / iter2): {ratio:.2}");
+        if ratio > 1.2 {
+            println!("  *** H3 CONFIRMED: iter=1 is {:.0}% spikier than iter=2 ***", (ratio - 1.0) * 100.0);
+        } else if ratio > 1.05 {
+            println!("  H3 PARTIAL: iter=1 is {:.0}% spikier than iter=2 (under 20% threshold)", (ratio - 1.0) * 100.0);
+        } else {
+            println!("  H3 rejected: iter=1 and iter=2 have similar curvature");
+        }
+        println!("======================================================");
     }
 
     /// Phase 1.6-F.2.C: regression guard. When continental_enabled is false,
