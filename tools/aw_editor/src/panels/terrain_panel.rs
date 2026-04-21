@@ -1871,7 +1871,14 @@ impl TerrainPanel {
                 mountains_octaves: 8,
                 detail_enabled: true,
                 detail_scale: 0.03,
-                detail_amplitude: 8.0,
+                // Phase 1.6-F.2-T.B.2: detail_amplitude 8.0 → 4.0 per H1
+                // diagnostic. F.1 tuned this to 8.0 but that was with plain
+                // Perlin base and no continental modulation — now detail is
+                // a comparable magnitude to the modulated mountain layer in
+                // lowlands, producing bed-of-nails spikes. 4.0 keeps visible
+                // detail texture while making it a smaller relative
+                // perturbation. Logged in §10.
+                detail_amplitude: 4.0,
                 erosion_enabled: false,
                 erosion_strength: 0.0,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
@@ -1898,7 +1905,11 @@ impl TerrainPanel {
                 mountains_octaves: 4,
                 detail_enabled: true,
                 detail_scale: 0.06,
-                detail_amplitude: 6.0,
+                // Phase 1.6-F.2-T.B.2: detail_amplitude 6.0 → 3.0 per H1
+                // diagnostic (desert's mountain amplitude is only 35, so
+                // continental-suppressed lowlands have even less margin
+                // against detail than grassland/mountain).
+                detail_amplitude: 3.0,
                 erosion_enabled: true,
                 erosion_strength: 0.2,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
@@ -1927,7 +1938,9 @@ impl TerrainPanel {
                 mountains_octaves: 4,
                 detail_enabled: true,
                 detail_scale: 0.02,
-                detail_amplitude: 6.0,
+                // Phase 1.6-F.2-T.B.2: detail_amplitude 6.0 → 3.0 per H1
+                // diagnostic.
+                detail_amplitude: 3.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
@@ -1958,7 +1971,9 @@ impl TerrainPanel {
                 mountains_octaves: 6,
                 detail_enabled: true,
                 detail_scale: 0.015,
-                detail_amplitude: 5.0,
+                // Phase 1.6-F.2-T.B.2: detail_amplitude 5.0 → 2.5 per H1
+                // diagnostic.
+                detail_amplitude: 2.5,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
@@ -2059,7 +2074,11 @@ impl TerrainPanel {
                 mountains_octaves: 6,
                 detail_enabled: true,
                 detail_scale: 0.02,
-                detail_amplitude: 8.0,
+                // Phase 1.6-F.2-T.B.2: detail_amplitude 8.0 → 4.0 per H1
+                // diagnostic. This is the critical path — the "regression"
+                // Andrew observed was bed-of-nails spikes on the grassland
+                // default. Reduction addresses the root cause.
+                detail_amplitude: 4.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
