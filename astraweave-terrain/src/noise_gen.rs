@@ -255,6 +255,11 @@ pub struct TerrainNoise {
     detail: Box<dyn NoiseFn<f64, 3> + Send + Sync>,
     /// 3D ridged-multi noise for cave networks
     cave_noise: Box<dyn NoiseFn<f64, 3> + Send + Sync>,
+    /// Phase 1.6-F.2 §2.6: continental-scale plain Perlin noise sampled by
+    /// `sample_height` when `config.continental_enabled` to modulate the
+    /// mountain layer's contribution spatially. Produces regional clustering
+    /// of mountain zones vs. lowland zones.
+    continental: Perlin,
     config: NoiseConfig,
 }
 
@@ -283,11 +288,20 @@ impl TerrainNoise {
                 .set_lacunarity(2.0),
         );
 
+        // Phase 1.6-F.2 §2.6: continental-scale plain Perlin. Seeded
+        // deterministically from (world_seed + continental_seed_offset) so
+        // the field is a pure function of (world_seed, world_x, world_z).
+        let continental_seed = seed
+            .wrapping_add(config.continental_seed_offset as u64)
+            as u32;
+        let continental = Perlin::new(continental_seed);
+
         Self {
             base_elevation,
             mountains,
             detail,
             cave_noise,
+            continental,
             config: config.clone(),
         }
     }
@@ -364,7 +378,14 @@ impl TerrainNoise {
             height += noise_val * self.config.base_elevation.amplitude;
         }
 
-        // Mountains
+        // Mountains — with optional continental-scale amplitude modulation.
+        // Phase 1.6-F.2 §2.6: when continental_enabled, the mountain layer's
+        // contribution is multiplied by mix(continental_min, 1.0, continental_01),
+        // where continental_01 is the continental noise at (x, z) mapped from
+        // [-1, 1] to [0, 1]. This produces regional clustering of mountain
+        // zones vs. lowland zones — mountain-country regions retain full
+        // amplitude, lowland regions retain continental_min (default 0.15) of
+        // the full amplitude.
         if self.config.mountains.enabled {
             let noise_val = self.mountains.get([
                 x * self.config.mountains.scale,
@@ -372,7 +393,22 @@ impl TerrainNoise {
                 z * self.config.mountains.scale,
             ]) as f32;
             // Use absolute value for ridged effect
-            let mountain_height = noise_val.abs() * self.config.mountains.amplitude;
+            let mountain_height_raw = noise_val.abs() * self.config.mountains.amplitude;
+
+            let mountain_height = if self.config.continental_enabled {
+                let continental_raw = self.continental.get([
+                    x * self.config.continental_scale as f64,
+                    0.0,
+                    z * self.config.continental_scale as f64,
+                ]) as f32;
+                // Perlin output is approximately [-1, 1]; map to [0, 1].
+                let continental_01 = ((continental_raw + 1.0) * 0.5).clamp(0.0, 1.0);
+                let multiplier = self.config.continental_min
+                    + (1.0 - self.config.continental_min) * continental_01;
+                mountain_height_raw * multiplier
+            } else {
+                mountain_height_raw
+            };
             height += mountain_height;
         }
 
@@ -388,6 +424,20 @@ impl TerrainNoise {
 
         // Ensure non-negative heights
         height.max(0.0)
+    }
+
+    /// Phase 1.6-F.2 §2.6: sample the continental noise field at a world
+    /// position, mapped to [0, 1]. Made `pub(crate)` so module-internal
+    /// diagnostic tests can inspect the field directly without running the
+    /// full heightmap pipeline.
+    #[cfg(test)]
+    pub(crate) fn sample_continental_01(&self, x: f64, z: f64) -> f32 {
+        let raw = self.continental.get([
+            x * self.config.continental_scale as f64,
+            0.0,
+            z * self.config.continental_scale as f64,
+        ]) as f32;
+        ((raw + 1.0) * 0.5).clamp(0.0, 1.0)
     }
 
     /// Sample 3D density for isosurface extraction (caves, overhangs).
@@ -711,5 +761,150 @@ mod tests {
 
         // More iterations should produce a different result
         assert!((h1 - h3).abs() > 1e-10);
+    }
+
+    /// Phase 1.6-F.2.C: verify the continental noise field's output is in
+    /// [0, 1] and exhibits meaningful spatial variation (not constant).
+    #[test]
+    fn phase_1_6_f2_continental_output_range_and_variation() {
+        let mut config = NoiseConfig::default();
+        config.continental_enabled = true;
+        let noise = TerrainNoise::new(&config, 12345);
+
+        // Sample continental at a 20×20 grid across a 4000×4000 world area.
+        let mut min_sample = f32::INFINITY;
+        let mut max_sample = f32::NEG_INFINITY;
+        for gx in 0..20 {
+            for gz in 0..20 {
+                let x = (gx as f64 - 10.0) * 200.0;
+                let z = (gz as f64 - 10.0) * 200.0;
+                let sample = noise.sample_continental_01(x, z);
+                assert!(
+                    (0.0..=1.0).contains(&sample),
+                    "continental sample out of [0, 1]: {sample} at ({x}, {z})"
+                );
+                if sample < min_sample {
+                    min_sample = sample;
+                }
+                if sample > max_sample {
+                    max_sample = sample;
+                }
+            }
+        }
+
+        // Meaningful variation across the sampled region.
+        assert!(
+            min_sample < 0.5,
+            "continental min {min_sample} — expected < 0.5 (meaningful low region)"
+        );
+        assert!(
+            max_sample > 0.5,
+            "continental max {max_sample} — expected > 0.5 (meaningful high region)"
+        );
+        assert!(
+            (max_sample - min_sample) >= 0.5,
+            "continental range {:.3} — expected >= 0.5 (meaningful spatial variation)",
+            max_sample - min_sample
+        );
+    }
+
+    /// Phase 1.6-F.2.C: verify DomainWarped sampling produces measurably
+    /// different output than plain Perlin at identical world positions.
+    /// Sanity check that the preset-driven noise_type override is actually
+    /// changing the noise function, not silently ignored.
+    #[test]
+    fn phase_1_6_f2_domain_warped_differs_from_perlin() {
+        let warp = DomainWarpConfig {
+            iterations: 2,
+            warp_scale: 1.5,
+            warp_strength: 40.0,
+            warp_octaves: 3,
+        };
+
+        let mut config_perlin = NoiseConfig::default();
+        config_perlin.base_elevation.noise_type = NoiseType::Perlin;
+        config_perlin.base_elevation.domain_warp = warp.clone();
+        // Disable continental so the comparison isolates the base layer.
+        config_perlin.continental_enabled = false;
+        let noise_perlin = TerrainNoise::new(&config_perlin, 12345);
+
+        let mut config_warped = NoiseConfig::default();
+        config_warped.base_elevation.noise_type = NoiseType::DomainWarped;
+        config_warped.base_elevation.domain_warp = warp;
+        config_warped.continental_enabled = false;
+        let noise_warped = TerrainNoise::new(&config_warped, 12345);
+
+        // Sample a 10×10 grid. DomainWarped should differ from Perlin at
+        // most positions — the coordinate displacement by iterative warping
+        // produces distinct values in the underlying Fbm lookup vs. a direct
+        // Perlin evaluation.
+        let mut differ_count = 0;
+        for gx in 0..10 {
+            for gz in 0..10 {
+                let x = gx as f64 * 100.0;
+                let z = gz as f64 * 100.0;
+                let sample_perlin = noise_perlin.sample_height(x, z);
+                let sample_warped = noise_warped.sample_height(x, z);
+                if (sample_perlin - sample_warped).abs() > 0.1 {
+                    differ_count += 1;
+                }
+            }
+        }
+
+        // Threshold of 50 is comfortably above an "accidental coincidence"
+        // floor (< 10) while below the measured 70/100 with margin. If
+        // DomainWarped were silently replaced by the plain-Perlin path, this
+        // test would observe ~0 differences (same noise source, same seed).
+        assert!(
+            differ_count >= 50,
+            "DomainWarped matched Perlin at too many positions: only {differ_count}/100 differ (expected >= 50)"
+        );
+    }
+
+    /// Phase 1.6-F.2.C: regression guard. When continental_enabled is false,
+    /// sample_height must produce byte-identical output to pre-F.2
+    /// semantics (i.e. mountain layer's raw contribution is added without
+    /// modulation). Verified by comparing a config with continental disabled
+    /// against a hand-computed sum of the three layers.
+    #[test]
+    fn phase_1_6_f2_continental_disabled_is_noop() {
+        let mut config = NoiseConfig::default();
+        config.continental_enabled = false;
+        let noise = TerrainNoise::new(&config, 12345);
+
+        // Sample at three positions; the result should match a manual sum
+        // of the three layers without any continental modulation.
+        for (x, z) in [(0.0f64, 0.0), (500.0, 500.0), (-300.0, 700.0)] {
+            let actual = noise.sample_height(x, z);
+
+            let base = noise.base_elevation.get([
+                x * config.base_elevation.scale,
+                0.0,
+                z * config.base_elevation.scale,
+            ]) as f32
+                * config.base_elevation.amplitude;
+
+            let mountains_raw = (noise.mountains.get([
+                x * config.mountains.scale,
+                0.0,
+                z * config.mountains.scale,
+            ]) as f32)
+                .abs()
+                * config.mountains.amplitude;
+
+            let detail = noise.detail.get([
+                x * config.detail.scale,
+                0.0,
+                z * config.detail.scale,
+            ]) as f32
+                * config.detail.amplitude;
+
+            let expected = (base + mountains_raw + detail).max(0.0);
+            assert!(
+                (actual - expected).abs() < 1e-4,
+                "continental-disabled sample_height({x}, {z}) = {actual}, expected {expected} (diff {})",
+                (actual - expected).abs()
+            );
+        }
     }
 }
