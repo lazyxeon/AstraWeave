@@ -1879,7 +1879,7 @@ impl TerrainPanel {
                 // dramatic geological folding appropriate for Alpine terrain.
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 2,
+                    iterations: 1,
                     warp_scale: 2.0,
                     warp_strength: 60.0,
                     warp_octaves: 3,
@@ -1905,7 +1905,7 @@ impl TerrainPanel {
                 // Moderate warp_strength (45) produces mesa-like features.
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 2,
+                    iterations: 1,
                     warp_scale: 1.6,
                     warp_strength: 45.0,
                     warp_octaves: 3,
@@ -1934,7 +1934,7 @@ impl TerrainPanel {
                 // Gentle warp (35) for rolling organic woodland terrain.
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 2,
+                    iterations: 1,
                     warp_scale: 1.2,
                     warp_strength: 35.0,
                     warp_octaves: 3,
@@ -1965,7 +1965,7 @@ impl TerrainPanel {
                 // Stronger warp (50) for cold-region glacial geology.
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 2,
+                    iterations: 1,
                     warp_scale: 1.7,
                     warp_strength: 50.0,
                     warp_octaves: 3,
@@ -2065,9 +2065,11 @@ impl TerrainPanel {
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
                 // Moderate warp (40) for organic rolling hills; continental
                 // modulation clusters mountain regions for NC-style geography.
+                // Phase 1.6-F.2.D: iterations reduced 2 → 1 to keep
+                // chunk-generation time ≤ 2× F.1 baseline (was 2.19×).
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 2,
+                    iterations: 1,
                     warp_scale: 1.5,
                     warp_strength: 40.0,
                     warp_octaves: 3,
