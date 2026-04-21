@@ -1,0 +1,54 @@
+atlas_width = 512
+atlas_height = 512
+angle_count = 8
+
+[[species]]
+name = "namaqualand_rocks"
+
+[[species.angles]]
+u_min = 0.0
+v_min = 0.0
+u_max = 0.125
+v_max = 1.0
+
+[[species.angles]]
+u_min = 0.125
+v_min = 0.0
+u_max = 0.25
+v_max = 1.0
+
+[[species.angles]]
+u_min = 0.25
+v_min = 0.0
+u_max = 0.375
+v_max = 1.0
+
+[[species.angles]]
+u_min = 0.375
+v_min = 0.0
+u_max = 0.5
+v_max = 1.0
+
+[[species.angles]]
+u_min = 0.5
+v_min = 0.0
+u_max = 0.625
+v_max = 1.0
+
+[[species.angles]]
+u_min = 0.625
+v_min = 0.0
+u_max = 0.75
+v_max = 1.0
+
+[[species.angles]]
+u_min = 0.75
+v_min = 0.0
+u_max = 0.875
+v_max = 1.0
+
+[[species.angles]]
+u_min = 0.875
+v_min = 0.0
+u_max = 1.0
+v_max = 1.0
