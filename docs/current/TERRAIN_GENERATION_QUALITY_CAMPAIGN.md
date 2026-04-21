@@ -476,7 +476,7 @@ This section must be updated in the same commit that completes each sub-phase pe
 ```
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
-F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + <F.2.D-hash>.
+F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D).
 F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
