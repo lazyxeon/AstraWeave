@@ -937,6 +937,46 @@ upload path are all in scope for re-examination.
 
 ---
 
+### 2026-04-21, Phase 1.6-F launch, commit TBD (this commit)
+
+**Deviation:** Phase 1.6-F (terrain generation quality campaign) begins.
+Separate plan document at
+`docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` governs execution
+of sub-phases F.1 through F.5. Option F from the 2026-04-21 heightmap
+generator audit (§7 of `docs/audits/heightmap_generator_audit_2026-04-21.md`)
+selected: full multi-stage pipeline (amplitude tuning + DomainWarpedNoise
+integration + AdvancedErosionSimulator wiring with halo + climate as
+spatial field + integration tuning).
+
+**Rationale:** the 2026-04-21 audit surfaced that the codebase contains
+902 lines of production-quality `AdvancedErosionSimulator` with zero
+production callers, an unused `DomainWarpedNoise` variant, and a
+`ClimateMap` whose output is discarded by the editor's biome_map
+overwrite. The audit catalogued six intervention options; user selected
+Option F as a phased mini-campaign. This is a correction to the original
+plan's assumption that Phase 1 and Phase 1.5 remediation could resolve
+Issue 2 (invisible Forest/Mountain biomes) — the audit established that
+Issue 2 is primarily a topology/band mismatch (current grassland Y span
+40 units vs. Phase 1.5's assumed 125 units), which requires generator
+pipeline work beyond the Phase 1 rendering path.
+
+**Impact:**
+- Phase 1 and Phase 1.5 re-mark-COMPLETE is deferred to F.5 closeout.
+  Until then, both phases stay LANDED-with-known-regressions per the
+  `4faf82ce5` revert.
+- Phase 2 still blocked pending F.5 completion; no Phase 2 work begins
+  until F.5 lands.
+- Phase 3 unaffected directly; Phase 3 closeout's `ARCHITECTURE_MAP.md`
+  update will coordinate with F.5.C's terrain-section update so only
+  one revision lands (exact ordering picked at F.5 execution time and
+  logged there).
+- Plan header / §7 phase-status block is NOT updated by this commit —
+  Phase 1 and 1.5 status lines stay as they are. They flip to COMPLETE
+  only when F.5's closeout commit lands, per the F campaign's §0
+  discipline.
+
+---
+
 ## 10. References
 
 - `docs/audits/editor_viewport_render_divergence_2026-04-19.md` — established the current state of the editor viewport code relative to `astraweave-render`.
