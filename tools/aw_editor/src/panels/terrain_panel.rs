@@ -1971,19 +1971,23 @@ impl TerrainPanel {
                 erosion_strength: 0.3,
             },
             _ => BiomeNoisePreset {
-                // grassland / default — gentle rolling hills
-                base_scale: 0.005,
-                base_amplitude: 35.0,
-                base_octaves: 4,
+                // grassland / default — rolling hills with moderate relief.
+                // Phase 1.6-F.1.A: amplitudes raised so runtime Y span reaches
+                // the 100+ range where Phase 1.5's elevation bands express.
+                // Prior values (35/15/5) produced a 40-unit span, leaving
+                // Forest and Mountain biome weights near-zero everywhere.
+                base_scale: 0.004,
+                base_amplitude: 50.0,
+                base_octaves: 5,
                 base_persistence: 0.50,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
-                mountains_scale: 0.003,
-                mountains_amplitude: 15.0,
-                mountains_octaves: 4,
+                mountains_scale: 0.0025,
+                mountains_amplitude: 80.0,
+                mountains_octaves: 6,
                 detail_enabled: true,
                 detail_scale: 0.02,
-                detail_amplitude: 5.0,
+                detail_amplitude: 8.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
             },
