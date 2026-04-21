@@ -309,6 +309,12 @@ struct SharedResources {
     _orm_tex: wgpu::Texture,
     _height_tex: wgpu::Texture,
     sampler: wgpu::Sampler,
+    /// Secondary sampler used for per-chunk splat textures. Address mode is
+    /// `ClampToEdge` so sampling at exactly `uv == 1.0` on a chunk does not
+    /// wrap to the opposite edge and bleed foreign biome weights into the
+    /// shared boundary — the root cause of the Phase 1 re-cleanup Issue 1
+    /// chunk seam grid. See `pbr_terrain_forward.wgsl`'s splat sampling.
+    splat_sampler: wgpu::Sampler,
     material_uniform: wgpu::Buffer,
     camera_uniform: wgpu::Buffer,
 }
@@ -560,6 +566,17 @@ impl TerrainMaterialManager {
                             view_dimension: wgpu::TextureViewDimension::D2,
                             multisampled: false,
                         },
+                        count: None,
+                    },
+                    // Phase 1 re-cleanup Issue 1 fix: dedicated ClampToEdge
+                    // sampler for per-chunk splat sampling; see SharedResources
+                    // `splat_sampler` docs.
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(
+                            wgpu::SamplerBindingType::Filtering,
+                        ),
                         count: None,
                     },
                 ],
@@ -1182,6 +1199,14 @@ impl TerrainMaterialManager {
                     binding: 1,
                     resource: wgpu::BindingResource::TextureView(&view_1),
                 },
+                // Phase 1 re-cleanup Issue 1 fix: ClampToEdge splat sampler
+                // (shared across chunks, lives in SharedResources).
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(
+                        &self.shared.splat_sampler,
+                    ),
+                },
             ],
         });
 
@@ -1360,13 +1385,32 @@ fn create_shared_resources(
     let layer_height = height_tex.create_view(&view_desc);
 
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("terrain-splat-sampler"),
+        label: Some("terrain-layer-sampler"),
         address_mode_u: wgpu::AddressMode::Repeat,
         address_mode_v: wgpu::AddressMode::Repeat,
         address_mode_w: wgpu::AddressMode::Repeat,
         mag_filter: wgpu::FilterMode::Linear,
         min_filter: wgpu::FilterMode::Linear,
         mipmap_filter: wgpu::FilterMode::Linear,
+        anisotropy_clamp: 1,
+        ..Default::default()
+    });
+
+    // Phase 1 re-cleanup Issue 1 fix: the per-chunk splat textures fit
+    // exactly into UV space `[0, 1]`, so sampling with `Repeat` wraps
+    // fragments at `uv == 1.0` back to texel 0 and linear-blends the
+    // chunk's rightmost and leftmost biome weights — producing a
+    // visible seam at every chunk boundary. `ClampToEdge` keeps the
+    // edge texel whole. Splat textures have no mipmaps and are not
+    // tiled, so `Repeat`'s tiling behavior is not needed.
+    let splat_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("terrain-splat-sampler"),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::FilterMode::Nearest,
         anisotropy_clamp: 1,
         ..Default::default()
     });
@@ -1393,6 +1437,7 @@ fn create_shared_resources(
         _orm_tex: orm_tex,
         _height_tex: height_tex,
         sampler,
+        splat_sampler,
         material_uniform,
         camera_uniform,
     }

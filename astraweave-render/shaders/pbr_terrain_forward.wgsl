@@ -105,6 +105,13 @@ struct TerrainSceneEnv {
 
 @group(2) @binding(0) var splat_map_0: texture_2d<f32>;
 @group(2) @binding(1) var splat_map_1: texture_2d<f32>;
+// Phase 1 re-cleanup Issue 1 fix: dedicated ClampToEdge sampler for per-
+// chunk splat textures. `terrain_sampler` (group 1 binding 2) uses Repeat
+// addressing which tiles layer textures correctly but wraps splat UVs
+// at `uv == 1.0`, producing a linear-blend of the chunk's rightmost and
+// leftmost biome weights at every chunk boundary — the root cause of the
+// visible chunk seam grid.
+@group(2) @binding(2) var splat_sampler: sampler;
 
 // ============================================================================
 // Vertex stage
@@ -155,9 +162,11 @@ fn apply_terrain_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
     // 1. Sample both splat textures at the fragment UV.
+    //    Use the dedicated ClampToEdge `splat_sampler`, not the tiling
+    //    `terrain_sampler` — see the binding's comment for the rationale.
     let splat_uv = in.uv * uTerrain.splat_uv_scale;
-    let splat0 = textureSample(splat_map_0, terrain_sampler, splat_uv);
-    let splat1 = textureSample(splat_map_1, terrain_sampler, splat_uv);
+    let splat0 = textureSample(splat_map_0, splat_sampler, splat_uv);
+    let splat1 = textureSample(splat_map_1, splat_sampler, splat_uv);
 
     var raw_weights: array<f32, 8>;
     raw_weights[0] = splat0.r;
