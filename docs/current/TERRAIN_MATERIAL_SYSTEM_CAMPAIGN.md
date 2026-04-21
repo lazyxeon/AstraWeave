@@ -818,6 +818,26 @@ per §0 discipline.
 
 ---
 
+### 2026-04-21, Phase 1.6-I, commit TBD (heightmap generator investigation)
+
+**Investigation (not a deviation):** Phase 1.6 intercalated between Phase 1 re-cleanup and Phase 2 to address terrain topology quality ("golf course" appearance preventing clean visual verification of Phase 1.5 biome bands). Investigation-only session; no code changes beyond a temporary comparison test (removed).
+
+**Findings (full report at `docs/audits/heightmap_generator_audit_2026-04-21.md`):**
+
+1. **YELLOW verdict leaning GREEN.** The codebase contains a production-quality particle/thermal/wind erosion simulator (`astraweave_terrain::AdvancedErosionSimulator`, 902 lines, 5 named presets including Desert/Mountain/Coastal) that has **zero production callers**. The editor UI surface exists (preset dropdown + parameter sliders at `terrain_panel.rs:1251+`) but the action handler `TerrainPanel::apply_erosion` at `terrain_panel.rs:1707-1730` is a stub with the comment *"In a real implementation, this would call the erosion systems. For now, just track the timing."* This matches the user's memory of an unwired AAA-parity generator.
+
+2. **Independent second finding:** the editor's wired `TerrainNoise` generator can already produce 252-unit Y span (dramatic mountains) with the existing "mountain" `BiomeNoisePreset` — 6.2× the runtime "grassland" preset's 40-unit span. `mountains_amplitude` differs by 14× between the two (15 vs 210). Tuning the grassland preset alone would dramatically improve topology without any new code.
+
+3. **Correction to Phase 1.5-T measurement:** the 125-unit span recorded in `docs/audits/phase_1_5_tuning_investigation_2026-04-20.md` was measured from `NoiseConfig::default()` (amplitudes 50/80/5), not the runtime grassland preset (35/15/5). The editor's actual runtime span for grassland-primary is 40 units, not 125. This means Phase 1.5's elevation bands (commit `990dbac63`) are **substantially mis-tuned against the editor's actual output**: Forest's band peak at `rel = 24` is above nearly every vertex, Mountain's HighPass plateau at `rel = 60+` is above every vertex. The "invisible Forest/Mountain" observation from the Phase 1 re-cleanup Issue 2 is primarily a consequence of this mis-tuning, not a rendering bug.
+
+4. **Intervention options documented without recommendation** (report §7): Option A (tune grassland preset amplitudes, 1–2 hours, contained), Option B (retune Phase 1.5 bands to 40-span, 1 hour, contained, mutually exclusive with A), Option C (wire `AdvancedErosionSimulator`, 1–3 days, requires halo boundary treatment), Option D (enable `DomainWarpedNoise` in grassland preset, 0.5–1 day), Option F (full multi-stage pipeline, 3–10 days). Decision deferred to follow-up Phase 1.6 fix session.
+
+5. **Incidentals:** climate data is computed and discarded (editor overwrites `biome_map` post-assignment); `TerrainPanel::apply_erosion` is a production-shipped stub; editor-side `HydraulicErosionParams`/`ThermalErosionParams`/`WindErosionParams` duplicate the simulator's config types; `noise_simd.rs` is a 204-line loop-unrolling wrapper with no new math; `astraweave-render::gpu_erosion` is also complete-but-disconnected and would be the natural performance-target variant if Option C is taken.
+
+**Impact:** Phase 1 and Phase 1.5 both remain LANDED pending a Phase 1.6 fix session that lands one or more of the intervention options. The Issue 2 "invisible Forest/Mountain" concern from the Phase 1 re-cleanup is now reframed as a topology/band mismatch rather than a rendering-path bug — the splat-sampler fix at commit `983b61a16` remains correct but is not sufficient by itself. Re-mark-COMPLETE decisions for both phases should happen in the same session that lands the Phase 1.6 fix.
+
+---
+
 ### 2026-04-21, Phase 1 re-cleanup, commit `983b61a16` (Issue 1 fix + Issue 2 investigation deferred)
 
 **Deviation:** Issue 1 (chunk seam grid) fix landed. Issue 2 (invisible
