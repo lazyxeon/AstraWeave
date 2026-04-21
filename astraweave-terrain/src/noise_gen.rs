@@ -26,6 +26,28 @@ pub struct NoiseConfig {
     /// Strength multiplier for cave carving (0.0 = no caves, 1.0 = full strength)
     #[serde(default = "default_cave_strength")]
     pub cave_strength: f64,
+    /// Phase 1.6-F.2 §2.6: whether to apply continental-scale mountain
+    /// amplitude modulation. When true, `TerrainNoise::sample_height`
+    /// multiplies the mountain layer by a low-frequency spatial field,
+    /// producing regional clustering of mountain zones vs. lowland zones.
+    /// Default: false (F.1-identical output).
+    #[serde(default = "default_continental_enabled")]
+    pub continental_enabled: bool,
+    /// Frequency of continental-scale noise. Lower = longer wavelength =
+    /// larger regions. Default 0.0004 gives ~2500-world-unit wavelength,
+    /// matching the radius-5 editor terrain extent.
+    #[serde(default = "default_continental_scale")]
+    pub continental_scale: f32,
+    /// Minimum mountain-amplitude multiplier where continental noise is at
+    /// its minimum. Default 0.15 means lowlands retain 15% of full mountain
+    /// amplitude — subtle topography, not flat.
+    #[serde(default = "default_continental_min")]
+    pub continental_min: f32,
+    /// Offset added to the world seed for continental noise determinism.
+    /// Default 7; chosen to avoid collision with base/mountains/detail/cave
+    /// seed offsets (0/+1/+2/+42).
+    #[serde(default = "default_continental_seed_offset")]
+    pub continental_seed_offset: u32,
 }
 
 fn default_cave_frequency() -> f64 {
@@ -36,6 +58,18 @@ fn default_cave_threshold() -> f64 {
 }
 fn default_cave_strength() -> f64 {
     1.0
+}
+fn default_continental_enabled() -> bool {
+    false
+}
+fn default_continental_scale() -> f32 {
+    0.0004
+}
+fn default_continental_min() -> f32 {
+    0.15
+}
+fn default_continental_seed_offset() -> u32 {
+    7
 }
 
 impl Default for NoiseConfig {
@@ -76,6 +110,10 @@ impl Default for NoiseConfig {
             cave_frequency: default_cave_frequency(),
             cave_threshold: default_cave_threshold(),
             cave_strength: default_cave_strength(),
+            continental_enabled: default_continental_enabled(),
+            continental_scale: default_continental_scale(),
+            continental_min: default_continental_min(),
+            continental_seed_offset: default_continental_seed_offset(),
         }
     }
 }

@@ -1815,6 +1815,7 @@ impl TerrainPanel {
     /// to produce terrain shapes appropriate for each biome.
     fn noise_preset_for_biome(biome: &str) -> crate::terrain_integration::BiomeNoisePreset {
         use crate::terrain_integration::BiomeNoisePreset;
+        use astraweave_terrain::NoiseType;
         // Handle biome-pack references: detect biome type from the pack name
         // and delegate to the corresponding built-in preset.
         if let Some(pack_path) = biome.strip_prefix("pack:") {
@@ -1873,6 +1874,10 @@ impl TerrainPanel {
                 detail_amplitude: 8.0,
                 erosion_enabled: false,
                 erosion_strength: 0.0,
+                // Phase 1.6-F.2.A: struct extension only. F.1 behavior preserved.
+                base_noise_type: NoiseType::Perlin,
+                base_domain_warp: None,
+                continental_modulation: false,
             },
             "desert" => BiomeNoisePreset {
                 base_scale: 0.004,
@@ -1889,6 +1894,9 @@ impl TerrainPanel {
                 detail_amplitude: 6.0,
                 erosion_enabled: true,
                 erosion_strength: 0.2,
+                base_noise_type: NoiseType::Perlin,
+                base_domain_warp: None,
+                continental_modulation: false,
             },
             "forest" => BiomeNoisePreset {
                 // Hilly woodland. Phase 1.6-F.1.B: mountains_amplitude raised
@@ -1908,6 +1916,9 @@ impl TerrainPanel {
                 detail_amplitude: 6.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
+                base_noise_type: NoiseType::Perlin,
+                base_domain_warp: None,
+                continental_modulation: false,
             },
             "tundra" => BiomeNoisePreset {
                 // Cold-alpine terrain. ClimateBias::Cold maps to Mountain
@@ -1929,6 +1940,9 @@ impl TerrainPanel {
                 detail_amplitude: 5.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
+                base_noise_type: NoiseType::Perlin,
+                base_domain_warp: None,
+                continental_modulation: false,
             },
             "swamp" => BiomeNoisePreset {
                 // Wetland — gentle bogs amid low rolling hills. Phase
@@ -1950,6 +1964,9 @@ impl TerrainPanel {
                 detail_amplitude: 2.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
+                base_noise_type: NoiseType::Perlin,
+                base_domain_warp: None,
+                continental_modulation: false,
             },
             "beach" => BiomeNoisePreset {
                 // Coastal — sandy flats with bluffs and offshore stacks.
@@ -1971,6 +1988,9 @@ impl TerrainPanel {
                 detail_amplitude: 2.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
+                base_noise_type: NoiseType::Perlin,
+                base_domain_warp: None,
+                continental_modulation: false,
             },
             "river" => BiomeNoisePreset {
                 // River valley — floodplain with bluffs. Phase 1.6-F.1.B:
@@ -1990,6 +2010,9 @@ impl TerrainPanel {
                 detail_amplitude: 4.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
+                base_noise_type: NoiseType::Perlin,
+                base_domain_warp: None,
+                continental_modulation: false,
             },
             _ => BiomeNoisePreset {
                 // grassland / default — rolling hills with moderate relief.
@@ -2011,6 +2034,9 @@ impl TerrainPanel {
                 detail_amplitude: 8.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
+                base_noise_type: NoiseType::Perlin,
+                base_domain_warp: None,
+                continental_modulation: false,
             },
         }
     }

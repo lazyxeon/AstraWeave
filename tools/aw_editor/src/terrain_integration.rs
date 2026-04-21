@@ -1,8 +1,8 @@
 use astraweave_terrain::{
     elevation_to_biome_weights, BiomeConfig, BiomePack, BiomePackAsset, BiomeType, ChunkId,
-    ClimateBias, Heightmap, HeightmapPatch, ScatterConfig, SplatConfig, SplatMapGenerator,
-    SplatRule, SplatWeights, TerrainChunk, VegetationInstance, VegetationScatter, WorldConfig,
-    WorldGenerator, SEA_LEVEL,
+    ClimateBias, DomainWarpConfig, Heightmap, HeightmapPatch, NoiseType, ScatterConfig,
+    SplatConfig, SplatMapGenerator, SplatRule, SplatWeights, TerrainChunk, VegetationInstance,
+    VegetationScatter, WorldConfig, WorldGenerator, SEA_LEVEL,
 };
 use glam::Vec3;
 use std::collections::HashMap;
@@ -44,6 +44,17 @@ pub struct BiomeNoisePreset {
     // Hydraulic erosion
     pub erosion_enabled: bool,
     pub erosion_strength: f32,
+    // Phase 1.6-F.2: noise-type selection for the base-elevation layer.
+    // Default (preserved in all F.1 presets): NoiseType::Perlin.
+    pub base_noise_type: NoiseType,
+    /// Domain-warp config applied when `base_noise_type == DomainWarped`.
+    /// None means use `DomainWarpConfig::default()`.
+    pub base_domain_warp: Option<DomainWarpConfig>,
+    /// Phase 1.6-F.2 §2.6: whether this preset opts into continental-scale
+    /// mountain-amplitude modulation. When true, `apply_biome_noise_preset`
+    /// sets `NoiseConfig.continental_enabled` so `TerrainNoise::sample_height`
+    /// multiplies the mountain contribution by the continental field.
+    pub continental_modulation: bool,
 }
 
 pub struct TerrainState {
@@ -171,6 +182,12 @@ impl TerrainState {
         self.config.noise.base_elevation.persistence = preset.base_persistence;
         self.config.noise.base_elevation.lacunarity = preset.base_lacunarity;
 
+        // Phase 1.6-F.2: noise-type + domain-warp for base layer.
+        self.config.noise.base_elevation.noise_type = preset.base_noise_type.clone();
+        if let Some(warp) = &preset.base_domain_warp {
+            self.config.noise.base_elevation.domain_warp = warp.clone();
+        }
+
         // Mountains
         self.config.noise.mountains.enabled = preset.mountains_enabled;
         self.config.noise.mountains.scale = preset.mountains_scale;
@@ -185,6 +202,11 @@ impl TerrainState {
         // Hydraulic erosion
         self.config.noise.erosion_enabled = preset.erosion_enabled;
         self.config.noise.erosion_strength = preset.erosion_strength;
+
+        // Phase 1.6-F.2 §2.6: continental-scale mountain amplitude modulation.
+        // Presets opt in via `continental_modulation`; scale/min/seed_offset
+        // stay at `NoiseConfig::default()` values for all presets.
+        self.config.noise.continental_enabled = preset.continental_modulation;
 
         self.terrain_dirty = true;
     }
@@ -2774,6 +2796,92 @@ mod tests {
         assert!(!state.has_terrain());
     }
 
+    /// Phase 1.6-F.2.A: verify `apply_biome_noise_preset` propagates the new
+    /// `base_noise_type`, `base_domain_warp`, and `continental_modulation`
+    /// fields into the `NoiseConfig`.
+    #[test]
+    fn phase_1_6_f2_apply_preset_sets_noise_type_and_continental() {
+        let mut state = TerrainState::new();
+        state.configure(12345, "grassland");
+
+        // Baseline: defaults should have continental disabled and Perlin base.
+        assert!(matches!(
+            state.config.noise.base_elevation.noise_type,
+            NoiseType::Perlin
+        ));
+        assert_eq!(state.config.noise.continental_enabled, false);
+
+        // Apply a preset that opts into DomainWarped + continental modulation.
+        let warp = DomainWarpConfig {
+            iterations: 2,
+            warp_scale: 1.5,
+            warp_strength: 40.0,
+            warp_octaves: 3,
+        };
+        let preset = BiomeNoisePreset {
+            base_scale: 0.004,
+            base_amplitude: 50.0,
+            base_octaves: 5,
+            base_persistence: 0.50,
+            base_lacunarity: 2.0,
+            mountains_enabled: true,
+            mountains_scale: 0.0025,
+            mountains_amplitude: 80.0,
+            mountains_octaves: 6,
+            detail_enabled: true,
+            detail_scale: 0.02,
+            detail_amplitude: 8.0,
+            erosion_enabled: true,
+            erosion_strength: 0.3,
+            base_noise_type: NoiseType::DomainWarped,
+            base_domain_warp: Some(warp.clone()),
+            continental_modulation: true,
+        };
+        state.apply_biome_noise_preset(&preset);
+
+        assert!(matches!(
+            state.config.noise.base_elevation.noise_type,
+            NoiseType::DomainWarped
+        ));
+        assert_eq!(
+            state.config.noise.base_elevation.domain_warp.iterations,
+            warp.iterations
+        );
+        assert_eq!(
+            state.config.noise.base_elevation.domain_warp.warp_strength,
+            warp.warp_strength
+        );
+        assert_eq!(state.config.noise.continental_enabled, true);
+
+        // Apply a second preset that opts out again; flags must flip back.
+        let preset_plain = BiomeNoisePreset {
+            base_scale: 0.005,
+            base_amplitude: 35.0,
+            base_octaves: 4,
+            base_persistence: 0.50,
+            base_lacunarity: 2.0,
+            mountains_enabled: true,
+            mountains_scale: 0.003,
+            mountains_amplitude: 15.0,
+            mountains_octaves: 4,
+            detail_enabled: true,
+            detail_scale: 0.02,
+            detail_amplitude: 5.0,
+            erosion_enabled: true,
+            erosion_strength: 0.3,
+            base_noise_type: NoiseType::Perlin,
+            base_domain_warp: None,
+            continental_modulation: false,
+        };
+        state.apply_biome_noise_preset(&preset_plain);
+
+        assert!(matches!(
+            state.config.noise.base_elevation.noise_type,
+            NoiseType::Perlin
+        ));
+        assert_eq!(state.config.noise.continental_enabled, false);
+    }
+
     #[test]
     fn test_terrain_state_has_terrain() {
         let state = TerrainState::new();
@@ -2941,6 +3049,9 @@ mod tests {
             detail_amplitude: 8.0,
             erosion_enabled: false,
             erosion_strength: 0.0,
+            base_noise_type: NoiseType::Perlin,
+            base_domain_warp: None,
+            continental_modulation: false,
         };
         state.apply_biome_noise_preset(&preset);
 
@@ -3045,6 +3156,9 @@ mod tests {
                     detail_amplitude: 8.0,
                     erosion_enabled: false,
                     erosion_strength: 0.0,
+                    base_noise_type: NoiseType::Perlin,
+                    base_domain_warp: None,
+                    continental_modulation: false,
                 },
                 _ => BiomeNoisePreset {
                     base_scale: 0.005,
@@ -3061,6 +3175,9 @@ mod tests {
                     detail_amplitude: 5.0,
                     erosion_enabled: false,
                     erosion_strength: 0.0,
+                    base_noise_type: NoiseType::Perlin,
+                    base_domain_warp: None,
+                    continental_modulation: false,
                 },
             };
             state.apply_biome_noise_preset(&preset);
