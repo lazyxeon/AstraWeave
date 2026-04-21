@@ -1,6 +1,6 @@
 # Terrain Material System — Path C Campaign
 
-**Status**: Phase 1 + 1.5 complete. Phase 2 and 3 not yet started.
+**Status**: Phase 1 + 1.5 landed with known rendering regressions (chunk seam grid, invisible Forest/Mountain biomes). Remediation in progress. Phase 2 and 3 not yet started.
 **Scope**: Implementation of AAA-parity terrain material rendering in AstraWeave, comprising splat-map biome blending + per-vertex 4-way material override + user-selectable blend modes, sample budgets, material count tiers, splat resolution, and normal blend modes.
 **Author**: Plan drafted from design session 2026-04-19 between Andrew and Claude. Code references accurate as of 2026-04-19; verify before execution.
 **Prior work**: Three audits that established the current state — `docs/audits/editor_viewport_render_divergence_2026-04-19.md`, `docs/audits/tonemap_double_application_investigation_2026-04-19.md`, `docs/audits/terrain_material_flow_investigation_2026-04-19.md`.
@@ -500,7 +500,7 @@ These items are intentionally not part of Path C and are logged here to prevent 
 
 This section must be updated in the same commit that completes each phase.
 
-**Phase 1 — Splat pipeline activation (forward-lit per Option D): COMPLETE 2026-04-20, commits `7edb15515` (1.F initial close-out) + `bb70d0d8b` (post-completion triangle-streak fix). Re-marked complete after post-completion regression fix.**
+**Phase 1 — Splat pipeline activation (forward-lit per Option D): LANDED 2026-04-20, commits `7edb15515` (1.F initial close-out) + `bb70d0d8b` (post-completion triangle-streak fix). Re-opened 2026-04-21 for Issues 1 (chunk seam grid) and 2 (invisible Forest/Mountain biomes) remediation. See §9.**
 
 Sub-steps landed (in order):
   - 1.A (commit `1233537fe`) — feature flag flipped to default on.
@@ -519,7 +519,7 @@ Sub-steps landed (in order):
   - 1.E.5 (commit `b5fafc8ae`) — `EditorTerrainSplat` field removed from `EngineRenderAdapter`; import, init, struct entry, and the two 1.C usage sites deleted. The `terrain_splat.rs` module stays on disk flagged SUPERSEDED. §9 updated with the supersession deviation entry.
   - 1.F (commit `7edb15515`) — final verification pass, §7 closed, document header updated.
 
-**Phase 1.5 — Heightmap-driven multi-biome generation: COMPLETE 2026-04-20, commits `92c7f02af` (plan), `e160b8894` (elevation_biome module), `2590c0b87` (chunk-gen wiring), `77bd4adf6` (initial close-out) + tuning pass `fa01f44a7` (Y-range investigation), `990dbac63` (band retune), and the final closeout commit that lands this status update. Per-vertex biome weights now come from `astraweave_terrain::elevation_to_biome_weights(world_y, SEA_LEVEL, ClimateBias::from_primary_biome_str(primary_biome))` in `tools/aw_editor/src/terrain_integration.rs::generate_heightmap_mesh`. `terrain_primary_biome` field semantics changed from single-biome selector to climate bias. Post-tuning distribution on seed `12345` Temperate: Beach 18.26% / Grassland 12.05% / Forest 38.91% / Mountain 30.79%.**
+**Phase 1.5 — Heightmap-driven multi-biome generation: LANDED 2026-04-20, commits `92c7f02af` (plan), `e160b8894` (elevation_biome module), `2590c0b87` (chunk-gen wiring), `77bd4adf6` (initial close-out) + tuning pass `fa01f44a7` (Y-range investigation), `990dbac63` (band retune), `df76d5689` (tuning closeout). Per-vertex biome weights come from `astraweave_terrain::elevation_to_biome_weights(world_y, SEA_LEVEL, ClimateBias::from_primary_biome_str(primary_biome))` in `tools/aw_editor/src/terrain_integration.rs::generate_heightmap_mesh`. `terrain_primary_biome` field semantics changed from single-biome selector to climate bias. Measured per-vertex distribution on seed `12345` Temperate: Beach 18.26% / Grassland 12.05% / Forest 38.91% / Mountain 30.79%. Visual verification blocked on Phase 1 re-cleanup (2026-04-21): per-vertex data is correct but Forest and Mountain are not visibly rendering, and chunk boundary grid is visible. See §9.**
 
 Sub-steps landed (in order):
   - 1.5.A (commit `92c7f02af`) — campaign plan amended to add Phase 1.5 spec (§3.5, §7 status line, §6 scope clarification).
@@ -815,6 +815,53 @@ If visual testing turns up a fresh regression (e.g., the fix
 introduces new holes, or a different camera angle reveals new
 artifacts), open a new §9 entry and re-open the completion marker
 per §0 discipline.
+
+---
+
+### 2026-04-21, Phase 1 re-cleanup, commit TBD (revert)
+
+**Deviation:** Phase 1 and Phase 1.5 COMPLETE status reverted. After Phase
+1.5 tuning (commit `990dbac63`) produced visible biome variation in
+per-vertex data — measured Beach 18.26% / Grassland 12.05% /
+Forest 38.91% / Mountain 30.79% dominant per-vertex on seed `12345`
+Temperate — visual inspection revealed two rendering bugs that were
+latent during Phase 1 completion because Phase 1's uniform-Grassland
+authoring never exercised them:
+
+1. **Chunk boundary seams rendering as a visible grid** across the
+   terrain. Regular grid lines aligned with chunk edges appear in
+   overhead and mid-angle views. Exposed by adjacent chunks' splat
+   textures encoding visibly different biome colors at their shared
+   edges.
+2. **Forest (dark green) and Mountain (cool gray) biomes not visibly
+   rendering** despite substantial per-vertex weights (70% of dominant-
+   biome per the 1.5-T measurement). Terrain visually reads as Beach
+   and Grassland only. Something in the pipeline between per-vertex
+   weights and rendered fragments is suppressing Forest and Mountain.
+
+Both are Phase 1 rendering bugs exposed by Phase 1.5's varied input.
+Phase 1.5's biome assignment (`astraweave_terrain::elevation_to_biome_weights`
++ `terrain_integration.rs::generate_heightmap_mesh`) is correct at the
+data level per diagnostic measurement; Phase 1.5 code is not being
+modified by this re-cleanup.
+
+**Rationale:** §0's ground-truth-over-planned-state discipline requires
+§7 to reflect reality. The editor does not render cleanly (plan §3.4
+success criterion "Terrain renders with visible biome blending. No
+panics, no wgpu validation errors." is not met — biome blending
+produces correct data but renders as two colors, not eight). Neither
+phase is complete until both rendering bugs are remediated. The user
+has additionally reported a memory fragment from an earlier agent
+session about "something forcing the biome to only output grassland
+because of a bug," which the remediation will search for explicitly
+before treating Issue 2 as a generic quantization or sampling problem.
+
+**Impact:** No Phase 2 work begins until both rendering bugs are
+diagnosed and fixed and both phases re-marked COMPLETE. Phase 1.5's
+elevation_biome module + tuned band constants + chunk-gen wiring
+remain landed and untouched. Phase 1's 1.E.4 placeholder biome
+textures, 1.E.3 `TerrainForwardRenderer`, and 1.E.4.c vertex/chunk
+upload path are all in scope for re-examination.
 
 ---
 
