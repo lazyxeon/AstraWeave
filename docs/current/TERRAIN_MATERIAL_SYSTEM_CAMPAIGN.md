@@ -818,7 +818,59 @@ per §0 discipline.
 
 ---
 
-### 2026-04-21, Phase 1 re-cleanup, commit TBD (revert)
+### 2026-04-21, Phase 1 re-cleanup, commit `983b61a16` (Issue 1 fix + Issue 2 investigation deferred)
+
+**Deviation:** Issue 1 (chunk seam grid) fix landed. Issue 2 (invisible
+Forest/Mountain) investigation completed but no root cause identified
+beyond what Issue 1's fix may incidentally resolve; re-marking Phase 1
+and 1.5 COMPLETE is deferred to Andrew's interactive visual
+verification per the §0 plan-vs-reality-mismatch clause in the
+execution prompt.
+
+**Issue 1 root cause:** the shared terrain sampler in
+`astraweave-render/src/terrain_material_manager.rs:1362-1372` uses
+`AddressMode::Repeat` for all address modes. Per-chunk splat textures
+fit exactly into UV space `[0, 1]`; sampling at or near `uv == 1.0`
+wraps back to texel 0 under Repeat and linear-blends the chunk's
+rightmost and leftmost biome weights — producing a visible seam at
+every chunk boundary. Repeat is required for layer (biome material)
+textures which tile across the terrain, so the correct fix is to
+split the sampler rather than change the shared one.
+
+**Issue 1 fix (commit `983b61a16`):** added a dedicated `splat_sampler`
+to `SharedResources` with `AddressMode::ClampToEdge`, bound it at
+`forward_splat_bgl` binding 2, updated `pbr_terrain_forward.wgsl` to
+use `splat_sampler` for splat sampling while `terrain_sampler`
+continues to be used for layer sampling. All 9 terrain splat GPU
+integration tests pass, including
+`terrain_manager_forward_pipeline_builds_without_validation_errors`
+which rebuilds the pipeline against the new bind group layout.
+
+**Issue 2 investigation:** no hardcoded override was found that
+collapses biome weights to a single biome, despite a targeted search
+for the pattern the user's memory suggested. The specific checks:
+
+1. **Override search (`rg` patterns: `biome_weights_[01]\s*=`, `\[1.0, 0.0, 0.0, 0.0\]`, `dominant_biome|argmax|biome_collapse|force.*biome`, `TODO|FIXME|HACK|XXX`):** only matched legitimate slot-by-slot initializers, unrelated glTF/cinematics/fluids code, and the `biome_map_mut` loop at `terrain_integration.rs:344` which sets the legacy `biome_map` per-chunk biome type (used by the Phase 2 splat_generator for material_ids, NOT Phase 1's biome weights). No override exists that could collapse biome_weights_0/1 to a single slot.
+
+2. **Splat-texture diagnostic (temporary test, now removed):** drove the editor's exact terrain-generation path (seed `12345` Grassland, radius 5), read back the splat texture bytes for 121 chunks, and computed channel means. Result: `splat_0` R=28.56 G=0.00 B=102.28 A=77.62 → byte-level Forest weight 102.28 and Mountain weight 77.62 are substantial and match the Phase 1.5-T tuning distribution (Forest 38.91% / Mountain 30.79%). Per-chunk variation looks healthy — e.g., chunk `(1, -2)` shows `splat_0=[3.7, 0.0, 159.2, 92.1]` (62% Forest, 36% Mountain, 2% Grassland). Splat encoding is correct.
+
+3. **Shader inspection (`astraweave-render/shaders/pbr_terrain_forward.wgsl`):** fragment function reads all 8 biome channels into a `raw_weights` array, normalizes them over `uTerrain.active_layer_count`, and iterates over every layer accumulating `albedo * weight` without any argmax or top-N selection. `active_layer_count` is set to 8 in `TerrainMaterialManager::set_material` (`terrain_material_manager.rs:779`), overriding the struct default of 4. Per-layer `texture_indices = [i, i, i, i]` is set by the editor's init block (`engine_adapter.rs:1463-1465`). Texture arrays hold 8 distinct placeholder albedos per `terrain_biome_placeholder.rs` with pairwise L1 distance ≥ 50 enforced by `biome_colors_are_pairwise_distinct` unit test.
+
+4. **Bind groups and pipeline:** `forward_camera_bg`, `forward_terrain_bg`, per-chunk `splat.bind_group` are all correctly configured; `depth_write_enabled: true`, `depth_compare: Less` on the forward pipeline so terrain correctly occludes the ground fill plane beneath it.
+
+5. **Ground fill plane:** drawn before terrain in the same main render pass using `self.tex_bg` (loaded with a Grassland detail texture via `load_default_terrain_texture` in the legacy path). Positioned 5 units below the lowest terrain vertex by `set_terrain_ground_plane`; depth-occluded wherever terrain is closer. Could potentially show through chunk-boundary gaps if terrain surface edges don't match — but `generate_heightmap_mesh` covers every cell of the chunk grid and chunks share world-space coordinates at their edges, so no gaps should exist at the surface.
+
+**Alternative hypothesis for Issue 2:** the chunk-seam wrap-blending that Issue 1 was producing may have been the Issue 2 source too. At `uv ≈ 1.0` every fragment averaged the chunk's rightmost and leftmost biome weights; if a chunk's left edge was Beach-dominant (near sea level) and its right edge was Forest-dominant, the wrap-averaged blend at the seams produces a muddy olive color that could visually read as "Grassland" because it sits between Beach tan and Forest dark-green. Combined with the visual similarity of Grassland (`[85, 140, 60]`) and Forest (`[50, 95, 45]`) — both greens differing mainly in lightness — the user could reasonably have perceived Forest zones as "just more Grassland" while Mountain (`[110, 105, 100]`, cool gray) rendered correctly but may have been misattributed.
+
+If Andrew's visual verification after commit `983b61a16` shows Forest and Mountain clearly distinct at chunk interiors (no seam artifacts and dark-green Forest / cool-gray Mountain now visible), then Issue 2 is resolved as a side effect of Issue 1's fix and both phases can be re-marked COMPLETE. If Forest/Mountain are still missing, Issue 2 is a distinct bug not identified by this investigation and requires a follow-up session with interactive diagnostic capabilities — the static trace above locates the remaining suspect entirely in the data/runtime layer, not in the Phase 1 pipeline code.
+
+**Impact on later phases:** Phase 2 still blocked pending visual verification of the Issue 1 fix. Phase 1.5's data pipeline is independently verified correct and is not modified by this re-cleanup. The temporary diagnostic test
+`tools/aw_editor/tests/phase_1_recleanup_issue2_diagnostic.rs` was
+removed in the Issue 1 fix commit after its findings were copied into this §9 entry.
+
+---
+
+### 2026-04-21, Phase 1 re-cleanup, commit `4faf82ce5` (revert)
 
 **Deviation:** Phase 1 and Phase 1.5 COMPLETE status reverted. After Phase
 1.5 tuning (commit `990dbac63`) produced visible biome variation in
