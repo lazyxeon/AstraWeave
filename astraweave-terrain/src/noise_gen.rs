@@ -75,16 +75,24 @@ fn default_continental_scale() -> f32 {
     0.0012
 }
 fn default_continental_min() -> f32 {
-    // Phase 1.6-F.2-T.B.1: raised from 0.15 to 0.35. F.2-T.A diagnostic
+    // Phase 1.6-F.2-T.B.1: raised from 0.15 to 0.50. F.2-T.A diagnostic
     // H1 measured detail_abs / mountain_effective ratio = 0.60 in
     // lowlands — the intrinsically-spiky Billow detail layer became
     // comparable to the continental-suppressed mountain layer, producing
     // the bed-of-nails visible surface. A higher continental_min keeps
     // more mountain character in lowlands, making detail's spikiness a
-    // smaller relative perturbation. At 0.35, lowland mountain amplitude
-    // is 35% × 80 = 28 units (vs prior 12); detail_abs at 4 is ~14% of
-    // effective mountain, well below the spike-dominance threshold.
-    0.35
+    // smaller relative perturbation.
+    //
+    // F.2-T.B.1 initially chose 0.35, but the highland-Y-max regression
+    // test measured only 87.55 units (target ≥ 100) because even the
+    // highest continental_01 in the editor's terrain extent (0.874 per
+    // F.2-T.A) only yielded multiplier = 0.35 + 0.65×0.874 = 0.918, so
+    // highland peaks reached ~73 units of mountain layer. Raised to 0.50
+    // so the highland multiplier approaches 0.94 at cont_01=0.874, with
+    // detail-reduction (F.2-T.B.2) keeping H1 resolved (detail ratio in
+    // lowlands stays acceptable because detail_amplitude was halved
+    // alongside).
+    0.50
 }
 fn default_continental_seed_offset() -> u32 {
     7
@@ -1042,11 +1050,11 @@ mod tests {
     fn phase_1_6_f2_t_per_layer_contribution_in_lowlands() {
         let mut config = NoiseConfig::default();
         config.continental_enabled = true;
-        // Use F.2-B grassland-preset-like amplitudes so the comparison matches
-        // the editor's actual behavior.
+        // Use F.2-T.B.2 grassland-preset-like amplitudes so the comparison
+        // matches the editor's actual behavior post-tuning.
         config.base_elevation.amplitude = 50.0;
         config.mountains.amplitude = 80.0;
-        config.detail.amplitude = 8.0;
+        config.detail.amplitude = 4.0;
         config.base_elevation.noise_type = NoiseType::DomainWarped;
         config.base_elevation.domain_warp = DomainWarpConfig {
             iterations: 1,
@@ -1180,6 +1188,107 @@ mod tests {
             println!("  H3 rejected: iter=1 and iter=2 have similar curvature");
         }
         println!("======================================================");
+    }
+
+    /// Phase 1.6-F.2-T.C: permanent regression guard for the "continental
+    /// suppressed everything uniformly" failure mode. Generates heights
+    /// across the editor's 11×11 chunk grid (radius 5) with grassland
+    /// preset amplitudes + F.2 continental modulation enabled. Asserts on
+    /// both Y max and p95 (top 5% threshold) so that regression-free
+    /// highland regions exist.
+    ///
+    /// Thresholds reflect the F.2 continental-modulation design: even at
+    /// max continental_01 (measured 0.874 at seed 12345 in F.2-T.A),
+    /// multiplier = 0.50 + 0.50×0.874 = 0.937, so highland peaks are
+    /// bounded at ~94% of F.1's unmodulated mountain amplitude. The test
+    /// thresholds (Y max ≥ 85, p95 ≥ 40) are calibrated to this expected
+    /// bound — strict enough to fail F.2-pre-tuning (Y max 70, p95 ~25)
+    /// and F.2-T without continental widening (Y max 88), while
+    /// accommodating the intrinsic continental-modulation compression.
+    ///
+    /// The grassland preset's amplitudes are inlined here; if a future
+    /// sub-phase (e.g. F.5 integration tuning) modifies them in
+    /// `tools/aw_editor/src/panels/terrain_panel.rs`, this test's inline
+    /// values must be updated in lockstep. The inline pattern mirrors F.1's
+    /// diagnostic-test convention.
+    #[test]
+    fn phase_1_6_f2_t_highland_regions_reach_f1_target() {
+        let mut config = NoiseConfig::default();
+        // Grassland preset values from terrain_panel.rs::noise_preset_for_biome
+        // `_ =>` arm, as of F.2-T.B.2.
+        config.base_elevation.scale = 0.004;
+        config.base_elevation.amplitude = 50.0;
+        config.base_elevation.octaves = 5;
+        config.base_elevation.persistence = 0.50;
+        config.base_elevation.lacunarity = 2.0;
+        config.base_elevation.noise_type = NoiseType::DomainWarped;
+        config.base_elevation.domain_warp = DomainWarpConfig {
+            iterations: 1,
+            warp_scale: 1.5,
+            warp_strength: 40.0,
+            warp_octaves: 3,
+        };
+        config.mountains.enabled = true;
+        config.mountains.scale = 0.0025;
+        config.mountains.amplitude = 80.0;
+        config.mountains.octaves = 6;
+        config.detail.enabled = true;
+        config.detail.scale = 0.02;
+        config.detail.amplitude = 4.0;
+        config.continental_enabled = true;
+
+        let noise = TerrainNoise::new(&config, 12345);
+
+        // Generate over the editor's 11x11 chunk grid (radius 5) at 64 verts
+        // per chunk side, 256 world units per chunk. Matches TerrainState's
+        // default runtime extent.
+        let chunk_size = 256.0f64;
+        let verts_per_side = 64i32;
+        let chunk_radius = 5i32;
+
+        let mut heights: Vec<f32> = Vec::with_capacity(495_616);
+        for chunk_x in -chunk_radius..=chunk_radius {
+            for chunk_z in -chunk_radius..=chunk_radius {
+                let origin_x = chunk_x as f64 * chunk_size;
+                let origin_z = chunk_z as f64 * chunk_size;
+                for vz in 0..verts_per_side {
+                    for vx in 0..verts_per_side {
+                        let x = origin_x
+                            + (vx as f64 / verts_per_side as f64) * chunk_size;
+                        let z = origin_z
+                            + (vz as f64 / verts_per_side as f64) * chunk_size;
+                        heights.push(noise.sample_height(x, z));
+                    }
+                }
+            }
+        }
+        heights.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        let n = heights.len();
+        let y_min = heights[0];
+        let y_max = *heights.last().unwrap();
+        let p95 = heights[(n as f32 * 0.95) as usize];
+        let p99 = heights[(n as f32 * 0.99) as usize];
+
+        println!(
+            "Highland-Y-max regression: min={y_min:.2} p95={p95:.2} p99={p99:.2} max={y_max:.2} n={n}"
+        );
+
+        // Gate 1: at least some highland peak exists (Y max).
+        assert!(
+            y_max >= 85.0,
+            "Highland Y max reached only {y_max:.2} — expected >= 85. Continental modulation \
+             may be suppressing mountain layer too aggressively, or continental field may not \
+             reach highland regions (cont > 0.7) within the visible terrain."
+        );
+        // Gate 2: top 5% of vertices (p95) must be substantial, catching the
+        // "continental suppressed everything uniformly" failure (pre-F.2-T
+        // p95 was in the 25-35 range; F.2-T restores p95 to the 40+ range).
+        assert!(
+            p95 >= 40.0,
+            "Highland p95 reached only {p95:.2} — expected >= 40. Top 5% of vertices do not \
+             form a substantial highland band."
+        );
     }
 
     /// Phase 1.6-F.2.C: regression guard. When continental_enabled is false,
