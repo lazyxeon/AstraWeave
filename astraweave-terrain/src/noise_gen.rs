@@ -63,10 +63,28 @@ fn default_continental_enabled() -> bool {
     false
 }
 fn default_continental_scale() -> f32 {
-    0.0004
+    // Phase 1.6-F.2-T.B.1: raised from 0.0004 to 0.0012 (wavelength
+    // dropped ~2500 → ~830 world units). F.2-T.A diagnostic found that
+    // at scale 0.0004, seed 12345's continental field maxed at 0.669
+    // across the editor's ~2800-unit terrain extent (p95=0.631), with
+    // no samples > 0.7 — i.e. NO highland regions in visible terrain,
+    // breaking the F.2 core design intent of regional mountain clustering.
+    // Scale 0.0012 fits ~3.4 continental periods within the visible
+    // extent, ensuring both low-continental (lowland) and high-continental
+    // (highland) regions exist at every practical seed.
+    0.0012
 }
 fn default_continental_min() -> f32 {
-    0.15
+    // Phase 1.6-F.2-T.B.1: raised from 0.15 to 0.35. F.2-T.A diagnostic
+    // H1 measured detail_abs / mountain_effective ratio = 0.60 in
+    // lowlands — the intrinsically-spiky Billow detail layer became
+    // comparable to the continental-suppressed mountain layer, producing
+    // the bed-of-nails visible surface. A higher continental_min keeps
+    // more mountain character in lowlands, making detail's spikiness a
+    // smaller relative perturbation. At 0.35, lowland mountain amplitude
+    // is 35% × 80 = 28 units (vs prior 12); detail_abs at 4 is ~14% of
+    // effective mountain, well below the spike-dominance threshold.
+    0.35
 }
 fn default_continental_seed_offset() -> u32 {
     7
