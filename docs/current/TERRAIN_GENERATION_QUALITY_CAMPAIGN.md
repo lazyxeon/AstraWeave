@@ -477,7 +477,7 @@ This section must be updated in the same commit that completes each sub-phase pe
 ```
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
-F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + <F.2-T.D-hash>.
+F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D).
 F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
@@ -510,7 +510,7 @@ Initial state: no deviations logged. F.0's draft execution did not surface any d
 
 **Impact:** F.2 complexity and duration grow modestly (estimated +4-8 hours of agent time). The continental field provides architectural foundation for F.3's erosion (natural region-appropriate erosion intensity) and F.4's climate-as-spatial-field (continental feature composes with climate gradients). F.5 integration tuning gets one additional tuning knob (continental scale / min). Directional bias (the NC southwest-northeast axis) is NOT included; deferred to F.5 or follow-up. F.2 sub-commit list grows from three (F.2.A/B/C) to four (F.2.A/B/C/D).
 
-### 2026-04-21, Sub-phase F.2 tuning (F.2-T), commits b6e4aa971 through <F.2-T.D-hash>
+### 2026-04-21, Sub-phase F.2 tuning (F.2-T), commits b6e4aa971 through 14d407b69
 
 **Deviation:** F.2 Andrew-gate interactive visual verification revealed a regression — spiky vertex-scale terrain surface, global Y span compressed from 116 (F.1) to 75 (F.2), and no visible highland/lowland continental clustering in the aerial view. F.2 passed its code-level gates but the default parameters of the continental modulation produced an unintended detail-layer-dominance regime in lowlands, and the continental field's sampling distribution at the editor's 2800-unit terrain extent was too narrow to express regional clustering.
 
