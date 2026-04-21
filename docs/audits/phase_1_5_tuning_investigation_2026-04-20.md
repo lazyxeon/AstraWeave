@@ -50,3 +50,45 @@ Cold, Arid, Tropical, Wetland, Highland retuned proportionally; Cold/Arid mid-bi
 - `cargo build -p aw_editor --release`: clean build.
 
 Visual verification is Andrew's interactive gate per §0 discipline.
+
+---
+
+## Correction (2026-04-21, added during Phase 1.6-F.1 execution)
+
+The measured Y-range reported above (125-unit span, min `−3.84`, max
+`+121.38`) was taken by a diagnostic test that called
+`TerrainState::configure(12345, "grassland") + state.generate_terrain(5)`
+**without** applying `state.apply_biome_noise_preset(&preset)` first —
+so it measured the effect of `NoiseConfig::default()` (amplitudes
+50 / 80 / 5) rather than the runtime grassland `BiomeNoisePreset`
+that the editor's `regenerate_terrain` path uses (pre-F.1 amplitudes
+35 / 15 / 5). The editor's actual runtime Y span for seed `12345`
+grassland-primary was ~40 units, substantially less than this document
+records.
+
+Downstream implication at the time: Phase 1.5's `elevation_biome.rs`
+band constants (retuned in commit `990dbac63` per the "Band retune"
+table above) were tuned for a 125-span terrain but the editor produced
+a 40-span terrain, so Forest's band peak at `rel = 24` sat above
+nearly every vertex and Mountain's HighPass plateau was unreachable.
+This was the root cause of the "invisible Forest/Mountain" Issue 2
+from the parent campaign's Phase 1 re-cleanup.
+
+**Fix landed in Phase 1.6-F.1** (commits `fff581aa4` and `a05b856d8`,
+per `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §3): the
+eight `BiomeNoisePreset` entries in `tools/aw_editor/src/panels/
+terrain_panel.rs` were retuned so each produces a runtime Y span
+appropriate for its climate character. The grassland-primary runtime
+span is now 116 units; the `elevation_biome.rs` band constants were
+left unchanged — Phase 1.6-F's decision was to tune the presets to
+fit the bands rather than the bands to fit the presets.
+
+Per-preset runtime Y spans at seed 12345, radius 5, measured by the
+F.1 temporary diagnostic test (removed at F.1.C closeout): mountain
+252.2, tundra 192.8, grassland 116.0, forest 75.9, desert 75.7,
+swamp 72.0, river 68.5, beach 65.3.
+
+See `docs/audits/heightmap_generator_audit_2026-04-21.md` §5.2 and
+§6 for the original finding, and
+`docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §3 for F.1's
+scope.

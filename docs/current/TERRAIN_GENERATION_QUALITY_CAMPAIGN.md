@@ -1,6 +1,6 @@
 # Terrain Generation Quality Campaign — Phase 1.6-F
 
-**Status**: PLAN — no sub-phases started. Drafted 2026-04-21 as F.0 artifact.
+**Status**: F.1 complete, F.2–F.5 not yet started. Drafted 2026-04-21 as F.0 artifact.
 **Scope**: Wire the already-implemented-but-unused terrain-generation components (`AdvancedErosionSimulator`, `DomainWarpedNoise`, `ClimateMap`) into the runtime biome-noise preset path, tune preset amplitudes to match Phase 1.5's elevation bands, and rewire climate as a per-vertex spatial field. Five sub-phases (F.1–F.5) executed as separate sessions.
 **Author**: Plan drafted from `docs/audits/heightmap_generator_audit_2026-04-21.md` findings and design decisions captured in the F.0 prompt session 2026-04-21 between Andrew and Claude. Code references accurate as of 2026-04-21; verify before execution.
 **Prior work**: `docs/audits/heightmap_generator_audit_2026-04-21.md` (the audit that surfaced the unwired components and selected Option F as the intervention path); `docs/audits/phase_1_5_tuning_investigation_2026-04-20.md` (records the stale 125-unit measurement that F.1 corrects); `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` (parent campaign — Phase 1 and Phase 1.5 re-mark-COMPLETE is deferred to F.5 closeout).
@@ -432,8 +432,8 @@ F.5 closeout changes touch documentation, the `apply_erosion` handler, and prese
 This section must be updated in the same commit that completes each sub-phase per §0 discipline.
 
 ```
-F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit TBD (the landing commit for this document).
-F.1 — Amplitude tuning: NOT STARTED
+F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
+F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + bf6d5b541 (F.1.C).
 F.2 — DomainWarped noise integration: NOT STARTED
 F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
