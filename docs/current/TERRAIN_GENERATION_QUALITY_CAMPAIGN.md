@@ -172,6 +172,30 @@ Each of Phase 1.5's six `ClimateBias` values maps to one of `AdvancedErosionSimu
 - The Phase 1.5 `elevation_biome.rs` module stays unchanged. This campaign does not modify biome-assignment algorithms; it modifies the terrain those assignments run against.
 - F.3 is responsible for restructuring `WorldGenerator::generate_chunk` (or introducing a two-step API) so the pre-erosion-Y-for-biome-assignment invariant is enforced, as §2.1 describes.
 
+### 2.6 Continental-scale macro-feature (design decision — adopted 2026-04-21)
+
+**Problem:** F.1's amplitude tuning produced dramatic per-vertex elevation, but the mountain-feature wavelength (~400 world units) is much shorter than the terrain's visible extent (~2800 world units at radius 5). Every local peak reaches Mountain elevation and gets the full Beach→Grassland→Forest→Mountain biome progression on its slopes, producing dozens of visible repetitions of the sequence across a single aerial view. This reads as a repeating striped pattern rather than as a coherent landscape.
+
+**Design decision:** Add a continental-scale noise field that spatially modulates `mountains_amplitude` across the world. The field is a single low-frequency noise octave (wavelength ≈ world extent) whose output ∈ [0, 1] multiplies each vertex's effective `mountains_amplitude`. Regions where the continental field is high receive full mountain amplitude (mountain country); regions where it is low receive greatly reduced mountain amplitude (lowlands, rolling hills). This breaks the uniform-distribution-of-peaks pattern and establishes regional geographic structure — a foundation that F.3's erosion and F.4's climate field build on.
+
+**Implementation location:** `TerrainNoise::sample_height` in `astraweave-terrain/src/noise_gen.rs:316-353`. Before the mountain layer is accumulated into the output, sample the continental field at `(x, z)` and multiply the mountain contribution by `mix(continental_min, 1.0, continental_sample)`, where `continental_min` is the minimum mountain amplitude multiplier (so even "lowlands" regions have some mountain-ish micro-features, just much reduced).
+
+**Config shape:**
+- `NoiseConfig.continental_scale: f32` — frequency of the continental noise (default: 0.0004, giving a wavelength of ~2500 world units, approximately matching the radius-5 terrain extent).
+- `NoiseConfig.continental_min: f32` — minimum mountain-amplitude multiplier where continental noise is at its minimum (default: 0.15, so "lowlands" have 15% of full mountain amplitude — subtle topography, not flat).
+- `NoiseConfig.continental_seed_offset: u32` — offset from the world seed for continental noise determinism (default: 7; plain Perlin, not DomainWarped, since the continental feature is meant to be smooth).
+- `NoiseConfig.continental_enabled: bool` — whether the active configuration applies continental modulation. Default: false (backward-compat — F.1 / pre-F.2 configs produce unchanged output).
+
+**Per-preset opt-in:** Each `BiomeNoisePreset` carries a new boolean field `continental_modulation: bool`. Presets that should show regional clustering (grassland, mountain, forest, tundra, desert) set this to `true`; presets for inherently gentle terrain (swamp, beach, river) set it to `false` — their mountain amplitude is already small enough that continental modulation would produce no visible effect. `apply_biome_noise_preset` propagates the preset's `continental_modulation` to `NoiseConfig.continental_enabled`.
+
+**Determinism:** `seed_continental = world_seed.wrapping_add(continental_seed_offset as u64)`. The continental field is purely a function of `(world_seed, world_x, world_z)` — no chunk state, no per-chunk caching, no boundary concerns.
+
+**Interaction with F.3 (forward reference):** when F.3 wires AdvancedErosionSimulator, the continental field's regional variation will naturally produce more dramatic erosion in high-amplitude regions (because there's more relief to erode) and subtler erosion in low-amplitude regions (flatter terrain, less sediment transport). This is geologically correct; F.3 does not need to do anything special to get this behavior — it emerges from the continental field + erosion preset acting on heightmaps with pre-existing regional variation.
+
+**Interaction with F.4 (forward reference):** climate's spatial variation (temperature, moisture) is mostly orthogonal to the continental field (climate follows latitude, altitude, water-distance; continental feature follows its own low-frequency noise). But they interact positively: regions where continental is high (mountain country) tend to have lower temperature (altitude), which F.4's climate field naturally captures. The two systems compose.
+
+**Isotropy:** The continental field is isotropic in F.2. Adding directional bias (e.g., the NC southwest-northeast axis) is deferred to F.5 integration tuning or a follow-up pass.
+
 ---
 
 ## 3. Sub-phase F.1 — Amplitude tuning
@@ -217,52 +241,70 @@ Each commit is a small per-preset constant adjustment. Revert = `git revert` the
 
 ---
 
-## 4. Sub-phase F.2 — DomainWarped noise integration
+## 4. Sub-phase F.2 — DomainWarped noise integration + continental-scale macro-feature
 
 ### 4.1 Goal
 
-Extend `BiomeNoisePreset` at `tools/aw_editor/src/terrain_integration.rs:27-47` with per-layer `NoiseType` selection. Enable `DomainWarpedNoise` for the grassland and mountain presets' base-elevation layer. After F.2, those biomes produce organic macro-features (meandering ridges, irregular valleys) rather than smoothly-varying analytical noise.
+Extend `BiomeNoisePreset` at `tools/aw_editor/src/terrain_integration.rs:27-47` with per-layer `NoiseType` selection AND with a `continental_modulation` opt-in for continental-scale mountain-amplitude modulation (new design decision per §2.6). Enable `DomainWarpedNoise` for five presets (grassland, mountain, forest, tundra, desert) base-elevation layers. Implement continental-scale macro-feature in `TerrainNoise::sample_height`. After F.2, the five presets produce (a) organic macro-features within their local noise, and (b) visible regional clustering of mountain zones vs. lowland zones, breaking the repetition pattern observed after F.1.
 
 ### 4.2 Scope
 
 **In scope:**
 
-- Extend `BiomeNoisePreset` struct with new fields: `base_noise_type: NoiseType`, optional `base_domain_warp: Option<DomainWarpConfig>` (used when `base_noise_type == NoiseType::DomainWarped`). Consider similar fields for `mountains_noise_type` if the design motivates it during F.2.A; otherwise leave mountains/detail on their existing noise types.
-- Extend `apply_biome_noise_preset` at `terrain_integration.rs:166-190` to apply the new fields: set `self.config.noise.base_elevation.noise_type` and `self.config.noise.base_elevation.domain_warp` from the preset.
-- Update all eight preset definitions at `terrain_panel.rs:1861-1989` to set appropriate `base_noise_type`:
-  - grassland/default: `NoiseType::DomainWarped` with `iterations: 2, warp_strength: 40, warp_octaves: 3, warp_scale: 1.5` (domain-warped organic rolling hills).
-  - mountain: `NoiseType::DomainWarped` with `iterations: 2, warp_strength: 60, warp_octaves: 3, warp_scale: 2.0` (stronger warp for geological folding).
-  - others: stay on `NoiseType::Perlin` for base layer in F.2. F.5 integration tuning may selectively enable DomainWarped on more presets if a tropical/wetland preset benefits from it.
-- Verify via the same diagnostic pattern as F.1 that (a) the new `noise_type` is being applied (a unit test inside `terrain_integration.rs` asserts that after `apply_biome_noise_preset`, `self.config.noise.base_elevation.noise_type` matches the preset's `base_noise_type`), and (b) DomainWarped output visibly differs from plain Perlin at the same amplitude (a diagnostic that samples two configured `TerrainNoise` instances at identical world positions and confirms the outputs differ).
-- Measure and record chunk-generation-time delta from F.1 to F.2 (DomainWarped is iterative so it is slower than plain Perlin).
+- Extend `BiomeNoisePreset` struct with new fields: `base_noise_type: NoiseType`, optional `base_domain_warp: Option<DomainWarpConfig>`, and `continental_modulation: bool`.
+- Extend `NoiseConfig` with `continental_scale`, `continental_min`, `continental_seed_offset`, and `continental_enabled` per §2.6 with the specified defaults.
+- Extend `apply_biome_noise_preset` at `terrain_integration.rs:166-190` to apply the new fields: set `self.config.noise.base_elevation.noise_type`, `self.config.noise.base_elevation.domain_warp`, and `self.config.noise.continental_enabled` from the preset.
+- Extend `TerrainNoise::sample_height` to sample the continental noise and multiply the mountain layer's contribution per §2.6.
+- Update all eight preset definitions at `terrain_panel.rs:1861-1989`:
+  - grassland/default: `NoiseType::DomainWarped` with `iterations: 2, warp_strength: 40, warp_octaves: 3, warp_scale: 1.5`; `continental_modulation: true`.
+  - mountain: `NoiseType::DomainWarped` with `iterations: 2, warp_strength: 60, warp_octaves: 3, warp_scale: 2.0`; `continental_modulation: true`.
+  - forest: `NoiseType::DomainWarped` with `iterations: 2, warp_strength: 35, warp_octaves: 3, warp_scale: 1.2`; `continental_modulation: true`.
+  - tundra: `NoiseType::DomainWarped` with `iterations: 2, warp_strength: 50, warp_octaves: 3, warp_scale: 1.7`; `continental_modulation: true`.
+  - desert: `NoiseType::DomainWarped` with `iterations: 2, warp_strength: 45, warp_octaves: 3, warp_scale: 1.6`; `continental_modulation: true`.
+  - swamp, beach, river: stay on `NoiseType::Perlin`; `continental_modulation: false`. Their mountain amplitudes are already small enough that continental modulation would produce no visible effect.
+- Add a unit test inside `terrain_integration.rs` (or a sibling `tests/` module) asserting that after `apply_biome_noise_preset`, the generator's `NoiseConfig` has the preset's `base_noise_type`, `base_domain_warp`, and `continental_enabled` values.
+- Add a diagnostic test that samples two configured `TerrainNoise` instances at identical world positions — one with DomainWarped, one with plain Perlin — and confirms the outputs differ (sanity-check that DomainWarped is being applied to the layer).
+- Add a diagnostic test that samples the continental field at a grid of world positions and confirms its output range is [0, 1] with meaningful variation (not constant).
+- Measure and record chunk-generation-time delta from F.1 to F.2 (DomainWarped is iterative so it is slower than plain Perlin; continental field adds one extra sample per vertex).
+
+**Qualitative success criterion (Andrew-gate):** aerial view at seed 12345 grassland shows distinct lowland zones and distinct highland zones rather than uniformly-distributed peaks. This is F.2's core visual gate.
 
 **Out of scope:**
 
+- Anisotropic / directional bias in domain warping (the NC southwest-northeast axis) — F.5 or follow-up.
 - Erosion wiring (F.3).
 - Climate rewiring (F.4).
 - Any changes to `DomainWarpedNoise` itself at `noise_gen.rs:154-211`.
 - Enabling DomainWarped on non-base layers (mountains, detail) unless F.2.A design review decides otherwise.
+- Any F.1 preset amplitude changes — F.1's tuning preserved byte-for-byte.
 
 ### 4.3 Success criteria
 
-- `BiomeNoisePreset` struct extended with `base_noise_type` (and optional `base_domain_warp`) fields.
-- `apply_biome_noise_preset` applies the new fields.
-- Grassland and mountain presets use `NoiseType::DomainWarped` for base elevation.
-- Visible organic macro-features appear in grassland and mountain terrain (qualitative Andrew-gate visual check: terrain has meandering ridges / irregular valleys rather than smooth noise).
-- Performance: chunk-generation time for 121 chunks stays ≤ 2× F.1's baseline (measured and documented in F.2.C's commit message). If the delta exceeds 2×, F.2 investigates and adjusts DomainWarp iteration count downward before declaring complete.
+- `BiomeNoisePreset` struct extended with `base_noise_type`, optional `base_domain_warp`, and `continental_modulation` fields.
+- `NoiseConfig` extended with `continental_scale`, `continental_min`, `continental_seed_offset`, `continental_enabled` fields.
+- `apply_biome_noise_preset` applies all new fields.
+- Five presets (grassland, mountain, forest, tundra, desert) use `NoiseType::DomainWarped` for base elevation; three presets (swamp, beach, river) stay on `NoiseType::Perlin`.
+- All five DomainWarped presets have `continental_modulation = true`; all three plain-Perlin presets have `continental_modulation = false`.
+- `TerrainNoise::sample_height` samples the continental field and modulates the mountain layer accordingly when `continental_enabled` is true.
+- **Qualitative visual gate (Andrew's interactive verification):** seed 12345 grassland aerial view shows distinct lowland zones (regions where mountain-scale peaks are absent or much-reduced) and distinct highland zones (regions where peaks concentrate). The uniform-repetition pattern of the F.1 stills is broken. This is the core F.2 gate — without it, F.2 has not delivered.
+- **Qualitative visual gate (Andrew's interactive verification):** visible organic macro-features in grassland and mountain terrain — meandering ridges, irregular valleys, curved rather than axis-aligned features.
+- Performance: chunk-generation time for 121 chunks stays ≤ 2× F.1's baseline (measured and documented in F.2.D's commit message). If the delta exceeds 2×, F.2.D reduces DomainWarp iteration count (from 2 to 1) on the most expensive presets before declaring complete.
 - All three `cargo check` invocations pass.
-- All tests pass, including any new F.2 unit tests.
+- All tests pass, including the new F.2 unit and diagnostic tests.
 - This plan's §9 reflects F.2 COMPLETE.
 
 ### 4.4 Reversibility
 
-F.2.A (struct extension) can be reverted in isolation; F.2.B (preset updates) reverts to the F.1-tuned preset constants. Full revert = `git revert` F.2.A through F.2.C in reverse order; F.1 state is restored.
+F.2.A (struct extension) can be reverted in isolation; F.2.B (preset DomainWarped + continental activation) reverts to the F.1-tuned preset constants; F.2.C (continental implementation) can be reverted independently since `continental_enabled: false` is the default and makes the code path a no-op. Full revert = `git revert` F.2.A through F.2.D in reverse order; F.1 state is restored.
+
+Continental feature is purely additive to `NoiseConfig` / `TerrainNoise`; reverting the `continental_enabled` flag in presets is sufficient to disable it without removing code. Full revert of F.2.A-F.2.D restores F.1 state.
 
 ### 4.5 Expected commits
 
-- **F.2.A — `BiomeNoisePreset` API extension.** Add `base_noise_type` + optional `base_domain_warp` fields. Update `apply_biome_noise_preset`. All existing preset definitions get `base_noise_type: NoiseType::Perlin` to preserve F.1 behavior (struct-extension-only commit). Commit message: `Phase 1.6-F.2.A: extend BiomeNoisePreset with noise_type field`.
-- **F.2.B — Enable DomainWarped on grassland + mountain.** Change grassland and mountain preset definitions to `NoiseType::DomainWarped` with tuned `DomainWarpConfig`. Commit message: `Phase 1.6-F.2.B: enable DomainWarpedNoise for grassland + mountain presets`.
-- **F.2.C — Closeout.** Record performance measurements. Update this plan's §9 to mark F.2 COMPLETE. Commit message: `Phase 1.6-F.2.C: close F.2`.
+- **F.2.A — `BiomeNoisePreset` + `NoiseConfig` API extension.** Add `base_noise_type`, optional `base_domain_warp`, `continental_modulation` fields to `BiomeNoisePreset`. Add `continental_scale`, `continental_min`, `continental_seed_offset`, `continental_enabled` fields to `NoiseConfig`. Update `apply_biome_noise_preset` to apply them. All existing preset definitions get `base_noise_type: NoiseType::Perlin` and `continental_modulation: false` to preserve F.1 behavior (struct-extension-only commit; no behavior change). Commit message: `Phase 1.6-F.2.A: extend BiomeNoisePreset + NoiseConfig with noise_type and continental fields`.
+- **F.2.B — Enable DomainWarped + continental modulation on five presets.** Change grassland, mountain, forest, tundra, desert preset definitions to `NoiseType::DomainWarped` with tuned `DomainWarpConfig`. `continental_modulation: true` for the same five. Plain Perlin + `continental_modulation: false` for swamp, beach, river. Commit message: `Phase 1.6-F.2.B: enable DomainWarpedNoise + continental modulation for five presets`.
+- **F.2.C — Continental-scale macro-feature implementation.** Extend `TerrainNoise::sample_height` to sample a continental noise field and modulate the mountain layer per §2.6. Add the continental-output-range and DomainWarped-differs-from-Perlin diagnostic tests. Commit message: `Phase 1.6-F.2.C: continental-scale mountain-amplitude modulation in TerrainNoise`.
+- **F.2.D — Closeout.** Record performance measurements (F.1 baseline vs. F.2 chunk-generation time for 121 chunks). Update this plan's §9 to mark F.2 COMPLETE. Remove any temporary diagnostics (keep the permanent unit tests from F.2.A-F.2.C). Commit message: `Phase 1.6-F.2.D: close F.2`.
 
 ---
 
@@ -434,7 +476,7 @@ This section must be updated in the same commit that completes each sub-phase pe
 ```
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
-F.2 — DomainWarped noise integration: NOT STARTED
+F.2 — DomainWarped noise integration + continental-scale macro-feature: IN PROGRESS
 F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
@@ -458,6 +500,14 @@ Format for entries:
 ```
 
 Initial state: no deviations logged. F.0's draft execution did not surface any deviation-worthy decisions; all design choices were made within the F.0 prompt's guidance and are captured in §2.
+
+### 2026-04-21, Sub-phase F.2 (pre-execution), commit TBD
+
+**Deviation:** F.2 scope expanded beyond F.0's original plan to include a continental-scale macro-feature modulating `mountains_amplitude` spatially across the world. F.0 specified F.2 as "DomainWarped on grassland + mountain" only; this amendment expands to "DomainWarped on five presets + continental modulation on the same five." §2.6 and §4 (entirely) are rewritten; §9 and §10 are updated.
+
+**Rationale:** F.1 post-landing visual verification (Andrew, 2026-04-21 stills) revealed a repeating Beach→Grassland→Forest→Mountain pattern in aerial views — every local peak reaches Mountain elevation and gets the full biome sequence on its slopes. DomainWarped alone (F.0's original F.2 scope) would break the _within-peak_ repetition but not the _distribution-of-peaks_ repetition; a continental-scale amplitude modulation is the architectural intervention that addresses the latter. User target is North Carolina-style continental geography (Coastal Plain → Piedmont → Blue Ridge), which is a continental-scale shape concern, not a within-noise-field concern.
+
+**Impact:** F.2 complexity and duration grow modestly (estimated +4-8 hours of agent time). The continental field provides architectural foundation for F.3's erosion (natural region-appropriate erosion intensity) and F.4's climate-as-spatial-field (continental feature composes with climate gradients). F.5 integration tuning gets one additional tuning knob (continental scale / min). Directional bias (the NC southwest-northeast axis) is NOT included; deferred to F.5 or follow-up. F.2 sub-commit list grows from three (F.2.A/B/C) to four (F.2.A/B/C/D).
 
 ---
 
