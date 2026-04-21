@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SEA_LEVEL"],"enum":["ClimateBias"],"fn":["elevation_to_biome_weights"]};
