@@ -1874,10 +1874,17 @@ impl TerrainPanel {
                 detail_amplitude: 8.0,
                 erosion_enabled: false,
                 erosion_strength: 0.0,
-                // Phase 1.6-F.2.A: struct extension only. F.1 behavior preserved.
-                base_noise_type: NoiseType::Perlin,
-                base_domain_warp: None,
-                continental_modulation: false,
+                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
+                // Stronger warp_strength (60) and warp_scale (2.0) produce
+                // dramatic geological folding appropriate for Alpine terrain.
+                base_noise_type: NoiseType::DomainWarped,
+                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
+                    iterations: 2,
+                    warp_scale: 2.0,
+                    warp_strength: 60.0,
+                    warp_octaves: 3,
+                }),
+                continental_modulation: true,
             },
             "desert" => BiomeNoisePreset {
                 base_scale: 0.004,
@@ -1894,9 +1901,16 @@ impl TerrainPanel {
                 detail_amplitude: 6.0,
                 erosion_enabled: true,
                 erosion_strength: 0.2,
-                base_noise_type: NoiseType::Perlin,
-                base_domain_warp: None,
-                continental_modulation: false,
+                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
+                // Moderate warp_strength (45) produces mesa-like features.
+                base_noise_type: NoiseType::DomainWarped,
+                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
+                    iterations: 2,
+                    warp_scale: 1.6,
+                    warp_strength: 45.0,
+                    warp_octaves: 3,
+                }),
+                continental_modulation: true,
             },
             "forest" => BiomeNoisePreset {
                 // Hilly woodland. Phase 1.6-F.1.B: mountains_amplitude raised
@@ -1916,9 +1930,16 @@ impl TerrainPanel {
                 detail_amplitude: 6.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
-                base_noise_type: NoiseType::Perlin,
-                base_domain_warp: None,
-                continental_modulation: false,
+                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
+                // Gentle warp (35) for rolling organic woodland terrain.
+                base_noise_type: NoiseType::DomainWarped,
+                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
+                    iterations: 2,
+                    warp_scale: 1.2,
+                    warp_strength: 35.0,
+                    warp_octaves: 3,
+                }),
+                continental_modulation: true,
             },
             "tundra" => BiomeNoisePreset {
                 // Cold-alpine terrain. ClimateBias::Cold maps to Mountain
@@ -1940,9 +1961,16 @@ impl TerrainPanel {
                 detail_amplitude: 5.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
-                base_noise_type: NoiseType::Perlin,
-                base_domain_warp: None,
-                continental_modulation: false,
+                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
+                // Stronger warp (50) for cold-region glacial geology.
+                base_noise_type: NoiseType::DomainWarped,
+                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
+                    iterations: 2,
+                    warp_scale: 1.7,
+                    warp_strength: 50.0,
+                    warp_octaves: 3,
+                }),
+                continental_modulation: true,
             },
             "swamp" => BiomeNoisePreset {
                 // Wetland — gentle bogs amid low rolling hills. Phase
@@ -2034,9 +2062,17 @@ impl TerrainPanel {
                 detail_amplitude: 8.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
-                base_noise_type: NoiseType::Perlin,
-                base_domain_warp: None,
-                continental_modulation: false,
+                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
+                // Moderate warp (40) for organic rolling hills; continental
+                // modulation clusters mountain regions for NC-style geography.
+                base_noise_type: NoiseType::DomainWarped,
+                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
+                    iterations: 2,
+                    warp_scale: 1.5,
+                    warp_strength: 40.0,
+                    warp_octaves: 3,
+                }),
+                continental_modulation: true,
             },
         }
     }
