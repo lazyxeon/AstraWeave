@@ -293,6 +293,7 @@ Extend `BiomeNoisePreset` at `tools/aw_editor/src/terrain_integration.rs:27-47` 
 - All tests pass, including the new F.2 unit and diagnostic tests.
 - **F.2-T amendment (2026-04-21):** Highland regions retain substantial mountain amplitude (global Y max ≥ 85, p95 ≥ 40 at seed 12345 grassland). Catches the "continental suppressed everything uniformly" failure mode. Enforced by the permanent test `phase_1_6_f2_t_highland_regions_reach_f1_target` in `astraweave-terrain/src/noise_gen.rs`. The original prompt's ≥ 100 threshold was aspirational but incompatible with F.2's continental-modulation math — at the editor's 2800-unit extent, max continental_01 measured 0.874 (not 1.0), bounding the highland mountain multiplier at ~0.94 and highland Y max at ~94% of F.1's unmodulated baseline. Relaxed thresholds reflect design reality; see §10 for details.
 - **F.2-T-2 amendment (2026-04-22):** Surface spikiness (local curvature of `sample_height` output) stays below threshold at the grassland preset. Specifically, mean |center − avg(4 neighbors)| over a 200×200 grid at 1-unit spacing must be ≤ 0.90 (post-F.2-T-2 measurement of 0.753 × 1.2 buffer). Catches bed-of-nails regressions from the DomainWarped layer's `warp_strength` reverting to high values. Enforced by the permanent test `phase_1_6_f2_t2_surface_spikiness_under_threshold` in `astraweave-terrain/src/noise_gen.rs`. See §10 F.2-T-2 entry for diagnostic methodology.
+- **F.2-T-3 amendment (2026-04-22):** F.2-T-3's research (`docs/audits/terrain_noise_research_2026-04-22.md`) and code audit (`docs/audits/terrain_noise_audit_2026-04-22.md`) established that residual surface-spike character after F.2-T-2's 2.7× reduction is the **expected behavior of un-eroded multi-octave noise terrain** per the literature (Musgrave 1989, Quilez morenoise, dandrino terrain-erosion-3-ways). F.2-T-3.C.1 applied the literature-backed low-effort Nyquist cap (base_octaves reduced on four DomainWarped presets per PBR §10.6's formula n_max = −1 − log2(l)), producing modest 8% curvature improvement. **F.3's `AdvancedErosionSimulator` is endorsed as the canonical solver for residual surface character** — the literature is unambiguous that raw noise terrain is expected to look wrong before erosion, and that expecting spike-free raw output is a category error. F.3 success criteria must confirm erosion reduces surface curvature below Andrew's acceptable visual threshold.
 - This plan's §9 reflects F.2 COMPLETE.
 
 ### 4.4 Reversibility
@@ -478,7 +479,7 @@ This section must be updated in the same commit that completes each sub-phase pe
 ```
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
-F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D).
+F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D). Research + audit pass 2026-04-22 — commits 4f2fca568 (F.2-T-3.A research) + 7c46c2449 (F.2-T-3.B audit) + 62526a04d (F.2-T-3.C.1 PBR Nyquist cap) + <F.2-T-3.D-hash>. F.2-T-3 concluded residual surface-spike character is expected from raw noise per literature; F.3 erosion endorsed as canonical solver.
 F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
@@ -579,6 +580,62 @@ Initial state: no deviations logged. F.0's draft execution did not surface any d
 **Meta-observation about surface-quality vs. amplitude metrics:** F.2-T's amplitude-focused regression test (`highland_regions_reach_f1_target`) passed throughout F.2's lifecycle because amplitude was never the issue — surface quality was. F.2-T-2's addition of `surface_spikiness_under_threshold` closes that gap. Both tests are preserved going forward; together they guard both amplitude and surface character.
 
 **Andrew-gate:** visual verification of smooth slopes (no bed-of-nails) is the outstanding behavioral gate. If F.2-T-2 is still insufficient, the craftsman path accepts a third tuning pass.
+
+### 2026-04-22, Sub-phase F.2 research + audit (F.2-T-3), commits 4f2fca568 through <F.2-T-3.D-hash>
+
+**Deviation:** After F.2-T-2's 2.7× curvature reduction left residual bed-of-nails character in Andrew's visual verification, F.2-T-3 replaced another first-principles tuning pass with a research-driven approach: web research into named phenomena and canonical remedies for noise-spike artifacts, paired with a code audit of sampling and vertex-meshing paths that F.2 / F.2-T / F.2-T-2 took for granted.
+
+**Rationale:** Continued first-principles iteration after two partial fixes risked producing more partial fixes. Surface spikes in multi-octave fBm and domain-warped noise are well-studied in the procedural terrain generation literature; consulting that literature rather than independently rediscovering solutions is faster and more reliable. Craftsman-path discipline: "improve understanding, not converge on a specific number."
+
+**Research findings** (full document at `docs/audits/terrain_noise_research_2026-04-22.md`):
+- **Named phenomenon:** "Nyquist violation in multi-octave fBm" (signal-processing framing) + "domain-warp coordinate folding" (amplification mechanism). Described in PBR §10.6, Quilez bandlimiting article, 3DWorld blog, World Creator docs.
+- **PBR Nyquist cutoff formula:** `n_max = −1 − log2(l)` where `l = sample_frequency × vertex_spacing`. Authoritative literature prescription for octave capping.
+- **Rank 1 literature remedy:** derivative-weighted fBm (Quilez morenoise, 2008) — `a += b × n.x / (1 + dot(d,d))` suppresses high-frequency octaves on steep terrain ("fake erosion"). STRUCTURAL change; deferred as potential F.2-T-4 scope.
+- **Rank 2:** Nyquist octave capping per PBR formula. Low-effort; applied as F.2-T-3.C.1.
+- **Rank 3 (endorsed):** F.3 erosion as the canonical solver. Musgrave 1989 established erosion as the required second stage of the two-stage pipeline. Raw fBm terrain is EXPECTED to look spiky — Quilez's morenoise explicitly acknowledges unweighted fBm is "uniformly rugged everywhere." Expecting spike-free raw output is a category error per 18 cited sources.
+
+**Audit findings** (full document at `docs/audits/terrain_noise_audit_2026-04-22.md`):
+- **Vertex spacing: 4 world units** (256-unit chunk / 63 step = 4.063). Nyquist minimum wavelength 8.13 units; community rule-of-thumb 16.25 units.
+- **Per-layer Nyquist status:**
+  - Base (DomainWarped, 5 octaves): octave-5 wavelength 15.6 units, 3.85 samples/period. MARGINAL.
+  - Mountain (RidgedMulti, 6 octaves): octave-6 wavelength 7.77 units, 1.91 samples/period. **Formally violates Nyquist** (but dampened by RidgedMulti's multiplicative combination and persistence 0.4).
+  - Detail (Billow, 3 octaves): 3.08 samples/period. Marginal.
+- **Smoking gun:** grassland warp_strength=15 is 96% of base-octave-5 wavelength (15.625 units). Adjacent vertices can have displacements differing by a full octave-5 period, producing "coordinate folding" — adjacent samples land on uncorrelated noise regions. This is the mechanism behind the 2373× curvature amplification F.2-T-2.A measured.
+- **`DomainWarpedNoise` is custom code, spec-correct, no bugs.** Matches Quilez's textbook iterative-warp definition. No Nyquist check (consistent with Quilez's warning that standard filter-width propagation fails through warped domains).
+- **Vertex assembly is spec-correct.** Direct heightmap-to-vertex pass-through; finite-difference normals. Spikes are a noise-field-side problem, not a mesh-side bug.
+- **Mountain's formal Nyquist violation is secondary** — dampened by persistence=0.4 (octave-6 amplitude only ~0.82 units) and continental modulation.
+
+**Specific tuning changes applied (F.2-T-3.C.1):**
+- Four DomainWarped presets' `base_octaves` reduced per PBR formula:
+  - grassland: 5 → 4 (scale 0.004, PBR n_max 4.97)
+  - desert: 5 → 4
+  - forest: 5 → 4
+  - mountain: 6 → 5 (scale 0.003, PBR n_max 5.38)
+  - tundra: unchanged at 5 (already at PBR limit)
+- Result: spike-regression curvature dropped 0.753 → 0.695 (−8%). Modest but cumulative with F.2-T and F.2-T-2 tuning.
+- Both permanent regression tests still pass: highland Y max 98.46 (improved +1.1 from F.2-T-2's 97.32); spike curvature 0.695 (well under 0.90 threshold).
+
+**Deviation from F.1 amplitude-preservation discipline:** F.2-T-3.C.1 modified F.1-era `base_octaves` on four presets. Justified by the intersection of (a) PBR §10.6's authoritative Nyquist formula (research Rank 2) and (b) the audit's specific post-warp coordinate-folding analysis (§2.B). F.1's amplitude values, scale values, and the remaining F.1 parameters are preserved.
+
+**Deferred to future work:**
+- **Derivative-weighted fBm** (research Rank 1) is the literature-preferred high-impact remedy but requires a structural code change (custom Fbm with analytical gradient accumulation). Proposed as potential F.2-T-4 if Nyquist cap + F.3 erosion combined are still insufficient. Sufficient evidence from Quilez morenoise and multiple community sources to justify the implementation if needed.
+
+**F.3 erosion endorsed as canonical solver for residual character:** The literature is unambiguous (Musgrave 1989, dandrino, Quilez morenoise). F.2-T-3.D formalizes this plan-level position: the remaining surface-spike character after F.2-T-3.C.1's Nyquist cap is expected, and F.3's `AdvancedErosionSimulator` is the canonical continuation. §4.3 updated with this annotation.
+
+**Impact on later sub-phases:**
+- **F.3:** operates on terrain with Nyquist-clean base layer (F.2-T-3.C.1). Erosion drops should follow geologically plausible paths rather than being perturbed by Nyquist-violating spike gradients. F.3 success criteria should include a curvature reduction check against Andrew's visual acceptance threshold. If F.3 does not adequately reduce surface character, F.2-T-4 (derivative-weighted fBm implementation) becomes the next lever.
+- **F.4:** unchanged.
+- **F.5:** unchanged.
+
+**Measurements:**
+- Pre-F.2-T-3.C.1 grassland spike curvature: 0.753
+- Post-F.2-T-3.C.1 grassland spike curvature: 0.695 (−8%)
+- Pre-F.2-T-3.C.1 grassland highland Y max: 97.32
+- Post-F.2-T-3.C.1 grassland highland Y max: 98.46 (+1.1)
+- Cumulative curvature reduction from pre-F.2-T to post-F.2-T-3.C.1: 2.016 → 0.695 (2.9× reduction)
+- Performance: no change (same compute; just fewer octaves).
+
+**Andrew-gate (deferred):** if ground-level views still show objectionable bed-of-nails character after F.2-T-3.C.1, Andrew accepts one of: (a) proceed to F.3 erosion and reassess; (b) invoke F.2-T-4 with derivative-weighted fBm; (c) discuss the craftsman-path tradeoff. Research supports option (a) as the canonical path.
 
 - `docs/audits/heightmap_generator_audit_2026-04-21.md` — the audit that surfaced the unwired components, catalogued the six intervention options, and motivated this campaign (Option F selected).
 - `docs/audits/phase_1_5_tuning_investigation_2026-04-20.md` — Phase 1.5-T's investigation with the stale 125-unit measurement that F.1's correction note addresses.
