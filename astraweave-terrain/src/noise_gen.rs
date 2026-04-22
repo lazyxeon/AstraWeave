@@ -1317,6 +1317,49 @@ mod tests {
         println!("======================================================");
     }
 
+    /// Phase 1.6-F.2-T-2.C: permanent regression guard for the "bed-of-nails
+    /// surface spikes" failure mode that F.2-T-2 resolved. Generates heights
+    /// across a 200×200 grid at 1 world-unit spacing using the grassland
+    /// preset (the default most-viewed preset, which F.2-T-2 targeted most
+    /// aggressively). Asserts local curvature (average |center - avg(4
+    /// neighbors)|) stays below a threshold locked at post-F.2-T-2
+    /// measurement × 1.2 (20% buffer).
+    ///
+    /// Pre-F.2-T-2.B.3 baseline: total curvature 2.016 (bed-of-nails).
+    /// Post-F.2-T-2.B.3 measurement: total curvature 0.753.
+    /// Threshold: 0.90 (≈ 0.753 × 1.2) — catches regressions at any
+    /// warp_strength ≥ 20 per F.2-T-2.A's tuning matrix.
+    ///
+    /// If a future sub-phase tunes the grassland preset's DomainWarped
+    /// parameters, this test's inline config must be updated in lockstep
+    /// with `terrain_panel.rs::noise_preset_for_biome`.
+    #[test]
+    fn phase_1_6_f2_t2_surface_spikiness_under_threshold() {
+        let config = phase_1_6_f2_t2_grassland_config();
+        let noise = TerrainNoise::new(&config, 12345);
+
+        const GRID_DIM: usize = 200;
+        let mut heights = vec![0f32; GRID_DIM * GRID_DIM];
+        for i in 0..GRID_DIM {
+            for j in 0..GRID_DIM {
+                heights[i * GRID_DIM + j] = noise.sample_height(i as f64, j as f64);
+            }
+        }
+        let curv = phase_1_6_f2_t2_local_curvature_grid(&heights, GRID_DIM);
+
+        const SPIKE_THRESHOLD: f32 = 0.90;
+
+        println!("F.2-T-2 spike regression: curvature {curv:.3} (threshold {SPIKE_THRESHOLD})");
+
+        assert!(
+            curv <= SPIKE_THRESHOLD,
+            "Surface curvature {curv:.3} > threshold {SPIKE_THRESHOLD} — bed-of-nails regression. \
+             F.2-T-2.A diagnostic showed DomainWarped `warp_strength` is the dominant spike \
+             source; check `base_domain_warp.warp_strength` on the grassland preset in \
+             terrain_panel.rs for recent changes."
+        );
+    }
+
     /// Phase 1.6-F.2-T.C: permanent regression guard for the "continental
     /// suppressed everything uniformly" failure mode. Generates heights
     /// across the editor's 11×11 chunk grid (radius 5) with grassland
