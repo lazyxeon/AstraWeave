@@ -1860,9 +1860,15 @@ impl TerrainPanel {
         }
         match biome {
             "mountain" => BiomeNoisePreset {
+                // Phase 1.6-F.2-T-3.C.1: base_octaves 6 → 5 per PBR Nyquist
+                // formula n_max = -1 - log2(l). At base_scale=0.003 and
+                // vertex_spacing=4, l=0.012, n_max=5.38 → floor=5. Prior
+                // value 6 violated Nyquist at octave 6 (wavelength ~3 units
+                // < 2× vertex spacing 8 units). See
+                // docs/audits/terrain_noise_audit_2026-04-22.md §2.A.
                 base_scale: 0.003,
                 base_amplitude: 55.0,
-                base_octaves: 6,
+                base_octaves: 5,
                 base_persistence: 0.55,
                 base_lacunarity: 2.2,
                 mountains_enabled: true,
@@ -1899,9 +1905,14 @@ impl TerrainPanel {
                 continental_modulation: true,
             },
             "desert" => BiomeNoisePreset {
+                // Phase 1.6-F.2-T-3.C.1: base_octaves 5 → 4 per PBR Nyquist
+                // formula. At base_scale=0.004 and vertex_spacing=4,
+                // l=0.016, n_max=4.97 → floor=4. Prior value 5 was at the
+                // limit; reducing to 4 provides margin and further reduces
+                // post-warp coordinate-folding artifacts per audit §2.B.
                 base_scale: 0.004,
                 base_amplitude: 45.0,
-                base_octaves: 5,
+                base_octaves: 4,
                 base_persistence: 0.45,
                 base_lacunarity: 2.2,
                 mountains_enabled: true,
@@ -1934,9 +1945,11 @@ impl TerrainPanel {
                 // Hilly woodland. Phase 1.6-F.1.B: mountains_amplitude raised
                 // from 25 → 40 to move span comfortably clear of the 60-unit
                 // floor (was 60.8 — too close to assertion boundary).
+                // Phase 1.6-F.2-T-3.C.1: base_octaves 5 → 4 per PBR
+                // Nyquist formula (see desert preset for rationale).
                 base_scale: 0.004,
                 base_amplitude: 40.0,
-                base_octaves: 5,
+                base_octaves: 4,
                 base_persistence: 0.50,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
@@ -2074,9 +2087,14 @@ impl TerrainPanel {
                 // the 100+ range where Phase 1.5's elevation bands express.
                 // Prior values (35/15/5) produced a 40-unit span, leaving
                 // Forest and Mountain biome weights near-zero everywhere.
+                // Phase 1.6-F.2-T-3.C.1: base_octaves 5 → 4 per PBR Nyquist
+                // formula. At scale=0.004, n_max=4.97 → floor=4. Prior 5
+                // violated post-warp Nyquist (warp_strength=15 ≈ 96% of
+                // octave-5 wavelength 15.6 units). See
+                // docs/audits/terrain_noise_audit_2026-04-22.md §2.B.
                 base_scale: 0.004,
                 base_amplitude: 50.0,
-                base_octaves: 5,
+                base_octaves: 4,
                 base_persistence: 0.50,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,

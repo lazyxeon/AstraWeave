@@ -1007,7 +1007,8 @@ mod tests {
         let mut config = NoiseConfig::default();
         config.base_elevation.scale = 0.004;
         config.base_elevation.amplitude = 50.0;
-        config.base_elevation.octaves = 5;
+        // F.2-T-3.C.1: base_octaves 5 → 4 per PBR Nyquist formula.
+        config.base_elevation.octaves = 4;
         config.base_elevation.persistence = 0.50;
         config.base_elevation.lacunarity = 2.0;
         config.base_elevation.noise_type = NoiseType::DomainWarped;
@@ -1098,10 +1099,10 @@ mod tests {
     fn phase_1_6_f2_t_highland_regions_reach_f1_target() {
         let mut config = NoiseConfig::default();
         // Grassland preset values from terrain_panel.rs::noise_preset_for_biome
-        // `_ =>` arm, as of F.2-T.B.2.
+        // `_ =>` arm, as of F.2-T-3.C.1.
         config.base_elevation.scale = 0.004;
         config.base_elevation.amplitude = 50.0;
-        config.base_elevation.octaves = 5;
+        config.base_elevation.octaves = 4; // F.2-T-3.C.1: was 5 (PBR Nyquist cap).
         config.base_elevation.persistence = 0.50;
         config.base_elevation.lacunarity = 2.0;
         config.base_elevation.noise_type = NoiseType::DomainWarped;
