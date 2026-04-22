@@ -478,7 +478,7 @@ This section must be updated in the same commit that completes each sub-phase pe
 ```
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
-F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + <F.2-T-2.D-hash>.
+F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D).
 F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
@@ -538,7 +538,7 @@ Initial state: no deviations logged. F.0's draft execution did not surface any d
 
 **Performance:** F.2-T / F.1 generation time ratio measured at 1.47× (release build, 121 chunks, seed 12345 grassland). Well under the 2.00× gate.
 
-### 2026-04-22, Sub-phase F.2 second tuning (F.2-T-2), commits 29658f86f through <F.2-T-2.D-hash>
+### 2026-04-22, Sub-phase F.2 second tuning (F.2-T-2), commits 29658f86f through c3599b138
 
 **Deviation:** Andrew's 2026-04-22 interactive visual verification of the F.2-T state revealed that the bed-of-nails surface regression was WORSE than pre-F.2-T, despite the F.2-T diagnostic reporting H1 (detail dominance) as confirmed and `detail_amplitude` having been halved. A key new observation — spike amplitude was UNIFORM across highland and lowland regions — reframed the problem. Uniform spikiness means the source is a layer NOT modulated by continental, pointing to either detail (still too tall at amplitude 4) or base (DomainWarped at iterations=1).
 
