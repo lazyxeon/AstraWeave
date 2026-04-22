@@ -999,8 +999,10 @@ mod tests {
     }
 
     /// Build a `NoiseConfig` matching the editor's grassland preset as of
-    /// the F.2-T-2.A snapshot. This is used across the three F.2-T-2
+    /// the F.2-T-2.B.3 snapshot. This is used across the three F.2-T-2
     /// diagnostic tests so each measurement reflects the actual runtime.
+    /// F.2-T-2.B.3 reduced `warp_strength` from 40 to 15 per the F.2-T-2.A
+    /// diagnostic findings.
     fn phase_1_6_f2_t2_grassland_config() -> NoiseConfig {
         let mut config = NoiseConfig::default();
         config.base_elevation.scale = 0.004;
@@ -1012,7 +1014,7 @@ mod tests {
         config.base_elevation.domain_warp = DomainWarpConfig {
             iterations: 1,
             warp_scale: 1.5,
-            warp_strength: 40.0,
+            warp_strength: 15.0, // F.2-T-2.B.3: was 40.
             warp_octaves: 3,
         };
         config.mountains.enabled = true;
@@ -1222,6 +1224,54 @@ mod tests {
         println!("======================================================");
     }
 
+    /// Task 1.D (exploratory) — compare base-layer curvature across
+    /// combinations of `warp_strength` × `base_octaves` to select the
+    /// F.2-T-2.B.3 fix values. Does not assert; prints a matrix.
+    #[test]
+    fn phase_1_6_f2_t2_warp_strength_and_octaves_tuning() {
+        const GRID_DIM: usize = 200;
+
+        let sample = |noise: &TerrainNoise| -> Vec<f32> {
+            let mut heights = vec![0f32; GRID_DIM * GRID_DIM];
+            for i in 0..GRID_DIM {
+                for j in 0..GRID_DIM {
+                    heights[i * GRID_DIM + j] = noise.sample_height(i as f64, j as f64);
+                }
+            }
+            heights
+        };
+
+        let build = |warp_strength: f64, octaves: usize| -> TerrainNoise {
+            let mut config = phase_1_6_f2_t2_grassland_config();
+            config.continental_enabled = false;
+            config.mountains.enabled = false;
+            config.detail.enabled = false;
+            config.base_elevation.octaves = octaves;
+            config.base_elevation.domain_warp = DomainWarpConfig {
+                iterations: 1,
+                warp_scale: 1.5,
+                warp_strength,
+                warp_octaves: 3,
+            };
+            TerrainNoise::new(&config, 12345)
+        };
+
+        println!("======================================================");
+        println!("F.2-T-2.A exploratory: base-layer curvature by (warp_strength, base_octaves)");
+        println!("                          octaves=");
+        println!("  warp_strength \\     3        4        5");
+        for ws in &[40.0f64, 30.0, 20.0, 15.0, 10.0, 5.0] {
+            let c3 = phase_1_6_f2_t2_local_curvature_grid(&sample(&build(*ws, 3)), GRID_DIM);
+            let c4 = phase_1_6_f2_t2_local_curvature_grid(&sample(&build(*ws, 4)), GRID_DIM);
+            let c5 = phase_1_6_f2_t2_local_curvature_grid(&sample(&build(*ws, 5)), GRID_DIM);
+            println!("       {ws:>4.0}       {c3:>6.3}   {c4:>6.3}   {c5:>6.3}");
+        }
+        println!();
+        println!("  Goal: reduce curvature from pre-fix value of 1.402 (warp=40, octaves=5)");
+        println!("  by at least 2-3x, while preserving organic-macro-feature character.");
+        println!("======================================================");
+    }
+
     /// Task 1.C — mountain octave contribution. Varies mountains.octaves
     /// from 4 to 7 and measures the mountain layer's curvature to identify
     /// whether the top octave is producing vertex-scale features.
@@ -1302,7 +1352,7 @@ mod tests {
         config.base_elevation.domain_warp = DomainWarpConfig {
             iterations: 1,
             warp_scale: 1.5,
-            warp_strength: 40.0,
+            warp_strength: 15.0, // F.2-T-2.B.3: was 40.
             warp_octaves: 3,
         };
         config.mountains.enabled = true;

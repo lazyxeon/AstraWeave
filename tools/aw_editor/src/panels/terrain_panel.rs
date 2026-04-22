@@ -1882,13 +1882,18 @@ impl TerrainPanel {
                 erosion_enabled: false,
                 erosion_strength: 0.0,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
-                // Stronger warp_strength (60) and warp_scale (2.0) produce
-                // dramatic geological folding appropriate for Alpine terrain.
+                // warp_scale (2.0) preserved for dramatic geological folding
+                // wavelength appropriate for Alpine terrain.
+                // Phase 1.6-F.2-T-2.B.3: warp_strength halved 60 → 30.
+                // F.2-T-2.A diagnostic identified DomainWarped coordinate
+                // displacement as the dominant spike source (2373x plain
+                // Perlin curvature at warp=40). Halving reduces high-
+                // frequency content ~2x without changing the feature scale.
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
                     iterations: 1,
                     warp_scale: 2.0,
-                    warp_strength: 60.0,
+                    warp_strength: 30.0,
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
@@ -1914,11 +1919,13 @@ impl TerrainPanel {
                 erosion_strength: 0.2,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
                 // Moderate warp_strength (45) produces mesa-like features.
+                // Phase 1.6-F.2-T-2.B.3: warp_strength halved 45 → 22 per
+                // F.2-T-2.A diagnostic (see grassland preset for context).
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
                     iterations: 1,
                     warp_scale: 1.6,
-                    warp_strength: 45.0,
+                    warp_strength: 22.0,
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
@@ -1944,12 +1951,14 @@ impl TerrainPanel {
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
-                // Gentle warp (35) for rolling organic woodland terrain.
+                // Gentle warp for rolling organic woodland terrain.
+                // Phase 1.6-F.2-T-2.B.3: warp_strength halved 35 → 17 per
+                // F.2-T-2.A diagnostic (see grassland preset for context).
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
                     iterations: 1,
                     warp_scale: 1.2,
-                    warp_strength: 35.0,
+                    warp_strength: 17.0,
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
@@ -1977,12 +1986,14 @@ impl TerrainPanel {
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
-                // Stronger warp (50) for cold-region glacial geology.
+                // Warp for cold-region glacial geology.
+                // Phase 1.6-F.2-T-2.B.3: warp_strength halved 50 → 25 per
+                // F.2-T-2.A diagnostic (see grassland preset for context).
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
                     iterations: 1,
                     warp_scale: 1.7,
-                    warp_strength: 50.0,
+                    warp_strength: 25.0,
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
@@ -2082,15 +2093,25 @@ impl TerrainPanel {
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
-                // Moderate warp (40) for organic rolling hills; continental
-                // modulation clusters mountain regions for NC-style geography.
+                // Moderate warp_scale (1.5) for organic rolling hills;
+                // continental modulation clusters mountain regions for
+                // NC-style geography.
                 // Phase 1.6-F.2.D: iterations reduced 2 → 1 to keep
                 // chunk-generation time ≤ 2× F.1 baseline (was 2.19×).
+                // Phase 1.6-F.2-T-2.B.3: warp_strength reduced 40 → 15 per
+                // F.2-T-2.A diagnostic. At warp=40, this preset was the
+                // dominant spike source (curvature 1.402, 2373x plain
+                // Perlin). At warp=15, curvature drops to ~0.47 (3x
+                // reduction) — the spike regression's root cause was
+                // DomainWarped's coordinate-displacement magnitude, not
+                // detail or mountain layer. Grassland gets the most
+                // aggressive reduction since it is the default most-viewed
+                // preset.
                 base_noise_type: NoiseType::DomainWarped,
                 base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
                     iterations: 1,
                     warp_scale: 1.5,
-                    warp_strength: 40.0,
+                    warp_strength: 15.0,
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
