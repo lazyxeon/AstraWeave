@@ -479,7 +479,7 @@ This section must be updated in the same commit that completes each sub-phase pe
 ```
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
-F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D). Research + audit pass 2026-04-22 — commits 4f2fca568 (F.2-T-3.A research) + 7c46c2449 (F.2-T-3.B audit) + 62526a04d (F.2-T-3.C.1 PBR Nyquist cap) + <F.2-T-3.D-hash>. F.2-T-3 concluded residual surface-spike character is expected from raw noise per literature; F.3 erosion endorsed as canonical solver.
+F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D). Research + audit pass 2026-04-22 — commits 4f2fca568 (F.2-T-3.A research) + 7c46c2449 (F.2-T-3.B audit) + 62526a04d (F.2-T-3.C.1 PBR Nyquist cap) + 3c7271399 (F.2-T-3.D closeout). F.2-T-3 concluded residual surface-spike character is expected from raw noise per literature; F.3 erosion endorsed as canonical solver.
 F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
@@ -581,7 +581,7 @@ Initial state: no deviations logged. F.0's draft execution did not surface any d
 
 **Andrew-gate:** visual verification of smooth slopes (no bed-of-nails) is the outstanding behavioral gate. If F.2-T-2 is still insufficient, the craftsman path accepts a third tuning pass.
 
-### 2026-04-22, Sub-phase F.2 research + audit (F.2-T-3), commits 4f2fca568 through <F.2-T-3.D-hash>
+### 2026-04-22, Sub-phase F.2 research + audit (F.2-T-3), commits 4f2fca568 through 3c7271399
 
 **Deviation:** After F.2-T-2's 2.7× curvature reduction left residual bed-of-nails character in Andrew's visual verification, F.2-T-3 replaced another first-principles tuning pass with a research-driven approach: web research into named phenomena and canonical remedies for noise-spike artifacts, paired with a code audit of sampling and vertex-meshing paths that F.2 / F.2-T / F.2-T-2 took for granted.
 
