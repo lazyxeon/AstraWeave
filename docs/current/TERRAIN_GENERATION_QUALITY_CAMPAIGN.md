@@ -292,6 +292,7 @@ Extend `BiomeNoisePreset` at `tools/aw_editor/src/terrain_integration.rs:27-47` 
 - All three `cargo check` invocations pass.
 - All tests pass, including the new F.2 unit and diagnostic tests.
 - **F.2-T amendment (2026-04-21):** Highland regions retain substantial mountain amplitude (global Y max ≥ 85, p95 ≥ 40 at seed 12345 grassland). Catches the "continental suppressed everything uniformly" failure mode. Enforced by the permanent test `phase_1_6_f2_t_highland_regions_reach_f1_target` in `astraweave-terrain/src/noise_gen.rs`. The original prompt's ≥ 100 threshold was aspirational but incompatible with F.2's continental-modulation math — at the editor's 2800-unit extent, max continental_01 measured 0.874 (not 1.0), bounding the highland mountain multiplier at ~0.94 and highland Y max at ~94% of F.1's unmodulated baseline. Relaxed thresholds reflect design reality; see §10 for details.
+- **F.2-T-2 amendment (2026-04-22):** Surface spikiness (local curvature of `sample_height` output) stays below threshold at the grassland preset. Specifically, mean |center − avg(4 neighbors)| over a 200×200 grid at 1-unit spacing must be ≤ 0.90 (post-F.2-T-2 measurement of 0.753 × 1.2 buffer). Catches bed-of-nails regressions from the DomainWarped layer's `warp_strength` reverting to high values. Enforced by the permanent test `phase_1_6_f2_t2_surface_spikiness_under_threshold` in `astraweave-terrain/src/noise_gen.rs`. See §10 F.2-T-2 entry for diagnostic methodology.
 - This plan's §9 reflects F.2 COMPLETE.
 
 ### 4.4 Reversibility
@@ -477,7 +478,7 @@ This section must be updated in the same commit that completes each sub-phase pe
 ```
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
-F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D).
+F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + <F.2-T-2.D-hash>.
 F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
@@ -537,9 +538,47 @@ Initial state: no deviations logged. F.0's draft execution did not surface any d
 
 **Performance:** F.2-T / F.1 generation time ratio measured at 1.47× (release build, 121 chunks, seed 12345 grassland). Well under the 2.00× gate.
 
----
+### 2026-04-22, Sub-phase F.2 second tuning (F.2-T-2), commits 29658f86f through <F.2-T-2.D-hash>
 
-## 11. References
+**Deviation:** Andrew's 2026-04-22 interactive visual verification of the F.2-T state revealed that the bed-of-nails surface regression was WORSE than pre-F.2-T, despite the F.2-T diagnostic reporting H1 (detail dominance) as confirmed and `detail_amplitude` having been halved. A key new observation — spike amplitude was UNIFORM across highland and lowland regions — reframed the problem. Uniform spikiness means the source is a layer NOT modulated by continental, pointing to either detail (still too tall at amplitude 4) or base (DomainWarped at iterations=1).
+
+**Rationale:** Continuing the user's explicitly-accepted "2-steps-forward-1-back" craftsman philosophy. The F.2-T diagnostic was too narrow — measuring amplitude ratios but not per-layer spatial frequency content. F.2-T-2 ran a deeper diagnostic measuring per-layer local curvature (spikiness) plus continental correlation, identifying the specific spike source with confidence before tuning.
+
+**Diagnostic findings (F.2-T-2.A):**
+- **Base layer (DomainWarped) is the dominant spike source** — curvature 2.356 (117% of total), vs mountain 0.3% and detail 1.2%.
+- **DomainWarped adds high-frequency content independent of iteration count** — curvature ratios vs plain Perlin at 1-unit sampling: iter=1 2373×, iter=2 6825×, iter=3 6847×. Plain Perlin (single-octave) produces essentially zero curvature at this scale; DomainWarped's coordinate displacement interacts with the underlying Fbm's high-frequency octaves to produce the spikes.
+- **Mountain layer is NOT the source** — curvature 0.007–0.008 regardless of octave count (4–7). F.2's mountain is smooth at 1-unit sampling.
+- **F.2-T's H3 rejection was incorrect under grassland preset conditions** — the rejection used `NoiseConfig::default()` at 2-unit sampling, which masked the effect at the grassland preset's 1-unit editor-relevant scale.
+- **Exploratory tuning matrix** showed `warp_strength` is the dominant lever (halving it roughly halves curvature) and `base_octaves` barely matters (15% variation across octaves 3–5). The fix targets warp_strength only.
+
+**Specific tuning changes applied (F.2-T-2.B.3):**
+- Five DomainWarped presets' `warp_strength` reduced:
+  - grassland: 40 → 15 (3× reduction, most aggressive for default most-viewed preset)
+  - mountain: 60 → 30 (halved)
+  - tundra: 50 → 25 (halved)
+  - desert: 45 → 22 (halved)
+  - forest: 35 → 17 (halved)
+- `base_octaves`, `warp_scale`, `warp_octaves`, `iterations` preserved (diagnostic showed they weren't the issue).
+- No changes to detail, mountain, or continental parameters beyond F.2-T.
+
+**Deviation from F.1 amplitude-preservation discipline:** F.2-T-2.B.3 modified F.1-preserved `DomainWarpConfig.warp_strength` on five presets. Per F.2-T-2 prompt constraint 2, this is permitted because F.2-T-2.A's diagnostic specifically identified `warp_strength` as the dominant spike source. Note that F.2.B's original `warp_strength` values (40, 60, 35, 50, 45) were selected arbitrarily when DomainWarped was first enabled — they were never quantitatively validated against surface-quality metrics. F.2-T-2.A was the first quantitative measurement.
+
+**Measurements:**
+- Pre-F.2-T-2.B.3 grassland total curvature: 2.016 (bed-of-nails)
+- Post-F.2-T-2.B.3 grassland total curvature: 0.753 (2.7× reduction)
+- Pre-F.2-T-2.B.3 highland Y max: 90.69 (from F.2-T.C regression test)
+- Post-F.2-T-2.B.3 highland Y max: 97.32 (+6.6 — smoother base shifted peak alignment favorably)
+- Pre-F.2-T-2.B.3 generation time: 881 ms (F.2-T baseline)
+- Post-F.2-T-2.B.3 generation time: ~860 ms median over 3 runs (variance 842–1025) — essentially identical to F.2-T within variance; reducing warp_strength doesn't meaningfully change compute cost.
+- F.2-T-2 / F.1 ratio: 1.55× (under the 2.00× gate)
+
+**Impact on later sub-phases:** F.3's erosion now operates on a smoother base (less aggressive particle travel needed) — may reduce F.3's required droplet count or iteration count. F.4 and F.5 unaffected.
+
+**New permanent regression test:** `phase_1_6_f2_t2_surface_spikiness_under_threshold` in `astraweave-terrain/src/noise_gen.rs` asserts mean local curvature at a 200×200 grid with the grassland preset + continental modulation stays ≤ 0.90 (post-fix 0.753 × 1.2 buffer). If a future sub-phase regresses `warp_strength` back to ≥ 20 on grassland, this test will fail per F.2-T-2.A's tuning matrix. Also keeps the `phase_1_6_f2_t_highland_regions_reach_f1_target` regression guard from F.2-T.
+
+**Meta-observation about surface-quality vs. amplitude metrics:** F.2-T's amplitude-focused regression test (`highland_regions_reach_f1_target`) passed throughout F.2's lifecycle because amplitude was never the issue — surface quality was. F.2-T-2's addition of `surface_spikiness_under_threshold` closes that gap. Both tests are preserved going forward; together they guard both amplitude and surface character.
+
+**Andrew-gate:** visual verification of smooth slopes (no bed-of-nails) is the outstanding behavioral gate. If F.2-T-2 is still insufficient, the craftsman path accepts a third tuning pass.
 
 - `docs/audits/heightmap_generator_audit_2026-04-21.md` — the audit that surfaced the unwired components, catalogued the six intervention options, and motivated this campaign (Option F selected).
 - `docs/audits/phase_1_5_tuning_investigation_2026-04-20.md` — Phase 1.5-T's investigation with the stale 125-unit measurement that F.1's correction note addresses.
