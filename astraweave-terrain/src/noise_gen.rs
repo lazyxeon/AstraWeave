@@ -965,6 +965,308 @@ mod tests {
     // future "continental suppressed everything uniformly" failure modes.
     // -----------------------------------------------------------------------
 
+    // -----------------------------------------------------------------------
+    // Phase 1.6-F.2-T-2 diagnostics (temporary — removed at F.2-T-2.D).
+    //
+    // F.2-T tuning did not resolve the bed-of-nails regression — Andrew's
+    // 2026-04-22 visual verification showed spikes were WORSE, and crucially
+    // that spike amplitude appeared UNIFORM across highland and lowland
+    // regions. Uniform spikiness implies a non-continental-modulated source
+    // (base or detail, not mountain). These three tests measure per-layer
+    // spatial frequency content (local curvature) plus continental
+    // correlation, so the actual spike source can be named with confidence
+    // before any tuning.
+    // -----------------------------------------------------------------------
+
+    /// Local-curvature spikiness metric: mean of |center - avg(4 neighbors)|
+    /// over interior cells of a grid. Higher = spikier. Used by the three
+    /// F.2-T-2 diagnostics below.
+    fn phase_1_6_f2_t2_local_curvature_grid(heights: &[f32], grid_dim: usize) -> f32 {
+        let mut total = 0.0f32;
+        let mut count = 0u32;
+        for i in 1..grid_dim - 1 {
+            for j in 1..grid_dim - 1 {
+                let center = heights[i * grid_dim + j];
+                let neighbors = heights[(i - 1) * grid_dim + j]
+                    + heights[(i + 1) * grid_dim + j]
+                    + heights[i * grid_dim + j - 1]
+                    + heights[i * grid_dim + j + 1];
+                total += (center - neighbors / 4.0).abs();
+                count += 1;
+            }
+        }
+        total / count as f32
+    }
+
+    /// Build a `NoiseConfig` matching the editor's grassland preset as of
+    /// the F.2-T-2.A snapshot. This is used across the three F.2-T-2
+    /// diagnostic tests so each measurement reflects the actual runtime.
+    fn phase_1_6_f2_t2_grassland_config() -> NoiseConfig {
+        let mut config = NoiseConfig::default();
+        config.base_elevation.scale = 0.004;
+        config.base_elevation.amplitude = 50.0;
+        config.base_elevation.octaves = 5;
+        config.base_elevation.persistence = 0.50;
+        config.base_elevation.lacunarity = 2.0;
+        config.base_elevation.noise_type = NoiseType::DomainWarped;
+        config.base_elevation.domain_warp = DomainWarpConfig {
+            iterations: 1,
+            warp_scale: 1.5,
+            warp_strength: 40.0,
+            warp_octaves: 3,
+        };
+        config.mountains.enabled = true;
+        config.mountains.scale = 0.0025;
+        config.mountains.amplitude = 80.0;
+        config.mountains.octaves = 6;
+        // mountains.persistence and mountains.lacunarity use NoiseConfig::default
+        // values (0.4 and 2.2) since BiomeNoisePreset doesn't override them.
+        config.detail.enabled = true;
+        config.detail.scale = 0.02;
+        config.detail.amplitude = 4.0;
+        config.continental_enabled = true;
+        config
+    }
+
+    /// Task 1.A — per-layer spikiness + continental correlation. Samples a
+    /// 200×200 grid at 1 world-unit spacing, measures local curvature for
+    /// each layer independently, and computes highland-vs-lowland curvature
+    /// ratio to distinguish continental-modulated from non-continental-
+    /// modulated spike sources.
+    #[test]
+    fn phase_1_6_f2_t2_per_layer_spikiness() {
+        let config = phase_1_6_f2_t2_grassland_config();
+        let noise = TerrainNoise::new(&config, 12345);
+
+        const GRID_DIM: usize = 200;
+        const N: usize = GRID_DIM * GRID_DIM;
+        let mut base = vec![0f32; N];
+        let mut mtn_raw = vec![0f32; N];
+        let mut mtn_eff = vec![0f32; N];
+        let mut detail = vec![0f32; N];
+        let mut total = vec![0f32; N];
+        let mut cont = vec![0f32; N];
+
+        for i in 0..GRID_DIM {
+            for j in 0..GRID_DIM {
+                let x = i as f64;
+                let z = j as f64;
+                let (b, mr, me, d, c) = noise.sample_per_layer(x, z);
+                let idx = i * GRID_DIM + j;
+                base[idx] = b;
+                mtn_raw[idx] = mr;
+                mtn_eff[idx] = me;
+                detail[idx] = d;
+                total[idx] = (b + me + d).max(0.0);
+                cont[idx] = c;
+            }
+        }
+
+        let base_c = phase_1_6_f2_t2_local_curvature_grid(&base, GRID_DIM);
+        let mtn_raw_c = phase_1_6_f2_t2_local_curvature_grid(&mtn_raw, GRID_DIM);
+        let mtn_eff_c = phase_1_6_f2_t2_local_curvature_grid(&mtn_eff, GRID_DIM);
+        let detail_c = phase_1_6_f2_t2_local_curvature_grid(&detail, GRID_DIM);
+        let total_c = phase_1_6_f2_t2_local_curvature_grid(&total, GRID_DIM);
+
+        println!("======================================================");
+        println!("F.2-T-2.A per-layer curvature (spikiness) at grassland preset:");
+        println!("  grid: {GRID_DIM}x{GRID_DIM} at 1 world-unit spacing");
+        println!("  base (DomainWarped iter=1):   {base_c:.3}");
+        println!("  mountain_raw (pre-mod):        {mtn_raw_c:.3}");
+        println!("  mountain_effective (post-mod): {mtn_eff_c:.3}");
+        println!("  detail (Billow):               {detail_c:.3}");
+        println!("  total (sum.max(0)):            {total_c:.3}");
+        println!();
+        if total_c > 0.0 {
+            println!("  Percentage contributions to total curvature:");
+            println!("    base:     {:>5.1}%", 100.0 * base_c / total_c);
+            println!("    mountain: {:>5.1}%", 100.0 * mtn_eff_c / total_c);
+            println!("    detail:   {:>5.1}%", 100.0 * detail_c / total_c);
+        }
+
+        let dominant = if base_c >= mtn_eff_c && base_c >= detail_c {
+            "BASE (DomainWarped)"
+        } else if mtn_eff_c >= detail_c {
+            "MOUNTAIN (RidgedMulti, continental-modulated)"
+        } else {
+            "DETAIL (Billow)"
+        };
+        println!();
+        println!("  DOMINANT SPIKE SOURCE: {dominant}");
+
+        // Highland/midland/lowland curvature split.
+        let mut hl_sum = 0.0f32;
+        let mut hl_n = 0u32;
+        let mut ml_sum = 0.0f32;
+        let mut ml_n = 0u32;
+        let mut ll_sum = 0.0f32;
+        let mut ll_n = 0u32;
+        for i in 1..GRID_DIM - 1 {
+            for j in 1..GRID_DIM - 1 {
+                let idx = i * GRID_DIM + j;
+                let c = cont[idx];
+                let center = total[idx];
+                let neighbors = total[(i - 1) * GRID_DIM + j]
+                    + total[(i + 1) * GRID_DIM + j]
+                    + total[i * GRID_DIM + j - 1]
+                    + total[i * GRID_DIM + j + 1];
+                let local_c = (center - neighbors / 4.0).abs();
+                if c > 0.7 {
+                    hl_sum += local_c;
+                    hl_n += 1;
+                } else if c > 0.3 {
+                    ml_sum += local_c;
+                    ml_n += 1;
+                } else {
+                    ll_sum += local_c;
+                    ll_n += 1;
+                }
+            }
+        }
+        let hl_c = if hl_n > 0 { hl_sum / hl_n as f32 } else { 0.0 };
+        let ml_c = if ml_n > 0 { ml_sum / ml_n as f32 } else { 0.0 };
+        let ll_c = if ll_n > 0 { ll_sum / ll_n as f32 } else { 0.0 };
+
+        println!();
+        println!("  Curvature by continental region:");
+        println!("    highland (cont>0.7, n={hl_n}):  {hl_c:.3}");
+        println!("    midland (0.3<cont<0.7, n={ml_n}): {ml_c:.3}");
+        println!("    lowland (cont<0.3, n={ll_n}):   {ll_c:.3}");
+        if hl_n > 0 && ll_n > 0 {
+            let ratio = ll_c / hl_c;
+            println!("    lowland/highland curvature ratio: {ratio:.2}");
+            if ratio > 0.7 {
+                println!("    *** UNIFORM SPIKINESS: spikes do NOT scale with continental ***");
+                println!("    *** Non-continental-modulated layer (base or detail) is the source ***");
+            } else {
+                println!("    *** CONTINENTAL-CORRELATED: highlands spikier (continental-modulated source) ***");
+            }
+        }
+        println!("======================================================");
+    }
+
+    /// Task 1.B — DomainWarped frequency effect on the base layer. Compares
+    /// plain Perlin vs DomainWarped iterations=1/2/3 at identical amplitude.
+    #[test]
+    fn phase_1_6_f2_t2_domain_warp_frequency_effect() {
+        const GRID_DIM: usize = 200;
+
+        let build = |noise_type: NoiseType, iterations: u32| -> TerrainNoise {
+            let mut config = phase_1_6_f2_t2_grassland_config();
+            // Disable continental so measurement isolates the base layer's
+            // spatial frequency effect; zero out mountain and detail so
+            // sample_height returns ~only base contribution.
+            config.continental_enabled = false;
+            config.mountains.enabled = false;
+            config.detail.enabled = false;
+            let is_dw = matches!(noise_type, NoiseType::DomainWarped);
+            config.base_elevation.noise_type = noise_type;
+            if is_dw {
+                config.base_elevation.domain_warp = DomainWarpConfig {
+                    iterations,
+                    warp_scale: 1.5,
+                    warp_strength: 40.0,
+                    warp_octaves: 3,
+                };
+            }
+            TerrainNoise::new(&config, 12345)
+        };
+
+        let sample = |noise: &TerrainNoise| -> Vec<f32> {
+            let mut heights = vec![0f32; GRID_DIM * GRID_DIM];
+            for i in 0..GRID_DIM {
+                for j in 0..GRID_DIM {
+                    heights[i * GRID_DIM + j] = noise.sample_height(i as f64, j as f64);
+                }
+            }
+            heights
+        };
+
+        let curv_perlin =
+            phase_1_6_f2_t2_local_curvature_grid(&sample(&build(NoiseType::Perlin, 0)), GRID_DIM);
+        let curv_dw1 = phase_1_6_f2_t2_local_curvature_grid(
+            &sample(&build(NoiseType::DomainWarped, 1)),
+            GRID_DIM,
+        );
+        let curv_dw2 = phase_1_6_f2_t2_local_curvature_grid(
+            &sample(&build(NoiseType::DomainWarped, 2)),
+            GRID_DIM,
+        );
+        let curv_dw3 = phase_1_6_f2_t2_local_curvature_grid(
+            &sample(&build(NoiseType::DomainWarped, 3)),
+            GRID_DIM,
+        );
+
+        println!("======================================================");
+        println!("F.2-T-2.A base-layer curvature by NoiseType / iterations:");
+        println!("  Plain Perlin:          {curv_perlin:.3}");
+        println!(
+            "  DomainWarped iter=1:   {curv_dw1:.3}  ({:.2}x Perlin)",
+            curv_dw1 / curv_perlin.max(1e-6)
+        );
+        println!(
+            "  DomainWarped iter=2:   {curv_dw2:.3}  ({:.2}x Perlin)",
+            curv_dw2 / curv_perlin.max(1e-6)
+        );
+        println!(
+            "  DomainWarped iter=3:   {curv_dw3:.3}  ({:.2}x Perlin)",
+            curv_dw3 / curv_perlin.max(1e-6)
+        );
+        println!();
+        if curv_dw1 > curv_perlin * 1.3 {
+            println!("  *** iter=1 IS significantly spikier than plain Perlin (>30%) ***");
+            println!("  *** F.2-T's H3 rejection was incorrect under these conditions ***");
+        } else {
+            println!("  iter=1 is NOT significantly spikier than plain Perlin at this scale");
+        }
+        println!("======================================================");
+    }
+
+    /// Task 1.C — mountain octave contribution. Varies mountains.octaves
+    /// from 4 to 7 and measures the mountain layer's curvature to identify
+    /// whether the top octave is producing vertex-scale features.
+    #[test]
+    fn phase_1_6_f2_t2_mountain_octave_contribution() {
+        const GRID_DIM: usize = 200;
+
+        let build = |octaves: usize| -> TerrainNoise {
+            let mut config = phase_1_6_f2_t2_grassland_config();
+            // Disable continental so measurement isolates mountain's raw
+            // contribution; zero out base and detail.
+            config.continental_enabled = false;
+            config.base_elevation.enabled = false;
+            config.detail.enabled = false;
+            config.mountains.octaves = octaves;
+            TerrainNoise::new(&config, 12345)
+        };
+
+        let sample = |noise: &TerrainNoise| -> Vec<f32> {
+            let mut heights = vec![0f32; GRID_DIM * GRID_DIM];
+            for i in 0..GRID_DIM {
+                for j in 0..GRID_DIM {
+                    heights[i * GRID_DIM + j] = noise.sample_height(i as f64, j as f64);
+                }
+            }
+            heights
+        };
+
+        println!("======================================================");
+        println!("F.2-T-2.A mountain layer curvature by octave count:");
+        let mut prev: Option<f32> = None;
+        for &octaves in &[4usize, 5, 6, 7] {
+            let c = phase_1_6_f2_t2_local_curvature_grid(&sample(&build(octaves)), GRID_DIM);
+            let delta = prev.map(|p| c - p).unwrap_or(0.0);
+            println!(
+                "  octaves={octaves}: curvature {c:.3}  (delta from prev: {delta:+.3})"
+            );
+            prev = Some(c);
+        }
+        println!();
+        println!("  Large positive delta between N-1 and N octaves means the Nth octave");
+        println!("  contributes significant high-frequency content (spike source).");
+        println!("======================================================");
+    }
+
     /// Phase 1.6-F.2-T.C: permanent regression guard for the "continental
     /// suppressed everything uniformly" failure mode. Generates heights
     /// across the editor's 11×11 chunk grid (radius 5) with grassland
