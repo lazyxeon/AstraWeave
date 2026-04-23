@@ -67,6 +67,17 @@ fn phase_1_6_f3_phase_0_perf_characterization() {
         let d = time_preset("coastal", dim, ErosionPreset::coastal);
         results.push(("coastal", dim, d.as_millis()));
 
+        // Phase 1.6-F.3-phase-2.B: balanced variants for droplet-count fallback.
+        let d = time_preset("default_balanced", dim, ErosionPreset::default_balanced);
+        results.push(("default_balanced", dim, d.as_millis()));
+
+        let d = time_preset(
+            "mountain_balanced",
+            dim,
+            ErosionPreset::mountain_balanced,
+        );
+        results.push(("mountain_balanced", dim, d.as_millis()));
+
         println!();
     }
 
@@ -74,10 +85,17 @@ fn phase_1_6_f3_phase_0_perf_characterization() {
     println!("======================================================");
     println!("Summary table:");
     println!();
-    println!("| Preset   |   64² |  128² |  192² |  256² |");
-    println!("|----------|------:|------:|------:|------:|");
-    for preset in ["default", "desert", "mountain", "coastal"] {
-        print!("| {preset:<8} |");
+    println!("| Preset             |   64² |  128² |  192² |  256² |");
+    println!("|--------------------|------:|------:|------:|------:|");
+    for preset in [
+        "default",
+        "desert",
+        "mountain",
+        "coastal",
+        "default_balanced",
+        "mountain_balanced",
+    ] {
+        print!("| {preset:<18} |");
         for dim in [64u32, 128, 192, 256] {
             let ms = results
                 .iter()
@@ -99,7 +117,14 @@ fn phase_1_6_f3_phase_0_perf_characterization() {
     // So 121 × per-192² cost.
     println!();
     println!("Phase 2 projection for 121 chunks × halo=1 (192² per halo region):");
-    for preset in ["default", "desert", "mountain", "coastal"] {
+    for preset in [
+        "default",
+        "desert",
+        "mountain",
+        "coastal",
+        "default_balanced",
+        "mountain_balanced",
+    ] {
         let ms_192 = results
             .iter()
             .find(|(p, d, _)| *p == preset && *d == 192u32)
@@ -107,10 +132,7 @@ fn phase_1_6_f3_phase_0_perf_characterization() {
             .unwrap_or(0);
         let total_ms = ms_192 as u64 * 121;
         let seconds = total_ms as f64 / 1000.0;
-        println!(
-            "  {preset:<8}: 121 × {ms_192}ms = {:.1}s",
-            seconds
-        );
+        println!("  {preset:<18}: 121 × {ms_192}ms = {:.1}s", seconds);
     }
     println!();
     println!("Plan §2.3 budget: ~30 seconds (editor-time generation).");

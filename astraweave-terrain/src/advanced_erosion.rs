@@ -204,20 +204,40 @@ impl ErosionPreset {
         }
     }
 
-    /// Phase 1.6-F.3-phase-2.A stub: balanced default preset (droplet-count
-    /// fallback per §2.3). Phase-2.B replaces this alias with a real variant
-    /// (droplet_count 50k → 35k). For phase-2.A, aliases `default()` so the
-    /// mapping helper compiles and commit A stays pure-additive.
+    /// Phase 1.6-F.3-phase-2.B: balanced default preset — same hydraulic +
+    /// thermal profile as `default()` but with reduced droplet count to meet
+    /// §2.3's 30-second performance budget for 121-chunk editor runs.
+    /// F.3-phase-0 projected full `default()` at 39.7s (33% over budget);
+    /// `default_balanced` targets ~28s at 35k droplets (−30%).
+    ///
+    /// All other parameters identical to `default()`. Existing `default()`
+    /// stays unchanged so phase-0 behavioral measurements on the original
+    /// remain valid.
     pub fn default_balanced() -> Self {
-        Self::default()
+        let mut p = Self::default();
+        p.name = "Default (balanced)".to_string();
+        if let Some(hydraulic) = p.hydraulic.as_mut() {
+            hydraulic.droplet_count = 35_000;
+        }
+        p
     }
 
-    /// Phase 1.6-F.3-phase-2.A stub: balanced mountain preset (droplet-count
-    /// fallback per §2.3). Phase-2.B replaces this alias with a real variant
-    /// (droplet_count 100k → 50k). For phase-2.A, aliases `mountain()` so the
-    /// mapping helper compiles and commit A stays pure-additive.
+    /// Phase 1.6-F.3-phase-2.B: balanced mountain preset — same aggressive
+    /// hydraulic + thermal profile as `mountain()` but with halved droplet
+    /// count. F.3-phase-0 projected full `mountain()` at 83.5s (2.8× over
+    /// budget); `mountain_balanced` targets ~42s at 50k droplets (−50%).
+    /// Still over the 30s budget; full compliance requires rayon
+    /// parallelization (see F.3-phase-2.E) or accepting mountain-primary
+    /// terrain as slower editor-time generation.
+    ///
+    /// All other parameters identical to `mountain()`.
     pub fn mountain_balanced() -> Self {
-        Self::mountain()
+        let mut p = Self::mountain();
+        p.name = "Mountain (balanced)".to_string();
+        if let Some(hydraulic) = p.hydraulic.as_mut() {
+            hydraulic.droplet_count = 50_000;
+        }
+        p
     }
 }
 
