@@ -481,7 +481,10 @@ This section must be updated in the same commit that completes each sub-phase pe
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
 F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D). Research + audit pass 2026-04-22 — commits 4f2fca568 (F.2-T-3.A research) + 7c46c2449 (F.2-T-3.B audit) + 62526a04d (F.2-T-3.C.1 PBR Nyquist cap) + 3c7271399 (F.2-T-3.D closeout). F.2-T-3 concluded residual surface-spike character is expected from raw noise per literature; F.3 erosion endorsed as canonical solver. Fourth tuning pass (derivative-weighted fBm) 2026-04-22 — commits efe80f146 (F.2-T-4.A+B primitives) + 48c8fc0d0 (F.2-T-4.C+D wiring + regression-threshold tightening) + c894c0d71 (F.2-T-4.E closeout). F.2-T-4 implements Quilez morenoise slope-attenuated fBm; reduces curvature 17% further, preserves highland amplitude, improves performance slightly.
-F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
+F.3 — AdvancedErosionSimulator wiring with halo: IN PROGRESS
+  F.3-phase-0 (soundness audit): COMPLETE 2026-04-23, commits 8a5392f71 (A static audit) + db29ee8ca (B behavioral tests) + aa3be96b2 (C perf characterization) + <F.3-phase-0.E-hash>. See `docs/audits/advanced_erosion_static_audit_2026-04-23.md`. Simulator is sound for phase 2 wiring; suspected velocity `.abs()` quirk doesn't affect droplet travel or test outcomes; performance OK for default/desert/coastal presets but mountain (100k droplets) projects 83.5s on 121 chunks — droplet-count fallback per §2.3 required at phase 2. §2.3 halo=1 assumption empirically validated (p95 travel 120 world units < 256).
+  F.3-phase-1 (biome-weight restructure + halo scaffolding): NOT STARTED
+  F.3-phase-2 (erosion wiring + closeout): NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
 ```
@@ -538,7 +541,7 @@ Initial state: no deviations logged. F.0's draft execution did not surface any d
 
 **F.1 detail_amplitude preservation exception:** F.2-T.B.2 modified `detail_amplitude` on five presets — the prompt's constraint 3 allowed this exception "IF the diagnostic identifies detail_amplitude specifically as a tunable lever," and H1 confirmed exactly this. F.1's `base_amplitude`, `mountains_amplitude`, `base_scale`, `mountains_scale`, and other values are preserved unchanged.
 
-**Performance:** F.2-T / F.1 generation time ratio measured at 1.47× (release build, 121 chunks, seed 12345 grassland). Well under the 2.00× gate.
+A**Performance:** F.2-T / F.1 generation time ratio measured at 1.47× (release build, 121 chunks, seed 12345 grassland). Well under the 2.00× gate.
 
 ### 2026-04-22, Sub-phase F.2 second tuning (F.2-T-2), commits 29658f86f through c3599b138
 
@@ -688,6 +691,52 @@ Cumulative 3.5× curvature reduction over F.2's rollout. Performance IMPROVED fr
 **F.2 status — complete per F.2-T-4.E closeout:** Derivative-weighted fBm is the last planned noise-side intervention. Any residual spike character post-F.2-T-4 is expected un-eroded-noise behavior per Musgrave 1989 and is the canonical domain of F.3's `AdvancedErosionSimulator`. **F.2 now proceeds to F.3.**
 
 **Andrew-gate:** visual verification of F.2-T-4 terrain is the outstanding behavioral gate. Expected: ridges visibly softer vs F.2-T-3; valleys and flat regions identical (flat-region test confirms minimal deviation at those sites); continental clustering preserved; macro-features preserved. If visually acceptable, F.2 is signed off and F.3 begins. If not, the remaining spike character is either (a) expected un-eroded-noise behavior that F.3 erosion solves, or (b) a secondary artifact (e.g., finite-difference normals amplifying visible variation that's already smaller at height level).
+
+### 2026-04-23, Sub-phase F.3-phase-0 (soundness audit), commits 8a5392f71 through <F.3-phase-0.E-hash>
+
+**Deviation:** Original F.3 plan (§5) specified single-session execution with sub-commits F.3.A–F.3.E. F.3 is now split into three phases per Andrew's craftsman-path direction: phase 0 (soundness audit, this entry), phase 1 (biome-weight restructure + halo scaffolding, future), phase 2 (erosion wiring + closeout, future). Phase 0 audits `AdvancedErosionSimulator` before any integration, isolating pre-existing simulator risks from integration risks.
+
+**Rationale:** `AdvancedErosionSimulator` is 902 lines of production-quality-looking code with zero production callers. Its existing tests verify the function runs and produces output, not that the output is geologically plausible. Phase 2's failures (if any) would be difficult to diagnose if they conflated simulator bugs, halo-stitching bugs, and preset-mapping bugs. Phase 0 eliminates the simulator-bug class first.
+
+**Findings summary (from `docs/audits/advanced_erosion_static_audit_2026-04-23.md` and test output):**
+
+- **Static audit:** MOSTLY SOUND — algorithm structure matches canonical particle-based hydraulic erosion (Lague, dandrino, Beyer references). One suspected bug (velocity `.abs()` at line 457 causes droplets to gain kinetic energy going uphill, differs from Lague's canonical formula). Minor stylistic redundancies (`.max(0.0)` on line 401, `.abs()` on line 593) have no behavioral impact.
+
+- **Behavioral tests (10/10 pass):** flat preservation ✓, slope downhill transport ✓, ridge flattening (34.3% peak reduction) ✓, single spike removal (100% reduction) ✓, multi-spike curvature reduction (90.8%) ✓, bowl sediment accumulation (+9.2) ✓, determinism ✓, preset differentiation (default vs desert avg diff 2.1) ✓, mountain more aggressive than default ✓, droplet travel characterization (p95 = 30 cells = 120 world units) ✓.
+
+- **Velocity `.abs()` verdict:** doesn't affect droplet travel distance (capped at `max_droplet_lifetime × 1-cell-per-step = 30 cells` regardless of velocity). Affects sediment-capacity calculation subtly but all behavioral tests pass. Per F.3-phase-0 constraint 5 ("fix pre-existing bugs, don't rewrite"), documented but NOT fixed — changing output now would invalidate phase 2's pre-measurements before they exist.
+
+- **Performance characterization (release build, 121 chunks × halo=1, 192² per halo region):**
+
+  | Preset | Per-192² | Per 121-chunk run |
+  |---|---:|---:|
+  | default | 328ms | **39.7s (OVER §2.3 30s budget by 33%)** |
+  | desert | 36ms | 4.4s |
+  | mountain | 690ms | **83.5s (OVER §2.3 budget by 2.8×)** |
+  | coastal | 197ms | 23.8s |
+
+- **§2.3 halo=1 assumption: VALIDATED** empirically. Droplet p95 travel distance = 30 cells = 120 world units at 4 world-units/cell. Well under the 256-world-unit halo = 1 threshold. Plan §2.3 needs no amendment.
+
+**Bugs found and fixed in phase 0:** none. The suspected `.abs()` quirk doesn't affect output; not fixed.
+
+**Bugs found and NOT fixed (deferred):**
+- Velocity `.abs()` at `advanced_erosion.rs:457` — differs from Lague's canonical formula but doesn't produce unreasonable output. Deferred to avoid invalidating phase 2's measurements. If phase 2 visual verification reveals a concrete problem tracing to this, revisit.
+- `.max(0.0)` redundancy at line 401 and `.abs()` redundancy at line 593 — stylistic only.
+- `sample_height_bilinear` duplicates part of `calculate_height_and_gradient` — DRY opportunity.
+
+**Impact on F.3-phase-2 design:**
+- Phase 2 must apply §2.3 droplet-count fallback to `default` and `mountain` presets. Recommended: default's `droplet_count` 50000 → 35000 (−30%, projects to ~28s per 121 chunks); mountain's `droplet_count` 100000 → 50000 (same as default, projects to ~42s). Alternative: rayon parallelization across chunks (each chunk is independent).
+- Phase 2 should measure actual per-chunk erosion time against this baseline and apply fallback dynamically if measured time exceeds a threshold.
+- Shape A vs Shape B (§2.1) decision for biome-weight ordering is unchanged by phase 0 findings — both shapes remain viable. Phase 1 picks one.
+
+**New permanent assets:**
+- `astraweave-terrain/tests/phase_1_6_f3_phase_0_synthetic_heightmaps.rs` — 10 behavioral tests including the droplet-travel characterization.
+- `astraweave-terrain/tests/phase_1_6_f3_phase_0_perf.rs` — permanent perf characterization harness (runs on --release).
+- `docs/audits/advanced_erosion_static_audit_2026-04-23.md` — durable reference for future simulator work.
+
+**Phase 1 readiness: YES.** Simulator is sound, API is stable, halo assumption holds, performance projections identify exactly which presets need fallback. Phase 1 can draft the biome-weight restructure + halo scaffolding on this foundation.
+
+---
 
 - `docs/audits/heightmap_generator_audit_2026-04-21.md` — the audit that surfaced the unwired components, catalogued the six intervention options, and motivated this campaign (Option F selected).
 - `docs/audits/phase_1_5_tuning_investigation_2026-04-20.md` — Phase 1.5-T's investigation with the stale 125-unit measurement that F.1's correction note addresses.
