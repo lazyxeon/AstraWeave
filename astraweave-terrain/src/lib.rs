@@ -297,42 +297,38 @@ impl WorldGenerator {
         chunk_id: ChunkId,
         climate_bias: crate::ClimateBias,
     ) -> anyhow::Result<TerrainChunk> {
-        // Phase 1.6-F.3-phase-1.B: halo expansion + center crop. The halo
-        // region covers 3×3 chunks (1-chunk halo on each side) sampled at
-        // the same per-vertex spacing as single-chunk generation. The center
-        // third is extracted back into the chunk's heightmap; halo edge
-        // regions are currently discarded. Phase 2 will feed the halo
-        // directly into `AdvancedErosionSimulator::apply_preset` before
-        // cropping, so droplets can travel across chunk boundaries.
+        // Phase 1.6-F.3-phase-2.C: full pipeline wired.
         //
-        // For phase 1 (simple CA erosion on cropped heightmap): the halo is a
-        // no-op for output because the noise field is deterministic per world
-        // coordinate — the cropped heights match what single-chunk generation
-        // produces byte-for-byte.
-        let halo = self.generate_halo_heightmap(chunk_id, 1)?;
-        let heightmap = self.crop_halo_to_chunk(&halo, chunk_id)?;
+        // 1. Generate halo heightmap (3×3 chunks centered on target).
+        // 2. Crop the halo to the target chunk for PRE-erosion biome_weights
+        //    computation per §2.5 (authorial-intent invariant).
+        // 3. Run AdvancedErosionSimulator::apply_preset on the FULL halo —
+        //    droplets travel freely across chunk boundaries within the halo
+        //    region. §2.3 halo=1 is sufficient per phase-0's p95 = 120 world
+        //    units < 256 (one chunk width).
+        // 4. Crop AFTER erosion. This becomes the chunk's final (post-erosion)
+        //    heightmap.
+        // 5. Construct chunk with post-erosion cropped heightmap + pre-erosion
+        //    biome_weights (decoupled per §2.5).
+        //
+        // Legacy `chunk.apply_erosion(strength)` simple CA call is replaced by
+        // `AdvancedErosionSimulator` per §2.2 climate → preset mapping.
+        const HALO_CHUNKS: u32 = 1;
 
-        // Generate climate data for biome assignment (still uses per-chunk
-        // climate sample for the `biome_map`; phase 4 integrates climate into
-        // biome_weights).
-        let climate_data = self.climate.sample_chunk(
-            chunk_id,
-            self.config.chunk_size,
-            self.config.heightmap_resolution,
-        )?;
-        let biome_map = self.assign_biomes(&heightmap, &climate_data)?;
+        let mut halo = self.generate_halo_heightmap(chunk_id, HALO_CHUNKS)?;
 
-        // Phase 1.6-F.3-phase-1.A: compute biome_weights from PRE-erosion heights.
-        // §2.5 biome-weight-stability invariant: a vertex's climate band is
-        // determined by its authored/generated elevation, not its post-erosion
-        // elevation. Simple CA erosion (this phase) barely changes heights so
-        // the distinction is imperceptible; phase 2's real erosion will make
-        // it meaningful.
-        let resolution = heightmap.resolution() as usize;
+        // Pre-erosion cropped heightmap — input to biome_weights computation.
+        let pre_erosion_heightmap = self.crop_halo_to_chunk(&halo, chunk_id)?;
+
+        // §2.5: biome_weights are computed from PRE-erosion heights. Once
+        // phase 2 lands real erosion, a vertex that drops from Y=50 to Y=30
+        // keeps its pre-erosion Mountain weighting — authorial intent over
+        // geological reclassification.
+        let resolution = pre_erosion_heightmap.resolution() as usize;
         let mut biome_weights = Vec::with_capacity(resolution * resolution);
         for z in 0..resolution {
             for x in 0..resolution {
-                let y = heightmap.get_height(x as u32, z as u32);
+                let y = pre_erosion_heightmap.get_height(x as u32, z as u32);
                 biome_weights.push(crate::elevation_to_biome_weights(
                     y,
                     crate::SEA_LEVEL,
@@ -341,19 +337,46 @@ impl WorldGenerator {
             }
         }
 
-        // Construct chunk with biome_weights populated pre-erosion.
-        let mut chunk = TerrainChunk::new_with_biome_weights(
+        // §2.2 climate → ErosionPreset mapping.
+        let preset = crate::advanced_erosion::erosion_preset_for_climate(climate_bias);
+
+        // Deterministic halo seed per §2.3: a function of
+        // (world_seed, target_chunk_id, halo_chunks). Adjacent halos that
+        // overlap in world space share droplet trajectories in the overlap.
+        let seed = Self::halo_seed(self.config.seed, chunk_id, HALO_CHUNKS);
+        let mut simulator = crate::advanced_erosion::AdvancedErosionSimulator::new(seed);
+
+        // Run erosion on the full halo. `erosion_enabled` gates the whole
+        // call to preserve backward-compat for configs that disable erosion
+        // (tests, deterministic runs).
+        if self.config.noise.erosion_enabled {
+            let _stats = simulator.apply_preset(&mut halo, &preset);
+            // Heightmap bounds need recomputing after bulk erosion changes.
+            halo.recalculate_bounds();
+        }
+
+        // Post-erosion cropped heightmap — final chunk output.
+        let heightmap = self.crop_halo_to_chunk(&halo, chunk_id)?;
+
+        // biome_map still computed from PRE-erosion heights + climate data
+        // (unchanged path). Phase 4 will route climate through biome_weights;
+        // biome_map currently feeds splat-rule selection elsewhere.
+        let climate_data = self.climate.sample_chunk(
+            chunk_id,
+            self.config.chunk_size,
+            self.config.heightmap_resolution,
+        )?;
+        let biome_map = self.assign_biomes(&pre_erosion_heightmap, &climate_data)?;
+
+        // Construct chunk: post-erosion heights + pre-erosion biome_weights.
+        // No further `apply_erosion` — phase 2 replaces simple CA with
+        // AdvancedErosionSimulator.
+        let chunk = TerrainChunk::new_with_biome_weights(
             chunk_id,
             heightmap,
             biome_map,
             biome_weights,
         );
-
-        // Apply simple CA erosion AFTER capturing biome_weights. Heightmap is
-        // modified in place; biome_weights remain the pre-erosion snapshot.
-        if self.config.noise.erosion_enabled {
-            chunk.apply_erosion(self.config.noise.erosion_strength)?;
-        }
 
         Ok(chunk)
     }

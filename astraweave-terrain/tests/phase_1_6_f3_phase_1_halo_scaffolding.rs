@@ -1,13 +1,29 @@
 //! Phase 1.6-F.3-phase-1.B: halo scaffolding tests. Verifies that the
-//! halo-expansion + center-crop path produces chunk heightmaps byte-identical
-//! (within float tolerance) to the legacy single-chunk path, and that
-//! adjacent chunks' shared edges match in world-coordinate space.
+//! halo-expansion + center-crop MACHINERY produces chunk heightmaps
+//! byte-identical (within float tolerance) to the legacy single-chunk path,
+//! and that adjacent chunks' shared edges match in world-coordinate space.
+//!
+//! **Phase 2 update (2026-04-23):** F.3-phase-2.C wired
+//! `AdvancedErosionSimulator::apply_preset` on the halo heightmap, which
+//! produces behavioral divergence between the halo path and the legacy
+//! single-chunk path (halos have per-halo-origin seeds → different droplet
+//! trajectories → different post-erosion output). These phase 1 tests run
+//! with `erosion_enabled = false` to continue validating the MACHINERY in
+//! isolation; phase 2's behavioral continuity under real erosion is
+//! covered by `phase_1_6_f3_phase_2_continuity.rs`.
 
 use astraweave_terrain::{ChunkId, ClimateBias, WorldConfig, WorldGenerator};
 
 fn make_generator(seed: u64) -> WorldGenerator {
     let mut config = WorldConfig::default();
     config.seed = seed;
+    // Phase 2 note: erosion disabled here so the halo+crop machinery is
+    // testable in isolation. The MACHINERY (halo sampling at per-vertex
+    // world coords, center crop, byte-identity to single-chunk SIMD
+    // generation) is unchanged by phase 2's AdvancedErosionSimulator
+    // wiring. Phase 2's behavioral effects on adjacent-chunk continuity
+    // are measured in `phase_1_6_f3_phase_2_continuity.rs`.
+    config.noise.erosion_enabled = false;
     WorldGenerator::new(config)
 }
 
@@ -20,8 +36,8 @@ fn halo_cropped_heightmap_matches_single_chunk_generation() {
     // chunk via the SIMD (or scalar) heightmap generator — up to float
     // precision differences in accumulator ordering.
     //
-    // Tolerance: 0.01 world units. If SIMD vs scalar paths ever introduce
-    // larger divergence, this test should be revisited, not relaxed.
+    // Tolerance: 0.01 world units. Runs with erosion_enabled=false so
+    // phase 2's AdvancedErosion doesn't confound the machinery test.
     let gen = make_generator(12345);
     let legacy = gen
         .generate_chunk(ChunkId::new(0, 0))
@@ -50,23 +66,24 @@ fn halo_cropped_heightmap_matches_single_chunk_generation() {
             }
         }
     }
-    // Simple CA erosion runs in both paths with the same inputs (same heights,
-    // same strength); outputs match within fp precision.
-    println!("halo vs legacy max height diff: {max_diff:.6}");
+    println!("halo vs legacy max height diff (no erosion): {max_diff:.6}");
     assert!(
         max_diff < 0.01,
-        "halo-cropped heightmap diverges from legacy single-chunk by {max_diff:.6}"
+        "halo-cropped heightmap machinery diverges from legacy single-chunk by {max_diff:.6}"
     );
 }
 
 #[test]
 fn halo_preserves_adjacent_chunk_edge_continuity() {
-    // Chunks (0,0) and (1,0) share a world-coordinate edge. Under both the
-    // legacy single-chunk path and the new halo+crop path, the edge vertices
-    // must have identical Y values (they sample the same world coordinates).
+    // Chunks (0,0) and (1,0) share a world-coordinate edge. With erosion
+    // disabled, both sides sample the same noise field at the same world
+    // coords, producing byte-identical edge vertices. This test validates
+    // the halo+crop machinery preserves noise-field determinism.
     //
-    // This is trivially true for legacy (noise is deterministic) but the test
-    // also verifies the halo path preserves it.
+    // Phase 2 behavioral continuity under real erosion (with its inherent
+    // per-halo-seed divergence) is tested in
+    // `phase_1_6_f3_phase_2_continuity.rs` with appropriately wider
+    // tolerances.
     let gen = make_generator(12345);
     let chunk_a = gen
         .generate_chunk_with_climate(ChunkId::new(0, 0), ClimateBias::Temperate)
@@ -79,9 +96,6 @@ fn halo_preserves_adjacent_chunk_edge_continuity() {
     let hm_b = chunk_b.heightmap();
     let dim = hm_a.resolution();
 
-    // Chunk A's rightmost column (x = dim-1) maps to the SAME world coordinates
-    // as Chunk B's leftmost column (x = 0). Simple CA erosion is per-chunk so
-    // there may be small boundary differences; allow 1.0-unit tolerance.
     let mut max_diff = 0.0f32;
     for z in 0..dim {
         let a = hm_a.get_height(dim - 1, z);
@@ -91,12 +105,12 @@ fn halo_preserves_adjacent_chunk_edge_continuity() {
             max_diff = d;
         }
     }
-    println!("adjacent chunk edge max height diff: {max_diff:.4}");
-    // 1.0 world unit tolerance accommodates simple CA erosion boundary effects.
-    // Phase 2's halo-based erosion will tighten this bound significantly.
+    println!("adjacent chunk edge max height diff (no erosion): {max_diff:.4}");
+    // With erosion disabled, noise determinism gives near-zero diff.
     assert!(
-        max_diff < 1.0,
-        "adjacent chunks' shared edge diverges by {max_diff:.4} (> 1.0 unit tolerance)"
+        max_diff < 0.01,
+        "adjacent chunks' shared edge diverges by {max_diff:.4} (> 0.01 unit tolerance, \
+         erosion disabled — machinery bug)"
     );
 }
 
