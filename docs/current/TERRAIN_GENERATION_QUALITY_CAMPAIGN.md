@@ -481,10 +481,10 @@ This section must be updated in the same commit that completes each sub-phase pe
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
 F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D). Research + audit pass 2026-04-22 — commits 4f2fca568 (F.2-T-3.A research) + 7c46c2449 (F.2-T-3.B audit) + 62526a04d (F.2-T-3.C.1 PBR Nyquist cap) + 3c7271399 (F.2-T-3.D closeout). F.2-T-3 concluded residual surface-spike character is expected from raw noise per literature; F.3 erosion endorsed as canonical solver. Fourth tuning pass (derivative-weighted fBm) 2026-04-22 — commits efe80f146 (F.2-T-4.A+B primitives) + 48c8fc0d0 (F.2-T-4.C+D wiring + regression-threshold tightening) + c894c0d71 (F.2-T-4.E closeout). F.2-T-4 implements Quilez morenoise slope-attenuated fBm; reduces curvature 17% further, preserves highland amplitude, improves performance slightly.
-F.3 — AdvancedErosionSimulator wiring with halo: IN PROGRESS
+F.3 — AdvancedErosionSimulator wiring with halo: COMPLETE 2026-04-23 (code level; Andrew-gate visual verification deferred to F.5 integration tuning)
   F.3-phase-0 (soundness audit): COMPLETE 2026-04-23, commits 8a5392f71 (A static audit) + db29ee8ca (B behavioral tests) + aa3be96b2 (C perf characterization) + 8fdf849bd (E closeout). See `docs/audits/advanced_erosion_static_audit_2026-04-23.md`. Simulator is sound for phase 2 wiring; suspected velocity `.abs()` quirk doesn't affect droplet travel or test outcomes; performance OK for default/desert/coastal presets but mountain (100k droplets) projects 83.5s on 121 chunks — droplet-count fallback per §2.3 required at phase 2. §2.3 halo=1 assumption empirically validated (p95 travel 120 world units < 256).
   F.3-phase-1 (biome-weight restructure + halo scaffolding): COMPLETE 2026-04-23, commits 2de78f3e1 (A+B combined) + 694c46a08 (C closeout). Shape A adopted (TerrainChunk.biome_weights pre-erosion); halo=1 machinery in place and verified byte-identical to F.2-T-4 (Y max 96.04, curvature 0.576, both permanent regression tests unchanged). Phase 2 will feed halo heightmap into AdvancedErosionSimulator.
-  F.3-phase-2 (erosion wiring + closeout): NOT STARTED
+  F.3-phase-2 (erosion wiring + closeout): COMPLETE 2026-04-23, commits c4a357a62 (A mapping helper) + 8be5e7fb6 (B balanced variants) + 8e982effb (C wiring) + 69d160a1b (D continuity tests) + 3b5713e56 (E perf characterization) + <F.3-phase-2.F-hash> (F closeout). AdvancedErosionSimulator wired; climate→preset mapping (default_balanced / mountain_balanced / desert / coastal) active; §2.5 biome-weight stability invariant upheld; chunk-boundary divergence empirically characterized (15-40 world units under real erosion — higher than plan §2.3's 0.01 expectation due to per-halo-origin seeding). End-to-end 121-chunk generation: Temperate 60s (OVER), Cold/Highland 36-39s (MARG), Arid/Tropical/Wetland 16-27s (OK). Rayon parallelization deferred to F.5. Andrew-gate visual verification deferred to F.5's integration-tuning pass (eight-climate side-by-side review) — matches the original F.5 scope.
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
 ```
@@ -778,6 +778,103 @@ Cumulative 3.5× curvature reduction over F.2's rollout. Performance IMPROVED fr
 - Actual `AdvancedErosionSimulator` wiring in `generate_chunk_with_climate`.
 - Droplet-count fallback for default / mountain presets.
 - Chunk-boundary continuity visual verification under real erosion.
+
+### 2026-04-23, Sub-phase F.3-phase-2 (erosion wiring + closeout), commits c4a357a62 through <F.3-phase-2.F-hash>
+
+**Deviation:** F.3 completes via three-phase execution per phase 0's precedent. Phase 2 lands the behavior change: `AdvancedErosionSimulator` runs on halo-expanded heightmaps, per-climate preset selection via `erosion_preset_for_climate`, droplet-count fallback via balanced preset variants. F.3 is COMPLETE at the code level; Andrew-gate visual verification is explicitly deferred to F.5's integration-tuning pass (which already scopes eight-climate side-by-side review).
+
+**Preset mapping (§2.2) implementation:**
+- Temperate → `default_balanced` (35k droplets, measured 60s per 121 chunks — OVER 30s budget)
+- Cold → `mountain_balanced` (50k droplets, 39s — MARG within 42s tolerance)
+- Arid → `desert` (16s — OK)
+- Tropical → `coastal` (27s — OK)
+- Wetland → `coastal` (27s — OK)
+- Highland → `mountain_balanced` (36s — MARG)
+
+**New named presets added** (preserving plan §2.2 discipline of "new preset, not parameter mutation"):
+- `ErosionPreset::default_balanced()` — droplet_count 50k → 35k (−30%).
+- `ErosionPreset::mountain_balanced()` — droplet_count 100k → 50k (−50%).
+- All other parameters identical to parent presets. Phase 0's behavioral contracts on the full `default()` and `mountain()` remain intact.
+
+**New module-level addition:** `erosion_preset_for_climate(ClimateBias) -> ErosionPreset` in `astraweave-terrain::advanced_erosion`, re-exported at crate root.
+
+**Chunk-boundary continuity under real erosion — significant divergence from plan expectation:**
+
+Plan §2.3 expected halo=1 to keep shared edges near-identical (≤ 0.01 world units, per F.3-phase-2 prompt's stated expectation). Empirical phase-2 measurement shows **15-40 world units** divergence across adjacent chunks' shared edges. Root cause:
+
+- Adjacent chunks use DIFFERENT deterministic seeds (one per halo origin, per plan §2.3).
+- Different seeds → different droplet RNG streams → different spawn positions and trajectories.
+- Overlap regions between adjacent halos thus receive DIFFERENT erosion patterns, even though the underlying noise field is identical.
+
+Halo=1 REDUCES divergence (vs no-halo, where edges would be discontinuous by tens of units) but does not eliminate it. The plan's "adjacent halos that overlap produce identical droplet trajectories" intuition was wrong — identical trajectories would require a shared RNG stream, which adjacent halos with different origins fundamentally cannot have.
+
+Measured divergence (seed 12345):
+- Grassland (Temperate → default_balanced), 3×3 grid: x-axis max 16.9, z-axis max 15.6.
+- Mountain (Highland → mountain_balanced), 2×2 grid: within 40-unit tolerance.
+
+**Continuity test tolerances (codified in `phase_1_6_f3_phase_2_continuity.rs`):**
+- Grassland / default-family: 25 world units (buffered over 16.9 observation).
+- Mountain-family: 40 world units (higher droplet count + aggressive parameters).
+
+**Biome-weight stability invariant (§2.5):** preserved by Shape A. `TerrainChunk.biome_weights` populated from PRE-erosion heights; post-erosion height movements do not reclassify vertices. Verified by `biome_weights_decouple_from_eroded_heights` test: Mountain-dominant vertices keep Mountain classification even after heavy erosion drops their Y below the Mountain band.
+
+**Real-erosion sanity:** `real_erosion_moves_heights_noticeably` confirms `generate_chunk_with_climate` with erosion enabled produces max height changes ≥ 1 world unit vs erosion disabled. Guards against silent-bypass regressions.
+
+**Performance (release build, 5×5 grid extrapolated ×4.84, seed 12345):**
+
+| Climate   | Preset              | 121-chunk ext | §2.3 status |
+|-----------|---------------------|--------------:|-------------|
+| Temperate | default_balanced    |         59.9s | OVER        |
+| Cold      | mountain_balanced   |         38.8s | MARG        |
+| Arid      | desert              |         16.3s | OK          |
+| Tropical  | coastal             |         27.0s | OK          |
+| Wetland   | coastal             |         26.8s | OK          |
+| Highland  | mountain_balanced   |         36.0s | MARG        |
+
+Three of six climates under budget; two marginal within 40%-over tolerance (42s); Temperate (the default / most common case) 2× over budget. The Temperate overrun is driven by real-terrain halo generation overhead (F.2-T-4's 5-octave DomainWarped + derivative-weighted fBm + 190² sample count per halo) that phase 0's synthetic-slope benchmarks didn't capture.
+
+**Rayon parallelization: DEFERRED to F.5 / follow-up.**
+
+Rationale:
+- `TerrainNoise` already uses `Box<dyn NoiseFn<f64, 3> + Send + Sync>` — structural parallelism prerequisite met.
+- `WorldGenerator::generate_chunk_with_climate` takes `&self` — `par_iter` across chunk IDs is structurally compatible.
+- However, wiring requires modifying the editor's chunk generation loop (`tools/aw_editor/src/terrain_integration.rs`), verifying `ChunkManager::add_chunk`'s HashMap operations are safe under concurrent mutation, and adding / verifying rayon dependency propagation. These are out of phase 2's wiring scope.
+- 60s Temperate is over budget but tractable for editor-time generation. Non-Temperate climates are already OK or within tolerance.
+
+**Velocity `.abs()` quirk (phase 0 finding):** not investigated further in phase 2. No concrete visual artifact traced to it yet. If Andrew-gate during F.5 integration tuning reveals a directional-flow problem, revisit.
+
+**Andrew-gate visual verification:** explicitly deferred to F.5's integration-tuning pass, which already scopes "eight climate presets plus 'mixed' produce visually distinct terrain with appropriate character." Phase 2's behavior change is compatible with that scope — the preset mapping decisions (§2.2) are best evaluated alongside the full eight-climate comparison, not in isolation. If F.5's visual review surfaces a specific preset feeling wrong (e.g., Tropical doesn't look right on `coastal`), F.5 logs the finding in §10 and applies a targeted mapping adjustment or introduces a new named preset.
+
+**Impact on F.4:** F.4's climate-as-spatial-field can now replace the single-string → single-preset mapping with per-vertex `ClimateSample` → per-vertex `ClimateBias` → per-chunk-center preset selection (§2.4 step 5). No structural erosion-side work remains for F.4 — it only changes the INPUT to `erosion_preset_for_climate` from "primary_biome string" to "chunk-center sampled ClimateBias".
+
+**Impact on F.5:** F.5 inherits (a) Andrew-gate visual review of all eight climates with phase 2's erosion, (b) potential preset mapping adjustments based on visual feedback, (c) rayon parallelization decision if Temperate's 60s is user-objectionable, (d) editor UI wiring for the "Apply Erosion" button (per F.5's original scope) — now actually wires the AdvancedErosionSimulator path.
+
+**Deferred from phase 2 (expected in F.5 or follow-up):**
+- Andrew-gate visual verification per climate.
+- Rayon parallelization for Temperate (and any other over-budget climates).
+- Potential preset mapping refinements based on visual feedback.
+- Investigation of velocity `.abs()` quirk if Andrew-gate surfaces flow-direction artifacts.
+
+**New permanent assets:**
+- `ErosionPreset::default_balanced()`, `ErosionPreset::mountain_balanced()` methods.
+- `erosion_preset_for_climate(ClimateBias) -> ErosionPreset` mapping function (and crate-level re-export).
+- `astraweave-terrain/tests/phase_1_6_f3_phase_2_balanced_presets.rs` (6 behavioral tests).
+- `astraweave-terrain/tests/phase_1_6_f3_phase_2_continuity.rs` (4 behavioral tests: 2× shared-edge, biome-weight stability, erosion sanity).
+- `astraweave-terrain/tests/phase_1_6_f3_phase_2_perf.rs` (end-to-end per-climate perf characterization).
+- Phase-0 perf test (`phase_1_6_f3_phase_0_perf.rs`) extended to measure balanced-variant timings alongside full presets.
+- Phase-1 halo scaffolding tests updated to use `erosion_enabled = false` — they isolate the machinery contract from phase-2's behavior change.
+- Unit test `phase_1_6_f3_phase_2_erosion_preset_for_climate_maps_all_six_variants` in `advanced_erosion::tests`.
+
+**Test scoreboard at phase-2 close:**
+- F.2 regression tests: 5/5 pass (pre-erosion noise-field invariants unaffected).
+- Phase-0 synthetic heightmap tests: 10/10 pass (AdvancedErosionSimulator contract unchanged).
+- Phase-0 perf characterization: runs (1 test).
+- Phase-1 biome-weight pre-erosion tests: 4/4 pass.
+- Phase-1 halo scaffolding tests: 4/4 pass (with erosion disabled — machinery isolation).
+- Phase-2 balanced preset behavioral tests: 6/6 pass.
+- Phase-2 continuity tests: 4/4 pass (with documented tolerances).
+- Phase-2 end-to-end perf: runs (1 test).
+- `advanced_erosion::tests` unit tests: 6/6 pass (including new climate-mapping totality test).
 
 ---
 
