@@ -65,18 +65,57 @@ pub struct TerrainChunk {
     id: ChunkId,
     heightmap: Heightmap,
     biome_map: Vec<BiomeType>,
+    /// Phase 1.6-F.3-phase-1: per-vertex 8-slot biome weights populated from the
+    /// pre-erosion heightmap. `None` for chunks constructed through the legacy
+    /// `generate_chunk` path that doesn't know the ClimateBias — those callers
+    /// continue to compute biome_weights on-the-fly from the post-erosion
+    /// heightmap. `Some(Vec<[f32; 8]>)` for chunks from
+    /// `generate_chunk_with_climate`, with entries stored in row-major
+    /// (z, x) order matching heightmap indexing.
+    ///
+    /// The §2.5 biome-weight-stability-under-erosion invariant: weights are
+    /// computed from pre-erosion Y values. Simple CA erosion (phase 1) barely
+    /// moves heights so the distinction is imperceptible; phase 2's
+    /// AdvancedErosionSimulator will make the invariant meaningful.
+    biome_weights: Option<Vec<[f32; 8]>>,
     mesh_dirty: bool,
 }
 
 impl TerrainChunk {
-    /// Create a new terrain chunk
+    /// Create a new terrain chunk. Legacy constructor — leaves `biome_weights`
+    /// at `None`. Phase 1.6-F.3-phase-1 callers that want pre-erosion
+    /// biome_weights use `new_with_biome_weights`.
     pub fn new(id: ChunkId, heightmap: Heightmap, biome_map: Vec<BiomeType>) -> Self {
         Self {
             id,
             heightmap,
             biome_map,
+            biome_weights: None,
             mesh_dirty: true,
         }
+    }
+
+    /// Phase 1.6-F.3-phase-1: construct a chunk with pre-erosion biome_weights
+    /// already computed. Used by `WorldGenerator::generate_chunk_with_climate`.
+    pub fn new_with_biome_weights(
+        id: ChunkId,
+        heightmap: Heightmap,
+        biome_map: Vec<BiomeType>,
+        biome_weights: Vec<[f32; 8]>,
+    ) -> Self {
+        Self {
+            id,
+            heightmap,
+            biome_map,
+            biome_weights: Some(biome_weights),
+            mesh_dirty: true,
+        }
+    }
+
+    /// Phase 1.6-F.3-phase-1: get the per-vertex biome_weights if populated.
+    /// Returns `None` for legacy-constructed chunks.
+    pub fn biome_weights(&self) -> Option<&[[f32; 8]]> {
+        self.biome_weights.as_deref()
     }
 
     /// Get the chunk ID

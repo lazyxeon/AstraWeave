@@ -350,6 +350,11 @@ impl TerrainState {
         self.generator = Some(WorldGenerator::new(self.config.clone()));
         self.generated_chunks.clear();
         let primary_biome = self.primary_biome_type();
+        // Phase 1.6-F.3-phase-1: derive ClimateBias from the primary_biome
+        // string for the new `generate_chunk_with_climate` path, which
+        // populates pre-erosion biome_weights on the chunk.
+        let climate_bias =
+            ClimateBias::from_primary_biome_str(primary_biome.as_str());
 
         let generator = self
             .generator
@@ -363,11 +368,14 @@ impl TerrainState {
             for z in -chunk_radius..=chunk_radius {
                 let chunk_id = ChunkId { x, z };
 
-                // Use generate_chunk (heightmap only) instead of
-                // generate_chunk_with_scatter which runs extremely expensive
-                // O(n²) Poisson disk sampling for vegetation/resources that
-                // the editor doesn't render anyway.
-                let mut chunk = generator.generate_chunk(chunk_id)?;
+                // Phase 1.6-F.3-phase-1: use `generate_chunk_with_climate` so
+                // the returned chunk has `biome_weights: Some(_)` populated
+                // from pre-erosion heights (§2.5 invariant). Phase 1's simple
+                // CA erosion barely moves heights, so output is effectively
+                // byte-identical to the legacy path; phase 2's real erosion
+                // will make the pre-erosion-biome-weights invariant meaningful.
+                let mut chunk =
+                    generator.generate_chunk_with_climate(chunk_id, climate_bias)?;
 
                 // Override biome map to match the primary biome type.
                 // The WorldGenerator scores biomes by climate conditions which
@@ -380,6 +388,14 @@ impl TerrainState {
                 let world_pos = chunk_id.to_world_pos(chunk_size);
                 let world_offset = Vec3::new(world_pos.x, 0.0, world_pos.z);
 
+                // Phase 1.6-F.3-phase-1: pass the pre-erosion biome_weights
+                // captured in the chunk during generation. The mesh builder
+                // uses these directly instead of computing biome_weights from
+                // post-erosion heights, honouring §2.5's authorial-intent
+                // invariant.
+                let pre_erosion_biome_weights =
+                    chunk.biome_weights().map(|slice| slice.to_vec());
+
                 let (vertices, indices) = Self::generate_heightmap_mesh(
                     chunk.heightmap(),
                     chunk.biome_map(),
@@ -387,6 +403,7 @@ impl TerrainState {
                     world_offset,
                     self.config.seed,
                     primary_biome,
+                    pre_erosion_biome_weights.as_deref(),
                 );
 
                 self.generated_chunks.insert(
@@ -652,8 +669,14 @@ impl TerrainState {
 
             if any_modified {
                 stamped_count += 1;
-                // Regenerate mesh vertices for this chunk with stamped heights
+                // Regenerate mesh vertices for this chunk with stamped heights.
+                // Phase 1.6-F.3-phase-1: re-use the chunk's pre-erosion
+                // biome_weights so §2.5 authorial-intent stability is
+                // preserved across stamping (painted biomes stay put even
+                // though heightmap changed).
                 let world_offset = Vec3::new(chunk_origin.x, 0.0, chunk_origin.z);
+                let stamped_weights =
+                    gen_chunk.chunk.biome_weights().map(|slice| slice.to_vec());
                 let (vertices, indices) = Self::generate_heightmap_mesh(
                     gen_chunk.chunk.heightmap(),
                     gen_chunk.chunk.biome_map(),
@@ -661,6 +684,7 @@ impl TerrainState {
                     world_offset,
                     seed,
                     primary_biome,
+                    stamped_weights.as_deref(),
                 );
                 gen_chunk.vertices = vertices;
                 gen_chunk.indices = indices;
@@ -742,6 +766,13 @@ impl TerrainState {
         world_offset: Vec3,
         seed: u64,
         primary_biome: BiomeType,
+        // Phase 1.6-F.3-phase-1: optional pre-erosion biome_weights. When
+        // `Some`, each vertex's weight vector comes straight from this slice
+        // (in row-major order matching heightmap indexing). When `None`, the
+        // function falls back to computing weights from the current
+        // (post-erosion) heightmap — preserves pre-F.3 behavior for any
+        // caller that doesn't populate biome_weights upstream.
+        pre_erosion_biome_weights: Option<&[[f32; 8]]>,
     ) -> (Vec<TerrainVertex>, Vec<u32>) {
         let resolution = heightmap.resolution() as usize;
         let cell_size = chunk_size / (resolution - 1) as f32;
@@ -788,8 +819,17 @@ impl TerrainState {
                 // split slots [0..4] → biome_weights_0, [4..8] → biome_weights_1
                 // matching the TerrainVertex packing consumed by the Phase 1
                 // forward-lit splat pipeline.
-                let biome_weights_8 =
-                    elevation_to_biome_weights(height, SEA_LEVEL, climate);
+                //
+                // Phase 1.6-F.3-phase-1: when `pre_erosion_biome_weights` is
+                // provided, use those directly — they were computed from the
+                // PRE-erosion heightmap in `WorldGenerator::generate_chunk_with_climate`.
+                // Otherwise fall back to computing from the current heights
+                // (pre-F.3 behavior for any caller that doesn't populate them).
+                let biome_weights_8: [f32; 8] = pre_erosion_biome_weights
+                    .and_then(|slice| slice.get(biome_idx).copied())
+                    .unwrap_or_else(|| {
+                        elevation_to_biome_weights(height, SEA_LEVEL, climate)
+                    });
                 let mut biome_weights_0 = [0.0f32; 4];
                 let mut biome_weights_1 = [0.0f32; 4];
                 biome_weights_0.copy_from_slice(&biome_weights_8[0..4]);
@@ -1992,6 +2032,11 @@ impl TerrainState {
 
                 if chunk_modified {
                     let world_offset = Vec3::new(chunk_origin_x, 0.0, chunk_origin_z);
+                    // Phase 1.6-F.3-phase-1: preserve pre-erosion biome_weights
+                    // across biome-paint edits per §2.5 authorial-intent
+                    // stability.
+                    let painted_weights =
+                        gen_chunk.chunk.biome_weights().map(|slice| slice.to_vec());
                     let (vertices, indices) = Self::generate_heightmap_mesh(
                         gen_chunk.chunk.heightmap(),
                         gen_chunk.chunk.biome_map(),
@@ -1999,6 +2044,7 @@ impl TerrainState {
                         world_offset,
                         self.config.seed,
                         primary_biome,
+                        painted_weights.as_deref(),
                     );
                     gen_chunk.vertices = vertices;
                     gen_chunk.indices = indices;

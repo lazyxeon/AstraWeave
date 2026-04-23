@@ -282,6 +282,212 @@ impl WorldGenerator {
         Ok(chunk)
     }
 
+    /// Phase 1.6-F.3-phase-1: generate a chunk with pre-erosion biome_weights
+    /// computed from the given climate bias. The returned chunk has
+    /// `biome_weights: Some(_)` populated from the PRE-erosion heightmap,
+    /// satisfying §2.5's authorial-intent invariant. The heightmap itself is
+    /// post-erosion (simple CA for phase 1; `AdvancedErosionSimulator` for
+    /// phase 2).
+    ///
+    /// Callers not requiring pre-erosion biome_weights should use the simpler
+    /// `generate_chunk` (biome_weights stays `None`, editor/consumer computes
+    /// them on-the-fly from post-erosion heights — current behavior).
+    pub fn generate_chunk_with_climate(
+        &self,
+        chunk_id: ChunkId,
+        climate_bias: crate::ClimateBias,
+    ) -> anyhow::Result<TerrainChunk> {
+        // Phase 1.6-F.3-phase-1.B: halo expansion + center crop. The halo
+        // region covers 3×3 chunks (1-chunk halo on each side) sampled at
+        // the same per-vertex spacing as single-chunk generation. The center
+        // third is extracted back into the chunk's heightmap; halo edge
+        // regions are currently discarded. Phase 2 will feed the halo
+        // directly into `AdvancedErosionSimulator::apply_preset` before
+        // cropping, so droplets can travel across chunk boundaries.
+        //
+        // For phase 1 (simple CA erosion on cropped heightmap): the halo is a
+        // no-op for output because the noise field is deterministic per world
+        // coordinate — the cropped heights match what single-chunk generation
+        // produces byte-for-byte.
+        let halo = self.generate_halo_heightmap(chunk_id, 1)?;
+        let heightmap = self.crop_halo_to_chunk(&halo, chunk_id)?;
+
+        // Generate climate data for biome assignment (still uses per-chunk
+        // climate sample for the `biome_map`; phase 4 integrates climate into
+        // biome_weights).
+        let climate_data = self.climate.sample_chunk(
+            chunk_id,
+            self.config.chunk_size,
+            self.config.heightmap_resolution,
+        )?;
+        let biome_map = self.assign_biomes(&heightmap, &climate_data)?;
+
+        // Phase 1.6-F.3-phase-1.A: compute biome_weights from PRE-erosion heights.
+        // §2.5 biome-weight-stability invariant: a vertex's climate band is
+        // determined by its authored/generated elevation, not its post-erosion
+        // elevation. Simple CA erosion (this phase) barely changes heights so
+        // the distinction is imperceptible; phase 2's real erosion will make
+        // it meaningful.
+        let resolution = heightmap.resolution() as usize;
+        let mut biome_weights = Vec::with_capacity(resolution * resolution);
+        for z in 0..resolution {
+            for x in 0..resolution {
+                let y = heightmap.get_height(x as u32, z as u32);
+                biome_weights.push(crate::elevation_to_biome_weights(
+                    y,
+                    crate::SEA_LEVEL,
+                    climate_bias,
+                ));
+            }
+        }
+
+        // Construct chunk with biome_weights populated pre-erosion.
+        let mut chunk = TerrainChunk::new_with_biome_weights(
+            chunk_id,
+            heightmap,
+            biome_map,
+            biome_weights,
+        );
+
+        // Apply simple CA erosion AFTER capturing biome_weights. Heightmap is
+        // modified in place; biome_weights remain the pre-erosion snapshot.
+        if self.config.noise.erosion_enabled {
+            chunk.apply_erosion(self.config.noise.erosion_strength)?;
+        }
+
+        Ok(chunk)
+    }
+
+    /// Phase 1.6-F.3-phase-1.B: generate a heightmap covering a 3×3 chunk
+    /// region centered on `target_chunk_id` (halo_chunks=1). The returned
+    /// heightmap has `(1 + 2*halo_chunks) × (heightmap_resolution - 1) + 1`
+    /// vertices per side at the same per-vertex spacing as single-chunk
+    /// generation, so the center third (sampled at the target chunk's world
+    /// coords) is byte-identical to what `generate_chunk` produces via the
+    /// SIMD heightmap generator.
+    pub(crate) fn generate_halo_heightmap(
+        &self,
+        target_chunk_id: ChunkId,
+        halo_chunks: u32,
+    ) -> anyhow::Result<heightmap::Heightmap> {
+        let chunk_res = self.config.heightmap_resolution;
+        let chunk_size = self.config.chunk_size;
+        // Per-vertex step in world units. Must match single-chunk generation.
+        let step = chunk_size / (chunk_res - 1) as f32;
+
+        // Halo region: (1 + 2*halo_chunks) sub-chunks per axis. Adjacent
+        // sub-chunks share their edge vertex so total vertex count per side is
+        // `chunks_per_side * (chunk_res - 1) + 1`.
+        let chunks_per_side = 1 + 2 * halo_chunks;
+        let halo_res = chunks_per_side * (chunk_res - 1) + 1;
+        let halo_size_world = chunks_per_side as f32 * chunk_size;
+
+        // Origin world coordinates = target chunk origin minus (halo_chunks × chunk_size).
+        let target_origin = target_chunk_id.to_world_pos(chunk_size);
+        let halo_origin_x = target_origin.x - halo_chunks as f32 * chunk_size;
+        let halo_origin_z = target_origin.z - halo_chunks as f32 * chunk_size;
+
+        // Sample the noise field directly at per-vertex world coordinates. This
+        // path uses `TerrainNoise::sample_height` rather than the SIMD
+        // heightmap generator because the SIMD path is tied to a ChunkId. For
+        // byte-identity with the SIMD path at the center crop, both routes
+        // must produce the same Y at the same world (x, z) — confirmed by the
+        // determinism invariant of `TerrainNoise`.
+        let heightmap_config = heightmap::HeightmapConfig {
+            resolution: halo_res,
+            ..Default::default()
+        };
+        let mut halo_map = heightmap::Heightmap::new(heightmap_config)?;
+        for z_idx in 0..halo_res {
+            for x_idx in 0..halo_res {
+                let wx = halo_origin_x + x_idx as f32 * step;
+                let wz = halo_origin_z + z_idx as f32 * step;
+                let y = self.noise.sample_height(wx as f64, wz as f64);
+                halo_map.set_height(x_idx, z_idx, y);
+            }
+        }
+
+        // Silence unused warning for halo_size_world — useful for phase 2
+        // perf logging and halo-overlap sanity assertions.
+        let _ = halo_size_world;
+
+        Ok(halo_map)
+    }
+
+    /// Phase 1.6-F.3-phase-1.B: crop the center chunk-sized region out of a
+    /// halo-expanded heightmap. Assumes the halo was built by
+    /// `generate_halo_heightmap` with the same `target_chunk_id` and halo
+    /// size. Returns a single-chunk heightmap (resolution matching
+    /// `WorldConfig::heightmap_resolution`).
+    pub(crate) fn crop_halo_to_chunk(
+        &self,
+        halo: &heightmap::Heightmap,
+        target_chunk_id: ChunkId,
+    ) -> anyhow::Result<heightmap::Heightmap> {
+        let _ = target_chunk_id; // centered crop — target id not needed
+        let chunk_res = self.config.heightmap_resolution;
+        let halo_res = halo.resolution();
+        // Infer halo_chunks from resolutions.
+        //   halo_res = chunks_per_side * (chunk_res - 1) + 1
+        //   chunks_per_side = (halo_res - 1) / (chunk_res - 1)
+        //   halo_chunks = (chunks_per_side - 1) / 2
+        if chunk_res == 0 || (halo_res - 1) % (chunk_res - 1) != 0 {
+            anyhow::bail!(
+                "halo resolution {} not a multiple of chunk resolution {}",
+                halo_res,
+                chunk_res
+            );
+        }
+        let chunks_per_side = (halo_res - 1) / (chunk_res - 1);
+        if chunks_per_side < 1 || chunks_per_side % 2 != 1 {
+            anyhow::bail!(
+                "halo has {} chunks per side; expected odd >= 1",
+                chunks_per_side
+            );
+        }
+        let halo_chunks = (chunks_per_side - 1) / 2;
+        let start = halo_chunks * (chunk_res - 1);
+
+        let chunk_cfg = heightmap::HeightmapConfig {
+            resolution: chunk_res,
+            ..Default::default()
+        };
+        let mut cropped = heightmap::Heightmap::new(chunk_cfg)?;
+        for z in 0..chunk_res {
+            for x in 0..chunk_res {
+                let y = halo.get_height(start + x, start + z);
+                cropped.set_height(x, z, y);
+            }
+        }
+        Ok(cropped)
+    }
+
+    /// Phase 1.6-F.3-phase-1.B / §2.3: derive a deterministic seed for the
+    /// halo region centered on `target_chunk_id`. Phase 2 feeds this seed to
+    /// `AdvancedErosionSimulator::new` so adjacent chunks' halos that overlap
+    /// in world space produce identical droplet trajectories in the overlap
+    /// region.
+    #[allow(dead_code)] // Wired in phase 2; validated by unit tests here.
+    pub(crate) fn halo_seed(
+        world_seed: u64,
+        target_chunk_id: ChunkId,
+        halo_chunks: u32,
+    ) -> u64 {
+        let halo_origin_x = target_chunk_id.x.wrapping_sub(halo_chunks as i32);
+        let halo_origin_z = target_chunk_id.z.wrapping_sub(halo_chunks as i32);
+        // Wang-style integer hash, deterministic across runs / platforms.
+        let mut h = world_seed;
+        h = h
+            .wrapping_add(halo_origin_x as u64)
+            .wrapping_mul(0x9E3779B97F4A7C15);
+        h ^= h >> 32;
+        h = h
+            .wrapping_add(halo_origin_z as u64)
+            .wrapping_mul(0x85EBCA6BE11ECC0D);
+        h ^= h >> 32;
+        h
+    }
+
     /// Generate and register a chunk (mutable version for compatibility)
     pub fn generate_and_register_chunk(
         &mut self,
@@ -365,6 +571,34 @@ mod tests {
         let config = WorldConfig::default();
         let generator = WorldGenerator::new(config);
         assert_eq!(generator.config.seed, 12345);
+    }
+
+    /// Phase 1.6-F.3-phase-1.B: `halo_seed` must be deterministic for the same
+    /// (world_seed, target_chunk_id, halo_chunks) triple, and must produce
+    /// different seeds for different target chunks (so adjacent halos have
+    /// distinct PRNG streams).
+    #[test]
+    fn phase_1_6_f3_phase_1_halo_seed_deterministic() {
+        let s1 = WorldGenerator::halo_seed(12345, ChunkId::new(5, 3), 1);
+        let s2 = WorldGenerator::halo_seed(12345, ChunkId::new(5, 3), 1);
+        assert_eq!(s1, s2, "halo_seed should be deterministic");
+    }
+
+    #[test]
+    fn phase_1_6_f3_phase_1_halo_seed_differs_per_chunk() {
+        let s00 = WorldGenerator::halo_seed(12345, ChunkId::new(0, 0), 1);
+        let s10 = WorldGenerator::halo_seed(12345, ChunkId::new(1, 0), 1);
+        let s01 = WorldGenerator::halo_seed(12345, ChunkId::new(0, 1), 1);
+        assert_ne!(s00, s10, "adjacent chunks should get different halo seeds");
+        assert_ne!(s00, s01, "adjacent chunks should get different halo seeds");
+        assert_ne!(s10, s01, "non-identical chunks should get different halo seeds");
+    }
+
+    #[test]
+    fn phase_1_6_f3_phase_1_halo_seed_differs_per_world_seed() {
+        let s1 = WorldGenerator::halo_seed(12345, ChunkId::new(0, 0), 1);
+        let s2 = WorldGenerator::halo_seed(67890, ChunkId::new(0, 0), 1);
+        assert_ne!(s1, s2, "different world seeds should yield different halo seeds");
     }
 
     #[test]
