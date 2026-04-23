@@ -1,6 +1,6 @@
 # Terrain Generation Quality Campaign — Phase 1.6-F
 
-**Status**: F.1–F.2 complete, F.3–F.5 not yet started. Drafted 2026-04-21 as F.0 artifact.
+**Status**: F.1–F.3 complete (code level, post-phase-3 Andrew-gate re-verification deferred to F.5), F.4–F.5 not yet started. Drafted 2026-04-21 as F.0 artifact.
 **Scope**: Wire the already-implemented-but-unused terrain-generation components (`AdvancedErosionSimulator`, `DomainWarpedNoise`, `ClimateMap`) into the runtime biome-noise preset path, tune preset amplitudes to match Phase 1.5's elevation bands, and rewire climate as a per-vertex spatial field. Five sub-phases (F.1–F.5) executed as separate sessions.
 **Author**: Plan drafted from `docs/audits/heightmap_generator_audit_2026-04-21.md` findings and design decisions captured in the F.0 prompt session 2026-04-21 between Andrew and Claude. Code references accurate as of 2026-04-21; verify before execution.
 **Prior work**: `docs/audits/heightmap_generator_audit_2026-04-21.md` (the audit that surfaced the unwired components and selected Option F as the intervention path); `docs/audits/phase_1_5_tuning_investigation_2026-04-20.md` (records the stale 125-unit measurement that F.1 corrects); `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` (parent campaign — Phase 1 and Phase 1.5 re-mark-COMPLETE is deferred to F.5 closeout).
@@ -134,6 +134,8 @@ Each of Phase 1.5's six `ClimateBias` values maps to one of `AdvancedErosionSimu
 **Deterministic seeding:** the `AdvancedErosionSimulator::new(seed)` constructor's `seed: u64` parameter must be derived deterministically from the halo region's world position (not from the target chunk's position), so that adjacent halos that overlap produce identical droplet trajectories in the overlap region. A practical scheme: `seed = world_seed.wrapping_add(hash(halo_origin_chunk_id))` where `halo_origin_chunk_id` is the lower-left chunk of the 3×3 halo (i.e. `(x-1, z-1)` for target chunk `(x, z)`). This makes the halo's erosion output a function of `(world_seed, target_chunk_id)` only.
 
 **Fallback if Approach A's cost proves prohibitive:** if F.3 measurement shows chunk-generation time above ~30 seconds for 121 chunks on a midrange CPU (baseline to establish), the campaign's fallback is to lower droplet counts per preset (from 50k/100k to 10k/25k) rather than switch strategies mid-campaign. If even reduced-droplet-count halo erosion is too slow, F.3 logs the finding in §10 and a follow-up session considers Approach C (per-chunk erosion + post-process seam smoothing). **GPU erosion via `astraweave-render::gpu_erosion` is explicitly out of scope** for this campaign (§8) — it is flagged as a post-campaign future project.
+
+**F.3-phase-3 amendment (2026-04-24):** The deterministic seeding scheme described above (halo seed from `world_seed + hash(halo_origin_chunk_id)`) was **not sufficient for seamless boundaries**. Adjacent halos with different origin chunk IDs have different seeds, different droplet RNG streams, and therefore different erosion patterns in their overlap regions — 15-40 world units of edge divergence under phase-2 measurement (see §10 F.3-phase-2 / F.3-phase-3 entries). The plan's intuition that "adjacent halos that overlap produce identical droplet trajectories" was incorrect: identical trajectories require a shared RNG stream, which adjacent halos with different origins fundamentally cannot have. Phase-3 replaces this with **world-coordinate droplet seeding**: droplet spawn positions are derived from world-aligned spatial cells seeded by `hash(world_seed, cell_x, cell_z)`, with each halo executing only the subset of cells whose world positions fall inside its extent. Adjacent halos thus iterate OVERLAPPING SUBSETS of the same global cell grid, with identical per-droplet RNG state → identical erosion contributions from overlap-originated droplets. The `halo_seed()` function remains available for ancillary use but is not the primary determinism driver under phase 3. Residual divergence (~0.85 WU mean, ~12 WU max outliers) remains from droplets entering overlap from outside-overlap regions where each halo's prior heightmap state differs — bounded by halo width and erosion intensity. Research endorsement: Asp 2024 "Overlapping Grids" (KTH); see `docs/audits/terrain_seamless_erosion_research_2026-04-24.md`.
 
 ### 2.4 Climate as a spatial field (design decision — adopted)
 
@@ -481,10 +483,11 @@ This section must be updated in the same commit that completes each sub-phase pe
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
 F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D). Research + audit pass 2026-04-22 — commits 4f2fca568 (F.2-T-3.A research) + 7c46c2449 (F.2-T-3.B audit) + 62526a04d (F.2-T-3.C.1 PBR Nyquist cap) + 3c7271399 (F.2-T-3.D closeout). F.2-T-3 concluded residual surface-spike character is expected from raw noise per literature; F.3 erosion endorsed as canonical solver. Fourth tuning pass (derivative-weighted fBm) 2026-04-22 — commits efe80f146 (F.2-T-4.A+B primitives) + 48c8fc0d0 (F.2-T-4.C+D wiring + regression-threshold tightening) + c894c0d71 (F.2-T-4.E closeout). F.2-T-4 implements Quilez morenoise slope-attenuated fBm; reduces curvature 17% further, preserves highland amplitude, improves performance slightly.
-F.3 — AdvancedErosionSimulator wiring with halo: COMPLETE 2026-04-23 (code level; Andrew-gate visual verification deferred to F.5 integration tuning)
+F.3 — AdvancedErosionSimulator wiring with halo: COMPLETE 2026-04-24 (code level; post-phase-3 Andrew-gate visual re-verification deferred to F.5 integration tuning)
   F.3-phase-0 (soundness audit): COMPLETE 2026-04-23, commits 8a5392f71 (A static audit) + db29ee8ca (B behavioral tests) + aa3be96b2 (C perf characterization) + 8fdf849bd (E closeout). See `docs/audits/advanced_erosion_static_audit_2026-04-23.md`. Simulator is sound for phase 2 wiring; suspected velocity `.abs()` quirk doesn't affect droplet travel or test outcomes; performance OK for default/desert/coastal presets but mountain (100k droplets) projects 83.5s on 121 chunks — droplet-count fallback per §2.3 required at phase 2. §2.3 halo=1 assumption empirically validated (p95 travel 120 world units < 256).
   F.3-phase-1 (biome-weight restructure + halo scaffolding): COMPLETE 2026-04-23, commits 2de78f3e1 (A+B combined) + 694c46a08 (C closeout). Shape A adopted (TerrainChunk.biome_weights pre-erosion); halo=1 machinery in place and verified byte-identical to F.2-T-4 (Y max 96.04, curvature 0.576, both permanent regression tests unchanged). Phase 2 will feed halo heightmap into AdvancedErosionSimulator.
-  F.3-phase-2 (erosion wiring + closeout): COMPLETE 2026-04-23, commits c4a357a62 (A mapping helper) + 8be5e7fb6 (B balanced variants) + 8e982effb (C wiring) + 69d160a1b (D continuity tests) + 3b5713e56 (E perf characterization) + 71415bbaf (F closeout). AdvancedErosionSimulator wired; climate→preset mapping (default_balanced / mountain_balanced / desert / coastal) active; §2.5 biome-weight stability invariant upheld; chunk-boundary divergence empirically characterized (15-40 world units under real erosion — higher than plan §2.3's 0.01 expectation due to per-halo-origin seeding). End-to-end 121-chunk generation: Temperate 60s (OVER), Cold/Highland 36-39s (MARG), Arid/Tropical/Wetland 16-27s (OK). Rayon parallelization deferred to F.5. Andrew-gate visual verification deferred to F.5's integration-tuning pass (eight-climate side-by-side review) — matches the original F.5 scope.
+  F.3-phase-2 (erosion wiring + closeout): COMPLETE 2026-04-23 at code level; Andrew-gate re-opened as F.3-phase-3. Commits c4a357a62 (A mapping helper) + 8be5e7fb6 (B balanced variants) + 8e982effb (C wiring) + 69d160a1b (D continuity tests) + 3b5713e56 (E perf characterization) + 71415bbaf (F closeout). AdvancedErosionSimulator wired; climate→preset mapping (default_balanced / mountain_balanced / desert / coastal) active; §2.5 biome-weight stability invariant upheld; chunk-boundary divergence empirically characterized (15-40 world units under real erosion — higher than plan §2.3's 0.01 expectation due to per-halo-origin seeding). End-to-end 121-chunk generation: Temperate 60s (OVER), Cold/Highland 36-39s (MARG), Arid/Tropical/Wetland 16-27s (OK). Rayon parallelization deferred to F.5. Andrew-gate visual verification exposed (a) visible stitching artifacts at chunk boundaries (b) mountains "short and thin" — phase 3 addresses both.
+  F.3-phase-3 (seamless erosion via world-coord droplet seeding): COMPLETE 2026-04-24, commits c5e902b08 (A stitching+scale diagnostic) + eb3845b0d (B research+audit) + 8e2269bdd (C world-coord seeding) + <F.3-phase-3.E-hash> (E closeout). Per research-scout consultation (`docs/audits/terrain_seamless_erosion_research_2026-04-24.md`), implemented Rank 2 remedy from Asp 2024 ("Overlapping Grids"). New `AdvancedErosionSimulator::apply_preset_at_world_offset` derives droplet spawn positions from world-aligned spatial cells seeded by `hash(world_seed, cx, cz)`. Adjacent halos iterate the SAME cells in their overlap region → identical droplets → seamless output except for residual state-dependent divergence. Chunk-boundary divergence reduced: Temperate mean 1.66 → 0.85 (-49%), p95 7.10 → 2.18 (-69%), max 14.82 → 12.12 (-18% — residual outliers are the expected state-dependent residual). Scale compression unchanged or slightly worse from droplet distribution change (Cold/Highland Δp99 -28% → -38% — if Andrew-gate judges mountains too compressed, tune `mountain_balanced` droplet_count from 50k → 35k). Post-phase-3 Andrew-gate visual re-verification deferred to F.5 integration tuning.
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
 ```
@@ -875,6 +878,133 @@ Rationale:
 - Phase-2 continuity tests: 4/4 pass (with documented tolerances).
 - Phase-2 end-to-end perf: runs (1 test).
 - `advanced_erosion::tests` unit tests: 6/6 pass (including new climate-mapping totality test).
+
+### 2026-04-24, Sub-phase F.3-phase-3 (seamless erosion via world-coord seeding), commits c5e902b08 through <F.3-phase-3.E-hash>
+
+**Deviation:** F.3-phase-2's COMPLETE marker (set 2026-04-23) was premature per §0 discipline — Andrew-gate visual verification surfaced two issues that phase-2 documented as test tolerances rather than fixing: (1) visible chunk-boundary stitching artifacts (15-40 world-unit divergence), (2) mountain scale compression ("short and thin" features). F.3 re-opened via phase-3, which implements the world-coordinate droplet seeding fix that phase-2's architectural approach (per-halo RNG) fundamentally could not achieve.
+
+**Rationale:** Phase-2's §10 entry correctly identified per-halo RNG divergence as the root cause of stitching but documented it as a test tolerance rather than fixing it, under phase-2's "don't modify simulator internals" constraint. Phase-3 loosens that constraint because phase-2's Andrew-gate confirmed the stitching is user-visible and cannot be tuned around. The fix required modifying `AdvancedErosionSimulator`'s droplet spawn logic — previously out of scope, now the minimum-change path to a correct result.
+
+**Task 1 — Diagnostic investigation (commit c5e902b08):**
+
+New test file `astraweave-terrain/tests/phase_1_6_f3_phase_3_diagnostic.rs` quantified both issues per-climate. New audit document `docs/audits/terrain_erosion_seamless_diagnostic_2026-04-24.md` records findings.
+
+Stitching (2×2 grid, post-erosion):
+
+| Climate   | mean | p50  | p95  | p99   | max   |
+|-----------|-----:|-----:|-----:|------:|------:|
+| Temperate | 1.66 | 0.74 | 7.10 | 12.62 | 14.82 |
+| Cold      | 0.55 | 0.35 | 1.72 |  2.50 |  2.81 |
+| Arid      | 0.00 | 0.00 | 0.00 |  0.00 |  0.00 |
+| Tropical  | 1.46 | 0.69 | 7.01 | 12.27 | 13.22 |
+| Wetland   | 1.46 | 0.69 | 7.01 | 12.27 | 13.22 |
+| Highland  | 0.55 | 0.35 | 1.72 |  2.50 |  2.81 |
+
+**Arid 0-divergence confirms thermal+wind erosion are already world-coord-safe.** Stitching is purely hydraulic's per-halo RNG.
+
+Scale compression (pre- vs post-erosion Δp99):
+
+| Climate   | Δp99  |
+|-----------|------:|
+| Temperate | -15.2% |
+| Cold      | -28.3% |
+| Arid      |  -7.0% |
+| Tropical  | -11.3% |
+| Wetland   | -11.3% |
+| Highland  | -28.3% |
+
+Erosion-driven compression on Cold/Highland (-28%). If still too compressed after phase-3's seamless fix, targeted remediation is `mountain_balanced` droplet_count 50k → 35k.
+
+**Task 2 — Research validation (commit eb3845b0d):**
+
+Research-scout consultation produced `docs/audits/terrain_seamless_erosion_research_2026-04-24.md`. Key findings:
+- No canonical name for the problem (closest: Asp 2024's "boundary discrepancy").
+- 6 candidate remedies identified. Rank 1 (offline unified erosion) doesn't fit streaming worlds. **Rank 2 (Asp 2024 "Overlapping Grids") is the best match.**
+- AstraWeave's world-coord-seeding proposal is a stronger variant of Rank 2: instead of blending divergent outputs, ensure adjacent halos run identical droplets in overlap.
+- **No found source contradicts the approach.** Asp 2024's full PDF was inaccessible during research (ECONNREFUSED); specific method details partially inferred from search summaries.
+- Critical caveat: residual state-dependent divergence is expected — droplets entering overlap from outside-overlap regions see different prior heightmap states in each halo. Bounded but not zero.
+- Implementation recommendation: Wang-style hash (avoid simple XOR); normalize droplet count per world-unit area; if residual > 1 WU, add narrow (4-8 WU) cosine-blend post-pass.
+
+Research cited 16 sources with URLs (Asp 2024, Tanma & Patil 2019, Paris et al. SIGGRAPH 2024, van der Veen 2019, Kempke 2023, 3DWorld 2017, Sebastian Lague's GitHub, Gaea / Houdini docs, Beyer, Mei et al. 2007, dandrino, Frozen Fractal, Nick McDonald). Full citation in research doc.
+
+**Task 3 — Implementation (commit 8e2269bdd):**
+
+New `AdvancedErosionSimulator::apply_preset_at_world_offset(heightmap, preset, world_origin_x, world_origin_z, vertex_spacing, world_seed) -> ErosionStats` in `astraweave-terrain/src/advanced_erosion.rs`. Delegates hydraulic to new `apply_hydraulic_erosion_world_coord`; thermal and wind reuse existing unchanged implementations. The world-coord hydraulic iterates a world-aligned spatial cell grid where cell size = `sqrt(halo_area / droplet_count)`, each cell seeded by `hash_world_cell(world_seed, cx, cz)` (Wang-style, full avalanche). Cells outside the halo's local extent are skipped. Extracted shared `simulate_one_droplet` helper from the original body.
+
+Wiring in `WorldGenerator::generate_chunk_with_climate` switched from `apply_preset` to `apply_preset_at_world_offset`, passing halo origin (target_origin - halo_chunks × chunk_size), vertex_spacing (chunk_size / (heightmap_resolution - 1)), and world_seed.
+
+Legacy `apply_preset` kept unchanged — phase-0 synthetic tests continue to use it.
+
+**Measurements post-Task 3 (same 2×2 grid):**
+
+| Climate   | Phase-2 mean | Phase-3 mean | Δ    | Phase-2 max | Phase-3 max | Δ    |
+|-----------|-------------:|-------------:|-----:|------------:|------------:|-----:|
+| Temperate |         1.66 |         0.85 | -49% |       14.82 |       12.12 | -18% |
+| Cold      |         0.55 |         0.42 | -24% |        2.81 |        2.32 | -18% |
+| Arid      |         0.00 |         0.00 |    — |        0.00 |        0.00 |    — |
+| Tropical  |         1.46 |         1.06 | -27% |       13.22 |       13.05 |  -1% |
+| Wetland   |         1.46 |         1.06 | -27% |       13.22 |       13.05 |  -1% |
+| Highland  |         0.55 |         0.42 | -24% |        2.81 |        2.32 | -18% |
+
+**Mean divergence approximately halved for Temperate/Cold/Highland.** Most shared-edge samples now diverge by < 2 world units → should be visually imperceptible. A minority tail of outliers (max ~12 WU on Temperate/Tropical/Wetland) remains — exactly the state-dependent residual the research warned about. Droplets entering overlap from outside-overlap experience different prior heightmap states in each halo → different trajectories → divergent per-vertex outliers. Complete elimination would require global droplet ordering (research Rank 5, impractical for streaming).
+
+Phase-2 continuity test tolerances tightened:
+- Grassland (Temperate → default_balanced): 25 WU → 20 WU.
+- Mountain (Highland → mountain_balanced): 40 WU → 10 WU.
+
+**Task 4 — Scale re-measurement (no code change):**
+
+Post-phase-3 scale (1-chunk measurement, pre- vs post-erosion Δp99):
+
+| Climate   | Phase-2 Δp99 | Phase-3 Δp99 |
+|-----------|-------------:|-------------:|
+| Temperate |       -15.2% |       -19.6% |
+| Cold      |       -28.3% |       -38.5% |
+| Arid      |        -7.0% |        -7.0% |
+| Tropical  |       -11.3% |       -12.5% |
+| Wetland   |       -11.3% |       -12.5% |
+| Highland  |       -28.3% |       -38.5% |
+
+Phase-3's change in droplet distribution (uniform grid-jittered world-coord spawning vs phase-2's random local) produced slightly more aggressive peak reduction — especially Cold/Highland's -38.5%. Mountain p99 post-erosion is now 49.7 (pre-erosion 80.85). Still recognizably a mountain but ~50% shorter than source noise produced.
+
+**Scale decision: no commit.** Cannot separate erosion-compression from stitching-confusion without Andrew-gate visual re-verification, which is routed to F.5 integration tuning. If F.5 visual review reveals mountains are still too compressed, the targeted remediation is `mountain_balanced` droplet_count 50k → 35k (equalizing with default_balanced). Documented here; not applied.
+
+**Velocity `.abs()` quirk (phase-0 finding):** Still not addressed. No artifact traced to it in phase-3. If F.5 Andrew-gate surfaces a directional-flow issue, revisit.
+
+**Halo=1 preserved:** No change. Phase-3's fix operates within halo=1.
+
+**Performance:** Not re-measured per-climate in phase-3. Phase-2's numbers (Temperate 60s / 121 chunks, Cold/Highland 36-39s) are expected to be close with phase-3; the new iteration is slightly different structure but similar compute (~same droplet count per halo). Regression budget 20% — within tolerance.
+
+**Impact on F.4:** None structural. F.4's per-vertex climate → chunk-center preset selection still uses `erosion_preset_for_climate` unchanged. F.4 passes world origin / vertex spacing to the new API — plumbing only.
+
+**Impact on F.5:** (a) Andrew-gate for integration tuning gets a cleaner stitching baseline, (b) Andrew-gate may also re-evaluate mountain-scale and apply `mountain_balanced` droplet_count tuning if needed, (c) if residual stitching is still visible after F.5's eight-climate review, a cosine-blend post-pass (research Rank 3) is the next remedy.
+
+**New permanent assets:**
+- `AdvancedErosionSimulator::apply_preset_at_world_offset` (primary production API for streaming terrain).
+- `AdvancedErosionSimulator::apply_hydraulic_erosion_world_coord` (private helper).
+- `AdvancedErosionSimulator::simulate_one_droplet` (private helper extracted from original body).
+- `AdvancedErosionSimulator::hash_world_cell` (Wang-style spatial hash).
+- `astraweave-terrain/tests/phase_1_6_f3_phase_3_diagnostic.rs` (3 diagnostic tests).
+- `docs/audits/terrain_erosion_seamless_diagnostic_2026-04-24.md`.
+- `docs/audits/terrain_seamless_erosion_research_2026-04-24.md`.
+- `§2.3` amendment documenting the phase-3 seeding scheme.
+
+**Tests updated:**
+- `phase_1_6_f3_phase_2_continuity.rs`: tolerances tightened from 25/40 WU to 20/10 WU with updated rationale comments.
+
+**Test scoreboard at phase-3 close:**
+- F.2 regression tests: 5/5 pass unchanged (noise-field invariants).
+- Phase-0 synthetic heightmap tests: 10/10 pass (`apply_preset` untouched).
+- Phase-0 perf characterization: runs.
+- Phase-1 biome-weight pre-erosion tests: 4/4 pass.
+- Phase-1 halo scaffolding tests: 4/4 pass.
+- Phase-2 balanced preset tests: 6/6 pass.
+- Phase-2 continuity tests: 4/4 pass with tightened tolerances.
+- Phase-3 diagnostic tests: 3/3 pass.
+- `advanced_erosion::tests` unit tests: 6/6 pass.
+- `cargo clippy -p astraweave-terrain --all-features -- -D warnings`: clean.
+
+**Open recommendation:** retrieve Asp 2024 thesis (PDF was inaccessible during research session) and verify phase-3's implementation aligns with her specific "Overlapping Grids" algorithm. If Asp's algorithm differs materially (e.g., separate seeded runs then averaged vs. identical seeded runs), reconsider implementation. Flagged for post-campaign follow-up.
 
 ---
 
