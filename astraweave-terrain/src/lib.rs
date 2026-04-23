@@ -24,6 +24,7 @@ pub mod marching_cubes_tables;
 pub mod meshing;
 pub mod noise_gen;
 pub mod noise_simd; // SIMD-optimized noise generation (Week 3 Action 8)
+pub mod perlin_gradient; // Phase 1.6-F.2-T-4: analytical-derivative Perlin + derivative-weighted fBm
 pub mod partition_integration;
 pub mod scatter;
 pub mod solver; // Phase 10: AI-Orchestrated Dynamic Terrain
