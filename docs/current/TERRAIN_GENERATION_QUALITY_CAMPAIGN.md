@@ -292,8 +292,9 @@ Extend `BiomeNoisePreset` at `tools/aw_editor/src/terrain_integration.rs:27-47` 
 - All three `cargo check` invocations pass.
 - All tests pass, including the new F.2 unit and diagnostic tests.
 - **F.2-T amendment (2026-04-21):** Highland regions retain substantial mountain amplitude (global Y max ≥ 85, p95 ≥ 40 at seed 12345 grassland). Catches the "continental suppressed everything uniformly" failure mode. Enforced by the permanent test `phase_1_6_f2_t_highland_regions_reach_f1_target` in `astraweave-terrain/src/noise_gen.rs`. The original prompt's ≥ 100 threshold was aspirational but incompatible with F.2's continental-modulation math — at the editor's 2800-unit extent, max continental_01 measured 0.874 (not 1.0), bounding the highland mountain multiplier at ~0.94 and highland Y max at ~94% of F.1's unmodulated baseline. Relaxed thresholds reflect design reality; see §10 for details.
-- **F.2-T-2 amendment (2026-04-22):** Surface spikiness (local curvature of `sample_height` output) stays below threshold at the grassland preset. Specifically, mean |center − avg(4 neighbors)| over a 200×200 grid at 1-unit spacing must be ≤ 0.90 (post-F.2-T-2 measurement of 0.753 × 1.2 buffer). Catches bed-of-nails regressions from the DomainWarped layer's `warp_strength` reverting to high values. Enforced by the permanent test `phase_1_6_f2_t2_surface_spikiness_under_threshold` in `astraweave-terrain/src/noise_gen.rs`. See §10 F.2-T-2 entry for diagnostic methodology.
+- **F.2-T-2 amendment (2026-04-22):** Surface spikiness (local curvature of `sample_height` output) stays below threshold at the grassland preset. Specifically, mean |center − avg(4 neighbors)| over a 200×200 grid at 1-unit spacing must be ≤ 0.72 (post-F.2-T-4 measurement of 0.576 × 1.25 buffer — threshold tightened from 0.90 as F.2-T-3 / F.2-T-4 further reduced spikiness). Catches bed-of-nails regressions from any of: `warp_strength` reverting to high values, `base_octaves` exceeding PBR Nyquist limit, or `base_derivative_weighted` being disabled on the grassland preset. Enforced by the permanent test `phase_1_6_f2_t2_surface_spikiness_under_threshold` in `astraweave-terrain/src/noise_gen.rs`. See §10 F.2-T-2 / F.2-T-3 / F.2-T-4 entries for diagnostic methodology.
 - **F.2-T-3 amendment (2026-04-22):** F.2-T-3's research (`docs/audits/terrain_noise_research_2026-04-22.md`) and code audit (`docs/audits/terrain_noise_audit_2026-04-22.md`) established that residual surface-spike character after F.2-T-2's 2.7× reduction is the **expected behavior of un-eroded multi-octave noise terrain** per the literature (Musgrave 1989, Quilez morenoise, dandrino terrain-erosion-3-ways). F.2-T-3.C.1 applied the literature-backed low-effort Nyquist cap (base_octaves reduced on four DomainWarped presets per PBR §10.6's formula n_max = −1 − log2(l)), producing modest 8% curvature improvement. **F.3's `AdvancedErosionSimulator` is endorsed as the canonical solver for residual surface character** — the literature is unambiguous that raw noise terrain is expected to look wrong before erosion, and that expecting spike-free raw output is a category error. F.3 success criteria must confirm erosion reduces surface curvature below Andrew's acceptable visual threshold.
+- **F.2-T-4 amendment (2026-04-22):** Implemented the Rank 1 literature-backed remedy F.2-T-3 had deferred — derivative-weighted fBm (Quilez morenoise 2008, `a += b × n / (1 + dot(d, d))`). New module `astraweave-terrain/src/perlin_gradient.rs` provides analytical-gradient Perlin (`perlin_noised_2d`) and the derivative-weighted fBm wrapper (`fbm_derivative_weighted_2d`). Wired into `TerrainNoise::sample_height`'s base-layer evaluation via opt-in `NoiseConfig.base_derivative_weighted` / `BiomeNoisePreset.base_derivative_weighted`. Enabled on the five DomainWarped presets. Reduces spike-regression curvature from F.2-T-3's 0.695 to 0.576 (−17%); highland Y max preserved at 96.04 (vs 98.46). Performance actually improved: ~770 ms median (1.39× F.1) — derivative-weighted fBm replaces Box<dyn NoiseFn> virtual dispatch with a direct static call, offsetting the analytical-gradient cost. F.2's final state with cumulative 3.5× curvature reduction from F.2-broken baseline.
 - This plan's §9 reflects F.2 COMPLETE.
 
 ### 4.4 Reversibility
@@ -479,7 +480,7 @@ This section must be updated in the same commit that completes each sub-phase pe
 ```
 F.0 — Draft campaign plan: COMPLETE 2026-04-21, commit 0bf337caf.
 F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b856d8 (F.1.B) + c76179bdd (F.1.C).
-F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D). Research + audit pass 2026-04-22 — commits 4f2fca568 (F.2-T-3.A research) + 7c46c2449 (F.2-T-3.B audit) + 62526a04d (F.2-T-3.C.1 PBR Nyquist cap) + 3c7271399 (F.2-T-3.D closeout). F.2-T-3 concluded residual surface-spike character is expected from raw noise per literature; F.3 erosion endorsed as canonical solver.
+F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D). Research + audit pass 2026-04-22 — commits 4f2fca568 (F.2-T-3.A research) + 7c46c2449 (F.2-T-3.B audit) + 62526a04d (F.2-T-3.C.1 PBR Nyquist cap) + 3c7271399 (F.2-T-3.D closeout). F.2-T-3 concluded residual surface-spike character is expected from raw noise per literature; F.3 erosion endorsed as canonical solver. Fourth tuning pass (derivative-weighted fBm) 2026-04-22 — commits efe80f146 (F.2-T-4.A+B primitives) + 48c8fc0d0 (F.2-T-4.C+D wiring + regression-threshold tightening) + <F.2-T-4.E-hash>. F.2-T-4 implements Quilez morenoise slope-attenuated fBm; reduces curvature 17% further, preserves highland amplitude, improves performance slightly.
 F.3 — AdvancedErosionSimulator wiring with halo: NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
@@ -636,6 +637,57 @@ Initial state: no deviations logged. F.0's draft execution did not surface any d
 - Performance: no change (same compute; just fewer octaves).
 
 **Andrew-gate (deferred):** if ground-level views still show objectionable bed-of-nails character after F.2-T-3.C.1, Andrew accepts one of: (a) proceed to F.3 erosion and reassess; (b) invoke F.2-T-4 with derivative-weighted fBm; (c) discuss the craftsman-path tradeoff. Research supports option (a) as the canonical path.
+
+### 2026-04-22, Sub-phase F.2 fourth tuning (F.2-T-4), commits efe80f146 through <F.2-T-4.E-hash>
+
+**Deviation:** F.2-T-3's research identified derivative-weighted fBm (Quilez morenoise 2008) as the Rank 1 literature-backed remedy for vertex-scale spike artifacts in un-eroded noise terrain. F.2-T-3 deferred it as a structural change beyond tuning-pass scope. Andrew's craftsman-path decision: implement it before proceeding to F.3, on the principle of "build on solid foundation." F.2-T-4 implements the primitive and wires it into TerrainNoise's base-layer evaluation.
+
+**Rationale:** Per Andrew's craftsman philosophy. The literature treats derivative-weighted fBm as the canonical remedy for *noise-side spike suppression* (Quilez's "fake erosion"); hydraulic erosion (F.3) is the canonical remedy for *realism*. Applying derivative-weighted fBm before F.3 means F.3's particle droplets operate on a smoother pre-erosion baseline — droplet paths follow terrain gradients rather than being perturbed by Nyquist-violating spike gradients.
+
+**Implementation (F.2-T-4.A+B, commit `efe80f146`):**
+- New module `astraweave-terrain/src/perlin_gradient.rs` with `perlin_noised_2d(seed, x, z) -> (value, dvalue/dx, dvalue/dz)` — analytical-gradient 2D Perlin per Quilez's gradientnoise article. Custom Wang-style hash, 8 unit-magnitude gradient vectors, Ken Perlin's 5th-degree fade function, closed-form analytical derivatives.
+- `fbm_derivative_weighted_2d(seed, x, z, octaves, persistence, lacunarity)` — applies Quilez's attenuation `1 / (1 + dot(d, d))` per octave.
+- Four validation tests: analytical derivatives match finite-difference (tolerance 0.02); value range `[-1, 1]` with variation; at octaves=1, weighted equals plain (d=0 → attenuation=1); at octaves=5 on a rough grid, weighted curvature is 21% lower than plain.
+
+**Integration (F.2-T-4.C+D, commit `48c8fc0d0`):**
+- `NoiseConfig.base_derivative_weighted: bool` (default false) and `BiomeNoisePreset.base_derivative_weighted: bool` added. Opt-in design preserves prior behavior for any config that doesn't set it.
+- `DomainWarpedNoise::warp_coords()` helper refactored out of `NoiseFn::get` — allows `TerrainNoise::sample_height` to warp coords before calling `fbm_derivative_weighted_2d`. `NoiseFn::get` delegates to `warp_coords` for DRY.
+- `TerrainNoise.base_dw_for_coords: Option<DomainWarpedNoise>` populated when base is DomainWarped + derivative-weighted is enabled. Avoids needing to introspect the `Box<dyn NoiseFn>` at sample time.
+- `TerrainNoise::sample_height` base-layer branch: when enabled, scales coords by `base_elevation.scale`, optionally warps, then calls `fbm_derivative_weighted_2d`. Otherwise uses existing path byte-identically.
+- Five DomainWarped presets opt in (grassland, mountain, forest, tundra, desert); three plain-Perlin presets stay off (swamp, beach, river — their base amplitudes are small and they don't use DomainWarped, so marginal benefit).
+
+**Measurements:**
+- Spike-regression curvature: 0.695 → **0.576** (−17% vs F.2-T-3).
+- Highland Y max: 98.46 → **96.04** (−2.4, well above 85 threshold).
+- Highland p95: 52.89 → **54.74** (improved).
+- Y span: ~100 → **100.6**.
+- Generation time: 860 ms → **~770 ms median** (improved! 1.39× F.1 vs 1.55×). Derivative-weighted fBm replaces Box<dyn NoiseFn> virtual dispatch with a direct static call; analytical-gradient cost is more than offset by removing the dyn-trait indirection and eliminating one internal Fbm octave.
+
+**Regression test threshold tightened:** `phase_1_6_f2_t2_surface_spikiness_under_threshold` constant raised from 0.90 (F.2-T-2 floor) to 0.72 (0.576 × 1.25 buffer). Locks in F.2-T-4's improvement as the new floor — regressions that disable derivative-weighted fBm, revert `warp_strength` to high values, or raise `base_octaves` above Nyquist cap will fail this test.
+
+**Deviation from F.1 amplitude-preservation discipline:** F.2-T-4 adds a new module, two new fields on `NoiseConfig` and `BiomeNoisePreset`, two new fields on `TerrainNoise`, and a branch in `sample_height`. Per F.2-T-4 prompt constraint 1, this is a structural change, not a tuning change. F.1 amplitude constants, F.2-T-3's Nyquist cap, and F.2-T-2.B.3's warp_strength values are all preserved — only the mathematical transformation inside the base-layer octave loop changes when the opt-in flag is set.
+
+**Durable asset:** `perlin_noised_2d` is usable beyond F.2-T-4 — future LOD, adaptive tessellation, or analytical-normal work can call it directly. The gradient-accumulation pattern from `fbm_derivative_weighted_2d` can be re-used for other slope-dependent effects.
+
+**Impact on later sub-phases:**
+- **F.3:** erosion now operates on a smoother pre-erosion baseline. Particle droplets should travel more naturally across terrain without spike-driven deflections. F.3 success criteria should include an Andrew-gate visual check confirming erosion produces geologically plausible flow patterns.
+- **F.4 / F.5:** unaffected.
+
+**Cumulative F.2 lifecycle measurements (seed 12345 grassland):**
+
+| State          | Curvature | Y max | Y span | Gen time ratio |
+|----------------|----------:|------:|-------:|---------------:|
+| F.2 broken     | 2.016     | 70    | 75     | 2.19× F.1      |
+| F.2-T landed   | (high)    | 90.69 | 93.95  | 1.47× F.1      |
+| F.2-T-2 landed | 0.753     | 97.32 | ~100   | 1.55× F.1      |
+| F.2-T-3 landed | 0.695     | 98.46 | ~100   | 1.55× F.1      |
+| **F.2-T-4**    | **0.576** | **96.04** | **100.6** | **1.39× F.1** |
+
+Cumulative 3.5× curvature reduction over F.2's rollout. Performance IMPROVED from the F.2-broken state while applying multiple quality improvements.
+
+**F.2 status — complete per F.2-T-4.E closeout:** Derivative-weighted fBm is the last planned noise-side intervention. Any residual spike character post-F.2-T-4 is expected un-eroded-noise behavior per Musgrave 1989 and is the canonical domain of F.3's `AdvancedErosionSimulator`. **F.2 now proceeds to F.3.**
+
+**Andrew-gate:** visual verification of F.2-T-4 terrain is the outstanding behavioral gate. Expected: ridges visibly softer vs F.2-T-3; valleys and flat regions identical (flat-region test confirms minimal deviation at those sites); continental clustering preserved; macro-features preserved. If visually acceptable, F.2 is signed off and F.3 begins. If not, the remaining spike character is either (a) expected un-eroded-noise behavior that F.3 erosion solves, or (b) a secondary artifact (e.g., finite-difference normals amplifying visible variation that's already smaller at height level).
 
 - `docs/audits/heightmap_generator_audit_2026-04-21.md` — the audit that surfaced the unwired components, catalogued the six intervention options, and motivated this campaign (Option F selected).
 - `docs/audits/phase_1_5_tuning_investigation_2026-04-20.md` — Phase 1.5-T's investigation with the stale 125-unit measurement that F.1's correction note addresses.
