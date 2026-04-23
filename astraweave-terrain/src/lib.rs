@@ -37,8 +37,8 @@ pub mod voxel_data;
 pub mod zone_scatter;
 
 pub use advanced_erosion::{
-    AdvancedErosionSimulator, ErosionPreset, ErosionStats, HydraulicErosionConfig,
-    ThermalErosionConfig, WindErosionConfig,
+    erosion_preset_for_climate, AdvancedErosionSimulator, ErosionPreset, ErosionStats,
+    HydraulicErosionConfig, ThermalErosionConfig, WindErosionConfig,
 }; // Advanced erosion
 pub use background_loader::{BackgroundChunkLoader, StreamingConfig, StreamingStats}; // Week 4
 pub use biome::{Biome, BiomeConfig, BiomeType, BiomeVegetation, VegetationType};

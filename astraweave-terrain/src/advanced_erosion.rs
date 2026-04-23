@@ -203,6 +203,43 @@ impl ErosionPreset {
             ],
         }
     }
+
+    /// Phase 1.6-F.3-phase-2.A stub: balanced default preset (droplet-count
+    /// fallback per §2.3). Phase-2.B replaces this alias with a real variant
+    /// (droplet_count 50k → 35k). For phase-2.A, aliases `default()` so the
+    /// mapping helper compiles and commit A stays pure-additive.
+    pub fn default_balanced() -> Self {
+        Self::default()
+    }
+
+    /// Phase 1.6-F.3-phase-2.A stub: balanced mountain preset (droplet-count
+    /// fallback per §2.3). Phase-2.B replaces this alias with a real variant
+    /// (droplet_count 100k → 50k). For phase-2.A, aliases `mountain()` so the
+    /// mapping helper compiles and commit A stays pure-additive.
+    pub fn mountain_balanced() -> Self {
+        Self::mountain()
+    }
+}
+
+/// Phase 1.6-F.3-phase-2.A: selects an [`ErosionPreset`] for a chunk based
+/// on its climate bias. Per campaign plan §2.2, the six `ClimateBias`
+/// variants map to four distinct presets (two 2-to-1 groupings: Cold /
+/// Highland → mountain-family, Tropical / Wetland → coastal).
+///
+/// Temperate and Cold / Highland use "balanced" preset variants with
+/// reduced droplet counts to stay inside §2.3's 30-second generation
+/// budget for 121-chunk editor runs (F.3-phase-0 projected full `default`
+/// at 39.7s and full `mountain` at 83.5s).
+pub fn erosion_preset_for_climate(climate: crate::ClimateBias) -> ErosionPreset {
+    use crate::ClimateBias;
+    match climate {
+        ClimateBias::Temperate => ErosionPreset::default_balanced(),
+        ClimateBias::Cold => ErosionPreset::mountain_balanced(),
+        ClimateBias::Arid => ErosionPreset::desert(),
+        ClimateBias::Tropical => ErosionPreset::coastal(),
+        ClimateBias::Wetland => ErosionPreset::coastal(),
+        ClimateBias::Highland => ErosionPreset::mountain_balanced(),
+    }
 }
 
 // ============================================================================
@@ -867,6 +904,61 @@ mod tests {
 
         // Wind should move some material
         assert!(stats.total_eroded > 0.0);
+    }
+
+    /// Phase 1.6-F.3-phase-2.A: verify climate → ErosionPreset mapping is
+    /// total (doesn't panic on any variant) and distinct-group variants
+    /// share presets per §2.2.
+    #[test]
+    fn phase_1_6_f3_phase_2_erosion_preset_for_climate_maps_all_six_variants() {
+        use crate::ClimateBias;
+
+        let temperate = erosion_preset_for_climate(ClimateBias::Temperate);
+        let cold = erosion_preset_for_climate(ClimateBias::Cold);
+        let arid = erosion_preset_for_climate(ClimateBias::Arid);
+        let tropical = erosion_preset_for_climate(ClimateBias::Tropical);
+        let wetland = erosion_preset_for_climate(ClimateBias::Wetland);
+        let highland = erosion_preset_for_climate(ClimateBias::Highland);
+
+        // Cold and Highland both map to mountain-family preset.
+        let cold_drop = cold.hydraulic.as_ref().map(|h| h.droplet_count).unwrap_or(0);
+        let highland_drop = highland
+            .hydraulic
+            .as_ref()
+            .map(|h| h.droplet_count)
+            .unwrap_or(0);
+        assert_eq!(
+            cold_drop, highland_drop,
+            "Cold and Highland should both map to mountain-family preset"
+        );
+
+        // Tropical and Wetland both map to coastal preset.
+        let tropical_drop = tropical
+            .hydraulic
+            .as_ref()
+            .map(|h| h.droplet_count)
+            .unwrap_or(0);
+        let wetland_drop = wetland
+            .hydraulic
+            .as_ref()
+            .map(|h| h.droplet_count)
+            .unwrap_or(0);
+        assert_eq!(
+            tropical_drop, wetland_drop,
+            "Tropical and Wetland should both map to coastal preset"
+        );
+
+        // Arid should be desert (no hydraulic).
+        assert!(
+            arid.hydraulic.is_none(),
+            "Arid → desert preset should have no hydraulic pass"
+        );
+
+        // Temperate should be default-family (has hydraulic).
+        assert!(
+            temperate.hydraulic.is_some(),
+            "Temperate → default-family preset should have hydraulic pass"
+        );
     }
 
     #[test]
