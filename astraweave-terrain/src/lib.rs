@@ -340,18 +340,36 @@ impl WorldGenerator {
         // §2.2 climate → ErosionPreset mapping.
         let preset = crate::advanced_erosion::erosion_preset_for_climate(climate_bias);
 
-        // Deterministic halo seed per §2.3: a function of
-        // (world_seed, target_chunk_id, halo_chunks). Adjacent halos that
-        // overlap in world space share droplet trajectories in the overlap.
+        // Phase 1.6-F.3-phase-3.C: use `apply_preset_at_world_offset` for
+        // seamless chunk boundaries. Droplet spawn positions are derived
+        // from world-aligned spatial cells, so adjacent halos iterate the
+        // SAME cells in overlap → identical droplets → near-identical
+        // erosion output in overlap region.
+        //
+        // The simulator's `new(seed)` argument is no longer the primary
+        // determinism driver — per-droplet RNG comes from world-cell hash
+        // inside the new API. We pass `halo_seed` for any ancillary RNG use
+        // (currently unused inside the world-coord path).
         let seed = Self::halo_seed(self.config.seed, chunk_id, HALO_CHUNKS);
         let mut simulator = crate::advanced_erosion::AdvancedErosionSimulator::new(seed);
 
-        // Run erosion on the full halo. `erosion_enabled` gates the whole
-        // call to preserve backward-compat for configs that disable erosion
-        // (tests, deterministic runs).
         if self.config.noise.erosion_enabled {
-            let _stats = simulator.apply_preset(&mut halo, &preset);
-            // Heightmap bounds need recomputing after bulk erosion changes.
+            // Halo's world origin (target chunk origin minus halo_chunks * chunk_size).
+            let target_origin = chunk_id.to_world_pos(self.config.chunk_size);
+            let halo_origin_x = (target_origin.x - HALO_CHUNKS as f32 * self.config.chunk_size) as f64;
+            let halo_origin_z = (target_origin.z - HALO_CHUNKS as f32 * self.config.chunk_size) as f64;
+            // Vertex spacing: chunk_size per (resolution - 1) vertices.
+            let vertex_spacing =
+                self.config.chunk_size as f64 / (self.config.heightmap_resolution - 1) as f64;
+
+            let _stats = simulator.apply_preset_at_world_offset(
+                &mut halo,
+                &preset,
+                halo_origin_x,
+                halo_origin_z,
+                vertex_spacing,
+                self.config.seed,
+            );
             halo.recalculate_bounds();
         }
 

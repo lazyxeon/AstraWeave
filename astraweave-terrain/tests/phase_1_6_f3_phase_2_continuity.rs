@@ -42,31 +42,36 @@ fn generate_grid(
         .collect()
 }
 
-/// Phase 1.6-F.3-phase-2.D: adjacent chunks' shared edges should be close
-/// under real AdvancedErosion. Tolerance reflects the observed divergence
-/// from per-halo-origin seed differences.
+/// Phase 1.6-F.3-phase-2.D (updated by phase-3.C): adjacent chunks'
+/// shared edges should be close under real AdvancedErosion.
 ///
-/// Measured at seed 12345 grassland (Temperate → default_balanced), 3×3 grid:
-///   x-axis max diff ~16.9 world units
-///   z-axis max diff ~15.6 world units
+/// Phase-2 baseline (per-halo RNG seeding):
+///   grassland 3×3 grid x-axis max 16.9, z-axis max 15.6.
+/// Phase-3 post-fix (world-coord droplet seeding):
+///   grassland 2×2 grid max ~12 (outliers from state-dependent residual),
+///   but mean dropped from 1.66 → 0.85 (-49%) and p95 from 7.10 → 2.18
+///   (-69%). Most edge samples now diverge by < 2 units; a minority tail
+///   of outliers remains from droplets entering overlap from outside-
+///   overlap regions where each halo saw different prior heightmap
+///   states.
 ///
-/// Test tolerance: 25.0 world units. Buffer over observed max to
-/// accommodate other seeds / terrain configurations that may produce
-/// higher outliers. If this tolerance is exceeded in production or under
-/// another seed, log in §10 and investigate (could signal a droplet-travel
-/// outlier or a halo-size miscalculation).
+/// Test tolerance: 20.0 world units max, accommodating phase-3's
+/// residual outliers. If this threshold is exceeded in production or
+/// under another seed, log in §10 and investigate.
 ///
-/// **Known limitation (§10 F.3-phase-2 entry):** the plan §2.3 originally
-/// expected halo=1 to keep shared edges near-identical (≤ 0.01 units).
-/// Empirical phase-2 measurement: adjacent halos with DIFFERENT
-/// deterministic seeds produce DIFFERENT droplet RNG streams → DIFFERENT
-/// erosion patterns even in overlap regions. Halo=1 reduces divergence
-/// vs no-halo (where edges would be discontinuous by tens of units) but
-/// does not eliminate it. Andrew-gate (F.3-phase-2.F) evaluates visual
-/// impact.
+/// **Known limitation (§10 F.3-phase-2 + F.3-phase-3 entries):**
+/// halo=1 world-coord droplet seeding REDUCES but does not eliminate
+/// overlap-region divergence. Residual comes from droplets entering
+/// overlap from outside-overlap regions where each halo's prior
+/// heightmap state differs. Complete elimination would require global
+/// droplet ordering (research Rank 5 — impractical for streaming). The
+/// research (`docs/audits/terrain_seamless_erosion_research_2026-04-24.md`)
+/// endorses a post-pass cosine-blend over 4-8 WU band as secondary fix
+/// if residual remains visible. F.5 integration tuning applies this if
+/// needed.
 #[test]
 fn adjacent_chunks_share_edges_under_real_erosion_grassland() {
-    const TOLERANCE: f32 = 25.0;
+    const TOLERANCE: f32 = 20.0;
 
     let gen = make_generator(12345);
     let chunks = generate_grid(&gen, ClimateBias::Temperate, 3);
@@ -117,13 +122,16 @@ fn adjacent_chunks_share_edges_under_real_erosion_grassland() {
     );
 }
 
-/// Phase 1.6-F.3-phase-2.D: same shared-edge check but on a mountain-
-/// primary (Highland → mountain_balanced) project. Mountain preset has
-/// higher droplet count and more aggressive parameters; divergence is
-/// expected to be larger. Tolerance 40 world units for mountain-family.
+/// Phase 1.6-F.3-phase-2.D (updated by phase-3.C): same shared-edge
+/// check on mountain-primary (Highland → mountain_balanced).
+///
+/// Phase-3 diagnostic measured: Cold/Highland max ~2.3 WU (much tighter
+/// than Temperate's ~12 because mountain preset runs hydraulic FIRST
+/// then thermal — thermal smooths out per-droplet divergence).
+/// Tolerance 10 world units buffers against outliers.
 #[test]
 fn adjacent_chunks_share_edges_under_real_erosion_mountain() {
-    const TOLERANCE: f32 = 40.0;
+    const TOLERANCE: f32 = 10.0;
 
     let gen = make_generator(12345);
     let chunks = generate_grid(&gen, ClimateBias::Highland, 2);

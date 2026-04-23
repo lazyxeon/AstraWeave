@@ -214,12 +214,14 @@ impl ErosionPreset {
     /// stays unchanged so phase-0 behavioral measurements on the original
     /// remain valid.
     pub fn default_balanced() -> Self {
-        let mut p = Self::default();
-        p.name = "Default (balanced)".to_string();
-        if let Some(hydraulic) = p.hydraulic.as_mut() {
-            hydraulic.droplet_count = 35_000;
+        Self {
+            name: "Default (balanced)".to_string(),
+            hydraulic: Some(HydraulicErosionConfig {
+                droplet_count: 35_000,
+                ..HydraulicErosionConfig::default()
+            }),
+            ..Self::default()
         }
-        p
     }
 
     /// Phase 1.6-F.3-phase-2.B: balanced mountain preset — same aggressive
@@ -232,12 +234,15 @@ impl ErosionPreset {
     ///
     /// All other parameters identical to `mountain()`.
     pub fn mountain_balanced() -> Self {
-        let mut p = Self::mountain();
-        p.name = "Mountain (balanced)".to_string();
-        if let Some(hydraulic) = p.hydraulic.as_mut() {
-            hydraulic.droplet_count = 50_000;
+        let base = Self::mountain();
+        Self {
+            name: "Mountain (balanced)".to_string(),
+            hydraulic: base.hydraulic.map(|h| HydraulicErosionConfig {
+                droplet_count: 50_000,
+                ..h
+            }),
+            ..base
         }
-        p
     }
 }
 
@@ -404,122 +409,18 @@ impl AdvancedErosionSimulator {
         let mut erosion_map = vec![0.0f32; (resolution * resolution) as usize];
 
         for _droplet_idx in 0..config.droplet_count {
-            // Spawn droplet at random position
+            // Spawn droplet at random position (LOCAL coords).
             let start_x = rng.next_float() * (resolution - 1) as f32;
             let start_z = rng.next_float() * (resolution - 1) as f32;
-
-            let mut droplet = WaterDroplet::new(
-                Vec2::new(start_x, start_z),
-                config.initial_speed,
-                config.initial_water,
+            let start_pos = Vec2::new(start_x, start_z);
+            let lifetime = self.simulate_one_droplet(
+                heightmap,
+                &mut erosion_map,
+                start_pos,
+                config,
+                &mut rng,
+                &mut stats,
             );
-
-            let mut lifetime = 0u32;
-
-            for _ in 0..config.max_droplet_lifetime {
-                let node_x = droplet.pos.x as i32;
-                let node_z = droplet.pos.y as i32;
-
-                // Calculate droplet's offset inside the cell
-                let cell_offset_x = droplet.pos.x - node_x as f32;
-                let cell_offset_z = droplet.pos.y - node_z as f32;
-
-                // Calculate height and gradient using bilinear interpolation
-                let (height, gradient) = self.calculate_height_and_gradient(heightmap, droplet.pos);
-
-                // Update droplet direction (with inertia)
-                let new_dir = droplet.dir * config.inertia - gradient * (1.0 - config.inertia);
-                droplet.dir = if new_dir.length_squared() > 0.0001 {
-                    new_dir.normalize()
-                } else {
-                    // Random direction if gradient is zero
-                    let angle = rng.next_float() * std::f32::consts::TAU;
-                    Vec2::new(angle.cos(), angle.sin())
-                };
-
-                // Calculate new position
-                let new_pos = droplet.pos + droplet.dir;
-
-                // Check bounds
-                if new_pos.x < 0.0
-                    || new_pos.x >= (resolution - 1) as f32
-                    || new_pos.y < 0.0
-                    || new_pos.y >= (resolution - 1) as f32
-                {
-                    stats.droplets_terminated += 1;
-                    break;
-                }
-
-                // Calculate height difference
-                let new_height = self.sample_height_bilinear(heightmap, new_pos);
-                let delta_height = new_height - height;
-
-                // Calculate sediment capacity
-                let sediment_capacity = (-delta_height).max(config.min_slope).max(0.0)
-                    * droplet.velocity
-                    * droplet.water
-                    * config.sediment_capacity_factor;
-
-                // Deposit or erode
-                if droplet.sediment > sediment_capacity || delta_height > 0.0 {
-                    // Deposit sediment
-                    let amount_to_deposit = if delta_height > 0.0 {
-                        (droplet.sediment).min(delta_height)
-                    } else {
-                        (droplet.sediment - sediment_capacity) * config.deposit_speed
-                    };
-
-                    droplet.sediment -= amount_to_deposit;
-                    stats.total_deposited += amount_to_deposit as f64;
-
-                    // Deposit at current position using bilinear weights
-                    self.deposit_sediment(
-                        heightmap,
-                        &mut erosion_map,
-                        node_x,
-                        node_z,
-                        cell_offset_x,
-                        cell_offset_z,
-                        amount_to_deposit,
-                    );
-                } else {
-                    // Erode terrain
-                    let amount_to_erode = ((sediment_capacity - droplet.sediment)
-                        * config.erode_speed)
-                        .min(-delta_height);
-
-                    // Erode using brush
-                    let center_idx = (node_z as u32 * resolution + node_x as u32) as usize;
-                    if center_idx < self.erosion_brush_indices.len() {
-                        for i in 0..self.erosion_brush_indices[center_idx].len() {
-                            let idx = self.erosion_brush_indices[center_idx][i];
-                            let weight = self.erosion_brush_weights[center_idx][i];
-
-                            let weighed_erode = amount_to_erode * weight;
-                            let current = heightmap.data()[idx];
-                            let delta = current.min(weighed_erode);
-
-                            heightmap.data_mut()[idx] -= delta;
-                            erosion_map[idx] -= delta;
-
-                            droplet.sediment += delta;
-                            stats.total_eroded += delta as f64;
-                            stats.max_erosion_depth = stats.max_erosion_depth.max(delta);
-                        }
-                    }
-                }
-
-                // Update velocity
-                droplet.velocity = (droplet.velocity * droplet.velocity
-                    + delta_height.abs() * config.gravity)
-                    .sqrt();
-
-                // Evaporate water
-                droplet.water *= 1.0 - config.evaporation_rate;
-                droplet.pos = new_pos;
-                lifetime += 1;
-            }
-
             total_lifetime += lifetime as u64;
         }
 
@@ -527,6 +428,234 @@ impl AdvancedErosionSimulator {
         stats.erosion_map = Some(erosion_map);
 
         stats
+    }
+
+    /// Phase 1.6-F.3-phase-3.C: world-coordinate droplet seeding for
+    /// seamless chunk boundaries.
+    ///
+    /// Droplet spawn positions are derived from a world-aligned spatial
+    /// cell grid, each cell seeded by `hash(world_seed, cell_x, cell_z)`.
+    /// Adjacent halos sharing world-space extent in their overlap region
+    /// iterate OVERLAPPING SUBSETS of the same global cell grid, so
+    /// droplets in the overlap have identical spawn positions and
+    /// identical per-droplet RNG state → identical erosion contributions
+    /// from overlap-originated droplets.
+    ///
+    /// Residual state-dependent divergence remains (droplets entering the
+    /// overlap from OUTSIDE experience a slightly different pre-erosion
+    /// heightmap in each halo) but is bounded by halo width and erosion
+    /// intensity per `docs/audits/terrain_seamless_erosion_research_2026-04-24.md`.
+    fn apply_hydraulic_erosion_world_coord(
+        &mut self,
+        heightmap: &mut Heightmap,
+        config: &HydraulicErosionConfig,
+        world_origin_x: f64,
+        world_origin_z: f64,
+        vertex_spacing: f64,
+        world_seed: u64,
+    ) -> ErosionStats {
+        let resolution = heightmap.resolution();
+        self.init_erosion_brush(config.erosion_radius, resolution);
+
+        let mut stats = ErosionStats::default();
+        let mut total_lifetime = 0u64;
+        let mut droplets_executed = 0u64;
+        let mut erosion_map = vec![0.0f32; (resolution * resolution) as usize];
+
+        // Halo's world-space extent (inclusive on min; exclusive spawn on max
+        // since max maps to resolution-1 local which is the off-grid edge).
+        let halo_min_x = world_origin_x;
+        let halo_min_z = world_origin_z;
+        let halo_max_x = world_origin_x + (resolution - 1) as f64 * vertex_spacing;
+        let halo_max_z = world_origin_z + (resolution - 1) as f64 * vertex_spacing;
+
+        // Cell size chosen so the halo contains ~droplet_count cells.
+        // halo_area / cell² ≈ droplet_count  →  cell = sqrt(halo_area / droplet_count).
+        // World-aligned cells ensure adjacent halos iterate the SAME cells in
+        // their overlap region.
+        let halo_width = (halo_max_x - halo_min_x).max(1.0);
+        let halo_height = (halo_max_z - halo_min_z).max(1.0);
+        let target_droplets = config.droplet_count.max(1) as f64;
+        let cell_size = (halo_width * halo_height / target_droplets).sqrt();
+
+        // Iterate integer cell coords whose range covers the halo extent.
+        let first_cx = (halo_min_x / cell_size).floor() as i64;
+        let last_cx = (halo_max_x / cell_size).ceil() as i64;
+        let first_cz = (halo_min_z / cell_size).floor() as i64;
+        let last_cz = (halo_max_z / cell_size).ceil() as i64;
+
+        for cz in first_cz..=last_cz {
+            for cx in first_cx..=last_cx {
+                let cell_seed = Self::hash_world_cell(world_seed, cx, cz);
+
+                // Hash-jittered spawn inside the cell (32-bit precision).
+                let jx = ((cell_seed & 0xFFFF_FFFF) as f64) / (u32::MAX as f64);
+                let jz = (((cell_seed >> 32) & 0xFFFF_FFFF) as f64) / (u32::MAX as f64);
+                let world_spawn_x = cx as f64 * cell_size + jx * cell_size;
+                let world_spawn_z = cz as f64 * cell_size + jz * cell_size;
+
+                // Skip cells whose spawn falls outside this halo's extent —
+                // they are "owned" by (and simulated in) a neighboring halo.
+                if world_spawn_x < halo_min_x
+                    || world_spawn_x >= halo_max_x
+                    || world_spawn_z < halo_min_z
+                    || world_spawn_z >= halo_max_z
+                {
+                    continue;
+                }
+
+                // Convert world → local heightmap coords.
+                let local_x = ((world_spawn_x - halo_min_x) / vertex_spacing) as f32;
+                let local_z = ((world_spawn_z - halo_min_z) / vertex_spacing) as f32;
+                if local_x >= (resolution - 1) as f32 || local_z >= (resolution - 1) as f32 {
+                    continue;
+                }
+                let start_pos = Vec2::new(local_x, local_z);
+
+                // Per-droplet RNG seeded from world cell.
+                let mut rng = SimpleRng::new(cell_seed);
+
+                let lifetime = self.simulate_one_droplet(
+                    heightmap,
+                    &mut erosion_map,
+                    start_pos,
+                    config,
+                    &mut rng,
+                    &mut stats,
+                );
+                total_lifetime += lifetime as u64;
+                droplets_executed += 1;
+            }
+        }
+
+        stats.avg_droplet_lifetime = total_lifetime as f32 / droplets_executed.max(1) as f32;
+        stats.erosion_map = Some(erosion_map);
+        stats
+    }
+
+    /// Wang-style integer hash keyed by (world_seed, cell_x, cell_z). Matches
+    /// the pattern of `WorldGenerator::halo_seed` for cross-codebase
+    /// determinism. Full avalanche behavior; low-entropy hash alternatives
+    /// (simple XOR) would produce grid-aligned aliasing per research.
+    fn hash_world_cell(world_seed: u64, cx: i64, cz: i64) -> u64 {
+        let mut h = world_seed;
+        h = h.wrapping_add(cx as u64).wrapping_mul(0x9E3779B97F4A7C15);
+        h ^= h >> 32;
+        h = h.wrapping_add(cz as u64).wrapping_mul(0x85EBCA6BE11ECC0D);
+        h ^= h >> 32;
+        h.max(1)
+    }
+
+    /// Simulate one droplet from `start_pos` for up to
+    /// `config.max_droplet_lifetime` steps. Mutates `heightmap`,
+    /// `erosion_map`, and `stats`; consumes `rng` for zero-gradient
+    /// direction jitter. Returns lifetime (step count).
+    ///
+    /// Shared by `apply_hydraulic_erosion` (legacy LOCAL spawn) and
+    /// `apply_hydraulic_erosion_world_coord` (phase-3 world-coord spawn).
+    #[allow(clippy::too_many_arguments)]
+    fn simulate_one_droplet(
+        &self,
+        heightmap: &mut Heightmap,
+        erosion_map: &mut [f32],
+        start_pos: Vec2,
+        config: &HydraulicErosionConfig,
+        rng: &mut SimpleRng,
+        stats: &mut ErosionStats,
+    ) -> u32 {
+        let resolution = heightmap.resolution();
+        let mut droplet = WaterDroplet::new(start_pos, config.initial_speed, config.initial_water);
+        let mut lifetime = 0u32;
+
+        for _ in 0..config.max_droplet_lifetime {
+            let node_x = droplet.pos.x as i32;
+            let node_z = droplet.pos.y as i32;
+
+            let cell_offset_x = droplet.pos.x - node_x as f32;
+            let cell_offset_z = droplet.pos.y - node_z as f32;
+
+            let (height, gradient) = self.calculate_height_and_gradient(heightmap, droplet.pos);
+
+            let new_dir = droplet.dir * config.inertia - gradient * (1.0 - config.inertia);
+            droplet.dir = if new_dir.length_squared() > 0.0001 {
+                new_dir.normalize()
+            } else {
+                let angle = rng.next_float() * std::f32::consts::TAU;
+                Vec2::new(angle.cos(), angle.sin())
+            };
+
+            let new_pos = droplet.pos + droplet.dir;
+
+            if new_pos.x < 0.0
+                || new_pos.x >= (resolution - 1) as f32
+                || new_pos.y < 0.0
+                || new_pos.y >= (resolution - 1) as f32
+            {
+                stats.droplets_terminated += 1;
+                break;
+            }
+
+            let new_height = self.sample_height_bilinear(heightmap, new_pos);
+            let delta_height = new_height - height;
+
+            let sediment_capacity = (-delta_height).max(config.min_slope).max(0.0)
+                * droplet.velocity
+                * droplet.water
+                * config.sediment_capacity_factor;
+
+            if droplet.sediment > sediment_capacity || delta_height > 0.0 {
+                let amount_to_deposit = if delta_height > 0.0 {
+                    (droplet.sediment).min(delta_height)
+                } else {
+                    (droplet.sediment - sediment_capacity) * config.deposit_speed
+                };
+
+                droplet.sediment -= amount_to_deposit;
+                stats.total_deposited += amount_to_deposit as f64;
+
+                self.deposit_sediment(
+                    heightmap,
+                    erosion_map,
+                    node_x,
+                    node_z,
+                    cell_offset_x,
+                    cell_offset_z,
+                    amount_to_deposit,
+                );
+            } else {
+                let amount_to_erode =
+                    ((sediment_capacity - droplet.sediment) * config.erode_speed).min(-delta_height);
+
+                let center_idx = (node_z as u32 * resolution + node_x as u32) as usize;
+                if center_idx < self.erosion_brush_indices.len() {
+                    for i in 0..self.erosion_brush_indices[center_idx].len() {
+                        let idx = self.erosion_brush_indices[center_idx][i];
+                        let weight = self.erosion_brush_weights[center_idx][i];
+
+                        let weighed_erode = amount_to_erode * weight;
+                        let current = heightmap.data()[idx];
+                        let delta = current.min(weighed_erode);
+
+                        heightmap.data_mut()[idx] -= delta;
+                        erosion_map[idx] -= delta;
+
+                        droplet.sediment += delta;
+                        stats.total_eroded += delta as f64;
+                        stats.max_erosion_depth = stats.max_erosion_depth.max(delta);
+                    }
+                }
+            }
+
+            droplet.velocity = (droplet.velocity * droplet.velocity
+                + delta_height.abs() * config.gravity)
+                .sqrt();
+
+            droplet.water *= 1.0 - config.evaporation_rate;
+            droplet.pos = new_pos;
+            lifetime += 1;
+        }
+
+        lifetime
     }
 
     /// Apply thermal erosion (talus-based material sliding)
@@ -689,6 +818,88 @@ impl AdvancedErosionSimulator {
                 "hydraulic" => {
                     if let Some(config) = &preset.hydraulic {
                         self.apply_hydraulic_erosion(heightmap, config)
+                    } else {
+                        ErosionStats::default()
+                    }
+                }
+                "wind" => {
+                    if let Some(config) = &preset.wind {
+                        self.apply_wind_erosion(heightmap, config)
+                    } else {
+                        ErosionStats::default()
+                    }
+                }
+                _ => ErosionStats::default(),
+            };
+
+            combined_stats.total_eroded += pass_stats.total_eroded;
+            combined_stats.total_deposited += pass_stats.total_deposited;
+            combined_stats.max_erosion_depth = combined_stats
+                .max_erosion_depth
+                .max(pass_stats.max_erosion_depth);
+        }
+
+        combined_stats
+    }
+
+    /// Phase 1.6-F.3-phase-3.C: apply an erosion preset with world-coordinate
+    /// droplet seeding for seamless chunk boundaries.
+    ///
+    /// Hydraulic passes use [`apply_hydraulic_erosion_world_coord`] which
+    /// derives droplet spawn positions from world-aligned spatial cells
+    /// seeded by `hash(world_seed, cell_x, cell_z)`. Adjacent halos sharing
+    /// a world-space overlap region iterate the SAME cells in the overlap
+    /// and therefore execute identical droplets there, producing nearly
+    /// identical erosion output (residual divergence comes from droplets
+    /// that enter the overlap from outside-overlap regions where each
+    /// halo's prior heightmap state differs — bounded but not zero).
+    ///
+    /// Thermal and wind passes use the existing deterministic implementations
+    /// (no RNG → already world-coord-safe, confirmed by F.3-phase-3.A's
+    /// Arid 0-divergence measurement).
+    ///
+    /// Prefer this over [`apply_preset`] for production terrain chunk
+    /// generation. [`apply_preset`] remains available for synthetic
+    /// heightmap testing (phase 0) where world coords are meaningless.
+    ///
+    /// # Arguments
+    /// * `heightmap` — mutated in place; pre-erosion state on input.
+    /// * `preset` — which passes to run and their parameters.
+    /// * `world_origin_x`, `world_origin_z` — world-space position of
+    ///   heightmap vertex (0, 0).
+    /// * `vertex_spacing` — world-space distance between adjacent vertices.
+    /// * `world_seed` — hashed into per-cell droplet seeds. Same seed +
+    ///   same cell = same droplet, regardless of which halo is running.
+    pub fn apply_preset_at_world_offset(
+        &mut self,
+        heightmap: &mut Heightmap,
+        preset: &ErosionPreset,
+        world_origin_x: f64,
+        world_origin_z: f64,
+        vertex_spacing: f64,
+        world_seed: u64,
+    ) -> ErosionStats {
+        let mut combined_stats = ErosionStats::default();
+
+        for pass_name in &preset.pass_order {
+            let pass_stats = match pass_name.as_str() {
+                "thermal" => {
+                    if let Some(config) = &preset.thermal {
+                        self.apply_thermal_erosion(heightmap, config)
+                    } else {
+                        ErosionStats::default()
+                    }
+                }
+                "hydraulic" => {
+                    if let Some(config) = &preset.hydraulic {
+                        self.apply_hydraulic_erosion_world_coord(
+                            heightmap,
+                            config,
+                            world_origin_x,
+                            world_origin_z,
+                            vertex_spacing,
+                            world_seed,
+                        )
                     } else {
                         ErosionStats::default()
                     }
