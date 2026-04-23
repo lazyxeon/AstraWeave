@@ -1007,217 +1007,218 @@
 <a href=#1007 id=1007 data-nosnippet>1007</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = NoiseConfig::default();
 <a href=#1008 id=1008 data-nosnippet>1008</a>        config.base_elevation.scale = <span class="number">0.004</span>;
 <a href=#1009 id=1009 data-nosnippet>1009</a>        config.base_elevation.amplitude = <span class="number">50.0</span>;
-<a href=#1010 id=1010 data-nosnippet>1010</a>        config.base_elevation.octaves = <span class="number">5</span>;
-<a href=#1011 id=1011 data-nosnippet>1011</a>        config.base_elevation.persistence = <span class="number">0.50</span>;
-<a href=#1012 id=1012 data-nosnippet>1012</a>        config.base_elevation.lacunarity = <span class="number">2.0</span>;
-<a href=#1013 id=1013 data-nosnippet>1013</a>        config.base_elevation.noise_type = NoiseType::DomainWarped;
-<a href=#1014 id=1014 data-nosnippet>1014</a>        config.base_elevation.domain_warp = DomainWarpConfig {
-<a href=#1015 id=1015 data-nosnippet>1015</a>            iterations: <span class="number">1</span>,
-<a href=#1016 id=1016 data-nosnippet>1016</a>            warp_scale: <span class="number">1.5</span>,
-<a href=#1017 id=1017 data-nosnippet>1017</a>            warp_strength: <span class="number">15.0</span>, <span class="comment">// F.2-T-2.B.3: was 40.
-<a href=#1018 id=1018 data-nosnippet>1018</a>            </span>warp_octaves: <span class="number">3</span>,
-<a href=#1019 id=1019 data-nosnippet>1019</a>        };
-<a href=#1020 id=1020 data-nosnippet>1020</a>        config.mountains.enabled = <span class="bool-val">true</span>;
-<a href=#1021 id=1021 data-nosnippet>1021</a>        config.mountains.scale = <span class="number">0.0025</span>;
-<a href=#1022 id=1022 data-nosnippet>1022</a>        config.mountains.amplitude = <span class="number">80.0</span>;
-<a href=#1023 id=1023 data-nosnippet>1023</a>        config.mountains.octaves = <span class="number">6</span>;
-<a href=#1024 id=1024 data-nosnippet>1024</a>        <span class="comment">// mountains.persistence and mountains.lacunarity use NoiseConfig::default
-<a href=#1025 id=1025 data-nosnippet>1025</a>        // values (0.4 and 2.2) since BiomeNoisePreset doesn't override them.
-<a href=#1026 id=1026 data-nosnippet>1026</a>        </span>config.detail.enabled = <span class="bool-val">true</span>;
-<a href=#1027 id=1027 data-nosnippet>1027</a>        config.detail.scale = <span class="number">0.02</span>;
-<a href=#1028 id=1028 data-nosnippet>1028</a>        config.detail.amplitude = <span class="number">4.0</span>;
-<a href=#1029 id=1029 data-nosnippet>1029</a>        config.continental_enabled = <span class="bool-val">true</span>;
-<a href=#1030 id=1030 data-nosnippet>1030</a>        config
-<a href=#1031 id=1031 data-nosnippet>1031</a>    }
-<a href=#1032 id=1032 data-nosnippet>1032</a>
-<a href=#1033 id=1033 data-nosnippet>1033</a>    <span class="doccomment">/// Phase 1.6-F.2-T-2.C: permanent regression guard for the "bed-of-nails
-<a href=#1034 id=1034 data-nosnippet>1034</a>    /// surface spikes" failure mode that F.2-T-2 resolved. Generates heights
-<a href=#1035 id=1035 data-nosnippet>1035</a>    /// across a 200×200 grid at 1 world-unit spacing using the grassland
-<a href=#1036 id=1036 data-nosnippet>1036</a>    /// preset (the default most-viewed preset, which F.2-T-2 targeted most
-<a href=#1037 id=1037 data-nosnippet>1037</a>    /// aggressively). Asserts local curvature (average |center - avg(4
-<a href=#1038 id=1038 data-nosnippet>1038</a>    /// neighbors)|) stays below a threshold locked at post-F.2-T-2
-<a href=#1039 id=1039 data-nosnippet>1039</a>    /// measurement × 1.2 (20% buffer).
-<a href=#1040 id=1040 data-nosnippet>1040</a>    ///
-<a href=#1041 id=1041 data-nosnippet>1041</a>    /// Pre-F.2-T-2.B.3 baseline: total curvature 2.016 (bed-of-nails).
-<a href=#1042 id=1042 data-nosnippet>1042</a>    /// Post-F.2-T-2.B.3 measurement: total curvature 0.753.
-<a href=#1043 id=1043 data-nosnippet>1043</a>    /// Threshold: 0.90 (≈ 0.753 × 1.2) — catches regressions at any
-<a href=#1044 id=1044 data-nosnippet>1044</a>    /// warp_strength ≥ 20 per F.2-T-2.A's tuning matrix.
-<a href=#1045 id=1045 data-nosnippet>1045</a>    ///
-<a href=#1046 id=1046 data-nosnippet>1046</a>    /// If a future sub-phase tunes the grassland preset's DomainWarped
-<a href=#1047 id=1047 data-nosnippet>1047</a>    /// parameters, this test's inline config must be updated in lockstep
-<a href=#1048 id=1048 data-nosnippet>1048</a>    /// with `terrain_panel.rs::noise_preset_for_biome`.
-<a href=#1049 id=1049 data-nosnippet>1049</a>    </span><span class="attr">#[test]
-<a href=#1050 id=1050 data-nosnippet>1050</a>    </span><span class="kw">fn </span>phase_1_6_f2_t2_surface_spikiness_under_threshold() {
-<a href=#1051 id=1051 data-nosnippet>1051</a>        <span class="kw">let </span>config = phase_1_6_f2_t2_grassland_config();
-<a href=#1052 id=1052 data-nosnippet>1052</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
-<a href=#1053 id=1053 data-nosnippet>1053</a>
-<a href=#1054 id=1054 data-nosnippet>1054</a>        <span class="kw">const </span>GRID_DIM: usize = <span class="number">200</span>;
-<a href=#1055 id=1055 data-nosnippet>1055</a>        <span class="kw">let </span><span class="kw-2">mut </span>heights = <span class="macro">vec!</span>[<span class="number">0f32</span>; GRID_DIM * GRID_DIM];
-<a href=#1056 id=1056 data-nosnippet>1056</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..GRID_DIM {
-<a href=#1057 id=1057 data-nosnippet>1057</a>            <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..GRID_DIM {
-<a href=#1058 id=1058 data-nosnippet>1058</a>                heights[i * GRID_DIM + j] = noise.sample_height(i <span class="kw">as </span>f64, j <span class="kw">as </span>f64);
-<a href=#1059 id=1059 data-nosnippet>1059</a>            }
-<a href=#1060 id=1060 data-nosnippet>1060</a>        }
-<a href=#1061 id=1061 data-nosnippet>1061</a>        <span class="kw">let </span>curv = phase_1_6_f2_t2_local_curvature_grid(<span class="kw-2">&amp;</span>heights, GRID_DIM);
-<a href=#1062 id=1062 data-nosnippet>1062</a>
-<a href=#1063 id=1063 data-nosnippet>1063</a>        <span class="kw">const </span>SPIKE_THRESHOLD: f32 = <span class="number">0.90</span>;
-<a href=#1064 id=1064 data-nosnippet>1064</a>
-<a href=#1065 id=1065 data-nosnippet>1065</a>        <span class="macro">println!</span>(<span class="string">"F.2-T-2 spike regression: curvature {curv:.3} (threshold {SPIKE_THRESHOLD})"</span>);
-<a href=#1066 id=1066 data-nosnippet>1066</a>
-<a href=#1067 id=1067 data-nosnippet>1067</a>        <span class="macro">assert!</span>(
-<a href=#1068 id=1068 data-nosnippet>1068</a>            curv &lt;= SPIKE_THRESHOLD,
-<a href=#1069 id=1069 data-nosnippet>1069</a>            <span class="string">"Surface curvature {curv:.3} &gt; threshold {SPIKE_THRESHOLD} — bed-of-nails regression. \
-<a href=#1070 id=1070 data-nosnippet>1070</a>             F.2-T-2.A diagnostic showed DomainWarped `warp_strength` is the dominant spike \
-<a href=#1071 id=1071 data-nosnippet>1071</a>             source; check `base_domain_warp.warp_strength` on the grassland preset in \
-<a href=#1072 id=1072 data-nosnippet>1072</a>             terrain_panel.rs for recent changes."
-<a href=#1073 id=1073 data-nosnippet>1073</a>        </span>);
-<a href=#1074 id=1074 data-nosnippet>1074</a>    }
-<a href=#1075 id=1075 data-nosnippet>1075</a>
-<a href=#1076 id=1076 data-nosnippet>1076</a>    <span class="doccomment">/// Phase 1.6-F.2-T.C: permanent regression guard for the "continental
-<a href=#1077 id=1077 data-nosnippet>1077</a>    /// suppressed everything uniformly" failure mode. Generates heights
-<a href=#1078 id=1078 data-nosnippet>1078</a>    /// across the editor's 11×11 chunk grid (radius 5) with grassland
-<a href=#1079 id=1079 data-nosnippet>1079</a>    /// preset amplitudes + F.2 continental modulation enabled. Asserts on
-<a href=#1080 id=1080 data-nosnippet>1080</a>    /// both Y max and p95 (top 5% threshold) so that regression-free
-<a href=#1081 id=1081 data-nosnippet>1081</a>    /// highland regions exist.
-<a href=#1082 id=1082 data-nosnippet>1082</a>    ///
-<a href=#1083 id=1083 data-nosnippet>1083</a>    /// Thresholds reflect the F.2 continental-modulation design: even at
-<a href=#1084 id=1084 data-nosnippet>1084</a>    /// max continental_01 (measured 0.874 at seed 12345 in F.2-T.A),
-<a href=#1085 id=1085 data-nosnippet>1085</a>    /// multiplier = 0.50 + 0.50×0.874 = 0.937, so highland peaks are
-<a href=#1086 id=1086 data-nosnippet>1086</a>    /// bounded at ~94% of F.1's unmodulated mountain amplitude. The test
-<a href=#1087 id=1087 data-nosnippet>1087</a>    /// thresholds (Y max ≥ 85, p95 ≥ 40) are calibrated to this expected
-<a href=#1088 id=1088 data-nosnippet>1088</a>    /// bound — strict enough to fail F.2-pre-tuning (Y max 70, p95 ~25)
-<a href=#1089 id=1089 data-nosnippet>1089</a>    /// and F.2-T without continental widening (Y max 88), while
-<a href=#1090 id=1090 data-nosnippet>1090</a>    /// accommodating the intrinsic continental-modulation compression.
-<a href=#1091 id=1091 data-nosnippet>1091</a>    ///
-<a href=#1092 id=1092 data-nosnippet>1092</a>    /// The grassland preset's amplitudes are inlined here; if a future
-<a href=#1093 id=1093 data-nosnippet>1093</a>    /// sub-phase (e.g. F.5 integration tuning) modifies them in
-<a href=#1094 id=1094 data-nosnippet>1094</a>    /// `tools/aw_editor/src/panels/terrain_panel.rs`, this test's inline
-<a href=#1095 id=1095 data-nosnippet>1095</a>    /// values must be updated in lockstep. The inline pattern mirrors F.1's
-<a href=#1096 id=1096 data-nosnippet>1096</a>    /// diagnostic-test convention.
-<a href=#1097 id=1097 data-nosnippet>1097</a>    </span><span class="attr">#[test]
-<a href=#1098 id=1098 data-nosnippet>1098</a>    </span><span class="kw">fn </span>phase_1_6_f2_t_highland_regions_reach_f1_target() {
-<a href=#1099 id=1099 data-nosnippet>1099</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = NoiseConfig::default();
-<a href=#1100 id=1100 data-nosnippet>1100</a>        <span class="comment">// Grassland preset values from terrain_panel.rs::noise_preset_for_biome
-<a href=#1101 id=1101 data-nosnippet>1101</a>        // `_ =&gt;` arm, as of F.2-T.B.2.
-<a href=#1102 id=1102 data-nosnippet>1102</a>        </span>config.base_elevation.scale = <span class="number">0.004</span>;
-<a href=#1103 id=1103 data-nosnippet>1103</a>        config.base_elevation.amplitude = <span class="number">50.0</span>;
-<a href=#1104 id=1104 data-nosnippet>1104</a>        config.base_elevation.octaves = <span class="number">5</span>;
-<a href=#1105 id=1105 data-nosnippet>1105</a>        config.base_elevation.persistence = <span class="number">0.50</span>;
-<a href=#1106 id=1106 data-nosnippet>1106</a>        config.base_elevation.lacunarity = <span class="number">2.0</span>;
-<a href=#1107 id=1107 data-nosnippet>1107</a>        config.base_elevation.noise_type = NoiseType::DomainWarped;
-<a href=#1108 id=1108 data-nosnippet>1108</a>        config.base_elevation.domain_warp = DomainWarpConfig {
-<a href=#1109 id=1109 data-nosnippet>1109</a>            iterations: <span class="number">1</span>,
-<a href=#1110 id=1110 data-nosnippet>1110</a>            warp_scale: <span class="number">1.5</span>,
-<a href=#1111 id=1111 data-nosnippet>1111</a>            warp_strength: <span class="number">15.0</span>, <span class="comment">// F.2-T-2.B.3: was 40.
-<a href=#1112 id=1112 data-nosnippet>1112</a>            </span>warp_octaves: <span class="number">3</span>,
-<a href=#1113 id=1113 data-nosnippet>1113</a>        };
-<a href=#1114 id=1114 data-nosnippet>1114</a>        config.mountains.enabled = <span class="bool-val">true</span>;
-<a href=#1115 id=1115 data-nosnippet>1115</a>        config.mountains.scale = <span class="number">0.0025</span>;
-<a href=#1116 id=1116 data-nosnippet>1116</a>        config.mountains.amplitude = <span class="number">80.0</span>;
-<a href=#1117 id=1117 data-nosnippet>1117</a>        config.mountains.octaves = <span class="number">6</span>;
-<a href=#1118 id=1118 data-nosnippet>1118</a>        config.detail.enabled = <span class="bool-val">true</span>;
-<a href=#1119 id=1119 data-nosnippet>1119</a>        config.detail.scale = <span class="number">0.02</span>;
-<a href=#1120 id=1120 data-nosnippet>1120</a>        config.detail.amplitude = <span class="number">4.0</span>;
-<a href=#1121 id=1121 data-nosnippet>1121</a>        config.continental_enabled = <span class="bool-val">true</span>;
-<a href=#1122 id=1122 data-nosnippet>1122</a>
-<a href=#1123 id=1123 data-nosnippet>1123</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
-<a href=#1124 id=1124 data-nosnippet>1124</a>
-<a href=#1125 id=1125 data-nosnippet>1125</a>        <span class="comment">// Generate over the editor's 11x11 chunk grid (radius 5) at 64 verts
-<a href=#1126 id=1126 data-nosnippet>1126</a>        // per chunk side, 256 world units per chunk. Matches TerrainState's
-<a href=#1127 id=1127 data-nosnippet>1127</a>        // default runtime extent.
-<a href=#1128 id=1128 data-nosnippet>1128</a>        </span><span class="kw">let </span>chunk_size = <span class="number">256.0f64</span>;
-<a href=#1129 id=1129 data-nosnippet>1129</a>        <span class="kw">let </span>verts_per_side = <span class="number">64i32</span>;
-<a href=#1130 id=1130 data-nosnippet>1130</a>        <span class="kw">let </span>chunk_radius = <span class="number">5i32</span>;
-<a href=#1131 id=1131 data-nosnippet>1131</a>
-<a href=#1132 id=1132 data-nosnippet>1132</a>        <span class="kw">let </span><span class="kw-2">mut </span>heights: Vec&lt;f32&gt; = Vec::with_capacity(<span class="number">495_616</span>);
-<a href=#1133 id=1133 data-nosnippet>1133</a>        <span class="kw">for </span>chunk_x <span class="kw">in </span>-chunk_radius..=chunk_radius {
-<a href=#1134 id=1134 data-nosnippet>1134</a>            <span class="kw">for </span>chunk_z <span class="kw">in </span>-chunk_radius..=chunk_radius {
-<a href=#1135 id=1135 data-nosnippet>1135</a>                <span class="kw">let </span>origin_x = chunk_x <span class="kw">as </span>f64 * chunk_size;
-<a href=#1136 id=1136 data-nosnippet>1136</a>                <span class="kw">let </span>origin_z = chunk_z <span class="kw">as </span>f64 * chunk_size;
-<a href=#1137 id=1137 data-nosnippet>1137</a>                <span class="kw">for </span>vz <span class="kw">in </span><span class="number">0</span>..verts_per_side {
-<a href=#1138 id=1138 data-nosnippet>1138</a>                    <span class="kw">for </span>vx <span class="kw">in </span><span class="number">0</span>..verts_per_side {
-<a href=#1139 id=1139 data-nosnippet>1139</a>                        <span class="kw">let </span>x = origin_x
-<a href=#1140 id=1140 data-nosnippet>1140</a>                            + (vx <span class="kw">as </span>f64 / verts_per_side <span class="kw">as </span>f64) * chunk_size;
-<a href=#1141 id=1141 data-nosnippet>1141</a>                        <span class="kw">let </span>z = origin_z
-<a href=#1142 id=1142 data-nosnippet>1142</a>                            + (vz <span class="kw">as </span>f64 / verts_per_side <span class="kw">as </span>f64) * chunk_size;
-<a href=#1143 id=1143 data-nosnippet>1143</a>                        heights.push(noise.sample_height(x, z));
-<a href=#1144 id=1144 data-nosnippet>1144</a>                    }
-<a href=#1145 id=1145 data-nosnippet>1145</a>                }
-<a href=#1146 id=1146 data-nosnippet>1146</a>            }
-<a href=#1147 id=1147 data-nosnippet>1147</a>        }
-<a href=#1148 id=1148 data-nosnippet>1148</a>        heights.sort_by(|a, b| a.partial_cmp(b).unwrap());
-<a href=#1149 id=1149 data-nosnippet>1149</a>
-<a href=#1150 id=1150 data-nosnippet>1150</a>        <span class="kw">let </span>n = heights.len();
-<a href=#1151 id=1151 data-nosnippet>1151</a>        <span class="kw">let </span>y_min = heights[<span class="number">0</span>];
-<a href=#1152 id=1152 data-nosnippet>1152</a>        <span class="kw">let </span>y_max = <span class="kw-2">*</span>heights.last().unwrap();
-<a href=#1153 id=1153 data-nosnippet>1153</a>        <span class="kw">let </span>p95 = heights[(n <span class="kw">as </span>f32 * <span class="number">0.95</span>) <span class="kw">as </span>usize];
-<a href=#1154 id=1154 data-nosnippet>1154</a>        <span class="kw">let </span>p99 = heights[(n <span class="kw">as </span>f32 * <span class="number">0.99</span>) <span class="kw">as </span>usize];
-<a href=#1155 id=1155 data-nosnippet>1155</a>
-<a href=#1156 id=1156 data-nosnippet>1156</a>        <span class="macro">println!</span>(
-<a href=#1157 id=1157 data-nosnippet>1157</a>            <span class="string">"Highland-Y-max regression: min={y_min:.2} p95={p95:.2} p99={p99:.2} max={y_max:.2} n={n}"
-<a href=#1158 id=1158 data-nosnippet>1158</a>        </span>);
-<a href=#1159 id=1159 data-nosnippet>1159</a>
-<a href=#1160 id=1160 data-nosnippet>1160</a>        <span class="comment">// Gate 1: at least some highland peak exists (Y max).
-<a href=#1161 id=1161 data-nosnippet>1161</a>        </span><span class="macro">assert!</span>(
-<a href=#1162 id=1162 data-nosnippet>1162</a>            y_max &gt;= <span class="number">85.0</span>,
-<a href=#1163 id=1163 data-nosnippet>1163</a>            <span class="string">"Highland Y max reached only {y_max:.2} — expected &gt;= 85. Continental modulation \
-<a href=#1164 id=1164 data-nosnippet>1164</a>             may be suppressing mountain layer too aggressively, or continental field may not \
-<a href=#1165 id=1165 data-nosnippet>1165</a>             reach highland regions (cont &gt; 0.7) within the visible terrain."
-<a href=#1166 id=1166 data-nosnippet>1166</a>        </span>);
-<a href=#1167 id=1167 data-nosnippet>1167</a>        <span class="comment">// Gate 2: top 5% of vertices (p95) must be substantial, catching the
-<a href=#1168 id=1168 data-nosnippet>1168</a>        // "continental suppressed everything uniformly" failure (pre-F.2-T
-<a href=#1169 id=1169 data-nosnippet>1169</a>        // p95 was in the 25-35 range; F.2-T restores p95 to the 40+ range).
-<a href=#1170 id=1170 data-nosnippet>1170</a>        </span><span class="macro">assert!</span>(
-<a href=#1171 id=1171 data-nosnippet>1171</a>            p95 &gt;= <span class="number">40.0</span>,
-<a href=#1172 id=1172 data-nosnippet>1172</a>            <span class="string">"Highland p95 reached only {p95:.2} — expected &gt;= 40. Top 5% of vertices do not \
-<a href=#1173 id=1173 data-nosnippet>1173</a>             form a substantial highland band."
-<a href=#1174 id=1174 data-nosnippet>1174</a>        </span>);
-<a href=#1175 id=1175 data-nosnippet>1175</a>    }
-<a href=#1176 id=1176 data-nosnippet>1176</a>
-<a href=#1177 id=1177 data-nosnippet>1177</a>    <span class="doccomment">/// Phase 1.6-F.2.C: regression guard. When continental_enabled is false,
-<a href=#1178 id=1178 data-nosnippet>1178</a>    /// sample_height must produce byte-identical output to pre-F.2
-<a href=#1179 id=1179 data-nosnippet>1179</a>    /// semantics (i.e. mountain layer's raw contribution is added without
-<a href=#1180 id=1180 data-nosnippet>1180</a>    /// modulation). Verified by comparing a config with continental disabled
-<a href=#1181 id=1181 data-nosnippet>1181</a>    /// against a hand-computed sum of the three layers.
-<a href=#1182 id=1182 data-nosnippet>1182</a>    </span><span class="attr">#[test]
-<a href=#1183 id=1183 data-nosnippet>1183</a>    </span><span class="kw">fn </span>phase_1_6_f2_continental_disabled_is_noop() {
-<a href=#1184 id=1184 data-nosnippet>1184</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = NoiseConfig::default();
-<a href=#1185 id=1185 data-nosnippet>1185</a>        config.continental_enabled = <span class="bool-val">false</span>;
-<a href=#1186 id=1186 data-nosnippet>1186</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
-<a href=#1187 id=1187 data-nosnippet>1187</a>
-<a href=#1188 id=1188 data-nosnippet>1188</a>        <span class="comment">// Sample at three positions; the result should match a manual sum
-<a href=#1189 id=1189 data-nosnippet>1189</a>        // of the three layers without any continental modulation.
-<a href=#1190 id=1190 data-nosnippet>1190</a>        </span><span class="kw">for </span>(x, z) <span class="kw">in </span>[(<span class="number">0.0f64</span>, <span class="number">0.0</span>), (<span class="number">500.0</span>, <span class="number">500.0</span>), (-<span class="number">300.0</span>, <span class="number">700.0</span>)] {
-<a href=#1191 id=1191 data-nosnippet>1191</a>            <span class="kw">let </span>actual = noise.sample_height(x, z);
-<a href=#1192 id=1192 data-nosnippet>1192</a>
-<a href=#1193 id=1193 data-nosnippet>1193</a>            <span class="kw">let </span>base = noise.base_elevation.get([
-<a href=#1194 id=1194 data-nosnippet>1194</a>                x * config.base_elevation.scale,
-<a href=#1195 id=1195 data-nosnippet>1195</a>                <span class="number">0.0</span>,
-<a href=#1196 id=1196 data-nosnippet>1196</a>                z * config.base_elevation.scale,
-<a href=#1197 id=1197 data-nosnippet>1197</a>            ]) <span class="kw">as </span>f32
-<a href=#1198 id=1198 data-nosnippet>1198</a>                * config.base_elevation.amplitude;
-<a href=#1199 id=1199 data-nosnippet>1199</a>
-<a href=#1200 id=1200 data-nosnippet>1200</a>            <span class="kw">let </span>mountains_raw = (noise.mountains.get([
-<a href=#1201 id=1201 data-nosnippet>1201</a>                x * config.mountains.scale,
-<a href=#1202 id=1202 data-nosnippet>1202</a>                <span class="number">0.0</span>,
-<a href=#1203 id=1203 data-nosnippet>1203</a>                z * config.mountains.scale,
-<a href=#1204 id=1204 data-nosnippet>1204</a>            ]) <span class="kw">as </span>f32)
-<a href=#1205 id=1205 data-nosnippet>1205</a>                .abs()
-<a href=#1206 id=1206 data-nosnippet>1206</a>                * config.mountains.amplitude;
-<a href=#1207 id=1207 data-nosnippet>1207</a>
-<a href=#1208 id=1208 data-nosnippet>1208</a>            <span class="kw">let </span>detail = noise.detail.get([
-<a href=#1209 id=1209 data-nosnippet>1209</a>                x * config.detail.scale,
-<a href=#1210 id=1210 data-nosnippet>1210</a>                <span class="number">0.0</span>,
-<a href=#1211 id=1211 data-nosnippet>1211</a>                z * config.detail.scale,
-<a href=#1212 id=1212 data-nosnippet>1212</a>            ]) <span class="kw">as </span>f32
-<a href=#1213 id=1213 data-nosnippet>1213</a>                * config.detail.amplitude;
-<a href=#1214 id=1214 data-nosnippet>1214</a>
-<a href=#1215 id=1215 data-nosnippet>1215</a>            <span class="kw">let </span>expected = (base + mountains_raw + detail).max(<span class="number">0.0</span>);
-<a href=#1216 id=1216 data-nosnippet>1216</a>            <span class="macro">assert!</span>(
-<a href=#1217 id=1217 data-nosnippet>1217</a>                (actual - expected).abs() &lt; <span class="number">1e-4</span>,
-<a href=#1218 id=1218 data-nosnippet>1218</a>                <span class="string">"continental-disabled sample_height({x}, {z}) = {actual}, expected {expected} (diff {})"</span>,
-<a href=#1219 id=1219 data-nosnippet>1219</a>                (actual - expected).abs()
-<a href=#1220 id=1220 data-nosnippet>1220</a>            );
-<a href=#1221 id=1221 data-nosnippet>1221</a>        }
-<a href=#1222 id=1222 data-nosnippet>1222</a>    }
-<a href=#1223 id=1223 data-nosnippet>1223</a>}</code></pre></div></section></main></body></html>
+<a href=#1010 id=1010 data-nosnippet>1010</a>        <span class="comment">// F.2-T-3.C.1: base_octaves 5 → 4 per PBR Nyquist formula.
+<a href=#1011 id=1011 data-nosnippet>1011</a>        </span>config.base_elevation.octaves = <span class="number">4</span>;
+<a href=#1012 id=1012 data-nosnippet>1012</a>        config.base_elevation.persistence = <span class="number">0.50</span>;
+<a href=#1013 id=1013 data-nosnippet>1013</a>        config.base_elevation.lacunarity = <span class="number">2.0</span>;
+<a href=#1014 id=1014 data-nosnippet>1014</a>        config.base_elevation.noise_type = NoiseType::DomainWarped;
+<a href=#1015 id=1015 data-nosnippet>1015</a>        config.base_elevation.domain_warp = DomainWarpConfig {
+<a href=#1016 id=1016 data-nosnippet>1016</a>            iterations: <span class="number">1</span>,
+<a href=#1017 id=1017 data-nosnippet>1017</a>            warp_scale: <span class="number">1.5</span>,
+<a href=#1018 id=1018 data-nosnippet>1018</a>            warp_strength: <span class="number">15.0</span>, <span class="comment">// F.2-T-2.B.3: was 40.
+<a href=#1019 id=1019 data-nosnippet>1019</a>            </span>warp_octaves: <span class="number">3</span>,
+<a href=#1020 id=1020 data-nosnippet>1020</a>        };
+<a href=#1021 id=1021 data-nosnippet>1021</a>        config.mountains.enabled = <span class="bool-val">true</span>;
+<a href=#1022 id=1022 data-nosnippet>1022</a>        config.mountains.scale = <span class="number">0.0025</span>;
+<a href=#1023 id=1023 data-nosnippet>1023</a>        config.mountains.amplitude = <span class="number">80.0</span>;
+<a href=#1024 id=1024 data-nosnippet>1024</a>        config.mountains.octaves = <span class="number">6</span>;
+<a href=#1025 id=1025 data-nosnippet>1025</a>        <span class="comment">// mountains.persistence and mountains.lacunarity use NoiseConfig::default
+<a href=#1026 id=1026 data-nosnippet>1026</a>        // values (0.4 and 2.2) since BiomeNoisePreset doesn't override them.
+<a href=#1027 id=1027 data-nosnippet>1027</a>        </span>config.detail.enabled = <span class="bool-val">true</span>;
+<a href=#1028 id=1028 data-nosnippet>1028</a>        config.detail.scale = <span class="number">0.02</span>;
+<a href=#1029 id=1029 data-nosnippet>1029</a>        config.detail.amplitude = <span class="number">4.0</span>;
+<a href=#1030 id=1030 data-nosnippet>1030</a>        config.continental_enabled = <span class="bool-val">true</span>;
+<a href=#1031 id=1031 data-nosnippet>1031</a>        config
+<a href=#1032 id=1032 data-nosnippet>1032</a>    }
+<a href=#1033 id=1033 data-nosnippet>1033</a>
+<a href=#1034 id=1034 data-nosnippet>1034</a>    <span class="doccomment">/// Phase 1.6-F.2-T-2.C: permanent regression guard for the "bed-of-nails
+<a href=#1035 id=1035 data-nosnippet>1035</a>    /// surface spikes" failure mode that F.2-T-2 resolved. Generates heights
+<a href=#1036 id=1036 data-nosnippet>1036</a>    /// across a 200×200 grid at 1 world-unit spacing using the grassland
+<a href=#1037 id=1037 data-nosnippet>1037</a>    /// preset (the default most-viewed preset, which F.2-T-2 targeted most
+<a href=#1038 id=1038 data-nosnippet>1038</a>    /// aggressively). Asserts local curvature (average |center - avg(4
+<a href=#1039 id=1039 data-nosnippet>1039</a>    /// neighbors)|) stays below a threshold locked at post-F.2-T-2
+<a href=#1040 id=1040 data-nosnippet>1040</a>    /// measurement × 1.2 (20% buffer).
+<a href=#1041 id=1041 data-nosnippet>1041</a>    ///
+<a href=#1042 id=1042 data-nosnippet>1042</a>    /// Pre-F.2-T-2.B.3 baseline: total curvature 2.016 (bed-of-nails).
+<a href=#1043 id=1043 data-nosnippet>1043</a>    /// Post-F.2-T-2.B.3 measurement: total curvature 0.753.
+<a href=#1044 id=1044 data-nosnippet>1044</a>    /// Threshold: 0.90 (≈ 0.753 × 1.2) — catches regressions at any
+<a href=#1045 id=1045 data-nosnippet>1045</a>    /// warp_strength ≥ 20 per F.2-T-2.A's tuning matrix.
+<a href=#1046 id=1046 data-nosnippet>1046</a>    ///
+<a href=#1047 id=1047 data-nosnippet>1047</a>    /// If a future sub-phase tunes the grassland preset's DomainWarped
+<a href=#1048 id=1048 data-nosnippet>1048</a>    /// parameters, this test's inline config must be updated in lockstep
+<a href=#1049 id=1049 data-nosnippet>1049</a>    /// with `terrain_panel.rs::noise_preset_for_biome`.
+<a href=#1050 id=1050 data-nosnippet>1050</a>    </span><span class="attr">#[test]
+<a href=#1051 id=1051 data-nosnippet>1051</a>    </span><span class="kw">fn </span>phase_1_6_f2_t2_surface_spikiness_under_threshold() {
+<a href=#1052 id=1052 data-nosnippet>1052</a>        <span class="kw">let </span>config = phase_1_6_f2_t2_grassland_config();
+<a href=#1053 id=1053 data-nosnippet>1053</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
+<a href=#1054 id=1054 data-nosnippet>1054</a>
+<a href=#1055 id=1055 data-nosnippet>1055</a>        <span class="kw">const </span>GRID_DIM: usize = <span class="number">200</span>;
+<a href=#1056 id=1056 data-nosnippet>1056</a>        <span class="kw">let </span><span class="kw-2">mut </span>heights = <span class="macro">vec!</span>[<span class="number">0f32</span>; GRID_DIM * GRID_DIM];
+<a href=#1057 id=1057 data-nosnippet>1057</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..GRID_DIM {
+<a href=#1058 id=1058 data-nosnippet>1058</a>            <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..GRID_DIM {
+<a href=#1059 id=1059 data-nosnippet>1059</a>                heights[i * GRID_DIM + j] = noise.sample_height(i <span class="kw">as </span>f64, j <span class="kw">as </span>f64);
+<a href=#1060 id=1060 data-nosnippet>1060</a>            }
+<a href=#1061 id=1061 data-nosnippet>1061</a>        }
+<a href=#1062 id=1062 data-nosnippet>1062</a>        <span class="kw">let </span>curv = phase_1_6_f2_t2_local_curvature_grid(<span class="kw-2">&amp;</span>heights, GRID_DIM);
+<a href=#1063 id=1063 data-nosnippet>1063</a>
+<a href=#1064 id=1064 data-nosnippet>1064</a>        <span class="kw">const </span>SPIKE_THRESHOLD: f32 = <span class="number">0.90</span>;
+<a href=#1065 id=1065 data-nosnippet>1065</a>
+<a href=#1066 id=1066 data-nosnippet>1066</a>        <span class="macro">println!</span>(<span class="string">"F.2-T-2 spike regression: curvature {curv:.3} (threshold {SPIKE_THRESHOLD})"</span>);
+<a href=#1067 id=1067 data-nosnippet>1067</a>
+<a href=#1068 id=1068 data-nosnippet>1068</a>        <span class="macro">assert!</span>(
+<a href=#1069 id=1069 data-nosnippet>1069</a>            curv &lt;= SPIKE_THRESHOLD,
+<a href=#1070 id=1070 data-nosnippet>1070</a>            <span class="string">"Surface curvature {curv:.3} &gt; threshold {SPIKE_THRESHOLD} — bed-of-nails regression. \
+<a href=#1071 id=1071 data-nosnippet>1071</a>             F.2-T-2.A diagnostic showed DomainWarped `warp_strength` is the dominant spike \
+<a href=#1072 id=1072 data-nosnippet>1072</a>             source; check `base_domain_warp.warp_strength` on the grassland preset in \
+<a href=#1073 id=1073 data-nosnippet>1073</a>             terrain_panel.rs for recent changes."
+<a href=#1074 id=1074 data-nosnippet>1074</a>        </span>);
+<a href=#1075 id=1075 data-nosnippet>1075</a>    }
+<a href=#1076 id=1076 data-nosnippet>1076</a>
+<a href=#1077 id=1077 data-nosnippet>1077</a>    <span class="doccomment">/// Phase 1.6-F.2-T.C: permanent regression guard for the "continental
+<a href=#1078 id=1078 data-nosnippet>1078</a>    /// suppressed everything uniformly" failure mode. Generates heights
+<a href=#1079 id=1079 data-nosnippet>1079</a>    /// across the editor's 11×11 chunk grid (radius 5) with grassland
+<a href=#1080 id=1080 data-nosnippet>1080</a>    /// preset amplitudes + F.2 continental modulation enabled. Asserts on
+<a href=#1081 id=1081 data-nosnippet>1081</a>    /// both Y max and p95 (top 5% threshold) so that regression-free
+<a href=#1082 id=1082 data-nosnippet>1082</a>    /// highland regions exist.
+<a href=#1083 id=1083 data-nosnippet>1083</a>    ///
+<a href=#1084 id=1084 data-nosnippet>1084</a>    /// Thresholds reflect the F.2 continental-modulation design: even at
+<a href=#1085 id=1085 data-nosnippet>1085</a>    /// max continental_01 (measured 0.874 at seed 12345 in F.2-T.A),
+<a href=#1086 id=1086 data-nosnippet>1086</a>    /// multiplier = 0.50 + 0.50×0.874 = 0.937, so highland peaks are
+<a href=#1087 id=1087 data-nosnippet>1087</a>    /// bounded at ~94% of F.1's unmodulated mountain amplitude. The test
+<a href=#1088 id=1088 data-nosnippet>1088</a>    /// thresholds (Y max ≥ 85, p95 ≥ 40) are calibrated to this expected
+<a href=#1089 id=1089 data-nosnippet>1089</a>    /// bound — strict enough to fail F.2-pre-tuning (Y max 70, p95 ~25)
+<a href=#1090 id=1090 data-nosnippet>1090</a>    /// and F.2-T without continental widening (Y max 88), while
+<a href=#1091 id=1091 data-nosnippet>1091</a>    /// accommodating the intrinsic continental-modulation compression.
+<a href=#1092 id=1092 data-nosnippet>1092</a>    ///
+<a href=#1093 id=1093 data-nosnippet>1093</a>    /// The grassland preset's amplitudes are inlined here; if a future
+<a href=#1094 id=1094 data-nosnippet>1094</a>    /// sub-phase (e.g. F.5 integration tuning) modifies them in
+<a href=#1095 id=1095 data-nosnippet>1095</a>    /// `tools/aw_editor/src/panels/terrain_panel.rs`, this test's inline
+<a href=#1096 id=1096 data-nosnippet>1096</a>    /// values must be updated in lockstep. The inline pattern mirrors F.1's
+<a href=#1097 id=1097 data-nosnippet>1097</a>    /// diagnostic-test convention.
+<a href=#1098 id=1098 data-nosnippet>1098</a>    </span><span class="attr">#[test]
+<a href=#1099 id=1099 data-nosnippet>1099</a>    </span><span class="kw">fn </span>phase_1_6_f2_t_highland_regions_reach_f1_target() {
+<a href=#1100 id=1100 data-nosnippet>1100</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = NoiseConfig::default();
+<a href=#1101 id=1101 data-nosnippet>1101</a>        <span class="comment">// Grassland preset values from terrain_panel.rs::noise_preset_for_biome
+<a href=#1102 id=1102 data-nosnippet>1102</a>        // `_ =&gt;` arm, as of F.2-T-3.C.1.
+<a href=#1103 id=1103 data-nosnippet>1103</a>        </span>config.base_elevation.scale = <span class="number">0.004</span>;
+<a href=#1104 id=1104 data-nosnippet>1104</a>        config.base_elevation.amplitude = <span class="number">50.0</span>;
+<a href=#1105 id=1105 data-nosnippet>1105</a>        config.base_elevation.octaves = <span class="number">4</span>; <span class="comment">// F.2-T-3.C.1: was 5 (PBR Nyquist cap).
+<a href=#1106 id=1106 data-nosnippet>1106</a>        </span>config.base_elevation.persistence = <span class="number">0.50</span>;
+<a href=#1107 id=1107 data-nosnippet>1107</a>        config.base_elevation.lacunarity = <span class="number">2.0</span>;
+<a href=#1108 id=1108 data-nosnippet>1108</a>        config.base_elevation.noise_type = NoiseType::DomainWarped;
+<a href=#1109 id=1109 data-nosnippet>1109</a>        config.base_elevation.domain_warp = DomainWarpConfig {
+<a href=#1110 id=1110 data-nosnippet>1110</a>            iterations: <span class="number">1</span>,
+<a href=#1111 id=1111 data-nosnippet>1111</a>            warp_scale: <span class="number">1.5</span>,
+<a href=#1112 id=1112 data-nosnippet>1112</a>            warp_strength: <span class="number">15.0</span>, <span class="comment">// F.2-T-2.B.3: was 40.
+<a href=#1113 id=1113 data-nosnippet>1113</a>            </span>warp_octaves: <span class="number">3</span>,
+<a href=#1114 id=1114 data-nosnippet>1114</a>        };
+<a href=#1115 id=1115 data-nosnippet>1115</a>        config.mountains.enabled = <span class="bool-val">true</span>;
+<a href=#1116 id=1116 data-nosnippet>1116</a>        config.mountains.scale = <span class="number">0.0025</span>;
+<a href=#1117 id=1117 data-nosnippet>1117</a>        config.mountains.amplitude = <span class="number">80.0</span>;
+<a href=#1118 id=1118 data-nosnippet>1118</a>        config.mountains.octaves = <span class="number">6</span>;
+<a href=#1119 id=1119 data-nosnippet>1119</a>        config.detail.enabled = <span class="bool-val">true</span>;
+<a href=#1120 id=1120 data-nosnippet>1120</a>        config.detail.scale = <span class="number">0.02</span>;
+<a href=#1121 id=1121 data-nosnippet>1121</a>        config.detail.amplitude = <span class="number">4.0</span>;
+<a href=#1122 id=1122 data-nosnippet>1122</a>        config.continental_enabled = <span class="bool-val">true</span>;
+<a href=#1123 id=1123 data-nosnippet>1123</a>
+<a href=#1124 id=1124 data-nosnippet>1124</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
+<a href=#1125 id=1125 data-nosnippet>1125</a>
+<a href=#1126 id=1126 data-nosnippet>1126</a>        <span class="comment">// Generate over the editor's 11x11 chunk grid (radius 5) at 64 verts
+<a href=#1127 id=1127 data-nosnippet>1127</a>        // per chunk side, 256 world units per chunk. Matches TerrainState's
+<a href=#1128 id=1128 data-nosnippet>1128</a>        // default runtime extent.
+<a href=#1129 id=1129 data-nosnippet>1129</a>        </span><span class="kw">let </span>chunk_size = <span class="number">256.0f64</span>;
+<a href=#1130 id=1130 data-nosnippet>1130</a>        <span class="kw">let </span>verts_per_side = <span class="number">64i32</span>;
+<a href=#1131 id=1131 data-nosnippet>1131</a>        <span class="kw">let </span>chunk_radius = <span class="number">5i32</span>;
+<a href=#1132 id=1132 data-nosnippet>1132</a>
+<a href=#1133 id=1133 data-nosnippet>1133</a>        <span class="kw">let </span><span class="kw-2">mut </span>heights: Vec&lt;f32&gt; = Vec::with_capacity(<span class="number">495_616</span>);
+<a href=#1134 id=1134 data-nosnippet>1134</a>        <span class="kw">for </span>chunk_x <span class="kw">in </span>-chunk_radius..=chunk_radius {
+<a href=#1135 id=1135 data-nosnippet>1135</a>            <span class="kw">for </span>chunk_z <span class="kw">in </span>-chunk_radius..=chunk_radius {
+<a href=#1136 id=1136 data-nosnippet>1136</a>                <span class="kw">let </span>origin_x = chunk_x <span class="kw">as </span>f64 * chunk_size;
+<a href=#1137 id=1137 data-nosnippet>1137</a>                <span class="kw">let </span>origin_z = chunk_z <span class="kw">as </span>f64 * chunk_size;
+<a href=#1138 id=1138 data-nosnippet>1138</a>                <span class="kw">for </span>vz <span class="kw">in </span><span class="number">0</span>..verts_per_side {
+<a href=#1139 id=1139 data-nosnippet>1139</a>                    <span class="kw">for </span>vx <span class="kw">in </span><span class="number">0</span>..verts_per_side {
+<a href=#1140 id=1140 data-nosnippet>1140</a>                        <span class="kw">let </span>x = origin_x
+<a href=#1141 id=1141 data-nosnippet>1141</a>                            + (vx <span class="kw">as </span>f64 / verts_per_side <span class="kw">as </span>f64) * chunk_size;
+<a href=#1142 id=1142 data-nosnippet>1142</a>                        <span class="kw">let </span>z = origin_z
+<a href=#1143 id=1143 data-nosnippet>1143</a>                            + (vz <span class="kw">as </span>f64 / verts_per_side <span class="kw">as </span>f64) * chunk_size;
+<a href=#1144 id=1144 data-nosnippet>1144</a>                        heights.push(noise.sample_height(x, z));
+<a href=#1145 id=1145 data-nosnippet>1145</a>                    }
+<a href=#1146 id=1146 data-nosnippet>1146</a>                }
+<a href=#1147 id=1147 data-nosnippet>1147</a>            }
+<a href=#1148 id=1148 data-nosnippet>1148</a>        }
+<a href=#1149 id=1149 data-nosnippet>1149</a>        heights.sort_by(|a, b| a.partial_cmp(b).unwrap());
+<a href=#1150 id=1150 data-nosnippet>1150</a>
+<a href=#1151 id=1151 data-nosnippet>1151</a>        <span class="kw">let </span>n = heights.len();
+<a href=#1152 id=1152 data-nosnippet>1152</a>        <span class="kw">let </span>y_min = heights[<span class="number">0</span>];
+<a href=#1153 id=1153 data-nosnippet>1153</a>        <span class="kw">let </span>y_max = <span class="kw-2">*</span>heights.last().unwrap();
+<a href=#1154 id=1154 data-nosnippet>1154</a>        <span class="kw">let </span>p95 = heights[(n <span class="kw">as </span>f32 * <span class="number">0.95</span>) <span class="kw">as </span>usize];
+<a href=#1155 id=1155 data-nosnippet>1155</a>        <span class="kw">let </span>p99 = heights[(n <span class="kw">as </span>f32 * <span class="number">0.99</span>) <span class="kw">as </span>usize];
+<a href=#1156 id=1156 data-nosnippet>1156</a>
+<a href=#1157 id=1157 data-nosnippet>1157</a>        <span class="macro">println!</span>(
+<a href=#1158 id=1158 data-nosnippet>1158</a>            <span class="string">"Highland-Y-max regression: min={y_min:.2} p95={p95:.2} p99={p99:.2} max={y_max:.2} n={n}"
+<a href=#1159 id=1159 data-nosnippet>1159</a>        </span>);
+<a href=#1160 id=1160 data-nosnippet>1160</a>
+<a href=#1161 id=1161 data-nosnippet>1161</a>        <span class="comment">// Gate 1: at least some highland peak exists (Y max).
+<a href=#1162 id=1162 data-nosnippet>1162</a>        </span><span class="macro">assert!</span>(
+<a href=#1163 id=1163 data-nosnippet>1163</a>            y_max &gt;= <span class="number">85.0</span>,
+<a href=#1164 id=1164 data-nosnippet>1164</a>            <span class="string">"Highland Y max reached only {y_max:.2} — expected &gt;= 85. Continental modulation \
+<a href=#1165 id=1165 data-nosnippet>1165</a>             may be suppressing mountain layer too aggressively, or continental field may not \
+<a href=#1166 id=1166 data-nosnippet>1166</a>             reach highland regions (cont &gt; 0.7) within the visible terrain."
+<a href=#1167 id=1167 data-nosnippet>1167</a>        </span>);
+<a href=#1168 id=1168 data-nosnippet>1168</a>        <span class="comment">// Gate 2: top 5% of vertices (p95) must be substantial, catching the
+<a href=#1169 id=1169 data-nosnippet>1169</a>        // "continental suppressed everything uniformly" failure (pre-F.2-T
+<a href=#1170 id=1170 data-nosnippet>1170</a>        // p95 was in the 25-35 range; F.2-T restores p95 to the 40+ range).
+<a href=#1171 id=1171 data-nosnippet>1171</a>        </span><span class="macro">assert!</span>(
+<a href=#1172 id=1172 data-nosnippet>1172</a>            p95 &gt;= <span class="number">40.0</span>,
+<a href=#1173 id=1173 data-nosnippet>1173</a>            <span class="string">"Highland p95 reached only {p95:.2} — expected &gt;= 40. Top 5% of vertices do not \
+<a href=#1174 id=1174 data-nosnippet>1174</a>             form a substantial highland band."
+<a href=#1175 id=1175 data-nosnippet>1175</a>        </span>);
+<a href=#1176 id=1176 data-nosnippet>1176</a>    }
+<a href=#1177 id=1177 data-nosnippet>1177</a>
+<a href=#1178 id=1178 data-nosnippet>1178</a>    <span class="doccomment">/// Phase 1.6-F.2.C: regression guard. When continental_enabled is false,
+<a href=#1179 id=1179 data-nosnippet>1179</a>    /// sample_height must produce byte-identical output to pre-F.2
+<a href=#1180 id=1180 data-nosnippet>1180</a>    /// semantics (i.e. mountain layer's raw contribution is added without
+<a href=#1181 id=1181 data-nosnippet>1181</a>    /// modulation). Verified by comparing a config with continental disabled
+<a href=#1182 id=1182 data-nosnippet>1182</a>    /// against a hand-computed sum of the three layers.
+<a href=#1183 id=1183 data-nosnippet>1183</a>    </span><span class="attr">#[test]
+<a href=#1184 id=1184 data-nosnippet>1184</a>    </span><span class="kw">fn </span>phase_1_6_f2_continental_disabled_is_noop() {
+<a href=#1185 id=1185 data-nosnippet>1185</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = NoiseConfig::default();
+<a href=#1186 id=1186 data-nosnippet>1186</a>        config.continental_enabled = <span class="bool-val">false</span>;
+<a href=#1187 id=1187 data-nosnippet>1187</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
+<a href=#1188 id=1188 data-nosnippet>1188</a>
+<a href=#1189 id=1189 data-nosnippet>1189</a>        <span class="comment">// Sample at three positions; the result should match a manual sum
+<a href=#1190 id=1190 data-nosnippet>1190</a>        // of the three layers without any continental modulation.
+<a href=#1191 id=1191 data-nosnippet>1191</a>        </span><span class="kw">for </span>(x, z) <span class="kw">in </span>[(<span class="number">0.0f64</span>, <span class="number">0.0</span>), (<span class="number">500.0</span>, <span class="number">500.0</span>), (-<span class="number">300.0</span>, <span class="number">700.0</span>)] {
+<a href=#1192 id=1192 data-nosnippet>1192</a>            <span class="kw">let </span>actual = noise.sample_height(x, z);
+<a href=#1193 id=1193 data-nosnippet>1193</a>
+<a href=#1194 id=1194 data-nosnippet>1194</a>            <span class="kw">let </span>base = noise.base_elevation.get([
+<a href=#1195 id=1195 data-nosnippet>1195</a>                x * config.base_elevation.scale,
+<a href=#1196 id=1196 data-nosnippet>1196</a>                <span class="number">0.0</span>,
+<a href=#1197 id=1197 data-nosnippet>1197</a>                z * config.base_elevation.scale,
+<a href=#1198 id=1198 data-nosnippet>1198</a>            ]) <span class="kw">as </span>f32
+<a href=#1199 id=1199 data-nosnippet>1199</a>                * config.base_elevation.amplitude;
+<a href=#1200 id=1200 data-nosnippet>1200</a>
+<a href=#1201 id=1201 data-nosnippet>1201</a>            <span class="kw">let </span>mountains_raw = (noise.mountains.get([
+<a href=#1202 id=1202 data-nosnippet>1202</a>                x * config.mountains.scale,
+<a href=#1203 id=1203 data-nosnippet>1203</a>                <span class="number">0.0</span>,
+<a href=#1204 id=1204 data-nosnippet>1204</a>                z * config.mountains.scale,
+<a href=#1205 id=1205 data-nosnippet>1205</a>            ]) <span class="kw">as </span>f32)
+<a href=#1206 id=1206 data-nosnippet>1206</a>                .abs()
+<a href=#1207 id=1207 data-nosnippet>1207</a>                * config.mountains.amplitude;
+<a href=#1208 id=1208 data-nosnippet>1208</a>
+<a href=#1209 id=1209 data-nosnippet>1209</a>            <span class="kw">let </span>detail = noise.detail.get([
+<a href=#1210 id=1210 data-nosnippet>1210</a>                x * config.detail.scale,
+<a href=#1211 id=1211 data-nosnippet>1211</a>                <span class="number">0.0</span>,
+<a href=#1212 id=1212 data-nosnippet>1212</a>                z * config.detail.scale,
+<a href=#1213 id=1213 data-nosnippet>1213</a>            ]) <span class="kw">as </span>f32
+<a href=#1214 id=1214 data-nosnippet>1214</a>                * config.detail.amplitude;
+<a href=#1215 id=1215 data-nosnippet>1215</a>
+<a href=#1216 id=1216 data-nosnippet>1216</a>            <span class="kw">let </span>expected = (base + mountains_raw + detail).max(<span class="number">0.0</span>);
+<a href=#1217 id=1217 data-nosnippet>1217</a>            <span class="macro">assert!</span>(
+<a href=#1218 id=1218 data-nosnippet>1218</a>                (actual - expected).abs() &lt; <span class="number">1e-4</span>,
+<a href=#1219 id=1219 data-nosnippet>1219</a>                <span class="string">"continental-disabled sample_height({x}, {z}) = {actual}, expected {expected} (diff {})"</span>,
+<a href=#1220 id=1220 data-nosnippet>1220</a>                (actual - expected).abs()
+<a href=#1221 id=1221 data-nosnippet>1221</a>            );
+<a href=#1222 id=1222 data-nosnippet>1222</a>        }
+<a href=#1223 id=1223 data-nosnippet>1223</a>    }
+<a href=#1224 id=1224 data-nosnippet>1224</a>}</code></pre></div></section></main></body></html>
