@@ -483,7 +483,7 @@ F.1 — Amplitude tuning: COMPLETE 2026-04-21, commits fff581aa4 (F.1.A) + a05b8
 F.2 — DomainWarped noise integration + continental-scale macro-feature: COMPLETE 2026-04-21, commits ed65a1fc7 (plan amend) + a4b76fb1e (F.2.A) + 1cda72d8c (F.2.B) + 95a50f4c7 (F.2.C) + 566cdb323 (F.2.D). Tuning pass 2026-04-21 — commits b6e4aa971 (F.2-T.A) + cc29e7dd7 (F.2-T.B.1) + 14f34f067 (F.2-T.B.2) + 61d647738 (F.2-T.C) + 14d407b69 (F.2-T.D). Second tuning pass 2026-04-22 — commits 29658f86f (F.2-T-2.A) + b85507746 (F.2-T-2.B.3) + ec951d1b8 (F.2-T-2.C) + c3599b138 (F.2-T-2.D). Research + audit pass 2026-04-22 — commits 4f2fca568 (F.2-T-3.A research) + 7c46c2449 (F.2-T-3.B audit) + 62526a04d (F.2-T-3.C.1 PBR Nyquist cap) + 3c7271399 (F.2-T-3.D closeout). F.2-T-3 concluded residual surface-spike character is expected from raw noise per literature; F.3 erosion endorsed as canonical solver. Fourth tuning pass (derivative-weighted fBm) 2026-04-22 — commits efe80f146 (F.2-T-4.A+B primitives) + 48c8fc0d0 (F.2-T-4.C+D wiring + regression-threshold tightening) + c894c0d71 (F.2-T-4.E closeout). F.2-T-4 implements Quilez morenoise slope-attenuated fBm; reduces curvature 17% further, preserves highland amplitude, improves performance slightly.
 F.3 — AdvancedErosionSimulator wiring with halo: IN PROGRESS
   F.3-phase-0 (soundness audit): COMPLETE 2026-04-23, commits 8a5392f71 (A static audit) + db29ee8ca (B behavioral tests) + aa3be96b2 (C perf characterization) + 8fdf849bd (E closeout). See `docs/audits/advanced_erosion_static_audit_2026-04-23.md`. Simulator is sound for phase 2 wiring; suspected velocity `.abs()` quirk doesn't affect droplet travel or test outcomes; performance OK for default/desert/coastal presets but mountain (100k droplets) projects 83.5s on 121 chunks — droplet-count fallback per §2.3 required at phase 2. §2.3 halo=1 assumption empirically validated (p95 travel 120 world units < 256).
-  F.3-phase-1 (biome-weight restructure + halo scaffolding): NOT STARTED
+  F.3-phase-1 (biome-weight restructure + halo scaffolding): COMPLETE 2026-04-23, commits 2de78f3e1 (A+B combined) + <F.3-phase-1.C-hash>. Shape A adopted (TerrainChunk.biome_weights pre-erosion); halo=1 machinery in place and verified byte-identical to F.2-T-4 (Y max 96.04, curvature 0.576, both permanent regression tests unchanged). Phase 2 will feed halo heightmap into AdvancedErosionSimulator.
   F.3-phase-2 (erosion wiring + closeout): NOT STARTED
 F.4 — Climate as spatial field: NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
@@ -735,6 +735,49 @@ Cumulative 3.5× curvature reduction over F.2's rollout. Performance IMPROVED fr
 - `docs/audits/advanced_erosion_static_audit_2026-04-23.md` — durable reference for future simulator work.
 
 **Phase 1 readiness: YES.** Simulator is sound, API is stable, halo assumption holds, performance projections identify exactly which presets need fallback. Phase 1 can draft the biome-weight restructure + halo scaffolding on this foundation.
+
+### 2026-04-23, Sub-phase F.3-phase-1 (biome-weight restructure + halo scaffolding), commits 2de78f3e1 through <F.3-phase-1.C-hash>
+
+**Deviation:** F.3 continues in three phases. Phase 1 implements the §2.1 data-flow restructure (biome_weights computed pre-erosion) and the §2.3 halo-expansion scaffolding without any behavior change. F.2-T-4's visual output is preserved byte-for-byte; phase 2 lands the erosion behavior change on top.
+
+**Shape A vs Shape B decision (§2.1):** Adopted **Shape A** (generator-side biome_weights on TerrainChunk). `TerrainChunk` grows a `biome_weights: Option<Vec<[f32; 8]>>` field populated by a new `WorldGenerator::generate_chunk_with_climate(chunk_id, climate_bias)` method. Legacy `generate_chunk` is unchanged (biome_weights stays `None`) — preserves behavior for the four non-editor callers (`astraweave-render`, `weaving_playground`, two wave3 integration tests). Editor's `generate_terrain` calls the new method and reads biome_weights from the chunk via a new `Option<&[[f32; 8]]>` parameter on `generate_heightmap_mesh`. Shape A was viable because `TerrainChunk` has no Serialize/Deserialize derives and field-level access is fully private behind accessors, so adding a field is non-breaking.
+
+**Halo scaffolding:**
+- `WorldGenerator::generate_halo_heightmap(target_chunk_id, halo_chunks)` — samples `TerrainNoise::sample_height` directly at per-vertex world coordinates across a (1+2*halo_chunks)-chunk-per-side region. At halo_chunks=1, produces 190×190 heights covering 768×768 world units. Byte-identical at the center crop to legacy SIMD single-chunk generation (verified: max diff 0.000053).
+- `WorldGenerator::crop_halo_to_chunk(halo, target_chunk_id)` — extracts the center 64×64 back out of the halo. Adjacent chunks' shared edges match to 0.0 world units (same noise samples at same world coords).
+- `WorldGenerator::halo_seed(world_seed, target_chunk_id, halo_chunks)` — Wang-style hash for phase 2's erosion seed. `#[allow(dead_code)]` until phase 2 wires it; three unit tests in `noise_gen::tests` verify determinism properties.
+
+**Measurements:**
+- Both permanent regression tests pass with F.2-T-4 baseline values unchanged:
+  - Highland Y max: **96.04** (F.2-T-4 baseline: 96.04) ✓
+  - Highland p95: **54.74** (F.2-T-4: 54.74) ✓
+  - Highland p99: **66.78** (F.2-T-4: 66.78) ✓
+  - Spike curvature: **0.576** (F.2-T-4: 0.576) ✓
+- F.3-phase-0 synthetic heightmap tests: 10/10 pass, unchanged.
+- New F.3-phase-1 integration tests: 8 pass (4 biome_weights + 4 halo_scaffolding).
+- Three `halo_seed` unit tests pass in `noise_gen::tests`.
+
+**Phase 1 success criterion (byte-identical output): MET.**
+
+**New assets landed:**
+- `TerrainChunk::new_with_biome_weights` constructor + `biome_weights()` accessor.
+- `WorldGenerator::generate_chunk_with_climate` (new method; legacy `generate_chunk` untouched).
+- `WorldGenerator::generate_halo_heightmap` + `crop_halo_to_chunk` + `halo_seed` helpers.
+- `generate_heightmap_mesh` gained `Option<&[[f32; 8]]>` parameter; three editor call sites updated to preserve §2.5 stability across stamping / painting.
+- `astraweave-terrain/tests/phase_1_6_f3_phase_1_biome_weights_pre_erosion.rs` (4 tests).
+- `astraweave-terrain/tests/phase_1_6_f3_phase_1_halo_scaffolding.rs` (4 tests).
+
+**Impact on phase 2:**
+- Phase 2's `AdvancedErosionSimulator::apply_preset` call site is now structurally ready. The halo heightmap exists but is currently discarded after crop; phase 2 wires `apply_preset(&mut halo_heightmap, preset)` between generation and crop.
+- Deterministic halo seed scheme exists and is verified; phase 2 uses it for `AdvancedErosionSimulator::new(halo_seed(...))`.
+- Biome-weight ordering is correct: phase 2 can replace simple CA erosion with `AdvancedErosionSimulator` without restructuring — biome_weights are already captured pre-erosion.
+- Only remaining phase 2 work: (a) `erosion_preset_for_climate` mapping function per §2.2, (b) replace simple CA call with `AdvancedErosionSimulator::apply_preset`, (c) apply §2.3 droplet-count fallback for default/mountain per phase-0's performance projection.
+
+**Deferred from phase 1 (expected in phase 2):**
+- `erosion_preset_for_climate` climate → ErosionPreset mapping (§2.2).
+- Actual `AdvancedErosionSimulator` wiring in `generate_chunk_with_climate`.
+- Droplet-count fallback for default / mountain presets.
+- Chunk-boundary continuity visual verification under real erosion.
 
 ---
 
