@@ -1903,6 +1903,12 @@ impl TerrainPanel {
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
+                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
+                // (Quilez morenoise). Suppresses high-frequency content on
+                // steep slopes — the Rank 1 literature remedy for the spike
+                // regression. Enabled on all five DomainWarped presets
+                // (they're the spike-prone configurations).
+                base_derivative_weighted: true,
             },
             "desert" => BiomeNoisePreset {
                 // Phase 1.6-F.2-T-3.C.1: base_octaves 5 → 4 per PBR Nyquist
@@ -1940,6 +1946,12 @@ impl TerrainPanel {
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
+                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
+                // (Quilez morenoise). Suppresses high-frequency content on
+                // steep slopes — the Rank 1 literature remedy for the spike
+                // regression. Enabled on all five DomainWarped presets
+                // (they're the spike-prone configurations).
+                base_derivative_weighted: true,
             },
             "forest" => BiomeNoisePreset {
                 // Hilly woodland. Phase 1.6-F.1.B: mountains_amplitude raised
@@ -1975,6 +1987,12 @@ impl TerrainPanel {
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
+                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
+                // (Quilez morenoise). Suppresses high-frequency content on
+                // steep slopes — the Rank 1 literature remedy for the spike
+                // regression. Enabled on all five DomainWarped presets
+                // (they're the spike-prone configurations).
+                base_derivative_weighted: true,
             },
             "tundra" => BiomeNoisePreset {
                 // Cold-alpine terrain. ClimateBias::Cold maps to Mountain
@@ -2010,6 +2028,12 @@ impl TerrainPanel {
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
+                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
+                // (Quilez morenoise). Suppresses high-frequency content on
+                // steep slopes — the Rank 1 literature remedy for the spike
+                // regression. Enabled on all five DomainWarped presets
+                // (they're the spike-prone configurations).
+                base_derivative_weighted: true,
             },
             "swamp" => BiomeNoisePreset {
                 // Wetland — gentle bogs amid low rolling hills. Phase
@@ -2034,6 +2058,10 @@ impl TerrainPanel {
                 base_noise_type: NoiseType::Perlin,
                 base_domain_warp: None,
                 continental_modulation: false,
+                // Phase 1.6-F.2-T-4: plain-Perlin presets keep default fBm
+                // (derivative-weighted fBm only enabled on the DomainWarped
+                // presets where spike artifacts are pronounced).
+                base_derivative_weighted: false,
             },
             "beach" => BiomeNoisePreset {
                 // Coastal — sandy flats with bluffs and offshore stacks.
@@ -2058,6 +2086,10 @@ impl TerrainPanel {
                 base_noise_type: NoiseType::Perlin,
                 base_domain_warp: None,
                 continental_modulation: false,
+                // Phase 1.6-F.2-T-4: plain-Perlin presets keep default fBm
+                // (derivative-weighted fBm only enabled on the DomainWarped
+                // presets where spike artifacts are pronounced).
+                base_derivative_weighted: false,
             },
             "river" => BiomeNoisePreset {
                 // River valley — floodplain with bluffs. Phase 1.6-F.1.B:
@@ -2080,6 +2112,10 @@ impl TerrainPanel {
                 base_noise_type: NoiseType::Perlin,
                 base_domain_warp: None,
                 continental_modulation: false,
+                // Phase 1.6-F.2-T-4: plain-Perlin presets keep default fBm
+                // (derivative-weighted fBm only enabled on the DomainWarped
+                // presets where spike artifacts are pronounced).
+                base_derivative_weighted: false,
             },
             _ => BiomeNoisePreset {
                 // grassland / default — rolling hills with moderate relief.
@@ -2133,6 +2169,12 @@ impl TerrainPanel {
                     warp_octaves: 3,
                 }),
                 continental_modulation: true,
+                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
+                // (Quilez morenoise). Suppresses high-frequency content on
+                // steep slopes — the Rank 1 literature remedy for the spike
+                // regression. Enabled on all five DomainWarped presets
+                // (they're the spike-prone configurations).
+                base_derivative_weighted: true,
             },
         }
     }

@@ -48,6 +48,16 @@ pub struct NoiseConfig {
     /// seed offsets (0/+1/+2/+42).
     #[serde(default = "default_continental_seed_offset")]
     pub continental_seed_offset: u32,
+    /// Phase 1.6-F.2-T-4: whether to replace the base-elevation layer's
+    /// default Fbm evaluation with derivative-weighted fBm (Quilez morenoise
+    /// 2008). High-frequency octaves are attenuated where the accumulated
+    /// gradient is large, producing smoother output on steep slopes where
+    /// spikes would otherwise accumulate. Does NOT disable the domain-warp
+    /// coordinate displacement — that still runs before the derivative-
+    /// weighted fBm primary sample. Default false (preserves F.2-T-3
+    /// behavior for any config that doesn't opt in).
+    #[serde(default = "default_base_derivative_weighted")]
+    pub base_derivative_weighted: bool,
 }
 
 fn default_cave_frequency() -> f64 {
@@ -97,6 +107,9 @@ fn default_continental_min() -> f32 {
 fn default_continental_seed_offset() -> u32 {
     7
 }
+fn default_base_derivative_weighted() -> bool {
+    false
+}
 
 impl Default for NoiseConfig {
     fn default() -> Self {
@@ -140,6 +153,7 @@ impl Default for NoiseConfig {
             continental_scale: default_continental_scale(),
             continental_min: default_continental_min(),
             continental_seed_offset: default_continental_seed_offset(),
+            base_derivative_weighted: default_base_derivative_weighted(),
         }
     }
 }
@@ -257,20 +271,29 @@ impl DomainWarpedNoise {
     }
 }
 
+impl DomainWarpedNoise {
+    /// Phase 1.6-F.2-T-4: apply only the coordinate-warping step, returning
+    /// the warped `(x, z)` pair without sampling the primary. Used by
+    /// `TerrainNoise::sample_height` when the base layer uses derivative-
+    /// weighted fBm — the warp still happens, but the primary evaluation is
+    /// replaced by `fbm_derivative_weighted_2d`.
+    fn warp_coords(&self, x: f64, y: f64, z: f64) -> (f64, f64) {
+        let mut wx = x;
+        let mut wz = z;
+        for _ in 0..self.iterations {
+            let dx = self.warp_x.get([wx, y, wz]) * self.warp_strength;
+            let dz = self.warp_z.get([wx, y, wz]) * self.warp_strength;
+            wx += dx;
+            wz += dz;
+        }
+        (wx, wz)
+    }
+}
+
 impl NoiseFn<f64, 3> for DomainWarpedNoise {
     fn get(&self, point: [f64; 3]) -> f64 {
-        let mut x = point[0];
-        let y = point[1];
-        let mut z = point[2];
-
-        for _ in 0..self.iterations {
-            let dx = self.warp_x.get([x, y, z]) * self.warp_strength;
-            let dz = self.warp_z.get([x, y, z]) * self.warp_strength;
-            x += dx;
-            z += dz;
-        }
-
-        self.primary.get([x, y, z])
+        let (wx, wz) = self.warp_coords(point[0], point[1], point[2]);
+        self.primary.get([wx, point[1], wz])
     }
 }
 
@@ -286,6 +309,15 @@ pub struct TerrainNoise {
     /// mountain layer's contribution spatially. Produces regional clustering
     /// of mountain zones vs. lowland zones.
     continental: Perlin,
+    /// Phase 1.6-F.2-T-4: when `config.base_derivative_weighted` is true AND
+    /// the base-layer `noise_type` is DomainWarped, we still need to apply
+    /// the coordinate warping before sampling the derivative-weighted fBm
+    /// primary. This field holds a clone of the DomainWarpedNoise just for
+    /// its warp-coords helper. None when base_noise_type != DomainWarped.
+    base_dw_for_coords: Option<DomainWarpedNoise>,
+    /// Phase 1.6-F.2-T-4: seed to use for derivative-weighted fBm base
+    /// evaluation. Same seed the primary Fbm would use (world_seed cast to u32).
+    base_dw_seed: u32,
     config: NoiseConfig,
 }
 
@@ -322,11 +354,30 @@ impl TerrainNoise {
             as u32;
         let continental = Perlin::new(continental_seed);
 
+        // Phase 1.6-F.2-T-4: if the base layer uses DomainWarped noise AND
+        // derivative-weighted fBm is enabled, we need a dedicated
+        // DomainWarpedNoise instance to re-use its warp-coords helper. The
+        // warp-coords path is decoupled from the primary Fbm sampling — we
+        // warp coordinates, then feed the warped coords to
+        // fbm_derivative_weighted_2d as the primary evaluation.
+        let base_dw_for_coords = if matches!(
+            config.base_elevation.noise_type,
+            NoiseType::DomainWarped
+        ) && config.base_derivative_weighted
+        {
+            Some(DomainWarpedNoise::new(&config.base_elevation, seed))
+        } else {
+            None
+        };
+        let base_dw_seed = seed as u32;
+
         Self {
             base_elevation,
             mountains,
             detail,
             cave_noise,
+            base_dw_for_coords,
+            base_dw_seed,
             continental,
             config: config.clone(),
         }
@@ -394,13 +445,40 @@ impl TerrainNoise {
     pub fn sample_height(&self, x: f64, z: f64) -> f32 {
         let mut height = 0.0f32;
 
-        // Base elevation
+        // Base elevation.
+        //
+        // Phase 1.6-F.2-T-4: when `config.base_derivative_weighted` is true,
+        // replace the primary Fbm evaluation with derivative-weighted fBm
+        // (Quilez morenoise). If the base layer also uses DomainWarped noise,
+        // apply the coordinate warping first (reusing the warp_coords helper)
+        // and then call fbm_derivative_weighted_2d at the warped coords.
         if self.config.base_elevation.enabled {
-            let noise_val = self.base_elevation.get([
-                x * self.config.base_elevation.scale,
-                0.0,
-                z * self.config.base_elevation.scale,
-            ]) as f32;
+            let noise_val = if self.config.base_derivative_weighted {
+                let (sx, sz) = (
+                    x * self.config.base_elevation.scale,
+                    z * self.config.base_elevation.scale,
+                );
+                // If base is DomainWarped, warp the scaled coords before fBm.
+                let (sx, sz) = if let Some(dw) = &self.base_dw_for_coords {
+                    dw.warp_coords(sx, 0.0, sz)
+                } else {
+                    (sx, sz)
+                };
+                crate::perlin_gradient::fbm_derivative_weighted_2d(
+                    self.base_dw_seed,
+                    sx as f32,
+                    sz as f32,
+                    self.config.base_elevation.octaves as u32,
+                    self.config.base_elevation.persistence as f32,
+                    self.config.base_elevation.lacunarity as f32,
+                )
+            } else {
+                self.base_elevation.get([
+                    x * self.config.base_elevation.scale,
+                    0.0,
+                    z * self.config.base_elevation.scale,
+                ]) as f32
+            };
             height += noise_val * self.config.base_elevation.amplitude;
         }
 
@@ -1009,6 +1087,8 @@ mod tests {
         config.base_elevation.amplitude = 50.0;
         // F.2-T-3.C.1: base_octaves 5 → 4 per PBR Nyquist formula.
         config.base_elevation.octaves = 4;
+        // F.2-T-4: derivative-weighted fBm on base layer.
+        config.base_derivative_weighted = true;
         config.base_elevation.persistence = 0.50;
         config.base_elevation.lacunarity = 2.0;
         config.base_elevation.noise_type = NoiseType::DomainWarped;
@@ -1041,8 +1121,12 @@ mod tests {
     ///
     /// Pre-F.2-T-2.B.3 baseline: total curvature 2.016 (bed-of-nails).
     /// Post-F.2-T-2.B.3 measurement: total curvature 0.753.
-    /// Threshold: 0.90 (≈ 0.753 × 1.2) — catches regressions at any
-    /// warp_strength ≥ 20 per F.2-T-2.A's tuning matrix.
+    /// Post-F.2-T-3.C.1 (Nyquist cap): 0.695.
+    /// Post-F.2-T-4 (derivative-weighted fBm): 0.576.
+    /// Threshold: 0.72 (≈ 0.576 × 1.25 buffer) — locks in F.2-T-4's
+    /// improvement as the floor going forward. Regressions at any
+    /// warp_strength ≥ 20 per F.2-T-2.A's tuning matrix, or disabling
+    /// derivative-weighted fBm on the grassland preset, will fail this test.
     ///
     /// If a future sub-phase tunes the grassland preset's DomainWarped
     /// parameters, this test's inline config must be updated in lockstep
@@ -1061,7 +1145,7 @@ mod tests {
         }
         let curv = phase_1_6_f2_t2_local_curvature_grid(&heights, GRID_DIM);
 
-        const SPIKE_THRESHOLD: f32 = 0.90;
+        const SPIKE_THRESHOLD: f32 = 0.72;
 
         println!("F.2-T-2 spike regression: curvature {curv:.3} (threshold {SPIKE_THRESHOLD})");
 
@@ -1120,6 +1204,8 @@ mod tests {
         config.detail.scale = 0.02;
         config.detail.amplitude = 4.0;
         config.continental_enabled = true;
+        // F.2-T-4: derivative-weighted fBm on base layer.
+        config.base_derivative_weighted = true;
 
         let noise = TerrainNoise::new(&config, 12345);
 

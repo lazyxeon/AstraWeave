@@ -55,6 +55,11 @@ pub struct BiomeNoisePreset {
     /// sets `NoiseConfig.continental_enabled` so `TerrainNoise::sample_height`
     /// multiplies the mountain contribution by the continental field.
     pub continental_modulation: bool,
+    /// Phase 1.6-F.2-T-4: whether this preset opts into derivative-weighted
+    /// fBm on the base-elevation layer (Quilez morenoise 2008). Suppresses
+    /// high-frequency octaves on steep slopes where they would otherwise
+    /// produce vertex-scale spike artifacts. Default false.
+    pub base_derivative_weighted: bool,
 }
 
 pub struct TerrainState {
@@ -207,6 +212,11 @@ impl TerrainState {
         // Presets opt in via `continental_modulation`; scale/min/seed_offset
         // stay at `NoiseConfig::default()` values for all presets.
         self.config.noise.continental_enabled = preset.continental_modulation;
+
+        // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer. Per-preset
+        // opt-in; when true the base-elevation evaluation in TerrainNoise
+        // uses fbm_derivative_weighted_2d instead of the default Fbm path.
+        self.config.noise.base_derivative_weighted = preset.base_derivative_weighted;
 
         self.terrain_dirty = true;
     }
@@ -2836,6 +2846,7 @@ mod tests {
             base_noise_type: NoiseType::DomainWarped,
             base_domain_warp: Some(warp.clone()),
             continental_modulation: true,
+            base_derivative_weighted: false,
         };
         state.apply_biome_noise_preset(&preset);
 
@@ -2872,6 +2883,7 @@ mod tests {
             base_noise_type: NoiseType::Perlin,
             base_domain_warp: None,
             continental_modulation: false,
+            base_derivative_weighted: false,
         };
         state.apply_biome_noise_preset(&preset_plain);
 
@@ -3052,6 +3064,7 @@ mod tests {
             base_noise_type: NoiseType::Perlin,
             base_domain_warp: None,
             continental_modulation: false,
+            base_derivative_weighted: false,
         };
         state.apply_biome_noise_preset(&preset);
 
@@ -3159,6 +3172,7 @@ mod tests {
                     base_noise_type: NoiseType::Perlin,
                     base_domain_warp: None,
                     continental_modulation: false,
+                    base_derivative_weighted: false,
                 },
                 _ => BiomeNoisePreset {
                     base_scale: 0.005,
@@ -3178,6 +3192,7 @@ mod tests {
                     base_noise_type: NoiseType::Perlin,
                     base_domain_warp: None,
                     continental_modulation: false,
+                    base_derivative_weighted: false,
                 },
             };
             state.apply_biome_noise_preset(&preset);
