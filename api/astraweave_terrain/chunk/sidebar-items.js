@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["ChunkId","ChunkManager","TerrainChunk"]};
+window.SIDEBAR_ITEMS = {"fn":["smooth_shared_vertices"],"struct":["ChunkId","ChunkManager","TerrainChunk"]};
