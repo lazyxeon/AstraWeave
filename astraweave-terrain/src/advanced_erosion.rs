@@ -204,33 +204,37 @@ impl ErosionPreset {
         }
     }
 
-    /// Phase 1.6-F.3-phase-2.B: balanced default preset — same hydraulic +
-    /// thermal profile as `default()` but with reduced droplet count to meet
-    /// §2.3's 30-second performance budget for 121-chunk editor runs.
-    /// F.3-phase-0 projected full `default()` at 39.7s (33% over budget);
-    /// `default_balanced` targets ~28s at 35k droplets (−30%).
+    /// Phase 1.6-F.3-phase-2.B balanced default preset; droplet count revised
+    /// by F.3-phase-4.C.
+    ///
+    /// Phase 2: 50k → 35k (−30%) for 30-second §2.3 budget compliance.
+    /// Phase 4: 35k → 25k (additional −29%) to restore peak heights after
+    /// phase-3's world-coord grid-jittered droplet distribution proved more
+    /// aggressive than phase-2's clumpy RNG. Phase-3 measured Temperate Δp99
+    /// at -19.6% (vs phase-2's -15.2%); target post-phase-4 is ~-15%.
     ///
     /// All other parameters identical to `default()`. Existing `default()`
-    /// stays unchanged so phase-0 behavioral measurements on the original
-    /// remain valid.
+    /// unchanged so phase-0 behavioral measurements on the original remain
+    /// valid.
     pub fn default_balanced() -> Self {
         Self {
             name: "Default (balanced)".to_string(),
             hydraulic: Some(HydraulicErosionConfig {
-                droplet_count: 35_000,
+                droplet_count: 25_000,
                 ..HydraulicErosionConfig::default()
             }),
             ..Self::default()
         }
     }
 
-    /// Phase 1.6-F.3-phase-2.B: balanced mountain preset — same aggressive
-    /// hydraulic + thermal profile as `mountain()` but with halved droplet
-    /// count. F.3-phase-0 projected full `mountain()` at 83.5s (2.8× over
-    /// budget); `mountain_balanced` targets ~42s at 50k droplets (−50%).
-    /// Still over the 30s budget; full compliance requires rayon
-    /// parallelization (see F.3-phase-2.E) or accepting mountain-primary
-    /// terrain as slower editor-time generation.
+    /// Phase 1.6-F.3-phase-2.B balanced mountain preset; droplet count revised
+    /// by F.3-phase-4.C.
+    ///
+    /// Phase 2: 100k → 50k (−50%) for approximate §2.3 budget compliance.
+    /// Phase 4: 50k → 35k (additional −30%) to restore peak heights after
+    /// phase-3's droplet distribution proved more aggressive. Phase-3
+    /// measured Cold/Highland Δp99 at -38.5% (vs phase-2's -28%); target
+    /// post-phase-4 is ~-25 to -30%.
     ///
     /// All other parameters identical to `mountain()`.
     pub fn mountain_balanced() -> Self {
@@ -238,7 +242,7 @@ impl ErosionPreset {
         Self {
             name: "Mountain (balanced)".to_string(),
             hydraulic: base.hydraulic.map(|h| HydraulicErosionConfig {
-                droplet_count: 50_000,
+                droplet_count: 35_000,
                 ..h
             }),
             ..base

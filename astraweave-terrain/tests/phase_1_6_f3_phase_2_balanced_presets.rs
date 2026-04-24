@@ -80,14 +80,17 @@ fn balanced_presets_droplet_counts_match_budget_targets() {
         .map(|h| h.droplet_count)
         .expect("mountain_balanced has hydraulic");
 
-    // §2.3 targets: default 50k → 35k, mountain 100k → 50k.
+    // Phase 2: default 50k → 35k, mountain 100k → 50k (§2.3 budget).
+    // Phase 4: default 35k → 25k, mountain 50k → 35k (scale recovery
+    // after phase-3's world-coord droplet distribution proved more
+    // aggressive than phase-2's clumpy RNG).
     assert_eq!(
-        def_drops, 35_000,
-        "default_balanced droplet_count should be 35k per §2.3 budget"
+        def_drops, 25_000,
+        "default_balanced droplet_count should be 25k per F.3-phase-4.C"
     );
     assert_eq!(
-        mtn_drops, 50_000,
-        "mountain_balanced droplet_count should be 50k per §2.3 budget"
+        mtn_drops, 35_000,
+        "mountain_balanced droplet_count should be 35k per F.3-phase-4.C"
     );
 
     // And full variants must remain UNCHANGED (phase-0 tests depend on
