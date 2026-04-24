@@ -82,7 +82,15 @@ fn default_continental_scale() -> f32 {
     // Scale 0.0012 fits ~3.4 continental periods within the visible
     // extent, ensuring both low-continental (lowland) and high-continental
     // (highland) regions exist at every practical seed.
-    0.0012
+    //
+    // Phase 1.6-F.4.B.2.F: scaled 0.0012 → 0.0003 for Target B world extent
+    // (radius 10 × 512 WU = 10752 WU). Preserves ~3-4 continental periods
+    // across the new extent. At the old 0.0012 = 830 WU wavelength, a
+    // radius-10 world would see ~13 periods — noise-like rather than
+    // regional clustering. New 0.0003 = ~3300 WU wavelength, matching
+    // plan §2.6 intent for regional highland/lowland clustering at the
+    // world's horizontal scale.
+    0.0003
 }
 fn default_continental_min() -> f32 {
     // Phase 1.6-F.2-T.B.1: raised from 0.15 to 0.50. F.2-T.A diagnostic
@@ -947,13 +955,18 @@ mod tests {
         config.continental_enabled = true;
         let noise = TerrainNoise::new(&config, 12345);
 
-        // Sample continental at a 20×20 grid across a 4000×4000 world area.
+        // Phase 1.6-F.4.B.2.F: sampling area scaled from 4000 to 16000 WU
+        // per side to match continental_scale reduction from 0.0012 to
+        // 0.0003 (wavelength 830 → 3300 WU for Target B's 10752 WU world
+        // extent). Test samples ~5 continental periods across sampled
+        // area, same as pre-F.4.B.2.F in period-relative terms.
+        // Sample 20×20 grid across 16000×16000 WU.
         let mut min_sample = f32::INFINITY;
         let mut max_sample = f32::NEG_INFINITY;
         for gx in 0..20 {
             for gz in 0..20 {
-                let x = (gx as f64 - 10.0) * 200.0;
-                let z = (gz as f64 - 10.0) * 200.0;
+                let x = (gx as f64 - 10.0) * 800.0;
+                let z = (gz as f64 - 10.0) * 800.0;
                 let sample = noise.sample_continental_01(x, z);
                 assert!(
                     (0.0..=1.0).contains(&sample),
@@ -1091,7 +1104,7 @@ mod tests {
     fn phase_1_6_f2_t2_grassland_config() -> NoiseConfig {
         let mut config = NoiseConfig::default();
         config.base_elevation.scale = 0.004;
-        config.base_elevation.amplitude = 50.0;
+        config.base_elevation.amplitude = 150.0; // F.4.B.2.B: was 50 (×3).
         // F.2-T-3.C.1: base_octaves 5 → 4 per PBR Nyquist formula.
         config.base_elevation.octaves = 4;
         // F.2-T-4: derivative-weighted fBm on base layer.
@@ -1107,13 +1120,13 @@ mod tests {
         };
         config.mountains.enabled = true;
         config.mountains.scale = 0.0025;
-        config.mountains.amplitude = 80.0;
+        config.mountains.amplitude = 480.0; // F.4.B.2.B: was 80 (×6).
         config.mountains.octaves = 6;
         // mountains.persistence and mountains.lacunarity use NoiseConfig::default
         // values (0.4 and 2.2) since BiomeNoisePreset doesn't override them.
         config.detail.enabled = true;
         config.detail.scale = 0.02;
-        config.detail.amplitude = 4.0;
+        config.detail.amplitude = 10.0; // F.4.B.2.B: was 4 (×2.5).
         config.continental_enabled = true;
         config
     }
@@ -1139,7 +1152,6 @@ mod tests {
     /// parameters, this test's inline config must be updated in lockstep
     /// with `terrain_panel.rs::noise_preset_for_biome`.
     #[test]
-    #[ignore = "FIXME F.4.B.2.F: recalibrate threshold for Target B scale (amplitudes ×5-6). Current 0.72 was tuned at F.2-T-4 grassland ~100 WU Y span; at ~500 WU absolute curvature scales proportionally."]
     fn phase_1_6_f2_t2_surface_spikiness_under_threshold() {
         let config = phase_1_6_f2_t2_grassland_config();
         let noise = TerrainNoise::new(&config, 12345);
@@ -1153,7 +1165,13 @@ mod tests {
         }
         let curv = phase_1_6_f2_t2_local_curvature_grid(&heights, GRID_DIM);
 
-        const SPIKE_THRESHOLD: f32 = 0.72;
+        // Phase 1.6-F.4.B.2.F: threshold scaled ×6 (matching mountains_amp
+        // multiplier; curvature is absolute and scales ~linearly with
+        // amplitude). Pre-F.4.B.2 threshold 0.72 at Y span ~100 WU.
+        // Post-F.4.B.2 threshold 4.32 at Y span ~600 WU (0.72 × 6 = 4.32).
+        // Buffer 20% per F.2-T-4's convention: 4.32 × 1.2 = 5.2. Rounded
+        // to 5.0 to preserve slight tightening margin.
+        const SPIKE_THRESHOLD: f32 = 5.0;
 
         println!("F.2-T-2 spike regression: curvature {curv:.3} (threshold {SPIKE_THRESHOLD})");
 
@@ -1188,13 +1206,12 @@ mod tests {
     /// values must be updated in lockstep. The inline pattern mirrors F.1's
     /// diagnostic-test convention.
     #[test]
-    #[ignore = "FIXME F.4.B.2.F: update inline config + thresholds for Target B amplitude scale (base 50→150, mountains 80→480, detail 4→10). Current Y max ≥ 85 / p95 ≥ 40 thresholds are pre-F.4.B.2.B; new baseline is ~500 WU Y max."]
     fn phase_1_6_f2_t_highland_regions_reach_f1_target() {
         let mut config = NoiseConfig::default();
         // Grassland preset values from terrain_panel.rs::noise_preset_for_biome
-        // `_ =>` arm, as of F.2-T-3.C.1.
+        // `_ =>` arm, as of F.4.B.2.B (Target B scale, amp ×3-6).
         config.base_elevation.scale = 0.004;
-        config.base_elevation.amplitude = 50.0;
+        config.base_elevation.amplitude = 150.0; // F.4.B.2.B: was 50 (×3).
         config.base_elevation.octaves = 4; // F.2-T-3.C.1: was 5 (PBR Nyquist cap).
         config.base_elevation.persistence = 0.50;
         config.base_elevation.lacunarity = 2.0;
@@ -1207,11 +1224,11 @@ mod tests {
         };
         config.mountains.enabled = true;
         config.mountains.scale = 0.0025;
-        config.mountains.amplitude = 80.0;
+        config.mountains.amplitude = 480.0; // F.4.B.2.B: was 80 (×6).
         config.mountains.octaves = 6;
         config.detail.enabled = true;
         config.detail.scale = 0.02;
-        config.detail.amplitude = 4.0;
+        config.detail.amplitude = 10.0; // F.4.B.2.B: was 4 (×2.5).
         config.continental_enabled = true;
         // F.2-T-4: derivative-weighted fBm on base layer.
         config.base_derivative_weighted = true;
@@ -1253,19 +1270,24 @@ mod tests {
             "Highland-Y-max regression: min={y_min:.2} p95={p95:.2} p99={p99:.2} max={y_max:.2} n={n}"
         );
 
-        // Gate 1: at least some highland peak exists (Y max).
+        // Phase 1.6-F.4.B.2.F: thresholds scaled with amplitude (×5).
+        // F.2-T-4 / F.2-T-3 / pre-F.4.B.2 Y max ≥ 85 threshold was tuned for
+        // amplitude 50/80/4 which gave Y max ~96 at seed 12345. Target B
+        // amplitudes 150/480/10 give pre-erosion Y max ~606 (measured via
+        // `phase_4_b_1_scale_radius5_per_climate`). Threshold ≥ 425 is 70%
+        // of new baseline (analogous to old 85/96 = 89% buffer).
         assert!(
-            y_max >= 85.0,
-            "Highland Y max reached only {y_max:.2} — expected >= 85. Continental modulation \
+            y_max >= 425.0,
+            "Highland Y max reached only {y_max:.2} — expected >= 425. Continental modulation \
              may be suppressing mountain layer too aggressively, or continental field may not \
              reach highland regions (cont > 0.7) within the visible terrain."
         );
-        // Gate 2: top 5% of vertices (p95) must be substantial, catching the
-        // "continental suppressed everything uniformly" failure (pre-F.2-T
-        // p95 was in the 25-35 range; F.2-T restores p95 to the 40+ range).
+        // Phase 1.6-F.4.B.2.F: p95 ≥ 40 was pre-F.4.B.2 (~83% of then-baseline
+        // p95=48). New baseline p95 ~350 (F.2-T / F.4.B.2 measurement).
+        // Threshold ≥ 250 is 71% of new baseline.
         assert!(
-            p95 >= 40.0,
-            "Highland p95 reached only {p95:.2} — expected >= 40. Top 5% of vertices do not \
+            p95 >= 250.0,
+            "Highland p95 reached only {p95:.2} — expected >= 250. Top 5% of vertices do not \
              form a substantial highland band."
         );
     }
