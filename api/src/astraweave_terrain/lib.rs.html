@@ -37,8 +37,8 @@
 <a href=#37 id=37 data-nosnippet>37</a><span class="kw">pub mod </span>zone_scatter;
 <a href=#38 id=38 data-nosnippet>38</a>
 <a href=#39 id=39 data-nosnippet>39</a><span class="kw">pub use </span>advanced_erosion::{
-<a href=#40 id=40 data-nosnippet>40</a>    AdvancedErosionSimulator, ErosionPreset, ErosionStats, HydraulicErosionConfig,
-<a href=#41 id=41 data-nosnippet>41</a>    ThermalErosionConfig, WindErosionConfig,
+<a href=#40 id=40 data-nosnippet>40</a>    erosion_preset_for_climate, AdvancedErosionSimulator, ErosionPreset, ErosionStats,
+<a href=#41 id=41 data-nosnippet>41</a>    HydraulicErosionConfig, ThermalErosionConfig, WindErosionConfig,
 <a href=#42 id=42 data-nosnippet>42</a>}; <span class="comment">// Advanced erosion
 <a href=#43 id=43 data-nosnippet>43</a></span><span class="kw">pub use </span>background_loader::{BackgroundChunkLoader, StreamingConfig, StreamingStats}; <span class="comment">// Week 4
 <a href=#44 id=44 data-nosnippet>44</a></span><span class="kw">pub use </span>biome::{Biome, BiomeConfig, BiomeType, BiomeVegetation, VegetationType};
@@ -282,115 +282,390 @@
 <a href=#282 id=282 data-nosnippet>282</a>        </span><span class="prelude-val">Ok</span>(chunk)
 <a href=#283 id=283 data-nosnippet>283</a>    }
 <a href=#284 id=284 data-nosnippet>284</a>
-<a href=#285 id=285 data-nosnippet>285</a>    <span class="doccomment">/// Generate and register a chunk (mutable version for compatibility)
-<a href=#286 id=286 data-nosnippet>286</a>    </span><span class="kw">pub fn </span>generate_and_register_chunk(
-<a href=#287 id=287 data-nosnippet>287</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-<a href=#288 id=288 data-nosnippet>288</a>        chunk_id: ChunkId,
-<a href=#289 id=289 data-nosnippet>289</a>    ) -&gt; anyhow::Result&lt;TerrainChunk&gt; {
-<a href=#290 id=290 data-nosnippet>290</a>        <span class="kw">let </span>chunk = <span class="self">self</span>.generate_chunk(chunk_id)<span class="question-mark">?</span>;
-<a href=#291 id=291 data-nosnippet>291</a>        <span class="self">self</span>.chunk_manager.add_chunk(chunk.clone());
-<a href=#292 id=292 data-nosnippet>292</a>        <span class="prelude-val">Ok</span>(chunk)
-<a href=#293 id=293 data-nosnippet>293</a>    }
-<a href=#294 id=294 data-nosnippet>294</a>
-<a href=#295 id=295 data-nosnippet>295</a>    <span class="doccomment">/// Get an existing chunk if it's loaded
-<a href=#296 id=296 data-nosnippet>296</a>    </span><span class="kw">pub fn </span>get_chunk(<span class="kw-2">&amp;</span><span class="self">self</span>, chunk_id: ChunkId) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>TerrainChunk&gt; {
-<a href=#297 id=297 data-nosnippet>297</a>        <span class="self">self</span>.chunk_manager.get_chunk(chunk_id)
-<a href=#298 id=298 data-nosnippet>298</a>    }
-<a href=#299 id=299 data-nosnippet>299</a>
-<a href=#300 id=300 data-nosnippet>300</a>    <span class="doccomment">/// Stream chunks around a center position, loading/unloading as needed
-<a href=#301 id=301 data-nosnippet>301</a>    </span><span class="kw">pub fn </span>stream_chunks(<span class="kw-2">&amp;mut </span><span class="self">self</span>, center: Vec3, radius: u32) -&gt; anyhow::Result&lt;Vec&lt;ChunkId&gt;&gt; {
-<a href=#302 id=302 data-nosnippet>302</a>        <span class="kw">let </span>chunks_to_load = <span class="self">self</span>.chunk_manager.get_chunks_in_radius(center, radius);
-<a href=#303 id=303 data-nosnippet>303</a>        <span class="kw">let </span><span class="kw-2">mut </span>loaded = Vec::new();
-<a href=#304 id=304 data-nosnippet>304</a>
-<a href=#305 id=305 data-nosnippet>305</a>        <span class="kw">for </span>chunk_id <span class="kw">in </span>chunks_to_load {
-<a href=#306 id=306 data-nosnippet>306</a>            <span class="kw">if </span>!<span class="self">self</span>.chunk_manager.has_chunk(chunk_id) {
-<a href=#307 id=307 data-nosnippet>307</a>                <span class="self">self</span>.generate_and_register_chunk(chunk_id)<span class="question-mark">?</span>;
-<a href=#308 id=308 data-nosnippet>308</a>                loaded.push(chunk_id);
-<a href=#309 id=309 data-nosnippet>309</a>            }
-<a href=#310 id=310 data-nosnippet>310</a>        }
-<a href=#311 id=311 data-nosnippet>311</a>
-<a href=#312 id=312 data-nosnippet>312</a>        <span class="comment">// Unload chunks that are too far away
-<a href=#313 id=313 data-nosnippet>313</a>        </span><span class="kw">let </span>unload_radius = radius + <span class="number">2</span>; <span class="comment">// Keep a buffer
-<a href=#314 id=314 data-nosnippet>314</a>        </span><span class="self">self</span>.chunk_manager
-<a href=#315 id=315 data-nosnippet>315</a>            .unload_distant_chunks(center, unload_radius);
-<a href=#316 id=316 data-nosnippet>316</a>
-<a href=#317 id=317 data-nosnippet>317</a>        <span class="prelude-val">Ok</span>(loaded)
-<a href=#318 id=318 data-nosnippet>318</a>    }
+<a href=#285 id=285 data-nosnippet>285</a>    <span class="doccomment">/// Phase 1.6-F.3-phase-1: generate a chunk with pre-erosion biome_weights
+<a href=#286 id=286 data-nosnippet>286</a>    /// computed from the given climate bias. The returned chunk has
+<a href=#287 id=287 data-nosnippet>287</a>    /// `biome_weights: Some(_)` populated from the PRE-erosion heightmap,
+<a href=#288 id=288 data-nosnippet>288</a>    /// satisfying §2.5's authorial-intent invariant. The heightmap itself is
+<a href=#289 id=289 data-nosnippet>289</a>    /// post-erosion (simple CA for phase 1; `AdvancedErosionSimulator` for
+<a href=#290 id=290 data-nosnippet>290</a>    /// phase 2).
+<a href=#291 id=291 data-nosnippet>291</a>    ///
+<a href=#292 id=292 data-nosnippet>292</a>    /// Callers not requiring pre-erosion biome_weights should use the simpler
+<a href=#293 id=293 data-nosnippet>293</a>    /// `generate_chunk` (biome_weights stays `None`, editor/consumer computes
+<a href=#294 id=294 data-nosnippet>294</a>    /// them on-the-fly from post-erosion heights — current behavior).
+<a href=#295 id=295 data-nosnippet>295</a>    </span><span class="kw">pub fn </span>generate_chunk_with_climate(
+<a href=#296 id=296 data-nosnippet>296</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#297 id=297 data-nosnippet>297</a>        chunk_id: ChunkId,
+<a href=#298 id=298 data-nosnippet>298</a>        climate_bias: <span class="kw">crate</span>::ClimateBias,
+<a href=#299 id=299 data-nosnippet>299</a>    ) -&gt; anyhow::Result&lt;TerrainChunk&gt; {
+<a href=#300 id=300 data-nosnippet>300</a>        <span class="comment">// Phase 1.6-F.3-phase-2.C: full pipeline wired.
+<a href=#301 id=301 data-nosnippet>301</a>        //
+<a href=#302 id=302 data-nosnippet>302</a>        // 1. Generate halo heightmap (3×3 chunks centered on target).
+<a href=#303 id=303 data-nosnippet>303</a>        // 2. Crop the halo to the target chunk for PRE-erosion biome_weights
+<a href=#304 id=304 data-nosnippet>304</a>        //    computation per §2.5 (authorial-intent invariant).
+<a href=#305 id=305 data-nosnippet>305</a>        // 3. Run AdvancedErosionSimulator::apply_preset on the FULL halo —
+<a href=#306 id=306 data-nosnippet>306</a>        //    droplets travel freely across chunk boundaries within the halo
+<a href=#307 id=307 data-nosnippet>307</a>        //    region. §2.3 halo=1 is sufficient per phase-0's p95 = 120 world
+<a href=#308 id=308 data-nosnippet>308</a>        //    units &lt; 256 (one chunk width).
+<a href=#309 id=309 data-nosnippet>309</a>        // 4. Crop AFTER erosion. This becomes the chunk's final (post-erosion)
+<a href=#310 id=310 data-nosnippet>310</a>        //    heightmap.
+<a href=#311 id=311 data-nosnippet>311</a>        // 5. Construct chunk with post-erosion cropped heightmap + pre-erosion
+<a href=#312 id=312 data-nosnippet>312</a>        //    biome_weights (decoupled per §2.5).
+<a href=#313 id=313 data-nosnippet>313</a>        //
+<a href=#314 id=314 data-nosnippet>314</a>        // Legacy `chunk.apply_erosion(strength)` simple CA call is replaced by
+<a href=#315 id=315 data-nosnippet>315</a>        // `AdvancedErosionSimulator` per §2.2 climate → preset mapping.
+<a href=#316 id=316 data-nosnippet>316</a>        </span><span class="kw">const </span>HALO_CHUNKS: u32 = <span class="number">1</span>;
+<a href=#317 id=317 data-nosnippet>317</a>
+<a href=#318 id=318 data-nosnippet>318</a>        <span class="kw">let </span><span class="kw-2">mut </span>halo = <span class="self">self</span>.generate_halo_heightmap(chunk_id, HALO_CHUNKS)<span class="question-mark">?</span>;
 <a href=#319 id=319 data-nosnippet>319</a>
-<a href=#320 id=320 data-nosnippet>320</a>    <span class="doccomment">/// Assign biomes to heightmap points based on climate data
-<a href=#321 id=321 data-nosnippet>321</a>    </span><span class="kw">fn </span>assign_biomes(
-<a href=#322 id=322 data-nosnippet>322</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
-<a href=#323 id=323 data-nosnippet>323</a>        heightmap: <span class="kw-2">&amp;</span>Heightmap,
-<a href=#324 id=324 data-nosnippet>324</a>        climate_data: <span class="kw-2">&amp;</span>[(f32, f32)], <span class="comment">// (temperature, moisture) pairs
-<a href=#325 id=325 data-nosnippet>325</a>    </span>) -&gt; anyhow::Result&lt;Vec&lt;BiomeType&gt;&gt; {
-<a href=#326 id=326 data-nosnippet>326</a>        <span class="kw">let </span><span class="kw-2">mut </span>biome_map = Vec::with_capacity(climate_data.len());
-<a href=#327 id=327 data-nosnippet>327</a>
-<a href=#328 id=328 data-nosnippet>328</a>        <span class="kw">for </span>(i, <span class="kw-2">&amp;</span>(temperature, moisture)) <span class="kw">in </span>climate_data.iter().enumerate() {
-<a href=#329 id=329 data-nosnippet>329</a>            <span class="kw">let </span>height = heightmap.get_height_at_index(i);
-<a href=#330 id=330 data-nosnippet>330</a>            <span class="kw">let </span>biome = <span class="self">self</span>.find_best_biome(height, temperature, moisture);
-<a href=#331 id=331 data-nosnippet>331</a>            biome_map.push(biome);
-<a href=#332 id=332 data-nosnippet>332</a>        }
-<a href=#333 id=333 data-nosnippet>333</a>
-<a href=#334 id=334 data-nosnippet>334</a>        <span class="prelude-val">Ok</span>(biome_map)
-<a href=#335 id=335 data-nosnippet>335</a>    }
-<a href=#336 id=336 data-nosnippet>336</a>
-<a href=#337 id=337 data-nosnippet>337</a>    <span class="doccomment">/// Find the best biome for given environmental conditions
-<a href=#338 id=338 data-nosnippet>338</a>    </span><span class="kw">fn </span>find_best_biome(<span class="kw-2">&amp;</span><span class="self">self</span>, height: f32, temperature: f32, moisture: f32) -&gt; BiomeType {
-<a href=#339 id=339 data-nosnippet>339</a>        <span class="kw">let </span><span class="kw-2">mut </span>best_biome = BiomeType::Grassland;
-<a href=#340 id=340 data-nosnippet>340</a>        <span class="kw">let </span><span class="kw-2">mut </span>best_score = f32::NEG_INFINITY;
-<a href=#341 id=341 data-nosnippet>341</a>
-<a href=#342 id=342 data-nosnippet>342</a>        <span class="kw">for </span>biome_config <span class="kw">in </span><span class="kw-2">&amp;</span><span class="self">self</span>.config.biomes {
-<a href=#343 id=343 data-nosnippet>343</a>            <span class="kw">let </span>score = biome_config.score_conditions(height, temperature, moisture);
-<a href=#344 id=344 data-nosnippet>344</a>            <span class="kw">if </span>score &gt; best_score {
-<a href=#345 id=345 data-nosnippet>345</a>                best_score = score;
-<a href=#346 id=346 data-nosnippet>346</a>                best_biome = biome_config.biome_type;
-<a href=#347 id=347 data-nosnippet>347</a>            }
-<a href=#348 id=348 data-nosnippet>348</a>        }
-<a href=#349 id=349 data-nosnippet>349</a>
-<a href=#350 id=350 data-nosnippet>350</a>        best_biome
-<a href=#351 id=351 data-nosnippet>351</a>    }
-<a href=#352 id=352 data-nosnippet>352</a>
-<a href=#353 id=353 data-nosnippet>353</a>    <span class="doccomment">/// Get the world configuration
-<a href=#354 id=354 data-nosnippet>354</a>    </span><span class="kw">pub fn </span>config(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>WorldConfig {
-<a href=#355 id=355 data-nosnippet>355</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.config
-<a href=#356 id=356 data-nosnippet>356</a>    }
-<a href=#357 id=357 data-nosnippet>357</a>}
-<a href=#358 id=358 data-nosnippet>358</a>
-<a href=#359 id=359 data-nosnippet>359</a><span class="attr">#[cfg(test)]
-<a href=#360 id=360 data-nosnippet>360</a></span><span class="kw">mod </span>tests {
-<a href=#361 id=361 data-nosnippet>361</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#362 id=362 data-nosnippet>362</a>
-<a href=#363 id=363 data-nosnippet>363</a>    <span class="attr">#[test]
-<a href=#364 id=364 data-nosnippet>364</a>    </span><span class="kw">fn </span>test_world_generator_creation() {
-<a href=#365 id=365 data-nosnippet>365</a>        <span class="kw">let </span>config = WorldConfig::default();
-<a href=#366 id=366 data-nosnippet>366</a>        <span class="kw">let </span>generator = WorldGenerator::new(config);
-<a href=#367 id=367 data-nosnippet>367</a>        <span class="macro">assert_eq!</span>(generator.config.seed, <span class="number">12345</span>);
-<a href=#368 id=368 data-nosnippet>368</a>    }
-<a href=#369 id=369 data-nosnippet>369</a>
-<a href=#370 id=370 data-nosnippet>370</a>    <span class="attr">#[test]
-<a href=#371 id=371 data-nosnippet>371</a>    </span><span class="kw">fn </span>test_chunk_generation() -&gt; anyhow::Result&lt;()&gt; {
-<a href=#372 id=372 data-nosnippet>372</a>        <span class="kw">let </span>config = WorldConfig::default();
-<a href=#373 id=373 data-nosnippet>373</a>        <span class="kw">let </span>generator = WorldGenerator::new(config);
-<a href=#374 id=374 data-nosnippet>374</a>
-<a href=#375 id=375 data-nosnippet>375</a>        <span class="kw">let </span>chunk_id = ChunkId::new(<span class="number">0</span>, <span class="number">0</span>);
-<a href=#376 id=376 data-nosnippet>376</a>        <span class="kw">let </span>chunk = generator.generate_chunk(chunk_id)<span class="question-mark">?</span>;
-<a href=#377 id=377 data-nosnippet>377</a>
-<a href=#378 id=378 data-nosnippet>378</a>        <span class="macro">assert_eq!</span>(chunk.id(), chunk_id);
-<a href=#379 id=379 data-nosnippet>379</a>        <span class="macro">assert!</span>(chunk.heightmap().max_height() &gt;= chunk.heightmap().min_height());
-<a href=#380 id=380 data-nosnippet>380</a>
-<a href=#381 id=381 data-nosnippet>381</a>        <span class="prelude-val">Ok</span>(())
-<a href=#382 id=382 data-nosnippet>382</a>    }
-<a href=#383 id=383 data-nosnippet>383</a>
-<a href=#384 id=384 data-nosnippet>384</a>    <span class="attr">#[test]
-<a href=#385 id=385 data-nosnippet>385</a>    </span><span class="kw">fn </span>test_chunk_streaming() -&gt; anyhow::Result&lt;()&gt; {
-<a href=#386 id=386 data-nosnippet>386</a>        <span class="kw">let </span>config = WorldConfig::default();
-<a href=#387 id=387 data-nosnippet>387</a>        <span class="kw">let </span><span class="kw-2">mut </span>generator = WorldGenerator::new(config);
+<a href=#320 id=320 data-nosnippet>320</a>        <span class="comment">// Pre-erosion cropped heightmap — input to biome_weights computation.
+<a href=#321 id=321 data-nosnippet>321</a>        </span><span class="kw">let </span>pre_erosion_heightmap = <span class="self">self</span>.crop_halo_to_chunk(<span class="kw-2">&amp;</span>halo, chunk_id)<span class="question-mark">?</span>;
+<a href=#322 id=322 data-nosnippet>322</a>
+<a href=#323 id=323 data-nosnippet>323</a>        <span class="comment">// §2.5: biome_weights are computed from PRE-erosion heights. Once
+<a href=#324 id=324 data-nosnippet>324</a>        // phase 2 lands real erosion, a vertex that drops from Y=50 to Y=30
+<a href=#325 id=325 data-nosnippet>325</a>        // keeps its pre-erosion Mountain weighting — authorial intent over
+<a href=#326 id=326 data-nosnippet>326</a>        // geological reclassification.
+<a href=#327 id=327 data-nosnippet>327</a>        </span><span class="kw">let </span>resolution = pre_erosion_heightmap.resolution() <span class="kw">as </span>usize;
+<a href=#328 id=328 data-nosnippet>328</a>        <span class="kw">let </span><span class="kw-2">mut </span>biome_weights = Vec::with_capacity(resolution * resolution);
+<a href=#329 id=329 data-nosnippet>329</a>        <span class="kw">for </span>z <span class="kw">in </span><span class="number">0</span>..resolution {
+<a href=#330 id=330 data-nosnippet>330</a>            <span class="kw">for </span>x <span class="kw">in </span><span class="number">0</span>..resolution {
+<a href=#331 id=331 data-nosnippet>331</a>                <span class="kw">let </span>y = pre_erosion_heightmap.get_height(x <span class="kw">as </span>u32, z <span class="kw">as </span>u32);
+<a href=#332 id=332 data-nosnippet>332</a>                biome_weights.push(<span class="kw">crate</span>::elevation_to_biome_weights(
+<a href=#333 id=333 data-nosnippet>333</a>                    y,
+<a href=#334 id=334 data-nosnippet>334</a>                    <span class="kw">crate</span>::SEA_LEVEL,
+<a href=#335 id=335 data-nosnippet>335</a>                    climate_bias,
+<a href=#336 id=336 data-nosnippet>336</a>                ));
+<a href=#337 id=337 data-nosnippet>337</a>            }
+<a href=#338 id=338 data-nosnippet>338</a>        }
+<a href=#339 id=339 data-nosnippet>339</a>
+<a href=#340 id=340 data-nosnippet>340</a>        <span class="comment">// §2.2 climate → ErosionPreset mapping.
+<a href=#341 id=341 data-nosnippet>341</a>        </span><span class="kw">let </span>preset = <span class="kw">crate</span>::advanced_erosion::erosion_preset_for_climate(climate_bias);
+<a href=#342 id=342 data-nosnippet>342</a>
+<a href=#343 id=343 data-nosnippet>343</a>        <span class="comment">// Phase 1.6-F.3-phase-3.C: use `apply_preset_at_world_offset` for
+<a href=#344 id=344 data-nosnippet>344</a>        // seamless chunk boundaries. Droplet spawn positions are derived
+<a href=#345 id=345 data-nosnippet>345</a>        // from world-aligned spatial cells, so adjacent halos iterate the
+<a href=#346 id=346 data-nosnippet>346</a>        // SAME cells in overlap → identical droplets → near-identical
+<a href=#347 id=347 data-nosnippet>347</a>        // erosion output in overlap region.
+<a href=#348 id=348 data-nosnippet>348</a>        //
+<a href=#349 id=349 data-nosnippet>349</a>        // The simulator's `new(seed)` argument is no longer the primary
+<a href=#350 id=350 data-nosnippet>350</a>        // determinism driver — per-droplet RNG comes from world-cell hash
+<a href=#351 id=351 data-nosnippet>351</a>        // inside the new API. We pass `halo_seed` for any ancillary RNG use
+<a href=#352 id=352 data-nosnippet>352</a>        // (currently unused inside the world-coord path).
+<a href=#353 id=353 data-nosnippet>353</a>        </span><span class="kw">let </span>seed = <span class="self">Self</span>::halo_seed(<span class="self">self</span>.config.seed, chunk_id, HALO_CHUNKS);
+<a href=#354 id=354 data-nosnippet>354</a>        <span class="kw">let </span><span class="kw-2">mut </span>simulator = <span class="kw">crate</span>::advanced_erosion::AdvancedErosionSimulator::new(seed);
+<a href=#355 id=355 data-nosnippet>355</a>
+<a href=#356 id=356 data-nosnippet>356</a>        <span class="kw">if </span><span class="self">self</span>.config.noise.erosion_enabled {
+<a href=#357 id=357 data-nosnippet>357</a>            <span class="comment">// Halo's world origin (target chunk origin minus halo_chunks * chunk_size).
+<a href=#358 id=358 data-nosnippet>358</a>            </span><span class="kw">let </span>target_origin = chunk_id.to_world_pos(<span class="self">self</span>.config.chunk_size);
+<a href=#359 id=359 data-nosnippet>359</a>            <span class="kw">let </span>halo_origin_x = (target_origin.x - HALO_CHUNKS <span class="kw">as </span>f32 * <span class="self">self</span>.config.chunk_size) <span class="kw">as </span>f64;
+<a href=#360 id=360 data-nosnippet>360</a>            <span class="kw">let </span>halo_origin_z = (target_origin.z - HALO_CHUNKS <span class="kw">as </span>f32 * <span class="self">self</span>.config.chunk_size) <span class="kw">as </span>f64;
+<a href=#361 id=361 data-nosnippet>361</a>            <span class="comment">// Vertex spacing: chunk_size per (resolution - 1) vertices.
+<a href=#362 id=362 data-nosnippet>362</a>            </span><span class="kw">let </span>vertex_spacing =
+<a href=#363 id=363 data-nosnippet>363</a>                <span class="self">self</span>.config.chunk_size <span class="kw">as </span>f64 / (<span class="self">self</span>.config.heightmap_resolution - <span class="number">1</span>) <span class="kw">as </span>f64;
+<a href=#364 id=364 data-nosnippet>364</a>
+<a href=#365 id=365 data-nosnippet>365</a>            <span class="kw">let </span>_stats = simulator.apply_preset_at_world_offset(
+<a href=#366 id=366 data-nosnippet>366</a>                <span class="kw-2">&amp;mut </span>halo,
+<a href=#367 id=367 data-nosnippet>367</a>                <span class="kw-2">&amp;</span>preset,
+<a href=#368 id=368 data-nosnippet>368</a>                halo_origin_x,
+<a href=#369 id=369 data-nosnippet>369</a>                halo_origin_z,
+<a href=#370 id=370 data-nosnippet>370</a>                vertex_spacing,
+<a href=#371 id=371 data-nosnippet>371</a>                <span class="self">self</span>.config.seed,
+<a href=#372 id=372 data-nosnippet>372</a>            );
+<a href=#373 id=373 data-nosnippet>373</a>            halo.recalculate_bounds();
+<a href=#374 id=374 data-nosnippet>374</a>        }
+<a href=#375 id=375 data-nosnippet>375</a>
+<a href=#376 id=376 data-nosnippet>376</a>        <span class="comment">// Post-erosion cropped heightmap — final chunk output.
+<a href=#377 id=377 data-nosnippet>377</a>        </span><span class="kw">let </span>heightmap = <span class="self">self</span>.crop_halo_to_chunk(<span class="kw-2">&amp;</span>halo, chunk_id)<span class="question-mark">?</span>;
+<a href=#378 id=378 data-nosnippet>378</a>
+<a href=#379 id=379 data-nosnippet>379</a>        <span class="comment">// biome_map still computed from PRE-erosion heights + climate data
+<a href=#380 id=380 data-nosnippet>380</a>        // (unchanged path). Phase 4 will route climate through biome_weights;
+<a href=#381 id=381 data-nosnippet>381</a>        // biome_map currently feeds splat-rule selection elsewhere.
+<a href=#382 id=382 data-nosnippet>382</a>        </span><span class="kw">let </span>climate_data = <span class="self">self</span>.climate.sample_chunk(
+<a href=#383 id=383 data-nosnippet>383</a>            chunk_id,
+<a href=#384 id=384 data-nosnippet>384</a>            <span class="self">self</span>.config.chunk_size,
+<a href=#385 id=385 data-nosnippet>385</a>            <span class="self">self</span>.config.heightmap_resolution,
+<a href=#386 id=386 data-nosnippet>386</a>        )<span class="question-mark">?</span>;
+<a href=#387 id=387 data-nosnippet>387</a>        <span class="kw">let </span>biome_map = <span class="self">self</span>.assign_biomes(<span class="kw-2">&amp;</span>pre_erosion_heightmap, <span class="kw-2">&amp;</span>climate_data)<span class="question-mark">?</span>;
 <a href=#388 id=388 data-nosnippet>388</a>
-<a href=#389 id=389 data-nosnippet>389</a>        <span class="kw">let </span>center = Vec3::new(<span class="number">128.0</span>, <span class="number">0.0</span>, <span class="number">128.0</span>);
-<a href=#390 id=390 data-nosnippet>390</a>        <span class="kw">let </span>loaded_chunks = generator.stream_chunks(center, <span class="number">2</span>)<span class="question-mark">?</span>;
-<a href=#391 id=391 data-nosnippet>391</a>
-<a href=#392 id=392 data-nosnippet>392</a>        <span class="macro">assert!</span>(!loaded_chunks.is_empty());
-<a href=#393 id=393 data-nosnippet>393</a>
-<a href=#394 id=394 data-nosnippet>394</a>        <span class="prelude-val">Ok</span>(())
-<a href=#395 id=395 data-nosnippet>395</a>    }
-<a href=#396 id=396 data-nosnippet>396</a>}</code></pre></div></section></main></body></html>
+<a href=#389 id=389 data-nosnippet>389</a>        <span class="comment">// Construct chunk: post-erosion heights + pre-erosion biome_weights.
+<a href=#390 id=390 data-nosnippet>390</a>        // No further `apply_erosion` — phase 2 replaces simple CA with
+<a href=#391 id=391 data-nosnippet>391</a>        // AdvancedErosionSimulator.
+<a href=#392 id=392 data-nosnippet>392</a>        </span><span class="kw">let </span>chunk = TerrainChunk::new_with_biome_weights(
+<a href=#393 id=393 data-nosnippet>393</a>            chunk_id,
+<a href=#394 id=394 data-nosnippet>394</a>            heightmap,
+<a href=#395 id=395 data-nosnippet>395</a>            biome_map,
+<a href=#396 id=396 data-nosnippet>396</a>            biome_weights,
+<a href=#397 id=397 data-nosnippet>397</a>        );
+<a href=#398 id=398 data-nosnippet>398</a>
+<a href=#399 id=399 data-nosnippet>399</a>        <span class="prelude-val">Ok</span>(chunk)
+<a href=#400 id=400 data-nosnippet>400</a>    }
+<a href=#401 id=401 data-nosnippet>401</a>
+<a href=#402 id=402 data-nosnippet>402</a>    <span class="doccomment">/// Phase 1.6-F.3-phase-1.B: generate a heightmap covering a 3×3 chunk
+<a href=#403 id=403 data-nosnippet>403</a>    /// region centered on `target_chunk_id` (halo_chunks=1). The returned
+<a href=#404 id=404 data-nosnippet>404</a>    /// heightmap has `(1 + 2*halo_chunks) × (heightmap_resolution - 1) + 1`
+<a href=#405 id=405 data-nosnippet>405</a>    /// vertices per side at the same per-vertex spacing as single-chunk
+<a href=#406 id=406 data-nosnippet>406</a>    /// generation, so the center third (sampled at the target chunk's world
+<a href=#407 id=407 data-nosnippet>407</a>    /// coords) is byte-identical to what `generate_chunk` produces via the
+<a href=#408 id=408 data-nosnippet>408</a>    /// SIMD heightmap generator.
+<a href=#409 id=409 data-nosnippet>409</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>generate_halo_heightmap(
+<a href=#410 id=410 data-nosnippet>410</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#411 id=411 data-nosnippet>411</a>        target_chunk_id: ChunkId,
+<a href=#412 id=412 data-nosnippet>412</a>        halo_chunks: u32,
+<a href=#413 id=413 data-nosnippet>413</a>    ) -&gt; anyhow::Result&lt;heightmap::Heightmap&gt; {
+<a href=#414 id=414 data-nosnippet>414</a>        <span class="kw">let </span>chunk_res = <span class="self">self</span>.config.heightmap_resolution;
+<a href=#415 id=415 data-nosnippet>415</a>        <span class="kw">let </span>chunk_size = <span class="self">self</span>.config.chunk_size;
+<a href=#416 id=416 data-nosnippet>416</a>        <span class="comment">// Per-vertex step in world units. Must match single-chunk generation.
+<a href=#417 id=417 data-nosnippet>417</a>        </span><span class="kw">let </span>step = chunk_size / (chunk_res - <span class="number">1</span>) <span class="kw">as </span>f32;
+<a href=#418 id=418 data-nosnippet>418</a>
+<a href=#419 id=419 data-nosnippet>419</a>        <span class="comment">// Halo region: (1 + 2*halo_chunks) sub-chunks per axis. Adjacent
+<a href=#420 id=420 data-nosnippet>420</a>        // sub-chunks share their edge vertex so total vertex count per side is
+<a href=#421 id=421 data-nosnippet>421</a>        // `chunks_per_side * (chunk_res - 1) + 1`.
+<a href=#422 id=422 data-nosnippet>422</a>        </span><span class="kw">let </span>chunks_per_side = <span class="number">1 </span>+ <span class="number">2 </span>* halo_chunks;
+<a href=#423 id=423 data-nosnippet>423</a>        <span class="kw">let </span>halo_res = chunks_per_side * (chunk_res - <span class="number">1</span>) + <span class="number">1</span>;
+<a href=#424 id=424 data-nosnippet>424</a>        <span class="kw">let </span>halo_size_world = chunks_per_side <span class="kw">as </span>f32 * chunk_size;
+<a href=#425 id=425 data-nosnippet>425</a>
+<a href=#426 id=426 data-nosnippet>426</a>        <span class="comment">// Origin world coordinates = target chunk origin minus (halo_chunks × chunk_size).
+<a href=#427 id=427 data-nosnippet>427</a>        </span><span class="kw">let </span>target_origin = target_chunk_id.to_world_pos(chunk_size);
+<a href=#428 id=428 data-nosnippet>428</a>        <span class="kw">let </span>halo_origin_x = target_origin.x - halo_chunks <span class="kw">as </span>f32 * chunk_size;
+<a href=#429 id=429 data-nosnippet>429</a>        <span class="kw">let </span>halo_origin_z = target_origin.z - halo_chunks <span class="kw">as </span>f32 * chunk_size;
+<a href=#430 id=430 data-nosnippet>430</a>
+<a href=#431 id=431 data-nosnippet>431</a>        <span class="comment">// Sample the noise field directly at per-vertex world coordinates. This
+<a href=#432 id=432 data-nosnippet>432</a>        // path uses `TerrainNoise::sample_height` rather than the SIMD
+<a href=#433 id=433 data-nosnippet>433</a>        // heightmap generator because the SIMD path is tied to a ChunkId. For
+<a href=#434 id=434 data-nosnippet>434</a>        // byte-identity with the SIMD path at the center crop, both routes
+<a href=#435 id=435 data-nosnippet>435</a>        // must produce the same Y at the same world (x, z) — confirmed by the
+<a href=#436 id=436 data-nosnippet>436</a>        // determinism invariant of `TerrainNoise`.
+<a href=#437 id=437 data-nosnippet>437</a>        </span><span class="kw">let </span>heightmap_config = heightmap::HeightmapConfig {
+<a href=#438 id=438 data-nosnippet>438</a>            resolution: halo_res,
+<a href=#439 id=439 data-nosnippet>439</a>            ..Default::default()
+<a href=#440 id=440 data-nosnippet>440</a>        };
+<a href=#441 id=441 data-nosnippet>441</a>        <span class="kw">let </span><span class="kw-2">mut </span>halo_map = heightmap::Heightmap::new(heightmap_config)<span class="question-mark">?</span>;
+<a href=#442 id=442 data-nosnippet>442</a>        <span class="kw">for </span>z_idx <span class="kw">in </span><span class="number">0</span>..halo_res {
+<a href=#443 id=443 data-nosnippet>443</a>            <span class="kw">for </span>x_idx <span class="kw">in </span><span class="number">0</span>..halo_res {
+<a href=#444 id=444 data-nosnippet>444</a>                <span class="kw">let </span>wx = halo_origin_x + x_idx <span class="kw">as </span>f32 * step;
+<a href=#445 id=445 data-nosnippet>445</a>                <span class="kw">let </span>wz = halo_origin_z + z_idx <span class="kw">as </span>f32 * step;
+<a href=#446 id=446 data-nosnippet>446</a>                <span class="kw">let </span>y = <span class="self">self</span>.noise.sample_height(wx <span class="kw">as </span>f64, wz <span class="kw">as </span>f64);
+<a href=#447 id=447 data-nosnippet>447</a>                halo_map.set_height(x_idx, z_idx, y);
+<a href=#448 id=448 data-nosnippet>448</a>            }
+<a href=#449 id=449 data-nosnippet>449</a>        }
+<a href=#450 id=450 data-nosnippet>450</a>
+<a href=#451 id=451 data-nosnippet>451</a>        <span class="comment">// Silence unused warning for halo_size_world — useful for phase 2
+<a href=#452 id=452 data-nosnippet>452</a>        // perf logging and halo-overlap sanity assertions.
+<a href=#453 id=453 data-nosnippet>453</a>        </span><span class="kw">let _ </span>= halo_size_world;
+<a href=#454 id=454 data-nosnippet>454</a>
+<a href=#455 id=455 data-nosnippet>455</a>        <span class="prelude-val">Ok</span>(halo_map)
+<a href=#456 id=456 data-nosnippet>456</a>    }
+<a href=#457 id=457 data-nosnippet>457</a>
+<a href=#458 id=458 data-nosnippet>458</a>    <span class="doccomment">/// Phase 1.6-F.3-phase-1.B: crop the center chunk-sized region out of a
+<a href=#459 id=459 data-nosnippet>459</a>    /// halo-expanded heightmap. Assumes the halo was built by
+<a href=#460 id=460 data-nosnippet>460</a>    /// `generate_halo_heightmap` with the same `target_chunk_id` and halo
+<a href=#461 id=461 data-nosnippet>461</a>    /// size. Returns a single-chunk heightmap (resolution matching
+<a href=#462 id=462 data-nosnippet>462</a>    /// `WorldConfig::heightmap_resolution`).
+<a href=#463 id=463 data-nosnippet>463</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>crop_halo_to_chunk(
+<a href=#464 id=464 data-nosnippet>464</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#465 id=465 data-nosnippet>465</a>        halo: <span class="kw-2">&amp;</span>heightmap::Heightmap,
+<a href=#466 id=466 data-nosnippet>466</a>        target_chunk_id: ChunkId,
+<a href=#467 id=467 data-nosnippet>467</a>    ) -&gt; anyhow::Result&lt;heightmap::Heightmap&gt; {
+<a href=#468 id=468 data-nosnippet>468</a>        <span class="kw">let _ </span>= target_chunk_id; <span class="comment">// centered crop — target id not needed
+<a href=#469 id=469 data-nosnippet>469</a>        </span><span class="kw">let </span>chunk_res = <span class="self">self</span>.config.heightmap_resolution;
+<a href=#470 id=470 data-nosnippet>470</a>        <span class="kw">let </span>halo_res = halo.resolution();
+<a href=#471 id=471 data-nosnippet>471</a>        <span class="comment">// Infer halo_chunks from resolutions.
+<a href=#472 id=472 data-nosnippet>472</a>        //   halo_res = chunks_per_side * (chunk_res - 1) + 1
+<a href=#473 id=473 data-nosnippet>473</a>        //   chunks_per_side = (halo_res - 1) / (chunk_res - 1)
+<a href=#474 id=474 data-nosnippet>474</a>        //   halo_chunks = (chunks_per_side - 1) / 2
+<a href=#475 id=475 data-nosnippet>475</a>        </span><span class="kw">if </span>chunk_res == <span class="number">0 </span>|| (halo_res - <span class="number">1</span>) % (chunk_res - <span class="number">1</span>) != <span class="number">0 </span>{
+<a href=#476 id=476 data-nosnippet>476</a>            <span class="macro">anyhow::bail!</span>(
+<a href=#477 id=477 data-nosnippet>477</a>                <span class="string">"halo resolution {} not a multiple of chunk resolution {}"</span>,
+<a href=#478 id=478 data-nosnippet>478</a>                halo_res,
+<a href=#479 id=479 data-nosnippet>479</a>                chunk_res
+<a href=#480 id=480 data-nosnippet>480</a>            );
+<a href=#481 id=481 data-nosnippet>481</a>        }
+<a href=#482 id=482 data-nosnippet>482</a>        <span class="kw">let </span>chunks_per_side = (halo_res - <span class="number">1</span>) / (chunk_res - <span class="number">1</span>);
+<a href=#483 id=483 data-nosnippet>483</a>        <span class="kw">if </span>chunks_per_side &lt; <span class="number">1 </span>|| chunks_per_side % <span class="number">2 </span>!= <span class="number">1 </span>{
+<a href=#484 id=484 data-nosnippet>484</a>            <span class="macro">anyhow::bail!</span>(
+<a href=#485 id=485 data-nosnippet>485</a>                <span class="string">"halo has {} chunks per side; expected odd &gt;= 1"</span>,
+<a href=#486 id=486 data-nosnippet>486</a>                chunks_per_side
+<a href=#487 id=487 data-nosnippet>487</a>            );
+<a href=#488 id=488 data-nosnippet>488</a>        }
+<a href=#489 id=489 data-nosnippet>489</a>        <span class="kw">let </span>halo_chunks = (chunks_per_side - <span class="number">1</span>) / <span class="number">2</span>;
+<a href=#490 id=490 data-nosnippet>490</a>        <span class="kw">let </span>start = halo_chunks * (chunk_res - <span class="number">1</span>);
+<a href=#491 id=491 data-nosnippet>491</a>
+<a href=#492 id=492 data-nosnippet>492</a>        <span class="kw">let </span>chunk_cfg = heightmap::HeightmapConfig {
+<a href=#493 id=493 data-nosnippet>493</a>            resolution: chunk_res,
+<a href=#494 id=494 data-nosnippet>494</a>            ..Default::default()
+<a href=#495 id=495 data-nosnippet>495</a>        };
+<a href=#496 id=496 data-nosnippet>496</a>        <span class="kw">let </span><span class="kw-2">mut </span>cropped = heightmap::Heightmap::new(chunk_cfg)<span class="question-mark">?</span>;
+<a href=#497 id=497 data-nosnippet>497</a>        <span class="kw">for </span>z <span class="kw">in </span><span class="number">0</span>..chunk_res {
+<a href=#498 id=498 data-nosnippet>498</a>            <span class="kw">for </span>x <span class="kw">in </span><span class="number">0</span>..chunk_res {
+<a href=#499 id=499 data-nosnippet>499</a>                <span class="kw">let </span>y = halo.get_height(start + x, start + z);
+<a href=#500 id=500 data-nosnippet>500</a>                cropped.set_height(x, z, y);
+<a href=#501 id=501 data-nosnippet>501</a>            }
+<a href=#502 id=502 data-nosnippet>502</a>        }
+<a href=#503 id=503 data-nosnippet>503</a>        <span class="prelude-val">Ok</span>(cropped)
+<a href=#504 id=504 data-nosnippet>504</a>    }
+<a href=#505 id=505 data-nosnippet>505</a>
+<a href=#506 id=506 data-nosnippet>506</a>    <span class="doccomment">/// Phase 1.6-F.3-phase-1.B / §2.3: derive a deterministic seed for the
+<a href=#507 id=507 data-nosnippet>507</a>    /// halo region centered on `target_chunk_id`. Phase 2 feeds this seed to
+<a href=#508 id=508 data-nosnippet>508</a>    /// `AdvancedErosionSimulator::new` so adjacent chunks' halos that overlap
+<a href=#509 id=509 data-nosnippet>509</a>    /// in world space produce identical droplet trajectories in the overlap
+<a href=#510 id=510 data-nosnippet>510</a>    /// region.
+<a href=#511 id=511 data-nosnippet>511</a>    </span><span class="attr">#[allow(dead_code)] </span><span class="comment">// Wired in phase 2; validated by unit tests here.
+<a href=#512 id=512 data-nosnippet>512</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>halo_seed(
+<a href=#513 id=513 data-nosnippet>513</a>        world_seed: u64,
+<a href=#514 id=514 data-nosnippet>514</a>        target_chunk_id: ChunkId,
+<a href=#515 id=515 data-nosnippet>515</a>        halo_chunks: u32,
+<a href=#516 id=516 data-nosnippet>516</a>    ) -&gt; u64 {
+<a href=#517 id=517 data-nosnippet>517</a>        <span class="kw">let </span>halo_origin_x = target_chunk_id.x.wrapping_sub(halo_chunks <span class="kw">as </span>i32);
+<a href=#518 id=518 data-nosnippet>518</a>        <span class="kw">let </span>halo_origin_z = target_chunk_id.z.wrapping_sub(halo_chunks <span class="kw">as </span>i32);
+<a href=#519 id=519 data-nosnippet>519</a>        <span class="comment">// Wang-style integer hash, deterministic across runs / platforms.
+<a href=#520 id=520 data-nosnippet>520</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>h = world_seed;
+<a href=#521 id=521 data-nosnippet>521</a>        h = h
+<a href=#522 id=522 data-nosnippet>522</a>            .wrapping_add(halo_origin_x <span class="kw">as </span>u64)
+<a href=#523 id=523 data-nosnippet>523</a>            .wrapping_mul(<span class="number">0x9E3779B97F4A7C15</span>);
+<a href=#524 id=524 data-nosnippet>524</a>        h ^= h &gt;&gt; <span class="number">32</span>;
+<a href=#525 id=525 data-nosnippet>525</a>        h = h
+<a href=#526 id=526 data-nosnippet>526</a>            .wrapping_add(halo_origin_z <span class="kw">as </span>u64)
+<a href=#527 id=527 data-nosnippet>527</a>            .wrapping_mul(<span class="number">0x85EBCA6BE11ECC0D</span>);
+<a href=#528 id=528 data-nosnippet>528</a>        h ^= h &gt;&gt; <span class="number">32</span>;
+<a href=#529 id=529 data-nosnippet>529</a>        h
+<a href=#530 id=530 data-nosnippet>530</a>    }
+<a href=#531 id=531 data-nosnippet>531</a>
+<a href=#532 id=532 data-nosnippet>532</a>    <span class="doccomment">/// Generate and register a chunk (mutable version for compatibility)
+<a href=#533 id=533 data-nosnippet>533</a>    </span><span class="kw">pub fn </span>generate_and_register_chunk(
+<a href=#534 id=534 data-nosnippet>534</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+<a href=#535 id=535 data-nosnippet>535</a>        chunk_id: ChunkId,
+<a href=#536 id=536 data-nosnippet>536</a>    ) -&gt; anyhow::Result&lt;TerrainChunk&gt; {
+<a href=#537 id=537 data-nosnippet>537</a>        <span class="kw">let </span>chunk = <span class="self">self</span>.generate_chunk(chunk_id)<span class="question-mark">?</span>;
+<a href=#538 id=538 data-nosnippet>538</a>        <span class="self">self</span>.chunk_manager.add_chunk(chunk.clone());
+<a href=#539 id=539 data-nosnippet>539</a>        <span class="prelude-val">Ok</span>(chunk)
+<a href=#540 id=540 data-nosnippet>540</a>    }
+<a href=#541 id=541 data-nosnippet>541</a>
+<a href=#542 id=542 data-nosnippet>542</a>    <span class="doccomment">/// Get an existing chunk if it's loaded
+<a href=#543 id=543 data-nosnippet>543</a>    </span><span class="kw">pub fn </span>get_chunk(<span class="kw-2">&amp;</span><span class="self">self</span>, chunk_id: ChunkId) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>TerrainChunk&gt; {
+<a href=#544 id=544 data-nosnippet>544</a>        <span class="self">self</span>.chunk_manager.get_chunk(chunk_id)
+<a href=#545 id=545 data-nosnippet>545</a>    }
+<a href=#546 id=546 data-nosnippet>546</a>
+<a href=#547 id=547 data-nosnippet>547</a>    <span class="doccomment">/// Stream chunks around a center position, loading/unloading as needed
+<a href=#548 id=548 data-nosnippet>548</a>    </span><span class="kw">pub fn </span>stream_chunks(<span class="kw-2">&amp;mut </span><span class="self">self</span>, center: Vec3, radius: u32) -&gt; anyhow::Result&lt;Vec&lt;ChunkId&gt;&gt; {
+<a href=#549 id=549 data-nosnippet>549</a>        <span class="kw">let </span>chunks_to_load = <span class="self">self</span>.chunk_manager.get_chunks_in_radius(center, radius);
+<a href=#550 id=550 data-nosnippet>550</a>        <span class="kw">let </span><span class="kw-2">mut </span>loaded = Vec::new();
+<a href=#551 id=551 data-nosnippet>551</a>
+<a href=#552 id=552 data-nosnippet>552</a>        <span class="kw">for </span>chunk_id <span class="kw">in </span>chunks_to_load {
+<a href=#553 id=553 data-nosnippet>553</a>            <span class="kw">if </span>!<span class="self">self</span>.chunk_manager.has_chunk(chunk_id) {
+<a href=#554 id=554 data-nosnippet>554</a>                <span class="self">self</span>.generate_and_register_chunk(chunk_id)<span class="question-mark">?</span>;
+<a href=#555 id=555 data-nosnippet>555</a>                loaded.push(chunk_id);
+<a href=#556 id=556 data-nosnippet>556</a>            }
+<a href=#557 id=557 data-nosnippet>557</a>        }
+<a href=#558 id=558 data-nosnippet>558</a>
+<a href=#559 id=559 data-nosnippet>559</a>        <span class="comment">// Unload chunks that are too far away
+<a href=#560 id=560 data-nosnippet>560</a>        </span><span class="kw">let </span>unload_radius = radius + <span class="number">2</span>; <span class="comment">// Keep a buffer
+<a href=#561 id=561 data-nosnippet>561</a>        </span><span class="self">self</span>.chunk_manager
+<a href=#562 id=562 data-nosnippet>562</a>            .unload_distant_chunks(center, unload_radius);
+<a href=#563 id=563 data-nosnippet>563</a>
+<a href=#564 id=564 data-nosnippet>564</a>        <span class="prelude-val">Ok</span>(loaded)
+<a href=#565 id=565 data-nosnippet>565</a>    }
+<a href=#566 id=566 data-nosnippet>566</a>
+<a href=#567 id=567 data-nosnippet>567</a>    <span class="doccomment">/// Assign biomes to heightmap points based on climate data
+<a href=#568 id=568 data-nosnippet>568</a>    </span><span class="kw">fn </span>assign_biomes(
+<a href=#569 id=569 data-nosnippet>569</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#570 id=570 data-nosnippet>570</a>        heightmap: <span class="kw-2">&amp;</span>Heightmap,
+<a href=#571 id=571 data-nosnippet>571</a>        climate_data: <span class="kw-2">&amp;</span>[(f32, f32)], <span class="comment">// (temperature, moisture) pairs
+<a href=#572 id=572 data-nosnippet>572</a>    </span>) -&gt; anyhow::Result&lt;Vec&lt;BiomeType&gt;&gt; {
+<a href=#573 id=573 data-nosnippet>573</a>        <span class="kw">let </span><span class="kw-2">mut </span>biome_map = Vec::with_capacity(climate_data.len());
+<a href=#574 id=574 data-nosnippet>574</a>
+<a href=#575 id=575 data-nosnippet>575</a>        <span class="kw">for </span>(i, <span class="kw-2">&amp;</span>(temperature, moisture)) <span class="kw">in </span>climate_data.iter().enumerate() {
+<a href=#576 id=576 data-nosnippet>576</a>            <span class="kw">let </span>height = heightmap.get_height_at_index(i);
+<a href=#577 id=577 data-nosnippet>577</a>            <span class="kw">let </span>biome = <span class="self">self</span>.find_best_biome(height, temperature, moisture);
+<a href=#578 id=578 data-nosnippet>578</a>            biome_map.push(biome);
+<a href=#579 id=579 data-nosnippet>579</a>        }
+<a href=#580 id=580 data-nosnippet>580</a>
+<a href=#581 id=581 data-nosnippet>581</a>        <span class="prelude-val">Ok</span>(biome_map)
+<a href=#582 id=582 data-nosnippet>582</a>    }
+<a href=#583 id=583 data-nosnippet>583</a>
+<a href=#584 id=584 data-nosnippet>584</a>    <span class="doccomment">/// Find the best biome for given environmental conditions
+<a href=#585 id=585 data-nosnippet>585</a>    </span><span class="kw">fn </span>find_best_biome(<span class="kw-2">&amp;</span><span class="self">self</span>, height: f32, temperature: f32, moisture: f32) -&gt; BiomeType {
+<a href=#586 id=586 data-nosnippet>586</a>        <span class="kw">let </span><span class="kw-2">mut </span>best_biome = BiomeType::Grassland;
+<a href=#587 id=587 data-nosnippet>587</a>        <span class="kw">let </span><span class="kw-2">mut </span>best_score = f32::NEG_INFINITY;
+<a href=#588 id=588 data-nosnippet>588</a>
+<a href=#589 id=589 data-nosnippet>589</a>        <span class="kw">for </span>biome_config <span class="kw">in </span><span class="kw-2">&amp;</span><span class="self">self</span>.config.biomes {
+<a href=#590 id=590 data-nosnippet>590</a>            <span class="kw">let </span>score = biome_config.score_conditions(height, temperature, moisture);
+<a href=#591 id=591 data-nosnippet>591</a>            <span class="kw">if </span>score &gt; best_score {
+<a href=#592 id=592 data-nosnippet>592</a>                best_score = score;
+<a href=#593 id=593 data-nosnippet>593</a>                best_biome = biome_config.biome_type;
+<a href=#594 id=594 data-nosnippet>594</a>            }
+<a href=#595 id=595 data-nosnippet>595</a>        }
+<a href=#596 id=596 data-nosnippet>596</a>
+<a href=#597 id=597 data-nosnippet>597</a>        best_biome
+<a href=#598 id=598 data-nosnippet>598</a>    }
+<a href=#599 id=599 data-nosnippet>599</a>
+<a href=#600 id=600 data-nosnippet>600</a>    <span class="doccomment">/// Get the world configuration
+<a href=#601 id=601 data-nosnippet>601</a>    </span><span class="kw">pub fn </span>config(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>WorldConfig {
+<a href=#602 id=602 data-nosnippet>602</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.config
+<a href=#603 id=603 data-nosnippet>603</a>    }
+<a href=#604 id=604 data-nosnippet>604</a>}
+<a href=#605 id=605 data-nosnippet>605</a>
+<a href=#606 id=606 data-nosnippet>606</a><span class="attr">#[cfg(test)]
+<a href=#607 id=607 data-nosnippet>607</a></span><span class="kw">mod </span>tests {
+<a href=#608 id=608 data-nosnippet>608</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#609 id=609 data-nosnippet>609</a>
+<a href=#610 id=610 data-nosnippet>610</a>    <span class="attr">#[test]
+<a href=#611 id=611 data-nosnippet>611</a>    </span><span class="kw">fn </span>test_world_generator_creation() {
+<a href=#612 id=612 data-nosnippet>612</a>        <span class="kw">let </span>config = WorldConfig::default();
+<a href=#613 id=613 data-nosnippet>613</a>        <span class="kw">let </span>generator = WorldGenerator::new(config);
+<a href=#614 id=614 data-nosnippet>614</a>        <span class="macro">assert_eq!</span>(generator.config.seed, <span class="number">12345</span>);
+<a href=#615 id=615 data-nosnippet>615</a>    }
+<a href=#616 id=616 data-nosnippet>616</a>
+<a href=#617 id=617 data-nosnippet>617</a>    <span class="doccomment">/// Phase 1.6-F.3-phase-1.B: `halo_seed` must be deterministic for the same
+<a href=#618 id=618 data-nosnippet>618</a>    /// (world_seed, target_chunk_id, halo_chunks) triple, and must produce
+<a href=#619 id=619 data-nosnippet>619</a>    /// different seeds for different target chunks (so adjacent halos have
+<a href=#620 id=620 data-nosnippet>620</a>    /// distinct PRNG streams).
+<a href=#621 id=621 data-nosnippet>621</a>    </span><span class="attr">#[test]
+<a href=#622 id=622 data-nosnippet>622</a>    </span><span class="kw">fn </span>phase_1_6_f3_phase_1_halo_seed_deterministic() {
+<a href=#623 id=623 data-nosnippet>623</a>        <span class="kw">let </span>s1 = WorldGenerator::halo_seed(<span class="number">12345</span>, ChunkId::new(<span class="number">5</span>, <span class="number">3</span>), <span class="number">1</span>);
+<a href=#624 id=624 data-nosnippet>624</a>        <span class="kw">let </span>s2 = WorldGenerator::halo_seed(<span class="number">12345</span>, ChunkId::new(<span class="number">5</span>, <span class="number">3</span>), <span class="number">1</span>);
+<a href=#625 id=625 data-nosnippet>625</a>        <span class="macro">assert_eq!</span>(s1, s2, <span class="string">"halo_seed should be deterministic"</span>);
+<a href=#626 id=626 data-nosnippet>626</a>    }
+<a href=#627 id=627 data-nosnippet>627</a>
+<a href=#628 id=628 data-nosnippet>628</a>    <span class="attr">#[test]
+<a href=#629 id=629 data-nosnippet>629</a>    </span><span class="kw">fn </span>phase_1_6_f3_phase_1_halo_seed_differs_per_chunk() {
+<a href=#630 id=630 data-nosnippet>630</a>        <span class="kw">let </span>s00 = WorldGenerator::halo_seed(<span class="number">12345</span>, ChunkId::new(<span class="number">0</span>, <span class="number">0</span>), <span class="number">1</span>);
+<a href=#631 id=631 data-nosnippet>631</a>        <span class="kw">let </span>s10 = WorldGenerator::halo_seed(<span class="number">12345</span>, ChunkId::new(<span class="number">1</span>, <span class="number">0</span>), <span class="number">1</span>);
+<a href=#632 id=632 data-nosnippet>632</a>        <span class="kw">let </span>s01 = WorldGenerator::halo_seed(<span class="number">12345</span>, ChunkId::new(<span class="number">0</span>, <span class="number">1</span>), <span class="number">1</span>);
+<a href=#633 id=633 data-nosnippet>633</a>        <span class="macro">assert_ne!</span>(s00, s10, <span class="string">"adjacent chunks should get different halo seeds"</span>);
+<a href=#634 id=634 data-nosnippet>634</a>        <span class="macro">assert_ne!</span>(s00, s01, <span class="string">"adjacent chunks should get different halo seeds"</span>);
+<a href=#635 id=635 data-nosnippet>635</a>        <span class="macro">assert_ne!</span>(s10, s01, <span class="string">"non-identical chunks should get different halo seeds"</span>);
+<a href=#636 id=636 data-nosnippet>636</a>    }
+<a href=#637 id=637 data-nosnippet>637</a>
+<a href=#638 id=638 data-nosnippet>638</a>    <span class="attr">#[test]
+<a href=#639 id=639 data-nosnippet>639</a>    </span><span class="kw">fn </span>phase_1_6_f3_phase_1_halo_seed_differs_per_world_seed() {
+<a href=#640 id=640 data-nosnippet>640</a>        <span class="kw">let </span>s1 = WorldGenerator::halo_seed(<span class="number">12345</span>, ChunkId::new(<span class="number">0</span>, <span class="number">0</span>), <span class="number">1</span>);
+<a href=#641 id=641 data-nosnippet>641</a>        <span class="kw">let </span>s2 = WorldGenerator::halo_seed(<span class="number">67890</span>, ChunkId::new(<span class="number">0</span>, <span class="number">0</span>), <span class="number">1</span>);
+<a href=#642 id=642 data-nosnippet>642</a>        <span class="macro">assert_ne!</span>(s1, s2, <span class="string">"different world seeds should yield different halo seeds"</span>);
+<a href=#643 id=643 data-nosnippet>643</a>    }
+<a href=#644 id=644 data-nosnippet>644</a>
+<a href=#645 id=645 data-nosnippet>645</a>    <span class="attr">#[test]
+<a href=#646 id=646 data-nosnippet>646</a>    </span><span class="kw">fn </span>test_chunk_generation() -&gt; anyhow::Result&lt;()&gt; {
+<a href=#647 id=647 data-nosnippet>647</a>        <span class="kw">let </span>config = WorldConfig::default();
+<a href=#648 id=648 data-nosnippet>648</a>        <span class="kw">let </span>generator = WorldGenerator::new(config);
+<a href=#649 id=649 data-nosnippet>649</a>
+<a href=#650 id=650 data-nosnippet>650</a>        <span class="kw">let </span>chunk_id = ChunkId::new(<span class="number">0</span>, <span class="number">0</span>);
+<a href=#651 id=651 data-nosnippet>651</a>        <span class="kw">let </span>chunk = generator.generate_chunk(chunk_id)<span class="question-mark">?</span>;
+<a href=#652 id=652 data-nosnippet>652</a>
+<a href=#653 id=653 data-nosnippet>653</a>        <span class="macro">assert_eq!</span>(chunk.id(), chunk_id);
+<a href=#654 id=654 data-nosnippet>654</a>        <span class="macro">assert!</span>(chunk.heightmap().max_height() &gt;= chunk.heightmap().min_height());
+<a href=#655 id=655 data-nosnippet>655</a>
+<a href=#656 id=656 data-nosnippet>656</a>        <span class="prelude-val">Ok</span>(())
+<a href=#657 id=657 data-nosnippet>657</a>    }
+<a href=#658 id=658 data-nosnippet>658</a>
+<a href=#659 id=659 data-nosnippet>659</a>    <span class="attr">#[test]
+<a href=#660 id=660 data-nosnippet>660</a>    </span><span class="kw">fn </span>test_chunk_streaming() -&gt; anyhow::Result&lt;()&gt; {
+<a href=#661 id=661 data-nosnippet>661</a>        <span class="kw">let </span>config = WorldConfig::default();
+<a href=#662 id=662 data-nosnippet>662</a>        <span class="kw">let </span><span class="kw-2">mut </span>generator = WorldGenerator::new(config);
+<a href=#663 id=663 data-nosnippet>663</a>
+<a href=#664 id=664 data-nosnippet>664</a>        <span class="kw">let </span>center = Vec3::new(<span class="number">128.0</span>, <span class="number">0.0</span>, <span class="number">128.0</span>);
+<a href=#665 id=665 data-nosnippet>665</a>        <span class="kw">let </span>loaded_chunks = generator.stream_chunks(center, <span class="number">2</span>)<span class="question-mark">?</span>;
+<a href=#666 id=666 data-nosnippet>666</a>
+<a href=#667 id=667 data-nosnippet>667</a>        <span class="macro">assert!</span>(!loaded_chunks.is_empty());
+<a href=#668 id=668 data-nosnippet>668</a>
+<a href=#669 id=669 data-nosnippet>669</a>        <span class="prelude-val">Ok</span>(())
+<a href=#670 id=670 data-nosnippet>670</a>    }
+<a href=#671 id=671 data-nosnippet>671</a>}</code></pre></div></section></main></body></html>
