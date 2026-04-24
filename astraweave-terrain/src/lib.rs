@@ -131,8 +131,14 @@ impl Default for WorldConfig {
     fn default() -> Self {
         Self {
             seed: 12345,
-            chunk_size: 256.0,
-            heightmap_resolution: 64,
+            // Phase 1.6-F.4.B.2.A: Target B scale (Enshrouded-class).
+            // Chunk extent 256 → 512 WU (1 WU = 1 m convention per
+            // `docs/supplemental/WORLD_SCALE_CONVENTIONS.md`); vertex density
+            // 64 → 96 per side → vertex spacing 5.39 m (was 4.06 m). Halo=1
+            // region becomes 288 verts covering 1536 m. F.4.B.2.C raises
+            // radius default 5 → 10 in the editor UI (115 km² at radius 10).
+            chunk_size: 512.0,
+            heightmap_resolution: 96,
             noise: NoiseConfig::default(),
             climate: ClimateConfig::default(),
             biomes: vec![
