@@ -2530,12 +2530,22 @@ pub struct ScatterPlacement {
 
 impl ScatterPlacement {
     pub fn from_vegetation_instance(vi: &VegetationInstance) -> Self {
-        // Per-type world-scale multiplier: Nature Kit models are tiny (~1 unit),
-        // terrain spans hundreds of units. Trees need a much larger multiplier
-        // than grass/flowers to look proportional.
+        // Per-type world-scale multiplier: Nature Kit models are authored at
+        // ~real-world scale (e.g. `tree_small_02_a.glb` is 3.69 Blender
+        // units = 3.69 m per native Blender convention). Multiplier brings
+        // effective rendered height into realistic ranges at the 1 WU = 1 m
+        // convention documented in `docs/supplemental/WORLD_SCALE_CONVENTIONS.md`.
+        //
+        // Phase 1.6-F.4.B.2.E: tree multiplier 14 → 4. Previously 14× was a
+        // hack compensating for small terrain scale pre-F.4.B.2 — with
+        // Target B's ~500 WU peaks and 1 WU = 1 m, trees now need to be
+        // realistic forest scale (15-25 m mature) rather than oversized to
+        // match mountains. At 4× × scatter-jitter (0.8-1.4), rendered tree
+        // height is ~11.8-20.6 m, with peak-to-tree ratio ~25-30× against
+        // ~500 m mountain peaks.
         let (type_multiplier, base_tint) = match vi.vegetation_type.as_str() {
-            // Trees — models are ~1.2–1.7 units tall, need to reach 15–30 units
-            s if s.contains("tree") || s.contains("pine") => (14.0, [0.90, 1.00, 0.85, 1.0]),
+            // Trees — raw asset ~3.7 units; ×4 → ~12-21 m rendered.
+            s if s.contains("tree") || s.contains("pine") => (4.0, [0.90, 1.00, 0.85, 1.0]),
             // Cacti — models ~0.75 units, need to be ~5–8 units
             s if s.contains("cactus") => (8.0, [0.92, 1.00, 0.88, 1.0]),
             // Bushes — models ~0.25 units, need to be ~2–3 units
