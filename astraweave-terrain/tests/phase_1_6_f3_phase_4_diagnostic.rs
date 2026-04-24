@@ -105,6 +105,71 @@ fn phase_4_scale_baseline_per_climate() {
     println!("======================================================");
 }
 
+/// F.4.B.1 scale diagnostic: measure Y statistics across a FULL
+/// radius-5 grid (121 chunks) per climate. Single-chunk measurements
+/// (chunk (0,0)) are local; scale decisions need global statistics.
+/// No behavior change; pure measurement for
+/// `docs/audits/terrain_scale_diagnostic_2026-04-24.md`.
+#[test]
+fn phase_4_b_1_scale_radius5_per_climate() {
+    let gen_on = make_generator(true);
+    let gen_off = make_generator(false);
+
+    let climates = [
+        (ClimateBias::Temperate, "Temperate"),
+        (ClimateBias::Cold, "Cold"),
+        (ClimateBias::Arid, "Arid"),
+        (ClimateBias::Tropical, "Tropical"),
+        (ClimateBias::Wetland, "Wetland"),
+        (ClimateBias::Highland, "Highland"),
+    ];
+
+    println!("======================================================");
+    println!("F.4.B.1: full-world scale per climate (radius 5, 121 chunks)");
+    println!();
+    println!(
+        "| Climate   |     pre.max |  pre.p99 |  pre.p50 | post.max | post.p99 | post.p50 | Y span |"
+    );
+    println!(
+        "|-----------|------------:|---------:|---------:|---------:|---------:|---------:|-------:|"
+    );
+
+    for (climate, name) in climates {
+        let mut pre_all = Vec::new();
+        let mut post_all = Vec::new();
+        for x in -5..=5 {
+            for z in -5..=5 {
+                let chunk_id = ChunkId::new(x, z);
+                let pre = gen_off
+                    .generate_chunk_with_climate(chunk_id, climate)
+                    .expect("pre");
+                let post = gen_on
+                    .generate_chunk_with_climate(chunk_id, climate)
+                    .expect("post");
+                pre_all.extend_from_slice(pre.heightmap().data());
+                post_all.extend_from_slice(post.heightmap().data());
+            }
+        }
+        pre_all.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        post_all.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pre_max = *pre_all.last().unwrap();
+        let pre_p99 = pre_all[(pre_all.len() * 99) / 100];
+        let pre_p50 = pre_all[pre_all.len() / 2];
+        let post_max = *post_all.last().unwrap();
+        let post_p99 = post_all[(post_all.len() * 99) / 100];
+        let post_p50 = post_all[post_all.len() / 2];
+        let post_min = *post_all.first().unwrap();
+        let span = post_max - post_min;
+        println!(
+            "| {name:<9} | {pre_max:11.2} | {pre_p99:8.2} | {pre_p50:8.2} | {post_max:8.2} | {post_p99:8.2} | {post_p50:8.2} | {span:6.2} |"
+        );
+    }
+    println!();
+    println!("chunk_size = 256 WU, heightmap_resolution = 64, vertex spacing = 4 WU");
+    println!("radius = 5 → 11×11 = 121 chunks → 2816 WU × 2816 WU world extent");
+    println!("======================================================");
+}
+
 /// Phase 1.6-F.3-phase-4.B: after `smooth_shared_vertices` runs, every
 /// shared-edge vertex across adjacent chunks should match exactly
 /// (within floating-point precision). Measures divergence before and
