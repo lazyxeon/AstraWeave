@@ -2089,6 +2089,7 @@ dependencies = [
  "pollster",
  "rand 0.8.5",
  "raw-window-handle",
+ "rayon",
  "rfd",
  "ron 0.8.1",
  "serde",
