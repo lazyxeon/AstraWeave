@@ -23,6 +23,7 @@
 - Radius-10 total world (10752 × 10752 WU) = **10.75 × 10.75 km = 115.58 km²** (was 7.93).
 - Tree rendered: **11.8-20.6 m** at `tree_small_02_a.glb` (was 37-79 m). Peak-to-tree ratio ~30× at Target B default, matching Enshrouded baseline.
 - Mountain Drama slider (0.4-2.0, default 1.0) scales mountains amplitude only — at 0.4 = gentle hills (Target A territory); at 2.0 = alpine peaks (Target C-ish without streaming).
+- **Volumetric fog (F.4.B.2.H): scale-aware.** Base density 0.0003 gives 50% opacity at ~2310 m (21% of world extent), 90% at ~7675 m (71%). Height fog density 0.002 with falloff 0.2 provides ground haze tapering with altitude. Fog parameters scale inversely with world extent: if world extent changes again (e.g., Phase 1.7 Streaming campaign), fog density needs another recalibration pass. Current values target AAA horizon-fog behavior for ~10 km worlds.
 
 ## Reference-title comparison table
 
@@ -81,6 +82,7 @@ Changing ANY knob in isolation has known effects (§2.1, §2.6, F.3 halo sizing,
 
 - **2026-04-24 (F.4.B.1):** Initial conventions doc created. Provisional 1 WU = 1 meter convention established based on camera comments + tree asset author intent. 14× scatter multiplier flagged as inconsistent.
 - **2026-04-24 (F.4.B.2):** Convention CONFIRMED via implementation. Target B applied: chunk 512 WU, vertex density 96, radius 10, amplitudes ×3-8 (per-preset), continental scale 0.0012 → 0.0003, tree multiplier 14 → 4, elevation bands ×5, F.2 regression tests recalibrated. Rayon parallelization lands (phase-2.E's deferred work). Mountain Drama slider (0.4-2.0) added for dramatic-ness tuning without re-scaling. World extent grows 7.93 km² → 115 km²; Y span 92 m → ~510 m; trees 37-79 m → 12-21 m.
+- **2026-04-24 (F.4.B.2.H):** Fog recalibrated for Target B world extent. `VolumetricFogConfig::default` base_density 0.01 → 0.0003 (×33 reduction), height_fog_density 0.05 → 0.002 (×25 reduction), height_fog_falloff 0.3 → 0.2. Pre-F.4.B.2.H fog reached full opacity within 230 m (2% of extent — walled-in feel); post-F.4.B.2.H fog has 50% opacity at 2310 m, 90% at 7675 m — matches AAA horizon-fog behavior for ~10 km worlds. Distant mountains now visible; atmosphere still reads at distance.
 - **[future: F.4.A]:** climate-as-spatial-field. Bands and continental scale are now Target B-calibrated; F.4.A extends the biome-weight API to per-vertex ClimateSample without re-tuning scale.
 - **[future: F.5]:** integration tuning Andrew-gate evaluates all eight climates at Target B. Per-climate tuning adjustments (e.g. mountain preset's ×8 might be too dramatic, Mountain Drama default ≠ 1.0) landed as 1-parameter tweaks.
 - **[future: Phase 1.7 Streaming]:** Target C (Crimson-Desert class) if authored intent demands it.

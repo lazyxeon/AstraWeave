@@ -131,9 +131,27 @@ impl Default for VolumetricFogConfig {
         Self {
             enabled: true,
             froxel_dims: [160, 90, 64],
-            base_density: 0.01,
-            height_fog_density: 0.05,
-            height_fog_falloff: 0.3,
+            // Phase 1.6-F.4.B.2.H: density scaled ×33 smaller for Target B
+            // world extent (10.75 km per side) per
+            // `docs/supplemental/WORLD_SCALE_CONVENTIONS.md`.
+            //
+            // Exponential fog: optical_depth(r) = 1 - exp(-density * r).
+            //
+            // Pre-F.4.B.2.H (density 0.01): 50% at 69 m, 90% at 230 m —
+            // fog wall within 2% of world extent.
+            //
+            // Post-F.4.B.2.H (density 0.0003): 50% at 2310 m (21% of
+            // extent), 90% at 7675 m (71% of extent), 99% at 15350 m (full
+            // atmospheric haze at horizon). Matches AAA-typical horizon-
+            // fog behavior for ~10 km worlds (see F.4.B.1 diagnostic).
+            base_density: 0.0003,
+            // Height fog scaled ×25 smaller for the same reason.
+            // Pre-F.4.B.2.H (0.05 with falloff 0.3): near-opaque within
+            // ~100 m at ground level.
+            // Post-F.4.B.2.H (0.002 with falloff 0.2): noticeable ground
+            // haze at ~300-500 m, tapering smoothly with altitude.
+            height_fog_density: 0.002,
+            height_fog_falloff: 0.2,
             height_fog_offset: 0.0,
             noise_scale: 0.05,
             noise_intensity: 0.02,
@@ -982,7 +1000,11 @@ mod tests {
         assert!(c.enabled);
         assert_eq!(c.froxel_dims, [160, 90, 64]);
         assert!(c.anisotropy > 0.0, "Should have forward scattering");
-        assert!((c.base_density - 0.01).abs() < 1e-6);
+        // Phase 1.6-F.4.B.2.H: base density scaled down for Target B world
+        // extent (10.75 km per side). Exponential-fog density 0.0003 gives
+        // 50% opacity at ~2310 m (21% of world extent), matching AAA
+        // horizon-fog behavior.
+        assert!((c.base_density - 0.0003).abs() < 1e-6);
     }
 
     #[test]
