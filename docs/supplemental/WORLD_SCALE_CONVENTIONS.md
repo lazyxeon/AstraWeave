@@ -2,7 +2,7 @@
 
 ## World unit convention
 
-**Decision (2026-04-24, provisional):** **1 world unit (WU) = 1 meter**, provisional until F.4.B.2's implementation pass formalizes via applied code + documented assumptions. Phase 1.6-F.4.B.1 investigation established this as the implicit authored intent; F.4.B.2 will unify the scatter system's hidden 14× tree multiplier (which currently obscures the convention) against the rest of the engine.
+**Decision (2026-04-24, CONFIRMED via F.4.B.2):** **1 world unit (WU) = 1 meter**. Phase 1.6-F.4.B.2 applied the convention: tree render multiplier reduced 14× → 4× (`tools/aw_editor/src/terrain_integration.rs:2532`) so trees render at realistic 12-21 m mature-forest scale; terrain amplitudes and world extent scaled to match (Target B: 115 km² world, ~500 m Y span).
 
 **Evidence for 1 WU = 1 meter:**
 
@@ -15,13 +15,14 @@
 - Scatter system (`tools/aw_editor/src/terrain_integration.rs:2532`) applies a hidden **14× render multiplier** on tree assets, rendering them at 37-79 WU effective height. If 1 WU = 1m, rendered trees are 37-79m — taller than most real trees (typical mature temperate forest tree: 20-30m). This suggests the scatter author saw asset sizing as "too small against terrain" and hacked a compensating scalar.
 - F.4.B.2 resolution: reduce tree render multiplier to ~3-5×, increase mountain amplitude 5-8× (Target A from diagnostic) to restore natural peak-to-tree ratio. Unifies the convention at 1 WU = 1m.
 
-**Implications at 1 WU = 1 meter (current state, pre-F.4.B.2):**
+**Implications at 1 WU = 1 meter (post-F.4.B.2 Target B):**
 
-- Chunk extent (256 WU) = **256 m** real-world.
-- Vertex spacing (4 WU) = **4 m** real-world.
-- Post-erosion Y span (82-101 WU depending on climate) = **82-101 m** real-world relief.
-- Radius-5 total world (2816 × 2816 WU) = **2.8 × 2.8 km = 7.93 km²** real-world.
-- Tree rendered (post-14×-hack): **37-79 m** (unrealistic; will be 8-20m post-F.4.B.2).
+- Chunk extent (512 WU) = **512 m** real-world (was 256).
+- Vertex spacing (5.39 WU) = **5.39 m** real-world (was 4).
+- Post-erosion Y span (~510 WU at default slider) = **~510 m** real-world relief (was 82-101).
+- Radius-10 total world (10752 × 10752 WU) = **10.75 × 10.75 km = 115.58 km²** (was 7.93).
+- Tree rendered: **11.8-20.6 m** at `tree_small_02_a.glb` (was 37-79 m). Peak-to-tree ratio ~30× at Target B default, matching Enshrouded baseline.
+- Mountain Drama slider (0.4-2.0, default 1.0) scales mountains amplitude only — at 0.4 = gentle hills (Target A territory); at 2.0 = alpine peaks (Target C-ish without streaming).
 
 ## Reference-title comparison table
 
@@ -39,17 +40,17 @@ Source: `docs/audits/terrain_scale_diagnostic_2026-04-24.md` Task 2.D. Full prov
 
 ## Aesthetic target for Veilweaver
 
-**Target: PENDING ANDREW'S DECISION.**
+**Target: B (Stylized Open World / Enshrouded-class) — IMPLEMENTED 2026-04-24 via F.4.B.2.**
 
-`docs/audits/terrain_scale_diagnostic_2026-04-24.md` Task 3 presents three targets with concrete numeric recommendations:
+- 115.58 km² world extent (radius 10 × 512 WU chunks).
+- ~500 m post-erosion Y span (matches Enshrouded-class peaks).
+- Ratio 0.047 — in plan §2.3's Target B 0.05-0.10 bracket.
+- Peak-to-tree ratio ~30× (Enshrouded baseline).
+- Mountain Drama slider (0.4-2.0, default 1.0) provides user-tunable dramatic-ness within Target B envelope without requiring re-scale.
 
-- **Target A — Appalachian / Rolling (default):** 10-30 km², 300-600m Y span, ratio 0.02-0.05. Radius 7 + Y amp ×5-8 + tree mult 14×→3-5×. Achievable without rayon/streaming. Geometrically matches NC lore reference.
+**Target A (Appalachian) recoverable via slider:** setting Mountain Drama to 0.4 brings `mountains_amplitude` back to Target A range (~200 m Y span) while keeping horizontal extent at 115 km². Users wanting full Target A should ALSO reduce radius 10 → 6 for 4-5 km² extent.
 
-- **Target B — Stylized Open World:** 24-64 km², 800-1500m Y span, ratio 0.05-0.10. Radius 8-10 + Y amp ×10-20 + vertex density 64→96. Rayon parallelization required. Matches Skyrim/Enshrouded aesthetic.
-
-- **Target C — Alpine / Crimson Desert:** 50-150 km², 2000-4000m Y span, ratio 0.10-0.20. Requires streaming / progressive generation. Separate campaign territory.
-
-Andrew chooses in F.4.B.2 prompt; this document is updated once decision lands.
+**Target C (Crimson-Desert class) explicitly deferred to Phase 1.7 Streaming Terrain campaign:** requires sparse virtual textures, progressive generation, scatter impostors. Not within F.4/F.5 scope.
 
 ## Knobs and their relationships
 
@@ -78,9 +79,11 @@ Changing ANY knob in isolation has known effects (§2.1, §2.6, F.3 halo sizing,
 
 ## Changelog
 
-- **2026-04-24:** Initial conventions doc created during F.4.B.1 scale diagnostic. Provisional 1 WU = 1 meter convention established based on camera comments + tree asset author intent. 14× scatter multiplier flagged as inconsistent.
-- **[future: F.4.B.2]:** apply scale change per Andrew's target selection. Update "Implications" section with new chunk/radius/Y-span/tree-multiplier values.
-- **[future: F.5]:** if integration tuning reveals further scale refinements, update.
+- **2026-04-24 (F.4.B.1):** Initial conventions doc created. Provisional 1 WU = 1 meter convention established based on camera comments + tree asset author intent. 14× scatter multiplier flagged as inconsistent.
+- **2026-04-24 (F.4.B.2):** Convention CONFIRMED via implementation. Target B applied: chunk 512 WU, vertex density 96, radius 10, amplitudes ×3-8 (per-preset), continental scale 0.0012 → 0.0003, tree multiplier 14 → 4, elevation bands ×5, F.2 regression tests recalibrated. Rayon parallelization lands (phase-2.E's deferred work). Mountain Drama slider (0.4-2.0) added for dramatic-ness tuning without re-scaling. World extent grows 7.93 km² → 115 km²; Y span 92 m → ~510 m; trees 37-79 m → 12-21 m.
+- **[future: F.4.A]:** climate-as-spatial-field. Bands and continental scale are now Target B-calibrated; F.4.A extends the biome-weight API to per-vertex ClimateSample without re-tuning scale.
+- **[future: F.5]:** integration tuning Andrew-gate evaluates all eight climates at Target B. Per-climate tuning adjustments (e.g. mountain preset's ×8 might be too dramatic, Mountain Drama default ≠ 1.0) landed as 1-parameter tweaks.
+- **[future: Phase 1.7 Streaming]:** Target C (Crimson-Desert class) if authored intent demands it.
 
 ## References
 

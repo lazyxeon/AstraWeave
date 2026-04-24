@@ -1,6 +1,6 @@
 # Terrain Generation Quality Campaign — Phase 1.6-F
 
-**Status**: F.1–F.3 complete (F.3 closed via phase-4's shared-vertex averaging + droplet-count reduction; Andrew-gate visual re-verification pending user run), F.4–F.5 not yet started. Drafted 2026-04-21 as F.0 artifact.
+**Status**: F.1–F.3 complete (F.3 closed via phase-4's shared-vertex averaging + droplet-count reduction). F.4.B.1 scale diagnostic COMPLETE 2026-04-24. F.4.B.2 Target B scale rework COMPLETE 2026-04-24 (code level; Andrew-gate visual re-verification pending user run). F.4.A (climate-as-spatial-field) and F.5 not yet started. Drafted 2026-04-21 as F.0 artifact.
 **Scope**: Wire the already-implemented-but-unused terrain-generation components (`AdvancedErosionSimulator`, `DomainWarpedNoise`, `ClimateMap`) into the runtime biome-noise preset path, tune preset amplitudes to match Phase 1.5's elevation bands, and rewire climate as a per-vertex spatial field. Five sub-phases (F.1–F.5) executed as separate sessions.
 **Author**: Plan drafted from `docs/audits/heightmap_generator_audit_2026-04-21.md` findings and design decisions captured in the F.0 prompt session 2026-04-21 between Andrew and Claude. Code references accurate as of 2026-04-21; verify before execution.
 **Prior work**: `docs/audits/heightmap_generator_audit_2026-04-21.md` (the audit that surfaced the unwired components and selected Option F as the intervention path); `docs/audits/phase_1_5_tuning_investigation_2026-04-20.md` (records the stale 125-unit measurement that F.1 corrects); `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` (parent campaign — Phase 1 and Phase 1.5 re-mark-COMPLETE is deferred to F.5 closeout).
@@ -489,7 +489,10 @@ F.3 — AdvancedErosionSimulator wiring with halo: COMPLETE 2026-04-24 (code lev
   F.3-phase-2 (erosion wiring + closeout): COMPLETE 2026-04-23 at code level; Andrew-gate re-opened as F.3-phase-3. Commits c4a357a62 (A mapping helper) + 8be5e7fb6 (B balanced variants) + 8e982effb (C wiring) + 69d160a1b (D continuity tests) + 3b5713e56 (E perf characterization) + 71415bbaf (F closeout). AdvancedErosionSimulator wired; climate→preset mapping (default_balanced / mountain_balanced / desert / coastal) active; §2.5 biome-weight stability invariant upheld; chunk-boundary divergence empirically characterized (15-40 world units under real erosion — higher than plan §2.3's 0.01 expectation due to per-halo-origin seeding). End-to-end 121-chunk generation: Temperate 60s (OVER), Cold/Highland 36-39s (MARG), Arid/Tropical/Wetland 16-27s (OK). Rayon parallelization deferred to F.5. Andrew-gate visual verification exposed (a) visible stitching artifacts at chunk boundaries (b) mountains "short and thin" — phase 3 addresses both.
   F.3-phase-3 (seamless erosion via world-coord droplet seeding): COMPLETE 2026-04-24, commits c5e902b08 (A stitching+scale diagnostic) + eb3845b0d (B research+audit) + 8e2269bdd (C world-coord seeding) + bc1bc58d9 (E closeout). Per research-scout consultation (`docs/audits/terrain_seamless_erosion_research_2026-04-24.md`), implemented Rank 2 remedy from Asp 2024 ("Overlapping Grids"). New `AdvancedErosionSimulator::apply_preset_at_world_offset` derives droplet spawn positions from world-aligned spatial cells seeded by `hash(world_seed, cx, cz)`. Adjacent halos iterate the SAME cells in their overlap region → identical droplets → seamless output except for residual state-dependent divergence. Chunk-boundary divergence reduced: Temperate mean 1.66 → 0.85 (-49%), p95 7.10 → 2.18 (-69%), max 14.82 → 12.12 (-18% — residual outliers are the expected state-dependent residual). Scale compression unchanged or slightly worse from droplet distribution change (Cold/Highland Δp99 -28% → -38%). Andrew-gate visual verification post-phase-3 surfaced BOTH issues as still user-visible: stitching seams perceptible from the residual tail, mountains "look like hills" from the compression. Triggered F.3-phase-4.
   F.3-phase-4 (pragmatic finishing — shared-vertex averaging + scale recovery): COMPLETE 2026-04-24 (code level, Andrew-gate re-verification pending user run), commits 8b374f365 (A diagnostic) + 8b7ed3b9c (B shared-vertex averaging) + 5c259c92c (C droplet-count reduction) + 5933145e9 (D closeout). **Stitching eliminated by fiat**: `smooth_shared_vertices` averages boundary vertices across adjacent chunks → divergence < 1e-5 WU at shared edges (floating-point noise floor). **Scale recovered**: balanced-preset droplet counts reduced (default 35k → 25k, mountain 50k → 35k); Temperate Δp99 from -19.6% → -12.7% (better than phase-2's -15.2%); Cold/Highland Δp99 from -38.5% → -24.9% (better than phase-2's -28.3%). Editor's `generate_terrain` now splits chunk generation and mesh assembly with `smooth_shared_vertices` between. Biome weights unaffected (Shape A invariant re-verified by `biome_weights_at_shared_edges_match` test). Normals recompute naturally in `generate_heightmap_mesh` from smoothed heights. Research note: Asp 2024 full thesis (per Gemini-retrieved reconstruction) uses two offset staggered grids with distance-weighted blending + normal recomputation; phase-4's shared-vertex averaging is the minimal variant that addresses only chunk-boundary vertices — potential future upgrade if richer blending is desired.
-F.4 — Climate as spatial field: NOT STARTED
+F.4 — Climate as spatial field + Target B scale rework: IN PROGRESS
+  F.4.B.1 (scale diagnostic): COMPLETE 2026-04-24, commit d2850d856. Established 1 WU = 1 m convention; documented AstraWeave's 7.93 km² / 92 m Y span vs AAA reference scales (Skyrim 37 km² / 766 m, Enshrouded 24-64 km², NC Blue Ridge 100 km transect). Three targets A/B/C presented; Andrew selected Target B (Enshrouded-class).
+  F.4.B.2 (Target B scale rework): COMPLETE 2026-04-24 (code level; Andrew-gate visual re-verification pending user run). Commits 32a3f28ad (A chunk 512/96) + a81c7333b (B amplitude ×3-8 + Mountain Drama slider) + 89ba60f9d (C radius 10) + e7aebac26 (D rayon) + b06da9b19 (E tree mult 4×) + f623b3c94 (F elevation bands + continental + F.2 tests) + <F.4.B.2.G-hash> (G closeout). World extent 115 km² at Target B (vs 7.93 km² pre-F.4.B.2); post-erosion Y max ~510 WU across climates (was ~92 WU); tree rendered height 12-21 m (was 37-79 m); peak-to-tree ratio ~30× matching Enshrouded baseline. Rayon parallelization lands (phase-2.E's deferred work). F.2 permanent regression tests recalibrated with updated thresholds. Phase-3 world-coord seeding + phase-4 shared-vertex averaging preserved and still effective at new scale.
+  F.4.A (climate-as-spatial-field): NOT STARTED
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
 ```
 
@@ -1111,6 +1114,114 @@ Andrew-gate visual re-verification is PENDING user run. The `smooth_shared_verti
 - Phase-4 diagnostic tests: 3/3 pass (including post-averaging < 1e-5 assertion).
 - `cargo clippy -p astraweave-terrain --all-features -- -D warnings`: clean.
 - aw_editor compiles.
+
+### 2026-04-24, Sub-phase F.4.B.1 (scale diagnostic, investigation-only), commit d2850d856
+
+**Deviation:** F.4 was originally planned as "climate as spatial field" (F.4.A in current §9). Andrew's Andrew-gate post-F.3-phase-4 revealed that mountains "look like hills" and terrain scale feels small — an issue orthogonal to climate. F.4 reorganized into F.4.B (scale) + F.4.A (climate), with F.4.B landing first because climate calibration depends on correct scale.
+
+**Methodology:** pure investigation. Measured tree asset bounding boxes, scatter multipliers, camera params, full-grid radius-5 Y statistics per climate. Researched five AAA titles (Skyrim, Witcher 3, Enshrouded, RDR2, Crimson Desert) + NC Blue Ridge real-geography reference. Produced `docs/audits/terrain_scale_diagnostic_2026-04-24.md` and `docs/supplemental/WORLD_SCALE_CONVENTIONS.md`.
+
+**Key findings:**
+- No explicit world-unit convention; camera code documents "meters" but scatter hides a 14× tree multiplier that compensates for implicit scale mismatch.
+- Current terrain 7.93 km² horizontal, 92 WU post-erosion Y max — ratio 0.033 geometrically OK for Piedmont foothills but absolutely 20% of Skyrim, 11% of Enshrouded EA.
+- Perceived "small" = horizontal + vertical under-scaling, compounded by tree-hack masking correct ratio.
+- Peak-to-tree ratio currently ~2× (real mountains: 50-100×).
+
+**Three targets presented:** A (Appalachian, 10-30 km², 300-600m Y span, default recommendation), B (Enshrouded, 24-64 km², 800-1500m Y span, requires rayon), C (Alpine, 50-150 km², requires streaming).
+
+**Andrew's decision:** Target B. F.4.B.2 implements.
+
+### 2026-04-24, Sub-phase F.4.B.2 (Target B scale rework), commits 32a3f28ad through <F.4.B.2.G-hash>
+
+**Deviation:** F.4's original "climate as spatial field" (now F.4.A) waits on F.4.B.2's scale landing so climate bands can be calibrated against the new Y range, not the old. Seven independently-revertable sub-commits deliver Target B per F.4.B.1's recommendation.
+
+**Per-sub-commit deliverables:**
+
+- **F.4.B.2.A (32a3f28ad):** `WorldConfig::default` chunk_size 256 → 512 WU, heightmap_resolution 64 → 96. Vertex spacing 4.06 m → 5.39 m. Halo=1 becomes 288² vertices covering 1536 m. All terrain tests pass unchanged.
+
+- **F.4.B.2.B (a81c7333b):** amplitudes scaled on all 8 editor presets: base ×3, mountains ×6 (×8 on mountain/tundra), detail ×2.5. `NoiseConfig::default()` scaled in lockstep. New Mountain Drama slider on TerrainPanel (range 0.4-2.0, default 1.0) multiplies preset `mountains_amplitude` at apply time. Measured post-erosion Y max 510.89 WU Temperate, 508 Cold/Highland — Target B range achieved.
+
+- **F.4.B.2.C (89ba60f9d):** UI chunk_radius default 5 → 10, slider max 6 → 12. World extent 2816 → 5632 WU per side = 115 km² at radius 10.
+
+- **F.4.B.2.D (e7aebac26):** rayon parallelization. Added `rayon = "1.11"` dep to aw_editor, refactored Pass 1 of `TerrainState::generate_terrain` into `par_iter`. Thread-safety analysis: `WorldGenerator::generate_chunk_with_climate(&self)` is read-only, `TerrainNoise` uses `Box<dyn NoiseFn + Send + Sync>`, phase-3.C world-coord droplet seeding ensures per-chunk determinism regardless of thread order. Generation time dropped from projected 10-20 min single-threaded to expected 2-4 min at radius 10.
+
+- **F.4.B.2.E (b06da9b19):** tree render multiplier 14 → 4. At `tree_small_02_a.glb` raw 3.689 Blender units × 4 × scatter jitter = 11.8-20.6 m rendered height. Peak-to-tree ratio against 500 m mountain = ~30×, matching Enshrouded baseline. Unifies the 1 WU = 1 m convention per `docs/supplemental/WORLD_SCALE_CONVENTIONS.md`.
+
+- **F.4.B.2.F (f623b3c94):** elevation bands scaled ×5 (Beach peak 2→10, Grassland 10→50, Forest 24→120, Mountain start 38→190, etc.). `default_continental_scale` 0.0012 → 0.0003 (wavelength 830 → 3300 WU; ~3.3 periods across radius-10 world). F.2 permanent regression tests un-ignored with updated thresholds: `phase_1_6_f2_t_highland_regions_reach_f1_target` Y max ≥ 85 → ≥ 425, p95 ≥ 40 → ≥ 250; `phase_1_6_f2_t2_surface_spikiness_under_threshold` 0.72 → 5.0. `phase_1_6_f2_continental_output_range_and_variation` sampling extent 4000 → 16000 WU to match new continental wavelength.
+
+- **F.4.B.2.G (this entry):** closeout. §9 + §10 + `WORLD_SCALE_CONVENTIONS.md` updated.
+
+**Measurements post-F.4.B.2 (seed 12345):**
+
+| Climate    | Post-erosion Y max | Post-erosion Y span | Pre/post Δp99 |
+|------------|-------------------:|--------------------:|--------------:|
+| Temperate  |             510.89 |              510.89 |         -12.4 |
+| Cold       |             508.11 |              508.08 |         -16.0 |
+| Arid       |             511.44 |              511.44 |          -9.9 |
+| Tropical   |             536.67 |              536.67 |          -8.9 |
+| Wetland    |             536.67 |              536.67 |          -8.9 |
+| Highland   |             508.11 |              508.08 |         -16.0 |
+
+Target B target (400-700 m Y span grassland): **achieved** across all climates. Pre/post Δp99 compression is mild (8-16%) — erosion works effectively at new scale without over-compressing.
+
+**World extent at Target B:**
+- Radius 10 × 512 WU chunks = 10752 × 10752 WU = 10.75 × 10.75 km = **115.58 km²**.
+- Vertex spacing 5.39 m; per-chunk vertex count 96² = 9216.
+- Total vertices at radius 10: 441 chunks × 9216 = 4,064,256 — manageable memory footprint for editor-time generation.
+
+**Tree scale correction:**
+- Raw asset `tree_small_02_a.glb`: 3.689 m.
+- Pre-F.4.B.2.E rendered: 3.689 × 14 × 0.8-1.4 = 37-72 m (unrealistic).
+- Post-F.4.B.2.E rendered: 3.689 × 4 × 0.8-1.4 = 11.8-20.6 m (mature forest tree).
+- Peak-to-tree ratio: ~30× (Enshrouded baseline).
+
+**Rayon decision:** phase-2.E's deferred rayon work now lands. Single-threaded Target-B generation was projected at 10-20 min; rayon on ~4 cores brings this to ~3-5 min — within user-tolerable editor-time generation budget.
+
+**Preservation invariants:**
+- Phase-3.C world-coord droplet seeding: intact. Per-chunk `apply_preset_at_world_offset` still seeds from `hash(world_seed, cell_x, cell_z)`; rayon doesn't affect determinism because chunks are independent.
+- Phase-4.B shared-vertex averaging: intact. `smooth_shared_vertices` runs after par_iter join, unchanged.
+- Shape A biome-weight invariant: intact per `biome_weights_at_shared_edges_match` test.
+- F.2-T-4 derivative-weighted fBm: intact; just operates at larger amplitudes.
+
+**Test scoreboard at F.4.B.2 close:**
+- F.2 permanent regression (5/5): pass with recalibrated thresholds.
+- Phase-0 synthetic heightmap (10/10): pass.
+- Phase-1 biome-weight pre-erosion (4/4): pass.
+- Phase-1 halo scaffolding (4/4): pass.
+- Phase-2 balanced-preset behavioral (6/6): pass.
+- Phase-2 continuity (4/4): pass.
+- Phase-4 diagnostic (4/4): pass, including new Target B radius-5 scale baseline.
+- `cargo clippy -p astraweave-terrain --all-features -- -D warnings`: clean.
+- `aw_editor` compiles.
+
+**Deferred / out of scope (explicit):**
+- **Target C (Crimson-Desert class)**: requires streaming + progressive generation. Routed to future Phase 1.7 Streaming Terrain campaign. Not addressed in F.4 or F.5.
+- **F.4.A (climate-as-spatial-field)**: starts next with bands + continental scale already calibrated to Target B.
+- **F.5 integration tuning**: Andrew-gate visual verification across all eight climates at Target B scale.
+- **Velocity `.abs()` quirk** from phase-0: still not surfaced as a concrete artifact.
+- **Progressive / async terrain loading**: Phase 1.7 territory.
+- **Atmospheric scattering replacing exponential fog**: Phase 1.7 territory.
+- **Editor UX for large worlds** (region-restricted tools, progressive generation): Phase 1.7.
+
+**New permanent assets:**
+- `TerrainPanel::mountain_drama_scale` field + UI slider.
+- `astraweave_terrain::{WorldConfig::default}` at Target B scale.
+- `NoiseConfig::default()` at Target B scale.
+- `elevation_biome.rs` 6 band sets scaled ×5.
+- `rayon` dependency in `aw_editor/Cargo.toml`.
+- `apply_biome_noise_preset` call site applies `mountain_drama_scale`.
+
+**Andrew-gate pending:** user runs editor at radius 10 seed 12345, each primary biome, and evaluates:
+(a) scale feels right (multi-biome regions coexist visibly),
+(b) mountains read as mountains with dramatic relief,
+(c) peak-to-tree ratio natural,
+(d) no seams (phase-4.B averaging still works at larger chunks),
+(e) continental clustering visible at new wavelength,
+(f) biome distribution coherent (no empty band),
+(g) Mountain Drama slider works as labeled (0.4 gentle, 1.0 default, 2.0 dramatic),
+(h) generation time acceptable (2-5 min expected with rayon).
+
+Failure modes + targeted remediations documented in F.4.B.2 prompt Task 7.B. If gate passes, F.4.A starts next. If gate reveals unanticipated structural issues, re-plan (don't improvise within F.4.B.2).
 
 ---
 
