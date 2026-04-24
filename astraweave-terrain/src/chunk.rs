@@ -211,6 +211,95 @@ impl TerrainChunk {
     }
 }
 
+/// Phase 1.6-F.3-phase-4.B: force exact C0 continuity at shared chunk
+/// boundaries by averaging edge-vertex heights across adjacent chunks.
+///
+/// After world-coord droplet seeding (phase 3), shared-edge divergence
+/// is typically ≤ 1 WU but a tail of outliers spikes to ~12 WU (the
+/// expected state-dependent residual from droplets entering overlap
+/// regions with different prior heightmap states). This function
+/// runs after all chunks are generated, iterates every boundary
+/// vertex, and sets it to the average of its values across all chunks
+/// that contain it.
+///
+/// Corner vertices are shared by up to 4 chunks; edge vertices by 2.
+/// The averaging handles both cases uniformly. Boundary vertices that
+/// appear in only one chunk (at the radius boundary where the
+/// neighbor is not loaded) are left unchanged.
+///
+/// Does not modify `biome_weights` — phase-3 established (and phase-4.A
+/// re-verified) that biome_weights at shared edges already match
+/// byte-for-byte via Shape A's pre-erosion invariant.
+///
+/// Does not modify normals — normals are recomputed downstream at
+/// mesh-assembly time from the heights, so the updated heights
+/// naturally produce continuous normals at boundaries.
+///
+/// Runs in O(N_chunks × chunk_edge_length) — trivial overhead relative
+/// to erosion.
+pub fn smooth_shared_vertices(chunks: &mut HashMap<ChunkId, TerrainChunk>) {
+    if chunks.is_empty() {
+        return;
+    }
+
+    // Assume all chunks have the same heightmap resolution (enforced by
+    // WorldGenerator::generate_chunk[_with_climate]).
+    let dim = chunks.values().next().unwrap().heightmap().resolution();
+    if dim < 2 {
+        return;
+    }
+    let max = dim - 1;
+    let step = max as i64; // world-vertex index step per chunk
+
+    // Pass 1: accumulate (sum, count) per world-vertex key for all
+    // boundary vertices.
+    let mut acc: HashMap<(i64, i64), (f32, u32)> = HashMap::new();
+    for (chunk_id, chunk) in chunks.iter() {
+        let heights = chunk.heightmap();
+        for z in 0..dim {
+            for x in 0..dim {
+                let on_boundary = x == 0 || x == max || z == 0 || z == max;
+                if !on_boundary {
+                    continue;
+                }
+                let key = (
+                    chunk_id.x as i64 * step + x as i64,
+                    chunk_id.z as i64 * step + z as i64,
+                );
+                let y = heights.get_height(x, z);
+                let entry = acc.entry(key).or_insert((0.0, 0));
+                entry.0 += y;
+                entry.1 += 1;
+            }
+        }
+    }
+
+    // Pass 2: write average back. Only vertices with count >= 2 had
+    // neighbors that needed reconciling; count == 1 means this boundary
+    // vertex is at the edge of the loaded region — no neighbor to match.
+    for (chunk_id, chunk) in chunks.iter_mut() {
+        let heightmap = chunk.heightmap_mut();
+        for z in 0..dim {
+            for x in 0..dim {
+                let on_boundary = x == 0 || x == max || z == 0 || z == max;
+                if !on_boundary {
+                    continue;
+                }
+                let key = (
+                    chunk_id.x as i64 * step + x as i64,
+                    chunk_id.z as i64 * step + z as i64,
+                );
+                if let Some(&(sum, count)) = acc.get(&key) {
+                    if count >= 2 {
+                        let avg = sum / count as f32;
+                        heightmap.set_height(x, z, avg);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Manages loading, unloading, and caching of terrain chunks
 #[derive(Debug)]
 pub struct ChunkManager {

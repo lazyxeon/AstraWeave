@@ -1,8 +1,8 @@
 use astraweave_terrain::{
-    elevation_to_biome_weights, BiomeConfig, BiomePack, BiomePackAsset, BiomeType, ChunkId,
-    ClimateBias, DomainWarpConfig, Heightmap, HeightmapPatch, NoiseType, ScatterConfig,
-    SplatConfig, SplatMapGenerator, SplatRule, SplatWeights, TerrainChunk, VegetationInstance,
-    VegetationScatter, WorldConfig, WorldGenerator, SEA_LEVEL,
+    elevation_to_biome_weights, smooth_shared_vertices, BiomeConfig, BiomePack, BiomePackAsset,
+    BiomeType, ChunkId, ClimateBias, DomainWarpConfig, Heightmap, HeightmapPatch, NoiseType,
+    ScatterConfig, SplatConfig, SplatMapGenerator, SplatRule, SplatWeights, TerrainChunk,
+    VegetationInstance, VegetationScatter, WorldConfig, WorldGenerator, SEA_LEVEL,
 };
 use glam::Vec3;
 use std::collections::HashMap;
@@ -362,62 +362,84 @@ impl TerrainState {
             .ok_or_else(|| anyhow::anyhow!("Generator not initialized"))?;
 
         let chunk_size = self.config.chunk_size;
-        let mut count = 0;
 
+        // Phase 1.6-F.3-phase-4.B: split chunk generation from mesh assembly
+        // so the shared-vertex averaging pass can reconcile boundary heights
+        // across all chunks before any mesh is built. Without averaging,
+        // phase-3's world-coord droplet seeding leaves a residual tail of
+        // ~10-12 WU divergence at some shared edges (state-dependent residual
+        // — droplets entering overlap from outside regions see different prior
+        // heightmap states in each halo). Shared-vertex averaging forces
+        // exact C0 continuity by fiat, regardless of erosion divergence.
+        //
+        // Pass 1: generate all chunks, apply primary-biome override.
+        let mut raw_chunks: HashMap<ChunkId, TerrainChunk> = HashMap::new();
         for x in -chunk_radius..=chunk_radius {
             for z in -chunk_radius..=chunk_radius {
                 let chunk_id = ChunkId { x, z };
 
                 // Phase 1.6-F.3-phase-1: use `generate_chunk_with_climate` so
                 // the returned chunk has `biome_weights: Some(_)` populated
-                // from pre-erosion heights (§2.5 invariant). Phase 1's simple
-                // CA erosion barely moves heights, so output is effectively
-                // byte-identical to the legacy path; phase 2's real erosion
-                // will make the pre-erosion-biome-weights invariant meaningful.
+                // from pre-erosion heights (§2.5 invariant).
                 let mut chunk =
                     generator.generate_chunk_with_climate(chunk_id, climate_bias)?;
 
                 // Override biome map to match the primary biome type.
-                // The WorldGenerator scores biomes by climate conditions which
-                // may default to Grassland even when Desert is configured.
-                // This ensures biome weights in vertices match the splat rules.
                 for b in chunk.biome_map_mut() {
                     *b = primary_biome;
                 }
 
-                let world_pos = chunk_id.to_world_pos(chunk_size);
-                let world_offset = Vec3::new(world_pos.x, 0.0, world_pos.z);
-
-                // Phase 1.6-F.3-phase-1: pass the pre-erosion biome_weights
-                // captured in the chunk during generation. The mesh builder
-                // uses these directly instead of computing biome_weights from
-                // post-erosion heights, honouring §2.5's authorial-intent
-                // invariant.
-                let pre_erosion_biome_weights =
-                    chunk.biome_weights().map(|slice| slice.to_vec());
-
-                let (vertices, indices) = Self::generate_heightmap_mesh(
-                    chunk.heightmap(),
-                    chunk.biome_map(),
-                    chunk_size,
-                    world_offset,
-                    self.config.seed,
-                    primary_biome,
-                    pre_erosion_biome_weights.as_deref(),
-                );
-
-                self.generated_chunks.insert(
-                    chunk_id,
-                    GeneratedChunk {
-                        chunk,
-                        vertices,
-                        indices,
-                        world_position: world_offset,
-                    },
-                );
-
-                count += 1;
+                raw_chunks.insert(chunk_id, chunk);
             }
+        }
+
+        // Phase 1.6-F.3-phase-4.B: reconcile shared-edge vertices across all
+        // generated chunks. Biome weights are already byte-identical at
+        // shared edges (Shape A invariant, verified by phase-4.A diagnostic);
+        // only heights need averaging. Normals recompute naturally in
+        // `generate_heightmap_mesh` from the updated heights.
+        smooth_shared_vertices(&mut raw_chunks);
+
+        // Pass 2: build meshes from smoothed chunks and populate
+        // `generated_chunks`.
+        let mut count = 0;
+        // Drain in a deterministic order so index ordering is stable.
+        let mut chunk_ids: Vec<ChunkId> = raw_chunks.keys().copied().collect();
+        chunk_ids.sort_by(|a, b| a.x.cmp(&b.x).then(a.z.cmp(&b.z)));
+        for chunk_id in chunk_ids {
+            let chunk = raw_chunks.remove(&chunk_id).expect("present");
+
+            let world_pos = chunk_id.to_world_pos(chunk_size);
+            let world_offset = Vec3::new(world_pos.x, 0.0, world_pos.z);
+
+            // Phase 1.6-F.3-phase-1: pass the pre-erosion biome_weights
+            // captured in the chunk during generation. Shape A invariant
+            // survives phase-4.B's height averaging because weights are
+            // unchanged.
+            let pre_erosion_biome_weights =
+                chunk.biome_weights().map(|slice| slice.to_vec());
+
+            let (vertices, indices) = Self::generate_heightmap_mesh(
+                chunk.heightmap(),
+                chunk.biome_map(),
+                chunk_size,
+                world_offset,
+                self.config.seed,
+                primary_biome,
+                pre_erosion_biome_weights.as_deref(),
+            );
+
+            self.generated_chunks.insert(
+                chunk_id,
+                GeneratedChunk {
+                    chunk,
+                    vertices,
+                    indices,
+                    world_position: world_offset,
+                },
+            );
+
+            count += 1;
         }
 
         // Build stable chunk ordering for GPU index mapping

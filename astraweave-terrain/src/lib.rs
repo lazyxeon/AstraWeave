@@ -47,7 +47,7 @@ pub use biome_pack::{BiomePack, BiomePackAsset, BiomePackScatter};
 pub use blueprint_zone::{
     AdaptiveScaleParams, BlendMask, BlueprintZone, PlacementMode, ZoneId, ZoneRegistry, ZoneSource,
 };
-pub use chunk::{ChunkId, ChunkManager, TerrainChunk};
+pub use chunk::{smooth_shared_vertices, ChunkId, ChunkManager, TerrainChunk};
 pub use collision::{collision_mesh_from_chunk, collision_mesh_from_heightmap, CollisionMesh};
 pub use climate::{ClimateConfig, ClimateMap};
 pub use elevation_biome::{elevation_to_biome_weights, ClimateBias, SEA_LEVEL}; // Phase 1.5

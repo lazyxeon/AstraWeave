@@ -11,7 +11,8 @@
 //!     droplet-count reduction targets returning peak compression to
 //!     phase-2 levels (~-28% on Cold/Highland, ~-15% on Temperate).
 
-use astraweave_terrain::{ChunkId, ClimateBias, WorldConfig, WorldGenerator};
+use astraweave_terrain::{smooth_shared_vertices, ChunkId, ClimateBias, TerrainChunk, WorldConfig, WorldGenerator};
+use std::collections::HashMap;
 
 fn make_generator(erosion: bool) -> WorldGenerator {
     let mut config = WorldConfig::default();
@@ -102,4 +103,103 @@ fn phase_4_scale_baseline_per_climate() {
         println!("| {name:<9} | {pre_p99:7.2} | {post_p99:8.2} | {delta:+6.1} |");
     }
     println!("======================================================");
+}
+
+/// Phase 1.6-F.3-phase-4.B: after `smooth_shared_vertices` runs, every
+/// shared-edge vertex across adjacent chunks should match exactly
+/// (within floating-point precision). Measures divergence before and
+/// after the smoothing pass.
+#[test]
+fn shared_edges_exactly_match_after_averaging() {
+    let gen = make_generator(true);
+
+    // Build a 3×3 grid so internal edges are shared; outer-ring edges
+    // touch only one chunk and remain unchanged by `smooth_shared_vertices`.
+    let mut chunks: HashMap<ChunkId, TerrainChunk> = HashMap::new();
+    for z in 0..3 {
+        for x in 0..3 {
+            let id = ChunkId::new(x, z);
+            chunks.insert(
+                id,
+                gen.generate_chunk_with_climate(id, ClimateBias::Temperate)
+                    .expect("chunk"),
+            );
+        }
+    }
+
+    let dim = chunks
+        .values()
+        .next()
+        .unwrap()
+        .heightmap()
+        .resolution();
+
+    // Measure pre-smoothing divergence on one internal edge:
+    // chunk (0,0) right col vs chunk (1,0) left col.
+    let mut pre_max = 0.0f32;
+    {
+        let a = chunks[&ChunkId::new(0, 0)].heightmap();
+        let b = chunks[&ChunkId::new(1, 0)].heightmap();
+        for zi in 0..dim {
+            pre_max = pre_max.max((a.get_height(dim - 1, zi) - b.get_height(0, zi)).abs());
+        }
+    }
+    println!("pre-smoothing x-edge max diff: {pre_max:.6}");
+
+    smooth_shared_vertices(&mut chunks);
+
+    // Measure post-smoothing divergence on the SAME edge — expected
+    // near-zero (floating-point noise only).
+    let mut post_max = 0.0f32;
+    {
+        let a = chunks[&ChunkId::new(0, 0)].heightmap();
+        let b = chunks[&ChunkId::new(1, 0)].heightmap();
+        for zi in 0..dim {
+            post_max = post_max.max((a.get_height(dim - 1, zi) - b.get_height(0, zi)).abs());
+        }
+    }
+    println!("post-smoothing x-edge max diff: {post_max:.6}");
+
+    // Must be < 1e-5 — any larger indicates the averaging is not setting
+    // both chunks' shared-edge vertices to the same value.
+    assert!(
+        post_max < 1e-5,
+        "shared-edge averaging failed: post-smoothing max diff {post_max}"
+    );
+
+    // Also verify a z-axis edge (chunk (0,0) bottom vs chunk (0,1) top).
+    let mut post_z_max = 0.0f32;
+    {
+        let a = chunks[&ChunkId::new(0, 0)].heightmap();
+        let b = chunks[&ChunkId::new(0, 1)].heightmap();
+        for xi in 0..dim {
+            post_z_max = post_z_max.max((a.get_height(xi, dim - 1) - b.get_height(xi, 0)).abs());
+        }
+    }
+    assert!(
+        post_z_max < 1e-5,
+        "z-axis shared-edge averaging failed: post-smoothing max diff {post_z_max}"
+    );
+
+    // Corner vertex (0,0) in chunk (1,1) is shared by all 4 surrounding
+    // chunks at their respective corners. All four should report the
+    // same averaged height.
+    let c_center = chunks[&ChunkId::new(1, 1)].heightmap().get_height(0, 0);
+    let c_nw = chunks[&ChunkId::new(0, 0)]
+        .heightmap()
+        .get_height(dim - 1, dim - 1);
+    let c_ne = chunks[&ChunkId::new(1, 0)]
+        .heightmap()
+        .get_height(0, dim - 1);
+    let c_sw = chunks[&ChunkId::new(0, 1)]
+        .heightmap()
+        .get_height(dim - 1, 0);
+    let max_corner_diff = [(c_center - c_nw), (c_center - c_ne), (c_center - c_sw)]
+        .iter()
+        .map(|d| d.abs())
+        .fold(0.0f32, f32::max);
+    assert!(
+        max_corner_diff < 1e-5,
+        "4-way corner averaging failed: max corner diff {max_corner_diff}"
+    );
 }
