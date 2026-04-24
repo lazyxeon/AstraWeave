@@ -649,7 +649,10 @@ impl Default for TerrainPanel {
             seed: 12345,
             seed_string: "12345".to_string(),
             primary_biome: "grassland".to_string(),
-            chunk_radius: 5,
+            // Phase 1.6-F.4.B.2.C: Target B world extent. Radius 10 × 512 WU
+            // chunks = 21 × 21 = 441 chunks = ~10.75 km per side = 115.5 km²
+            // per plan §2.3 Target B = 10-50 km² bracket matched.
+            chunk_radius: 10,
             octaves: 6,
             lacunarity: 2.0,
             persistence: 0.5,
@@ -929,7 +932,7 @@ impl TerrainPanel {
         ui.horizontal(|ui| {
             ui.label("Chunk Radius:");
             if ui
-                .add(egui::Slider::new(&mut self.chunk_radius, 1..=6))
+                .add(egui::Slider::new(&mut self.chunk_radius, 1..=12))
                 .changed()
             {
                 self.terrain_state.configure(self.seed, &self.primary_biome);
