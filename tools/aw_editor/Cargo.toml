@@ -58,6 +58,7 @@ winit = { workspace = true }
 gltf = { version = "1.4", features = ["import", "extensions"] }
 glam = { workspace = true }
 rand = "0.8"
+rayon = "1.11"
 rfd = "0.15"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

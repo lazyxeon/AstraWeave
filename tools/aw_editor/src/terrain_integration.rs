@@ -365,33 +365,39 @@ impl TerrainState {
 
         // Phase 1.6-F.3-phase-4.B: split chunk generation from mesh assembly
         // so the shared-vertex averaging pass can reconcile boundary heights
-        // across all chunks before any mesh is built. Without averaging,
-        // phase-3's world-coord droplet seeding leaves a residual tail of
-        // ~10-12 WU divergence at some shared edges (state-dependent residual
-        // — droplets entering overlap from outside regions see different prior
-        // heightmap states in each halo). Shared-vertex averaging forces
-        // exact C0 continuity by fiat, regardless of erosion divergence.
+        // across all chunks before any mesh is built.
         //
-        // Pass 1: generate all chunks, apply primary-biome override.
-        let mut raw_chunks: HashMap<ChunkId, TerrainChunk> = HashMap::new();
-        for x in -chunk_radius..=chunk_radius {
-            for z in -chunk_radius..=chunk_radius {
-                let chunk_id = ChunkId { x, z };
+        // Phase 1.6-F.4.B.2.D: rayon-parallelize Pass 1. Target B radius-10
+        // generates 441 chunks; single-threaded at 512 WU × 96² chunks takes
+        // 10-20 minutes. Per-chunk generation is thread-safe: `&self` on
+        // `WorldGenerator::generate_chunk_with_climate`, no shared mutable
+        // state. `TerrainNoise` uses `Box<dyn NoiseFn + Send + Sync>` per
+        // F.3-phase-2.E audit. Each chunk's halo seed is deterministic from
+        // `(world_seed, chunk_id)` (phase-3.C world-coord seeding), so output
+        // is determinism-preserving regardless of thread scheduling order.
+        //
+        // Pass 1: generate all chunks in parallel, apply primary-biome
+        // override.
+        use rayon::prelude::*;
+        let chunk_ids: Vec<ChunkId> = (-chunk_radius..=chunk_radius)
+            .flat_map(|x| (-chunk_radius..=chunk_radius).map(move |z| ChunkId { x, z }))
+            .collect();
 
-                // Phase 1.6-F.3-phase-1: use `generate_chunk_with_climate` so
-                // the returned chunk has `biome_weights: Some(_)` populated
-                // from pre-erosion heights (§2.5 invariant).
+        let gen_ref = &*generator;
+        let chunks_vec: anyhow::Result<Vec<(ChunkId, TerrainChunk)>> = chunk_ids
+            .into_par_iter()
+            .map(|chunk_id| {
                 let mut chunk =
-                    generator.generate_chunk_with_climate(chunk_id, climate_bias)?;
-
-                // Override biome map to match the primary biome type.
+                    gen_ref.generate_chunk_with_climate(chunk_id, climate_bias)?;
                 for b in chunk.biome_map_mut() {
                     *b = primary_biome;
                 }
+                Ok((chunk_id, chunk))
+            })
+            .collect();
 
-                raw_chunks.insert(chunk_id, chunk);
-            }
-        }
+        let raw_chunks: HashMap<ChunkId, TerrainChunk> = chunks_vec?.into_iter().collect();
+        let mut raw_chunks = raw_chunks;
 
         // Phase 1.6-F.3-phase-4.B: reconcile shared-edge vertices across all
         // generated chunks. Biome weights are already byte-identical at
