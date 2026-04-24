@@ -413,6 +413,12 @@ pub struct TerrainPanel {
     persistence: f32,
     base_amplitude: f32,
 
+    /// Phase 1.6-F.4.B.2.B: Mountain Drama slider. Multiplies every
+    /// preset's `mountains_amplitude` at apply time. Default 1.0 (normal
+    /// Target B scale); 0.4 = gentle (Target A territory); 2.0 = dramatic
+    /// (Alpine / Target-C territory without needing streaming).
+    mountain_drama_scale: f32,
+
     /// Erosion parameters
     erosion_preset: ErosionPresetType,
     hydraulic_erosion: HydraulicErosionParams,
@@ -648,6 +654,7 @@ impl Default for TerrainPanel {
             lacunarity: 2.0,
             persistence: 0.5,
             base_amplitude: 50.0,
+            mountain_drama_scale: 1.0,
             erosion_preset: ErosionPresetType::Mountain,
             hydraulic_erosion: HydraulicErosionParams::default(),
             thermal_erosion: ThermalErosionParams::default(),
@@ -1020,6 +1027,24 @@ impl TerrainPanel {
                     .changed();
             });
 
+            // Phase 1.6-F.4.B.2.B: Mountain Drama slider. Multiplies every
+            // preset's `mountains_amplitude` at apply time. 0.4 = Target A
+            // (Appalachian); 1.0 = Target B (Enshrouded); 2.0 = alpine
+            // without streaming.
+            ui.horizontal(|ui| {
+                ui.label("Mountain Drama:")
+                    .on_hover_text(
+                        "Multiplies mountain amplitude. 0.4 = gentle hills (Target A). 1.0 = Target B default. 2.0 = dramatic alpine peaks.",
+                    );
+                changed |= ui
+                    .add(
+                        egui::Slider::new(&mut self.mountain_drama_scale, 0.4..=2.0)
+                            .step_by(0.1)
+                            .fixed_decimals(1),
+                    )
+                    .changed();
+            });
+
             if changed {
                 self.terrain_state.configure(self.seed, &self.primary_biome);
                 if self.auto_regenerate {
@@ -1032,6 +1057,7 @@ impl TerrainPanel {
                 self.lacunarity = 2.0;
                 self.persistence = 0.5;
                 self.base_amplitude = 50.0;
+                self.mountain_drama_scale = 1.0;
                 self.terrain_state.configure(self.seed, &self.primary_biome);
             }
         });
@@ -1860,31 +1886,25 @@ impl TerrainPanel {
         }
         match biome {
             "mountain" => BiomeNoisePreset {
-                // Phase 1.6-F.2-T-3.C.1: base_octaves 6 → 5 per PBR Nyquist
-                // formula n_max = -1 - log2(l). At base_scale=0.003 and
-                // vertex_spacing=4, l=0.012, n_max=5.38 → floor=5. Prior
-                // value 6 violated Nyquist at octave 6 (wavelength ~3 units
-                // < 2× vertex spacing 8 units). See
-                // docs/audits/terrain_noise_audit_2026-04-22.md §2.A.
+                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (55→165),
+                // mountains ×8 (210→1680, dramatic-intent preset), detail
+                // ×2.5 (4→10). Combined with F.4.B.2.A's chunk scale
+                // change, produces alpine Y span when mountain primary is
+                // selected; Mountain Drama slider 0.4-2.0 further tunes.
                 base_scale: 0.003,
-                base_amplitude: 55.0,
+                base_amplitude: 165.0,
                 base_octaves: 5,
                 base_persistence: 0.55,
                 base_lacunarity: 2.2,
                 mountains_enabled: true,
                 mountains_scale: 0.002,
-                mountains_amplitude: 210.0,
+                mountains_amplitude: 1680.0,
                 mountains_octaves: 8,
                 detail_enabled: true,
                 detail_scale: 0.03,
-                // Phase 1.6-F.2-T.B.2: detail_amplitude 8.0 → 4.0 per H1
-                // diagnostic. F.1 tuned this to 8.0 but that was with plain
-                // Perlin base and no continental modulation — now detail is
-                // a comparable magnitude to the modulated mountain layer in
-                // lowlands, producing bed-of-nails spikes. 4.0 keeps visible
-                // detail texture while making it a smaller relative
-                // perturbation. Logged in §10.
-                detail_amplitude: 4.0,
+                // Phase 1.6-F.4.B.2.B: detail_amplitude 4.0 → 10.0 (×2.5
+                // scale). See mountain-preset header comment.
+                detail_amplitude: 10.0,
                 erosion_enabled: false,
                 erosion_strength: 0.0,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
@@ -1911,27 +1931,21 @@ impl TerrainPanel {
                 base_derivative_weighted: true,
             },
             "desert" => BiomeNoisePreset {
-                // Phase 1.6-F.2-T-3.C.1: base_octaves 5 → 4 per PBR Nyquist
-                // formula. At base_scale=0.004 and vertex_spacing=4,
-                // l=0.016, n_max=4.97 → floor=4. Prior value 5 was at the
-                // limit; reducing to 4 provides margin and further reduces
-                // post-warp coordinate-folding artifacts per audit §2.B.
+                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (45→135),
+                // mountains ×6 (35→210), detail ×2.5 (3→7.5). Previous
+                // F.2-T-3.C.1 Nyquist tuning (octaves 4) preserved.
                 base_scale: 0.004,
-                base_amplitude: 45.0,
+                base_amplitude: 135.0,
                 base_octaves: 4,
                 base_persistence: 0.45,
                 base_lacunarity: 2.2,
                 mountains_enabled: true,
                 mountains_scale: 0.0015,
-                mountains_amplitude: 35.0,
+                mountains_amplitude: 210.0,
                 mountains_octaves: 4,
                 detail_enabled: true,
                 detail_scale: 0.06,
-                // Phase 1.6-F.2-T.B.2: detail_amplitude 6.0 → 3.0 per H1
-                // diagnostic (desert's mountain amplitude is only 35, so
-                // continental-suppressed lowlands have even less margin
-                // against detail than grassland/mountain).
-                detail_amplitude: 3.0,
+                detail_amplitude: 7.5,
                 erosion_enabled: true,
                 erosion_strength: 0.2,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
@@ -1954,25 +1968,21 @@ impl TerrainPanel {
                 base_derivative_weighted: true,
             },
             "forest" => BiomeNoisePreset {
-                // Hilly woodland. Phase 1.6-F.1.B: mountains_amplitude raised
-                // from 25 → 40 to move span comfortably clear of the 60-unit
-                // floor (was 60.8 — too close to assertion boundary).
-                // Phase 1.6-F.2-T-3.C.1: base_octaves 5 → 4 per PBR
-                // Nyquist formula (see desert preset for rationale).
+                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (40→120),
+                // mountains ×6 (40→240), detail ×2.5 (3→7.5). Hilly woodland
+                // character preserved; F.2-T-3.C.1 Nyquist tuning preserved.
                 base_scale: 0.004,
-                base_amplitude: 40.0,
+                base_amplitude: 120.0,
                 base_octaves: 4,
                 base_persistence: 0.50,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
                 mountains_scale: 0.003,
-                mountains_amplitude: 40.0,
+                mountains_amplitude: 240.0,
                 mountains_octaves: 4,
                 detail_enabled: true,
                 detail_scale: 0.02,
-                // Phase 1.6-F.2-T.B.2: detail_amplitude 6.0 → 3.0 per H1
-                // diagnostic.
-                detail_amplitude: 3.0,
+                detail_amplitude: 7.5,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
@@ -1995,25 +2005,22 @@ impl TerrainPanel {
                 base_derivative_weighted: true,
             },
             "tundra" => BiomeNoisePreset {
-                // Cold-alpine terrain. ClimateBias::Cold maps to Mountain
-                // erosion preset per plan §2.2; topology must match. Phase
-                // 1.6-F.1.B: base_amplitude 30 → 55, mountains_amplitude
-                // 40 → 150, mountains_octaves 5 → 6 to reach the 150-unit
-                // dramatic-preset floor (was 64.2).
+                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (55→165),
+                // mountains ×8 (150→1200, dramatic Cold/alpine intent),
+                // detail ×2.5 (2.5→6.25). ClimateBias::Cold → mountain
+                // erosion preset; topology must match dramatic aesthetic.
                 base_scale: 0.003,
-                base_amplitude: 55.0,
+                base_amplitude: 165.0,
                 base_octaves: 5,
                 base_persistence: 0.45,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
                 mountains_scale: 0.002,
-                mountains_amplitude: 150.0,
+                mountains_amplitude: 1200.0,
                 mountains_octaves: 6,
                 detail_enabled: true,
                 detail_scale: 0.015,
-                // Phase 1.6-F.2-T.B.2: detail_amplitude 5.0 → 2.5 per H1
-                // diagnostic.
-                detail_amplitude: 2.5,
+                detail_amplitude: 6.25,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
@@ -2036,23 +2043,21 @@ impl TerrainPanel {
                 base_derivative_weighted: true,
             },
             "swamp" => BiomeNoisePreset {
-                // Wetland — gentle bogs amid low rolling hills. Phase
-                // 1.6-F.1.B: base_amplitude 8 → 40, mountains enabled at
-                // amp 45 so span clears the 60-unit floor with margin
-                // (was 10.4 pre-F.1, 53.8 after second iteration) while
-                // preserving the flat-wetland character.
+                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (40→120),
+                // mountains ×6 (45→270), detail ×2.5 (2→5). Gentle bogs
+                // character preserved; distant hills at Target B scale.
                 base_scale: 0.006,
-                base_amplitude: 40.0,
+                base_amplitude: 120.0,
                 base_octaves: 4,
                 base_persistence: 0.55,
                 base_lacunarity: 1.8,
                 mountains_enabled: true,
                 mountains_scale: 0.003,
-                mountains_amplitude: 45.0,
+                mountains_amplitude: 270.0,
                 mountains_octaves: 3,
                 detail_enabled: true,
                 detail_scale: 0.03,
-                detail_amplitude: 2.0,
+                detail_amplitude: 5.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 base_noise_type: NoiseType::Perlin,
@@ -2064,23 +2069,21 @@ impl TerrainPanel {
                 base_derivative_weighted: false,
             },
             "beach" => BiomeNoisePreset {
-                // Coastal — sandy flats with bluffs and offshore stacks.
-                // Phase 1.6-F.1.B: base_amplitude 5 → 32, mountains enabled
-                // at amp 35 so span clears the 60-unit floor (was 8.3
-                // pre-F.1, 55.3 after first iteration) while still reading
-                // as coastal relief.
+                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (32→96),
+                // mountains ×6 (35→210), detail ×2.5 (2→5). Coastal
+                // character preserved; bluffs at Target B scale.
                 base_scale: 0.008,
-                base_amplitude: 32.0,
+                base_amplitude: 96.0,
                 base_octaves: 4,
                 base_persistence: 0.40,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
                 mountains_scale: 0.003,
-                mountains_amplitude: 35.0,
+                mountains_amplitude: 210.0,
                 mountains_octaves: 3,
                 detail_enabled: true,
                 detail_scale: 0.05,
-                detail_amplitude: 2.0,
+                detail_amplitude: 5.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 base_noise_type: NoiseType::Perlin,
@@ -2092,21 +2095,21 @@ impl TerrainPanel {
                 base_derivative_weighted: false,
             },
             "river" => BiomeNoisePreset {
-                // River valley — floodplain with bluffs. Phase 1.6-F.1.B:
-                // base_amplitude 25 → 35, mountains_amplitude 20 → 35 so
-                // span clears the 60-unit floor (was 44.8).
+                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (35→105),
+                // mountains ×6 (35→210), detail ×2.5 (4→10). River valley
+                // / floodplain character preserved.
                 base_scale: 0.004,
-                base_amplitude: 35.0,
+                base_amplitude: 105.0,
                 base_octaves: 5,
                 base_persistence: 0.45,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
                 mountains_scale: 0.003,
-                mountains_amplitude: 35.0,
+                mountains_amplitude: 210.0,
                 mountains_octaves: 4,
                 detail_enabled: true,
                 detail_scale: 0.025,
-                detail_amplitude: 4.0,
+                detail_amplitude: 10.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 base_noise_type: NoiseType::Perlin,
@@ -2118,32 +2121,24 @@ impl TerrainPanel {
                 base_derivative_weighted: false,
             },
             _ => BiomeNoisePreset {
-                // grassland / default — rolling hills with moderate relief.
-                // Phase 1.6-F.1.A: amplitudes raised so runtime Y span reaches
-                // the 100+ range where Phase 1.5's elevation bands express.
-                // Prior values (35/15/5) produced a 40-unit span, leaving
-                // Forest and Mountain biome weights near-zero everywhere.
-                // Phase 1.6-F.2-T-3.C.1: base_octaves 5 → 4 per PBR Nyquist
-                // formula. At scale=0.004, n_max=4.97 → floor=4. Prior 5
-                // violated post-warp Nyquist (warp_strength=15 ≈ 96% of
-                // octave-5 wavelength 15.6 units). See
-                // docs/audits/terrain_noise_audit_2026-04-22.md §2.B.
+                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (50→150),
+                // mountains ×6 (80→480), detail ×2.5 (4→10). Default/
+                // grassland preset. Rolling-hills character preserved;
+                // world-scale relief increased ~5× per Andrew's Target B
+                // selection. Combined with Mountain Drama slider (0.4-2.0),
+                // final effective mountains_amplitude = 480 × slider.
                 base_scale: 0.004,
-                base_amplitude: 50.0,
+                base_amplitude: 150.0,
                 base_octaves: 4,
                 base_persistence: 0.50,
                 base_lacunarity: 2.0,
                 mountains_enabled: true,
                 mountains_scale: 0.0025,
-                mountains_amplitude: 80.0,
+                mountains_amplitude: 480.0,
                 mountains_octaves: 6,
                 detail_enabled: true,
                 detail_scale: 0.02,
-                // Phase 1.6-F.2-T.B.2: detail_amplitude 8.0 → 4.0 per H1
-                // diagnostic. This is the critical path — the "regression"
-                // Andrew observed was bed-of-nails spikes on the grassland
-                // default. Reduction addresses the root cause.
-                detail_amplitude: 4.0,
+                detail_amplitude: 10.0,
                 erosion_enabled: true,
                 erosion_strength: 0.3,
                 // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
@@ -2204,12 +2199,18 @@ impl TerrainPanel {
             self.persistence as f64,
             self.base_amplitude,
         );
-        let preset = Self::noise_preset_for_biome(&self.primary_biome);
+        let mut preset = Self::noise_preset_for_biome(&self.primary_biome);
+        // Phase 1.6-F.4.B.2.B: Mountain Drama slider multiplies the preset's
+        // mountains_amplitude at apply time. Clamped to positive range.
+        let drama = self.mountain_drama_scale.clamp(0.1, 4.0);
+        preset.mountains_amplitude *= drama;
         state.apply_biome_noise_preset(&preset);
 
         tracing::info!(
-            "regenerate_terrain: applied preset base_amp={}, base_scale={}, erosion={}",
+            "regenerate_terrain: applied preset base_amp={}, mountains_amp={} (drama {:.2}), base_scale={}, erosion={}",
             preset.base_amplitude,
+            preset.mountains_amplitude,
+            drama,
             preset.base_scale,
             preset.erosion_enabled,
         );
