@@ -1940,13 +1940,17 @@ impl TerrainPanel {
                 // regression. Enabled on all five DomainWarped presets
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
-                // F.4.B.3.B: damp octave 0 (1.0 → 0.55), boost octaves 1-2.
-                // Standard 0.5-falloff weights (1.0, 0.5, 0.25, 0.125, 0.0625
-                // for octaves 0-4) sum to ~1.94. New weights sum to ~2.80
-                // (slightly higher total amplitude) — peaks may grow slightly.
-                // F.2 regression tests have buffer; if they break, normalize
-                // by 1.94/2.80 = 0.693.
-                base_octave_weights: Some(vec![0.55, 0.85, 0.70, 0.45, 0.25]),
+                // Phase 1.6-F.4.B.3.B-revert (2026-04-25): octave-emphasis
+                // weights ([0.55, 0.85, 0.70, 0.45, 0.25]) produced visible
+                // REGRESS in Andrew-gate — 2D-wall mountain character + peak
+                // clustering. Counter-intuitively the weights REDUCED post-
+                // erosion Y max (510.89 → 500.94, -1.9%) due to derivative-
+                // attenuation interaction with boosted mid-octaves; visible
+                // character changed for the worse despite amplitude decrease.
+                // Reverted to None (Quilez H=1 standard 0.5-falloff,
+                // physically validated for terrain). Infrastructure preserved
+                // for future Path 2/3 attempts.
+                base_octave_weights: None,
             },
             "desert" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (45→135),
@@ -2061,12 +2065,11 @@ impl TerrainPanel {
                 // regression. Enabled on all five DomainWarped presets
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
-                // F.4.B.3.B: tundra (Cold-alpine, Highland-equivalent per
-                // ClimateBias::Cold → mountain_balanced erosion mapping)
-                // gets slightly less aggressive emphasis than mountain.
-                // Damps octave 0 (1.0 → 0.60), boosts octaves 1-2. Sum
-                // ~2.65 vs standard ~1.94 — small amplitude growth.
-                base_octave_weights: Some(vec![0.60, 0.80, 0.65, 0.40, 0.20]),
+                // Phase 1.6-F.4.B.3.B-revert (2026-04-25): octave-emphasis
+                // weights reverted to None along with Mountain preset; same
+                // REGRESS findings apply (2D-wall character, peak clustering,
+                // amplitude decrease from derivative-attenuation interaction).
+                base_octave_weights: None,
             },
             "swamp" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (40→120),

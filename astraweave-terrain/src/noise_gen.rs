@@ -206,8 +206,13 @@ impl Default for NoiseConfig {
             continental_min: default_continental_min(),
             continental_seed_offset: default_continental_seed_offset(),
             base_derivative_weighted: default_base_derivative_weighted(),
-            // Phase 1.6-F.4.B.3.B: octave-emphasis weights default None
-            // (preserves Quilez H=1 standard 0.5-falloff behavior).
+            // Phase 1.6-F.4.B.3.B: octave-emphasis weight infrastructure.
+            // Default None preserves Quilez H=1 standard 0.5-falloff behavior.
+            // Phase 1.6-F.4.B.3.B-revert (2026-04-25): Path 1 static weights
+            // produced visible REGRESS in Andrew-gate (2D-wall mountains,
+            // peak clustering). Mountain/Tundra preset weights reverted to
+            // None; infrastructure preserved for future Path 2/3 attempts
+            // (dynamic Hurst, Musgrave signal-feedback) per F.4.B.3.A.
             base_octave_weights: None,
             mountain_octave_weights: None,
         }

@@ -491,8 +491,15 @@ F.3 — AdvancedErosionSimulator wiring with halo: COMPLETE 2026-04-24 (code lev
   F.3-phase-4 (pragmatic finishing — shared-vertex averaging + scale recovery): COMPLETE 2026-04-24 (code level, Andrew-gate re-verification pending user run), commits 8b374f365 (A diagnostic) + 8b7ed3b9c (B shared-vertex averaging) + 5c259c92c (C droplet-count reduction) + 5933145e9 (D closeout). **Stitching eliminated by fiat**: `smooth_shared_vertices` averages boundary vertices across adjacent chunks → divergence < 1e-5 WU at shared edges (floating-point noise floor). **Scale recovered**: balanced-preset droplet counts reduced (default 35k → 25k, mountain 50k → 35k); Temperate Δp99 from -19.6% → -12.7% (better than phase-2's -15.2%); Cold/Highland Δp99 from -38.5% → -24.9% (better than phase-2's -28.3%). Editor's `generate_terrain` now splits chunk generation and mesh assembly with `smooth_shared_vertices` between. Biome weights unaffected (Shape A invariant re-verified by `biome_weights_at_shared_edges_match` test). Normals recompute naturally in `generate_heightmap_mesh` from smoothed heights. Research note: Asp 2024 full thesis (per Gemini-retrieved reconstruction) uses two offset staggered grids with distance-weighted blending + normal recomputation; phase-4's shared-vertex averaging is the minimal variant that addresses only chunk-boundary vertices — potential future upgrade if richer blending is desired.
 F.4 — Climate as spatial field + Target B scale rework: IN PROGRESS
   F.4.B.1 (scale diagnostic): COMPLETE 2026-04-24, commit d2850d856. Established 1 WU = 1 m convention; documented AstraWeave's 7.93 km² / 92 m Y span vs AAA reference scales (Skyrim 37 km² / 766 m, Enshrouded 24-64 km², NC Blue Ridge 100 km transect). Three targets A/B/C presented; Andrew selected Target B (Enshrouded-class).
-  F.4.B.2 (Target B scale rework): COMPLETE 2026-04-24 (code level; Andrew-gate visual re-verification pending user run). Commits 32a3f28ad (A chunk 512/96) + a81c7333b (B amplitude ×3-8 + Mountain Drama slider) + 89ba60f9d (C radius 10) + e7aebac26 (D rayon) + b06da9b19 (E tree mult 4×) + f623b3c94 (F elevation bands + continental + F.2 tests) + 9e5137d44 (G closeout). World extent 115 km² at Target B (vs 7.93 km² pre-F.4.B.2); post-erosion Y max ~510 WU across climates (was ~92 WU); tree rendered height 12-21 m (was 37-79 m); peak-to-tree ratio ~30× matching Enshrouded baseline. Rayon parallelization lands (phase-2.E's deferred work). F.2 permanent regression tests recalibrated with updated thresholds. Phase-3 world-coord seeding + phase-4 shared-vertex averaging preserved and still effective at new scale.
-  F.4.A (climate-as-spatial-field): NOT STARTED
+  F.4.B.2 (Target B scale rework): COMPLETE 2026-04-24 (code level; Andrew-gate visual re-verification pending user run). Commits 32a3f28ad (A chunk 512/96) + a81c7333b (B amplitude ×3-8 + Mountain Drama slider) + 89ba60f9d (C radius 10) + e7aebac26 (D rayon) + b06da9b19 (E tree mult 4×) + f623b3c94 (F elevation bands + continental + F.2 tests) + 9e5137d44 (G closeout) + df96c6476 (H fog recalibration). World extent 115 km² at Target B (vs 7.93 km² pre-F.4.B.2); post-erosion Y max ~510 WU across climates (was ~92 WU); tree rendered height 12-21 m (was 37-79 m); peak-to-tree ratio ~30× matching Enshrouded baseline. Rayon parallelization lands (phase-2.E's deferred work). F.2 permanent regression tests recalibrated with updated thresholds. Phase-3 world-coord seeding + phase-4 shared-vertex averaging preserved and still effective at new scale.
+  F.4.B.3.A (Uber Noise research): COMPLETE 2026-04-25, commit 0f60aaee2. See `docs/audits/uber_noise_research_2026-04-25.md`. Murray-direct features ranked for Veilweaver: octave-emphasis (B), runevision filter (C), multi-scale locality (D, absorbs F.4.A), ridge integration (E). McKendrick streaming summary saved separately as `docs/audits/nms_streaming_architecture_summary_2026-04-24.md` for future Phase 1.7.
+  F.4.B.3.B (octave-emphasis tuning, Path 1 static weights): LANDED 2026-04-25 commit 0c8c88b46, REVERTED 2026-04-25 commit <F.4.B.3.B-revert-hash>. Andrew-gate REGRESS verdict: 2D-wall mountain character + peak clustering + apparent fog regression (shape-induced, not amplitude-induced). Counter-intuitive measurement: bespoke weights produced 1.9% LESS amplitude (Temperate post-erosion 510.89 → 500.94) due to non-linear interaction between F.2-T-4 derivative weighting and F.4.B.3.B emphasis weighting. Path 1 documented as ineffective lever; API infrastructure (`base_octave_weights` field, `fbm_derivative_weighted_2d` extension) preserved as None-default-safe for future Path 2 (dynamic Hurst) / Path 3 (Musgrave signal-feedback) attempts. F.4.B.3.C proceeds from F.4.B.2.H baseline.
+  F.4.B.3.C (runevision filter integration): NOT STARTED.
+  F.4.B.3.D (multi-scale locality, absorbs F.4.A): NOT STARTED.
+  F.4.B.3.E (ridge noise integration): NOT STARTED.
+  F.4.B.3.F (conditional altitude/concavity): CONDITIONAL.
+  F.4.B.3.G (closeout): NOT STARTED.
+  F.4.A (climate-as-spatial-field): merged into F.4.B.3.D per F.4.B.3.A research recommendation.
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
 ```
 
@@ -1222,6 +1229,56 @@ Target B target (400-700 m Y span grassland): **achieved** across all climates. 
 (h) generation time acceptable (2-5 min expected with rayon).
 
 Failure modes + targeted remediations documented in F.4.B.2 prompt Task 7.B. If gate passes, F.4.A starts next. If gate reveals unanticipated structural issues, re-plan (don't improvise within F.4.B.2).
+
+### 2026-04-25, Sub-phase F.4.B.3.B-revert (octave-emphasis ineffective), commit <F.4.B.3.B-revert-hash>
+
+**Deviation:** F.4.B.3.B (commit `0c8c88b46`) landed octave-emphasis tuning per Murray's GDC 2017 ~39:18-40:15 framing — Path 1 (static per-octave amplitude weights) on Mountain and Tundra presets. Andrew-gate visual re-verification 2026-04-25 returned **REGRESS verdict**: peaks read as 2D-wall mountain character with peak clustering, worse than F.4.B.2.H baseline. Per F.4.B.3.B prompt's REGRESS path, weights reverted; API infrastructure preserved as None-default-safe.
+
+**Diagnostic measurement (radius-5, seed 12345, NoiseConfig with `base_derivative_weighted=true`, `base_octave_weights=Some([0.55, 0.85, 0.70, 0.45, 0.25])` — Mountain weights):**
+
+| Climate    | pre.max | pre.p99 | pre.p50 | post.max | post.p99 | post.p50 | Y span |
+|------------|--------:|--------:|--------:|---------:|---------:|---------:|-------:|
+| Temperate  |  576.80 |  467.21 |  186.75 |   500.94 |   406.13 |   149.90 | 499.12 |
+| Cold       |  576.80 |  467.21 |  186.75 |   497.25 |   389.28 |   139.36 | 495.67 |
+| Arid       |  576.80 |  467.21 |  186.75 |   503.30 |   417.24 |   188.94 | 501.72 |
+| Tropical   |  576.80 |  467.21 |  186.75 |   518.61 |   422.81 |   139.18 | 518.61 |
+| Wetland    |  576.80 |  467.21 |  186.75 |   518.61 |   422.81 |   139.18 | 518.61 |
+| Highland   |  576.80 |  467.21 |  186.75 |   497.25 |   389.28 |   139.36 | 495.67 |
+
+**vs F.4.B.2.G baseline (None weights):** Temperate post-erosion 510.89 → 500.94 (**-1.9%**); pre-erosion max 605.88 → 576.80 (**-4.8%**). **Counter-intuitive finding:** the bespoke weights with sum 2.80 (vs standard sum 1.94) produced LESS amplitude, not more. Mechanism: boosting mid-octaves (octave 1: 0.50 → 0.85, octave 2: 0.25 → 0.70) accelerates accumulated derivative magnitude `dot(d,d)`, which then aggressively attenuates subsequent octaves AND the boosted octaves themselves via Quilez's `1/(1 + dot(d,d))` term. The non-linear interaction between F.2-T-4 derivative weighting and F.4.B.3.B emphasis weighting was not captured by the F.4.B.3.A research's static-amplitude reasoning.
+
+**Specific Andrew-gate failure modes:**
+
+1. **2D-wall mountain character.** Boosted mid-octaves produced terrain with extended ridge-like surfaces rather than discrete peaks. Mountains read as flat "walls" rather than three-dimensional volumes.
+2. **Peak clustering.** Reduced octave-0 dominance (1.0 → 0.55) shifted the largest visible feature scale; peaks appear in tighter groups instead of distributed across the world.
+3. **Apparent fog regression.** Although fog density unchanged from F.4.B.2.H (`0.0003`), the changed mountain shape — particularly 2D walls — presents more cumulative fog-occluded surface area than rounded peaks at similar heights, making fog appear thicker in screenshots. **Inferred:** fog regression was shape-induced, not amplitude-induced or fog-config-induced. Confirmed by reverting weights: amplitude returns to F.4.B.2.G baseline (510.89 max), fog config unchanged (verified by `default_config` test passing with `base_density=0.0003`).
+
+**Conclusion: Path 1 (static per-octave weights) ineffective for AstraWeave's cartoon-shape problem.** Bespoke weights without published reference curves were the wrong lever — F.4.B.3.A research correctly flagged this risk ("no published source provides specific numerical weights ... bespoke tuning ... iterative via Andrew-gate"). One iteration confirmed the lever is wrong; per F.4.B.3.B's "ONE round of adjustment" rule, second iteration not attempted.
+
+**Quilez H=1 standard 0.5-falloff restored as default** for Mountain and Tundra presets. Physically validated for terrain realism per Quilez fBm article (https://iquilezles.org/articles/fbm/) — natural mountain spectra exhibit -9 dB/octave (H=1).
+
+**API infrastructure preserved.** `NoiseConfig.base_octave_weights: Option<Vec<f32>>`, `NoiseConfig.mountain_octave_weights: Option<Vec<f32>>`, `BiomeNoisePreset.base_octave_weights: Option<Vec<f32>>`, and `fbm_derivative_weighted_2d`'s `octave_weights: Option<&[f32]>` parameter all remain. None-default-safe (byte-identical to pre-F.4.B.3.B behavior). Available for future use if F.4.B.3.E ridge integration finds a need for explicit per-octave weights, or if Path 2 (dynamic Hurst per layer) or Path 3 (Musgrave signal-feedback) is later attempted.
+
+**Documented as ineffective lever:** Path 1 alone is not the right tool for the cartoon-shape / repetition problem at AstraWeave's configuration. Future octave-emphasis work should consider:
+- Path 2: dynamic Hurst per layer (different H per base/mountain/detail layer).
+- Path 3: Musgrave signal-feedback (`weight = clamp(prev_signal * gain, 0, 1)`) — altitude-conditional emphasis built into ridge multifractal.
+- Composing emphasis with locality (F.4.B.3.D regional parameter variation) so emphasis varies across regions rather than being globally uniform.
+
+**F.4.B.3.C (runevision filter integration) proceeds from F.4.B.2.H baseline.** Per F.4.B.3.A research, the runevision filter is the highest-confidence visible-impact transform with full published GLSL formulas. F.4.B.3.B's REGRESS does not change that assessment — runevision is a fundamentally different mechanism (gradient-direction-aligned gully extrusion, layered on top of any height function) that doesn't share Path 1's static-amplitude weakness.
+
+**Test scoreboard at F.4.B.3.B-revert close:**
+- F.2 permanent regression (5/5): pass with restored standard 0.5-falloff defaults.
+- Phase-0 synthetic heightmap (10/10): pass.
+- Phase-1 biome-weight pre-erosion (4/4): pass.
+- Phase-1 halo scaffolding (4/4): pass.
+- Phase-2 balanced-preset behavioral (6/6): pass.
+- Phase-2 continuity grassland: **PRE-EXISTING FAILURE** (47.4 WU divergence, was failing before F.4.B.3.B per `git stash` verification). Flagged for F.4.B.3.G investigation per F.4.B.3.B's commit message — NOT addressed in revert.
+- Phase-2 continuity mountain + biome stability + erosion sanity (3/3): pass.
+- Phase-4 diagnostic (4/4): pass with measurements matching F.4.B.2.G baseline (None weights restored).
+- `perlin_gradient::tests` (4/4): pass with retained `octave_weights: None` test caller invocations (infrastructure preserved).
+- `aw_editor` compiles.
+
+**Pre-existing failure note:** the phase-2 continuity grassland test (47.4 WU divergence vs 20 WU tolerance) was failing on pre-F.4.B.3.B baseline per `git stash` verification on 2026-04-25. NOT introduced by F.4.B.3.B; not fixed by F.4.B.3.B-revert. Awaiting F.4.B.3.G closeout investigation.
 
 ---
 
