@@ -1894,6 +1894,14 @@ impl TerrainPanel {
                 // ×2.5 (4→10). Combined with F.4.B.2.A's chunk scale
                 // change, produces alpine Y span when mountain primary is
                 // selected; Mountain Drama slider 0.4-2.0 further tunes.
+                //
+                // Phase 1.6-F.4.B.3.B: octave-emphasis tuning (Murray GDC
+                // 2017 ~39:18-40:15). Damps octave 0, boosts octaves 1-2
+                // to break "first octave dominates" pattern producing
+                // uniform peak shapes. Bespoke tuning — no published
+                // reference curves; iterating via Andrew-gate per
+                // F.4.B.3.A research. Composes multiplicatively with
+                // F.2-T-4 derivative_weighted attenuation.
                 base_scale: 0.003,
                 base_amplitude: 165.0,
                 base_octaves: 5,
@@ -1932,6 +1940,13 @@ impl TerrainPanel {
                 // regression. Enabled on all five DomainWarped presets
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
+                // F.4.B.3.B: damp octave 0 (1.0 → 0.55), boost octaves 1-2.
+                // Standard 0.5-falloff weights (1.0, 0.5, 0.25, 0.125, 0.0625
+                // for octaves 0-4) sum to ~1.94. New weights sum to ~2.80
+                // (slightly higher total amplitude) — peaks may grow slightly.
+                // F.2 regression tests have buffer; if they break, normalize
+                // by 1.94/2.80 = 0.693.
+                base_octave_weights: Some(vec![0.55, 0.85, 0.70, 0.45, 0.25]),
             },
             "desert" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (45→135),
@@ -1969,6 +1984,7 @@ impl TerrainPanel {
                 // regression. Enabled on all five DomainWarped presets
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
+                base_octave_weights: None,
             },
             "forest" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (40→120),
@@ -2006,6 +2022,7 @@ impl TerrainPanel {
                 // regression. Enabled on all five DomainWarped presets
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
+                base_octave_weights: None,
             },
             "tundra" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (55→165),
@@ -2044,6 +2061,12 @@ impl TerrainPanel {
                 // regression. Enabled on all five DomainWarped presets
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
+                // F.4.B.3.B: tundra (Cold-alpine, Highland-equivalent per
+                // ClimateBias::Cold → mountain_balanced erosion mapping)
+                // gets slightly less aggressive emphasis than mountain.
+                // Damps octave 0 (1.0 → 0.60), boosts octaves 1-2. Sum
+                // ~2.65 vs standard ~1.94 — small amplitude growth.
+                base_octave_weights: Some(vec![0.60, 0.80, 0.65, 0.40, 0.20]),
             },
             "swamp" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (40→120),
@@ -2070,6 +2093,7 @@ impl TerrainPanel {
                 // (derivative-weighted fBm only enabled on the DomainWarped
                 // presets where spike artifacts are pronounced).
                 base_derivative_weighted: false,
+                base_octave_weights: None,
             },
             "beach" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (32→96),
@@ -2096,6 +2120,7 @@ impl TerrainPanel {
                 // (derivative-weighted fBm only enabled on the DomainWarped
                 // presets where spike artifacts are pronounced).
                 base_derivative_weighted: false,
+                base_octave_weights: None,
             },
             "river" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (35→105),
@@ -2122,6 +2147,7 @@ impl TerrainPanel {
                 // (derivative-weighted fBm only enabled on the DomainWarped
                 // presets where spike artifacts are pronounced).
                 base_derivative_weighted: false,
+                base_octave_weights: None,
             },
             _ => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (50→150),
@@ -2173,6 +2199,7 @@ impl TerrainPanel {
                 // regression. Enabled on all five DomainWarped presets
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
+                base_octave_weights: None,
             },
         }
     }

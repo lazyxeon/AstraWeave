@@ -60,6 +60,13 @@ pub struct BiomeNoisePreset {
     /// high-frequency octaves on steep slopes where they would otherwise
     /// produce vertex-scale spike artifacts. Default false.
     pub base_derivative_weighted: bool,
+    /// Phase 1.6-F.4.B.3.B: per-octave amplitude weights for base layer fBm.
+    /// `None` = standard `persistence^i` exponential decay (Quilez H=1).
+    /// `Some(weights)` = damp octave 0, boost mid-octaves per Murray's GDC
+    /// 2017 octave-emphasis tuning. Only effective when
+    /// `base_derivative_weighted` is also true. See `NoiseConfig::base_octave_weights`
+    /// for full documentation. Bespoke tuning per F.4.B.3.A research.
+    pub base_octave_weights: Option<Vec<f32>>,
 }
 
 pub struct TerrainState {
@@ -217,6 +224,11 @@ impl TerrainState {
         // opt-in; when true the base-elevation evaluation in TerrainNoise
         // uses fbm_derivative_weighted_2d instead of the default Fbm path.
         self.config.noise.base_derivative_weighted = preset.base_derivative_weighted;
+
+        // Phase 1.6-F.4.B.3.B: octave-emphasis weights flow through to
+        // NoiseConfig. `None` preserves standard 0.5-falloff; `Some` damps
+        // octave 0 and boosts mid-octaves per Murray's GDC 2017 tuning.
+        self.config.noise.base_octave_weights = preset.base_octave_weights.clone();
 
         self.terrain_dirty = true;
     }
@@ -2931,6 +2943,7 @@ mod tests {
             base_domain_warp: Some(warp.clone()),
             continental_modulation: true,
             base_derivative_weighted: false,
+            base_octave_weights: None,
         };
         state.apply_biome_noise_preset(&preset);
 
@@ -2968,6 +2981,7 @@ mod tests {
             base_domain_warp: None,
             continental_modulation: false,
             base_derivative_weighted: false,
+            base_octave_weights: None,
         };
         state.apply_biome_noise_preset(&preset_plain);
 
@@ -3149,6 +3163,7 @@ mod tests {
             base_domain_warp: None,
             continental_modulation: false,
             base_derivative_weighted: false,
+            base_octave_weights: None,
         };
         state.apply_biome_noise_preset(&preset);
 
@@ -3257,6 +3272,7 @@ mod tests {
                     base_domain_warp: None,
                     continental_modulation: false,
                     base_derivative_weighted: false,
+                    base_octave_weights: None,
                 },
                 _ => BiomeNoisePreset {
                     base_scale: 0.005,
@@ -3277,6 +3293,7 @@ mod tests {
                     base_domain_warp: None,
                     continental_modulation: false,
                     base_derivative_weighted: false,
+                    base_octave_weights: None,
                 },
             };
             state.apply_biome_noise_preset(&preset);

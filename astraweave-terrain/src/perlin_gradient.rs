@@ -134,6 +134,19 @@ pub fn perlin_noised_2d(seed: u32, x: f32, z: f32) -> (f32, f32, f32) {
 /// Returns only the final value. The gradient is accumulated internally and
 /// consumed by the attenuation term; exposing it would be a richer API but
 /// terrain callers don't currently need it.
+///
+/// Phase 1.6-F.4.B.3.B: optional `octave_weights` parameter implements
+/// Murray's "octave-emphasis tuning" (GDC 2017 ~39:18-40:15). When `Some`,
+/// per-octave amplitude is taken from the slice instead of the standard
+/// `persistence^i` exponential decay. Lets callers damp octave 0 and boost
+/// mid-octaves to break the "first octave dominates" pattern that produces
+/// uniform peak shapes. When `None`, behavior is byte-identical to
+/// pre-F.4.B.3.B (Quilez H=1, G=persistence).
+///
+/// Critical caveat: octave-emphasis weights are bespoke tuning — no
+/// published source provides specific numerical values. Standard H=1,
+/// G=0.5 is physically validated for terrain realism per Quilez. Departing
+/// from it is an aesthetic choice, not a correctness improvement.
 pub fn fbm_derivative_weighted_2d(
     seed: u32,
     x: f32,
@@ -141,16 +154,28 @@ pub fn fbm_derivative_weighted_2d(
     octaves: u32,
     persistence: f32,
     lacunarity: f32,
+    octave_weights: Option<&[f32]>,
 ) -> f32 {
     let mut value = 0.0f32;
     let mut grad_x = 0.0f32;
     let mut grad_z = 0.0f32;
-    let mut amplitude = 1.0f32;
+    // Used only when octave_weights is None — preserves byte-identical
+    // pre-F.4.B.3.B behavior on default code paths.
+    let mut amplitude_default = 1.0f32;
     let mut frequency = 1.0f32;
 
     for i in 0..octaves {
         let (n, dn_dx, dn_dz) =
             perlin_noised_2d(seed.wrapping_add(i), x * frequency, z * frequency);
+
+        // F.4.B.3.B: select per-octave amplitude. Slice indexing is bounds-
+        // checked; out-of-range octave indices fall back to 0.0 (effectively
+        // skipping that octave) which is the documented contract per the
+        // NoiseConfig field comment.
+        let amplitude = match octave_weights {
+            Some(w) => w.get(i as usize).copied().unwrap_or(0.0),
+            None => amplitude_default,
+        };
 
         // Quilez's attenuation: 1 / (1 + |grad|²)
         let attenuation = 1.0 / (1.0 + grad_x * grad_x + grad_z * grad_z);
@@ -161,7 +186,7 @@ pub fn fbm_derivative_weighted_2d(
         grad_x += amplitude * dn_dx * frequency;
         grad_z += amplitude * dn_dz * frequency;
 
-        amplitude *= persistence;
+        amplitude_default *= persistence;
         frequency *= lacunarity;
     }
 
@@ -272,7 +297,7 @@ mod tests {
                 let z = j as f32 * 0.017 + 0.777;
                 let plain = plain_fbm(x, z);
                 let weighted =
-                    fbm_derivative_weighted_2d(seed, x, z, octaves, persistence, lacunarity);
+                    fbm_derivative_weighted_2d(seed, x, z, octaves, persistence, lacunarity, None);
                 total_error += (plain - weighted).abs();
                 total_magnitude += plain.abs();
             }
@@ -321,7 +346,7 @@ mod tests {
                 let z = j as f32 * 0.37 + 0.777;
                 plain_h[i * GRID + j] = plain_fbm(x, z);
                 weighted_h[i * GRID + j] =
-                    fbm_derivative_weighted_2d(seed, x, z, octaves, persistence, lacunarity);
+                    fbm_derivative_weighted_2d(seed, x, z, octaves, persistence, lacunarity, None);
             }
         }
 

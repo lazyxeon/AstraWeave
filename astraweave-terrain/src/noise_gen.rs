@@ -58,6 +58,43 @@ pub struct NoiseConfig {
     /// behavior for any config that doesn't opt in).
     #[serde(default = "default_base_derivative_weighted")]
     pub base_derivative_weighted: bool,
+    /// Phase 1.6-F.4.B.3.B: per-octave amplitude weights for the base layer
+    /// fBm. Implements Murray's "octave-emphasis tuning" (GDC 2017
+    /// ~39:18-40:15) — damps the dominant first octave and shifts emphasis
+    /// to subsequent octaves to break the "first octave dominates" pattern
+    /// that produces uniform peak shapes.
+    ///
+    /// `None` = use standard `persistence^i` exponential decay (Quilez H=1
+    /// when persistence=0.5; physically validated for terrain realism per
+    /// Quilez fBm article). Preserves pre-F.4.B.3.B behavior.
+    /// `Some(weights)` = use these weights, indexed by octave. Out-of-range
+    /// indices fall back to 0.0 (effectively skipping those octaves).
+    /// Slice length should equal or exceed `base_elevation.octaves`.
+    ///
+    /// Only applies when `base_derivative_weighted` is also true (the
+    /// derivative-weighted path is the only one with explicit per-octave
+    /// loop access; non-derivative paths use opaque `noise` crate Fbm).
+    ///
+    /// Bespoke tuning — no published source provides specific numerical
+    /// weights for "Uber Noise". F.4.B.3.A research surveyed Quilez,
+    /// Musgrave, ithy.com, and primary-source-proxy of Murray's GDC talk;
+    /// none provide reference curves. Tuning is empirical via Andrew-gate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_octave_weights: Option<Vec<f32>>,
+    /// Phase 1.6-F.4.B.3.B (infrastructure-only): per-octave amplitude
+    /// weights for the mountain layer fBm. Currently NOT WIRED — the
+    /// mountain layer uses `Box<dyn NoiseFn>` (`RidgedMulti` or `Fbm` from
+    /// the `noise` crate) which does its octave summation internally with
+    /// no per-octave hook. F.4.B.3.B sets up this field for forward
+    /// compatibility with a future sub-phase (likely F.4.B.3.E or
+    /// follow-up) that replaces the mountain layer with a custom multi-
+    /// octave evaluator supporting per-octave weights. Until then this
+    /// field is read but has no effect; setting it is non-erroring but
+    /// produces identical output to None.
+    ///
+    /// Documented separately in §10 F.4.B.3.B entry as scope-deferral.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mountain_octave_weights: Option<Vec<f32>>,
 }
 
 fn default_cave_frequency() -> f64 {
@@ -169,6 +206,10 @@ impl Default for NoiseConfig {
             continental_min: default_continental_min(),
             continental_seed_offset: default_continental_seed_offset(),
             base_derivative_weighted: default_base_derivative_weighted(),
+            // Phase 1.6-F.4.B.3.B: octave-emphasis weights default None
+            // (preserves Quilez H=1 standard 0.5-falloff behavior).
+            base_octave_weights: None,
+            mountain_octave_weights: None,
         }
     }
 }
@@ -486,6 +527,9 @@ impl TerrainNoise {
                     self.config.base_elevation.octaves as u32,
                     self.config.base_elevation.persistence as f32,
                     self.config.base_elevation.lacunarity as f32,
+                    // F.4.B.3.B: per-octave emphasis weights (None = standard
+                    // exponential decay, preserves pre-F.4.B.3.B behavior).
+                    self.config.base_octave_weights.as_deref(),
                 )
             } else {
                 self.base_elevation.get([
