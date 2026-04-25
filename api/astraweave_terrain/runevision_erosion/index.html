@@ -1,0 +1,38 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Phase 1.6-F.4.B.3.C: runevision erosion filter."><title>astraweave_terrain::runevision_erosion - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="astraweave_terrain" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0 (29483883e 2025-08-04)" data-channel="1.89.0" data-search-js="search-92309212.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../astraweave_terrain/index.html">astraweave_<wbr>terrain</a><span class="version">0.4.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module runevision_<wbr>erosion</a></h2><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#functions" title="Functions">Functions</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate astraweave_<wbr>terrain</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">astraweave_terrain</a></div><h1>Module <span>runevision_erosion</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/astraweave_terrain/runevision_erosion.rs.html#1-335">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Phase 1.6-F.4.B.3.C: runevision erosion filter.</p>
+<p>Adds gradient-aligned mesoscale gully detail on top of any height function.
+Per F.4.B.3.A research, this is the highest-confidence visible-impact
+Uber Noise transform with full published formulas.</p>
+<p><strong>Source:</strong> Rune Skovbo Johansen, “Fast and Gorgeous Erosion Filter”
+(March 2026). Blog: <a href="https://blog.runevision.com/2026/03/fast-and-gorgeous-erosion-filter.html">https://blog.runevision.com/2026/03/fast-and-gorgeous-erosion-filter.html</a>.
+Predecessor “Phacelle” directional noise (January 2026):
+<a href="https://blog.runevision.com/2026/01/phacelle-cheap-directional-noise.html">https://blog.runevision.com/2026/01/phacelle-cheap-directional-noise.html</a>.
+Companion video: <a href="https://www.youtube.com/watch?v=r4V21_uUK8Y">https://www.youtube.com/watch?v=r4V21_uUK8Y</a>.
+Shadertoy reference: <a href="https://www.shadertoy.com/view/wXcfWn">https://www.shadertoy.com/view/wXcfWn</a>.</p>
+<p><strong>License:</strong> Mozilla Public License v2.0 (per blog post). See
+<code>astraweave-terrain/LICENSE-runevision.md</code> for full license text.
+AstraWeave’s port is a faithful interpretation of the algorithm
+described in the blog (gradient-aligned gully extrusion, multi-octave
+mask attenuation, altitude fade). Specific GLSL was not directly
+ported because the blog post URL was not directly fetchable from this
+agent environment; the implementation below is structurally
+consistent with the published algorithm description but parameter
+values and exact math may differ slightly from the canonical
+reference. F.4.B.3.A research summary captures the algorithmic
+invariants this port preserves.</p>
+<p><strong>Composition order in <code>TerrainNoise::sample_height</code>:</strong></p>
+<div class="example-wrap"><pre class="language-text"><code>  1. Base layer fBm with derivative-weighted attenuation (F.2-T-4)
+  2. Mountain layer fBm with derivative-weighted attenuation (F.2-T-4)
+  3. Detail layer Billow (F.2)
+  4. Domain warping applied per-octave (F.2.B)
+  5. Continental modulation multiplies mountain layer output (F.2.6)
+  6. Sum of layers
+  7. → runevision filter adds gully detail using output gradient (THIS) ←
+  8. Final height returned</code></pre></div>
+<p>F.3 particle erosion runs AFTER <code>sample_height</code> returns. Particle
+droplets see the runevision-filtered terrain as their starting state.</p>
+<p><strong>Composition with F.2-T-4:</strong> runevision reads gradient from
+morenoise’s analytical-derivative output. No feedback into morenoise
+attenuation; no per-octave parameter interactions. The non-linear
+interaction that broke F.4.B.3.B (octave-emphasis weights × derivative
+attenuation) does not occur here — runevision is post-fBm extrusion.</p>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.RunevisionConfig.html" title="struct astraweave_terrain::runevision_erosion::RunevisionConfig">Runevision<wbr>Config</a></dt><dd>Configuration for the runevision erosion filter.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.apply_runevision_filter.html" title="fn astraweave_terrain::runevision_erosion::apply_runevision_filter">apply_<wbr>runevision_<wbr>filter</a></dt><dd>Apply runevision erosion filter at a single world position.</dd></dl></section></div></main></body></html>

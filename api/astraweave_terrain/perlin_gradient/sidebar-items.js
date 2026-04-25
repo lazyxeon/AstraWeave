@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["fbm_derivative_weighted_2d","perlin_noised_2d"]};
+window.SIDEBAR_ITEMS = {"fn":["fbm_derivative_weighted_2d","fbm_derivative_weighted_with_gradient_2d","perlin_noised_2d"]};
