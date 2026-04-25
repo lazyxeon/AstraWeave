@@ -1951,6 +1951,11 @@ impl TerrainPanel {
                 // physically validated for terrain). Infrastructure preserved
                 // for future Path 2/3 attempts.
                 base_octave_weights: None,
+                // Phase 1.6-F.4.B.3.C: enable runevision filter for Mountain
+                // preset. Adds gradient-aligned mesoscale gully detail —
+                // 3D peak structure rather than uniform domes. Filter uses
+                // RunevisionConfig::default (calibrated for Target B Y range).
+                runevision_enabled: true,
             },
             "desert" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (45→135),
@@ -1989,6 +1994,7 @@ impl TerrainPanel {
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
                 base_octave_weights: None,
+                runevision_enabled: false,
             },
             "forest" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (40→120),
@@ -2027,6 +2033,7 @@ impl TerrainPanel {
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
                 base_octave_weights: None,
+                runevision_enabled: false,
             },
             "tundra" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (55→165),
@@ -2070,6 +2077,12 @@ impl TerrainPanel {
                 // REGRESS findings apply (2D-wall character, peak clustering,
                 // amplitude decrease from derivative-attenuation interaction).
                 base_octave_weights: None,
+                // Phase 1.6-F.4.B.3.C: enable runevision filter for Tundra
+                // (Cold-alpine, Highland-equivalent per ClimateBias::Cold →
+                // mountain_balanced erosion). Same rationale as Mountain
+                // preset — peaks should read as 3D structures with gully
+                // detail, not uniform domes.
+                runevision_enabled: true,
             },
             "swamp" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (40→120),
@@ -2097,6 +2110,7 @@ impl TerrainPanel {
                 // presets where spike artifacts are pronounced).
                 base_derivative_weighted: false,
                 base_octave_weights: None,
+                runevision_enabled: false,
             },
             "beach" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (32→96),
@@ -2124,6 +2138,7 @@ impl TerrainPanel {
                 // presets where spike artifacts are pronounced).
                 base_derivative_weighted: false,
                 base_octave_weights: None,
+                runevision_enabled: false,
             },
             "river" => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (35→105),
@@ -2151,6 +2166,7 @@ impl TerrainPanel {
                 // presets where spike artifacts are pronounced).
                 base_derivative_weighted: false,
                 base_octave_weights: None,
+                runevision_enabled: false,
             },
             _ => BiomeNoisePreset {
                 // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (50→150),
@@ -2203,6 +2219,7 @@ impl TerrainPanel {
                 // (they're the spike-prone configurations).
                 base_derivative_weighted: true,
                 base_octave_weights: None,
+                runevision_enabled: false,
             },
         }
     }

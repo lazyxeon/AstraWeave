@@ -95,6 +95,17 @@ pub struct NoiseConfig {
     /// Documented separately in §10 F.4.B.3.B entry as scope-deferral.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mountain_octave_weights: Option<Vec<f32>>,
+    /// Phase 1.6-F.4.B.3.C: optional runevision erosion filter (Skovbo
+    /// Johansen, March 2026, MPL-2.0). When `Some`, gradient-aligned
+    /// gully extrusion is applied AFTER continental modulation in
+    /// `TerrainNoise::sample_height` (composition Position B per
+    /// F.4.B.3.C plan §1.B). When `None`, behavior is byte-identical
+    /// to F.4.B.2.H baseline. Active only when `base_derivative_weighted`
+    /// is also true (filter requires gradient input from morenoise).
+    /// See `crate::runevision_erosion` module documentation for full
+    /// algorithmic and provenance details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runevision: Option<crate::runevision_erosion::RunevisionConfig>,
 }
 
 fn default_cave_frequency() -> f64 {
@@ -215,6 +226,10 @@ impl Default for NoiseConfig {
             // (dynamic Hurst, Musgrave signal-feedback) per F.4.B.3.A.
             base_octave_weights: None,
             mountain_octave_weights: None,
+            // Phase 1.6-F.4.B.3.C: runevision erosion filter. Default None
+            // preserves F.4.B.2.H baseline byte-identical. Active only when
+            // a preset opts in via BiomeNoisePreset.runevision_enabled.
+            runevision: None,
         }
     }
 }
@@ -504,7 +519,29 @@ impl TerrainNoise {
 
     /// Sample height at a world position
     pub fn sample_height(&self, x: f64, z: f64) -> f32 {
+        // Composition order (documented per F.4.B.3.C plan §1.C):
+        //   1. Base layer fBm with derivative-weighted attenuation (F.2-T-4)
+        //   2. Mountain layer fBm + continental modulation (F.2 + F.2.6)
+        //   3. Detail layer Billow (F.2)
+        //   4. Sum of layers
+        //   5. → runevision erosion filter adds gradient-aligned gully detail
+        //      using base-layer gradient as a proxy for combined-output gradient
+        //      (mountain layer uses opaque RidgedMulti without analytical
+        //      gradient access; F.4.B.3.C §1.B Position B). Active only when
+        //      `config.runevision.is_some()` AND `base_derivative_weighted`
+        //      is also true.
+        //   6. Final height clamped to non-negative
+        //
+        // F.3 particle erosion runs AFTER this function returns
+        // (in `apply_preset_at_world_offset`). The runevision-filtered terrain
+        // is its starting state.
         let mut height = 0.0f32;
+        // F.4.B.3.C: capture base-layer gradient when derivative-weighted fBm
+        // is active. Used downstream by runevision filter as the slope/flow
+        // direction proxy for the combined output. Stays (0,0) when base
+        // derivative-weighted path is disabled (filter then becomes a no-op
+        // because runevision short-circuits on near-zero gradient).
+        let mut base_gradient = (0.0f32, 0.0f32);
 
         // Base elevation.
         //
@@ -525,17 +562,20 @@ impl TerrainNoise {
                 } else {
                     (sx, sz)
                 };
-                crate::perlin_gradient::fbm_derivative_weighted_2d(
+                // F.4.B.3.C: use the gradient-returning variant. Gradient is
+                // already accumulated internally by morenoise for attenuation;
+                // exposing it as output is zero-cost.
+                let (val, grad) = crate::perlin_gradient::fbm_derivative_weighted_with_gradient_2d(
                     self.base_dw_seed,
                     sx as f32,
                     sz as f32,
                     self.config.base_elevation.octaves as u32,
                     self.config.base_elevation.persistence as f32,
                     self.config.base_elevation.lacunarity as f32,
-                    // F.4.B.3.B: per-octave emphasis weights (None = standard
-                    // exponential decay, preserves pre-F.4.B.3.B behavior).
                     self.config.base_octave_weights.as_deref(),
-                )
+                );
+                base_gradient = grad;
+                val
             } else {
                 self.base_elevation.get([
                     x * self.config.base_elevation.scale,
@@ -588,6 +628,30 @@ impl TerrainNoise {
                 z * self.config.detail.scale,
             ]) as f32;
             height += noise_val * self.config.detail.amplitude;
+        }
+
+        // Phase 1.6-F.4.B.3.C: runevision erosion filter (Skovbo Johansen).
+        // Position B per F.4.B.3.C plan §1.B: AFTER continental modulation,
+        // BEFORE non-negative clamp. Lowland gully contributions are
+        // naturally smaller because continental modulation has already
+        // reduced mountain amplitude there — geologically correct.
+        // Filter is a no-op when:
+        //   - config.runevision is None (preset opt-out), OR
+        //   - base_derivative_weighted is false (no analytical gradient
+        //     available — mountain layer's RidgedMulti is opaque), OR
+        //   - gradient magnitude is near zero (flat terrain), OR
+        //   - height is below valley_altitude (altitude fade = 0).
+        if let Some(rv_config) = &self.config.runevision {
+            if self.config.base_derivative_weighted {
+                height = crate::runevision_erosion::apply_runevision_filter(
+                    height,
+                    base_gradient,
+                    x,
+                    z,
+                    self.base_dw_seed as u64,
+                    rv_config,
+                );
+            }
         }
 
         // Ensure non-negative heights

@@ -67,6 +67,17 @@ pub struct BiomeNoisePreset {
     /// `base_derivative_weighted` is also true. See `NoiseConfig::base_octave_weights`
     /// for full documentation. Bespoke tuning per F.4.B.3.A research.
     pub base_octave_weights: Option<Vec<f32>>,
+    /// Phase 1.6-F.4.B.3.C: enable the runevision erosion filter (Skovbo
+    /// Johansen, March 2026, MPL-2.0). When true, gradient-aligned gully
+    /// extrusion is applied AFTER continental modulation in
+    /// `TerrainNoise::sample_height`. Effective only when
+    /// `base_derivative_weighted` is also true (filter requires gradient
+    /// input from morenoise). Mountain and Tundra presets have this true
+    /// by default; other presets have it false. Filter uses
+    /// `RunevisionConfig::default()` parameters (calibrated for Target B
+    /// Y range). See `astraweave_terrain::runevision_erosion` for full
+    /// algorithm and provenance.
+    pub runevision_enabled: bool,
 }
 
 pub struct TerrainState {
@@ -229,6 +240,18 @@ impl TerrainState {
         // NoiseConfig. `None` preserves standard 0.5-falloff; `Some` damps
         // octave 0 and boosts mid-octaves per Murray's GDC 2017 tuning.
         self.config.noise.base_octave_weights = preset.base_octave_weights.clone();
+
+        // Phase 1.6-F.4.B.3.C: runevision filter opt-in. When the preset
+        // requests it AND base_derivative_weighted is true (filter needs
+        // gradient access via morenoise), populate the filter config with
+        // defaults; otherwise None (filter no-op).
+        self.config.noise.runevision = if preset.runevision_enabled
+            && preset.base_derivative_weighted
+        {
+            Some(astraweave_terrain::runevision_erosion::RunevisionConfig::default())
+        } else {
+            None
+        };
 
         self.terrain_dirty = true;
     }

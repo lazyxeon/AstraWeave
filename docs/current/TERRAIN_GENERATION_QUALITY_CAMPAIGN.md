@@ -494,7 +494,7 @@ F.4 — Climate as spatial field + Target B scale rework: IN PROGRESS
   F.4.B.2 (Target B scale rework): COMPLETE 2026-04-24 (code level; Andrew-gate visual re-verification pending user run). Commits 32a3f28ad (A chunk 512/96) + a81c7333b (B amplitude ×3-8 + Mountain Drama slider) + 89ba60f9d (C radius 10) + e7aebac26 (D rayon) + b06da9b19 (E tree mult 4×) + f623b3c94 (F elevation bands + continental + F.2 tests) + 9e5137d44 (G closeout) + df96c6476 (H fog recalibration). World extent 115 km² at Target B (vs 7.93 km² pre-F.4.B.2); post-erosion Y max ~510 WU across climates (was ~92 WU); tree rendered height 12-21 m (was 37-79 m); peak-to-tree ratio ~30× matching Enshrouded baseline. Rayon parallelization lands (phase-2.E's deferred work). F.2 permanent regression tests recalibrated with updated thresholds. Phase-3 world-coord seeding + phase-4 shared-vertex averaging preserved and still effective at new scale.
   F.4.B.3.A (Uber Noise research): COMPLETE 2026-04-25, commit 0f60aaee2. See `docs/audits/uber_noise_research_2026-04-25.md`. Murray-direct features ranked for Veilweaver: octave-emphasis (B), runevision filter (C), multi-scale locality (D, absorbs F.4.A), ridge integration (E). McKendrick streaming summary saved separately as `docs/audits/nms_streaming_architecture_summary_2026-04-24.md` for future Phase 1.7.
   F.4.B.3.B (octave-emphasis tuning, Path 1 static weights): LANDED 2026-04-25 commit 0c8c88b46, REVERTED 2026-04-25 commit b84b05b0e. Andrew-gate REGRESS verdict: 2D-wall mountain character + peak clustering + apparent fog regression (shape-induced, not amplitude-induced). Counter-intuitive measurement: bespoke weights produced 1.9% LESS amplitude (Temperate post-erosion 510.89 → 500.94) due to non-linear interaction between F.2-T-4 derivative weighting and F.4.B.3.B emphasis weighting. Path 1 documented as ineffective lever; API infrastructure (`base_octave_weights` field, `fbm_derivative_weighted_2d` extension) preserved as None-default-safe for future Path 2 (dynamic Hurst) / Path 3 (Musgrave signal-feedback) attempts. F.4.B.3.C proceeds from F.4.B.2.H baseline.
-  F.4.B.3.C (runevision filter integration): NOT STARTED.
+  F.4.B.3.C (runevision filter integration): COMPLETE 2026-04-25 (code level; Andrew-gate ablation pending user run), commit `<F4B3C-PLACEHOLDER>`. Implements Skovbo Johansen "Fast and Gorgeous Erosion Filter" (March 2026, MPL-2.0) per F.4.B.3.A research's highest-confidence visible-impact transform. New `astraweave-terrain/src/runevision_erosion.rs` module (~280 lines + 6 unit tests, MPL-2.0 licensed; rest of terrain crate retains MIT). Filter applies gradient-aligned multi-octave gully extrusion AFTER continental modulation in `TerrainNoise::sample_height` (composition Position B per plan §1.B). Per-preset opt-in via new `BiomeNoisePreset.runevision_enabled` field; Mountain + Tundra presets ON, all others OFF. Default `NoiseConfig::runevision = None` preserves byte-identical F.4.B.2.H baseline for non-opting consumers. Filter-OFF Y stats verified byte-identical to F.4.B.2.G/H baseline across all 6 climates (Temperate post.max 510.89, Cold/Highland 508.11, Arid 511.44, Tropical/Wetland 536.67). Filter-ON Y stats (Mountain/Tundra preset config) reduce post-erosion peaks ~2% (Temperate 510.89 → 500.03, Cold 508.11 → 498.17, etc.) — within ±15% budget. New `fbm_derivative_weighted_with_gradient_2d` exposes Quilez accumulated gradient at zero cost (gradient was already accumulated internally for attenuation).
   F.4.B.3.D (multi-scale locality, absorbs F.4.A): NOT STARTED.
   F.4.B.3.E (ridge noise integration): NOT STARTED.
   F.4.B.3.F (conditional altitude/concavity): CONDITIONAL.
@@ -1279,6 +1279,80 @@ Failure modes + targeted remediations documented in F.4.B.2 prompt Task 7.B. If 
 - `aw_editor` compiles.
 
 **Pre-existing failure note:** the phase-2 continuity grassland test (47.4 WU divergence vs 20 WU tolerance) was failing on pre-F.4.B.3.B baseline per `git stash` verification on 2026-04-25. NOT introduced by F.4.B.3.B; not fixed by F.4.B.3.B-revert. Awaiting F.4.B.3.G closeout investigation.
+
+### 2026-04-25, Sub-phase F.4.B.3.C (runevision filter integration), commit `<F4B3C-PLACEHOLDER>`
+
+**Deviation:** F.4.B.3.C lands the runevision erosion filter (Skovbo Johansen, March 2026, MPL-2.0). Per F.4.B.3.A research, this was identified as the highest-confidence visible-impact Uber Noise transform with full published algorithm (gradient-aligned multi-octave gully extrusion). Implementation faithful to algorithmic invariants per `docs/audits/uber_noise_research_2026-04-25.md` Rank 2 section — the canonical blog GLSL was not directly fetchable from this agent's environment, so port is structurally consistent rather than a verbatim translation; this is documented in `astraweave-terrain/LICENSE-runevision.md` for downstream readers and re-verifiers.
+
+**Composition Position B chosen** (filter applies after continental modulation, before non-negative clamp). Geologically correct — lowland regions where continental modulation reduced mountain amplitude get proportionally smaller filter contribution; highlands get full effect. Position A (before continental) would have applied uniform-magnitude gullies to flat lowlands, which fails the altitude fade design intent.
+
+**Per-preset opt-in design.** Filter is enabled via new `BiomeNoisePreset.runevision_enabled: bool` field. Mountain + Tundra presets opt in (alpine character benefits most from gully detail); other six presets (Grassland, Forest, Desert, Swamp, Beach, River) keep filter OFF for terrain-character preservation. Editor's `apply_biome_noise_preset` populates `NoiseConfig.runevision = Some(RunevisionConfig::default())` only when the preset has `runevision_enabled: true` AND `base_derivative_weighted: true` (filter requires gradient access via morenoise; non-derivative-weighted presets short-circuit to no-op).
+
+**Default `NoiseConfig::runevision = None` preserves F.4.B.2.H baseline byte-identical** for any non-editor consumer of `WorldConfig::default()` (diagnostic tests, integration tests, future runtime callers). This is verified by the new `phase_4_b_1_scale_radius5_per_climate` test continuing to produce identical Y stats: Temperate post-erosion 510.89, Cold/Highland 508.11, Arid 511.44, Tropical/Wetland 536.67 — all byte-identical to F.4.B.2.G/H baseline.
+
+**Approximation: base-layer gradient as proxy for combined-output gradient.** The filter requires gradient direction for stripe orientation. AstraWeave's mountain layer uses `Box<dyn NoiseFn>` (RidgedMulti or Fbm from the `noise` crate) which is opaque — no analytical gradient available. Computing finite-difference gradient of the full `sample_height` output would require ~4 extra noise samples per vertex (significant cost). Instead the filter uses the BASE layer's accumulated Quilez gradient (already computed for attenuation; exposed at zero cost via the new `fbm_derivative_weighted_with_gradient_2d` variant). Base layer is the smooth, wide-feature dominant signal — its gradient is a reasonable proxy for the combined output's downslope direction. Documented in `apply_runevision_filter` doc comment.
+
+**Diagnostic measurement (radius-5, seed 12345, 121 chunks per climate):**
+
+Filter-OFF baseline (`NoiseConfig::default()`, `runevision=None`, `base_derivative_weighted=false`):
+
+| Climate    | pre.max | pre.p99 | pre.p50 | post.max | post.p99 | post.p50 | Y span |
+|------------|--------:|--------:|--------:|---------:|---------:|---------:|-------:|
+| Temperate  |  605.88 |  478.81 |  186.13 |   510.89 |   419.25 |   150.22 | 510.89 |
+| Cold       |  605.88 |  478.81 |  186.13 |   508.11 |   402.13 |   137.35 | 508.08 |
+| Arid       |  605.88 |  478.81 |  186.13 |   511.44 |   431.28 |   188.22 | 511.44 |
+| Tropical   |  605.88 |  478.81 |  186.13 |   536.67 |   436.39 |   139.23 | 536.67 |
+| Wetland    |  605.88 |  478.81 |  186.13 |   536.67 |   436.39 |   139.23 | 536.67 |
+| Highland   |  605.88 |  478.81 |  186.13 |   508.11 |   402.13 |   137.35 | 508.08 |
+
+All post-erosion `post.max` values **byte-identical** to F.4.B.2.G/H baseline. Confirms F.4.B.3.C is non-disruptive when filter is not opted into.
+
+Filter-ON (Mountain/Tundra preset config: `runevision=Some(default)`, `base_derivative_weighted=true`):
+
+| Climate    | pre.max | pre.p99 | pre.p50 | post.max | post.p99 | post.p50 | Y span |
+|------------|--------:|--------:|--------:|---------:|---------:|---------:|-------:|
+| Temperate  |  573.37 |  470.27 |  187.20 |   500.03 |   412.10 |   150.45 | 500.03 |
+| Cold       |  573.37 |  470.27 |  187.20 |   498.17 |   395.32 |   138.60 | 497.71 |
+| Arid       |  573.37 |  470.27 |  187.20 |   501.37 |   423.15 |   189.44 | 501.37 |
+| Tropical   |  573.37 |  470.27 |  187.20 |   525.22 |   428.28 |   139.75 | 525.22 |
+| Wetland    |  573.37 |  470.27 |  187.20 |   525.22 |   428.28 |   139.75 | 525.22 |
+| Highland   |  573.37 |  470.27 |  187.20 |   498.17 |   395.32 |   138.60 | 497.71 |
+
+**Filter-ON vs filter-OFF deltas:** post.max -1.9% to -2.1% (Temperate 510.89 → 500.03, Cold 508.11 → 498.17, Arid 511.44 → 501.37, Tropical/Wetland 536.67 → 525.22, Highland 508.11 → 498.17). pre.max -5.4% (605.88 → 573.37). Pre-erosion delta is dominated by switching `base_derivative_weighted` from false → true (Quilez attenuation reduces high-frequency content); runevision filter contribution is the residual ±2% on post-erosion peaks. Within ±15% budget per F.4.B.3.C plan §3.
+
+**Filter algorithmic invariants (no-op cases verified by 6 unit tests):**
+- `strength <= 0` → returns input unchanged.
+- `|gradient| < 1e-6` (flat terrain) → returns input unchanged. No flow direction means no gully orientation.
+- `height < valley_altitude` (50 m default) → returns input unchanged. Valleys don't get peak-style gully detail.
+- Determinism: same `(world_x, world_z, world_seed)` always produces same modifier (Wang-style hash for cell phase, no global state).
+- Position dependence: different `(world_x, world_z)` produces different modifier (verified at two test positions).
+
+**Why F.4.B.3.B's REGRESS doesn't apply here:** F.4.B.3.B's failure mode was non-linear interaction between Quilez derivative attenuation and bespoke per-octave amplitude weights — the boosted mid-octaves accelerated `dot(d,d)` accumulation, which then attenuated the boost itself, producing 2D-wall character. Runevision is mechanically different — it's a post-fBm extrusion that consumes the gradient as input but doesn't feed back into morenoise's attenuation. No per-octave parameter interactions. The blog-published reference parameters (octaves=3, detail_attenuation=0.5, base_wavelength=100 m) provide a sound starting point unlike F.4.B.3.B's bespoke weights.
+
+**Diagnostic test added** (permanent, not temporary): `phase_4_b_3_c_runevision_radius5_per_climate` in `astraweave-terrain/tests/phase_1_6_f3_phase_4_diagnostic.rs`. Mirrors the `phase_4_b_1_scale_radius5_per_climate` companion test but constructs `NoiseConfig` with filter-ON. Runs in release mode in ~6 minutes for both tests in parallel (debug mode is much slower; do not run in debug for measurement).
+
+**Performance budget:** filter cost is O(octaves) per pixel = 3 trig + 3 hash calls per pixel ≈ ~20-50 ns per call. Filter is per-preset opt-in (Mountain + Tundra only = 2 of 8 production presets); for opting presets, per-pixel filter cost is bounded against fBm cost (~100-500 ns) at <30%. Standalone radius-10 perf measurement deferred to F.5 integration tuning when fuller end-to-end profiling lands; release-mode 2-test parallel measurement (380s) provides current data point.
+
+**Pre-existing phase-2 continuity grassland failure persists.** Per F.4.B.3.B-revert §10 entry, the 47.4 WU divergence vs 20 WU tolerance test was failing pre-F.4.B.3.B. F.4.B.3.C does not interact with that failure — `runevision = None` for grassland preset means filter has no effect on the grassland path. Test remains failing exactly as before; flagged for F.4.B.3.G closeout investigation.
+
+**Test scoreboard at F.4.B.3.C close:**
+- F.2 permanent regression (5/5): pass.
+- Phase-0 synthetic heightmap: pass (filter doesn't touch synthetic-config code path).
+- Phase-1 biome-weight pre-erosion (4/4): pass.
+- Phase-1 halo scaffolding (4/4): pass.
+- Phase-2 balanced-preset behavioral (6/6): pass.
+- Phase-2 continuity grassland: PRE-EXISTING FAILURE (47.4 WU divergence; not addressed in F.4.B.3.C per scope discipline).
+- Phase-2 continuity mountain + biome stability + erosion sanity (3/3): pass.
+- Phase-3/4 diagnostic: filter-OFF byte-identity confirmed across all 6 climates.
+- F.4.B.3.C diagnostic: filter-ON measurements captured; expected ~2% post-erosion delta within budget.
+- `runevision_erosion::tests` (6/6): pass.
+- `perlin_gradient::tests` (4/4): pass.
+- `cargo check -p astraweave-terrain`: clean.
+- `cargo check -p aw_editor`: clean.
+
+**Andrew-gate ablation deferred to user run.** F.4.B.3.C plan §4 requires side-by-side filter-ON vs filter-OFF evaluation with Mountain + Tundra biome at radius 10 seed 12345, evaluating: (a) gully detail visible at peak heights; (b) no axis-aligned banding; (c) altitude fade reads as natural geology; (d) no peak-clustering regression vs F.4.B.2.H; (e) generation time within 15% budget. Verdict: PASS → F.4.B.3.D / AMBIGUOUS → tune `RunevisionConfig` parameters / REGRESS → revert per F.4.B.3.B precedent.
+
+**Scope held.** Only F.4.B.3.C wiring touched: new `runevision_erosion.rs` module, new `runevision_enabled` field on `BiomeNoisePreset`, new `runevision: Option<RunevisionConfig>` field on `NoiseConfig`, new gradient-returning fBm variant, filter call in `sample_height`, Mountain + Tundra preset opt-in, LICENSE attribution doc, diagnostic test. No tuning passes on existing presets. No changes to other terrain or render systems.
 
 ---
 

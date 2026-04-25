@@ -11,13 +11,31 @@
 //!     droplet-count reduction targets returning peak compression to
 //!     phase-2 levels (~-28% on Cold/Highland, ~-15% on Temperate).
 
-use astraweave_terrain::{smooth_shared_vertices, ChunkId, ClimateBias, TerrainChunk, WorldConfig, WorldGenerator};
+use astraweave_terrain::{
+    runevision_erosion::RunevisionConfig, smooth_shared_vertices, ChunkId, ClimateBias,
+    TerrainChunk, WorldConfig, WorldGenerator,
+};
 use std::collections::HashMap;
 
 fn make_generator(erosion: bool) -> WorldGenerator {
     let mut config = WorldConfig::default();
     config.seed = 12345;
     config.noise.erosion_enabled = erosion;
+    WorldGenerator::new(config)
+}
+
+/// Phase 1.6-F.4.B.3.C: same as `make_generator` but enables the runevision
+/// erosion filter and the derivative-weighted base layer it requires
+/// (mirroring the Mountain/Tundra preset's configuration). Used by the
+/// `phase_4_b_3_c_runevision_radius5_per_climate` diagnostic to measure
+/// filter-ON Y statistics for direct comparison against the filter-OFF
+/// baseline produced by `phase_4_b_1_scale_radius5_per_climate`.
+fn make_generator_runevision(erosion: bool) -> WorldGenerator {
+    let mut config = WorldConfig::default();
+    config.seed = 12345;
+    config.noise.erosion_enabled = erosion;
+    config.noise.base_derivative_weighted = true;
+    config.noise.runevision = Some(RunevisionConfig::default());
     WorldGenerator::new(config)
 }
 
@@ -167,6 +185,75 @@ fn phase_4_b_1_scale_radius5_per_climate() {
     println!();
     println!("chunk_size = 256 WU, heightmap_resolution = 64, vertex spacing = 4 WU");
     println!("radius = 5 → 11×11 = 121 chunks → 2816 WU × 2816 WU world extent");
+    println!("======================================================");
+}
+
+/// Phase 1.6-F.4.B.3.C: filter-ON Y-statistics measurement for radius-5 grid,
+/// per climate. Mirrors `phase_4_b_1_scale_radius5_per_climate` but with
+/// runevision filter enabled (and derivative-weighted base layer it requires).
+/// Used at F.4.B.3.C closeout to capture per-climate Y-shift caused by the
+/// combined (derivative-weighted base + runevision filter) configuration that
+/// Mountain/Tundra presets opt into. Filter-OFF baseline comes from the
+/// `phase_4_b_1_scale_radius5_per_climate` companion test.
+#[test]
+fn phase_4_b_3_c_runevision_radius5_per_climate() {
+    let gen_on = make_generator_runevision(true);
+    let gen_off = make_generator_runevision(false);
+
+    let climates = [
+        (ClimateBias::Temperate, "Temperate"),
+        (ClimateBias::Cold, "Cold"),
+        (ClimateBias::Arid, "Arid"),
+        (ClimateBias::Tropical, "Tropical"),
+        (ClimateBias::Wetland, "Wetland"),
+        (ClimateBias::Highland, "Highland"),
+    ];
+
+    println!("======================================================");
+    println!(
+        "F.4.B.3.C: runevision-ON full-world scale per climate (radius 5, 121 chunks)"
+    );
+    println!();
+    println!(
+        "| Climate   |     pre.max |  pre.p99 |  pre.p50 | post.max | post.p99 | post.p50 | Y span |"
+    );
+    println!(
+        "|-----------|------------:|---------:|---------:|---------:|---------:|---------:|-------:|"
+    );
+
+    for (climate, name) in climates {
+        let mut pre_all = Vec::new();
+        let mut post_all = Vec::new();
+        for x in -5..=5 {
+            for z in -5..=5 {
+                let chunk_id = ChunkId::new(x, z);
+                let pre = gen_off
+                    .generate_chunk_with_climate(chunk_id, climate)
+                    .expect("pre");
+                let post = gen_on
+                    .generate_chunk_with_climate(chunk_id, climate)
+                    .expect("post");
+                pre_all.extend_from_slice(pre.heightmap().data());
+                post_all.extend_from_slice(post.heightmap().data());
+            }
+        }
+        pre_all.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        post_all.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pre_max = *pre_all.last().unwrap();
+        let pre_p99 = pre_all[(pre_all.len() * 99) / 100];
+        let pre_p50 = pre_all[pre_all.len() / 2];
+        let post_max = *post_all.last().unwrap();
+        let post_p99 = post_all[(post_all.len() * 99) / 100];
+        let post_p50 = post_all[post_all.len() / 2];
+        let post_min = *post_all.first().unwrap();
+        let span = post_max - post_min;
+        println!(
+            "| {name:<9} | {pre_max:11.2} | {pre_p99:8.2} | {pre_p50:8.2} | {post_max:8.2} | {post_p99:8.2} | {post_p50:8.2} | {span:6.2} |"
+        );
+    }
+    println!();
+    println!("config: base_derivative_weighted=true, runevision=Some(default)");
+    println!("(Mountain/Tundra preset configuration; valley_alt=50, peak_alt=400, octaves=3)");
     println!("======================================================");
 }
 

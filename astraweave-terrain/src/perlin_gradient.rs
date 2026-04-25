@@ -156,6 +156,35 @@ pub fn fbm_derivative_weighted_2d(
     lacunarity: f32,
     octave_weights: Option<&[f32]>,
 ) -> f32 {
+    fbm_derivative_weighted_with_gradient_2d(
+        seed,
+        x,
+        z,
+        octaves,
+        persistence,
+        lacunarity,
+        octave_weights,
+    )
+    .0
+}
+
+/// Phase 1.6-F.4.B.3.C: same as `fbm_derivative_weighted_2d` but also returns
+/// the accumulated analytical gradient `(grad_x, grad_z)`. Exposed for the
+/// runevision erosion filter (`runevision_erosion.rs`), which needs gradient
+/// direction to align its gully extrusion with downslope flow.
+///
+/// Internal computation is identical to `fbm_derivative_weighted_2d`; the
+/// gradient was already accumulated for Quilez's attenuation term but was
+/// previously discarded at function return. Now exposed.
+pub fn fbm_derivative_weighted_with_gradient_2d(
+    seed: u32,
+    x: f32,
+    z: f32,
+    octaves: u32,
+    persistence: f32,
+    lacunarity: f32,
+    octave_weights: Option<&[f32]>,
+) -> (f32, (f32, f32)) {
     let mut value = 0.0f32;
     let mut grad_x = 0.0f32;
     let mut grad_z = 0.0f32;
@@ -190,7 +219,7 @@ pub fn fbm_derivative_weighted_2d(
         frequency *= lacunarity;
     }
 
-    value
+    (value, (grad_x, grad_z))
 }
 
 #[cfg(test)]
