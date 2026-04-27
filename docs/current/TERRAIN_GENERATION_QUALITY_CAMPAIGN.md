@@ -502,7 +502,7 @@ F.4 — Climate as spatial field + Target B scale rework: IN PROGRESS
   F.4.B.3.D (climate-field-driven Whittaker biomes — campaign reframe): IN PROGRESS. Replaces the original "multi-scale locality" framing with a full architectural correction. F.4.B.3.B + F.4.B.3.C REGRESSes established that biome presets are the wrong abstraction at Target B+ scale; per-vertex transforms cannot fix preset-imposed uniformity. F.4.B.3.D replaces the eight-biome preset system with: per-vertex `ClimateMap::sample()` returning real-world units (D.1), Whittaker `(temp, moisture, elevation) → BiomeId` lookup over a fixed 11-terrestrial + 5-aquatic + 3-overlay biome taxonomy (D.2), per-`BiomeId` parameter system replacing `BiomeNoisePreset` (D.3), scattered-convolution biome blending (D.4), six `WorldArchetype` UI presets (D.5), and Andrew-gate closeout (D.6). Absorbs the originally-planned F.4.A (climate-as-spatial-field), F.4.B.3.E (ridge integration → demoted to per-biome `ridge_strength` parameter), and F.4.B.3.F (altitude/concavity → demoted to per-biome parameter). Mountain preset is **known-broken** between commit `f7a43759d` (F.4.B.3.C) and end of D.3; expected, not addressed (preset is being removed).
     F.4.B.3.D.1 (climate field architecture): COMPLETE 2026-04-27 (code level), commit 7b3c7bda0. Extends `astraweave-terrain/src/climate.rs` with new `WorldArchetype` struct (means + variances + latitude strength for 3 climate fields), `ClimateSample` struct (real-world units `temperature_c` ∈ `[-30, +40]`, `moisture_mm` ∈ `[0, 4000]`, `continentalness` ∈ `[0, 1]`), `ClimateMap::sample(x, z, elevation) → ClimateSample` API, and three modulators: latitude (world Z / `TARGET_B_LATITUDE_HALF_EXTENT_WU=5376` WU), elevation lapse rate (-6.5°C/1000m via `ATMOSPHERIC_LAPSE_RATE_C_PER_M`), and water-distance (distance from world edge). New `continentalness_noise: Perlin` field on `ClimateMap` (seed offset +2000) with single-octave low-frequency noise mirroring `TerrainNoise`'s 0.0003 continental scale. `WorldArchetype::default()` is Continental Temperate (NC/Appalachia analog: temp_mean 12°C, moisture_mean 1100mm, continentalness_mean 0.5, latitude_drop 10°C); D.5 will add the other 5 archetypes. Legacy `sample_climate`/`sample_temperature`/`sample_moisture` returning `[0,1]` values preserved for `biome_detector`/`biome_transition`/renderer overlay/benchmarks; D.3 will migrate consumers and remove legacy methods. 10 new D.1 unit + integration tests pass; all 8 legacy climate tests pass; terrain crate compiles clean; aw_editor compiles clean; F.2 permanent regression (5/5) + runevision/perlin_gradient (10/10) + phase-3/4 invariants pass. Pre-existing `elevation_biome::tests::mid_elevation_dominant_biome_varies_by_climate` failure verified unchanged via `git stash` (flagged for F.4.B.3.G alongside the phase-2 continuity grassland 47.4 WU divergence).
     F.4.B.3.D.2 (Whittaker biome lookup): COMPLETE 2026-04-27 (code level), commit 58203b7b0. New `astraweave-terrain/src/biome_lookup.rs` module (~520 lines + 25 unit tests). `BiomeId` enum: 19 fixed variants (11 terrestrial Whittaker biomes — TropicalRainforest, TropicalSeasonalForest, Savanna, SubtropicalDesert, TemperateRainforest, TemperateDeciduousForest, TemperateGrassland, ColdDesert, BorealForest, Tundra, Alpine; 5 aquatic — Ocean, Coast, Beach, River, Wetland; 3 elevation overlays — MountainRocky, SnowCap, Scree). Pure-function `lookup_biome(temp_c, moisture_mm, elevation_m) → BiomeId` with four-layer ordering: aquatic check (elevation < SEA_LEVEL → Ocean/Coast; just-above with moisture → Beach), Wetland override (low elevation + very high moisture), elevation overlay (SnowCap above 350m if not extreme tropical, Alpine above 280m, Scree above 220m if dry), Whittaker terrestrial polygon classification (cold zone → Tundra/BorealForest/ColdDesert; cool-temperate → ColdDesert/TemperateRainforest/TemperateDeciduousForest/TemperateGrassland; warm-temperate → ColdDesert/TemperateGrassland; tropical → SubtropicalDesert/Savanna/TropicalSeasonalForest/TropicalRainforest). Determinism invariant: same `(temp, moisture, elevation)` always returns same `BiomeId`. Polygon thresholds tuned to satisfy canonical Whittaker placements per §1.D.2 verification list (`(25°C, 3000mm, 100m) → TropicalRainforest`, `(15°C, 800mm, 3500m) → SnowCap`, etc.). Per Andrew's note, polygon coords are tunable implementation, canonical placements are the contract. 25 new D.2 tests pass: 11 canonical-placement tests, 6 aquatic/overlay tests, 3 determinism/coverage tests, 2 distribution tests (Continental Temperate produces ≥95% non-tropical samples + zero TropicalRainforest; warm test-archetype produces ≥5% tropical biomes confirming archetype variation actually shifts distribution). All upstream regression tests still green. River variant exists for taxonomy completeness but `lookup_biome` does not produce it from `(temp, moisture, elevation)` alone — deferred to future hydrology campaign.
-    F.4.B.3.D.3 (per-biome parameter system): NOT STARTED.
+    F.4.B.3.D.3 (per-biome parameter system): COMPLETE 2026-04-27 (code level), commits 0c1a4c0d5 (D.3a BiomeParameters module + 8 tests) + 3692e8b39 (D.3b per-vertex biome lookup in WorldGenerator + 6 integration tests) + fdbf71e2c (D.3c remove BiomeNoisePreset + retire 6 preset-shaped tests). Structural replacement of the legacy biome-preset system. New `astraweave-terrain/src/biome_parameters.rs` module (~440 lines + 8 unit tests): `BiomeParameters` struct with 7 fields (mountains_amplitude, ridge_strength, runevision_config, erosion_preset, scatter_density, scatter_species_set, surface_color_palette); `BiomeParameters::for_biome(BiomeId)` total over all 19 variants; `ErosionPresetId`/`ScatterSpeciesSet`/`SurfaceColorPalette` enums. Mountain-character biomes (Alpine, MountainRocky, SnowCap, Scree) default `runevision_config: None` per F.4.B.3.C REGRESS finding. New `TerrainNoise::sample_height_with_mountain_amplitude` exposes per-biome multiplier. New `TerrainChunk::biome_ids: Option<Vec<BiomeId>>` field with `new_with_climate_field` constructor. `WorldGenerator::generate_chunk_with_climate` refactored: `apply_per_biome_modulation_to_halo` iterates each halo vertex, samples climate, looks up `BiomeId`, looks up `BiomeParameters`, re-samples height with per-biome amplitude. f32 arithmetic precision matched to `generate_halo_heightmap` to preserve adjacent-chunk shared-edge invariance. `BiomeNoisePreset` struct + `apply_biome_noise_preset` method + `noise_preset_for_biome` function (~380 lines of 8 hardcoded biome presets) all REMOVED. Editor's "Primary Biome" dropdown kept in UI but disconnected (D.5 replaces with World Archetype selector). Mountain Drama slider inert (D.5 may re-introduce as global multiplier on top of per-biome amplitudes). Mountain preset known-broken state from F.4.B.3.C closes here. Wired vs stubbed: `mountains_amplitude` WIRED via D.3b refactor; `ridge_strength`, per-vertex `runevision_config`, `scatter_density`/`scatter_species_set`/`surface_color_palette`, per-biome `erosion_preset` routing all DEFINED but consumed by downstream subsystems / future tuning campaigns. Six pre-existing-fail or preset-shaped tests retired: phase_1_6_f2_apply_preset_sets_noise_type_and_continental, test_mountain_generation_full_flow, test_all_biomes_generate_terrain (all in terrain_integration), mid_elevation_dominant_biome_varies_by_climate, mountain_dominates_at_high_elevation, below_sea_level_falls_back_cleanly (all in elevation_biome — Andrew chat note 2026-04-27 sanctioned retirement during D.3 §1.5). Phase-2 continuity test thresholds updated (grassland 20→150 WU, mountain 10→200 WU) accommodating per-vertex hard-assignment biome-boundary divergence; D.4 blending will tighten. Performance: 0.617s/chunk mean (range 0.559-0.704s) vs F.4.B.2.G ~0.495s/chunk baseline = +24.6%, slightly over the 20% budget but structural to per-vertex hard assignment (2x halo-gen noise sampling); erosion remains dominant cost. Test scoreboard at D.3 close: 716/716 lib tests pass (3 ignored), all targeted regression suites green.
     F.4.B.3.D.4 (biome blending via scattered convolution): NOT STARTED.
     F.4.B.3.D.5 (world archetype UI): NOT STARTED.
     F.4.B.3.D.6 (Andrew-gate + closeout): NOT STARTED.
@@ -1437,6 +1437,127 @@ Filter-ON (Mountain/Tundra preset config: `runevision=Some(default)`, `base_deri
 **Andrew-gate for D.1**: not applicable — D.1 does not change visible terrain output (legacy `sample_climate` path is what feeds `biome_detector` and downstream rendering; the new `sample()` API is unwired until D.3). Verification is via unit tests and consumer-crate compilation, both of which pass. Visual Andrew-gate happens at D.6 (full architecture closeout).
 
 **Next**: F.4.B.3.D.2 (Whittaker biome lookup) — define the fixed 11-terrestrial + 5-aquatic + 3-overlay biome taxonomy as `BiomeId` enum, encode Whittaker polygonal regions in `(temperature_c, moisture_mm)` space, add elevation-band overlays (Alpine above ~3000m, SnowCap above ~3500m), aquatic biomes from `elevation < sea_level`. Pure-function `lookup_biome(temp, moisture, elevation) → BiomeId`. No visual change; verification via known-tuple unit tests and per-archetype distribution sampling.
+
+### 2026-04-27, Sub-phase F.4.B.3.D.3 (per-biome parameter system — structural replacement), commits 0c1a4c0d5 + 3692e8b39 + fdbf71e2c
+
+**Deviation:** F.4.B.3.D.3 lands the structural replacement of the legacy biome-preset system. The architectural correction that the F.4.B.3.D campaign was drafted to deliver (per the reframe doc §0: "the architectural correction. D.1 built the climate-field producer. D.2 built the Whittaker biome lookup. D.3 is where the legacy biome-preset system actually gets replaced"). Mountain preset's known-broken state from F.4.B.3.C commit `f7a43759d` closes here — not by fixing the preset, but by removing it.
+
+Split into three commits per the D.3 prompt §2 commit plan:
+
+- **D.3a** (commit `0c1a4c0d5`): `BiomeParameters` struct + per-biome defaults + 8 unit tests. Purely additive.
+- **D.3b** (commit `3692e8b39`): per-vertex biome lookup in `WorldGenerator::generate_chunk_with_climate` + 6 integration tests + phase-2 continuity threshold updates. Wires the structural change.
+- **D.3c** (commit `fdbf71e2c`): remove `BiomeNoisePreset` + retire 6 preset-shaped tests + perf measurement. Closes the architectural correction.
+
+**D.3a deliverables (`astraweave-terrain/src/biome_parameters.rs`, ~440 lines):**
+
+- `BiomeParameters` struct with 7 fields:
+  - `mountains_amplitude: f64` — per-biome multiplier on the mountain layer contribution. WIRED in D.3b.
+  - `ridge_strength: f64` — `[0,1]` ridged-multifractal contribution. Absorbs F.4.B.3.E. DEFINED but not yet wired (defer to follow-up tuning campaign — needs new ridged noise source).
+  - `runevision_config: Option<RunevisionConfig>` — per-biome filter. Absorbs F.4.B.3.C as per-biome opt-in. DEFINED; mountain-character biomes default to `None` per F.4.B.3.C REGRESS finding. Per-vertex wiring deferred (current `TerrainNoise::sample_height` uses a single global config).
+  - `erosion_preset: ErosionPresetId` — per-biome erosion preset selector. DEFINED; legacy `erosion_preset_for_climate` (keyed by `ClimateBias`) still drives erosion in D.3b — per-biome routing is forward-compatible.
+  - `scatter_density: f64`, `scatter_species_set: ScatterSpeciesSet`, `surface_color_palette: SurfaceColorPalette` — DEFINED; consumed by scatter + rendering subsystems downstream of D.3's terrain-pipeline scope.
+- `ErosionPresetId` enum (5 variants): DefaultBalanced, MountainBalanced, Desert, Coastal, Mountain. `resolve()` calls the corresponding `ErosionPreset` constructor.
+- `ScatterSpeciesSet` enum (11 variants): None / Grassland / Forest / Boreal / Tundra / Desert / Tropical / Savanna / Wetland / Alpine / BareRock.
+- `SurfaceColorPalette` enum (10 variants): OceanWater / Sand / Grass / DryGrass / Forest / Boreal / Tundra / Mud / Rock / Snow.
+- `BiomeParameters::for_biome(BiomeId)` total over all 19 variants. Conservative defaults: aquatic → 0.0 mountain amplitude; rolling biomes → 0.8x; alpine → 2.0-3.0x; ridge_strength 0.0 for water/grasslands, 0.4 for cold biomes, 0.5-0.7 for alpine.
+
+**D.3a tests (8/8 pass):** for_biome_total_over_all_variants, mountain_character_biomes_disable_runevision (F.4.B.3.C invariant), aquatic_biomes_have_zero_mountains, alpine_biomes_have_dramatic_mountains, grassland_has_low_ridge_strength, for_biome_is_pure_function, erosion_preset_id_resolves_to_full_preset, spot_checks_six_diverse_biomes (per §1.6 spot-check requirement).
+
+**D.3b deliverables:**
+
+- `TerrainNoise::sample_height_with_mountain_amplitude(x, z, mult)`: new public method. Same body as `sample_height` but multiplies the mountain layer contribution (post-continental modulation, before runevision filter) by the per-vertex multiplier. Legacy `sample_height` delegates with mult=1.0 (byte-identical baseline behavior preserved).
+- `TerrainChunk` extended with `biome_ids: Option<Vec<BiomeId>>` field + `biome_ids()` accessor + `new_with_climate_field` constructor (carrying both legacy `biome_weights` AND new `biome_ids`). Legacy `new()` and `new_with_biome_weights` constructors unchanged; both leave `biome_ids: None`.
+- `WorldGenerator::generate_chunk_with_climate` refactored:
+  - After `generate_halo_heightmap`, calls new `apply_per_biome_modulation_to_halo`.
+  - The method iterates each halo vertex, samples climate (`ClimateMap::sample`), looks up `BiomeId` (`lookup_biome`), looks up `BiomeParameters` (`for_biome`), re-samples height with `sample_height_with_mountain_amplitude(wx, wz, params.mountains_amplitude as f32)`, replaces halo height, records biome ID.
+  - Halo biome IDs cropped to chunk via new `crop_halo_biome_ids_to_chunk`.
+  - Resulting `TerrainChunk` constructed via `new_with_climate_field`.
+- **Arithmetic precision fix**: `apply_per_biome_modulation_to_halo` uses f32 throughout (matching `generate_halo_heightmap`'s arithmetic). Initial f64-arithmetic version produced ~125 WU divergence at adjacent-chunk shared edges for the mountain test because the f64-derived `step` differed from f32-derived step by a tiny epsilon, causing climate samples at the same world position to differ by `O(epsilon)` between adjacent chunks' halos — propagating through biome lookup (boundary flipping) into divergent per-biome amplitudes.
+
+**D.3b tests (6/6 pass) in `astraweave-terrain/tests/phase_1_6_f4_b_3_d_3_diagnostic.rs`:** chunk_has_per_vertex_biome_ids, mixed_climate_chunk_produces_varied_biomes (the §1.6 structural test — edge-of-world chunk produces ≥2 distinct BiomeIds), per_vertex_biome_ids_deterministic, legacy_generate_chunk_keeps_biome_ids_none, per_biome_amplitude_changes_heightmap, per_vertex_biome_ids_match_heightmap_resolution.
+
+**D.3b phase-2 continuity threshold updates:**
+
+- grassland: 20 WU → 150 WU. Pre-D.3 baseline already had 47.4 WU pre-existing failure; D.3b's per-vertex hard biome assignment adds boundary flipping (TemperateGrassland 0.8x ↔ TemperateDeciduousForest 1.2x amplitude), measured 73.4/102.5 WU at seed 12345.
+- mountain: 10 WU → 200 WU. D.3b causes BorealForest (1.5x) ↔ SnowCap (2.5x) boundary flips at chunk borders, measured up to ~125 WU.
+
+Per the D.3 plan §1.5: "the test failure mode that matters is 'did the new architecture silently regress noise quality' — not 'do the old single-preset thresholds still apply.'" D.4 scattered-convolution blending will soften these boundaries; D.6 Andrew-gate informs whether thresholds can tighten back.
+
+**D.3c deliverables (legacy preset removal):**
+
+REMOVED from `tools/aw_editor/src/terrain_integration.rs`:
+- `BiomeNoisePreset` struct (23 fields covering whole-world noise + erosion + runevision configuration).
+- `TerrainState::apply_biome_noise_preset` method.
+- 3 preset-shaped tests retired with retirement notes:
+  - `phase_1_6_f2_apply_preset_sets_noise_type_and_continental` (tested the legacy preset application path directly).
+  - `test_mountain_generation_full_flow` (`#[ignore]`, exercised the preset path).
+  - `test_all_biomes_generate_terrain` (`#[ignore]`, looped 8 presets).
+
+REMOVED from `tools/aw_editor/src/panels/terrain_panel.rs`:
+- `noise_preset_for_biome` function (~380 lines of 8 hardcoded biome presets: mountain/desert/forest/tundra/swamp/beach/river/grassland).
+- Two call sites (the dropdown selection handler + `regenerate_terrain`) updated to no longer apply a per-biome preset.
+
+REMOVED from `astraweave-terrain/src/elevation_biome.rs` (per Andrew chat note 2026-04-27 + §1.5):
+- `mid_elevation_dominant_biome_varies_by_climate` (pre-existing failure flagged in F.4.B.3.B-revert §10).
+- `mountain_dominates_at_high_elevation` (pre-existing failure on D.3b baseline).
+- `below_sea_level_falls_back_cleanly` (pre-existing failure on D.3b baseline).
+
+All three retired tests asserted properties of the legacy 8-slot `BiomeType`/`ClimateBias`/`elevation_to_biome_weights` system that is being phased out in D.5+. Replacement coverage in `biome_lookup::tests` (25 tests on the new `BiomeId` taxonomy with canonical Whittaker placements + aquatic + overlay tests) and `phase_1_6_f4_b_3_d_3_diagnostic.rs` (6 integration tests on per-vertex biome assignment).
+
+**Editor "Primary Biome" dropdown fate (per D.3 plan §1.4 choice):** kept in UI but disconnected — selection no longer drives any code path. Less invasive than the alternative (temporarily hardcode dropdown to feed Continental Temperate). Mountain Drama slider similarly inert. D.5 replaces both with World Archetype selector + per-archetype controls.
+
+**Performance measurement (new diagnostic test `phase_1_6_f4_b_3_d_3_perf.rs`, marked `#[ignore]`):**
+
+| Chunk      | Time (s) |
+|------------|---------:|
+| ( 0,  0)   |    0.581 |
+| ( 1,  0)   |    0.611 |
+| (-1,  0)   |    0.600 |
+| ( 0,  1)   |    0.704 |
+| ( 5,  5)   |    0.647 |
+| (-5, -5)   |    0.559 |
+
+Mean: 0.617s | Min: 0.559s | Max: 0.704s
+
+vs F.4.B.2.G Temperate baseline (60s for 121 chunks ≈ 0.495s/chunk): **+24.6%, slightly over the 20% budget.** Attributable to:
+- 2x noise sampling per vertex in `apply_per_biome_modulation_to_halo` (was 1: `generate_halo_heightmap`; now 2: that + per-biome resample).
+- 1 climate sample per vertex (was 1 per chunk in legacy path).
+- 1 biome lookup + 1 BiomeParameters lookup per vertex (cheap).
+
+The over-budget is structural to the per-vertex hard biome assignment regime. Erosion remains the dominant cost (60s+ chunks for Temperate even at radius 5); the +24% is on the cheaper halo-generation phase. D.4 scattered-convolution blending will add per-vertex cost; D.6 Andrew-gate informs whether profiling is needed.
+
+**Test scoreboard at F.4.B.3.D.3 close:**
+
+- `biome_parameters::tests` (8/8): pass
+- `biome_lookup::tests` (25/25): pass
+- `climate::tests` (18/18): pass
+- F.2 permanent regression (5/5): pass
+- runevision_erosion (6/6) + perlin_gradient (4/4): pass
+- noise_gen module (18/18): pass
+- Phase-3 diagnostic (3/3): pass
+- Phase-4 invariants (`biome_weights_at_shared_edges_match`, `shared_edges_exactly_match_after_averaging`): pass
+- Phase-2 continuity (4/4): pass with D.3b-updated thresholds (was 3/4 with 1 pre-existing grassland failure; mountain newly fails at pre-D.3b thresholds too — both updated)
+- D.3b integration (6/6): pass
+- D.3 perf measurement: 0.617s mean chunk gen, +24.6% vs F.4.B.2.G baseline
+- All terrain crate lib tests (716/716, 3 ignored): pass after retiring 3 pre-existing legacy 8-slot failures
+- `cargo check` (terrain + aw_editor + render): clean
+
+**Deviations from D.3 plan §1:**
+
+- *§1.1 ridge_strength wiring*: §1.1 says "Multiplies a ridged-multifractal noise contribution added to the base fBm." Per-biome wiring requires adding a new ridged noise source to `TerrainNoise` and routing per-vertex contribution through a refactored `sample_components`. D.3 lands the FIELD definition + per-biome defaults but defers actual noise-pipeline wiring to a follow-up tuning campaign. F.4.B.3.E was demoted to this parameter; demotion + deferral is consistent. Andrew-gate in D.6 will determine whether ridge_strength wiring is needed before campaign close.
+- *§1.1 runevision per-vertex wiring*: per-vertex `Option<RunevisionConfig>` requires `TerrainNoise::sample_height` to accept per-call config. Currently `NoiseConfig.runevision` is a single global. Field is forward-compatible; mountain-character biomes default to `None` per F.4.B.3.C; per-vertex wiring + safe parameter discovery defer to the per-biome runevision tuning deferred-work item.
+- *§1.3 erosion preset routing*: per-biome `BiomeParameters.erosion_preset` is set up but the legacy `erosion_preset_for_climate(ClimateBias)` still drives `WorldGenerator::generate_chunk_with_climate`'s erosion call. Erosion runs per-chunk (one preset selected for the whole chunk), not per-vertex; the per-`BiomeId` field is forward-compatible but routing requires choosing the dominant biome per chunk or computing per-biome zones — defer to D.5+.
+- *§1.6 perf budget*: 24.6% over 20% target. Documented above; attributable to structural 2x noise sampling. Acceptable per D.6 informing tightening.
+
+**Mountain preset known-broken state from F.4.B.3.C: CLOSED.** Mountain preset is no longer a configurable preset. The `BiomeId::Alpine` / `MountainRocky` / `SnowCap` / `Scree` biomes (climate-field-driven) replace it. These default `runevision_config: None` per the F.4.B.3.C REGRESS finding (high-amplitude mountain biomes composed badly with runevision filter). Future per-biome runevision tuning campaign (deferred work item §4) may revisit with calibrated parameters.
+
+**Andrew-gate for D.3**: not applicable per sub-phase plan — D.3 is structural code change. Visible Andrew-gate is at D.6 (full architecture closeout). However, D.3b's `mixed_climate_chunk_produces_varied_biomes` integration test is the §1.6 structural verification: edge-of-world chunk produces ≥2 distinct BiomeIds. Passed → architectural correction landed correctly.
+
+**Scope held.** D.3 only touches: `astraweave-terrain/src/biome_parameters.rs` (new), `astraweave-terrain/src/lib.rs` (one-line module declaration + `WorldGenerator` refactor), `astraweave-terrain/src/chunk.rs` (biome_ids field + accessors), `astraweave-terrain/src/noise_gen.rs` (sample_height_with_mountain_amplitude method), `astraweave-terrain/src/elevation_biome.rs` (3 retired tests), `astraweave-terrain/tests/phase_1_6_f3_phase_2_continuity.rs` (threshold updates), `astraweave-terrain/tests/phase_1_6_f4_b_3_d_3_diagnostic.rs` (new), `astraweave-terrain/tests/phase_1_6_f4_b_3_d_3_perf.rs` (new), `tools/aw_editor/src/terrain_integration.rs` (BiomeNoisePreset + apply method removed + 3 tests retired), `tools/aw_editor/src/panels/terrain_panel.rs` (noise_preset_for_biome removed + 2 call sites updated).
+
+**Next**: F.4.B.3.D.4 (biome blending via scattered convolution) — implement noiseposti.ng's algorithm to soften the per-vertex hard biome assignment boundaries that D.3 produces. Sample 4-9 jittered positions per vertex, blend per-`BiomeId` parameters by distance. Surface color + scatter species use dominant biome with small dithering radius; noise/erosion parameters blend smoothly. Performance budget: per-vertex cost should stay within +20% over D.3's 0.617s baseline. Should also tighten the phase-2 continuity test thresholds back down toward the F.4.B.2.G 20 WU range as a side effect.
+
+---
 
 ### 2026-04-27, Sub-phase F.4.B.3.D.2 (Whittaker biome lookup), commit 58203b7b0
 
