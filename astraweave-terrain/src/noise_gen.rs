@@ -517,11 +517,42 @@ impl TerrainNoise {
         Ok(heightmap)
     }
 
-    /// Sample height at a world position
+    /// Sample height at a world position. Equivalent to calling
+    /// [`Self::sample_height_with_mountain_amplitude`] with multiplier `1.0`
+    /// (no per-biome amplitude scaling).
     pub fn sample_height(&self, x: f64, z: f64) -> f32 {
-        // Composition order (documented per F.4.B.3.C plan §1.C):
+        self.sample_height_with_mountain_amplitude(x, z, 1.0)
+    }
+
+    /// Phase 1.6-F.4.B.3.D.3b: sample height at a world position with a
+    /// per-vertex multiplier applied to the mountain layer contribution.
+    ///
+    /// `mountain_amplitude_multiplier`:
+    /// - `1.0` = baseline (legacy `sample_height` behavior, no per-biome
+    ///   scaling). All callers prior to D.3b use this.
+    /// - `< 1.0` = damped mountain contribution (e.g., grassland biomes).
+    /// - `> 1.0` = boosted mountain contribution (e.g., alpine biomes).
+    ///
+    /// Multiplier is applied AFTER continental modulation but BEFORE the
+    /// runevision filter. This means continental clustering still shapes
+    /// regional highland/lowland zones, then per-biome amplitude refines
+    /// each region's local character.
+    ///
+    /// New per-vertex per-biome amplitude path. `WorldGenerator::generate_chunk_with_climate`
+    /// uses this method to apply `BiomeParameters::mountains_amplitude` from
+    /// the per-vertex `BiomeId` lookup. Replaces the legacy whole-world
+    /// per-`BiomeNoisePreset` amplitude pattern.
+    pub fn sample_height_with_mountain_amplitude(
+        &self,
+        x: f64,
+        z: f64,
+        mountain_amplitude_multiplier: f32,
+    ) -> f32 {
+        // Composition order (documented per F.4.B.3.C plan §1.C, extended
+        // for F.4.B.3.D.3 per-biome amplitude):
         //   1. Base layer fBm with derivative-weighted attenuation (F.2-T-4)
         //   2. Mountain layer fBm + continental modulation (F.2 + F.2.6)
+        //      → multiplied by per-biome `mountain_amplitude_multiplier` (D.3b)
         //   3. Detail layer Billow (F.2)
         //   4. Sum of layers
         //   5. → runevision erosion filter adds gradient-aligned gully detail
@@ -617,7 +648,11 @@ impl TerrainNoise {
             } else {
                 mountain_height_raw
             };
-            height += mountain_height;
+            // Phase 1.6-F.4.B.3.D.3b: per-biome mountain amplitude multiplier.
+            // Applied AFTER continental modulation, so continental clustering
+            // still shapes regional highland/lowland zones, then per-biome
+            // amplitude refines each region's local character.
+            height += mountain_height * mountain_amplitude_multiplier;
         }
 
         // Detail

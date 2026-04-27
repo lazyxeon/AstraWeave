@@ -326,7 +326,30 @@ impl WorldGenerator {
 
         let mut halo = self.generate_halo_heightmap(chunk_id, HALO_CHUNKS)?;
 
+        // Phase 1.6-F.4.B.3.D.3b: per-vertex biome lookup + per-biome
+        // mountain-amplitude modulation. Iterates the freshly generated halo
+        // (each vertex currently has the default-amplitude `sample_height`
+        // value), samples the climate field at that vertex's raw elevation,
+        // looks up the dominant `BiomeId` via D.2's `lookup_biome`, looks up
+        // per-biome `BiomeParameters` from D.3a, and re-samples the height
+        // with `sample_height_with_mountain_amplitude` using
+        // `params.mountains_amplitude` as the multiplier.
+        //
+        // This is the structural replacement for the legacy
+        // `BiomeNoisePreset` whole-world configuration: every vertex gets
+        // its own biome assignment from the climate field, and the noise
+        // pipeline applies that biome's amplitude per-vertex.
+        //
+        // The pre-erosion biome IDs are computed from raw (default-amplitude)
+        // heights so that biome assignment is invariant across re-runs with
+        // different per-biome amplitudes — biome assignment shapes the world,
+        // not the other way around. Per §2.5, biome assignment uses
+        // pre-erosion heights for authorial-intent stability.
+        let halo_biome_ids = self
+            .apply_per_biome_modulation_to_halo(&mut halo, chunk_id, HALO_CHUNKS);
+
         // Pre-erosion cropped heightmap — input to biome_weights computation.
+        // After per-biome modulation, this reflects per-vertex amplitude.
         let pre_erosion_heightmap = self.crop_halo_to_chunk(&halo, chunk_id)?;
 
         // §2.5: biome_weights are computed from PRE-erosion heights. Once
@@ -345,6 +368,15 @@ impl WorldGenerator {
                 ));
             }
         }
+
+        // D.3b: crop the per-vertex BiomeId array to the chunk-sized region
+        // matching `pre_erosion_heightmap`. Uses the same crop offsets as
+        // `crop_halo_to_chunk`.
+        let chunk_biome_ids = self.crop_halo_biome_ids_to_chunk(
+            &halo_biome_ids,
+            halo.resolution() as usize,
+            chunk_id,
+        );
 
         // §2.2 climate → ErosionPreset mapping.
         let preset = crate::advanced_erosion::erosion_preset_for_climate(climate_bias);
@@ -395,17 +427,133 @@ impl WorldGenerator {
         )?;
         let biome_map = self.assign_biomes(&pre_erosion_heightmap, &climate_data)?;
 
-        // Construct chunk: post-erosion heights + pre-erosion biome_weights.
+        // Construct chunk: post-erosion heights + pre-erosion biome_weights
+        // + per-vertex BiomeId array (Phase 1.6-F.4.B.3.D.3b).
         // No further `apply_erosion` — phase 2 replaces simple CA with
         // AdvancedErosionSimulator.
-        let chunk = TerrainChunk::new_with_biome_weights(
+        let chunk = TerrainChunk::new_with_climate_field(
             chunk_id,
             heightmap,
             biome_map,
             biome_weights,
+            chunk_biome_ids,
         );
 
         Ok(chunk)
+    }
+
+    /// Phase 1.6-F.4.B.3.D.3b: apply per-vertex biome modulation to a
+    /// halo heightmap.
+    ///
+    /// For each vertex in the halo, the function:
+    /// 1. Samples the climate field at the vertex's current (raw) elevation.
+    /// 2. Looks up the dominant `BiomeId` via `lookup_biome`.
+    /// 3. Looks up the biome's `BiomeParameters` via `for_biome`.
+    /// 4. Re-samples the noise pipeline using
+    ///    `TerrainNoise::sample_height_with_mountain_amplitude` with the
+    ///    biome's `mountains_amplitude` multiplier.
+    /// 5. Replaces the halo's height value with the per-biome-modulated
+    ///    sample and records the biome ID.
+    ///
+    /// Returns a flat `Vec<BiomeId>` in row-major `(z, x)` order matching
+    /// the halo's vertex layout. Length: `halo_res × halo_res`.
+    ///
+    /// Cost analysis: 2 noise samples (one for biome-lookup elevation, one
+    /// for per-biome height) + 1 climate sample + 1 biome lookup per vertex.
+    /// The 2x noise cost is the per-vertex price of the architectural
+    /// correction; erosion remains the dominant cost (60s+ per radius-5
+    /// chunk for Temperate climate).
+    fn apply_per_biome_modulation_to_halo(
+        &self,
+        halo: &mut heightmap::Heightmap,
+        target_chunk_id: ChunkId,
+        halo_chunks: u32,
+    ) -> Vec<crate::biome_lookup::BiomeId> {
+        let halo_res = halo.resolution() as usize;
+        let chunk_res = self.config.heightmap_resolution as usize;
+        // CRITICAL: must mirror `generate_halo_heightmap`'s f32 arithmetic
+        // so that vertex world coordinates at the shared edge between
+        // adjacent chunks match exactly. f64 arithmetic produces a
+        // slightly different `step` value than f32, breaking the
+        // shared-edge invariant under per-biome modulation. Per
+        // F.4.B.3.D.3b regression diagnosis: f64 path produced 125 WU
+        // divergence at chunk borders for the mountain test.
+        let chunk_size = self.config.chunk_size;
+        let step = chunk_size / (chunk_res as f32 - 1.0);
+
+        let target_origin = target_chunk_id.to_world_pos(chunk_size);
+        let halo_origin_x = target_origin.x - halo_chunks as f32 * chunk_size;
+        let halo_origin_z = target_origin.z - halo_chunks as f32 * chunk_size;
+
+        let mut biome_ids = Vec::with_capacity(halo_res * halo_res);
+        for z_idx in 0..halo_res {
+            for x_idx in 0..halo_res {
+                let wx_f32 = halo_origin_x + x_idx as f32 * step;
+                let wz_f32 = halo_origin_z + z_idx as f32 * step;
+                let wx = wx_f32 as f64;
+                let wz = wz_f32 as f64;
+
+                let raw_height = halo.get_height(x_idx as u32, z_idx as u32);
+
+                // Climate sample at the raw height. Climate field uses
+                // archetype-driven temperature/moisture/continentalness;
+                // raw height feeds the lapse-rate modulator.
+                let climate = self.climate.sample(wx, wz, raw_height);
+
+                // Whittaker biome lookup. Pure function of climate + elevation.
+                let biome_id = crate::biome_lookup::lookup_biome(
+                    climate.temperature_c,
+                    climate.moisture_mm,
+                    raw_height,
+                );
+
+                // Per-biome parameters. Currently wires only
+                // `mountains_amplitude` into the noise pipeline; other fields
+                // (ridge_strength, runevision_config, scatter, surface) are
+                // forward-compatible defaults consumed by downstream
+                // subsystems (D.5+).
+                let params = crate::biome_parameters::BiomeParameters::for_biome(biome_id);
+
+                let modulated_height = self.noise.sample_height_with_mountain_amplitude(
+                    wx,
+                    wz,
+                    params.mountains_amplitude as f32,
+                );
+                halo.set_height(x_idx as u32, z_idx as u32, modulated_height);
+                biome_ids.push(biome_id);
+            }
+        }
+        halo.recalculate_bounds();
+        biome_ids
+    }
+
+    /// Phase 1.6-F.4.B.3.D.3b: crop the per-vertex `BiomeId` halo array to
+    /// the chunk-sized center region. Mirrors `crop_halo_to_chunk` for the
+    /// heightmap.
+    fn crop_halo_biome_ids_to_chunk(
+        &self,
+        halo_biome_ids: &[crate::biome_lookup::BiomeId],
+        halo_res: usize,
+        _target_chunk_id: ChunkId,
+    ) -> Vec<crate::biome_lookup::BiomeId> {
+        let chunk_res = self.config.heightmap_resolution as usize;
+        // halo_res = chunks_per_side * (chunk_res - 1) + 1
+        // chunks_per_side = (halo_res - 1) / (chunk_res - 1)
+        // halo_chunks = (chunks_per_side - 1) / 2
+        // crop_offset = halo_chunks * (chunk_res - 1)
+        let chunks_per_side = (halo_res - 1) / (chunk_res - 1);
+        let halo_chunks = (chunks_per_side - 1) / 2;
+        let crop_offset = halo_chunks * (chunk_res - 1);
+
+        let mut chunk_ids = Vec::with_capacity(chunk_res * chunk_res);
+        for z in 0..chunk_res {
+            for x in 0..chunk_res {
+                let halo_idx =
+                    (crop_offset + z) * halo_res + (crop_offset + x);
+                chunk_ids.push(halo_biome_ids[halo_idx]);
+            }
+        }
+        chunk_ids
     }
 
     /// Phase 1.6-F.3-phase-1.B: generate a heightmap covering a 3×3 chunk

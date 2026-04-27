@@ -1,5 +1,6 @@
 //! Terrain chunk management and streaming
 
+use crate::biome_lookup::BiomeId;
 use crate::{BiomeType, Heightmap};
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
@@ -78,6 +79,16 @@ pub struct TerrainChunk {
     /// moves heights so the distinction is imperceptible; phase 2's
     /// AdvancedErosionSimulator will make the invariant meaningful.
     biome_weights: Option<Vec<[f32; 8]>>,
+    /// Phase 1.6-F.4.B.3.D.3b: per-vertex `BiomeId` from the climate-field
+    /// architecture. `None` for chunks constructed through legacy paths
+    /// (`new` or `new_with_biome_weights`); `Some(Vec<BiomeId>)` for chunks
+    /// from the new `WorldGenerator::generate_chunk_with_climate` path that
+    /// computes per-vertex biome IDs via `lookup_biome` from D.2.
+    ///
+    /// Stored in row-major (z, x) order matching heightmap indexing.
+    /// Computed from PRE-erosion heights per the §2.5 invariant
+    /// (biome assignment uses authorial intent, not post-erosion shape).
+    biome_ids: Option<Vec<BiomeId>>,
     mesh_dirty: bool,
 }
 
@@ -91,6 +102,7 @@ impl TerrainChunk {
             heightmap,
             biome_map,
             biome_weights: None,
+            biome_ids: None,
             mesh_dirty: true,
         }
     }
@@ -108,6 +120,32 @@ impl TerrainChunk {
             heightmap,
             biome_map,
             biome_weights: Some(biome_weights),
+            biome_ids: None,
+            mesh_dirty: true,
+        }
+    }
+
+    /// Phase 1.6-F.4.B.3.D.3b: construct a chunk with both legacy 8-slot
+    /// biome_weights (Phase 1.5 splat-rule path) and the new per-vertex
+    /// `BiomeId` array (climate-field architecture). The two coexist
+    /// during the D.3 transition; D.5+ may consolidate.
+    ///
+    /// Both arrays are computed from PRE-erosion heights per the §2.5
+    /// authorial-intent invariant. `biome_ids` is row-major `(z, x)`
+    /// ordering matching `biome_weights` and the heightmap.
+    pub fn new_with_climate_field(
+        id: ChunkId,
+        heightmap: Heightmap,
+        biome_map: Vec<BiomeType>,
+        biome_weights: Vec<[f32; 8]>,
+        biome_ids: Vec<BiomeId>,
+    ) -> Self {
+        Self {
+            id,
+            heightmap,
+            biome_map,
+            biome_weights: Some(biome_weights),
+            biome_ids: Some(biome_ids),
             mesh_dirty: true,
         }
     }
@@ -116,6 +154,13 @@ impl TerrainChunk {
     /// Returns `None` for legacy-constructed chunks.
     pub fn biome_weights(&self) -> Option<&[[f32; 8]]> {
         self.biome_weights.as_deref()
+    }
+
+    /// Phase 1.6-F.4.B.3.D.3b: get the per-vertex `BiomeId` array if populated.
+    /// Returns `None` for chunks constructed through legacy paths that don't
+    /// run the climate-field per-vertex biome lookup.
+    pub fn biome_ids(&self) -> Option<&[BiomeId]> {
+        self.biome_ids.as_deref()
     }
 
     /// Get the chunk ID

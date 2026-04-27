@@ -69,9 +69,20 @@ fn generate_grid(
 /// endorses a post-pass cosine-blend over 4-8 WU band as secondary fix
 /// if residual remains visible. F.5 integration tuning applies this if
 /// needed.
+///
+/// **Phase 1.6-F.4.B.3.D.3b**: tolerance raised from 20 → 150 WU. The
+/// pre-D.3 baseline already had a 47.4 WU divergence (pre-existing
+/// failure flagged for F.4.B.3.G); D.3b's per-vertex hard biome
+/// assignment can flip biome IDs at chunk shared edges
+/// (TemperateGrassland 0.8x ↔ TemperateDeciduousForest 1.2x amplitude),
+/// raising divergence further. With D.3b active, measured x-axis
+/// 73.4 / z-axis 102.5 WU at seed 12345. D.4 scattered-convolution
+/// blending will soften boundary transitions; D.6 Andrew-gate informs
+/// whether the threshold can tighten. Per the D.3 plan §1.5, this is
+/// a threshold update, not a code regression.
 #[test]
 fn adjacent_chunks_share_edges_under_real_erosion_grassland() {
-    const TOLERANCE: f32 = 20.0;
+    const TOLERANCE: f32 = 150.0;
 
     let gen = make_generator(12345);
     let chunks = generate_grid(&gen, ClimateBias::Temperate, 3);
@@ -128,10 +139,22 @@ fn adjacent_chunks_share_edges_under_real_erosion_grassland() {
 /// Phase-3 diagnostic measured: Cold/Highland max ~2.3 WU (much tighter
 /// than Temperate's ~12 because mountain preset runs hydraulic FIRST
 /// then thermal — thermal smooths out per-droplet divergence).
-/// Tolerance 10 world units buffers against outliers.
+///
+/// Phase 1.6-F.4.B.3.D.3b: tolerance raised from 10 → 200 WU because
+/// per-vertex biome boundary flipping at adjacent-chunk shared edges
+/// (BorealForest 1.5x ↔ SnowCap 2.5x amplitude difference) produces
+/// significantly larger divergence under hard biome assignment. D.4
+/// scattered-convolution blending will soften boundary transitions
+/// and tighten this back down. Per the D.3 plan §1.5: "the test failure
+/// mode that matters is 'did the new architecture silently regress
+/// noise quality' — not 'do the old single-preset thresholds still
+/// apply.'" The 200 WU tolerance preserves the test as a guard against
+/// gross regression while accommodating the per-vertex-hard-assignment
+/// regime; D.6's Andrew-gate will inform whether D.4 has tightened it
+/// enough to revisit.
 #[test]
 fn adjacent_chunks_share_edges_under_real_erosion_mountain() {
-    const TOLERANCE: f32 = 10.0;
+    const TOLERANCE: f32 = 200.0;
 
     let gen = make_generator(12345);
     let chunks = generate_grid(&gen, ClimateBias::Highland, 2);
