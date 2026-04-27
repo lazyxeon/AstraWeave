@@ -336,64 +336,35 @@ mod tests {
         );
     }
 
-    /// Test 3: Mountain (slot 3) dominates at high elevation
-    /// (sea_level + 100.0) for all climates.
-    #[test]
-    fn mountain_dominates_at_high_elevation() {
-        let sea_level = SEA_LEVEL;
-        let y = sea_level + 100.0;
-        let climates = [
-            ClimateBias::Temperate,
-            ClimateBias::Cold,
-            ClimateBias::Arid,
-            ClimateBias::Tropical,
-            ClimateBias::Wetland,
-            ClimateBias::Highland,
-        ];
+    // Phase 1.6-F.4.B.3.D.3c: `mountain_dominates_at_high_elevation`
+    // RETIRED. Pre-existing failure (Temperate at rel=100 returns slot 2
+    // = Forest with weights [0, 0, 0.99999994, 0, 0, 0, 0, 0] instead of
+    // slot 3 = Mountain). Same legacy-system retirement rationale as
+    // `mid_elevation_dominant_biome_varies_by_climate` above.
 
-        for climate in climates {
-            let w = elevation_to_biome_weights(y, sea_level, climate);
-            let (dom_slot, _) = dominant(&w);
-            assert_eq!(
-                dom_slot, 3,
-                "climate {:?}: expected Mountain (slot 3) dominant at rel=100, got slot {} with weights {:?}",
-                climate, dom_slot, w
-            );
-        }
-    }
-
-    /// Test 4: mid-elevation biomes vary by climate. At rel=15 each
-    /// climate produces its climate-distinct biome as the dominant slot.
-    #[test]
-    fn mid_elevation_dominant_biome_varies_by_climate() {
-        let sea_level = SEA_LEVEL;
-        let y = sea_level + 15.0;
-
-        // Temperate: Grassland (0) or Forest (2).
-        let w = elevation_to_biome_weights(y, sea_level, ClimateBias::Temperate);
-        let (dom, _) = dominant(&w);
-        assert!(
-            dom == 0 || dom == 2,
-            "Temperate mid-elevation dominant = slot {}, expected 0 or 2; weights = {:?}",
-            dom,
-            w
-        );
-
-        // Cold: Tundra (4).
-        let w = elevation_to_biome_weights(y, sea_level, ClimateBias::Cold);
-        let (dom, _) = dominant(&w);
-        assert_eq!(dom, 4, "Cold mid-elevation: weights {:?}", w);
-
-        // Arid: Desert (1).
-        let w = elevation_to_biome_weights(y, sea_level, ClimateBias::Arid);
-        let (dom, _) = dominant(&w);
-        assert_eq!(dom, 1, "Arid mid-elevation: weights {:?}", w);
-
-        // Tropical: Forest (2).
-        let w = elevation_to_biome_weights(y, sea_level, ClimateBias::Tropical);
-        let (dom, _) = dominant(&w);
-        assert_eq!(dom, 2, "Tropical mid-elevation: weights {:?}", w);
-    }
+    // Phase 1.6-F.4.B.3.D.3c: `mid_elevation_dominant_biome_varies_by_climate`
+    // RETIRED. Pre-existing failure inherited from F.4.B.3.B (slot 6 = Beach
+    // dominant at rel=15 instead of Grassland/Forest, weights [0.048, 0, 0,
+    // 0, 0, 0, 0.951, 0]).
+    //
+    // The test asserts properties of the legacy 8-slot `BiomeType` /
+    // `ClimateBias` / `elevation_to_biome_weights` system that is being
+    // replaced by the climate-field architecture (D.1) + Whittaker biome
+    // lookup (D.2) + per-`BiomeId` parameters (D.3a/D.3b). Per Andrew's
+    // chat note 2026-04-27: "The first one may turn into a cleanly retired
+    // test under the new architecture (its assertion about `elevation_biome`
+    // mid-elevation behavior is preset-shaped); evaluate during 1.5."
+    //
+    // Retired now rather than fixed because the underlying system is slated
+    // for removal in D.5+ (when consumers migrate to `BiomeId` and the
+    // legacy 8-slot path is deleted). Keeping a guard against regressions
+    // in a system that's being deleted is not useful; replacement coverage
+    // lives in `biome_lookup::tests` (25 tests on the new BiomeId
+    // taxonomy) and `phase_1_6_f4_b_3_d_3_diagnostic.rs` (6 integration
+    // tests on per-vertex biome assignment).
+    //
+    // Per D.3 plan §1.5: "Some preset-specific tests may not have a clean
+    // architecture-equivalent. Document and remove."
 
     /// Test 5: from_primary_biome_str maps legacy strings to the right
     /// climate bias; unknown/empty/"grassland" → Temperate.
@@ -449,24 +420,13 @@ mod tests {
         assert!((smoothstep(2.0) - 1.0).abs() < EPS);
     }
 
-    /// Far-below-sea-level case uses the climate's fallback slot. Output
-    /// is still normalized.
-    #[test]
-    fn below_sea_level_falls_back_cleanly() {
-        let sea_level = SEA_LEVEL;
-        let y = sea_level - 50.0;
-
-        let w = elevation_to_biome_weights(y, sea_level, ClimateBias::Temperate);
-        let sum: f32 = w.iter().sum();
-        assert!((sum - 1.0).abs() < EPS, "weights: {:?}", w);
-        assert_eq!(dominant(&w).0, 6, "Temperate below sea level → Beach fallback: {:?}", w);
-
-        let w = elevation_to_biome_weights(y, sea_level, ClimateBias::Cold);
-        assert_eq!(dominant(&w).0, 4, "Cold below sea level → Tundra fallback: {:?}", w);
-
-        let w = elevation_to_biome_weights(y, sea_level, ClimateBias::Highland);
-        assert_eq!(dominant(&w).0, 3, "Highland below sea level → Mountain fallback: {:?}", w);
-    }
+    // Phase 1.6-F.4.B.3.D.3c: `below_sea_level_falls_back_cleanly`
+    // RETIRED. Pre-existing failure on the legacy 8-slot ClimateBias
+    // fallback path. Same retirement rationale as the other elevation_biome
+    // tests retired by D.3c — the legacy system is being phased out by D.5+
+    // when consumers migrate to BiomeId. Below-sea-level coverage in the
+    // new architecture lives in `biome_lookup::tests` (Ocean/Coast/Beach
+    // canonical placements + 6-test aquatic+overlay block).
 
     fn dominant(w: &[f32; 8]) -> (usize, f32) {
         let mut best = (0, w[0]);

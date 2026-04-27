@@ -1,8 +1,8 @@
 use astraweave_terrain::{
     elevation_to_biome_weights, smooth_shared_vertices, BiomeConfig, BiomePack, BiomePackAsset,
-    BiomeType, ChunkId, ClimateBias, DomainWarpConfig, Heightmap, HeightmapPatch, NoiseType,
-    ScatterConfig, SplatConfig, SplatMapGenerator, SplatRule, SplatWeights, TerrainChunk,
-    VegetationInstance, VegetationScatter, WorldConfig, WorldGenerator, SEA_LEVEL,
+    BiomeType, ChunkId, ClimateBias, Heightmap, HeightmapPatch, ScatterConfig, SplatConfig,
+    SplatMapGenerator, SplatRule, SplatWeights, TerrainChunk, VegetationInstance,
+    VegetationScatter, WorldConfig, WorldGenerator, SEA_LEVEL,
 };
 use glam::Vec3;
 use std::collections::HashMap;
@@ -24,61 +24,14 @@ impl TerrainAssetTransform {
     }
 }
 
-/// Full noise preset for a biome — configures all three noise layers.
-pub struct BiomeNoisePreset {
-    // Base elevation (Perlin)
-    pub base_scale: f64,
-    pub base_amplitude: f32,
-    pub base_octaves: usize,
-    pub base_persistence: f64,
-    pub base_lacunarity: f64,
-    // Mountains (RidgedMulti)
-    pub mountains_enabled: bool,
-    pub mountains_scale: f64,
-    pub mountains_amplitude: f32,
-    pub mountains_octaves: usize,
-    // Detail (Billow)
-    pub detail_enabled: bool,
-    pub detail_scale: f64,
-    pub detail_amplitude: f32,
-    // Hydraulic erosion
-    pub erosion_enabled: bool,
-    pub erosion_strength: f32,
-    // Phase 1.6-F.2: noise-type selection for the base-elevation layer.
-    // Default (preserved in all F.1 presets): NoiseType::Perlin.
-    pub base_noise_type: NoiseType,
-    /// Domain-warp config applied when `base_noise_type == DomainWarped`.
-    /// None means use `DomainWarpConfig::default()`.
-    pub base_domain_warp: Option<DomainWarpConfig>,
-    /// Phase 1.6-F.2 §2.6: whether this preset opts into continental-scale
-    /// mountain-amplitude modulation. When true, `apply_biome_noise_preset`
-    /// sets `NoiseConfig.continental_enabled` so `TerrainNoise::sample_height`
-    /// multiplies the mountain contribution by the continental field.
-    pub continental_modulation: bool,
-    /// Phase 1.6-F.2-T-4: whether this preset opts into derivative-weighted
-    /// fBm on the base-elevation layer (Quilez morenoise 2008). Suppresses
-    /// high-frequency octaves on steep slopes where they would otherwise
-    /// produce vertex-scale spike artifacts. Default false.
-    pub base_derivative_weighted: bool,
-    /// Phase 1.6-F.4.B.3.B: per-octave amplitude weights for base layer fBm.
-    /// `None` = standard `persistence^i` exponential decay (Quilez H=1).
-    /// `Some(weights)` = damp octave 0, boost mid-octaves per Murray's GDC
-    /// 2017 octave-emphasis tuning. Only effective when
-    /// `base_derivative_weighted` is also true. See `NoiseConfig::base_octave_weights`
-    /// for full documentation. Bespoke tuning per F.4.B.3.A research.
-    pub base_octave_weights: Option<Vec<f32>>,
-    /// Phase 1.6-F.4.B.3.C: enable the runevision erosion filter (Skovbo
-    /// Johansen, March 2026, MPL-2.0). When true, gradient-aligned gully
-    /// extrusion is applied AFTER continental modulation in
-    /// `TerrainNoise::sample_height`. Effective only when
-    /// `base_derivative_weighted` is also true (filter requires gradient
-    /// input from morenoise). Mountain and Tundra presets have this true
-    /// by default; other presets have it false. Filter uses
-    /// `RunevisionConfig::default()` parameters (calibrated for Target B
-    /// Y range). See `astraweave_terrain::runevision_erosion` for full
-    /// algorithm and provenance.
-    pub runevision_enabled: bool,
-}
+// Phase 1.6-F.4.B.3.D.3c: `BiomeNoisePreset` REMOVED. Replaced by the
+// climate-field architecture (D.1) + Whittaker biome lookup (D.2) +
+// per-biome `BiomeParameters` (D.3a) which the terrain crate's
+// `WorldGenerator::generate_chunk_with_climate` consumes per-vertex.
+// Editor terrain generation now relies on `WorldConfig::default()`
+// (Continental Temperate baseline); D.5 will replace the "Primary
+// Biome" dropdown with a "World Archetype" dropdown that drives the
+// climate field's archetype envelope per-vertex.
 
 pub struct TerrainState {
     generator: Option<WorldGenerator>,
@@ -196,65 +149,13 @@ impl TerrainState {
         self.terrain_dirty = true;
     }
 
-    /// Apply a full biome noise preset that configures all three noise layers.
-    pub fn apply_biome_noise_preset(&mut self, preset: &BiomeNoisePreset) {
-        // Base elevation
-        self.config.noise.base_elevation.scale = preset.base_scale;
-        self.config.noise.base_elevation.amplitude = preset.base_amplitude;
-        self.config.noise.base_elevation.octaves = preset.base_octaves;
-        self.config.noise.base_elevation.persistence = preset.base_persistence;
-        self.config.noise.base_elevation.lacunarity = preset.base_lacunarity;
-
-        // Phase 1.6-F.2: noise-type + domain-warp for base layer.
-        self.config.noise.base_elevation.noise_type = preset.base_noise_type.clone();
-        if let Some(warp) = &preset.base_domain_warp {
-            self.config.noise.base_elevation.domain_warp = warp.clone();
-        }
-
-        // Mountains
-        self.config.noise.mountains.enabled = preset.mountains_enabled;
-        self.config.noise.mountains.scale = preset.mountains_scale;
-        self.config.noise.mountains.amplitude = preset.mountains_amplitude;
-        self.config.noise.mountains.octaves = preset.mountains_octaves;
-
-        // Detail
-        self.config.noise.detail.enabled = preset.detail_enabled;
-        self.config.noise.detail.scale = preset.detail_scale;
-        self.config.noise.detail.amplitude = preset.detail_amplitude;
-
-        // Hydraulic erosion
-        self.config.noise.erosion_enabled = preset.erosion_enabled;
-        self.config.noise.erosion_strength = preset.erosion_strength;
-
-        // Phase 1.6-F.2 §2.6: continental-scale mountain amplitude modulation.
-        // Presets opt in via `continental_modulation`; scale/min/seed_offset
-        // stay at `NoiseConfig::default()` values for all presets.
-        self.config.noise.continental_enabled = preset.continental_modulation;
-
-        // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer. Per-preset
-        // opt-in; when true the base-elevation evaluation in TerrainNoise
-        // uses fbm_derivative_weighted_2d instead of the default Fbm path.
-        self.config.noise.base_derivative_weighted = preset.base_derivative_weighted;
-
-        // Phase 1.6-F.4.B.3.B: octave-emphasis weights flow through to
-        // NoiseConfig. `None` preserves standard 0.5-falloff; `Some` damps
-        // octave 0 and boosts mid-octaves per Murray's GDC 2017 tuning.
-        self.config.noise.base_octave_weights = preset.base_octave_weights.clone();
-
-        // Phase 1.6-F.4.B.3.C: runevision filter opt-in. When the preset
-        // requests it AND base_derivative_weighted is true (filter needs
-        // gradient access via morenoise), populate the filter config with
-        // defaults; otherwise None (filter no-op).
-        self.config.noise.runevision = if preset.runevision_enabled
-            && preset.base_derivative_weighted
-        {
-            Some(astraweave_terrain::runevision_erosion::RunevisionConfig::default())
-        } else {
-            None
-        };
-
-        self.terrain_dirty = true;
-    }
+    // Phase 1.6-F.4.B.3.D.3c: `apply_biome_noise_preset` REMOVED. Per-vertex
+    // biome assignment now lives in `WorldGenerator::generate_chunk_with_climate`
+    // (terrain crate). Editor's `regenerate_terrain` no longer mutates
+    // `WorldConfig.noise` based on a single picked biome — instead, every
+    // vertex looks up its own `BiomeId` from the climate field and applies
+    // per-biome `BiomeParameters`. D.5 will replace the "Primary Biome"
+    // dropdown with a "World Archetype" dropdown.
 
     fn biomes_for_primary(&mut self, primary: &str) -> Vec<BiomeConfig> {
         // Check if this is a biome-pack reference ("pack:/path/to/file.biomepack.json")
@@ -2925,95 +2826,13 @@ mod tests {
         assert!(!state.has_terrain());
     }
 
-    /// Phase 1.6-F.2.A: verify `apply_biome_noise_preset` propagates the new
-    /// `base_noise_type`, `base_domain_warp`, and `continental_modulation`
-    /// fields into the `NoiseConfig`.
-    #[test]
-    fn phase_1_6_f2_apply_preset_sets_noise_type_and_continental() {
-        let mut state = TerrainState::new();
-        state.configure(12345, "grassland");
-
-        // Baseline: defaults should have continental disabled and Perlin base.
-        assert!(matches!(
-            state.config.noise.base_elevation.noise_type,
-            NoiseType::Perlin
-        ));
-        assert_eq!(state.config.noise.continental_enabled, false);
-
-        // Apply a preset that opts into DomainWarped + continental modulation.
-        let warp = DomainWarpConfig {
-            iterations: 2,
-            warp_scale: 1.5,
-            warp_strength: 40.0,
-            warp_octaves: 3,
-        };
-        let preset = BiomeNoisePreset {
-            base_scale: 0.004,
-            base_amplitude: 50.0,
-            base_octaves: 5,
-            base_persistence: 0.50,
-            base_lacunarity: 2.0,
-            mountains_enabled: true,
-            mountains_scale: 0.0025,
-            mountains_amplitude: 80.0,
-            mountains_octaves: 6,
-            detail_enabled: true,
-            detail_scale: 0.02,
-            detail_amplitude: 8.0,
-            erosion_enabled: true,
-            erosion_strength: 0.3,
-            base_noise_type: NoiseType::DomainWarped,
-            base_domain_warp: Some(warp.clone()),
-            continental_modulation: true,
-            base_derivative_weighted: false,
-            base_octave_weights: None,
-        };
-        state.apply_biome_noise_preset(&preset);
-
-        assert!(matches!(
-            state.config.noise.base_elevation.noise_type,
-            NoiseType::DomainWarped
-        ));
-        assert_eq!(
-            state.config.noise.base_elevation.domain_warp.iterations,
-            warp.iterations
-        );
-        assert_eq!(
-            state.config.noise.base_elevation.domain_warp.warp_strength,
-            warp.warp_strength
-        );
-        assert_eq!(state.config.noise.continental_enabled, true);
-
-        // Apply a second preset that opts out again; flags must flip back.
-        let preset_plain = BiomeNoisePreset {
-            base_scale: 0.005,
-            base_amplitude: 35.0,
-            base_octaves: 4,
-            base_persistence: 0.50,
-            base_lacunarity: 2.0,
-            mountains_enabled: true,
-            mountains_scale: 0.003,
-            mountains_amplitude: 15.0,
-            mountains_octaves: 4,
-            detail_enabled: true,
-            detail_scale: 0.02,
-            detail_amplitude: 5.0,
-            erosion_enabled: true,
-            erosion_strength: 0.3,
-            base_noise_type: NoiseType::Perlin,
-            base_domain_warp: None,
-            continental_modulation: false,
-            base_derivative_weighted: false,
-            base_octave_weights: None,
-        };
-        state.apply_biome_noise_preset(&preset_plain);
-
-        assert!(matches!(
-            state.config.noise.base_elevation.noise_type,
-            NoiseType::Perlin
-        ));
-        assert_eq!(state.config.noise.continental_enabled, false);
-    }
+    // Phase 1.6-F.4.B.3.D.3c: `phase_1_6_f2_apply_preset_sets_noise_type_and_continental`
+    // RETIRED. Tested the legacy `apply_biome_noise_preset` method which D.3c
+    // removes. The replacement architecture (per-vertex BiomeId + per-biome
+    // BiomeParameters) doesn't have a single "apply this preset to the whole
+    // world" operation, so the test has no clean architecture-equivalent.
+    // Per the D.3 plan §1.5: "Some preset-specific tests may not have a
+    // clean architecture-equivalent. Document and remove."
 
     #[test]
     fn test_terrain_state_has_terrain() {
@@ -3149,194 +2968,14 @@ mod tests {
         assert_eq!(options[0].display, "Grassland");
     }
 
-    /// Reproduce the exact editor flow for mountain terrain generation.
-    /// This test replicates regenerate_terrain() from terrain_panel.rs.
-    #[test]
-    #[ignore] // ~7 min in debug mode — run explicitly with --ignored
-    fn test_mountain_generation_full_flow() {
-        let seed = 42u64;
-        let chunk_radius = 2i32;
-
-        // Step 1: Create fresh TerrainState (same as regenerate_terrain)
-        let mut state = TerrainState::new();
-
-        // Step 2: Configure for mountain biome
-        state.configure(seed, "mountain");
-
-        // Step 3: set_noise_params with defaults (slider values)
-        state.set_noise_params(6, 2.0, 0.5, 50.0);
-
-        // Step 4: Apply mountain noise preset (overrides set_noise_params)
-        let preset = BiomeNoisePreset {
-            base_scale: 0.003,
-            base_amplitude: 55.0,
-            base_octaves: 6,
-            base_persistence: 0.55,
-            base_lacunarity: 2.2,
-            mountains_enabled: true,
-            mountains_scale: 0.002,
-            mountains_amplitude: 210.0,
-            mountains_octaves: 8,
-            detail_enabled: true,
-            detail_scale: 0.03,
-            detail_amplitude: 8.0,
-            erosion_enabled: false,
-            erosion_strength: 0.0,
-            base_noise_type: NoiseType::Perlin,
-            base_domain_warp: None,
-            continental_modulation: false,
-            base_derivative_weighted: false,
-            base_octave_weights: None,
-        };
-        state.apply_biome_noise_preset(&preset);
-
-        // Step 5: Generate terrain (this is what runs on the background thread)
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            state.generate_terrain(chunk_radius)
-        }));
-
-        match &result {
-            Ok(Ok(count)) => {
-                tracing::debug!("Mountain generation OK: {count} chunks");
-            }
-            Ok(Err(e)) => {
-                panic!("Mountain generation returned error: {e}");
-            }
-            Err(panic_info) => {
-                panic!("Mountain generation PANICKED: {panic_info:?}");
-            }
-        }
-
-        let count = result.unwrap().unwrap();
-        assert!(count > 0, "Should generate at least 1 chunk");
-
-        // Step 6: Check height stats
-        let (min_h, max_h, avg_h) = state.height_stats();
-        tracing::debug!("Heights: min={min_h:.1}, max={max_h:.1}, avg={avg_h:.1}");
-        assert!(!min_h.is_nan(), "min height is NaN");
-        assert!(!max_h.is_nan(), "max height is NaN");
-        assert!(!avg_h.is_nan(), "avg height is NaN");
-        assert!(
-            max_h > 0.0,
-            "Max height should be positive for mountain terrain"
-        );
-
-        // Step 7: Check GPU chunks (what gets uploaded to renderer)
-        let gpu_chunks = state.get_gpu_chunks();
-        tracing::debug!("GPU chunks: {}", gpu_chunks.len());
-        assert!(!gpu_chunks.is_empty(), "GPU chunks should not be empty");
-
-        let total_verts: usize = gpu_chunks.iter().map(|(v, _)| v.len()).sum();
-        let total_indices: usize = gpu_chunks.iter().map(|(_, i)| i.len()).sum();
-        tracing::debug!("Total vertices: {total_verts}, indices: {total_indices}");
-        assert!(total_verts > 0, "Should have vertices");
-        assert!(total_indices > 0, "Should have indices");
-
-        // Step 8: Verify no NaN in vertex positions
-        for (chunk_idx, (verts, _)) in gpu_chunks.iter().enumerate() {
-            for (v_idx, v) in verts.iter().enumerate() {
-                assert!(
-                    !v.position[0].is_nan() && !v.position[1].is_nan() && !v.position[2].is_nan(),
-                    "NaN position in chunk {chunk_idx}, vertex {v_idx}: {:?}",
-                    v.position
-                );
-                assert!(
-                    !v.normal[0].is_nan() && !v.normal[1].is_nan() && !v.normal[2].is_nan(),
-                    "NaN normal in chunk {chunk_idx}, vertex {v_idx}: {:?}",
-                    v.normal
-                );
-            }
-        }
-
-        // Step 9: Generate scatter (also runs on the thread)
-        let scatter_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            state.generate_scatter_placements()
-        }));
-        match &scatter_result {
-            Ok(placements) => {
-                tracing::debug!("Scatter OK: {} placements", placements.len());
-            }
-            Err(panic_info) => {
-                panic!("Scatter generation PANICKED: {panic_info:?}");
-            }
-        }
-
-        tracing::debug!("=== Mountain full flow test PASSED ===");
-    }
-
-    /// Test ALL biomes generate terrain successfully (not just mountain)
-    #[test]
-    #[ignore] // ~18 min in debug mode — run explicitly with --ignored
-    fn test_all_biomes_generate_terrain() {
-        for opt in all_biome_options() {
-            let biome_name = &opt.value;
-            let mut state = TerrainState::new();
-            state.configure(42, biome_name);
-            state.set_noise_params(6, 2.0, 0.5, 50.0);
-
-            // Use the same preset logic as the editor
-            let preset = match biome_name.as_str() {
-                "mountain" => BiomeNoisePreset {
-                    base_scale: 0.003,
-                    base_amplitude: 55.0,
-                    base_octaves: 6,
-                    base_persistence: 0.55,
-                    base_lacunarity: 2.2,
-                    mountains_enabled: true,
-                    mountains_scale: 0.002,
-                    mountains_amplitude: 210.0,
-                    mountains_octaves: 8,
-                    detail_enabled: true,
-                    detail_scale: 0.03,
-                    detail_amplitude: 8.0,
-                    erosion_enabled: false,
-                    erosion_strength: 0.0,
-                    base_noise_type: NoiseType::Perlin,
-                    base_domain_warp: None,
-                    continental_modulation: false,
-                    base_derivative_weighted: false,
-                    base_octave_weights: None,
-                },
-                _ => BiomeNoisePreset {
-                    base_scale: 0.005,
-                    base_amplitude: 50.0,
-                    base_octaves: 6,
-                    base_persistence: 0.5,
-                    base_lacunarity: 2.0,
-                    mountains_enabled: false,
-                    mountains_scale: 0.002,
-                    mountains_amplitude: 0.0,
-                    mountains_octaves: 4,
-                    detail_enabled: true,
-                    detail_scale: 0.03,
-                    detail_amplitude: 5.0,
-                    erosion_enabled: false,
-                    erosion_strength: 0.0,
-                    base_noise_type: NoiseType::Perlin,
-                    base_domain_warp: None,
-                    continental_modulation: false,
-                    base_derivative_weighted: false,
-                    base_octave_weights: None,
-                },
-            };
-            state.apply_biome_noise_preset(&preset);
-
-            let result = state.generate_terrain(1);
-            match result {
-                Ok(count) => {
-                    let (min_h, max_h, avg_h) = state.height_stats();
-                    let gpu = state.get_gpu_chunks();
-                    tracing::debug!(
-                        "{biome_name}: {count} chunks, heights=({min_h:.1}, {max_h:.1}, {avg_h:.1}), gpu_chunks={}",
-                        gpu.len()
-                    );
-                    assert!(count > 0, "{biome_name}: no chunks generated");
-                    assert!(!gpu.is_empty(), "{biome_name}: no GPU chunks");
-                }
-                Err(e) => {
-                    panic!("{biome_name}: generation failed: {e}");
-                }
-            }
-        }
-    }
+    // Phase 1.6-F.4.B.3.D.3c: `test_mountain_generation_full_flow` and
+    // `test_all_biomes_generate_terrain` RETIRED. Both tests exercised the
+    // legacy `apply_biome_noise_preset` path which D.3c removes. The new
+    // architecture (climate-field per-vertex BiomeId + per-biome
+    // BiomeParameters) is exercised by:
+    //  - `phase_1_6_f4_b_3_d_3_diagnostic.rs` integration tests (mixed-climate
+    //    chunks produce varied biome IDs, per-vertex amplitude varies).
+    //  - Existing `WorldGenerator::generate_chunk_with_climate` tests.
+    // Per D.3 plan §1.5: "Some preset-specific tests may not have a clean
+    // architecture-equivalent. Document and remove."
 }

@@ -915,13 +915,16 @@ impl TerrainPanel {
                             .clicked()
                         {
                             self.terrain_state.configure(self.seed, &self.primary_biome);
-                            // Apply biome-specific noise presets so terrain shape changes
-                            let preset = Self::noise_preset_for_biome(&self.primary_biome);
-                            self.octaves = preset.base_octaves as u32;
-                            self.lacunarity = preset.base_lacunarity as f32;
-                            self.persistence = preset.base_persistence as f32;
-                            self.base_amplitude = preset.base_amplitude;
-                            // Auto-regenerate terrain with new preset
+                            // Phase 1.6-F.4.B.3.D.3c: dropdown selection no
+                            // longer drives a per-biome noise preset. Per
+                            // F.4.B.3.D §0 architectural correction, biome
+                            // assignment is now per-vertex via the climate
+                            // field. D.5 replaces this dropdown with a
+                            // World Archetype selector that drives the
+                            // archetype envelope. Until then the dropdown
+                            // is informational; UI sliders sync to
+                            // `WorldConfig::default()` (Continental
+                            // Temperate baseline).
                             self.regenerate_terrain();
                         }
                     }
@@ -1840,389 +1843,13 @@ impl TerrainPanel {
             .collect();
     }
 
-    /// Returns a full biome noise preset that configures all three noise layers
-    /// to produce terrain shapes appropriate for each biome.
-    fn noise_preset_for_biome(biome: &str) -> crate::terrain_integration::BiomeNoisePreset {
-        use crate::terrain_integration::BiomeNoisePreset;
-        use astraweave_terrain::NoiseType;
-        // Handle biome-pack references: detect biome type from the pack name
-        // and delegate to the corresponding built-in preset.
-        if let Some(pack_path) = biome.strip_prefix("pack:") {
-            let name = std::path::Path::new(pack_path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_lowercase()
-                .replace(".biomepack", "");
-            let detected = if name.contains("forest")
-                || name.contains("pine")
-                || name.contains("verdant")
-                || name.contains("trail")
-                || name.contains("jungle")
-                || name.contains("woodland")
-            {
-                "forest"
-            } else if name.contains("tundra") || name.contains("snow") || name.contains("arctic") {
-                "tundra"
-            } else if name.contains("mountain") || name.contains("alpine") {
-                "mountain"
-            } else if name.contains("swamp") || name.contains("marsh") || name.contains("bog") {
-                "swamp"
-            } else if name.contains("beach") || name.contains("coast") {
-                "beach"
-            } else if name.contains("river") {
-                "river"
-            } else if name.contains("desert")
-                || name.contains("dune")
-                || name.contains("sand")
-                || name.contains("namaqualand")
-                || name.contains("arid")
-                || name.contains("savanna")
-            {
-                "desert"
-            } else {
-                // Default to grassland — gentle rolling hills work best for
-                // arbitrary .blend scenes.
-                "grassland"
-            };
-            return Self::noise_preset_for_biome(detected);
-        }
-        match biome {
-            "mountain" => BiomeNoisePreset {
-                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (55→165),
-                // mountains ×8 (210→1680, dramatic-intent preset), detail
-                // ×2.5 (4→10). Combined with F.4.B.2.A's chunk scale
-                // change, produces alpine Y span when mountain primary is
-                // selected; Mountain Drama slider 0.4-2.0 further tunes.
-                //
-                // Phase 1.6-F.4.B.3.B: octave-emphasis tuning (Murray GDC
-                // 2017 ~39:18-40:15). Damps octave 0, boosts octaves 1-2
-                // to break "first octave dominates" pattern producing
-                // uniform peak shapes. Bespoke tuning — no published
-                // reference curves; iterating via Andrew-gate per
-                // F.4.B.3.A research. Composes multiplicatively with
-                // F.2-T-4 derivative_weighted attenuation.
-                base_scale: 0.003,
-                base_amplitude: 165.0,
-                base_octaves: 5,
-                base_persistence: 0.55,
-                base_lacunarity: 2.2,
-                mountains_enabled: true,
-                mountains_scale: 0.002,
-                mountains_amplitude: 1680.0,
-                mountains_octaves: 8,
-                detail_enabled: true,
-                detail_scale: 0.03,
-                // Phase 1.6-F.4.B.2.B: detail_amplitude 4.0 → 10.0 (×2.5
-                // scale). See mountain-preset header comment.
-                detail_amplitude: 10.0,
-                erosion_enabled: false,
-                erosion_strength: 0.0,
-                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
-                // warp_scale (2.0) preserved for dramatic geological folding
-                // wavelength appropriate for Alpine terrain.
-                // Phase 1.6-F.2-T-2.B.3: warp_strength halved 60 → 30.
-                // F.2-T-2.A diagnostic identified DomainWarped coordinate
-                // displacement as the dominant spike source (2373x plain
-                // Perlin curvature at warp=40). Halving reduces high-
-                // frequency content ~2x without changing the feature scale.
-                base_noise_type: NoiseType::DomainWarped,
-                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 1,
-                    warp_scale: 2.0,
-                    warp_strength: 30.0,
-                    warp_octaves: 3,
-                }),
-                continental_modulation: true,
-                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
-                // (Quilez morenoise). Suppresses high-frequency content on
-                // steep slopes — the Rank 1 literature remedy for the spike
-                // regression. Enabled on all five DomainWarped presets
-                // (they're the spike-prone configurations).
-                base_derivative_weighted: true,
-                // Phase 1.6-F.4.B.3.B-revert (2026-04-25): octave-emphasis
-                // weights ([0.55, 0.85, 0.70, 0.45, 0.25]) produced visible
-                // REGRESS in Andrew-gate — 2D-wall mountain character + peak
-                // clustering. Counter-intuitively the weights REDUCED post-
-                // erosion Y max (510.89 → 500.94, -1.9%) due to derivative-
-                // attenuation interaction with boosted mid-octaves; visible
-                // character changed for the worse despite amplitude decrease.
-                // Reverted to None (Quilez H=1 standard 0.5-falloff,
-                // physically validated for terrain). Infrastructure preserved
-                // for future Path 2/3 attempts.
-                base_octave_weights: None,
-                // Phase 1.6-F.4.B.3.C: enable runevision filter for Mountain
-                // preset. Adds gradient-aligned mesoscale gully detail —
-                // 3D peak structure rather than uniform domes. Filter uses
-                // RunevisionConfig::default (calibrated for Target B Y range).
-                runevision_enabled: true,
-            },
-            "desert" => BiomeNoisePreset {
-                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (45→135),
-                // mountains ×6 (35→210), detail ×2.5 (3→7.5). Previous
-                // F.2-T-3.C.1 Nyquist tuning (octaves 4) preserved.
-                base_scale: 0.004,
-                base_amplitude: 135.0,
-                base_octaves: 4,
-                base_persistence: 0.45,
-                base_lacunarity: 2.2,
-                mountains_enabled: true,
-                mountains_scale: 0.0015,
-                mountains_amplitude: 210.0,
-                mountains_octaves: 4,
-                detail_enabled: true,
-                detail_scale: 0.06,
-                detail_amplitude: 7.5,
-                erosion_enabled: true,
-                erosion_strength: 0.2,
-                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
-                // Moderate warp_strength (45) produces mesa-like features.
-                // Phase 1.6-F.2-T-2.B.3: warp_strength halved 45 → 22 per
-                // F.2-T-2.A diagnostic (see grassland preset for context).
-                base_noise_type: NoiseType::DomainWarped,
-                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 1,
-                    warp_scale: 1.6,
-                    warp_strength: 22.0,
-                    warp_octaves: 3,
-                }),
-                continental_modulation: true,
-                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
-                // (Quilez morenoise). Suppresses high-frequency content on
-                // steep slopes — the Rank 1 literature remedy for the spike
-                // regression. Enabled on all five DomainWarped presets
-                // (they're the spike-prone configurations).
-                base_derivative_weighted: true,
-                base_octave_weights: None,
-                runevision_enabled: false,
-            },
-            "forest" => BiomeNoisePreset {
-                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (40→120),
-                // mountains ×6 (40→240), detail ×2.5 (3→7.5). Hilly woodland
-                // character preserved; F.2-T-3.C.1 Nyquist tuning preserved.
-                base_scale: 0.004,
-                base_amplitude: 120.0,
-                base_octaves: 4,
-                base_persistence: 0.50,
-                base_lacunarity: 2.0,
-                mountains_enabled: true,
-                mountains_scale: 0.003,
-                mountains_amplitude: 240.0,
-                mountains_octaves: 4,
-                detail_enabled: true,
-                detail_scale: 0.02,
-                detail_amplitude: 7.5,
-                erosion_enabled: true,
-                erosion_strength: 0.3,
-                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
-                // Gentle warp for rolling organic woodland terrain.
-                // Phase 1.6-F.2-T-2.B.3: warp_strength halved 35 → 17 per
-                // F.2-T-2.A diagnostic (see grassland preset for context).
-                base_noise_type: NoiseType::DomainWarped,
-                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 1,
-                    warp_scale: 1.2,
-                    warp_strength: 17.0,
-                    warp_octaves: 3,
-                }),
-                continental_modulation: true,
-                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
-                // (Quilez morenoise). Suppresses high-frequency content on
-                // steep slopes — the Rank 1 literature remedy for the spike
-                // regression. Enabled on all five DomainWarped presets
-                // (they're the spike-prone configurations).
-                base_derivative_weighted: true,
-                base_octave_weights: None,
-                runevision_enabled: false,
-            },
-            "tundra" => BiomeNoisePreset {
-                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (55→165),
-                // mountains ×8 (150→1200, dramatic Cold/alpine intent),
-                // detail ×2.5 (2.5→6.25). ClimateBias::Cold → mountain
-                // erosion preset; topology must match dramatic aesthetic.
-                base_scale: 0.003,
-                base_amplitude: 165.0,
-                base_octaves: 5,
-                base_persistence: 0.45,
-                base_lacunarity: 2.0,
-                mountains_enabled: true,
-                mountains_scale: 0.002,
-                mountains_amplitude: 1200.0,
-                mountains_octaves: 6,
-                detail_enabled: true,
-                detail_scale: 0.015,
-                detail_amplitude: 6.25,
-                erosion_enabled: true,
-                erosion_strength: 0.3,
-                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
-                // Warp for cold-region glacial geology.
-                // Phase 1.6-F.2-T-2.B.3: warp_strength halved 50 → 25 per
-                // F.2-T-2.A diagnostic (see grassland preset for context).
-                base_noise_type: NoiseType::DomainWarped,
-                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 1,
-                    warp_scale: 1.7,
-                    warp_strength: 25.0,
-                    warp_octaves: 3,
-                }),
-                continental_modulation: true,
-                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
-                // (Quilez morenoise). Suppresses high-frequency content on
-                // steep slopes — the Rank 1 literature remedy for the spike
-                // regression. Enabled on all five DomainWarped presets
-                // (they're the spike-prone configurations).
-                base_derivative_weighted: true,
-                // Phase 1.6-F.4.B.3.B-revert (2026-04-25): octave-emphasis
-                // weights reverted to None along with Mountain preset; same
-                // REGRESS findings apply (2D-wall character, peak clustering,
-                // amplitude decrease from derivative-attenuation interaction).
-                base_octave_weights: None,
-                // Phase 1.6-F.4.B.3.C: enable runevision filter for Tundra
-                // (Cold-alpine, Highland-equivalent per ClimateBias::Cold →
-                // mountain_balanced erosion). Same rationale as Mountain
-                // preset — peaks should read as 3D structures with gully
-                // detail, not uniform domes.
-                runevision_enabled: true,
-            },
-            "swamp" => BiomeNoisePreset {
-                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (40→120),
-                // mountains ×6 (45→270), detail ×2.5 (2→5). Gentle bogs
-                // character preserved; distant hills at Target B scale.
-                base_scale: 0.006,
-                base_amplitude: 120.0,
-                base_octaves: 4,
-                base_persistence: 0.55,
-                base_lacunarity: 1.8,
-                mountains_enabled: true,
-                mountains_scale: 0.003,
-                mountains_amplitude: 270.0,
-                mountains_octaves: 3,
-                detail_enabled: true,
-                detail_scale: 0.03,
-                detail_amplitude: 5.0,
-                erosion_enabled: true,
-                erosion_strength: 0.3,
-                base_noise_type: NoiseType::Perlin,
-                base_domain_warp: None,
-                continental_modulation: false,
-                // Phase 1.6-F.2-T-4: plain-Perlin presets keep default fBm
-                // (derivative-weighted fBm only enabled on the DomainWarped
-                // presets where spike artifacts are pronounced).
-                base_derivative_weighted: false,
-                base_octave_weights: None,
-                runevision_enabled: false,
-            },
-            "beach" => BiomeNoisePreset {
-                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (32→96),
-                // mountains ×6 (35→210), detail ×2.5 (2→5). Coastal
-                // character preserved; bluffs at Target B scale.
-                base_scale: 0.008,
-                base_amplitude: 96.0,
-                base_octaves: 4,
-                base_persistence: 0.40,
-                base_lacunarity: 2.0,
-                mountains_enabled: true,
-                mountains_scale: 0.003,
-                mountains_amplitude: 210.0,
-                mountains_octaves: 3,
-                detail_enabled: true,
-                detail_scale: 0.05,
-                detail_amplitude: 5.0,
-                erosion_enabled: true,
-                erosion_strength: 0.3,
-                base_noise_type: NoiseType::Perlin,
-                base_domain_warp: None,
-                continental_modulation: false,
-                // Phase 1.6-F.2-T-4: plain-Perlin presets keep default fBm
-                // (derivative-weighted fBm only enabled on the DomainWarped
-                // presets where spike artifacts are pronounced).
-                base_derivative_weighted: false,
-                base_octave_weights: None,
-                runevision_enabled: false,
-            },
-            "river" => BiomeNoisePreset {
-                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (35→105),
-                // mountains ×6 (35→210), detail ×2.5 (4→10). River valley
-                // / floodplain character preserved.
-                base_scale: 0.004,
-                base_amplitude: 105.0,
-                base_octaves: 5,
-                base_persistence: 0.45,
-                base_lacunarity: 2.0,
-                mountains_enabled: true,
-                mountains_scale: 0.003,
-                mountains_amplitude: 210.0,
-                mountains_octaves: 4,
-                detail_enabled: true,
-                detail_scale: 0.025,
-                detail_amplitude: 10.0,
-                erosion_enabled: true,
-                erosion_strength: 0.3,
-                base_noise_type: NoiseType::Perlin,
-                base_domain_warp: None,
-                continental_modulation: false,
-                // Phase 1.6-F.2-T-4: plain-Perlin presets keep default fBm
-                // (derivative-weighted fBm only enabled on the DomainWarped
-                // presets where spike artifacts are pronounced).
-                base_derivative_weighted: false,
-                base_octave_weights: None,
-                runevision_enabled: false,
-            },
-            _ => BiomeNoisePreset {
-                // Phase 1.6-F.4.B.2.B: Target B scale — base ×3 (50→150),
-                // mountains ×6 (80→480), detail ×2.5 (4→10). Default/
-                // grassland preset. Rolling-hills character preserved;
-                // world-scale relief increased ~5× per Andrew's Target B
-                // selection. Combined with Mountain Drama slider (0.4-2.0),
-                // final effective mountains_amplitude = 480 × slider.
-                base_scale: 0.004,
-                base_amplitude: 150.0,
-                base_octaves: 4,
-                base_persistence: 0.50,
-                base_lacunarity: 2.0,
-                mountains_enabled: true,
-                mountains_scale: 0.0025,
-                mountains_amplitude: 480.0,
-                mountains_octaves: 6,
-                detail_enabled: true,
-                detail_scale: 0.02,
-                detail_amplitude: 10.0,
-                erosion_enabled: true,
-                erosion_strength: 0.3,
-                // Phase 1.6-F.2.B: DomainWarped base + continental modulation.
-                // Moderate warp_scale (1.5) for organic rolling hills;
-                // continental modulation clusters mountain regions for
-                // NC-style geography.
-                // Phase 1.6-F.2.D: iterations reduced 2 → 1 to keep
-                // chunk-generation time ≤ 2× F.1 baseline (was 2.19×).
-                // Phase 1.6-F.2-T-2.B.3: warp_strength reduced 40 → 15 per
-                // F.2-T-2.A diagnostic. At warp=40, this preset was the
-                // dominant spike source (curvature 1.402, 2373x plain
-                // Perlin). At warp=15, curvature drops to ~0.47 (3x
-                // reduction) — the spike regression's root cause was
-                // DomainWarped's coordinate-displacement magnitude, not
-                // detail or mountain layer. Grassland gets the most
-                // aggressive reduction since it is the default most-viewed
-                // preset.
-                base_noise_type: NoiseType::DomainWarped,
-                base_domain_warp: Some(astraweave_terrain::DomainWarpConfig {
-                    iterations: 1,
-                    warp_scale: 1.5,
-                    warp_strength: 15.0,
-                    warp_octaves: 3,
-                }),
-                continental_modulation: true,
-                // Phase 1.6-F.2-T-4: derivative-weighted fBm on base layer
-                // (Quilez morenoise). Suppresses high-frequency content on
-                // steep slopes — the Rank 1 literature remedy for the spike
-                // regression. Enabled on all five DomainWarped presets
-                // (they're the spike-prone configurations).
-                base_derivative_weighted: true,
-                base_octave_weights: None,
-                runevision_enabled: false,
-            },
-        }
-    }
+    // Phase 1.6-F.4.B.3.D.3c: `noise_preset_for_biome` REMOVED. Replaced
+    // by per-vertex BiomeId lookup in WorldGenerator::generate_chunk_with_climate
+    // (terrain crate). Editor terrain generation no longer mutates the
+    // global noise config based on the "Primary Biome" dropdown — every
+    // vertex looks up its own biome from the climate field.
+    // D.5 will replace the dropdown with a "World Archetype" selector that
+    // drives the climate-field envelope per-vertex.
 
     fn regenerate_terrain(&mut self) {
         if self.generating {
@@ -2237,39 +1864,39 @@ impl TerrainPanel {
             self.base_amplitude
         );
 
-        // Prepare a fresh TerrainState with current config on the background thread
+        // Prepare a fresh TerrainState with current config on the background thread.
+        //
+        // Phase 1.6-F.4.B.3.D.3c: legacy `apply_biome_noise_preset` REMOVED.
+        // The new climate-field architecture (D.1/D.2/D.3a/D.3b) drives
+        // per-vertex biome assignment inside
+        // `WorldGenerator::generate_chunk_with_climate`. The editor no
+        // longer applies a single per-biome preset to the entire world;
+        // each vertex looks up its own `BiomeId` and per-biome
+        // `BiomeParameters`.
+        //
+        // UI slider values still flow through `set_noise_params` (octaves,
+        // lacunarity, persistence, base_amplitude) so the user can still
+        // tune the global base-noise character. D.5 will replace these
+        // sliders with archetype-driven controls.
+        //
+        // The `mountain_drama_scale` slider is currently inert (no
+        // global preset to multiply). D.5 may re-introduce it as a
+        // global mountain-amplitude multiplier on top of per-biome
+        // amplitudes.
         let mut state = TerrainState::new();
         state.configure(self.seed, &self.primary_biome);
-        // Apply slider values first, then let the biome preset override them.
-        // This ensures the biome-specific amplitudes (e.g. mountain base_amplitude=120)
-        // are not clobbered by the slider's default (50).
         state.set_noise_params(
             self.octaves as usize,
             self.lacunarity as f64,
             self.persistence as f64,
             self.base_amplitude,
         );
-        let mut preset = Self::noise_preset_for_biome(&self.primary_biome);
-        // Phase 1.6-F.4.B.2.B: Mountain Drama slider multiplies the preset's
-        // mountains_amplitude at apply time. Clamped to positive range.
-        let drama = self.mountain_drama_scale.clamp(0.1, 4.0);
-        preset.mountains_amplitude *= drama;
-        state.apply_biome_noise_preset(&preset);
+        let _drama_inert = self.mountain_drama_scale; // suppress dead-code lint; D.5 wires this
 
         tracing::info!(
-            "regenerate_terrain: applied preset base_amp={}, mountains_amp={} (drama {:.2}), base_scale={}, erosion={}",
-            preset.base_amplitude,
-            preset.mountains_amplitude,
-            drama,
-            preset.base_scale,
-            preset.erosion_enabled,
+            "regenerate_terrain: climate-field architecture active (D.1+D.2+D.3); \
+             primary_biome dropdown is informational until D.5 wires archetypes"
         );
-
-        // Sync UI sliders to the active preset so they reflect the actual values
-        self.base_amplitude = preset.base_amplitude;
-        self.octaves = preset.base_octaves as u32;
-        self.persistence = preset.base_persistence as f32;
-        self.lacunarity = preset.base_lacunarity as f32;
 
         let chunk_radius = self.chunk_radius;
 
