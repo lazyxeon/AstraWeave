@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["utils"],"struct":["ClimateConfig","ClimateLayer","ClimateMap"]};
+window.SIDEBAR_ITEMS = {"constant":["ATMOSPHERIC_LAPSE_RATE_C_PER_M","MOISTURE_MM_MAX","MOISTURE_MM_MIN","TARGET_B_LATITUDE_HALF_EXTENT_WU","TEMPERATURE_C_MAX","TEMPERATURE_C_MIN"],"mod":["utils"],"struct":["ClimateConfig","ClimateLayer","ClimateMap","ClimateSample","WorldArchetype"]};
