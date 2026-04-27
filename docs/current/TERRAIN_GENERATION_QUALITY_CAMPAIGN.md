@@ -25,6 +25,10 @@ This plan is the authoritative design reference for Phase 1.6-F. It adapts the p
 
 The Phase 1 / Phase 1.5 cycle landed twice with COMPLETE markers that had to be reverted when visual inspection exposed issues that code-level checks had not caught (see parent campaign §9 entries for `7edb15515` and Phase 1.5 close-out). The parent campaign's §0 discipline learned the lesson that code-level success is not the same as plan-level success until the user-visible behavioral gate is verified. This campaign must not repeat that failure: each sub-phase's success criteria in §3–§7 include a behavioral verification item, not just compilation and unit tests.
 
+### Known-broken interim state (F.4.B.3.D campaign)
+
+Mountain preset is known-broken between commit `f7a43759d` (F.4.B.3.C runevision filter integration) and the end of F.4.B.3.D.3 — this is expected; the preset is being removed as part of the climate-field reframe. During F.4.B.3.D.1 and F.4.B.3.D.2 development, default to Grassland preset for any incidental terrain regeneration. F.4.B.3.D.3 removes the legacy preset code entirely and replaces it with the per-biome parameter system; mountain-character terrain returns via the Whittaker biome lookup (Alpine, MountainRocky, BorealForest highlands) rather than via a "Mountain preset" picked upfront. This is the architectural correction driven by F.4.B.3.B and F.4.B.3.C REGRESS findings — see the F.4.B.3.D campaign prompt for full reasoning.
+
 ---
 
 ## 1. Design summary
@@ -495,11 +499,17 @@ F.4 — Climate as spatial field + Target B scale rework: IN PROGRESS
   F.4.B.3.A (Uber Noise research): COMPLETE 2026-04-25, commit 0f60aaee2. See `docs/audits/uber_noise_research_2026-04-25.md`. Murray-direct features ranked for Veilweaver: octave-emphasis (B), runevision filter (C), multi-scale locality (D, absorbs F.4.A), ridge integration (E). McKendrick streaming summary saved separately as `docs/audits/nms_streaming_architecture_summary_2026-04-24.md` for future Phase 1.7.
   F.4.B.3.B (octave-emphasis tuning, Path 1 static weights): LANDED 2026-04-25 commit 0c8c88b46, REVERTED 2026-04-25 commit b84b05b0e. Andrew-gate REGRESS verdict: 2D-wall mountain character + peak clustering + apparent fog regression (shape-induced, not amplitude-induced). Counter-intuitive measurement: bespoke weights produced 1.9% LESS amplitude (Temperate post-erosion 510.89 → 500.94) due to non-linear interaction between F.2-T-4 derivative weighting and F.4.B.3.B emphasis weighting. Path 1 documented as ineffective lever; API infrastructure (`base_octave_weights` field, `fbm_derivative_weighted_2d` extension) preserved as None-default-safe for future Path 2 (dynamic Hurst) / Path 3 (Musgrave signal-feedback) attempts. F.4.B.3.C proceeds from F.4.B.2.H baseline.
   F.4.B.3.C (runevision filter integration): COMPLETE 2026-04-25 (code level; Andrew-gate ablation pending user run), commit f7a43759d. Implements Skovbo Johansen "Fast and Gorgeous Erosion Filter" (March 2026, MPL-2.0) per F.4.B.3.A research's highest-confidence visible-impact transform. New `astraweave-terrain/src/runevision_erosion.rs` module (~280 lines + 6 unit tests, MPL-2.0 licensed; rest of terrain crate retains MIT). Filter applies gradient-aligned multi-octave gully extrusion AFTER continental modulation in `TerrainNoise::sample_height` (composition Position B per plan §1.B). Per-preset opt-in via new `BiomeNoisePreset.runevision_enabled` field; Mountain + Tundra presets ON, all others OFF. Default `NoiseConfig::runevision = None` preserves byte-identical F.4.B.2.H baseline for non-opting consumers. Filter-OFF Y stats verified byte-identical to F.4.B.2.G/H baseline across all 6 climates (Temperate post.max 510.89, Cold/Highland 508.11, Arid 511.44, Tropical/Wetland 536.67). Filter-ON Y stats (Mountain/Tundra preset config) reduce post-erosion peaks ~2% (Temperate 510.89 → 500.03, Cold 508.11 → 498.17, etc.) — within ±15% budget. New `fbm_derivative_weighted_with_gradient_2d` exposes Quilez accumulated gradient at zero cost (gradient was already accumulated internally for attenuation).
-  F.4.B.3.D (multi-scale locality, absorbs F.4.A): NOT STARTED.
-  F.4.B.3.E (ridge noise integration): NOT STARTED.
-  F.4.B.3.F (conditional altitude/concavity): CONDITIONAL.
+  F.4.B.3.D (climate-field-driven Whittaker biomes — campaign reframe): IN PROGRESS. Replaces the original "multi-scale locality" framing with a full architectural correction. F.4.B.3.B + F.4.B.3.C REGRESSes established that biome presets are the wrong abstraction at Target B+ scale; per-vertex transforms cannot fix preset-imposed uniformity. F.4.B.3.D replaces the eight-biome preset system with: per-vertex `ClimateMap::sample()` returning real-world units (D.1), Whittaker `(temp, moisture, elevation) → BiomeId` lookup over a fixed 11-terrestrial + 5-aquatic + 3-overlay biome taxonomy (D.2), per-`BiomeId` parameter system replacing `BiomeNoisePreset` (D.3), scattered-convolution biome blending (D.4), six `WorldArchetype` UI presets (D.5), and Andrew-gate closeout (D.6). Absorbs the originally-planned F.4.A (climate-as-spatial-field), F.4.B.3.E (ridge integration → demoted to per-biome `ridge_strength` parameter), and F.4.B.3.F (altitude/concavity → demoted to per-biome parameter). Mountain preset is **known-broken** between commit `f7a43759d` (F.4.B.3.C) and end of D.3; expected, not addressed (preset is being removed).
+    F.4.B.3.D.1 (climate field architecture): COMPLETE 2026-04-27 (code level), commit `<F4B3D1-PLACEHOLDER>`. Extends `astraweave-terrain/src/climate.rs` with new `WorldArchetype` struct (means + variances + latitude strength for 3 climate fields), `ClimateSample` struct (real-world units `temperature_c` ∈ `[-30, +40]`, `moisture_mm` ∈ `[0, 4000]`, `continentalness` ∈ `[0, 1]`), `ClimateMap::sample(x, z, elevation) → ClimateSample` API, and three modulators: latitude (world Z / `TARGET_B_LATITUDE_HALF_EXTENT_WU=5376` WU), elevation lapse rate (-6.5°C/1000m via `ATMOSPHERIC_LAPSE_RATE_C_PER_M`), and water-distance (distance from world edge). New `continentalness_noise: Perlin` field on `ClimateMap` (seed offset +2000) with single-octave low-frequency noise mirroring `TerrainNoise`'s 0.0003 continental scale. `WorldArchetype::default()` is Continental Temperate (NC/Appalachia analog: temp_mean 12°C, moisture_mean 1100mm, continentalness_mean 0.5, latitude_drop 10°C); D.5 will add the other 5 archetypes. Legacy `sample_climate`/`sample_temperature`/`sample_moisture` returning `[0,1]` values preserved for `biome_detector`/`biome_transition`/renderer overlay/benchmarks; D.3 will migrate consumers and remove legacy methods. 10 new D.1 unit + integration tests pass; all 8 legacy climate tests pass; terrain crate compiles clean; aw_editor compiles clean; F.2 permanent regression (5/5) + runevision/perlin_gradient (10/10) + phase-3/4 invariants pass. Pre-existing `elevation_biome::tests::mid_elevation_dominant_biome_varies_by_climate` failure verified unchanged via `git stash` (flagged for F.4.B.3.G alongside the phase-2 continuity grassland 47.4 WU divergence).
+    F.4.B.3.D.2 (Whittaker biome lookup): NOT STARTED.
+    F.4.B.3.D.3 (per-biome parameter system): NOT STARTED.
+    F.4.B.3.D.4 (biome blending via scattered convolution): NOT STARTED.
+    F.4.B.3.D.5 (world archetype UI): NOT STARTED.
+    F.4.B.3.D.6 (Andrew-gate + closeout): NOT STARTED.
+  F.4.B.3.E (ridge noise integration): DEMOTED — absorbed into F.4.B.3.D.3 as per-biome `ridge_strength` parameter.
+  F.4.B.3.F (conditional altitude/concavity): DEMOTED — absorbed into F.4.B.3.D.3 as per-biome parameters.
   F.4.B.3.G (closeout): NOT STARTED.
-  F.4.A (climate-as-spatial-field): merged into F.4.B.3.D per F.4.B.3.A research recommendation.
+  F.4.A (climate-as-spatial-field): absorbed into F.4.B.3.D (was always the right answer; F.4.B.3.A research recommended absorption, F.4.B.3.B + F.4.B.3.C REGRESSes confirmed it).
 F.5 — Editor UI wiring + integration tuning + closeout: NOT STARTED
 ```
 
@@ -1353,6 +1363,80 @@ Filter-ON (Mountain/Tundra preset config: `runevision=Some(default)`, `base_deri
 **Andrew-gate ablation deferred to user run.** F.4.B.3.C plan §4 requires side-by-side filter-ON vs filter-OFF evaluation with Mountain + Tundra biome at radius 10 seed 12345, evaluating: (a) gully detail visible at peak heights; (b) no axis-aligned banding; (c) altitude fade reads as natural geology; (d) no peak-clustering regression vs F.4.B.2.H; (e) generation time within 15% budget. Verdict: PASS → F.4.B.3.D / AMBIGUOUS → tune `RunevisionConfig` parameters / REGRESS → revert per F.4.B.3.B precedent.
 
 **Scope held.** Only F.4.B.3.C wiring touched: new `runevision_erosion.rs` module, new `runevision_enabled` field on `BiomeNoisePreset`, new `runevision: Option<RunevisionConfig>` field on `NoiseConfig`, new gradient-returning fBm variant, filter call in `sample_height`, Mountain + Tundra preset opt-in, LICENSE attribution doc, diagnostic test. No tuning passes on existing presets. No changes to other terrain or render systems.
+
+### 2026-04-27, Sub-phase F.4.B.3.C-andrew-gate (REGRESS — Mountain explosive radial spikes), no commit
+
+**Andrew-gate ablation result: REGRESS.** User ran filter-OFF vs filter-ON ablation 2026-04-27. Findings:
+
+1. **Filter-OFF on Grassland**: no measurable change vs F.4.B.2.H baseline (expected — Grassland preset has `runevision_enabled: false`; filter is no-op).
+2. **Filter-ON on Mountain preset**: catastrophic explosive radial spike pattern. Same code, same `RunevisionConfig::default()`, different upstream preset amplitudes (Mountain `mountains_amplitude × 8 = 1680.0` vs Grassland `× 6` baseline). The Mountain preset's much larger amplitude produces gradient magnitudes that push the filter outside its working range, producing compound amplification rather than gentle gully extrusion.
+
+**Diagnosis (architectural, not parameter-tuning):** per-vertex transforms (runevision filter, also F.4.B.3.B octave-emphasis) compose badly with preset-imposed amplitude differences. The runevision algorithm assumes the input height function has stable per-vertex gradient magnitudes near unity; the Mountain preset's 8× amplitude scaling violates that assumption. F.4.B.3.A's recommendation to start with blog-published parameters was correct; bespoke tuning to match the preset wasn't attempted because the failure is structural, not numerical.
+
+**Combined with F.4.B.3.B's REGRESS:** both highest-confidence Murray-direct transforms from F.4.B.3.A research (octave-emphasis, runevision filter) failed against the same root cause — biome presets force per-vertex transforms to operate against amplitude conditions they weren't designed for. The cartoon-shape problem is upstream of the noise pipeline; it's an abstraction problem.
+
+**Decision:** F.4.B.3.C is not reverted. Per F.4.B.3.D campaign reframe (drafted 2026-04-27), Mountain preset is being removed in F.4.B.3.D.3 along with the entire `BiomeNoisePreset` system; reverting code that's about to be deleted is wasted motion (anti-drift §0). The runevision module + LICENSE remain in-tree as `#[allow(dead_code)]` candidates for future per-biome runevision tuning (D.4 deferred work catalog item) — Alpine biome with calibrated parameters may still be a viable use case.
+
+**Mountain preset is known-broken between commit `f7a43759d` and end of F.4.B.3.D.3.** During D.1 and D.2 development, default to Grassland for any incidental terrain regeneration. Documented in §0 above.
+
+### 2026-04-27, Sub-phase F.4.B.3.D.1 (climate field architecture), commit `<F4B3D1-PLACEHOLDER>`
+
+**Architectural correction phase opens.** F.4.B.3.D replaces the eight-biome preset system with climate-field-driven Whittaker biome lookup. D.1 lands the climate field architecture; D.2 lands the biome lookup; D.3 replaces presets with per-biome parameters; D.4 adds blending; D.5 adds the World Archetype UI; D.6 closes out. The preset-shaped abstraction the campaign has been working around since F.0 is replaced. F.4.A (climate-as-spatial-field), F.4.B.3.E (ridge integration), and F.4.B.3.F (altitude/concavity conditional) are absorbed into D.3 as per-biome parameters.
+
+**D.1 deliverables (all in `astraweave-terrain/src/climate.rs`):**
+
+- `WorldArchetype` struct: climate envelope with `temperature_mean_c`, `temperature_variance_c`, `latitude_temperature_drop_c`, `moisture_mean_mm`, `moisture_variance_mm`, `continentalness_mean`, `continentalness_variance`. Default = Continental Temperate (12°C / 1100mm / 0.5 cont / 10°C latitude drop). D.5 adds the other five archetypes (Equatorial Tropical, Boreal/Subarctic, Mediterranean, Desert, Custom).
+- `ClimateSample` struct: per-vertex real-units output `(temperature_c, moisture_mm, continentalness)`. Bounded to `[-30, +40]`°C, `[0, 4000]`mm/yr, `[0, 1]` respectively. Drives D.2 Whittaker lookup and D.3 per-biome parameter selection.
+- `ClimateMap::sample(world_x, world_z, elevation) → ClimateSample`: new per-vertex API combining archetype + low-frequency noise + three modulators.
+- `ClimateMap::continentalness_noise: Perlin` field: seed offset +2000 (decorrelated from temperature seed and moisture seed +1000). Single-octave low-frequency configuration mirrors `TerrainNoise`'s 0.0003 continental scale (~3300 WU wavelength, 3-period sweep across radius-10 world).
+- Three modulators in `sample()`:
+  1. **Latitude**: `temperature_c -= |world_z / TARGET_B_LATITUDE_HALF_EXTENT_WU| × archetype.latitude_temperature_drop_c`. World half-extent calibrated to Target B (5376 WU). Configurable via `ClimateConfig::world_latitude_half_extent_wu` for non-Target-B worlds.
+  2. **Elevation lapse rate**: `temperature_c += elevation × ATMOSPHERIC_LAPSE_RATE_C_PER_M` (constant -0.0065°C/m, standard atmospheric value).
+  3. **Water-distance**: `coast_distance = min(half_extent - |x|, half_extent - |z|)`; `coast_factor = exp(-coast_distance × moisture_distance_falloff)`; final moisture = 70% noise-driven + 30% coast-driven (coastal regions get up to 30% archetype-mean moisture boost).
+- New constants: `TARGET_B_LATITUDE_HALF_EXTENT_WU = 5376.0`, `ATMOSPHERIC_LAPSE_RATE_C_PER_M = -0.0065`, `TEMPERATURE_C_MIN/MAX = -30.0/+40.0`, `MOISTURE_MM_MIN/MAX = 0.0/4000.0`.
+- `WorldArchetype::validate()` checks parameter ranges; rejects out-of-bounds `temperature_mean_c` (outside `[-30, +40]`), `moisture_mean_mm` (outside `[0, 4000]`), `continentalness_mean` (outside `[0, 1]`), and per-axis variances. Used by tests; D.5 will use it for archetype loading validation.
+
+**Backward compatibility:** legacy `sample_climate`/`sample_temperature`/`sample_moisture` returning normalized `[0, 1]` values are preserved unchanged for existing consumers (`biome_detector`, `biome_transition`, renderer overlay in `astraweave-render`, terrain benchmarks, mutation tests). `ClimateConfig::default()` retains all legacy fields with their previous values; new fields (`continentalness`, `archetype`, `world_latitude_half_extent_wu`) added with `#[serde(default = ...)]` attributes for backward-compatible deserialization. D.3 migrates consumers to `sample()` and removes legacy methods.
+
+**D.1 test coverage (10 new tests, all pass):**
+
+- `phase_1_6_f4_b_3_d_1_default_archetype_validates`: Continental Temperate archetype validates.
+- `phase_1_6_f4_b_3_d_1_validate_rejects_out_of_range`: out-of-range archetype parameters reject.
+- `phase_1_6_f4_b_3_d_1_sample_returns_real_units_within_bounds`: 16×16 grid spanning Target B world; all values finite + within bounds.
+- `phase_1_6_f4_b_3_d_1_sample_is_deterministic`: same `(seed, x, z, elevation)` always produces same `ClimateSample`.
+- `phase_1_6_f4_b_3_d_1_latitude_modulator_drops_temperature_at_poles`: with noise variance disabled, equator vs pole-edge drop ≈ archetype's `latitude_temperature_drop_c` (15°C in test, ±3°C tolerance).
+- `phase_1_6_f4_b_3_d_1_elevation_lapse_rate_drops_temperature_at_altitude`: 1000m elevation drop produces ~6.5°C temperature drop (±0.5°C tolerance).
+- `phase_1_6_f4_b_3_d_1_water_distance_modulator_dries_continental_interior`: world-edge sample > world-center sample with moisture variance disabled and falloff active.
+- `phase_1_6_f4_b_3_d_1_sample_grid_distribution_matches_archetype_mean`: 256-sample grid mean ≈ archetype mean for temperature (±5°C, accounting for latitude drop), moisture (±25%), continentalness (±0.15).
+- `phase_1_6_f4_b_3_d_1_continentalness_field_varies`: continentalness differs across distant positions (smoke test).
+- `phase_1_6_f4_b_3_d_1_legacy_sample_climate_still_works`: backward-compat invariant — `sample_climate(x, z, h)` still returns `[0, 1]` values for downstream consumers.
+
+**Test scoreboard at F.4.B.3.D.1 close:**
+
+- `climate::tests` (18/18 — 10 new + 8 legacy): pass.
+- F.2 permanent regression (5/5): pass (`phase_1_6_f2_continental_disabled_is_noop`, `phase_1_6_f2_continental_output_range_and_variation`, `phase_1_6_f2_domain_warped_differs_from_perlin`, `phase_1_6_f2_t2_surface_spikiness_under_threshold`, `phase_1_6_f2_t_highland_regions_reach_f1_target`).
+- runevision_erosion (6/6) + perlin_gradient (4/4): pass.
+- noise_gen module (18/18): pass.
+- Phase-3 diagnostic (3/3): pass.
+- Phase-4 invariants (`biome_weights_at_shared_edges_match`, `shared_edges_exactly_match_after_averaging`): pass.
+- `cargo check -p astraweave-terrain`: clean.
+- `cargo check -p aw_editor`: clean.
+- `cargo check -p astraweave-render`: clean.
+
+**Pre-existing failures (NOT introduced by D.1; verified via `git stash`):**
+- `elevation_biome::tests::mid_elevation_dominant_biome_varies_by_climate`: Temperate mid-elevation dominant resolves to slot 6 (Mountain) instead of expected slots 0 or 2 (Grassland or Forest). Pre-existing failure on pre-D.1 baseline. Flagged for F.4.B.3.G alongside the phase-2 continuity grassland 47.4 WU divergence.
+- Phase-2 continuity grassland 47.399 WU divergence vs 20 WU tolerance: still failing, unchanged from F.4.B.3.B-revert and F.4.B.3.C baselines. D.1 does not touch the continuity code path.
+
+**Scope held.** D.1 only touches `astraweave-terrain/src/climate.rs` (+ this campaign doc). No changes to `noise_gen.rs`, `BiomeNoisePreset`, the editor UI, the runevision module, or any other crate. The D.1 surface is purely additive: legacy methods unchanged, new types and methods added alongside. Per the D.1 plan §1 — "no visual change yet — this sub-phase only extends the climate sampling, doesn't wire it to terrain." That invariant is preserved; D.3 wires the new `sample()` API to terrain generation.
+
+**Deviations from D.1 plan §1:**
+- *Plan task 1* says "continentalness already exists; verify its semantics match the new model." Resolution: `TerrainNoise` has its own `continental` Perlin (offset +7) used by mountain-amplitude modulation. `ClimateMap` now has its own `continentalness_noise` (offset +2000) decoupled from `TerrainNoise`. Both share the same wavelength (0.0003 scale) and `[0, 1]` output range. D.3 may unify these via shared seed if cross-system consistency is required; for D.1, decoupling is simpler and matches the plan's "ClimateMap is the climate authority" framing.
+- *Plan task 4* says "distance from world edge or distance from a 'coast' noise threshold." Chose distance from world edge — simpler, deterministic, no extra noise field. The "coast noise threshold" approach would require defining what "coast" means before water bodies are modeled (Water System Rebuild is a separate campaign). Distance-from-edge produces correct continental-interior-is-drier semantics for the rectangular Target B world.
+- *Plan task 5* references D.5 ("Each archetype shifts the global means and variances"). D.1 ships only `WorldArchetype::default()` (Continental Temperate); D.5 adds the other five archetypes per its own task list. This matches the plan's incremental schedule.
+
+**Andrew-gate for D.1**: not applicable — D.1 does not change visible terrain output (legacy `sample_climate` path is what feeds `biome_detector` and downstream rendering; the new `sample()` API is unwired until D.3). Verification is via unit tests and consumer-crate compilation, both of which pass. Visual Andrew-gate happens at D.6 (full architecture closeout).
+
+**Next**: F.4.B.3.D.2 (Whittaker biome lookup) — define the fixed 11-terrestrial + 5-aquatic + 3-overlay biome taxonomy as `BiomeId` enum, encode Whittaker polygonal regions in `(temperature_c, moisture_mm)` space, add elevation-band overlays (Alpine above ~3000m, SnowCap above ~3500m), aquatic biomes from `elevation < sea_level`. Pure-function `lookup_biome(temp, moisture, elevation) → BiomeId`. No visual change; verification via known-tuple unit tests and per-archetype distribution sampling.
 
 ---
 
