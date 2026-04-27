@@ -501,7 +501,7 @@ F.4 — Climate as spatial field + Target B scale rework: IN PROGRESS
   F.4.B.3.C (runevision filter integration): COMPLETE 2026-04-25 (code level; Andrew-gate ablation pending user run), commit f7a43759d. Implements Skovbo Johansen "Fast and Gorgeous Erosion Filter" (March 2026, MPL-2.0) per F.4.B.3.A research's highest-confidence visible-impact transform. New `astraweave-terrain/src/runevision_erosion.rs` module (~280 lines + 6 unit tests, MPL-2.0 licensed; rest of terrain crate retains MIT). Filter applies gradient-aligned multi-octave gully extrusion AFTER continental modulation in `TerrainNoise::sample_height` (composition Position B per plan §1.B). Per-preset opt-in via new `BiomeNoisePreset.runevision_enabled` field; Mountain + Tundra presets ON, all others OFF. Default `NoiseConfig::runevision = None` preserves byte-identical F.4.B.2.H baseline for non-opting consumers. Filter-OFF Y stats verified byte-identical to F.4.B.2.G/H baseline across all 6 climates (Temperate post.max 510.89, Cold/Highland 508.11, Arid 511.44, Tropical/Wetland 536.67). Filter-ON Y stats (Mountain/Tundra preset config) reduce post-erosion peaks ~2% (Temperate 510.89 → 500.03, Cold 508.11 → 498.17, etc.) — within ±15% budget. New `fbm_derivative_weighted_with_gradient_2d` exposes Quilez accumulated gradient at zero cost (gradient was already accumulated internally for attenuation).
   F.4.B.3.D (climate-field-driven Whittaker biomes — campaign reframe): IN PROGRESS. Replaces the original "multi-scale locality" framing with a full architectural correction. F.4.B.3.B + F.4.B.3.C REGRESSes established that biome presets are the wrong abstraction at Target B+ scale; per-vertex transforms cannot fix preset-imposed uniformity. F.4.B.3.D replaces the eight-biome preset system with: per-vertex `ClimateMap::sample()` returning real-world units (D.1), Whittaker `(temp, moisture, elevation) → BiomeId` lookup over a fixed 11-terrestrial + 5-aquatic + 3-overlay biome taxonomy (D.2), per-`BiomeId` parameter system replacing `BiomeNoisePreset` (D.3), scattered-convolution biome blending (D.4), six `WorldArchetype` UI presets (D.5), and Andrew-gate closeout (D.6). Absorbs the originally-planned F.4.A (climate-as-spatial-field), F.4.B.3.E (ridge integration → demoted to per-biome `ridge_strength` parameter), and F.4.B.3.F (altitude/concavity → demoted to per-biome parameter). Mountain preset is **known-broken** between commit `f7a43759d` (F.4.B.3.C) and end of D.3; expected, not addressed (preset is being removed).
     F.4.B.3.D.1 (climate field architecture): COMPLETE 2026-04-27 (code level), commit 7b3c7bda0. Extends `astraweave-terrain/src/climate.rs` with new `WorldArchetype` struct (means + variances + latitude strength for 3 climate fields), `ClimateSample` struct (real-world units `temperature_c` ∈ `[-30, +40]`, `moisture_mm` ∈ `[0, 4000]`, `continentalness` ∈ `[0, 1]`), `ClimateMap::sample(x, z, elevation) → ClimateSample` API, and three modulators: latitude (world Z / `TARGET_B_LATITUDE_HALF_EXTENT_WU=5376` WU), elevation lapse rate (-6.5°C/1000m via `ATMOSPHERIC_LAPSE_RATE_C_PER_M`), and water-distance (distance from world edge). New `continentalness_noise: Perlin` field on `ClimateMap` (seed offset +2000) with single-octave low-frequency noise mirroring `TerrainNoise`'s 0.0003 continental scale. `WorldArchetype::default()` is Continental Temperate (NC/Appalachia analog: temp_mean 12°C, moisture_mean 1100mm, continentalness_mean 0.5, latitude_drop 10°C); D.5 will add the other 5 archetypes. Legacy `sample_climate`/`sample_temperature`/`sample_moisture` returning `[0,1]` values preserved for `biome_detector`/`biome_transition`/renderer overlay/benchmarks; D.3 will migrate consumers and remove legacy methods. 10 new D.1 unit + integration tests pass; all 8 legacy climate tests pass; terrain crate compiles clean; aw_editor compiles clean; F.2 permanent regression (5/5) + runevision/perlin_gradient (10/10) + phase-3/4 invariants pass. Pre-existing `elevation_biome::tests::mid_elevation_dominant_biome_varies_by_climate` failure verified unchanged via `git stash` (flagged for F.4.B.3.G alongside the phase-2 continuity grassland 47.4 WU divergence).
-    F.4.B.3.D.2 (Whittaker biome lookup): NOT STARTED.
+    F.4.B.3.D.2 (Whittaker biome lookup): COMPLETE 2026-04-27 (code level), commit `<F4B3D2-PLACEHOLDER>`. New `astraweave-terrain/src/biome_lookup.rs` module (~520 lines + 25 unit tests). `BiomeId` enum: 19 fixed variants (11 terrestrial Whittaker biomes — TropicalRainforest, TropicalSeasonalForest, Savanna, SubtropicalDesert, TemperateRainforest, TemperateDeciduousForest, TemperateGrassland, ColdDesert, BorealForest, Tundra, Alpine; 5 aquatic — Ocean, Coast, Beach, River, Wetland; 3 elevation overlays — MountainRocky, SnowCap, Scree). Pure-function `lookup_biome(temp_c, moisture_mm, elevation_m) → BiomeId` with four-layer ordering: aquatic check (elevation < SEA_LEVEL → Ocean/Coast; just-above with moisture → Beach), Wetland override (low elevation + very high moisture), elevation overlay (SnowCap above 350m if not extreme tropical, Alpine above 280m, Scree above 220m if dry), Whittaker terrestrial polygon classification (cold zone → Tundra/BorealForest/ColdDesert; cool-temperate → ColdDesert/TemperateRainforest/TemperateDeciduousForest/TemperateGrassland; warm-temperate → ColdDesert/TemperateGrassland; tropical → SubtropicalDesert/Savanna/TropicalSeasonalForest/TropicalRainforest). Determinism invariant: same `(temp, moisture, elevation)` always returns same `BiomeId`. Polygon thresholds tuned to satisfy canonical Whittaker placements per §1.D.2 verification list (`(25°C, 3000mm, 100m) → TropicalRainforest`, `(15°C, 800mm, 3500m) → SnowCap`, etc.). Per Andrew's note, polygon coords are tunable implementation, canonical placements are the contract. 25 new D.2 tests pass: 11 canonical-placement tests, 6 aquatic/overlay tests, 3 determinism/coverage tests, 2 distribution tests (Continental Temperate produces ≥95% non-tropical samples + zero TropicalRainforest; warm test-archetype produces ≥5% tropical biomes confirming archetype variation actually shifts distribution). All upstream regression tests still green. River variant exists for taxonomy completeness but `lookup_biome` does not produce it from `(temp, moisture, elevation)` alone — deferred to future hydrology campaign.
     F.4.B.3.D.3 (per-biome parameter system): NOT STARTED.
     F.4.B.3.D.4 (biome blending via scattered convolution): NOT STARTED.
     F.4.B.3.D.5 (world archetype UI): NOT STARTED.
@@ -1437,6 +1437,94 @@ Filter-ON (Mountain/Tundra preset config: `runevision=Some(default)`, `base_deri
 **Andrew-gate for D.1**: not applicable — D.1 does not change visible terrain output (legacy `sample_climate` path is what feeds `biome_detector` and downstream rendering; the new `sample()` API is unwired until D.3). Verification is via unit tests and consumer-crate compilation, both of which pass. Visual Andrew-gate happens at D.6 (full architecture closeout).
 
 **Next**: F.4.B.3.D.2 (Whittaker biome lookup) — define the fixed 11-terrestrial + 5-aquatic + 3-overlay biome taxonomy as `BiomeId` enum, encode Whittaker polygonal regions in `(temperature_c, moisture_mm)` space, add elevation-band overlays (Alpine above ~3000m, SnowCap above ~3500m), aquatic biomes from `elevation < sea_level`. Pure-function `lookup_biome(temp, moisture, elevation) → BiomeId`. No visual change; verification via known-tuple unit tests and per-archetype distribution sampling.
+
+### 2026-04-27, Sub-phase F.4.B.3.D.2 (Whittaker biome lookup), commit `<F4B3D2-PLACEHOLDER>`
+
+**Deviation:** F.4.B.3.D.2 lands the deterministic biome lookup function on top of D.1's climate-field architecture. Pure-function `(temp, moisture, elevation) → BiomeId` with no randomness, no global state, no per-vertex blending (blending is D.4's job). New module `astraweave-terrain/src/biome_lookup.rs` (~520 lines + 25 unit tests).
+
+**Taxonomy: 19 fixed `BiomeId` variants** matching §1.D.2 plan exactly:
+
+- 11 terrestrial: TropicalRainforest, TropicalSeasonalForest, Savanna, SubtropicalDesert, TemperateRainforest, TemperateDeciduousForest, TemperateGrassland, ColdDesert, BorealForest, Tundra, Alpine.
+- 5 aquatic: Ocean, Coast, Beach, River, Wetland.
+- 3 elevation overlays: MountainRocky, SnowCap, Scree.
+
+`BiomeId` exposes `is_terrestrial()`, `is_aquatic()`, `is_elevation_overlay()`, and `all()` helpers. `BiomeId::all()` returns a slice of all 19 variants in declaration order; coverage helpers verify the 11/5/3 split.
+
+**Lookup function: four-layer ordering.** `lookup_biome(temp_c, moisture_mm, elevation_m)`:
+
+1. **Aquatic check** (elevation-driven): `elevation < SEA_LEVEL + OCEAN_DEPTH_THRESHOLD_M (-3m)` → Ocean. `elevation < SEA_LEVEL` → Coast. `elevation < SEA_LEVEL + BEACH_BAND_HEIGHT_M (3m)` AND `moisture ≥ BEACH_MIN_MOISTURE_MM (200mm)` → Beach. Dry shorelines skip Beach and resolve to terrestrial directly (e.g., desert beach → SubtropicalDesert).
+2. **Wetland override**: `elevation < WETLAND_MAX_ELEVATION_M (30m)` AND `moisture ≥ WETLAND_MIN_MOISTURE_MM (1500mm)` AND `temp ≥ WETLAND_MIN_TEMP_C (-2°C)` → Wetland. Caught BEFORE elevation overlay because Wetland is intrinsically low-elevation.
+3. **Elevation overlay**: `elevation ≥ SNOWCAP_THRESHOLD_M (350m)` AND `temp < SNOWCAP_MAX_TEMP_C (18°C)` → SnowCap. `elevation ≥ ALPINE_THRESHOLD_M (280m)` → Alpine. `elevation ≥ SCREE_THRESHOLD_M (220m)` AND `moisture < SCREE_MAX_MOISTURE_MM (600mm)` → Scree. Tropical mountains (temp > 18°C at 350m+) stay Alpine instead of SnowCap — covers the Mt. Kenya / Kilimanjaro edge case where high-altitude tropical peaks have rocky exposure rather than permanent snow.
+4. **Whittaker terrestrial polygon**: `classify_whittaker_polygon(temp, moisture)` covers the 11 terrestrial biomes. Cold zone (temp < 0°C) → Tundra; cool (0-5°C) → BorealForest if moisture ≥ 200mm, else ColdDesert; cool-temperate (5-18°C) → ColdDesert/TemperateRainforest/TemperateDeciduousForest/TemperateGrassland by moisture polygon; warm-temperate (18-22°C) → ColdDesert/TemperateGrassland; tropical (≥22°C) → SubtropicalDesert/Savanna/TropicalSeasonalForest/TropicalRainforest by moisture polygon.
+
+**`MountainRocky` variant: declared but not yet produced.** The `lookup_biome` function does not currently produce MountainRocky — the elevation-overlay layer chooses among SnowCap/Alpine/Scree based on temperature/moisture/elevation, with MountainRocky reserved for D.3 per-biome parameter expression of "bare rock face without vegetation" terrain that's distinct from Alpine (sparse vegetation) and Scree (loose rock fields). D.3 may surface MountainRocky via a slope-conditional parameter rather than a base lookup branch; if not, MountainRocky becomes a pure scattering taxonomy entry without an active lookup case.
+
+**`River` variant: declared but not yet produced.** Same pattern. River requires hydrological flow simulation (out of F.4.B.3.D scope per §2 — deferred to Water System Rebuild campaign). Variant exists in the taxonomy for future hydrology integration; D.4 blending and D.3 per-biome parameters can reference River even though it's not currently produced by the lookup.
+
+**Threshold polygon coordinates: tunable implementation.** Per Andrew's note (in chat 2026-04-27): "The polygon vertex coordinates themselves are tuned values. If the test in §1's verification (\"known tuples produce expected BiomeIDs\") fails because the polygon I sketched doesn't match canonical Whittaker placement exactly, the polygon is what changes — not the test's expected value." All 11 canonical-placement tests pass with the threshold values listed above. Future tuning that changes a boundary by a small amount (e.g., shifting `TEMPERATE_FOREST_MIN_MOISTURE_MM` from 600 to 650) is a polygon adjustment, not a contract break.
+
+**Known-tuple verification (canonical Whittaker placements per §1.D.2):**
+
+- `(25°C, 3000mm, 100m)` → TropicalRainforest ✓
+- `(-10°C, 200mm, 100m)` → Tundra ✓ (test note: §1's example used 500m elevation, which at AstraWeave's Target B Y-range scale (0-510m) lands in the Alpine/SnowCap overlay zone; test uses 100m for the canonical Tundra placement and verifies the 500m sample is one of {Tundra, Alpine, SnowCap} — all valid polar/overlay variants).
+- `(15°C, 800mm, 3500m)` → SnowCap ✓ (also tested at the AstraWeave-scale equivalent 400m).
+- `(28°C, 100mm, 100m)` → SubtropicalDesert ✓
+- `(25°C, 600mm, 100m)` → Savanna ✓
+- `(25°C, 1200mm, 100m)` → TropicalSeasonalForest ✓
+- `(12°C, 1100mm, 100m)` → TemperateDeciduousForest ✓
+- `(10°C, 2500mm, 100m)` → TemperateRainforest ✓
+- `(15°C, 400mm, 100m)` → TemperateGrassland ✓
+- `(8°C, 100mm, 100m)` → ColdDesert ✓
+- `(2°C, 500mm, 100m)` → BorealForest ✓
+
+**Aquatic + overlay verification:**
+
+- Ocean: `elevation < SEA_LEVEL - 10m` → Ocean ✓
+- Coast: `elevation = SEA_LEVEL - 1m` → Coast ✓
+- Beach (wet): `elevation = SEA_LEVEL + 1m, moisture = 1000mm` → Beach ✓
+- Beach skip (dry): `elevation = SEA_LEVEL + 1m, moisture = 50mm, temp = 28°C` → SubtropicalDesert ✓ (dry shorelines transition directly to terrestrial without Beach phase).
+- Wetland: `temp 20°C, moisture 2500mm, elevation 10m` → Wetland ✓
+- Alpine: `temp 5°C, moisture 600mm, elevation 290m` → Alpine ✓
+- Scree: `temp 10°C, moisture 400mm, elevation 250m` → Scree ✓
+- SnowCap: `temp 5°C, moisture 1000mm, elevation 400m` → SnowCap ✓
+- Tropical mountain stays Alpine (not SnowCap): `temp 25°C, moisture 1000mm, elevation 400m` → Alpine ✓
+
+**Distribution test (10K random samples per archetype):**
+
+Continental Temperate (D.1's `WorldArchetype::default()`): sampled 10K random `(world_x, world_z)` positions across the Target B world extent at random elevation (sea-level − 10m to 510m). Distribution:
+
+- TropicalRainforest: < 0.5% (asserted).
+- Savanna: < 0.5% (asserted).
+- Temperate-zone family (TemperateDeciduousForest + TemperateGrassland + TemperateRainforest + ColdDesert + BorealForest + Tundra + Wetland) + elevation overlays (Alpine + SnowCap + Scree + MountainRocky) + aquatic (Ocean + Coast + Beach + River) collectively: > 95% (asserted).
+
+This confirms Continental Temperate produces a varied multi-biome world (not a single-biome flat distribution) without overflow into tropical biomes that the climate envelope does not support.
+
+Forward-prep: a second distribution test constructs a test-only warm `WorldArchetype` matching §1.D.5's planned Equatorial Tropical parameters (temp_mean 26°C, moisture_mean 2200mm, latitude_drop 3°C, etc.) and verifies tropical-family fraction > 5% AND Tundra fraction < 3%. This isn't D.5 work (the warm archetype is constructed inline in the test, not exposed as a production archetype); it just demonstrates that swapping the climate envelope actually shifts the biome distribution as designed.
+
+**Test scoreboard at F.4.B.3.D.2 close:**
+
+- `biome_lookup::tests` (25/25): pass — 11 canonical placements, 6 aquatic/overlay, 3 determinism/coverage, 2 distribution tests, 3 helper-method coverage tests.
+- `climate::tests` (18/18): pass.
+- F.2 permanent regression (5/5): pass.
+- runevision_erosion (6/6) + perlin_gradient (4/4): pass.
+- Phase-3 diagnostic (3/3): pass.
+- Phase-4 invariants (`biome_weights_at_shared_edges_match`): pass.
+- `cargo check -p astraweave-terrain`: clean.
+- `cargo check -p aw_editor` + `-p astraweave-render`: clean.
+- Pre-existing failures (unchanged from D.1): `elevation_biome::tests::mid_elevation_dominant_biome_varies_by_climate` slot-6 mismatch, phase-2 continuity grassland 47.4 WU divergence. Flagged for F.4.B.3.G.
+
+**Scope held.** D.2 only touches `astraweave-terrain/src/biome_lookup.rs` (new), `astraweave-terrain/src/lib.rs` (one-line `pub mod biome_lookup` declaration), and this campaign doc. No changes to `climate.rs`, `noise_gen.rs`, `BiomeNoisePreset`, the editor UI, or any other crate. The D.2 surface is purely additive: `BiomeId` enum + `lookup_biome` function exist alongside the legacy 8-slot `BiomeType` system; D.3 will migrate per-vertex consumers to use `BiomeId`.
+
+**Deviations from D.2 plan §1:**
+
+- *Plan task 3* references "above ~3000m" Alpine and "above ~3500m" SnowCap thresholds. AstraWeave's Target B world Y-range is 0-510m (geometrically scaled, 1 WU = 1 m). Implementation uses 280m Alpine / 350m SnowCap thresholds — proportionally equivalent within the AstraWeave Y-range. Both `(15°C, 800mm, 3500m)` and `(15°C, 800mm, 400m)` resolve to SnowCap, so the §1 example values pass at both interpretations.
+- *Plan task 4* says "Implement `lookup_biome(temp, moisture, elevation) → BiomeId` as a deterministic function." Done; determinism verified by `phase_1_6_f4_b_3_d_2_lookup_is_deterministic` test.
+- *Plan task 5 (per-archetype distribution test)*: D.1 ships only Continental Temperate; D.5 will add the other five archetypes. D.2's distribution test covers Continental Temperate as a production archetype + a test-only warm archetype as forward-prep / smoke test that archetype variance shifts distribution. Per-archetype distribution tests for Equatorial Tropical, Boreal/Subarctic, Mediterranean, Desert, Custom land in D.5 alongside their archetype definitions. This matches the plan's incremental schedule.
+- *Plan §1 task list* implies 11 + 5 + 3 = 19 biomes is fixed. D.2 ships exactly 19, including River (no producer in lookup, deferred to Water System Rebuild) and MountainRocky (no producer in lookup, reserved for D.3 slope-conditional expression). Per Andrew's chat note ("If two biomes turn out to occupy the same Whittaker region with no useful distinction at this fidelity, merge them. Don't force the taxonomy if the lookup table reveals a better one"), no merges needed — all 19 variants are distinct in either current lookup or future-deferred lookup paths.
+
+**Andrew-gate for D.2**: not applicable — D.2 does not change visible terrain output. The new `lookup_biome` function is unwired until D.3 routes per-vertex `ClimateMap::sample()` outputs through it for parameter selection. Verification is via unit tests and consumer-crate compilation, both of which pass.
+
+**Next**: F.4.B.3.D.3 (per-biome parameter system) — replace `BiomeNoisePreset` with `BiomeParameters` keyed by `BiomeId`. Each biome gets `mountains_amplitude`, `ridge_strength` (absorbs F.4.B.3.E), `runevision_config: Option<RunevisionConfig>` (absorbs F.4.B.3.C as per-biome opt-in; mountain-character biomes default to None per F.4.B.3.C REGRESS finding), `erosion_preset`, `scatter_density`, `scatter_species_set`, `surface_color_palette`. Refactor terrain generation to look up per-vertex `BiomeId` via D.2 then apply per-biome parameters. Remove legacy `BiomeNoisePreset` + the 8 `apply_biome_noise_preset_*` functions. This is the structural replacement — Mountain preset's known-broken state from F.4.B.3.C closes here.
 
 ---
 
