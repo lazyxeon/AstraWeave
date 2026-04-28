@@ -405,6 +405,17 @@ pub struct TerrainPanel {
     seed: u64,
     seed_string: String,
     primary_biome: String,
+    /// Phase 1.6-F.4.B.3.D.5b: world archetype selector. Replaces the
+    /// "Primary Biome" dropdown's role of driving the climate-field
+    /// envelope (the dropdown stays for legacy splat-rule biome configs
+    /// in `biomes_for_primary`, but no longer controls climate). Default:
+    /// Continental Temperate.
+    world_archetype_id: astraweave_terrain::world_archetypes::WorldArchetypeId,
+    /// Phase 1.6-F.4.B.3.D.5b: editable parameters for the Custom
+    /// archetype. Initialized to Continental Temperate values per §1.1.
+    /// Sliders surface this struct only when `world_archetype_id ==
+    /// Custom`.
+    custom_archetype: astraweave_terrain::climate::WorldArchetype,
     chunk_radius: i32,
 
     /// Noise parameters
@@ -413,11 +424,11 @@ pub struct TerrainPanel {
     persistence: f32,
     base_amplitude: f32,
 
-    /// Phase 1.6-F.4.B.2.B: Mountain Drama slider. Multiplies every
-    /// preset's `mountains_amplitude` at apply time. Default 1.0 (normal
-    /// Target B scale); 0.4 = gentle (Target A territory); 2.0 = dramatic
-    /// (Alpine / Target-C territory without needing streaming).
-    mountain_drama_scale: f32,
+    // Phase 1.6-F.4.B.3.D.5b: Mountain Drama slider REMOVED per §1.4.
+    // The slider was inert since D.3c (no preset to multiply). Per-biome
+    // `mountains_amplitude` parameters cover the design space without an
+    // extra global knob; if global tuning becomes desirable, it can come
+    // back as a Custom-archetype field.
 
     /// Erosion parameters
     erosion_preset: ErosionPresetType,
@@ -649,6 +660,12 @@ impl Default for TerrainPanel {
             seed: 12345,
             seed_string: "12345".to_string(),
             primary_biome: "grassland".to_string(),
+            // Phase 1.6-F.4.B.3.D.5b: world archetype defaults to
+            // Continental Temperate (Veilweaver default).
+            world_archetype_id:
+                astraweave_terrain::world_archetypes::WorldArchetypeId::default(),
+            // Custom archetype starts from Continental Temperate per §1.1.
+            custom_archetype: astraweave_terrain::world_archetypes::continental_temperate(),
             // Phase 1.6-F.4.B.2.C: Target B world extent. Radius 10 × 512 WU
             // chunks = 21 × 21 = 441 chunks = ~10.75 km per side = 115.5 km²
             // per plan §2.3 Target B = 10-50 km² bracket matched.
@@ -657,7 +674,6 @@ impl Default for TerrainPanel {
             lacunarity: 2.0,
             persistence: 0.5,
             base_amplitude: 50.0,
-            mountain_drama_scale: 1.0,
             erosion_preset: ErosionPresetType::Mountain,
             hydraulic_erosion: HydraulicErosionParams::default(),
             thermal_erosion: ThermalErosionParams::default(),
@@ -892,44 +908,134 @@ impl TerrainPanel {
             }
         });
 
-        // Primary biome selection
+        // Phase 1.6-F.4.B.3.D.5b: World Archetype dropdown.
+        //
+        // Replaces the legacy "Primary Biome" dropdown's terrain-shaping
+        // role. Each archetype is a climate envelope (mean + variance for
+        // temperature / moisture / continentalness, plus latitude
+        // strength) — biomes emerge per-vertex from the climate field
+        // shaped by the archetype, not from a single "this world is
+        // X biome" assignment.
         ui.horizontal(|ui| {
-            ui.label("Primary Biome:");
-            let options = cached_biome_options();
-            // Display the friendly name for the currently selected value
-            let selected_display = options
-                .iter()
-                .find(|o| o.value == self.primary_biome)
-                .map(|o| o.display.as_str())
-                .unwrap_or(&self.primary_biome);
-            egui::ComboBox::from_id_salt("primary_biome")
-                .selected_text(selected_display)
+            ui.label("World Archetype:")
+                .on_hover_text(self.world_archetype_id.description());
+            let current_id = self.world_archetype_id;
+            let mut new_id = current_id;
+            egui::ComboBox::from_id_salt("world_archetype")
+                .selected_text(current_id.display_name())
                 .show_ui(ui, |ui| {
-                    for opt in &options {
-                        if ui
-                            .selectable_value(
-                                &mut self.primary_biome,
-                                opt.value.clone(),
-                                &opt.display,
-                            )
-                            .clicked()
-                        {
-                            self.terrain_state.configure(self.seed, &self.primary_biome);
-                            // Phase 1.6-F.4.B.3.D.3c: dropdown selection no
-                            // longer drives a per-biome noise preset. Per
-                            // F.4.B.3.D §0 architectural correction, biome
-                            // assignment is now per-vertex via the climate
-                            // field. D.5 replaces this dropdown with a
-                            // World Archetype selector that drives the
-                            // archetype envelope. Until then the dropdown
-                            // is informational; UI sliders sync to
-                            // `WorldConfig::default()` (Continental
-                            // Temperate baseline).
-                            self.regenerate_terrain();
-                        }
+                    for &id in
+                        astraweave_terrain::world_archetypes::WorldArchetypeId::all()
+                    {
+                        ui.selectable_value(&mut new_id, id, id.display_name())
+                            .on_hover_text(id.description());
                     }
                 });
+            if new_id != current_id {
+                self.world_archetype_id = new_id;
+                let archetype = if new_id
+                    == astraweave_terrain::world_archetypes::WorldArchetypeId::Custom
+                {
+                    self.custom_archetype.clone()
+                } else {
+                    new_id.default_archetype()
+                };
+                self.terrain_state.set_world_archetype(archetype);
+                self.terrain_state.configure(self.seed, &self.primary_biome);
+                self.regenerate_terrain();
+            }
         });
+
+        // Custom archetype parameter sliders (visible only when Custom is
+        // selected). Per §1.3 plan: the user can directly tune the climate
+        // envelope.
+        if self.world_archetype_id
+            == astraweave_terrain::world_archetypes::WorldArchetypeId::Custom
+        {
+            let mut changed = false;
+            ui.indent("custom_archetype_params", |ui| {
+                ui.label("Custom climate envelope:");
+                let prev = self.custom_archetype.clone();
+
+                ui.horizontal(|ui| {
+                    ui.label("Temp mean (°C):");
+                    changed |= ui
+                        .add(egui::Slider::new(
+                            &mut self.custom_archetype.temperature_mean_c,
+                            -30.0..=40.0,
+                        ))
+                        .changed();
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Temp variance (±°C):");
+                    changed |= ui
+                        .add(egui::Slider::new(
+                            &mut self.custom_archetype.temperature_variance_c,
+                            0.0..=20.0,
+                        ))
+                        .changed();
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Latitude drop (°C):");
+                    changed |= ui
+                        .add(egui::Slider::new(
+                            &mut self.custom_archetype.latitude_temperature_drop_c,
+                            0.0..=30.0,
+                        ))
+                        .changed();
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Moisture mean (mm):");
+                    changed |= ui
+                        .add(egui::Slider::new(
+                            &mut self.custom_archetype.moisture_mean_mm,
+                            0.0..=4000.0,
+                        ))
+                        .changed();
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Moisture variance (±mm):");
+                    changed |= ui
+                        .add(egui::Slider::new(
+                            &mut self.custom_archetype.moisture_variance_mm,
+                            0.0..=1500.0,
+                        ))
+                        .changed();
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Continentalness mean:");
+                    changed |= ui
+                        .add(egui::Slider::new(
+                            &mut self.custom_archetype.continentalness_mean,
+                            0.0..=1.0,
+                        ))
+                        .changed();
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Continentalness variance:");
+                    changed |= ui
+                        .add(egui::Slider::new(
+                            &mut self.custom_archetype.continentalness_variance,
+                            0.0..=0.5,
+                        ))
+                        .changed();
+                });
+
+                if changed
+                    && self.custom_archetype.validate().is_err()
+                {
+                    // Validation failed (slider produced out-of-range
+                    // value somehow). Revert; sliders are bounded so this
+                    // branch should be unreachable, but defend against
+                    // future range changes.
+                    self.custom_archetype = prev;
+                }
+            });
+            if changed {
+                self.terrain_state.set_world_archetype(self.custom_archetype.clone());
+                self.regenerate_terrain();
+            }
+        }
 
         // Chunk radius slider
         ui.horizontal(|ui| {
@@ -1033,23 +1139,13 @@ impl TerrainPanel {
                     .changed();
             });
 
-            // Phase 1.6-F.4.B.2.B: Mountain Drama slider. Multiplies every
-            // preset's `mountains_amplitude` at apply time. 0.4 = Target A
-            // (Appalachian); 1.0 = Target B (Enshrouded); 2.0 = alpine
-            // without streaming.
-            ui.horizontal(|ui| {
-                ui.label("Mountain Drama:")
-                    .on_hover_text(
-                        "Multiplies mountain amplitude. 0.4 = gentle hills (Target A). 1.0 = Target B default. 2.0 = dramatic alpine peaks.",
-                    );
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.mountain_drama_scale, 0.4..=2.0)
-                            .step_by(0.1)
-                            .fixed_decimals(1),
-                    )
-                    .changed();
-            });
+            // Phase 1.6-F.4.B.3.D.5b: Mountain Drama slider REMOVED per
+            // §1.4. The slider was inert since D.3c (no preset to
+            // multiply); D.5 ships per-biome `mountains_amplitude`
+            // values inside `BiomeParameters` which cover the design
+            // space without an extra global knob. If global tuning
+            // becomes desirable later, it can come back as a Custom
+            // archetype field.
 
             if changed {
                 self.terrain_state.configure(self.seed, &self.primary_biome);
@@ -1063,7 +1159,6 @@ impl TerrainPanel {
                 self.lacunarity = 2.0;
                 self.persistence = 0.5;
                 self.base_amplitude = 50.0;
-                self.mountain_drama_scale = 1.0;
                 self.terrain_state.configure(self.seed, &self.primary_biome);
             }
         });
@@ -1879,10 +1974,11 @@ impl TerrainPanel {
         // tune the global base-noise character. D.5 will replace these
         // sliders with archetype-driven controls.
         //
-        // The `mountain_drama_scale` slider is currently inert (no
-        // global preset to multiply). D.5 may re-introduce it as a
-        // global mountain-amplitude multiplier on top of per-biome
-        // amplitudes.
+        // Phase 1.6-F.4.B.3.D.5b: Mountain Drama slider REMOVED;
+        // per-biome `mountains_amplitude` parameters in `BiomeParameters`
+        // cover the global-amplitude design space. World archetype
+        // selection drives the climate envelope which determines per-vertex
+        // biome distribution → per-biome parameter selection.
         let mut state = TerrainState::new();
         state.configure(self.seed, &self.primary_biome);
         state.set_noise_params(
@@ -1891,7 +1987,15 @@ impl TerrainPanel {
             self.persistence as f64,
             self.base_amplitude,
         );
-        let _drama_inert = self.mountain_drama_scale; // suppress dead-code lint; D.5 wires this
+        // Apply the selected world archetype to the climate config.
+        let archetype = if self.world_archetype_id
+            == astraweave_terrain::world_archetypes::WorldArchetypeId::Custom
+        {
+            self.custom_archetype.clone()
+        } else {
+            self.world_archetype_id.default_archetype()
+        };
+        state.set_world_archetype(archetype);
 
         tracing::info!(
             "regenerate_terrain: climate-field architecture active (D.1+D.2+D.3); \

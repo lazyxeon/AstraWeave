@@ -154,8 +154,21 @@ impl TerrainState {
     // (terrain crate). Editor's `regenerate_terrain` no longer mutates
     // `WorldConfig.noise` based on a single picked biome — instead, every
     // vertex looks up its own `BiomeId` from the climate field and applies
-    // per-biome `BiomeParameters`. D.5 will replace the "Primary Biome"
-    // dropdown with a "World Archetype" dropdown.
+    // per-biome `BiomeParameters`. D.5 replaces the "Primary Biome" dropdown
+    // with a "World Archetype" dropdown.
+
+    /// Phase 1.6-F.4.B.3.D.5b: set the climate field's `WorldArchetype`
+    /// envelope. Drives per-vertex climate sampling → biome lookup →
+    /// per-biome parameter selection.
+    pub fn set_world_archetype(
+        &mut self,
+        archetype: astraweave_terrain::climate::WorldArchetype,
+    ) {
+        if self.config.climate.archetype != archetype {
+            self.config.climate.archetype = archetype;
+            self.terrain_dirty = true;
+        }
+    }
 
     fn biomes_for_primary(&mut self, primary: &str) -> Vec<BiomeConfig> {
         // Check if this is a biome-pack reference ("pack:/path/to/file.biomepack.json")
