@@ -346,7 +346,13 @@ impl BiomeParameters {
                 surface_color_palette: SurfaceColorPalette::Tundra,
             },
             BiomeId::Alpine => Self {
-                mountains_amplitude: 2.5,
+                // Phase 1.6-F.4.B.3.D.5-fix Path B: 2.5 → 1.4 (-44%).
+                // Pre-fix amplitude 2.5x compounded with bootstrap noise to
+                // produce final heights of 1214m at world center, 2.4× Target B's
+                // 510m design target. Reduction calibrated against
+                // diagnostic-2's 510/1214 ratio + headroom for non-peak vertices.
+                // See `docs/audits/f4b3d5_diagnostic_2_real_heightmap_2026-04-28.md`.
+                mountains_amplitude: 1.4,
                 ridge_strength: 0.6,
                 runevision_config: None, // F.4.B.3.C: mountain-character biomes opt out
                 erosion_preset: ErosionPresetId::MountainBalanced,
@@ -407,7 +413,12 @@ impl BiomeParameters {
 
             // === Elevation overlays ===
             BiomeId::MountainRocky => Self {
-                mountains_amplitude: 3.0,
+                // Phase 1.6-F.4.B.3.D.5-fix Path B: 3.0 → 1.6 (-47%).
+                // Largest reduction in the catalog because MountainRocky's
+                // 3.0× was the steepest amplitude and contributed most to the
+                // 1214m max elevation. No producer in lookup_biome (D.2 §10);
+                // values forward-compatible for future slope-conditional path.
+                mountains_amplitude: 1.6,
                 ridge_strength: 0.7,
                 runevision_config: None, // F.4.B.3.C: mountain-character biomes opt out
                 erosion_preset: ErosionPresetId::MountainBalanced,
@@ -416,7 +427,12 @@ impl BiomeParameters {
                 surface_color_palette: SurfaceColorPalette::Rock,
             },
             BiomeId::SnowCap => Self {
-                mountains_amplitude: 2.5,
+                // Phase 1.6-F.4.B.3.D.5-fix Path B: 2.5 → 1.4 (-44%). Same
+                // reduction ratio as Alpine. SnowCap was 28.9% of Continental
+                // Temperate's biome distribution (diagnostic-2) and reaches
+                // p50 elevation 785m before fix; expected to drop toward 450m
+                // post-fix, well within Target B's 510m intent.
+                mountains_amplitude: 1.4,
                 ridge_strength: 0.5,
                 runevision_config: None, // F.4.B.3.C: mountain-character biomes opt out
                 erosion_preset: ErosionPresetId::MountainBalanced,
@@ -425,7 +441,12 @@ impl BiomeParameters {
                 surface_color_palette: SurfaceColorPalette::Snow,
             },
             BiomeId::Scree => Self {
-                mountains_amplitude: 2.0,
+                // Phase 1.6-F.4.B.3.D.5-fix Path B: 2.0 → 1.2 (-40%). Smallest
+                // reduction in the overlay set because Scree's 2.0× was already
+                // the lowest. Scree fires at moderate moisture-deficient
+                // elevations (220m+); kept at 1.2× to preserve some loose-rock
+                // character against adjacent terrestrial biomes.
+                mountains_amplitude: 1.2,
                 ridge_strength: 0.5,
                 runevision_config: None, // F.4.B.3.C: mountain-character biomes opt out
                 erosion_preset: ErosionPresetId::MountainBalanced,
@@ -494,8 +515,15 @@ mod tests {
     }
 
     #[test]
-    fn phase_1_6_f4_b_3_d_3_alpine_biomes_have_dramatic_mountains() {
-        // High-altitude biomes get strong mountain amplitude.
+    fn phase_1_6_f4_b_3_d_3_alpine_biomes_have_elevated_mountains() {
+        // High-altitude biomes get elevated (above-grassland) mountain
+        // amplitude. Phase 1.6-F.4.B.3.D.5-fix Path B reduced these from
+        // ≥2.0 to the 1.2-1.6 range to fix the explosive radial spike
+        // pattern caused by 2.5×-3.0× multipliers compounding with bootstrap
+        // noise (max real-chunk elevation 1214m vs Target B's 510m design).
+        // The invariant that elevation-overlay biomes have HIGHER amplitude
+        // than the rolling-class baseline (TemperateGrassland at 0.8×) is
+        // what this test now asserts, not a specific 2.0 floor.
         for &biome in &[
             BiomeId::Alpine,
             BiomeId::MountainRocky,
@@ -504,8 +532,16 @@ mod tests {
         ] {
             let params = BiomeParameters::for_biome(biome);
             assert!(
-                params.mountains_amplitude >= 2.0,
-                "{:?} must have mountains_amplitude >= 2.0; got {}",
+                params.mountains_amplitude >= 1.0,
+                "{:?} must have mountains_amplitude >= 1.0 (above grassland-class); got {}",
+                biome,
+                params.mountains_amplitude
+            );
+            // Also assert the new ceiling — reduction shouldn't accidentally
+            // re-creep amplitudes back above the spike-producing range.
+            assert!(
+                params.mountains_amplitude <= 2.0,
+                "{:?} must have mountains_amplitude <= 2.0 post Path B; got {}",
                 biome,
                 params.mountains_amplitude
             );

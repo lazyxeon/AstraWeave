@@ -73,19 +73,18 @@ fn generate_grid(
 /// **Phase 1.6-F.4.B.3.D.3b**: tolerance raised from 20 → 150 WU due to
 /// per-vertex biome boundary flipping. **Phase 1.6-F.4.B.3.D.4**:
 /// tightened to 90 WU after blending. **Phase 1.6-F.4.B.3.D.5a**:
-/// raised to 140 WU after Continental Temperate's
-/// `WorldArchetype::default()` was lifted into the D.5 catalog with
-/// tighter variances (moisture_variance 600→400, continentalness_variance
-/// 0.25→0.2 per D.5 §1.1's tuned envelope). Tighter variances produce
-/// sharper biome boundaries at the few moisture/temp transitions —
-/// fewer transitions but each carries a larger amplitude flip at chunk
-/// shared edges. Measured at D.5a: x-axis 124.3 / z-axis 101.3 WU at
-/// seed 12345. 140 WU provides ~13% headroom over measured maximum.
-/// Pre-existing 47.4 WU baseline still the underlying floor (F.4.B.3.G
-/// inheritance; unrelated f32 precision issue).
+/// raised to 140 WU after CT variance lift sharpened biome boundaries.
+/// **Phase 1.6-F.4.B.3.D.5-fix Path B**: tightened from 140 → 80 WU
+/// after per-biome amplitude reduction (Alpine 2.5→1.4, SnowCap
+/// 2.5→1.4, MountainRocky 3.0→1.6, Scree 2.0→1.2). Smaller amplitude
+/// differentials at biome boundaries reduce the spike-pattern-driving
+/// divergence: measured x-axis 69.3 / z-axis 67.8 WU at seed 12345
+/// (vs D.5a's 124.3 max). 80 WU provides ~15% headroom over measured
+/// maximum. Pre-existing 47.4 WU baseline (F.4.B.3.G; unrelated f32
+/// precision issue) still the underlying floor.
 #[test]
 fn adjacent_chunks_share_edges_under_real_erosion_grassland() {
-    const TOLERANCE: f32 = 140.0;
+    const TOLERANCE: f32 = 80.0;
 
     let gen = make_generator(12345);
     let chunks = generate_grid(&gen, ClimateBias::Temperate, 3);
@@ -146,18 +145,18 @@ fn adjacent_chunks_share_edges_under_real_erosion_grassland() {
 /// Phase 1.6-F.4.B.3.D.3b: tolerance raised from 10 → 200 WU because
 /// per-vertex hard biome assignment flipped IDs at adjacent-chunk shared
 /// edges (BorealForest 1.5x ↔ SnowCap 2.5x amplitude differences).
-/// **Phase 1.6-F.4.B.3.D.4**: tightened from 200 → 25 WU. D.4
-/// scattered-convolution blending dramatically improved mountain
-/// continuity: D.3b measured ~125 WU divergence at chunk borders;
-/// D.4 measures x-axis 9.6 / z-axis 20.0 WU at seed 12345 — a
-/// 6× reduction (the per-biome-amplitude blending dominates over the
-/// f32 precision floor for cold-climate biomes whose elevation-overlay
-/// mountain biomes have larger amplitude swings). 25 WU tolerance
-/// provides 25% headroom over the measured max. Well below the
-/// D.4 verification target of ≤100 WU.
+/// **Phase 1.6-F.4.B.3.D.4**: tightened from 200 → 25 WU after blending
+/// reduced the boundary-flip divergence (measured 9.6/20.0 WU).
+/// **Phase 1.6-F.4.B.3.D.5-fix Path B**: tightened from 25 → 10 WU
+/// after per-biome amplitude reduction. The BorealForest 1.5 ↔ SnowCap
+/// 2.5 boundary differential of 1.0 (which dominated D.3b/D.4
+/// divergence) is now BorealForest 1.5 ↔ SnowCap 1.4, a differential
+/// of 0.1. Mountain continuity measured x-axis 4.4 / z-axis 3.3 WU at
+/// seed 12345. 10 WU returns to roughly the F.3-phase-3 baseline
+/// (Cold/Highland ~2.3 WU).
 #[test]
 fn adjacent_chunks_share_edges_under_real_erosion_mountain() {
-    const TOLERANCE: f32 = 25.0;
+    const TOLERANCE: f32 = 10.0;
 
     let gen = make_generator(12345);
     let chunks = generate_grid(&gen, ClimateBias::Highland, 2);

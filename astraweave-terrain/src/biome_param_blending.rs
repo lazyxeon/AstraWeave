@@ -429,15 +429,20 @@ mod tests {
         // hard-flip discontinuity. Without blending, adjacent vertices at
         // a TemperateGrassland (0.8) ↔ BorealForest (1.5) boundary would
         // produce a delta of 0.7. With blending at radius 48 WU and 6
-        // samples, the overlapping blend kernels reduce that to ~0.35-0.45
-        // depending on which biomes are involved at the sweep's boundary
-        // intersections. Threshold 0.5 leaves headroom against per-seed
-        // variance while still rejecting "blending entirely broken"
-        // failures (where deltas would equal the full hard-flip values
-        // 0.7+ for major boundary types).
+        // samples, the overlapping blend kernels reduce that.
+        //
+        // Phase 1.6-F.4.B.3.D.5-fix Path B: per-biome amplitudes for
+        // elevation-overlay biomes reduced (Alpine 2.5 → 1.4, SnowCap
+        // 2.5 → 1.4, MountainRocky 3.0 → 1.6, Scree 2.0 → 1.2). Maximum
+        // amplitude differential at any boundary is now ≤ 0.7 (Alpine
+        // 1.4 - TemperateGrassland 0.8 = 0.6; the unchanged BorealForest
+        // 1.5 still pairs with TemperateGrassland 0.8 = 0.7). Threshold
+        // tightened from 0.5 → 0.4 to reflect the smaller possible max
+        // delta. Future amplitude tuning that preserves the [0.0, 2.0]
+        // range used post Path B should keep this threshold valid.
         assert!(
-            max_delta < 0.5,
-            "gradient should be smooth: max per-step amplitude delta {} > 0.5 \
+            max_delta < 0.4,
+            "gradient should be smooth: max per-step amplitude delta {} > 0.4 \
              (blending may not be working)",
             max_delta
         );
