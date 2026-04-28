@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["WorldArchetypeId"],"fn":["boreal_subarctic","continental_temperate","desert","equatorial_tropical","mediterranean"]};

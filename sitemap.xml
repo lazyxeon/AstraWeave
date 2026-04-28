@@ -8662,6 +8662,48 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/world_archetypes/fn.equatorial_tropical.html</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/world_archetypes/index.html</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/world_archetypes/fn.desert.html</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/world_archetypes/fn.mediterranean.html</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/world_archetypes/fn.boreal_subarctic.html</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/world_archetypes/enum.WorldArchetypeId.html</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/world_archetypes/fn.continental_temperate.html</loc>
+    <lastmod>2026-04-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/runevision_erosion/index.html</loc>
     <lastmod>2026-04-28</lastmod>
     <changefreq>weekly</changefreq>

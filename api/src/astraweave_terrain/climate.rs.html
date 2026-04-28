@@ -100,16 +100,16 @@
 <a href=#100 id=100 data-nosnippet>100</a>    /// Temperature mean 12°C with strong latitude effect; moisture mean
 <a href=#101 id=101 data-nosnippet>101</a>    /// 1100mm with moderate variance; continentalness mean 0.5 (mixed
 <a href=#102 id=102 data-nosnippet>102</a>    /// coast and interior).
-<a href=#103 id=103 data-nosnippet>103</a>    </span><span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
-<a href=#104 id=104 data-nosnippet>104</a>        <span class="self">Self </span>{
-<a href=#105 id=105 data-nosnippet>105</a>            temperature_mean_c: <span class="number">12.0</span>,
-<a href=#106 id=106 data-nosnippet>106</a>            temperature_variance_c: <span class="number">8.0</span>,
-<a href=#107 id=107 data-nosnippet>107</a>            latitude_temperature_drop_c: <span class="number">10.0</span>,
-<a href=#108 id=108 data-nosnippet>108</a>            moisture_mean_mm: <span class="number">1100.0</span>,
-<a href=#109 id=109 data-nosnippet>109</a>            moisture_variance_mm: <span class="number">600.0</span>,
-<a href=#110 id=110 data-nosnippet>110</a>            continentalness_mean: <span class="number">0.5</span>,
-<a href=#111 id=111 data-nosnippet>111</a>            continentalness_variance: <span class="number">0.25</span>,
-<a href=#112 id=112 data-nosnippet>112</a>        }
+<a href=#103 id=103 data-nosnippet>103</a>    ///
+<a href=#104 id=104 data-nosnippet>104</a>    /// Phase 1.6-F.4.B.3.D.5: parameter values lifted into the canonical
+<a href=#105 id=105 data-nosnippet>105</a>    /// catalog at `crate::world_archetypes::continental_temperate()`.
+<a href=#106 id=106 data-nosnippet>106</a>    /// `default()` delegates to that function for symmetry across the
+<a href=#107 id=107 data-nosnippet>107</a>    /// six-archetype catalog. moisture_variance 600 → 400 and
+<a href=#108 id=108 data-nosnippet>108</a>    /// continentalness_variance 0.25 → 0.2 from D.1's initial values
+<a href=#109 id=109 data-nosnippet>109</a>    /// per D.5 §1.1's tuned envelope; downstream tests (D.4 blending,
+<a href=#110 id=110 data-nosnippet>110</a>    /// D.2 distribution) are robust to this small variance change.
+<a href=#111 id=111 data-nosnippet>111</a>    </span><span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+<a href=#112 id=112 data-nosnippet>112</a>        <span class="kw">crate</span>::world_archetypes::continental_temperate()
 <a href=#113 id=113 data-nosnippet>113</a>    }
 <a href=#114 id=114 data-nosnippet>114</a>}
 <a href=#115 id=115 data-nosnippet>115</a>
