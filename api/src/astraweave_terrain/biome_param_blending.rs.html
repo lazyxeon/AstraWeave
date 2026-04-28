@@ -429,154 +429,159 @@
 <a href=#429 id=429 data-nosnippet>429</a>        // hard-flip discontinuity. Without blending, adjacent vertices at
 <a href=#430 id=430 data-nosnippet>430</a>        // a TemperateGrassland (0.8) ↔ BorealForest (1.5) boundary would
 <a href=#431 id=431 data-nosnippet>431</a>        // produce a delta of 0.7. With blending at radius 48 WU and 6
-<a href=#432 id=432 data-nosnippet>432</a>        // samples, the overlapping blend kernels reduce that to ~0.35-0.45
-<a href=#433 id=433 data-nosnippet>433</a>        // depending on which biomes are involved at the sweep's boundary
-<a href=#434 id=434 data-nosnippet>434</a>        // intersections. Threshold 0.5 leaves headroom against per-seed
-<a href=#435 id=435 data-nosnippet>435</a>        // variance while still rejecting "blending entirely broken"
-<a href=#436 id=436 data-nosnippet>436</a>        // failures (where deltas would equal the full hard-flip values
-<a href=#437 id=437 data-nosnippet>437</a>        // 0.7+ for major boundary types).
-<a href=#438 id=438 data-nosnippet>438</a>        </span><span class="macro">assert!</span>(
-<a href=#439 id=439 data-nosnippet>439</a>            max_delta &lt; <span class="number">0.5</span>,
-<a href=#440 id=440 data-nosnippet>440</a>            <span class="string">"gradient should be smooth: max per-step amplitude delta {} &gt; 0.5 \
-<a href=#441 id=441 data-nosnippet>441</a>             (blending may not be working)"</span>,
-<a href=#442 id=442 data-nosnippet>442</a>            max_delta
-<a href=#443 id=443 data-nosnippet>443</a>        );
-<a href=#444 id=444 data-nosnippet>444</a>    }
-<a href=#445 id=445 data-nosnippet>445</a>
-<a href=#446 id=446 data-nosnippet>446</a>    <span class="attr">#[test]
-<a href=#447 id=447 data-nosnippet>447</a>    </span><span class="kw">fn </span>phase_1_6_f4_b_3_d_4_sample_count_4_vs_9_changes_smoothness() {
-<a href=#448 id=448 data-nosnippet>448</a>        <span class="comment">// Sanity: increasing sample count should produce a similar
-<a href=#449 id=449 data-nosnippet>449</a>        // dominant biome at uniform positions but slightly different
-<a href=#450 id=450 data-nosnippet>450</a>        // blended values (more samples = more averaging). This isn't
-<a href=#451 id=451 data-nosnippet>451</a>        // a strict assertion of "smoother" — just that the parameter
-<a href=#452 id=452 data-nosnippet>452</a>        // matters.
-<a href=#453 id=453 data-nosnippet>453</a>        </span><span class="kw">let </span>climate = make_climate(<span class="number">99</span>);
-<a href=#454 id=454 data-nosnippet>454</a>        <span class="kw">let </span>cfg_4 = BiomeParamBlendConfig {
-<a href=#455 id=455 data-nosnippet>455</a>            sample_count: <span class="number">4</span>,
-<a href=#456 id=456 data-nosnippet>456</a>            ..BiomeParamBlendConfig::default()
-<a href=#457 id=457 data-nosnippet>457</a>        };
-<a href=#458 id=458 data-nosnippet>458</a>        <span class="kw">let </span>cfg_9 = BiomeParamBlendConfig {
-<a href=#459 id=459 data-nosnippet>459</a>            sample_count: <span class="number">9</span>,
-<a href=#460 id=460 data-nosnippet>460</a>            ..BiomeParamBlendConfig::default()
-<a href=#461 id=461 data-nosnippet>461</a>        };
-<a href=#462 id=462 data-nosnippet>462</a>
-<a href=#463 id=463 data-nosnippet>463</a>        <span class="comment">// Sample at a position likely to be near a climate boundary
-<a href=#464 id=464 data-nosnippet>464</a>        // (high z = latitude effect).
-<a href=#465 id=465 data-nosnippet>465</a>        </span><span class="kw">let </span>r4 = blend_biome_parameters(<span class="number">1500.0</span>, <span class="number">3000.0</span>, <span class="number">100.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg_4);
-<a href=#466 id=466 data-nosnippet>466</a>        <span class="kw">let </span>r9 = blend_biome_parameters(<span class="number">1500.0</span>, <span class="number">3000.0</span>, <span class="number">100.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg_9);
+<a href=#432 id=432 data-nosnippet>432</a>        // samples, the overlapping blend kernels reduce that.
+<a href=#433 id=433 data-nosnippet>433</a>        //
+<a href=#434 id=434 data-nosnippet>434</a>        // Phase 1.6-F.4.B.3.D.5-fix Path B: per-biome amplitudes for
+<a href=#435 id=435 data-nosnippet>435</a>        // elevation-overlay biomes reduced (Alpine 2.5 → 1.4, SnowCap
+<a href=#436 id=436 data-nosnippet>436</a>        // 2.5 → 1.4, MountainRocky 3.0 → 1.6, Scree 2.0 → 1.2). Maximum
+<a href=#437 id=437 data-nosnippet>437</a>        // amplitude differential at any boundary is now ≤ 0.7 (Alpine
+<a href=#438 id=438 data-nosnippet>438</a>        // 1.4 - TemperateGrassland 0.8 = 0.6; the unchanged BorealForest
+<a href=#439 id=439 data-nosnippet>439</a>        // 1.5 still pairs with TemperateGrassland 0.8 = 0.7). Threshold
+<a href=#440 id=440 data-nosnippet>440</a>        // tightened from 0.5 → 0.4 to reflect the smaller possible max
+<a href=#441 id=441 data-nosnippet>441</a>        // delta. Future amplitude tuning that preserves the [0.0, 2.0]
+<a href=#442 id=442 data-nosnippet>442</a>        // range used post Path B should keep this threshold valid.
+<a href=#443 id=443 data-nosnippet>443</a>        </span><span class="macro">assert!</span>(
+<a href=#444 id=444 data-nosnippet>444</a>            max_delta &lt; <span class="number">0.4</span>,
+<a href=#445 id=445 data-nosnippet>445</a>            <span class="string">"gradient should be smooth: max per-step amplitude delta {} &gt; 0.4 \
+<a href=#446 id=446 data-nosnippet>446</a>             (blending may not be working)"</span>,
+<a href=#447 id=447 data-nosnippet>447</a>            max_delta
+<a href=#448 id=448 data-nosnippet>448</a>        );
+<a href=#449 id=449 data-nosnippet>449</a>    }
+<a href=#450 id=450 data-nosnippet>450</a>
+<a href=#451 id=451 data-nosnippet>451</a>    <span class="attr">#[test]
+<a href=#452 id=452 data-nosnippet>452</a>    </span><span class="kw">fn </span>phase_1_6_f4_b_3_d_4_sample_count_4_vs_9_changes_smoothness() {
+<a href=#453 id=453 data-nosnippet>453</a>        <span class="comment">// Sanity: increasing sample count should produce a similar
+<a href=#454 id=454 data-nosnippet>454</a>        // dominant biome at uniform positions but slightly different
+<a href=#455 id=455 data-nosnippet>455</a>        // blended values (more samples = more averaging). This isn't
+<a href=#456 id=456 data-nosnippet>456</a>        // a strict assertion of "smoother" — just that the parameter
+<a href=#457 id=457 data-nosnippet>457</a>        // matters.
+<a href=#458 id=458 data-nosnippet>458</a>        </span><span class="kw">let </span>climate = make_climate(<span class="number">99</span>);
+<a href=#459 id=459 data-nosnippet>459</a>        <span class="kw">let </span>cfg_4 = BiomeParamBlendConfig {
+<a href=#460 id=460 data-nosnippet>460</a>            sample_count: <span class="number">4</span>,
+<a href=#461 id=461 data-nosnippet>461</a>            ..BiomeParamBlendConfig::default()
+<a href=#462 id=462 data-nosnippet>462</a>        };
+<a href=#463 id=463 data-nosnippet>463</a>        <span class="kw">let </span>cfg_9 = BiomeParamBlendConfig {
+<a href=#464 id=464 data-nosnippet>464</a>            sample_count: <span class="number">9</span>,
+<a href=#465 id=465 data-nosnippet>465</a>            ..BiomeParamBlendConfig::default()
+<a href=#466 id=466 data-nosnippet>466</a>        };
 <a href=#467 id=467 data-nosnippet>467</a>
-<a href=#468 id=468 data-nosnippet>468</a>        <span class="comment">// Values may or may not differ depending on whether boundary
-<a href=#469 id=469 data-nosnippet>469</a>        // samples land in different biomes — but the function must
-<a href=#470 id=470 data-nosnippet>470</a>        // accept both configurations without panicking.
-<a href=#471 id=471 data-nosnippet>471</a>        </span><span class="macro">assert!</span>(r4.mountains_amplitude.is_finite());
-<a href=#472 id=472 data-nosnippet>472</a>        <span class="macro">assert!</span>(r9.mountains_amplitude.is_finite());
-<a href=#473 id=473 data-nosnippet>473</a>        <span class="macro">assert!</span>(r4.scatter_density.is_finite());
-<a href=#474 id=474 data-nosnippet>474</a>        <span class="macro">assert!</span>(r9.scatter_density.is_finite());
-<a href=#475 id=475 data-nosnippet>475</a>    }
-<a href=#476 id=476 data-nosnippet>476</a>
-<a href=#477 id=477 data-nosnippet>477</a>    <span class="attr">#[test]
-<a href=#478 id=478 data-nosnippet>478</a>    </span><span class="kw">fn </span>phase_1_6_f4_b_3_d_4_blended_params_within_biome_taxonomy_bounds() {
-<a href=#479 id=479 data-nosnippet>479</a>        <span class="comment">// For ANY position, blended `mountains_amplitude` must lie within
-<a href=#480 id=480 data-nosnippet>480</a>        // the min/max of `BiomeParameters::for_biome` across all biomes.
-<a href=#481 id=481 data-nosnippet>481</a>        // Convex-combination invariant: weighted average of values
-<a href=#482 id=482 data-nosnippet>482</a>        // bounded by the values themselves.
-<a href=#483 id=483 data-nosnippet>483</a>        </span><span class="kw">let </span>climate = make_climate(<span class="number">42</span>);
-<a href=#484 id=484 data-nosnippet>484</a>        <span class="kw">let </span>cfg = BiomeParamBlendConfig::default();
-<a href=#485 id=485 data-nosnippet>485</a>
-<a href=#486 id=486 data-nosnippet>486</a>        <span class="kw">let </span><span class="kw-2">mut </span>min_amp = f64::INFINITY;
-<a href=#487 id=487 data-nosnippet>487</a>        <span class="kw">let </span><span class="kw-2">mut </span>max_amp = f64::NEG_INFINITY;
-<a href=#488 id=488 data-nosnippet>488</a>        <span class="kw">for </span><span class="kw-2">&amp;</span>b <span class="kw">in </span>BiomeId::all() {
-<a href=#489 id=489 data-nosnippet>489</a>            <span class="kw">let </span>p = BiomeParameters::for_biome(b);
-<a href=#490 id=490 data-nosnippet>490</a>            min_amp = min_amp.min(p.mountains_amplitude);
-<a href=#491 id=491 data-nosnippet>491</a>            max_amp = max_amp.max(p.mountains_amplitude);
-<a href=#492 id=492 data-nosnippet>492</a>        }
-<a href=#493 id=493 data-nosnippet>493</a>
-<a href=#494 id=494 data-nosnippet>494</a>        <span class="comment">// Sample many positions; all should produce blended values in
-<a href=#495 id=495 data-nosnippet>495</a>        // [min_amp, max_amp].
-<a href=#496 id=496 data-nosnippet>496</a>        </span><span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">50 </span>{
-<a href=#497 id=497 data-nosnippet>497</a>            <span class="kw">let </span>x = (i <span class="kw">as </span>f32) * <span class="number">137.0 </span>- <span class="number">1500.0</span>;
-<a href=#498 id=498 data-nosnippet>498</a>            <span class="kw">let </span>z = (i <span class="kw">as </span>f32) * <span class="number">211.0 </span>- <span class="number">1500.0</span>;
-<a href=#499 id=499 data-nosnippet>499</a>            <span class="kw">let </span>r = blend_biome_parameters(x, z, <span class="number">50.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg);
-<a href=#500 id=500 data-nosnippet>500</a>            <span class="macro">assert!</span>(
-<a href=#501 id=501 data-nosnippet>501</a>                r.mountains_amplitude &gt;= min_amp - <span class="number">0.01
-<a href=#502 id=502 data-nosnippet>502</a>                    </span>&amp;&amp; r.mountains_amplitude &lt;= max_amp + <span class="number">0.01</span>,
-<a href=#503 id=503 data-nosnippet>503</a>                <span class="string">"blended mountains_amplitude {} out of bounds [{}, {}]"</span>,
-<a href=#504 id=504 data-nosnippet>504</a>                r.mountains_amplitude,
-<a href=#505 id=505 data-nosnippet>505</a>                min_amp,
-<a href=#506 id=506 data-nosnippet>506</a>                max_amp
-<a href=#507 id=507 data-nosnippet>507</a>            );
-<a href=#508 id=508 data-nosnippet>508</a>        }
-<a href=#509 id=509 data-nosnippet>509</a>    }
-<a href=#510 id=510 data-nosnippet>510</a>
-<a href=#511 id=511 data-nosnippet>511</a>    <span class="attr">#[test]
-<a href=#512 id=512 data-nosnippet>512</a>    </span><span class="kw">fn </span>phase_1_6_f4_b_3_d_4_dominant_biome_is_actually_max_weight() {
-<a href=#513 id=513 data-nosnippet>513</a>        <span class="comment">// Verify the dominant_biome field reflects the highest summed
-<a href=#514 id=514 data-nosnippet>514</a>        // sample weight (not just any sampled biome). We hand-construct
-<a href=#515 id=515 data-nosnippet>515</a>        // a known scenario: at a position where Continental Temperate
-<a href=#516 id=516 data-nosnippet>516</a>        // produces TemperateDeciduous samples almost exclusively, the
-<a href=#517 id=517 data-nosnippet>517</a>        // dominant should be TemperateDeciduous.
-<a href=#518 id=518 data-nosnippet>518</a>        </span><span class="kw">let </span>climate = make_climate(<span class="number">12345</span>);
-<a href=#519 id=519 data-nosnippet>519</a>        <span class="kw">let </span>cfg = BiomeParamBlendConfig::default();
-<a href=#520 id=520 data-nosnippet>520</a>        <span class="kw">let </span>r = blend_biome_parameters(<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">100.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg);
-<a href=#521 id=521 data-nosnippet>521</a>        <span class="comment">// Dominant biome should be terrestrial at world center sea-level+,
-<a href=#522 id=522 data-nosnippet>522</a>        // not aquatic or overlay.
-<a href=#523 id=523 data-nosnippet>523</a>        </span><span class="macro">assert!</span>(
-<a href=#524 id=524 data-nosnippet>524</a>            r.dominant_biome.is_terrestrial(),
-<a href=#525 id=525 data-nosnippet>525</a>            <span class="string">"world-center mid-elevation Continental Temperate should resolve to terrestrial; \
-<a href=#526 id=526 data-nosnippet>526</a>             got {:?}"</span>,
-<a href=#527 id=527 data-nosnippet>527</a>            r.dominant_biome
-<a href=#528 id=528 data-nosnippet>528</a>        );
-<a href=#529 id=529 data-nosnippet>529</a>    }
-<a href=#530 id=530 data-nosnippet>530</a>
-<a href=#531 id=531 data-nosnippet>531</a>    <span class="attr">#[test]
-<a href=#532 id=532 data-nosnippet>532</a>    </span><span class="kw">fn </span>phase_1_6_f4_b_3_d_4_warm_archetype_shifts_dominant_toward_tropical() {
-<a href=#533 id=533 data-nosnippet>533</a>        <span class="comment">// Smoke test that archetype envelope affects blending. Warm
-<a href=#534 id=534 data-nosnippet>534</a>        // archetype at world center should produce tropical-family
-<a href=#535 id=535 data-nosnippet>535</a>        // dominants, not temperate.
-<a href=#536 id=536 data-nosnippet>536</a>        </span><span class="kw">let </span>warm = WorldArchetype {
-<a href=#537 id=537 data-nosnippet>537</a>            temperature_mean_c: <span class="number">26.0</span>,
-<a href=#538 id=538 data-nosnippet>538</a>            temperature_variance_c: <span class="number">5.0</span>,
-<a href=#539 id=539 data-nosnippet>539</a>            latitude_temperature_drop_c: <span class="number">3.0</span>,
-<a href=#540 id=540 data-nosnippet>540</a>            moisture_mean_mm: <span class="number">2200.0</span>,
-<a href=#541 id=541 data-nosnippet>541</a>            moisture_variance_mm: <span class="number">800.0</span>,
-<a href=#542 id=542 data-nosnippet>542</a>            continentalness_mean: <span class="number">0.4</span>,
-<a href=#543 id=543 data-nosnippet>543</a>            continentalness_variance: <span class="number">0.2</span>,
-<a href=#544 id=544 data-nosnippet>544</a>        };
-<a href=#545 id=545 data-nosnippet>545</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = ClimateConfig::default();
-<a href=#546 id=546 data-nosnippet>546</a>        config.archetype = warm;
-<a href=#547 id=547 data-nosnippet>547</a>        <span class="kw">let </span>climate = ClimateMap::new(<span class="kw-2">&amp;</span>config, <span class="number">67890</span>);
-<a href=#548 id=548 data-nosnippet>548</a>
-<a href=#549 id=549 data-nosnippet>549</a>        <span class="kw">let </span>cfg = BiomeParamBlendConfig::default();
-<a href=#550 id=550 data-nosnippet>550</a>        <span class="kw">let </span><span class="kw-2">mut </span>tropical_count = <span class="number">0</span>;
-<a href=#551 id=551 data-nosnippet>551</a>        <span class="kw">let </span><span class="kw-2">mut </span>temperate_count = <span class="number">0</span>;
-<a href=#552 id=552 data-nosnippet>552</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">50 </span>{
-<a href=#553 id=553 data-nosnippet>553</a>            <span class="kw">let </span>x = (i <span class="kw">as </span>f32) * <span class="number">137.0</span>;
-<a href=#554 id=554 data-nosnippet>554</a>            <span class="kw">let </span>z = (i <span class="kw">as </span>f32) * <span class="number">211.0</span>;
-<a href=#555 id=555 data-nosnippet>555</a>            <span class="kw">let </span>r = blend_biome_parameters(x, z, <span class="number">30.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg);
-<a href=#556 id=556 data-nosnippet>556</a>            <span class="kw">if </span><span class="macro">matches!</span>(
-<a href=#557 id=557 data-nosnippet>557</a>                r.dominant_biome,
-<a href=#558 id=558 data-nosnippet>558</a>                BiomeId::TropicalRainforest
-<a href=#559 id=559 data-nosnippet>559</a>                    | BiomeId::TropicalSeasonalForest
-<a href=#560 id=560 data-nosnippet>560</a>                    | BiomeId::Savanna
-<a href=#561 id=561 data-nosnippet>561</a>                    | BiomeId::SubtropicalDesert
-<a href=#562 id=562 data-nosnippet>562</a>            ) {
-<a href=#563 id=563 data-nosnippet>563</a>                tropical_count += <span class="number">1</span>;
-<a href=#564 id=564 data-nosnippet>564</a>            }
-<a href=#565 id=565 data-nosnippet>565</a>            <span class="kw">if </span><span class="macro">matches!</span>(
-<a href=#566 id=566 data-nosnippet>566</a>                r.dominant_biome,
-<a href=#567 id=567 data-nosnippet>567</a>                BiomeId::TemperateGrassland
-<a href=#568 id=568 data-nosnippet>568</a>                    | BiomeId::TemperateDeciduousForest
-<a href=#569 id=569 data-nosnippet>569</a>                    | BiomeId::TemperateRainforest
-<a href=#570 id=570 data-nosnippet>570</a>                    | BiomeId::ColdDesert
-<a href=#571 id=571 data-nosnippet>571</a>            ) {
-<a href=#572 id=572 data-nosnippet>572</a>                temperate_count += <span class="number">1</span>;
-<a href=#573 id=573 data-nosnippet>573</a>            }
-<a href=#574 id=574 data-nosnippet>574</a>        }
-<a href=#575 id=575 data-nosnippet>575</a>        <span class="macro">assert!</span>(
-<a href=#576 id=576 data-nosnippet>576</a>            tropical_count &gt; temperate_count,
-<a href=#577 id=577 data-nosnippet>577</a>            <span class="string">"warm archetype should produce more tropical dominants ({}) than temperate ({})"</span>,
-<a href=#578 id=578 data-nosnippet>578</a>            tropical_count,
-<a href=#579 id=579 data-nosnippet>579</a>            temperate_count
-<a href=#580 id=580 data-nosnippet>580</a>        );
-<a href=#581 id=581 data-nosnippet>581</a>    }
-<a href=#582 id=582 data-nosnippet>582</a>}</code></pre></div></section></main></body></html>
+<a href=#468 id=468 data-nosnippet>468</a>        <span class="comment">// Sample at a position likely to be near a climate boundary
+<a href=#469 id=469 data-nosnippet>469</a>        // (high z = latitude effect).
+<a href=#470 id=470 data-nosnippet>470</a>        </span><span class="kw">let </span>r4 = blend_biome_parameters(<span class="number">1500.0</span>, <span class="number">3000.0</span>, <span class="number">100.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg_4);
+<a href=#471 id=471 data-nosnippet>471</a>        <span class="kw">let </span>r9 = blend_biome_parameters(<span class="number">1500.0</span>, <span class="number">3000.0</span>, <span class="number">100.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg_9);
+<a href=#472 id=472 data-nosnippet>472</a>
+<a href=#473 id=473 data-nosnippet>473</a>        <span class="comment">// Values may or may not differ depending on whether boundary
+<a href=#474 id=474 data-nosnippet>474</a>        // samples land in different biomes — but the function must
+<a href=#475 id=475 data-nosnippet>475</a>        // accept both configurations without panicking.
+<a href=#476 id=476 data-nosnippet>476</a>        </span><span class="macro">assert!</span>(r4.mountains_amplitude.is_finite());
+<a href=#477 id=477 data-nosnippet>477</a>        <span class="macro">assert!</span>(r9.mountains_amplitude.is_finite());
+<a href=#478 id=478 data-nosnippet>478</a>        <span class="macro">assert!</span>(r4.scatter_density.is_finite());
+<a href=#479 id=479 data-nosnippet>479</a>        <span class="macro">assert!</span>(r9.scatter_density.is_finite());
+<a href=#480 id=480 data-nosnippet>480</a>    }
+<a href=#481 id=481 data-nosnippet>481</a>
+<a href=#482 id=482 data-nosnippet>482</a>    <span class="attr">#[test]
+<a href=#483 id=483 data-nosnippet>483</a>    </span><span class="kw">fn </span>phase_1_6_f4_b_3_d_4_blended_params_within_biome_taxonomy_bounds() {
+<a href=#484 id=484 data-nosnippet>484</a>        <span class="comment">// For ANY position, blended `mountains_amplitude` must lie within
+<a href=#485 id=485 data-nosnippet>485</a>        // the min/max of `BiomeParameters::for_biome` across all biomes.
+<a href=#486 id=486 data-nosnippet>486</a>        // Convex-combination invariant: weighted average of values
+<a href=#487 id=487 data-nosnippet>487</a>        // bounded by the values themselves.
+<a href=#488 id=488 data-nosnippet>488</a>        </span><span class="kw">let </span>climate = make_climate(<span class="number">42</span>);
+<a href=#489 id=489 data-nosnippet>489</a>        <span class="kw">let </span>cfg = BiomeParamBlendConfig::default();
+<a href=#490 id=490 data-nosnippet>490</a>
+<a href=#491 id=491 data-nosnippet>491</a>        <span class="kw">let </span><span class="kw-2">mut </span>min_amp = f64::INFINITY;
+<a href=#492 id=492 data-nosnippet>492</a>        <span class="kw">let </span><span class="kw-2">mut </span>max_amp = f64::NEG_INFINITY;
+<a href=#493 id=493 data-nosnippet>493</a>        <span class="kw">for </span><span class="kw-2">&amp;</span>b <span class="kw">in </span>BiomeId::all() {
+<a href=#494 id=494 data-nosnippet>494</a>            <span class="kw">let </span>p = BiomeParameters::for_biome(b);
+<a href=#495 id=495 data-nosnippet>495</a>            min_amp = min_amp.min(p.mountains_amplitude);
+<a href=#496 id=496 data-nosnippet>496</a>            max_amp = max_amp.max(p.mountains_amplitude);
+<a href=#497 id=497 data-nosnippet>497</a>        }
+<a href=#498 id=498 data-nosnippet>498</a>
+<a href=#499 id=499 data-nosnippet>499</a>        <span class="comment">// Sample many positions; all should produce blended values in
+<a href=#500 id=500 data-nosnippet>500</a>        // [min_amp, max_amp].
+<a href=#501 id=501 data-nosnippet>501</a>        </span><span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">50 </span>{
+<a href=#502 id=502 data-nosnippet>502</a>            <span class="kw">let </span>x = (i <span class="kw">as </span>f32) * <span class="number">137.0 </span>- <span class="number">1500.0</span>;
+<a href=#503 id=503 data-nosnippet>503</a>            <span class="kw">let </span>z = (i <span class="kw">as </span>f32) * <span class="number">211.0 </span>- <span class="number">1500.0</span>;
+<a href=#504 id=504 data-nosnippet>504</a>            <span class="kw">let </span>r = blend_biome_parameters(x, z, <span class="number">50.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg);
+<a href=#505 id=505 data-nosnippet>505</a>            <span class="macro">assert!</span>(
+<a href=#506 id=506 data-nosnippet>506</a>                r.mountains_amplitude &gt;= min_amp - <span class="number">0.01
+<a href=#507 id=507 data-nosnippet>507</a>                    </span>&amp;&amp; r.mountains_amplitude &lt;= max_amp + <span class="number">0.01</span>,
+<a href=#508 id=508 data-nosnippet>508</a>                <span class="string">"blended mountains_amplitude {} out of bounds [{}, {}]"</span>,
+<a href=#509 id=509 data-nosnippet>509</a>                r.mountains_amplitude,
+<a href=#510 id=510 data-nosnippet>510</a>                min_amp,
+<a href=#511 id=511 data-nosnippet>511</a>                max_amp
+<a href=#512 id=512 data-nosnippet>512</a>            );
+<a href=#513 id=513 data-nosnippet>513</a>        }
+<a href=#514 id=514 data-nosnippet>514</a>    }
+<a href=#515 id=515 data-nosnippet>515</a>
+<a href=#516 id=516 data-nosnippet>516</a>    <span class="attr">#[test]
+<a href=#517 id=517 data-nosnippet>517</a>    </span><span class="kw">fn </span>phase_1_6_f4_b_3_d_4_dominant_biome_is_actually_max_weight() {
+<a href=#518 id=518 data-nosnippet>518</a>        <span class="comment">// Verify the dominant_biome field reflects the highest summed
+<a href=#519 id=519 data-nosnippet>519</a>        // sample weight (not just any sampled biome). We hand-construct
+<a href=#520 id=520 data-nosnippet>520</a>        // a known scenario: at a position where Continental Temperate
+<a href=#521 id=521 data-nosnippet>521</a>        // produces TemperateDeciduous samples almost exclusively, the
+<a href=#522 id=522 data-nosnippet>522</a>        // dominant should be TemperateDeciduous.
+<a href=#523 id=523 data-nosnippet>523</a>        </span><span class="kw">let </span>climate = make_climate(<span class="number">12345</span>);
+<a href=#524 id=524 data-nosnippet>524</a>        <span class="kw">let </span>cfg = BiomeParamBlendConfig::default();
+<a href=#525 id=525 data-nosnippet>525</a>        <span class="kw">let </span>r = blend_biome_parameters(<span class="number">0.0</span>, <span class="number">0.0</span>, <span class="number">100.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg);
+<a href=#526 id=526 data-nosnippet>526</a>        <span class="comment">// Dominant biome should be terrestrial at world center sea-level+,
+<a href=#527 id=527 data-nosnippet>527</a>        // not aquatic or overlay.
+<a href=#528 id=528 data-nosnippet>528</a>        </span><span class="macro">assert!</span>(
+<a href=#529 id=529 data-nosnippet>529</a>            r.dominant_biome.is_terrestrial(),
+<a href=#530 id=530 data-nosnippet>530</a>            <span class="string">"world-center mid-elevation Continental Temperate should resolve to terrestrial; \
+<a href=#531 id=531 data-nosnippet>531</a>             got {:?}"</span>,
+<a href=#532 id=532 data-nosnippet>532</a>            r.dominant_biome
+<a href=#533 id=533 data-nosnippet>533</a>        );
+<a href=#534 id=534 data-nosnippet>534</a>    }
+<a href=#535 id=535 data-nosnippet>535</a>
+<a href=#536 id=536 data-nosnippet>536</a>    <span class="attr">#[test]
+<a href=#537 id=537 data-nosnippet>537</a>    </span><span class="kw">fn </span>phase_1_6_f4_b_3_d_4_warm_archetype_shifts_dominant_toward_tropical() {
+<a href=#538 id=538 data-nosnippet>538</a>        <span class="comment">// Smoke test that archetype envelope affects blending. Warm
+<a href=#539 id=539 data-nosnippet>539</a>        // archetype at world center should produce tropical-family
+<a href=#540 id=540 data-nosnippet>540</a>        // dominants, not temperate.
+<a href=#541 id=541 data-nosnippet>541</a>        </span><span class="kw">let </span>warm = WorldArchetype {
+<a href=#542 id=542 data-nosnippet>542</a>            temperature_mean_c: <span class="number">26.0</span>,
+<a href=#543 id=543 data-nosnippet>543</a>            temperature_variance_c: <span class="number">5.0</span>,
+<a href=#544 id=544 data-nosnippet>544</a>            latitude_temperature_drop_c: <span class="number">3.0</span>,
+<a href=#545 id=545 data-nosnippet>545</a>            moisture_mean_mm: <span class="number">2200.0</span>,
+<a href=#546 id=546 data-nosnippet>546</a>            moisture_variance_mm: <span class="number">800.0</span>,
+<a href=#547 id=547 data-nosnippet>547</a>            continentalness_mean: <span class="number">0.4</span>,
+<a href=#548 id=548 data-nosnippet>548</a>            continentalness_variance: <span class="number">0.2</span>,
+<a href=#549 id=549 data-nosnippet>549</a>        };
+<a href=#550 id=550 data-nosnippet>550</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = ClimateConfig::default();
+<a href=#551 id=551 data-nosnippet>551</a>        config.archetype = warm;
+<a href=#552 id=552 data-nosnippet>552</a>        <span class="kw">let </span>climate = ClimateMap::new(<span class="kw-2">&amp;</span>config, <span class="number">67890</span>);
+<a href=#553 id=553 data-nosnippet>553</a>
+<a href=#554 id=554 data-nosnippet>554</a>        <span class="kw">let </span>cfg = BiomeParamBlendConfig::default();
+<a href=#555 id=555 data-nosnippet>555</a>        <span class="kw">let </span><span class="kw-2">mut </span>tropical_count = <span class="number">0</span>;
+<a href=#556 id=556 data-nosnippet>556</a>        <span class="kw">let </span><span class="kw-2">mut </span>temperate_count = <span class="number">0</span>;
+<a href=#557 id=557 data-nosnippet>557</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">50 </span>{
+<a href=#558 id=558 data-nosnippet>558</a>            <span class="kw">let </span>x = (i <span class="kw">as </span>f32) * <span class="number">137.0</span>;
+<a href=#559 id=559 data-nosnippet>559</a>            <span class="kw">let </span>z = (i <span class="kw">as </span>f32) * <span class="number">211.0</span>;
+<a href=#560 id=560 data-nosnippet>560</a>            <span class="kw">let </span>r = blend_biome_parameters(x, z, <span class="number">30.0</span>, <span class="kw-2">&amp;</span>climate, <span class="kw-2">&amp;</span>cfg);
+<a href=#561 id=561 data-nosnippet>561</a>            <span class="kw">if </span><span class="macro">matches!</span>(
+<a href=#562 id=562 data-nosnippet>562</a>                r.dominant_biome,
+<a href=#563 id=563 data-nosnippet>563</a>                BiomeId::TropicalRainforest
+<a href=#564 id=564 data-nosnippet>564</a>                    | BiomeId::TropicalSeasonalForest
+<a href=#565 id=565 data-nosnippet>565</a>                    | BiomeId::Savanna
+<a href=#566 id=566 data-nosnippet>566</a>                    | BiomeId::SubtropicalDesert
+<a href=#567 id=567 data-nosnippet>567</a>            ) {
+<a href=#568 id=568 data-nosnippet>568</a>                tropical_count += <span class="number">1</span>;
+<a href=#569 id=569 data-nosnippet>569</a>            }
+<a href=#570 id=570 data-nosnippet>570</a>            <span class="kw">if </span><span class="macro">matches!</span>(
+<a href=#571 id=571 data-nosnippet>571</a>                r.dominant_biome,
+<a href=#572 id=572 data-nosnippet>572</a>                BiomeId::TemperateGrassland
+<a href=#573 id=573 data-nosnippet>573</a>                    | BiomeId::TemperateDeciduousForest
+<a href=#574 id=574 data-nosnippet>574</a>                    | BiomeId::TemperateRainforest
+<a href=#575 id=575 data-nosnippet>575</a>                    | BiomeId::ColdDesert
+<a href=#576 id=576 data-nosnippet>576</a>            ) {
+<a href=#577 id=577 data-nosnippet>577</a>                temperate_count += <span class="number">1</span>;
+<a href=#578 id=578 data-nosnippet>578</a>            }
+<a href=#579 id=579 data-nosnippet>579</a>        }
+<a href=#580 id=580 data-nosnippet>580</a>        <span class="macro">assert!</span>(
+<a href=#581 id=581 data-nosnippet>581</a>            tropical_count &gt; temperate_count,
+<a href=#582 id=582 data-nosnippet>582</a>            <span class="string">"warm archetype should produce more tropical dominants ({}) than temperate ({})"</span>,
+<a href=#583 id=583 data-nosnippet>583</a>            tropical_count,
+<a href=#584 id=584 data-nosnippet>584</a>            temperate_count
+<a href=#585 id=585 data-nosnippet>585</a>        );
+<a href=#586 id=586 data-nosnippet>586</a>    }
+<a href=#587 id=587 data-nosnippet>587</a>}</code></pre></div></section></main></body></html>
