@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ErosionPresetId","ScatterSpeciesSet","SurfaceColorPalette"],"struct":["BiomeParameters"]};

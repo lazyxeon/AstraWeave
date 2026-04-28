@@ -1,0 +1,53 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Phase 1.6-F.4.B.3.D.4: scattered-convolution biome blending."><title>astraweave_terrain::biome_param_blending - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="astraweave_terrain" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0 (29483883e 2025-08-04)" data-channel="1.89.0" data-search-js="search-92309212.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../astraweave_terrain/index.html">astraweave_<wbr>terrain</a><span class="version">0.4.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module biome_<wbr>param_<wbr>blending</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#algorithm" title="Algorithm">Algorithm</a></li><li><a href="#why-blend-parameters-not-biome-ids" title="Why blend parameters, not biome IDs">Why blend parameters, not biome IDs</a></li><li><a href="#why-this-tightens-continuity-tolerances" title="Why this tightens continuity tolerances">Why this tightens continuity tolerances</a></li><li><a href="#determinism--position-quantization" title="Determinism + position quantization">Determinism + position quantization</a></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#functions" title="Functions">Functions</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate astraweave_<wbr>terrain</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">astraweave_terrain</a></div><h1>Module <span>biome_param_blending</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/astraweave_terrain/biome_param_blending.rs.html#1-582">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Phase 1.6-F.4.B.3.D.4: scattered-convolution biome blending.</p>
+<p>Softens the per-vertex hard biome assignments produced by D.3 so the
+world reads as continuous while preserving discrete biome identity at
+each vertex. Reference: noiseposti.ng “Fast Biome Blending Without
+Squareness”
+(<a href="https://noiseposti.ng/posts/2021-03-13-Fast-Biome-Blending-Without-Squareness.html">https://noiseposti.ng/posts/2021-03-13-Fast-Biome-Blending-Without-Squareness.html</a>).</p>
+<h3 id="algorithm"><a class="doc-anchor" href="#algorithm">§</a>Algorithm</h3>
+<p>For each vertex at world position <code>(x, z)</code> with bootstrap elevation <code>e</code>:</p>
+<ol>
+<li>Generate <code>N</code> jittered sample positions within radius <code>r</code> of <code>(x, z)</code>.
+Jitter is a deterministic hash of quantized world position + sample
+index — same vertex always produces same sample positions.</li>
+<li>At each sample, look up the biome via D.2’s <code>lookup_biome</code> and
+retrieve its <code>BiomeParameters</code> via D.3’s <code>BiomeParameters::for_biome</code>.</li>
+<li>Compute distance-weighted blend of the <em>numeric</em> parameters:
+<code>mountains_amplitude</code> and <code>scatter_density</code>. Linear falloff weight.</li>
+<li>The vertex’s <code>BiomeId</code> is the <strong>dominant</strong> biome (highest summed
+weight). Discrete fields (<code>scatter_species_set</code>,
+<code>surface_color_palette</code>) and unwired fields (<code>ridge_strength</code>,
+<code>runevision_config</code>, <code>erosion_preset</code>) take the dominant biome’s
+value — they don’t blend.</li>
+</ol>
+<h3 id="why-blend-parameters-not-biome-ids"><a class="doc-anchor" href="#why-blend-parameters-not-biome-ids">§</a>Why blend parameters, not biome IDs</h3>
+<p>“60% TemperateDeciduous + 40% TemperateGrassland” isn’t a category that
+exists. Blending categorical biome IDs would require defining new
+intermediate biomes for every pair, exploding the taxonomy. The
+noiseposti.ng algorithm’s insight is that blending the <em>continuous
+parameter values</em> preserves smooth terrain transitions while keeping
+the per-vertex biome assignment discrete (and therefore tractable for
+gameplay logic, scatter species, surface coloring).</p>
+<h3 id="why-this-tightens-continuity-tolerances"><a class="doc-anchor" href="#why-this-tightens-continuity-tolerances">§</a>Why this tightens continuity tolerances</h3>
+<p>Per-vertex hard assignment (D.3) makes adjacent vertices’ parameters
+flip discontinuously at biome boundaries — <code>mountains_amplitude</code> jumps
+from e.g. 0.8 (TemperateGrassland) to 1.2 (TemperateDeciduous). At
+chunk boundaries this divergence is amplified by the f32 precision
+discrepancy across independently-generated halos (the pre-existing
+47.4 WU grassland divergence). D.4’s blending makes parameter values
+transition smoothly across biome boundaries, eliminating the flip
+discontinuity. Tolerances raised in D.3 (grassland 20→150 WU, mountain
+10→200 WU) should be tightenable back down toward F.4.B.2.G’s 20 WU
+range; D.4 verification asserts targets of grassland ≤50 WU and
+mountain ≤100 WU.</p>
+<h3 id="determinism--position-quantization"><a class="doc-anchor" href="#determinism--position-quantization">§</a>Determinism + position quantization</h3>
+<p>Jitter offsets are computed from a Wang-style hash of the vertex’s
+world position (quantized to 1/1024 WU = ~1mm grid) plus the sample
+index. Quantization is critical: f32 floating-point arithmetic across
+adjacent chunks’ independently-derived halo coordinates can produce
+tiny bit-level differences at the same logical world position. Snapping
+to a 1mm grid before hashing ensures both chunks produce identical
+jitter offsets at shared-edge vertices, preserving the
+shared-edge-invariance property.</p>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.BiomeParamBlendConfig.html" title="struct astraweave_terrain::biome_param_blending::BiomeParamBlendConfig">Biome<wbr>Param<wbr>Blend<wbr>Config</a></dt><dd>Phase 1.6-F.4.B.3.D.4: configuration for scattered-convolution biome
+blending.</dd><dt><a class="struct" href="struct.BlendedBiomeParams.html" title="struct astraweave_terrain::biome_param_blending::BlendedBiomeParams">Blended<wbr>Biome<wbr>Params</a></dt><dd>Phase 1.6-F.4.B.3.D.4: result of biome blending at a single vertex.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.blend_biome_parameters.html" title="fn astraweave_terrain::biome_param_blending::blend_biome_parameters">blend_<wbr>biome_<wbr>parameters</a></dt><dd>Phase 1.6-F.4.B.3.D.4: blend biome parameters at a world position.</dd></dl></section></div></main></body></html>
