@@ -70,19 +70,22 @@ fn generate_grid(
 /// if residual remains visible. F.5 integration tuning applies this if
 /// needed.
 ///
-/// **Phase 1.6-F.4.B.3.D.3b**: tolerance raised from 20 → 150 WU. The
-/// pre-D.3 baseline already had a 47.4 WU divergence (pre-existing
-/// failure flagged for F.4.B.3.G); D.3b's per-vertex hard biome
-/// assignment can flip biome IDs at chunk shared edges
-/// (TemperateGrassland 0.8x ↔ TemperateDeciduousForest 1.2x amplitude),
-/// raising divergence further. With D.3b active, measured x-axis
-/// 73.4 / z-axis 102.5 WU at seed 12345. D.4 scattered-convolution
-/// blending will soften boundary transitions; D.6 Andrew-gate informs
-/// whether the threshold can tighten. Per the D.3 plan §1.5, this is
-/// a threshold update, not a code regression.
+/// **Phase 1.6-F.4.B.3.D.3b**: tolerance raised from 20 → 150 WU due to
+/// per-vertex biome boundary flipping. **Phase 1.6-F.4.B.3.D.4**:
+/// tightened from 150 → 90 WU. D.4 scattered-convolution blending
+/// reduces grassland divergence from D.3b's 73.4/102.5 to D.4's
+/// 75.7/84.3 WU at seed 12345 — a modest ~17% z-axis reduction. The
+/// pre-existing 47.4 WU baseline (flagged for F.4.B.3.G; unrelated
+/// f32 precision issue at chunk shared edges) is the floor here;
+/// blending cannot reduce divergence below the unrelated-baseline
+/// without addressing that floor. 90 WU tolerance provides ~7%
+/// headroom over the measured maximum while clearly tightening from
+/// D.3b's 150. F.4.B.3.G is the right place to address the
+/// pre-existing precision floor; this test will tighten further once
+/// that lands.
 #[test]
 fn adjacent_chunks_share_edges_under_real_erosion_grassland() {
-    const TOLERANCE: f32 = 150.0;
+    const TOLERANCE: f32 = 90.0;
 
     let gen = make_generator(12345);
     let chunks = generate_grid(&gen, ClimateBias::Temperate, 3);
@@ -141,20 +144,20 @@ fn adjacent_chunks_share_edges_under_real_erosion_grassland() {
 /// then thermal — thermal smooths out per-droplet divergence).
 ///
 /// Phase 1.6-F.4.B.3.D.3b: tolerance raised from 10 → 200 WU because
-/// per-vertex biome boundary flipping at adjacent-chunk shared edges
-/// (BorealForest 1.5x ↔ SnowCap 2.5x amplitude difference) produces
-/// significantly larger divergence under hard biome assignment. D.4
-/// scattered-convolution blending will soften boundary transitions
-/// and tighten this back down. Per the D.3 plan §1.5: "the test failure
-/// mode that matters is 'did the new architecture silently regress
-/// noise quality' — not 'do the old single-preset thresholds still
-/// apply.'" The 200 WU tolerance preserves the test as a guard against
-/// gross regression while accommodating the per-vertex-hard-assignment
-/// regime; D.6's Andrew-gate will inform whether D.4 has tightened it
-/// enough to revisit.
+/// per-vertex hard biome assignment flipped IDs at adjacent-chunk shared
+/// edges (BorealForest 1.5x ↔ SnowCap 2.5x amplitude differences).
+/// **Phase 1.6-F.4.B.3.D.4**: tightened from 200 → 25 WU. D.4
+/// scattered-convolution blending dramatically improved mountain
+/// continuity: D.3b measured ~125 WU divergence at chunk borders;
+/// D.4 measures x-axis 9.6 / z-axis 20.0 WU at seed 12345 — a
+/// 6× reduction (the per-biome-amplitude blending dominates over the
+/// f32 precision floor for cold-climate biomes whose elevation-overlay
+/// mountain biomes have larger amplitude swings). 25 WU tolerance
+/// provides 25% headroom over the measured max. Well below the
+/// D.4 verification target of ≤100 WU.
 #[test]
 fn adjacent_chunks_share_edges_under_real_erosion_mountain() {
-    const TOLERANCE: f32 = 200.0;
+    const TOLERANCE: f32 = 25.0;
 
     let gen = make_generator(12345);
     let chunks = generate_grid(&gen, ClimateBias::Highland, 2);

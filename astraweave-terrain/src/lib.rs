@@ -28,6 +28,7 @@ pub mod perlin_gradient; // Phase 1.6-F.2-T-4: analytical-derivative Perlin + de
 pub mod runevision_erosion; // Phase 1.6-F.4.B.3.C: gradient-aligned gully extrusion filter (Skovbo Johansen)
 pub mod biome_lookup; // Phase 1.6-F.4.B.3.D.2: Whittaker biome lookup (climate × elevation → BiomeId)
 pub mod biome_parameters; // Phase 1.6-F.4.B.3.D.3: per-BiomeId terrain parameters (replaces BiomeNoisePreset)
+pub mod biome_param_blending; // Phase 1.6-F.4.B.3.D.4: scattered-convolution biome parameter blending (noiseposti.ng)
 pub mod partition_integration;
 pub mod scatter;
 pub mod solver; // Phase 10: AI-Orchestrated Dynamic Terrain
@@ -442,27 +443,36 @@ impl WorldGenerator {
         Ok(chunk)
     }
 
-    /// Phase 1.6-F.4.B.3.D.3b: apply per-vertex biome modulation to a
-    /// halo heightmap.
+    /// Phase 1.6-F.4.B.3.D.3b → D.4: apply per-vertex biome modulation
+    /// to a halo heightmap with scattered-convolution biome blending.
     ///
     /// For each vertex in the halo, the function:
-    /// 1. Samples the climate field at the vertex's current (raw) elevation.
-    /// 2. Looks up the dominant `BiomeId` via `lookup_biome`.
-    /// 3. Looks up the biome's `BiomeParameters` via `for_biome`.
-    /// 4. Re-samples the noise pipeline using
-    ///    `TerrainNoise::sample_height_with_mountain_amplitude` with the
-    ///    biome's `mountains_amplitude` multiplier.
-    /// 5. Replaces the halo's height value with the per-biome-modulated
-    ///    sample and records the biome ID.
+    /// 1. Samples the bootstrap (raw) elevation from the halo.
+    /// 2. Calls
+    ///    `biome_param_blending::blend_biome_parameters(world_x, world_z,
+    ///    bootstrap_elevation, climate_map, &blend_config)` which:
+    ///    - Generates `N` jittered sample positions within `radius` (D.4).
+    ///    - Looks up biome at each sample via climate field + Whittaker.
+    ///    - Distance-weighted blends `mountains_amplitude` and
+    ///      `scatter_density`.
+    ///    - Returns dominant biome (highest summed weight) +
+    ///      blended numeric params.
+    /// 3. Re-samples the noise pipeline with
+    ///    `sample_height_with_mountain_amplitude` using the blended
+    ///    `mountains_amplitude` (continuous across biome boundaries —
+    ///    no flip discontinuity).
+    /// 4. Records the dominant biome ID at this vertex.
     ///
     /// Returns a flat `Vec<BiomeId>` in row-major `(z, x)` order matching
     /// the halo's vertex layout. Length: `halo_res × halo_res`.
     ///
-    /// Cost analysis: 2 noise samples (one for biome-lookup elevation, one
-    /// for per-biome height) + 1 climate sample + 1 biome lookup per vertex.
-    /// The 2x noise cost is the per-vertex price of the architectural
-    /// correction; erosion remains the dominant cost (60s+ per radius-5
-    /// chunk for Temperate climate).
+    /// Cost analysis vs D.3b: D.3b did 1 noise sample (raw, bootstrap) +
+    /// 1 climate sample + 1 biome lookup + 1 noise sample (modulated) per
+    /// vertex. D.4 adds the blending pass: `N` climate samples + `N`
+    /// biome lookups + `N` parameter lookups per vertex. With `N=6`
+    /// default, total per-vertex cost is roughly D.3b + 5 climate samples
+    /// + 5 biome lookups. Climate sampling and biome lookup are both
+    /// pure functions of position — cache-friendly and SIMD-amenable.
     fn apply_per_biome_modulation_to_halo(
         &self,
         halo: &mut heightmap::Heightmap,
@@ -485,6 +495,10 @@ impl WorldGenerator {
         let halo_origin_x = target_origin.x - halo_chunks as f32 * chunk_size;
         let halo_origin_z = target_origin.z - halo_chunks as f32 * chunk_size;
 
+        // F.4.B.3.D.4: blend config defaulted to 6 samples / 48 WU radius.
+        // D.6 Andrew-gate informs whether to tune.
+        let blend_config = crate::biome_param_blending::BiomeParamBlendConfig::default();
+
         let mut biome_ids = Vec::with_capacity(halo_res * halo_res);
         for z_idx in 0..halo_res {
             for x_idx in 0..halo_res {
@@ -495,32 +509,26 @@ impl WorldGenerator {
 
                 let raw_height = halo.get_height(x_idx as u32, z_idx as u32);
 
-                // Climate sample at the raw height. Climate field uses
-                // archetype-driven temperature/moisture/continentalness;
-                // raw height feeds the lapse-rate modulator.
-                let climate = self.climate.sample(wx, wz, raw_height);
-
-                // Whittaker biome lookup. Pure function of climate + elevation.
-                let biome_id = crate::biome_lookup::lookup_biome(
-                    climate.temperature_c,
-                    climate.moisture_mm,
+                // F.4.B.3.D.4: scattered-convolution biome parameter
+                // blending. Produces blended `mountains_amplitude` and
+                // `scatter_density` from N jittered samples + dominant
+                // biome ID. Numeric parameters transition smoothly
+                // across biome boundaries; biome ID stays discrete.
+                let blended = crate::biome_param_blending::blend_biome_parameters(
+                    wx_f32,
+                    wz_f32,
                     raw_height,
+                    &self.climate,
+                    &blend_config,
                 );
-
-                // Per-biome parameters. Currently wires only
-                // `mountains_amplitude` into the noise pipeline; other fields
-                // (ridge_strength, runevision_config, scatter, surface) are
-                // forward-compatible defaults consumed by downstream
-                // subsystems (D.5+).
-                let params = crate::biome_parameters::BiomeParameters::for_biome(biome_id);
 
                 let modulated_height = self.noise.sample_height_with_mountain_amplitude(
                     wx,
                     wz,
-                    params.mountains_amplitude as f32,
+                    blended.mountains_amplitude as f32,
                 );
                 halo.set_height(x_idx as u32, z_idx as u32, modulated_height);
-                biome_ids.push(biome_id);
+                biome_ids.push(blended.dominant_biome);
             }
         }
         halo.recalculate_bounds();
