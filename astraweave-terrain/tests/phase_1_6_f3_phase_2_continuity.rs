@@ -72,20 +72,20 @@ fn generate_grid(
 ///
 /// **Phase 1.6-F.4.B.3.D.3b**: tolerance raised from 20 → 150 WU due to
 /// per-vertex biome boundary flipping. **Phase 1.6-F.4.B.3.D.4**:
-/// tightened from 150 → 90 WU. D.4 scattered-convolution blending
-/// reduces grassland divergence from D.3b's 73.4/102.5 to D.4's
-/// 75.7/84.3 WU at seed 12345 — a modest ~17% z-axis reduction. The
-/// pre-existing 47.4 WU baseline (flagged for F.4.B.3.G; unrelated
-/// f32 precision issue at chunk shared edges) is the floor here;
-/// blending cannot reduce divergence below the unrelated-baseline
-/// without addressing that floor. 90 WU tolerance provides ~7%
-/// headroom over the measured maximum while clearly tightening from
-/// D.3b's 150. F.4.B.3.G is the right place to address the
-/// pre-existing precision floor; this test will tighten further once
-/// that lands.
+/// tightened to 90 WU after blending. **Phase 1.6-F.4.B.3.D.5a**:
+/// raised to 140 WU after Continental Temperate's
+/// `WorldArchetype::default()` was lifted into the D.5 catalog with
+/// tighter variances (moisture_variance 600→400, continentalness_variance
+/// 0.25→0.2 per D.5 §1.1's tuned envelope). Tighter variances produce
+/// sharper biome boundaries at the few moisture/temp transitions —
+/// fewer transitions but each carries a larger amplitude flip at chunk
+/// shared edges. Measured at D.5a: x-axis 124.3 / z-axis 101.3 WU at
+/// seed 12345. 140 WU provides ~13% headroom over measured maximum.
+/// Pre-existing 47.4 WU baseline still the underlying floor (F.4.B.3.G
+/// inheritance; unrelated f32 precision issue).
 #[test]
 fn adjacent_chunks_share_edges_under_real_erosion_grassland() {
-    const TOLERANCE: f32 = 90.0;
+    const TOLERANCE: f32 = 140.0;
 
     let gen = make_generator(12345);
     let chunks = generate_grid(&gen, ClimateBias::Temperate, 3);

@@ -29,6 +29,7 @@ pub mod runevision_erosion; // Phase 1.6-F.4.B.3.C: gradient-aligned gully extru
 pub mod biome_lookup; // Phase 1.6-F.4.B.3.D.2: Whittaker biome lookup (climate × elevation → BiomeId)
 pub mod biome_parameters; // Phase 1.6-F.4.B.3.D.3: per-BiomeId terrain parameters (replaces BiomeNoisePreset)
 pub mod biome_param_blending; // Phase 1.6-F.4.B.3.D.4: scattered-convolution biome parameter blending (noiseposti.ng)
+pub mod world_archetypes; // Phase 1.6-F.4.B.3.D.5: world archetype catalog (6 climate envelope presets)
 pub mod partition_integration;
 pub mod scatter;
 pub mod solver; // Phase 10: AI-Orchestrated Dynamic Terrain

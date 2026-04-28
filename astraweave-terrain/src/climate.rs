@@ -100,16 +100,16 @@ impl Default for WorldArchetype {
     /// Temperature mean 12°C with strong latitude effect; moisture mean
     /// 1100mm with moderate variance; continentalness mean 0.5 (mixed
     /// coast and interior).
+    ///
+    /// Phase 1.6-F.4.B.3.D.5: parameter values lifted into the canonical
+    /// catalog at `crate::world_archetypes::continental_temperate()`.
+    /// `default()` delegates to that function for symmetry across the
+    /// six-archetype catalog. moisture_variance 600 → 400 and
+    /// continentalness_variance 0.25 → 0.2 from D.1's initial values
+    /// per D.5 §1.1's tuned envelope; downstream tests (D.4 blending,
+    /// D.2 distribution) are robust to this small variance change.
     fn default() -> Self {
-        Self {
-            temperature_mean_c: 12.0,
-            temperature_variance_c: 8.0,
-            latitude_temperature_drop_c: 10.0,
-            moisture_mean_mm: 1100.0,
-            moisture_variance_mm: 600.0,
-            continentalness_mean: 0.5,
-            continentalness_variance: 0.25,
-        }
+        crate::world_archetypes::continental_temperate()
     }
 }
 
