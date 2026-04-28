@@ -1958,7 +1958,7 @@ The slight increase in below-280m MC fractions (0.35% → 4.46% CT, 0.39% → 6.
 
 **Next**: F.4.B.3.D.6 (original Andrew-gate + closeout sub-phase) runs after Path B's Andrew-gate verdict. If PASS, D.6 validates the full six-archetype set; if PARTIAL/REGRESS, the deferred work catalog above informs the next remediation prompt.
 
-### 2026-04-28, Sub-phase F.4.B.3.D.5-diagnostic-3 (cross-archetype terrain similarity measurement), commit TBD
+### 2026-04-28, Sub-phase F.4.B.3.D.5-diagnostic-3 (cross-archetype terrain similarity measurement), commit 319f74a13
 
 **Verdict:** Investigation complete (no production code changes; campaign-level decision deferred to Andrew).
 
