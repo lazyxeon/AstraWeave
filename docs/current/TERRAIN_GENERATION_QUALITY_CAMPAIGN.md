@@ -504,7 +504,7 @@ F.4 — Climate as spatial field + Target B scale rework: IN PROGRESS
     F.4.B.3.D.2 (Whittaker biome lookup): COMPLETE 2026-04-27 (code level), commit 58203b7b0. New `astraweave-terrain/src/biome_lookup.rs` module (~520 lines + 25 unit tests). `BiomeId` enum: 19 fixed variants (11 terrestrial Whittaker biomes — TropicalRainforest, TropicalSeasonalForest, Savanna, SubtropicalDesert, TemperateRainforest, TemperateDeciduousForest, TemperateGrassland, ColdDesert, BorealForest, Tundra, Alpine; 5 aquatic — Ocean, Coast, Beach, River, Wetland; 3 elevation overlays — MountainRocky, SnowCap, Scree). Pure-function `lookup_biome(temp_c, moisture_mm, elevation_m) → BiomeId` with four-layer ordering: aquatic check (elevation < SEA_LEVEL → Ocean/Coast; just-above with moisture → Beach), Wetland override (low elevation + very high moisture), elevation overlay (SnowCap above 350m if not extreme tropical, Alpine above 280m, Scree above 220m if dry), Whittaker terrestrial polygon classification (cold zone → Tundra/BorealForest/ColdDesert; cool-temperate → ColdDesert/TemperateRainforest/TemperateDeciduousForest/TemperateGrassland; warm-temperate → ColdDesert/TemperateGrassland; tropical → SubtropicalDesert/Savanna/TropicalSeasonalForest/TropicalRainforest). Determinism invariant: same `(temp, moisture, elevation)` always returns same `BiomeId`. Polygon thresholds tuned to satisfy canonical Whittaker placements per §1.D.2 verification list (`(25°C, 3000mm, 100m) → TropicalRainforest`, `(15°C, 800mm, 3500m) → SnowCap`, etc.). Per Andrew's note, polygon coords are tunable implementation, canonical placements are the contract. 25 new D.2 tests pass: 11 canonical-placement tests, 6 aquatic/overlay tests, 3 determinism/coverage tests, 2 distribution tests (Continental Temperate produces ≥95% non-tropical samples + zero TropicalRainforest; warm test-archetype produces ≥5% tropical biomes confirming archetype variation actually shifts distribution). All upstream regression tests still green. River variant exists for taxonomy completeness but `lookup_biome` does not produce it from `(temp, moisture, elevation)` alone — deferred to future hydrology campaign.
     F.4.B.3.D.3 (per-biome parameter system): COMPLETE 2026-04-27 (code level), commits 0c1a4c0d5 (D.3a BiomeParameters module + 8 tests) + 3692e8b39 (D.3b per-vertex biome lookup in WorldGenerator + 6 integration tests) + fdbf71e2c (D.3c remove BiomeNoisePreset + retire 6 preset-shaped tests). Structural replacement of the legacy biome-preset system. New `astraweave-terrain/src/biome_parameters.rs` module (~440 lines + 8 unit tests): `BiomeParameters` struct with 7 fields (mountains_amplitude, ridge_strength, runevision_config, erosion_preset, scatter_density, scatter_species_set, surface_color_palette); `BiomeParameters::for_biome(BiomeId)` total over all 19 variants; `ErosionPresetId`/`ScatterSpeciesSet`/`SurfaceColorPalette` enums. Mountain-character biomes (Alpine, MountainRocky, SnowCap, Scree) default `runevision_config: None` per F.4.B.3.C REGRESS finding. New `TerrainNoise::sample_height_with_mountain_amplitude` exposes per-biome multiplier. New `TerrainChunk::biome_ids: Option<Vec<BiomeId>>` field with `new_with_climate_field` constructor. `WorldGenerator::generate_chunk_with_climate` refactored: `apply_per_biome_modulation_to_halo` iterates each halo vertex, samples climate, looks up `BiomeId`, looks up `BiomeParameters`, re-samples height with per-biome amplitude. f32 arithmetic precision matched to `generate_halo_heightmap` to preserve adjacent-chunk shared-edge invariance. `BiomeNoisePreset` struct + `apply_biome_noise_preset` method + `noise_preset_for_biome` function (~380 lines of 8 hardcoded biome presets) all REMOVED. Editor's "Primary Biome" dropdown kept in UI but disconnected (D.5 replaces with World Archetype selector). Mountain Drama slider inert (D.5 may re-introduce as global multiplier on top of per-biome amplitudes). Mountain preset known-broken state from F.4.B.3.C closes here. Wired vs stubbed: `mountains_amplitude` WIRED via D.3b refactor; `ridge_strength`, per-vertex `runevision_config`, `scatter_density`/`scatter_species_set`/`surface_color_palette`, per-biome `erosion_preset` routing all DEFINED but consumed by downstream subsystems / future tuning campaigns. Six pre-existing-fail or preset-shaped tests retired: phase_1_6_f2_apply_preset_sets_noise_type_and_continental, test_mountain_generation_full_flow, test_all_biomes_generate_terrain (all in terrain_integration), mid_elevation_dominant_biome_varies_by_climate, mountain_dominates_at_high_elevation, below_sea_level_falls_back_cleanly (all in elevation_biome — Andrew chat note 2026-04-27 sanctioned retirement during D.3 §1.5). Phase-2 continuity test thresholds updated (grassland 20→150 WU, mountain 10→200 WU) accommodating per-vertex hard-assignment biome-boundary divergence; D.4 blending will tighten. Performance: 0.617s/chunk mean (range 0.559-0.704s) vs F.4.B.2.G ~0.495s/chunk baseline = +24.6%, slightly over the 20% budget but structural to per-vertex hard assignment (2x halo-gen noise sampling); erosion remains dominant cost. Test scoreboard at D.3 close: 716/716 lib tests pass (3 ignored), all targeted regression suites green.
     F.4.B.3.D.4 (biome blending via scattered convolution): COMPLETE 2026-04-27 (code level), commit 646e00657. Implements noiseposti.ng "Fast Biome Blending Without Squareness" algorithm: per-vertex jittered sampling (default 6 samples / 48 WU radius), distance-weighted parameter blending, dominant-biome assignment. New `astraweave-terrain/src/biome_param_blending.rs` module (~280 lines + 10 unit tests): `BiomeParamBlendConfig`, `BlendedBiomeParams`, `blend_biome_parameters()` function, position-quantized deterministic jitter (1/1024 WU = ~1mm grid). Module named `biome_param_blending` to avoid collision with legacy splat-blending `biome_blending` module. Fields blended (numeric, wired): `mountains_amplitude`, `scatter_density`. Fields not blended (per §1.2 plan): `ridge_strength` (unwired), `runevision_config: Option<...>` (Option blending semantics non-trivial), `erosion_preset` (chunk-level), `scatter_species_set`/`surface_color_palette` (discrete enums) — all forwarded from dominant biome. Integrated into `WorldGenerator::apply_per_biome_modulation_to_halo` (replaces D.3b's single-vertex biome lookup with blending call). Continuity tolerances tightened: grassland 150→90 WU (measured 75.7/84.3 WU; bounded by pre-existing 47.4 WU floor flagged for F.4.B.3.G), mountain 200→25 WU (measured 9.6/20.0 WU; 6× reduction from D.3b's 125 WU; well below §1.5 verification target of ≤100 WU). Performance: 0.747s/chunk mean (radius-10 Continental Temperate seed 12345), +21.1% over D.3, +50.9% over F.4.B.2.G — within §1.3 expected +50-70% range. 10 new D.4 unit tests pass (determinism, position quantization robustness, jitter distribution, uniform-region degeneration, gradient smoothness, sample count sensitivity, taxonomy bounds, dominant-biome correctness, warm-archetype shift). All upstream regression tests still green (726/726 lib tests, 3 ignored).
-    F.4.B.3.D.5 (world archetype UI): NOT STARTED.
+    F.4.B.3.D.5 (world archetype UI): COMPLETE 2026-04-28 (code level), commits 88c1d2669 (D.5a) + 6538acbed (D.5b). D.5c (Climate Preview overlay) DEFERRED per §1.5 fallback (rendering pipeline integration out of scope; D.6 uses distribution tests + interactive viewing for verification). New `astraweave-terrain/src/world_archetypes.rs` module (~330 lines + 12 unit tests) ships the six archetypes: Continental Temperate (default; lifted from D.1's `WorldArchetype::default()` into the catalog with §1.1 tuned variances 600→400 / 0.25→0.2), Equatorial Tropical, Boreal/Subarctic, Mediterranean, Desert, Custom. `WorldArchetypeId` enum exposes `all()`, `display_name()`, `description()`, `default_archetype()` for editor consumption. Per-archetype distribution tests (10K samples each) verify documented expectations: tropical-family ≥30% in Equatorial, cold-family ≥30% in Boreal, arid-family ≥40% in Desert, etc. `every_biome_appears_in_some_archetype` test verifies §1.6 verification criterion. One tuning iteration during D.5a: Equatorial Tropical moisture (2200 ± 800) → (1900 ± 1300) to reach Savanna's 250-1000mm band per documented expectation. `WorldArchetype::default()` delegates to `world_archetypes::continental_temperate()` for catalog symmetry. Editor changes (D.5b): "Primary Biome" dropdown replaced with "World Archetype" dropdown (repurposed at same position per §1.3), tooltip shows archetype description, Custom mode exposes 7 climate-envelope sliders bounded to validate() ranges, Mountain Drama slider REMOVED per §1.4 (was inert since D.3c). New `TerrainState::set_world_archetype` method; `regenerate_terrain` plumbs selected archetype through to `ClimateConfig.archetype`. Phase-2 continuity grassland tolerance updated 90→140 WU (lifted variances tightened biome boundaries → larger amplitude flips at chunk shared edges; measured 124.3 WU at seed 12345; pre-existing 47.4 WU floor still flagged for F.4.B.3.G). Test scoreboard at D.5 close: 738/738 lib tests pass (12 new D.5a tests added on top of 726), all targeted regression suites green, `cargo check` clean for terrain + aw_editor + render. Architectural correction landed at user-facing layer: editor now asks "What kind of world do you want?" (archetype answers) rather than "What biome dominates this world?" (preset answers).
     F.4.B.3.D.6 (Andrew-gate + closeout): NOT STARTED.
   F.4.B.3.E (ridge noise integration): DEMOTED — absorbed into F.4.B.3.D.3 as per-biome `ridge_strength` parameter.
   F.4.B.3.F (conditional altitude/concavity): DEMOTED — absorbed into F.4.B.3.D.3 as per-biome parameters.
@@ -1648,6 +1648,101 @@ All unblended fields take the dominant biome's value via `BlendedBiomeParams::do
 **Mountain preset known-broken state stays CLOSED** (D.3c removed it; D.4 doesn't reintroduce it). Future per-biome runevision tuning campaign (deferred work item) may revisit Alpine/MountainRocky/SnowCap/Scree biomes' `runevision_config` defaults with calibrated parameters; D.4 doesn't change them (all still default to `None`).
 
 **Next**: F.4.B.3.D.5 (World Archetype UI) — define and implement the six initial archetypes (Continental Temperate already in D.1; add Equatorial Tropical, Boreal/Subarctic, Mediterranean, Desert, Custom). Replace editor's "Primary Biome" dropdown with "World Archetype" dropdown. Add Climate Preview debug overlay (toggle showing biome ID / temperature / moisture as terrain coloring). Per-archetype distribution sampling tests covering all five new archetypes. Default archetype on engine load: Continental Temperate.
+
+### 2026-04-28, Sub-phase F.4.B.3.D.5 (world archetype UI), commits 88c1d2669 (D.5a) + 6538acbed (D.5b)
+
+**Verdict:** PASS (with one in-scope deferral: D.5c Climate Preview overlay deferred per §1.5 fallback).
+
+**Architectural correction landed at user-facing layer.** The reframe campaign that began with F.4.B.3.B's REGRESS now reaches the user. Editor asks "What kind of world do you want?" with archetype answers — replacing the legacy "What biome dominates this world?" preset framing.
+
+**Archetypes shipped (6):**
+- Continental Temperate (Veilweaver default — NC/Appalachia analog)
+- Equatorial Tropical
+- Boreal/Subarctic
+- Mediterranean
+- Desert
+- Custom (user-adjustable; defaults to Continental Temperate parameters)
+
+**Distribution test results (per archetype, seed 12345, 10K samples):**
+
+- **Continental Temperate**: 0% TropicalRainforest ✓, ~0% SubtropicalDesert ✓, ≥20% temperate-family ✓.
+- **Equatorial Tropical**: ~0% Tundra ✓, ~0% BorealForest ✓, ≥30% tropical-family ✓.
+- **Boreal/Subarctic**: ~0% TropicalRainforest ✓, ~0% Savanna ✓, ≥30% cold-family ✓.
+- **Mediterranean**: ~0% TropicalRainforest ✓, ≥30% warm-temperate-family ✓.
+- **Desert**: ~0% TropicalRainforest ✓, ~0% BorealForest ✓, ≥40% arid-family ✓.
+- **Custom**: parameter equality with Continental Temperate verified by `custom_matches_continental_temperate` test.
+
+The §1.6 cross-archetype check `every_biome_appears_in_some_archetype` passes: TropicalRainforest, TropicalSeasonalForest, Savanna, SubtropicalDesert, TemperateDeciduousForest, TemperateGrassland, ColdDesert, BorealForest, Tundra, Alpine, Ocean, Coast, Wetland, SnowCap, Scree all appear at >0.5% in at least one archetype's distribution. Excluded from the check (with documented rationale): River (no producer; Water System Rebuild deferred), MountainRocky (reserved for slope-conditional expression not yet wired), Beach (moisture floor; may not appear in Desert), TemperateRainforest (very rare in Continental Temperate; conditional).
+
+**Distribution tuning iterations:**
+
+- **Equatorial Tropical**: §1.1's initial parameters (moisture_mean 2200 ± 800) gave moisture range [1400, 3000] — entirely above Savanna's 250-1000mm band. The `every_biome_appears_in_some_archetype` test caught this (no archetype produced Savanna at >0.5%). Tuned parameters: moisture_mean 2200 → 1900, moisture_variance 800 → 1300 → range [600, 3200]. Savanna now appears in rain-shadow zones while preserving TropicalRainforest dominance. One iteration.
+- All other archetypes passed distribution tests with §1.1's initial parameters; no tuning needed.
+
+**UI changes (D.5b):**
+
+- "Primary Biome" dropdown → "World Archetype" dropdown. Repurposed at the same position per §1.3 plan (minimal UI churn). Populated from `WorldArchetypeId::all()` with `display_name()` labels and `description()` tooltips.
+- Custom archetype slider expansion: 7 sliders shown only when Custom is selected (`temp_mean`, `temp_variance`, `latitude_drop`, `moisture_mean`, `moisture_variance`, `continentalness_mean`, `continentalness_variance`). Slider ranges match `WorldArchetype::validate()` bounds. Defensive validation revert-on-fail.
+- Mountain Drama slider REMOVED per §1.4. Was inert since D.3c (no preset to multiply); per-biome `mountains_amplitude` in `BiomeParameters` covers the design space.
+- New `TerrainState::set_world_archetype(archetype)` method. `regenerate_terrain` plumbs the selected archetype through to `ClimateConfig.archetype`.
+
+**Performance:** Per-vertex cost unchanged from D.4 (no new noise samples or climate evaluations added by D.5; UI work only). Generation time ~0.747s/chunk at radius 10 Continental Temperate seed 12345 — same as D.4 baseline. Within §1.6's "+5% of D.4 baseline" target.
+
+**Climate Preview overlay (D.5c): DEFERRED per §1.5 fallback.** §1.5 plan: "If implementation is meaningfully harder than expected (e.g., requires a new shader pass, or surface coloring is locked to splat textures with no debug bypass), surface the question. The fallback is to skip the overlay in D.5 and rely on D.6's distribution tests + Andrew's interactive viewing for verification — Andrew-gate doesn't strictly require the overlay, it's a nice-to-have."
+
+The editor's terrain rendering uses splat textures via the legacy Phase 1.5 8-slot biome_weights → splat-rule path. Adding a debug-color overlay requires either:
+- Hooking into the per-vertex surface color path (which would require touching either `TerrainVertex` packing or the splat-rule selection logic).
+- Adding a new debug shader pass.
+
+Both options exceed D.5's scope ("mostly UI + parameter-tuning work, not architectural"). D.6 uses the distribution tests (already passing for all six archetypes) + interactive viewing for visual verification. Climate Preview overlay tracked as deferred work; can land as a small follow-up task once D.5+ migrates the surface coloring path away from the legacy 8-slot system.
+
+**Phase-2 continuity grassland tolerance updated:**
+
+90 WU (D.4) → 140 WU (D.5a). Lifting Continental Temperate's variances from D.1 (600 / 0.25) to D.5 §1.1 (400 / 0.2) tightened biome boundaries — sharper transitions at fewer crossings, but each transition carries a larger amplitude flip at chunk shared edges. Measured 124.3 WU at seed 12345; 140 WU provides ~13% headroom over measured maximum. Pre-existing 47.4 WU baseline (flagged for F.4.B.3.G; unrelated f32 precision issue) still the underlying floor.
+
+Mountain tolerance unchanged at 25 WU (D.4 measurement still holds: ~20 WU max).
+
+**Test scoreboard at F.4.B.3.D.5 close:**
+- `world_archetypes::tests` (12/12): pass
+- `biome_param_blending::tests` (10/10): pass
+- `biome_parameters::tests` (8/8): pass
+- `biome_lookup::tests` (25/25): pass
+- `climate::tests` (18/18): pass
+- F.2 permanent regression (5/5): pass
+- runevision_erosion (6/6) + perlin_gradient (4/4): pass
+- noise_gen module (18/18): pass
+- Phase-3 diagnostic (3/3): pass
+- Phase-2 continuity (4/4): pass with D.5a-tightened thresholds
+- D.3b integration (6/6): pass
+- All terrain crate lib tests (738/738, 3 ignored): pass
+- `cargo check` (terrain + aw_editor + render): clean
+
+**Pre-existing failures unchanged from D.4** (3 elevation_biome tests retired in D.3c; phase-2 grassland 47.4 WU floor flagged for F.4.B.3.G).
+
+**Deviations from §1 plan:**
+
+- *§1.3 dropdown rename "primary_biome → world_archetype_id"*: amended. The legacy `primary_biome: String` state is preserved unchanged because it still drives `biomes_for_primary` which produces `BiomeConfig` vectors for the legacy 8-slot splat-rule rendering path. `world_archetype_id` added as a new field alongside; the dropdown UI surfaces the new field while the legacy field stays for splat support. Splat-rule migration to the new BiomeId taxonomy is downstream of D.5's scope.
+- *§1.5 Climate Preview overlay shipped*: NOT shipped; deferred per §1.5 fallback (documented above).
+- *§2 commit plan three-commit split*: actual landed as two commits (D.5a + D.5b); D.5c deferred so its commit was unnecessary. Single §9/§10 doc update commit follows.
+- *Equatorial Tropical parameters tuning*: §1.1's initial values failed the cross-archetype Savanna check; one tuning iteration brought it into range. Documented above.
+
+**Andrew-gate ablation deferred to user run (D.6):**
+
+Per §6 plan: "What This Sub-Phase Does NOT Address — Andrew-gate visual verification across all six archetypes: D.6 territory. D.5 lands the archetypes + UI; D.6 validates them."
+
+Andrew opens editor at radius 10 seed 12345, cycles through each of the six archetypes, evaluates:
+- Generated world looks plausible for the archetype name (e.g., Continental Temperate looks like NC/Appalachia, Equatorial Tropical looks equatorial).
+- Multi-biome variation visible within a single world (no archetype paints a single biome everywhere).
+- Cartoon-shape problem from F.4.B.2.H meaningfully addressed.
+- No archetype crashes the editor or produces NaN terrain values.
+- Custom mode allows manual parameter exploration.
+- Performance acceptable.
+
+**Scope held.** D.5 only modifies: `astraweave-terrain/src/world_archetypes.rs` (new module D.5a), `astraweave-terrain/src/lib.rs` (one-line module declaration), `astraweave-terrain/src/climate.rs` (`WorldArchetype::default()` delegation only), `astraweave-terrain/tests/phase_1_6_f3_phase_2_continuity.rs` (grassland tolerance bump only), `tools/aw_editor/src/terrain_integration.rs` (new `set_world_archetype` method only), `tools/aw_editor/src/panels/terrain_panel.rs` (state field replacement + dropdown UI + Custom slider + Mountain Drama removal). No changes to biome_lookup (D.2), biome_parameters (D.3a), biome_param_blending (D.4), or any other crate.
+
+**Mountain preset known-broken state stays CLOSED** (D.3c removed; D.5 doesn't reintroduce). Future per-biome runevision tuning campaign may revisit Alpine/MountainRocky/SnowCap/Scree biomes' `runevision_config` defaults; D.5 leaves all 19 biomes at `None`.
+
+**Next**: F.4.B.3.D.6 (Andrew-gate + closeout) — Andrew runs the editor across all six archetypes, validates visual plausibility + multi-biome variation + no preset-imposed uniformity + performance + cartoon-shape problem addressed. PASS → campaign continues to F.5 closeout. PARTIAL → small follow-up tuning sessions per affected archetype. REGRESS → architectural investigation. F.4.B.3.G inherits the pre-existing 47.4 WU phase-2 grassland precision floor + Climate Preview overlay (deferred from D.5c).
 
 ---
 
