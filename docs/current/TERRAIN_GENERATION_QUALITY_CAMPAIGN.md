@@ -2020,7 +2020,7 @@ The slight increase in below-280m MC fractions (0.35% → 4.46% CT, 0.39% → 6.
 
 **Next**: Andrew selects Path 1 (new sub-campaign launch prompt) or Path 2 (D.6 closeout prompt with deferred-work catalog).
 
-### 2026-04-29, Sub-phase F.4.B.3.D.5-research (regional archetype variation research pass), commit TBD
+### 2026-04-29, Sub-phase F.4.B.3.D.5-research (regional archetype variation research pass), commit 47559062d
 
 **Verdict:** Investigation complete (no production code changes; precondition for new-campaign launch).
 
