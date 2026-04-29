@@ -1,6 +1,6 @@
 # Regional Archetype Variation Campaign — Phase 1.X
 
-**Status**: F.0 (campaign plan) COMPLETE 2026-04-29, commit TBD. F.1-F.8 NOT STARTED.
+**Status**: F.0 (campaign plan) COMPLETE 2026-04-29, commit 0e51763d4. F.1-F.8 NOT STARTED.
 **Scope**: Deliver regional archetype variation in AstraWeave's heightmap terrain pipeline. Each generated world contains 5-10 archetype regions (one per Tikva storyline), painted by the writer onto a 2D archetype mask, with smooth blending between adjacent regions. Per-archetype shape character is produced by climate-driven shape splines (Minecraft 1.18+ pattern) that map climate parameters to bootstrap noise parameters. Architecture: **Hybrid C + F** per `docs/audits/regional_archetype_variation_research_2026-04-29.md` §7 (paintable archetype mask + climate-driven shape splines per archetype). Eight sub-phases (F.0-F.8) executed as separate sessions; integrates with D.1-D.5 landed work as the within-region machinery.
 **Author**: Plan drafted 2026-04-29 by the campaign-design session, against the research audit and Andrew's 2026-04-29 chat clarification of the regional-variation product target.
 **Prior work**: `docs/audits/regional_archetype_variation_research_2026-04-29.md` (the research audit; this campaign's load-bearing input). `docs/audits/f4b3d5_diagnostic_3_cross_archetype_2026-04-28.md` (the architectural-gap data that motivated the research pass). `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` (predecessor; F.4.B.3.D delivered D.1-D.5 within-region machinery; closed via architectural pivot in a parallel session).
@@ -988,7 +988,7 @@ Mirrors predecessor campaign's §8. Items explicitly out of scope:
 This section must be updated in the same commit that completes each sub-phase per §0 discipline.
 
 ```text
-F.0 — Campaign plan: COMPLETE 2026-04-29, commit TBD.
+F.0 — Campaign plan: COMPLETE 2026-04-29, commit 0e51763d4.
 F.1 — Climate field extension: NOT STARTED.
 F.2 — BootstrapSplineSet infrastructure: NOT STARTED.
 F.3 — Spline wiring (single archetype regression): NOT STARTED.
@@ -1016,7 +1016,7 @@ Format for entries:
 **Impact:** <what parts of later sub-phases or other systems are affected>
 ```
 
-### 2026-04-29, Sub-phase F.0 (campaign-design pass), commit TBD
+### 2026-04-29, Sub-phase F.0 (campaign-design pass), commit 0e51763d4
 
 **Launch entry — not a deviation; captures F.0's resolutions of §3.A-§3.F architectural decisions per F.0 prompt §3 with rationale.**
 
