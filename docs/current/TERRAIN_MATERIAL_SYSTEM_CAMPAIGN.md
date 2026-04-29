@@ -500,7 +500,7 @@ These items are intentionally not part of Path C and are logged here to prevent 
 
 This section must be updated in the same commit that completes each phase.
 
-**Phase 1 — Splat pipeline activation (forward-lit per Option D): LANDED 2026-04-20, commits `7edb15515` (1.F initial close-out) + `bb70d0d8b` (post-completion triangle-streak fix). Re-opened 2026-04-21 for Issues 1 (chunk seam grid) and 2 (invisible Forest/Mountain biomes) remediation. See §9.**
+**Phase 1 — Splat pipeline activation (forward-lit per Option D): COMPLETE 2026-04-29 per Phase 1.6-F's F.5 reduced closeout. Originally LANDED 2026-04-20 commits `7edb15515` (1.F initial close-out) + `bb70d0d8b` (post-completion triangle-streak fix); re-opened 2026-04-21 for Issues 1 (chunk seam grid) and 2 (invisible Forest/Mountain biomes); Issues 1 + 2 addressed across Phase 1.6-F's F.1-F.4 sub-phases (amplitude tuning, DomainWarped + continental modulation, AdvancedErosionSimulator wiring with halo, Target B scale rework). Re-marked COMPLETE in this closure session per Phase 1.6-F's F.5 reduced closeout scope. See `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §9 closure entry for the chain.**
 
 Sub-steps landed (in order):
   - 1.A (commit `1233537fe`) — feature flag flipped to default on.
@@ -519,7 +519,7 @@ Sub-steps landed (in order):
   - 1.E.5 (commit `b5fafc8ae`) — `EditorTerrainSplat` field removed from `EngineRenderAdapter`; import, init, struct entry, and the two 1.C usage sites deleted. The `terrain_splat.rs` module stays on disk flagged SUPERSEDED. §9 updated with the supersession deviation entry.
   - 1.F (commit `7edb15515`) — final verification pass, §7 closed, document header updated.
 
-**Phase 1.5 — Heightmap-driven multi-biome generation: LANDED 2026-04-20, commits `92c7f02af` (plan), `e160b8894` (elevation_biome module), `2590c0b87` (chunk-gen wiring), `77bd4adf6` (initial close-out) + tuning pass `fa01f44a7` (Y-range investigation), `990dbac63` (band retune), `df76d5689` (tuning closeout). Per-vertex biome weights come from `astraweave_terrain::elevation_to_biome_weights(world_y, SEA_LEVEL, ClimateBias::from_primary_biome_str(primary_biome))` in `tools/aw_editor/src/terrain_integration.rs::generate_heightmap_mesh`. `terrain_primary_biome` field semantics changed from single-biome selector to climate bias. Measured per-vertex distribution on seed `12345` Temperate: Beach 18.26% / Grassland 12.05% / Forest 38.91% / Mountain 30.79%. Visual verification blocked on Phase 1 re-cleanup (2026-04-21): per-vertex data is correct but Forest and Mountain are not visibly rendering, and chunk boundary grid is visible. See §9.**
+**Phase 1.5 — Heightmap-driven multi-biome generation: COMPLETE 2026-04-29 per Phase 1.6-F's F.5 reduced closeout. Originally LANDED 2026-04-20, commits `92c7f02af` (plan), `e160b8894` (elevation_biome module), `2590c0b87` (chunk-gen wiring), `77bd4adf6` (initial close-out) + tuning pass `fa01f44a7` (Y-range investigation), `990dbac63` (band retune), `df76d5689` (tuning closeout). Phase 1.6-F's F.4.B.3.D.3 (commit `fdbf71e2c`) removed the legacy `BiomeNoisePreset` system that Phase 1.5's `ClimateBias::from_primary_biome_str` operated against; Phase 1.5's `elevation_to_biome_weights` API and 8-slot biome weights are preserved as legacy support for splat-rule selection while Phase 1.6-F's D.4 (commit `646e00657`) replaced the band-based blending semantics with scattered-convolution biome blending. Three pre-existing-fail elevation_biome tests retired in F.4.B.3.D.3c per Andrew chat note. Re-marked COMPLETE in this closure session. See `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §9 closure entry for the chain.**
 
 Sub-steps landed (in order):
   - 1.5.A (commit `92c7f02af`) — campaign plan amended to add Phase 1.5 spec (§3.5, §7 status line, §6 scope clarification).
@@ -537,6 +537,10 @@ Sub-steps landed (in order):
 - `cargo build -p aw_editor --release`: clean 5m 36s build.
 
 **Interactive visual verification (Andrew's gate):** launching the editor against a terrain project with seed `12345` Grassland-primary should now show a Beach band near Y=2.0, Grassland in lowlands, Forest at mid-elevation, and Mountain at high elevation, with smooth transitions between them. Changing `terrain_primary_biome` to `"tundra"` should produce a colder distribution (no Forest, more Tundra). Testing with `primary_biome = "grassland"` rather than `"beach"/"river"/"swamp"` avoids the corrupt water overlay from water audit incidental #1 (`EngineRenderAdapter::update_water` has no caller in the editor).
+
+**Phase 1.6-F — Terrain Generation Quality Campaign: CLOSED VIA ARCHITECTURAL PIVOT 2026-04-29, commit TBD.** F.0–F.3 COMPLETE; F.4.B.1, F.4.B.2 COMPLETE; F.4.B.3.A, F.4.B.3.C, F.4.B.3.D.1–D.5 + D.5-fix + D.5-research COMPLETE; F.4.B.3.B REVERTED; F.4.B.3.D CLOSED VIA ARCHITECTURAL PIVOT to new Regional Archetype Variation campaign; F.4.B.3.E/F demoted (absorbed into D.3); F.4.B.3.G NOT STARTED (47.4 WU phase-2 grassland precision floor; standalone follow-up); F.5 CLOSED WITH REDUCED SCOPE. See `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §10 closure entry for full rationale.
+
+**Phase 1.X — Regional Archetype Variation Campaign: IN PROGRESS 2026-04-29.** F.0 COMPLETE 2026-04-29 (commit `0e51763d4`); F.1-F.8 NOT STARTED. New campaign delivers paintable archetype mask + climate-driven shape splines per archetype (Hybrid C + F architecture per `docs/audits/regional_archetype_variation_research_2026-04-29.md`). Eight sub-phases specified; estimated 8-12 sessions. See `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` for the new campaign's ground-truth document. Phase 1.6-F's D.1-D.5 deliverables preserved as the within-region machinery that this new campaign builds on top of.
 
 **Phase 2 — Per-vertex material data extension:** NOT STARTED
 **Phase 3 — Settings, wizard, conflict dialog, final polish:** NOT STARTED
@@ -974,6 +978,16 @@ pipeline work beyond the Phase 1 rendering path.
   Phase 1 and 1.5 status lines stay as they are. They flip to COMPLETE
   only when F.5's closeout commit lands, per the F campaign's §0
   discipline.
+
+### 2026-04-29, Phase 1.6-F closure via architectural pivot, commit TBD
+
+Phase 1.6-F (Terrain Generation Quality Campaign) CLOSED VIA ARCHITECTURAL PIVOT 2026-04-29. F.0–F.3 COMPLETE; F.4.B.1, F.4.B.2 COMPLETE; F.4.B.3.A, F.4.B.3.C, F.4.B.3.D.1–D.5 + D.5-fix + D.5-research COMPLETE; F.4.B.3.B REVERTED; F.4.B.3.D CLOSED VIA ARCHITECTURAL PIVOT to new Regional Archetype Variation campaign; F.4.B.3.E/F demoted (absorbed into D.3); F.4.B.3.G NOT STARTED (standalone follow-up); F.5 CLOSED WITH REDUCED SCOPE. See `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §10 closure entry for full rationale. New campaign launched at `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` (F.0 commit `0e51763d4`). Phase 1 + Phase 1.5 re-marked COMPLETE per F.5's reduced closeout scope. Phase 1.X (Regional Archetype Variation) added to §7 as IN PROGRESS.
+
+**Why CLOSED VIA PIVOT and not COMPLETE/PARTIAL**: F.4.B.3.D's implicit promise (per-archetype world variety via D.5b's archetype dropdown) was measured architecturally undeliverable within F.4.B.3.D's scope (cross-archetype Pearson 0.978-0.989 per diagnostic-3 audit; 1-of-18 bootstrap parameters archetype-aware; bootstrap dominates 72-81% of terrain shape variance and is structurally archetype-agnostic). The architectural correction (paintable archetype mask + climate-driven shape splines per archetype) is upstream of F.4.B.3.D's biome-classification layer — a different and larger scope that warrants its own campaign rather than scope expansion in-flight. CLOSED VIA PIVOT names the honest framing.
+
+**What landed within Phase 1.6-F's scope** (D.1-D.5 deliverables preserved as within-region machinery for new campaign): per-vertex `ClimateMap::sample` with real-world-units API; Whittaker `BiomeId` taxonomy + `lookup_biome` deterministic function; per-biome `BiomeParameters` system replacing legacy `BiomeNoisePreset`; scattered-convolution biome blending; six `WorldArchetype` climate envelopes + editor UI; Path B amplitude reduction for elevation-overlay biomes (max real-chunk elevation 1214m → 698.5m); two diagnostic audits + one research audit. All ship-quality within their architectural scope.
+
+**Campaign-level lessons for future campaigns** (captured in `TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §10 closure entry; summarized here for parent-campaign navigation): (1) code-level PASS is not plan-level success without Andrew-gate; (2) first-principles drafting at F.0 produces architectural blind spots — survey AAA prior art before commitment; (3) scope creep across sub-phases compounds — research-pass-before-reframe rather than expanding in-flight; (4) diagnostic-then-remediate beats remediate-then-discover. The new campaign's §0 bakes these as non-negotiable structural commitments.
 
 ---
 

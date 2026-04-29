@@ -180,7 +180,13 @@
 
 **astraweave-terrain**
 - Types: `Biome`, `BiomeType`, `ChunkManager`, `TerrainChunk`, `Heightmap`, `VoxelGrid`, `WorldConfig`, `ZoneRegistry`
-- 25+ modules: erosion, marching cubes, LOD, noise, scatter, biome blending, blueprint zones
+- Climate-field architecture (Phase 1.6-F D.1): `ClimateMap`, `ClimateSample` (real-world units: temperature_c, moisture_mm, continentalness), `WorldArchetype` (climate envelope: means + variances + latitude_temperature_drop_c), `ClimateMap::sample(x, z, elevation) → ClimateSample` per-vertex API.
+- Whittaker biome lookup (Phase 1.6-F D.2): `BiomeId` enum with 19 fixed variants (11 terrestrial Whittaker + 5 aquatic + 3 elevation overlays); `lookup_biome(temp_c, moisture_mm, elevation_m) → BiomeId` deterministic four-layer-ordered classifier.
+- Per-biome parameter system (Phase 1.6-F D.3): `BiomeParameters` (mountains_amplitude, ridge_strength, runevision_config, erosion_preset, scatter_density, scatter_species_set, surface_color_palette); `BiomeParameters::for_biome(BiomeId)` total over all 19 variants. Replaces legacy `BiomeNoisePreset` (removed D.3c).
+- Scattered-convolution biome blending (Phase 1.6-F D.4, NoisePosti.ng-style): `BiomeParamBlendConfig`, `BlendedBiomeParams`, `blend_biome_parameters()` — N jittered samples per vertex with distance-weighted parameter blending and dominant-biome assignment, position-quantized for shared-edge invariance.
+- World archetype catalog (Phase 1.6-F D.5): `WorldArchetypeId` enum (6 variants: Continental Temperate, Equatorial Tropical, Boreal/Subarctic, Mediterranean, Desert, Custom); `world_archetypes::all()`, `display_name()`, `description()`, `default_archetype()` for editor consumption.
+- 30+ modules: erosion (`advanced_erosion`, `runevision_erosion`), marching cubes, LOD, noise (`noise_gen`, `perlin_gradient`), scatter, climate (`climate`), biome lookup (`biome_lookup`), per-biome parameters (`biome_parameters`), biome param blending (`biome_param_blending`), legacy splat blending (`biome_blending`), world archetypes (`world_archetypes`), blueprint zones.
+- Phase 1.6-F (Terrain Generation Quality Campaign) CLOSED VIA ARCHITECTURAL PIVOT 2026-04-29; D.1-D.5 deliverables preserved as within-region machinery for new Phase 1.X (Regional Archetype Variation) campaign at `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md`.
 
 **astraweave-nav**
 - Types: `NavMesh`, `NavTri`, `Triangle`, `Aabb`
@@ -598,7 +604,7 @@ Team color mapping (when not selected):
 | Physics engine | `astraweave-physics/src/{character_controller,spatial_hash}.rs` |
 | Combat system | `astraweave-gameplay/src/combat_physics.rs` |
 | SIMD math | `astraweave-math/src/{simd_vec,simd_mat,simd_quat,simd_movement}.rs` |
-| Terrain generation | `astraweave-terrain/src/{voxel_mesh,biome_pack,biome,scatter,blueprint_zone}.rs` |
+| Terrain generation | `astraweave-terrain/src/{voxel_mesh,biome_pack,biome,scatter,blueprint_zone,climate,biome_lookup,biome_parameters,biome_param_blending,world_archetypes}.rs` |
 | Blend import | `crates/astraweave-blend/src/{decomposer,texture_processor,importer}.rs` |
 | Editor entry points | `tools/aw_editor/src/{main,lib,command,ui/mod}.rs` |
 | Viewport module structure | `tools/aw_editor/src/viewport/mod.rs` |
