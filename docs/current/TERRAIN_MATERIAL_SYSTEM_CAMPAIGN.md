@@ -538,7 +538,7 @@ Sub-steps landed (in order):
 
 **Interactive visual verification (Andrew's gate):** launching the editor against a terrain project with seed `12345` Grassland-primary should now show a Beach band near Y=2.0, Grassland in lowlands, Forest at mid-elevation, and Mountain at high elevation, with smooth transitions between them. Changing `terrain_primary_biome` to `"tundra"` should produce a colder distribution (no Forest, more Tundra). Testing with `primary_biome = "grassland"` rather than `"beach"/"river"/"swamp"` avoids the corrupt water overlay from water audit incidental #1 (`EngineRenderAdapter::update_water` has no caller in the editor).
 
-**Phase 1.6-F — Terrain Generation Quality Campaign: CLOSED VIA ARCHITECTURAL PIVOT 2026-04-29, commit TBD.** F.0–F.3 COMPLETE; F.4.B.1, F.4.B.2 COMPLETE; F.4.B.3.A, F.4.B.3.C, F.4.B.3.D.1–D.5 + D.5-fix + D.5-research COMPLETE; F.4.B.3.B REVERTED; F.4.B.3.D CLOSED VIA ARCHITECTURAL PIVOT to new Regional Archetype Variation campaign; F.4.B.3.E/F demoted (absorbed into D.3); F.4.B.3.G NOT STARTED (47.4 WU phase-2 grassland precision floor; standalone follow-up); F.5 CLOSED WITH REDUCED SCOPE. See `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §10 closure entry for full rationale.
+**Phase 1.6-F — Terrain Generation Quality Campaign: CLOSED VIA ARCHITECTURAL PIVOT 2026-04-29, commit d7c5be917.** F.0–F.3 COMPLETE; F.4.B.1, F.4.B.2 COMPLETE; F.4.B.3.A, F.4.B.3.C, F.4.B.3.D.1–D.5 + D.5-fix + D.5-research COMPLETE; F.4.B.3.B REVERTED; F.4.B.3.D CLOSED VIA ARCHITECTURAL PIVOT to new Regional Archetype Variation campaign; F.4.B.3.E/F demoted (absorbed into D.3); F.4.B.3.G NOT STARTED (47.4 WU phase-2 grassland precision floor; standalone follow-up); F.5 CLOSED WITH REDUCED SCOPE. See `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §10 closure entry for full rationale.
 
 **Phase 1.X — Regional Archetype Variation Campaign: IN PROGRESS 2026-04-29.** F.0 COMPLETE 2026-04-29 (commit `0e51763d4`); F.1-F.8 NOT STARTED. New campaign delivers paintable archetype mask + climate-driven shape splines per archetype (Hybrid C + F architecture per `docs/audits/regional_archetype_variation_research_2026-04-29.md`). Eight sub-phases specified; estimated 8-12 sessions. See `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` for the new campaign's ground-truth document. Phase 1.6-F's D.1-D.5 deliverables preserved as the within-region machinery that this new campaign builds on top of.
 
@@ -979,7 +979,7 @@ pipeline work beyond the Phase 1 rendering path.
   only when F.5's closeout commit lands, per the F campaign's §0
   discipline.
 
-### 2026-04-29, Phase 1.6-F closure via architectural pivot, commit TBD
+### 2026-04-29, Phase 1.6-F closure via architectural pivot, commit d7c5be917
 
 Phase 1.6-F (Terrain Generation Quality Campaign) CLOSED VIA ARCHITECTURAL PIVOT 2026-04-29. F.0–F.3 COMPLETE; F.4.B.1, F.4.B.2 COMPLETE; F.4.B.3.A, F.4.B.3.C, F.4.B.3.D.1–D.5 + D.5-fix + D.5-research COMPLETE; F.4.B.3.B REVERTED; F.4.B.3.D CLOSED VIA ARCHITECTURAL PIVOT to new Regional Archetype Variation campaign; F.4.B.3.E/F demoted (absorbed into D.3); F.4.B.3.G NOT STARTED (standalone follow-up); F.5 CLOSED WITH REDUCED SCOPE. See `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` §10 closure entry for full rationale. New campaign launched at `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` (F.0 commit `0e51763d4`). Phase 1 + Phase 1.5 re-marked COMPLETE per F.5's reduced closeout scope. Phase 1.X (Regional Archetype Variation) added to §7 as IN PROGRESS.
 
