@@ -2064,6 +2064,12 @@ The painted mask gives writer **what** the region is. The splines + per-archetyp
 
 **Next**: campaign-design session drafts new ground-truth doc.
 
+### 2026-04-29, Sub-phase F.4.B.3.D.5-design (campaign-design pass for new campaign), commit TBD
+
+**Note (not a deviation; small recordkeeping entry).** The campaign-design session that follows F.4.B.3.D.5-research has run. New campaign ground-truth document drafted at `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md`. Eight sub-phases (F.0-F.8) specified; six §2 architectural decisions (climate field dimensionality, BootstrapSplineSet design, RegionalArchetypeMask design, archetype blending math, composition with D.4, authoring UI shape) resolved with rationale captured in the new doc's §10 launch entry. F.4.B.3.D deferred-work split confirmed (Climate Preview overlay D.5c → F.5; ET archetype-specific tuning → F.7; bootstrap noise pipeline elevation skew → F.7; rest standalone). Andrew-gate gating policy baked in: F.1/F.2/F.8 code-level only; F.3/F.4/F.5/F.6/F.7 require Andrew-gate before §9 COMPLETE.
+
+**No production code changes in this session.** Campaign-design pass deliverable is the new ground-truth doc + this small note. F.4.B.3.D closure remains pending (separate session) and will mark F.4.B.3.D as CLOSED VIA PIVOT referencing the new campaign.
+
 ---
 
 - `docs/audits/heightmap_generator_audit_2026-04-21.md` — the audit that surfaced the unwired components, catalogued the six intervention options, and motivated this campaign (Option F selected).
