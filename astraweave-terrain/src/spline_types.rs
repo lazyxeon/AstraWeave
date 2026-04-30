@@ -112,7 +112,7 @@ impl PvFold {
 ///
 /// Pure function; same `(control_points, input)` always produces same
 /// output. f32 arithmetic determinism inherited from std.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Spline1D {
     /// Sorted (ascending by input) `(input, output)` control points.
     /// Empty is valid (returns `1.0` from `evaluate`); single-point is
@@ -274,7 +274,7 @@ impl ClimateInputDim {
 /// multi-spline product earns its keep. If F.7 needs true 3-axis
 /// separable form, it adds a `ParamSplineMulti` type or refactors
 /// `ParamSpline` to carry `[ParamSplineAxis; 3]`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParamSpline {
     pub climate_input: ClimateInputDim,
     pub spline: Spline1D,
@@ -346,12 +346,25 @@ pub struct BootstrapParams {
 /// sample. Per campaign doc §2.6 / F.2 prompt §0, F.7 is where
 /// per-archetype tuning differentiates the splines; F.2 ships 6 catalog
 /// defaults all at single-control-point F.4.B.3.D.5-fix baseline values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BootstrapSplineSet {
     pub mountains_amplitude: ParamSpline,
     pub mountains_scale: ParamSpline,
     pub continental_scale: ParamSpline,
     pub base_elevation_amplitude: ParamSpline,
+}
+
+impl Default for BootstrapSplineSet {
+    /// Default `BootstrapSplineSet` is the F.4.B.3.D.5-fix baseline
+    /// shared by all 6 F.2 catalog archetypes. F.7 differentiates per
+    /// archetype with multi-control-point splines.
+    ///
+    /// Used by `#[serde(default)]` on `WorldArchetype.bootstrap_splines`
+    /// so that worlds serialized before F.2.C deserialize cleanly with
+    /// the baseline as fallback.
+    fn default() -> Self {
+        d5fix_baseline_spline_set()
+    }
 }
 
 impl BootstrapSplineSet {

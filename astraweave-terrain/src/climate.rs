@@ -112,7 +112,18 @@ impl ClimateSample {
 /// Temperate (Veilweaver default — NC/Appalachia analog). D.5 adds the
 /// other five archetypes (Equatorial Tropical, Boreal/Subarctic,
 /// Mediterranean, Desert, Custom) and the editor UI surface.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+///
+/// Phase 1.X-F.2.C: extended with `bootstrap_splines: BootstrapSplineSet`
+/// field for the regional archetype variation campaign's per-archetype
+/// shape splines. **`Copy` derive removed** because `BootstrapSplineSet`
+/// contains `Vec<(f32, f32)>` (in `Spline1D::control_points`), which
+/// is not `Copy`. This is a documented deviation logged in
+/// `REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` §10 F.2 entry; F.7 will
+/// inevitably need multi-control-point splines that are intrinsically
+/// non-Copy, so removing Copy now avoids a later forced refactor.
+/// Existing `Clone` derive is preserved; call sites that previously
+/// relied on implicit copy semantics now use explicit `.clone()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldArchetype {
     /// Mean temperature at world center, sea level, before lapse rate.
     pub temperature_mean_c: f32,
@@ -131,6 +142,21 @@ pub struct WorldArchetype {
     pub continentalness_mean: f32,
     /// Continentalness noise variance.
     pub continentalness_variance: f32,
+    /// Phase 1.X-F.2.C: per-archetype bootstrap noise parameter splines.
+    /// Each archetype's catalog factory function (in
+    /// `crate::world_archetypes::*`) populates this with single-control-point
+    /// splines at F.4.B.3.D.5-fix baseline values. F.7 differentiates per
+    /// archetype with multi-control-point shapes.
+    ///
+    /// `#[serde(skip, default)]` so worlds serialized before F.2.C
+    /// deserialize cleanly with the baseline `BootstrapSplineSet` as
+    /// fallback. Since `BootstrapSplineSet` contains a `Spline1D::Vec`,
+    /// it cannot be serialized via `Copy`-derived bincode/postcard;
+    /// the architectural intent is that splines live as compile-time
+    /// data populated by catalog factory calls, not as serialized world
+    /// state.
+    #[serde(skip, default)]
+    pub bootstrap_splines: crate::spline_types::BootstrapSplineSet,
 }
 
 impl Default for WorldArchetype {
@@ -1001,7 +1027,9 @@ mod tests {
         // because lapse rate, latitude, and water-distance modulators all
         // shift the sampled mean from the raw archetype mean.
         let config = ClimateConfig::default();
-        let arch = config.archetype;
+        // Phase 1.X-F.2.C: WorldArchetype no longer Copy (BootstrapSplineSet
+        // contains Vec); clone to avoid partial move.
+        let arch = config.archetype.clone();
         let climate = ClimateMap::new(&config, 12345);
 
         let half = TARGET_B_LATITUDE_HALF_EXTENT_WU as f64;

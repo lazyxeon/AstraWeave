@@ -546,6 +546,9 @@ mod tests {
             moisture_variance_mm: 800.0,
             continentalness_mean: 0.4,
             continentalness_variance: 0.2,
+            // Phase 1.X-F.2.C: bootstrap_splines added; default to F.2 baseline
+            // (test only exercises climate envelope blending behavior).
+            bootstrap_splines: Default::default(),
         };
         let mut config = ClimateConfig::default();
         config.archetype = warm;

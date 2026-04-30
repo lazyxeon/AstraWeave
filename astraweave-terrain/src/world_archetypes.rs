@@ -175,6 +175,7 @@ pub fn continental_temperate() -> WorldArchetype {
         moisture_variance_mm: 400.0,
         continentalness_mean: 0.5,
         continentalness_variance: 0.2,
+        bootstrap_splines: crate::spline_types::bootstrap_splines_continental_temperate(),
     }
 }
 
@@ -200,6 +201,7 @@ pub fn equatorial_tropical() -> WorldArchetype {
         moisture_variance_mm: 1300.0,
         continentalness_mean: 0.4,
         continentalness_variance: 0.2,
+        bootstrap_splines: crate::spline_types::bootstrap_splines_equatorial_tropical(),
     }
 }
 
@@ -217,6 +219,7 @@ pub fn boreal_subarctic() -> WorldArchetype {
         moisture_variance_mm: 250.0,
         continentalness_mean: 0.6,
         continentalness_variance: 0.2,
+        bootstrap_splines: crate::spline_types::bootstrap_splines_boreal_subarctic(),
     }
 }
 
@@ -234,6 +237,7 @@ pub fn mediterranean() -> WorldArchetype {
         moisture_variance_mm: 350.0,
         continentalness_mean: 0.5,
         continentalness_variance: 0.2,
+        bootstrap_splines: crate::spline_types::bootstrap_splines_mediterranean(),
     }
 }
 
@@ -254,6 +258,7 @@ pub fn desert() -> WorldArchetype {
         moisture_variance_mm: 200.0,
         continentalness_mean: 0.7,
         continentalness_variance: 0.3,
+        bootstrap_splines: crate::spline_types::bootstrap_splines_desert(),
     }
 }
 
