@@ -42,10 +42,16 @@ pub const MOISTURE_MM_MAX: f32 = 4000.0;
 /// units. Drives Whittaker biome lookup (D.2) and per-biome parameter
 /// blending (D.3, D.4).
 ///
+/// Phase 1.X-F.1.B extends with `erosion` and `weirdness` fields for the
+/// regional archetype variation campaign's per-archetype shape splines
+/// (campaign doc §2.2). PV is derived at sample time via [`Self::pv`].
+///
 /// Range invariants (enforced by `ClimateMap::sample`):
 /// - `temperature_c` ∈ `[TEMPERATURE_C_MIN, TEMPERATURE_C_MAX]`.
 /// - `moisture_mm`  ∈ `[MOISTURE_MM_MIN, MOISTURE_MM_MAX]`.
 /// - `continentalness` ∈ `[0.0, 1.0]`.
+/// - `erosion` ∈ `[-1.0, 1.0]`.
+/// - `weirdness` ∈ `[-1.0, 1.0]`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ClimateSample {
     /// Mean annual temperature in degrees Celsius.
@@ -57,6 +63,38 @@ pub struct ClimateSample {
     /// Mirrors `TerrainNoise::sample_continental_01` semantics so D.3 can
     /// share the same source field across both subsystems if desired.
     pub continentalness: f32,
+    /// Phase 1.X-F.1.B: low-frequency Perlin noise field representing
+    /// flatness propensity (range `[-1, 1]`). High erosion → flat terrain;
+    /// low erosion → mountainous, per Minecraft 1.18+ canonical
+    /// interpretation. Read by per-archetype `BootstrapSplineSet` in
+    /// F.2-F.3 to produce per-region shape variation. Unused by D.2's
+    /// `lookup_biome` and D.4's biome blending; populated unconditionally.
+    pub erosion: f32,
+    /// Phase 1.X-F.1.B: low-frequency Perlin noise field that feeds the
+    /// PV (Peaks-and-Valleys) fold (range `[-1, 1]`). Use [`Self::pv`]
+    /// to compute the canonical Minecraft 1.18+ folded value
+    /// (`pv = 1.0 - ((3.0 * |weirdness|) - 2.0).abs()`). Read by
+    /// per-archetype `BootstrapSplineSet` in F.2-F.3. Unused by D.2 and
+    /// D.4; populated unconditionally.
+    pub weirdness: f32,
+}
+
+impl ClimateSample {
+    /// Phase 1.X-F.1.B: derived Peaks-and-Valleys field via the
+    /// canonical Minecraft 1.18+ formula
+    /// `pv = 1.0 - ((3.0 * |weirdness|) - 2.0).abs()`.
+    ///
+    /// Folded weirdness produces the characteristic 5-band character
+    /// (Valleys / Low / Mid / High / Peaks). Output range `[-1, 1]` for
+    /// `|weirdness| ∈ [0, 1]`.
+    ///
+    /// Computed at call time (not stored); see
+    /// [`crate::spline_types::PvFold::from_weirdness`] for the
+    /// underlying helper.
+    #[inline]
+    pub fn pv(&self) -> f32 {
+        crate::spline_types::PvFold::from_weirdness(self.weirdness)
+    }
 }
 
 /// Phase 1.6-F.4.B.3.D.1: a world archetype is a climate envelope —
@@ -260,6 +298,16 @@ pub struct ClimateMap {
     /// Sampled by the new `sample()` API. Seed is `seed + 2000` to
     /// decorrelate from temperature (`seed`) and moisture (`seed + 1000`).
     continentalness_noise: Perlin,
+    /// Phase 1.X-F.1.B: low-frequency erosion noise. Seed is `seed + 3000`
+    /// to decorrelate from existing climate fields. Scale 0.0008
+    /// (wavelength ~1250 WU at Target B). Output `[-1, 1]` represents
+    /// flatness propensity per Minecraft 1.18+ canonical interpretation.
+    erosion_noise: Perlin,
+    /// Phase 1.X-F.1.B: low-frequency weirdness noise. Seed is `seed + 4000`
+    /// to decorrelate from existing climate fields. Scale 0.0006
+    /// (wavelength ~1670 WU). Output `[-1, 1]` feeds the PV fold via
+    /// [`ClimateSample::pv`].
+    weirdness_noise: Perlin,
     config: ClimateConfig,
 }
 
@@ -270,6 +318,12 @@ impl ClimateMap {
             temperature_noise: Perlin::new(seed as u32),
             moisture_noise: Perlin::new((seed + 1000) as u32),
             continentalness_noise: Perlin::new((seed + 2000) as u32),
+            // Phase 1.X-F.1.B: erosion + weirdness noise for the
+            // regional archetype variation campaign's shape splines.
+            // Offsets +3000 / +4000 verified clear of all other terrain
+            // crate seed offsets in F.1 prompt §1.1 verification step.
+            erosion_noise: Perlin::new((seed + 3000) as u32),
+            weirdness_noise: Perlin::new((seed + 4000) as u32),
             config: config.clone(),
         }
     }
@@ -359,10 +413,31 @@ impl ClimateMap {
             (arch.continentalness_mean + cont_noise_raw * arch.continentalness_variance)
                 .clamp(0.0, 1.0);
 
+        // === Erosion (Phase 1.X-F.1.B) ===
+        // Low-frequency Perlin field at scale 0.0008 (~1250 WU wavelength
+        // at Target B). Output [-1, 1] represents flatness propensity per
+        // Minecraft 1.18+ canonical interpretation. Defensive clamp
+        // against f32 boundary artifacts that occasionally produce
+        // ±1.0001 at integer lattice positions; Perlin output is
+        // mathematically bounded.
+        let erosion_raw =
+            self.erosion_noise.get([world_x * 0.0008, world_z * 0.0008]) as f32;
+        let erosion = erosion_raw.clamp(-1.0, 1.0);
+
+        // === Weirdness (Phase 1.X-F.1.B) ===
+        // Low-frequency Perlin field at scale 0.0006 (~1670 WU wavelength
+        // at Target B). Output [-1, 1] feeds the PV (Peaks-and-Valleys)
+        // fold via ClimateSample::pv. Same clamp rationale as erosion.
+        let weirdness_raw =
+            self.weirdness_noise.get([world_x * 0.0006, world_z * 0.0006]) as f32;
+        let weirdness = weirdness_raw.clamp(-1.0, 1.0);
+
         ClimateSample {
             temperature_c,
             moisture_mm,
             continentalness,
+            erosion,
+            weirdness,
         }
     }
 
