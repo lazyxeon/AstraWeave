@@ -290,8 +290,8 @@ impl ParamSpline {
     }
 }
 
-/// Phase 1.X-F.1.A: placeholder enum identifying the bootstrap noise
-/// parameters that become spline outputs in F.2.A's `BootstrapSplineSet`.
+/// Phase 1.X-F.1.A: enum identifying the bootstrap noise parameters
+/// that become spline outputs in [`BootstrapSplineSet`].
 ///
 /// Per campaign doc §2.3:
 /// - [`Self::MountainsAmplitude`] — `NoiseConfig.mountains.amplitude`
@@ -302,15 +302,189 @@ impl ParamSpline {
 ///   (default 0.0003; controls continental modulation wavelength).
 /// - [`Self::BaseElevationAmplitude`] — `NoiseConfig.base_elevation.amplitude`
 ///   (default 150; controls base elevation layer height).
-///
-/// F.2.A consumes this enum; F.1.A ships type only.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BootstrapParam {
     MountainsAmplitude,
     MountainsScale,
     ContinentalScale,
     BaseElevationAmplitude,
+}
+
+// =============================================================================
+// Phase 1.X-F.2.B: BootstrapParams + BootstrapSplineSet + 6 catalog defaults
+// =============================================================================
+
+/// Phase 1.X-F.2.B: per-vertex bootstrap noise parameters produced by
+/// evaluating an archetype's [`BootstrapSplineSet`] against a climate
+/// sample.
+///
+/// These four values map directly to [`crate::noise_gen::NoiseConfig`]
+/// fields:
+/// - `mountains_amplitude` → `NoiseConfig.mountains.amplitude`
+/// - `mountains_scale` → `NoiseConfig.mountains.scale`
+/// - `continental_scale` → `NoiseConfig.continental_scale`
+/// - `base_elevation_amplitude` → `NoiseConfig.base_elevation.amplitude`
+///
+/// F.3 wires the per-vertex `BootstrapParams` into the noise pipeline.
+/// F.2 ships the type without integration; downstream consumers (F.4
+/// mask integration, F.5 paint UI, F.7 per-archetype tuning) read this
+/// struct.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BootstrapParams {
+    pub mountains_amplitude: f32,
+    pub mountains_scale: f32,
+    pub continental_scale: f32,
+    pub base_elevation_amplitude: f32,
+}
+
+/// Phase 1.X-F.2.B: per-archetype set of four [`ParamSpline`]s, one
+/// per [`BootstrapParam`]. Aggregates the climate-driven shape splines
+/// for a single archetype.
+///
+/// `BootstrapSplineSet::evaluate(sample)` produces a per-vertex
+/// [`BootstrapParams`] by evaluating each spline against the climate
+/// sample. Per campaign doc §2.6 / F.2 prompt §0, F.7 is where
+/// per-archetype tuning differentiates the splines; F.2 ships 6 catalog
+/// defaults all at single-control-point F.4.B.3.D.5-fix baseline values.
+#[derive(Debug, Clone)]
+pub struct BootstrapSplineSet {
+    pub mountains_amplitude: ParamSpline,
+    pub mountains_scale: ParamSpline,
+    pub continental_scale: ParamSpline,
+    pub base_elevation_amplitude: ParamSpline,
+}
+
+impl BootstrapSplineSet {
+    /// Evaluate all four splines against the climate sample, producing
+    /// a per-vertex [`BootstrapParams`].
+    pub fn evaluate(&self, sample: &crate::climate::ClimateSample) -> BootstrapParams {
+        BootstrapParams {
+            mountains_amplitude: self.mountains_amplitude.evaluate(sample),
+            mountains_scale: self.mountains_scale.evaluate(sample),
+            continental_scale: self.continental_scale.evaluate(sample),
+            base_elevation_amplitude: self.base_elevation_amplitude.evaluate(sample),
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// F.4.B.3.D.5-fix baseline values (campaign doc §2.3 / F.2 prompt §1.1).
+// All 6 catalog archetypes ship single-control-point splines at these
+// values. F.7 differentiates per archetype with multi-control-point
+// splines and possibly different climate_input dimensions per spline.
+// -----------------------------------------------------------------------------
+
+/// F.4.B.3.D.5-fix `mountains.amplitude` baseline (`NoiseConfig::default()`).
+pub const D5FIX_BASELINE_MOUNTAINS_AMPLITUDE: f32 = 480.0;
+/// F.4.B.3.D.5-fix `mountains.scale` baseline.
+pub const D5FIX_BASELINE_MOUNTAINS_SCALE: f32 = 0.002;
+/// F.4.B.3.D.5-fix `continental_scale` baseline.
+pub const D5FIX_BASELINE_CONTINENTAL_SCALE: f32 = 0.0003;
+/// F.4.B.3.D.5-fix `base_elevation.amplitude` baseline.
+pub const D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE: f32 = 150.0;
+
+/// Build a [`BootstrapSplineSet`] where all 4 splines are
+/// single-control-point at the F.4.B.3.D.5-fix baseline values. Used by
+/// all 6 F.2 catalog archetypes; F.7 will replace per-archetype splines
+/// with multi-control-point shapes that produce visually distinct
+/// terrain character.
+///
+/// **Architectural defaults for `climate_input` per parameter** (F.2
+/// prompt §2.2; F.7 may revise per archetype):
+/// - `mountains_amplitude` → `Pv` (Peak/Valley directly drives mountain
+///   prominence).
+/// - `mountains_scale` → `Erosion` (erosion controls terrain detail
+///   scale; high erosion = larger flat regions = larger mountain-noise
+///   wavelength).
+/// - `continental_scale` → `Continentalness` (direct semantic mapping).
+/// - `base_elevation_amplitude` → `Pv` (Peak/Valley character also
+///   drives base elevation; high PV = uplifted; low PV = depressed).
+///
+/// With single-control-point splines, the climate_input dimension does
+/// not affect output (the spline returns its constant regardless of
+/// input). F.7 differentiates: the dimension assignment matters once
+/// splines have multiple control points.
+fn d5fix_baseline_spline_set() -> BootstrapSplineSet {
+    BootstrapSplineSet {
+        mountains_amplitude: ParamSpline {
+            climate_input: ClimateInputDim::Pv,
+            spline: Spline1D::from_control_points(vec![(
+                0.0,
+                D5FIX_BASELINE_MOUNTAINS_AMPLITUDE,
+            )])
+            .expect("single-point spline with finite values is valid"),
+        },
+        mountains_scale: ParamSpline {
+            climate_input: ClimateInputDim::Erosion,
+            spline: Spline1D::from_control_points(vec![(
+                0.0,
+                D5FIX_BASELINE_MOUNTAINS_SCALE,
+            )])
+            .expect("single-point spline with finite values is valid"),
+        },
+        continental_scale: ParamSpline {
+            climate_input: ClimateInputDim::Continentalness,
+            spline: Spline1D::from_control_points(vec![(
+                0.0,
+                D5FIX_BASELINE_CONTINENTAL_SCALE,
+            )])
+            .expect("single-point spline with finite values is valid"),
+        },
+        base_elevation_amplitude: ParamSpline {
+            climate_input: ClimateInputDim::Pv,
+            spline: Spline1D::from_control_points(vec![(
+                0.0,
+                D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE,
+            )])
+            .expect("single-point spline with finite values is valid"),
+        },
+    }
+}
+
+/// Continental Temperate's bootstrap spline set. F.2 default: F.4.B.3.D.5-fix
+/// baseline byte-identical (480 / 0.002 / 0.0003 / 150). F.7 will
+/// differentiate per-archetype shape character.
+///
+/// **Storage rationale (logged in §10 F.2 entry per F.2 prompt §2.2)**:
+/// these are factory functions rather than `const` declarations because
+/// `Spline1D::from_control_points` returns `Result` (validated input)
+/// and `Vec::new()` / `vec!` are not const. Architectural intent
+/// (compile-time defaults, no per-frame allocation) is preserved by
+/// having `WorldArchetype` cache its `bootstrap_splines` as a struct
+/// field; runtime evaluation reads from cached references.
+pub fn bootstrap_splines_continental_temperate() -> BootstrapSplineSet {
+    d5fix_baseline_spline_set()
+}
+
+/// Equatorial Tropical's bootstrap spline set. F.2 default: F.4.B.3.D.5-fix
+/// baseline. F.7 differentiates.
+pub fn bootstrap_splines_equatorial_tropical() -> BootstrapSplineSet {
+    d5fix_baseline_spline_set()
+}
+
+/// Boreal/Subarctic's bootstrap spline set. F.2 default: F.4.B.3.D.5-fix
+/// baseline. F.7 differentiates.
+pub fn bootstrap_splines_boreal_subarctic() -> BootstrapSplineSet {
+    d5fix_baseline_spline_set()
+}
+
+/// Mediterranean's bootstrap spline set. F.2 default: F.4.B.3.D.5-fix
+/// baseline. F.7 differentiates.
+pub fn bootstrap_splines_mediterranean() -> BootstrapSplineSet {
+    d5fix_baseline_spline_set()
+}
+
+/// Desert's bootstrap spline set. F.2 default: F.4.B.3.D.5-fix
+/// baseline. F.7 differentiates.
+pub fn bootstrap_splines_desert() -> BootstrapSplineSet {
+    d5fix_baseline_spline_set()
+}
+
+/// Custom archetype's bootstrap spline set. Defaults to Continental
+/// Temperate baseline (matches D.5b's "Custom defaults to CT" pattern).
+/// User edits override at runtime via editor UI (F.5 territory).
+pub fn bootstrap_splines_custom() -> BootstrapSplineSet {
+    d5fix_baseline_spline_set()
 }
 
 #[cfg(test)]
@@ -619,6 +793,191 @@ mod tests {
     /// the spline input is the folded weirdness, not raw weirdness. This
     /// is the architecturally-load-bearing routing: per-archetype
     /// `BootstrapSplineSet` reads PV as third climate axis.
+    /// Build the standard "median" climate sample used as the F.2 + F.3
+    /// regression evaluation point. Continental Temperate's archetype-mean
+    /// climate field with PV at the mid value (weirdness=±1 → pv=0,
+    /// per F.1.A's PvFold). erosion=0 corresponds to "neither flat nor
+    /// mountainous" — the architectural neutral that maps to default
+    /// `NoiseConfig` values.
+    fn median_climate_sample() -> ClimateSample {
+        ClimateSample {
+            temperature_c: 12.0,
+            moisture_mm: 800.0,
+            continentalness: 0.5,
+            erosion: 0.0,
+            // weirdness=1.0 → pv=0.0 (mid). Could equivalently use
+            // weirdness=-1.0 by symmetry. The campaign doc specifies
+            // pv=0 as the median for archetype-default reproduction.
+            weirdness: 1.0,
+        }
+    }
+
+    /// Verify `weirdness=1.0` produces `pv=0.0` (the median climate sample
+    /// invariant the bootstrap_splines tests rely on). Documents the
+    /// median's PV side-effect explicitly.
+    #[test]
+    fn median_climate_sample_pv_is_zero() {
+        let sample = median_climate_sample();
+        assert!((sample.pv() - 0.0).abs() < 1e-6);
+    }
+
+    /// Continental Temperate at median climate reproduces F.4.B.3.D.5-fix
+    /// baseline byte-identically. F.2's load-bearing regression contract:
+    /// 6 catalog archetypes ship at this baseline; F.3 wires the splines
+    /// into the noise pipeline expecting these values.
+    #[test]
+    fn bootstrap_splines_continental_temperate_at_median_climate_matches_d5fix_baseline() {
+        let splines = bootstrap_splines_continental_temperate();
+        let sample = median_climate_sample();
+        let params = splines.evaluate(&sample);
+        assert_eq!(
+            params.mountains_amplitude.to_bits(),
+            D5FIX_BASELINE_MOUNTAINS_AMPLITUDE.to_bits(),
+            "mountains_amplitude must byte-identical match F.4.B.3.D.5-fix \
+             baseline (480.0)"
+        );
+        assert_eq!(
+            params.mountains_scale.to_bits(),
+            D5FIX_BASELINE_MOUNTAINS_SCALE.to_bits(),
+            "mountains_scale must byte-identical match F.4.B.3.D.5-fix \
+             baseline (0.002)"
+        );
+        assert_eq!(
+            params.continental_scale.to_bits(),
+            D5FIX_BASELINE_CONTINENTAL_SCALE.to_bits(),
+            "continental_scale must byte-identical match F.4.B.3.D.5-fix \
+             baseline (0.0003)"
+        );
+        assert_eq!(
+            params.base_elevation_amplitude.to_bits(),
+            D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE.to_bits(),
+            "base_elevation_amplitude must byte-identical match \
+             F.4.B.3.D.5-fix baseline (150.0)"
+        );
+    }
+
+    /// All 6 catalog archetypes ship F.2-default with byte-identical
+    /// baseline `BootstrapParams` at median climate. F.7 differentiates
+    /// per archetype with multi-control-point splines + possibly
+    /// different climate_input dimensions; F.2 ships infrastructure.
+    #[test]
+    fn bootstrap_splines_all_six_archetypes_reproduce_baseline_at_median_climate() {
+        let factories: &[(&str, fn() -> BootstrapSplineSet)] = &[
+            ("Continental Temperate", bootstrap_splines_continental_temperate),
+            ("Equatorial Tropical", bootstrap_splines_equatorial_tropical),
+            ("Boreal/Subarctic", bootstrap_splines_boreal_subarctic),
+            ("Mediterranean", bootstrap_splines_mediterranean),
+            ("Desert", bootstrap_splines_desert),
+            ("Custom", bootstrap_splines_custom),
+        ];
+        let sample = median_climate_sample();
+        for (name, factory) in factories {
+            let splines = factory();
+            let params = splines.evaluate(&sample);
+            assert_eq!(
+                params.mountains_amplitude.to_bits(),
+                D5FIX_BASELINE_MOUNTAINS_AMPLITUDE.to_bits(),
+                "{}: mountains_amplitude drift",
+                name
+            );
+            assert_eq!(
+                params.mountains_scale.to_bits(),
+                D5FIX_BASELINE_MOUNTAINS_SCALE.to_bits(),
+                "{}: mountains_scale drift",
+                name
+            );
+            assert_eq!(
+                params.continental_scale.to_bits(),
+                D5FIX_BASELINE_CONTINENTAL_SCALE.to_bits(),
+                "{}: continental_scale drift",
+                name
+            );
+            assert_eq!(
+                params.base_elevation_amplitude.to_bits(),
+                D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE.to_bits(),
+                "{}: base_elevation_amplitude drift",
+                name
+            );
+        }
+    }
+
+    /// F.2's catalog defaults are single-control-point splines, so the
+    /// climate_input dimension assignment shouldn't affect the output —
+    /// the spline returns its constant regardless of which climate field
+    /// is read. This test confirms the property by varying the climate
+    /// sample fields independently.
+    #[test]
+    fn bootstrap_splines_evaluate_independent_of_input_dimension_assignment() {
+        let splines = bootstrap_splines_continental_temperate();
+
+        // Three diverse climate samples with intentionally varied
+        // continentalness, erosion, weirdness. With single-control-point
+        // splines, all should produce identical BootstrapParams.
+        let samples = [
+            ClimateSample {
+                temperature_c: 12.0,
+                moisture_mm: 800.0,
+                continentalness: 0.0,
+                erosion: -1.0,
+                weirdness: -1.0,
+            },
+            ClimateSample {
+                temperature_c: 12.0,
+                moisture_mm: 800.0,
+                continentalness: 1.0,
+                erosion: 1.0,
+                weirdness: 0.0,
+            },
+            ClimateSample {
+                temperature_c: 12.0,
+                moisture_mm: 800.0,
+                continentalness: 0.5,
+                erosion: 0.5,
+                weirdness: 0.5,
+            },
+        ];
+
+        let baseline_params = splines.evaluate(&samples[0]);
+        for (i, sample) in samples.iter().enumerate().skip(1) {
+            let params = splines.evaluate(sample);
+            assert_eq!(
+                params, baseline_params,
+                "single-point spline output should be invariant across \
+                 climate samples; differs at sample {}",
+                i
+            );
+        }
+    }
+
+    /// `BootstrapParams` derives Clone + Copy + Debug; smoke test.
+    #[test]
+    fn bootstrap_params_clone_copy_debug() {
+        let p = BootstrapParams {
+            mountains_amplitude: 480.0,
+            mountains_scale: 0.002,
+            continental_scale: 0.0003,
+            base_elevation_amplitude: 150.0,
+        };
+        let q = p; // Copy
+        let r = p.clone();
+        // Debug compiles
+        let _ = format!("{:?}", p);
+        assert_eq!(q, r);
+    }
+
+    /// `BootstrapSplineSet::evaluate` populates all four `BootstrapParams`
+    /// fields with finite (non-NaN, non-infinite) values.
+    #[test]
+    fn bootstrap_spline_set_evaluate_returns_all_four_fields() {
+        let splines = bootstrap_splines_continental_temperate();
+        let sample = median_climate_sample();
+        let params = splines.evaluate(&sample);
+        assert!(params.mountains_amplitude.is_finite());
+        assert!(params.mountains_scale.is_finite());
+        assert!(params.continental_scale.is_finite());
+        assert!(params.base_elevation_amplitude.is_finite());
+    }
+
     #[test]
     fn param_spline_evaluate_reads_pv_via_pvfold() {
         // Spline that returns input directly (identity-on-input,
