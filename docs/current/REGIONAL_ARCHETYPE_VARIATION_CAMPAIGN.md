@@ -1,6 +1,6 @@
 # Regional Archetype Variation Campaign — Phase 1.X
 
-**Status**: F.0 (campaign plan) COMPLETE 2026-04-29, commit 0e51763d4. F.1 (climate field extension) COMPLETE 2026-04-29, commits `5fcde4e98` (F.1.A) + `744132c6a` (F.1.B) + `8e883beb5` (F.1.C) + df7636fa3 (F.1.D). F.2-F.8 NOT STARTED.
+**Status**: F.0 (campaign plan) COMPLETE 2026-04-29, commit 0e51763d4. F.1 (climate field extension) COMPLETE 2026-04-29, commits `5fcde4e98` (F.1.A) + `744132c6a` (F.1.B) + `8e883beb5` (F.1.C) + df7636fa3 (F.1.D). F.2 (BootstrapSplineSet infrastructure) COMPLETE 2026-04-30, commits `f0c3fa52d` (F.2.A) + `b5d70071d` (F.2.B) + `43386cba5` (F.2.C) + TBD (F.2.D). F.3-F.8 NOT STARTED.
 **Scope**: Deliver regional archetype variation in AstraWeave's heightmap terrain pipeline. Each generated world contains 5-10 archetype regions (one per Tikva storyline), painted by the writer onto a 2D archetype mask, with smooth blending between adjacent regions. Per-archetype shape character is produced by climate-driven shape splines (Minecraft 1.18+ pattern) that map climate parameters to bootstrap noise parameters. Architecture: **Hybrid C + F** per `docs/audits/regional_archetype_variation_research_2026-04-29.md` §7 (paintable archetype mask + climate-driven shape splines per archetype). Eight sub-phases (F.0-F.8) executed as separate sessions; integrates with D.1-D.5 landed work as the within-region machinery.
 **Author**: Plan drafted 2026-04-29 by the campaign-design session, against the research audit and Andrew's 2026-04-29 chat clarification of the regional-variation product target.
 **Prior work**: `docs/audits/regional_archetype_variation_research_2026-04-29.md` (the research audit; this campaign's load-bearing input). `docs/audits/f4b3d5_diagnostic_3_cross_archetype_2026-04-28.md` (the architectural-gap data that motivated the research pass). `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` (predecessor; F.4.B.3.D delivered D.1-D.5 within-region machinery; closed via architectural pivot in a parallel session).
@@ -989,8 +989,8 @@ This section must be updated in the same commit that completes each sub-phase pe
 
 ```text
 F.0 — Campaign plan: COMPLETE 2026-04-29, commit 0e51763d4.
-F.1 — Climate field extension: COMPLETE 2026-04-29, commits 5fcde4e98 (F.1.A PvFold + spline types) + 744132c6a (F.1.B ClimateSample extension) + 8e883beb5 (F.1.C unit tests + regression verification) + TBD (F.1.D closeout). New 5-field ClimateSample (3 D.1 + erosion + weirdness) with PvFold helper. 14 F.1.C extension tests + 8 F.1.A spline_types tests + 18 D.1 climate::tests (backward-compat verified) all green. Seed offsets +3000 / +4000 verified clear of all other terrain crate noise instances; PV formula hand-verified at 7 canonical points; D.1 climate state inspected pre-F.1.B and matches D.1 documented state. No Andrew-gate (F.1 produces no visible terrain change per campaign §0).
-F.2 — BootstrapSplineSet infrastructure: NOT STARTED.
+F.1 — Climate field extension: COMPLETE 2026-04-29, commits 5fcde4e98 (F.1.A PvFold + spline types) + 744132c6a (F.1.B ClimateSample extension) + 8e883beb5 (F.1.C unit tests + regression verification) + df7636fa3 (F.1.D closeout). New 5-field ClimateSample (3 D.1 + erosion + weirdness) with PvFold helper. 14 F.1.C extension tests + 8 F.1.A spline_types tests + 18 D.1 climate::tests (backward-compat verified) all green. Seed offsets +3000 / +4000 verified clear of all other terrain crate noise instances; PV formula hand-verified at 7 canonical points; D.1 climate state inspected pre-F.1.B and matches D.1 documented state. No Andrew-gate (F.1 produces no visible terrain change per campaign §0).
+F.2 — BootstrapSplineSet infrastructure: COMPLETE 2026-04-30, commits f0c3fa52d (F.2.A Spline1D + ParamSpline) + b5d70071d (F.2.B BootstrapSplineSet + 6 archetype defaults) + 43386cba5 (F.2.C WorldArchetype extension) + TBD (F.2.D closeout). Full Spline1D API (piecewise-linear evaluate + identity + from_control_points with Empty/NotSorted/NaN/Infinite validation), ClimateInputDim enum (Continentalness/Erosion/Pv), ParamSpline aggregating Spline1D + ClimateInputDim, BootstrapParams output struct, BootstrapSplineSet with 4 ParamSpline fields, 6 catalog factory functions all returning F.4.B.3.D.5-fix baseline byte-identical (480/0.002/0.0003/150). WorldArchetype extended with bootstrap_splines field; Copy derive removed (BootstrapSplineSet contains Vec). 29 spline_types tests (F.1.A 8 + F.2.A 15 + F.2.B 6) + 6 F.2.C integration tests + all upstream regression suites green. F.4.B.3.D.5-fix baseline values confirmed in noise_gen.rs pre-F.2.B; D.5 catalog enumerated; F.1.A spline_types module state verified. Three deviations logged in §10: (1) single-spline-per-parameter shape vs §2.3's "3 1D splines × multiplied" — F.7 may extend; (2) factory functions instead of const declarations because Spline1D::from_control_points returns Result and Vec::new() is non-const; (3) drop WorldArchetype Copy derive (BootstrapSplineSet contains Vec). No Andrew-gate (F.2 produces no visible terrain change per campaign §0).
 F.3 — Spline wiring (single archetype regression): NOT STARTED.
 F.4 — RegionalArchetypeMask + falloff sampler: NOT STARTED.
 F.5 — Editor UI for archetype painting: NOT STARTED.
@@ -1163,6 +1163,58 @@ The F.1 prompt suggested capturing pre-F.1 reference values via `git stash` for 
 **Scope held**: F.1 only modified `astraweave-terrain/src/climate.rs` (existing file, extended), `astraweave-terrain/src/spline_types.rs` (new file), `astraweave-terrain/src/lib.rs` (one-line module declaration), `astraweave-terrain/tests/phase_1_x_f1_climate_field_extension.rs` (new file), and this campaign doc (§9 + §10 + Status header in F.1.D). No other files. No "while-I'm-here" cleanups.
 
 **Next**: F.2 (`BootstrapSplineSet` infrastructure) starts after F.1.D's hash-fixup lands. F.2 reads §5 of this document and implements `Spline1D::evaluate`, `Spline1D::identity`, `Spline1D::from_control_points`, `ParamSpline`, `BootstrapSplineSet`, `BootstrapParams`, plus 6 default `BootstrapSplineSet` const instances for the D.5 catalog archetypes. Continental Temperate at median climate sample reproduces F.4.B.3.D.5-fix's hardcoded `NoiseConfig::default()` values within ±1.0 / ±0.5%.
+
+### 2026-04-30, Sub-phase F.2 (BootstrapSplineSet infrastructure), commits f0c3fa52d + b5d70071d + 43386cba5 + TBD
+
+**Sub-phase entry — captures F.2's pre-execution verification findings, deliverables, three documented architectural deviations, test scoreboard.**
+
+**Pre-execution verification (per F.2 prompt §1, REQUIRED FIRST STEP)**:
+
+- **§1.1 F.4.B.3.D.5-fix baseline value confirmation: PASS.** Confirmed `NoiseConfig::default()` at `astraweave-terrain/src/noise_gen.rs` produces:
+  - `mountains.amplitude = 480.0` (line 193).
+  - `mountains.scale = 0.002` (line 192).
+  - `continental_scale = 0.0003` (line 141, via `default_continental_scale()`).
+  - `base_elevation.amplitude = 150.0` (line 183).
+  All 4 baseline values match campaign doc §2.3 specification.
+- **§1.2 D.5 catalog archetype enumeration: PASS.** Six archetypes confirmed in `astraweave-terrain/src/world_archetypes.rs`: Continental Temperate, Equatorial Tropical, Boreal/Subarctic, Mediterranean, Desert + Custom (via `WorldArchetypeId::Custom => continental_temperate()`). Existing struct fields cataloged: 7 fields (`temperature_mean_c`, `temperature_variance_c`, `latitude_temperature_drop_c`, `moisture_mean_mm`, `moisture_variance_mm`, `continentalness_mean`, `continentalness_variance`); F.2.C adds an 8th (`bootstrap_splines`).
+- **§1.3 F.1.A spline_types module state: PASS.** `astraweave-terrain/src/spline_types.rs` matches F.1.A documented state: `PvFold` helper (full impl), `Spline1D` placeholder (`control_points: Vec<(f32, f32)>` field; F.2.A populates with full impl), `BootstrapParam` enum (4 variants: `MountainsAmplitude`, `MountainsScale`, `ContinentalScale`, `BaseElevationAmplitude`). F.2 continues to live in `spline_types.rs` per F.2 prompt §1.3 recommendation; file at ~1100 lines after F.2's additions, still cohesive.
+
+**Deliverables**:
+
+- **F.2.A** (commit `f0c3fa52d`): full `Spline1D` API (piecewise-linear `evaluate` via `partition_point` + linear interpolation + clamp-at-endpoint, `identity()` returning `(0.0, 1.0)` single-point, `from_control_points` validating Empty/NotSorted/NaN/Infinite); `SplineError` enum with `at_index` reporting; `ClimateInputDim` enum (`Continentalness`/`Erosion`/`Pv`) with `read(&sample)` that routes `Pv` through `ClimateSample::pv()`; `ParamSpline` aggregating `Spline1D + ClimateInputDim` with `evaluate(&sample)` delegating to spline. 15 new unit tests; total spline_types tests: 23/23 pass.
+- **F.2.B** (commit `b5d70071d`): `BootstrapParams` output struct (4 fields, derives Debug/Clone/Copy/PartialEq); `BootstrapSplineSet` aggregating 4 `ParamSpline` fields with `evaluate(&sample) -> BootstrapParams`; `D5FIX_BASELINE_*` const reference values; 6 catalog factory functions (`bootstrap_splines_continental_temperate`, `_equatorial_tropical`, `_boreal_subarctic`, `_mediterranean`, `_desert`, `_custom`) all returning `d5fix_baseline_spline_set()` (single-control-point splines at F.4.B.3.D.5-fix baseline). 6 new unit tests; total spline_types tests: 29/29 pass.
+- **F.2.C** (commit `43386cba5`): `WorldArchetype` extended with `bootstrap_splines: BootstrapSplineSet` field; **`Copy` derive removed** (3 deviations logged below); `#[serde(skip, default)]` on new field for backward-compat deserialization; `BootstrapSplineSet::default()` impl returning baseline; all 6 D.5 catalog factories updated to populate `bootstrap_splines`; two test constructors fixed (biome_lookup.rs:700, biome_param_blending.rs:541) with `bootstrap_splines: Default::default()`; one partial-move at climate.rs:1029 fixed with `.clone()`. New integration test file `astraweave-terrain/tests/phase_1_x_f2_bootstrap_splines_integration.rs` with 6 permanent tests.
+- **F.2.D** (this commit): doc-only closeout updating §9 + Status header + this §10 entry.
+
+**Architectural deviations from campaign doc §2.3 + F.2 prompt** (all logged here per F.2 prompt §3 discipline):
+
+1. **Single-spline-per-parameter shape** vs §2.3's "3 1D splines × multiplied" separable-form specification. F.2's `ParamSpline` carries one `Spline1D` reading one `ClimateInputDim`, not three multiplicatively combined. Rationale: F.2's catalog archetypes are all single-control-point constants where multi-spline product reduces to scalar product; F.7 tuning is where multi-spline product earns its keep. F.7 may extend to a `ParamSplineMulti` type or refactor `ParamSpline` to carry `[ParamSplineAxis; 3]`. This deviation was anticipated in F.2 prompt §2.1 and explicitly permitted as "F.2 commits to the simpler shape; F.7 escalates if needed."
+
+2. **Factory functions instead of `const` declarations**. Campaign doc §2.3 specifies "embedded as Rust `const` declarations." However, `Spline1D::from_control_points` returns `Result<Self, SplineError>` (validated input) and `Vec::new()` / `vec!` are not const, so true `const` declarations are not feasible. F.2 ships 6 archetype factories (`fn bootstrap_splines_<archetype>() -> BootstrapSplineSet`) that construct fresh `BootstrapSplineSet` instances each call. Architectural intent (compile-time defaults, no per-frame allocation) preserved by F.2.C caching `bootstrap_splines` as a `WorldArchetype` struct field; runtime evaluation reads from cached references. This deviation was anticipated in F.2 prompt §2.2.
+
+3. **Drop `Copy` derive from `WorldArchetype`**. Surfaced during F.2.C verification: `BootstrapSplineSet` contains `Vec<(f32, f32)>` (in `Spline1D::control_points`), which is not `Copy`. Three options considered: (a) drop Copy, (b) skip the field + add a method that calls factory by archetype ID, (c) invent a Copy-friendly storage that still supports Vec semantics. Chose (a). Rationale: F.7 will need multi-control-point splines that are intrinsically not Copy; removing Copy now avoids a forced refactor at F.7. `WorldArchetype` is mostly accessed as a borrowed field of `ClimateConfig`; Copy is convenience, not load-bearing. Two call sites adapted: (i) climate.rs:1029 test `let arch = config.archetype` → `.clone()`; (ii) `WorldArchetype` retains `Clone` derive for explicit cloning where needed. The campaign doc did not anticipate the Copy conflict; this deviation surfaced during execution and is logged here per F.2 prompt §3 discipline.
+
+**Test scoreboard at F.2 close**:
+
+- `spline_types::tests`: **29/29 pass** (8 F.1.A + 15 F.2.A + 6 F.2.B).
+- F.2.C integration tests (`phase_1_x_f2_bootstrap_splines_integration.rs`): **6/6 pass**.
+- F.1.C extension tests (`phase_1_x_f1_climate_field_extension.rs`): **14/14 pass** (F.1.B regression contract preserved through F.2.C).
+- D.1 `climate::tests`: **18/18 pass** (D.1 invariants preserved; backward compat verified).
+- D.5 `world_archetypes::tests`: **12/12 pass** (existing distribution + every-biome-appears-in-some-archetype tests pass with new field).
+- `cargo check -p astraweave-terrain --lib`: clean.
+
+**Pre-existing failures unchanged from F.1 baseline** (NOT introduced by F.2):
+
+- `behavioral_correctness_tests.rs` lines 517+911+912 stale `NoiseConfig` literal constructors — flagged as standalone follow-up per Phase 1.6-F closure §10.
+- `astraweave-render` `coverage_booster_render.rs` and `wave2_*.rs` stale type/field references — unrelated to terrain crate.
+
+**F.4.B.3.D.5-fix Path B regression preservation**: F.2 only adds infrastructure types + a struct field; doesn't modify existing terrain output paths (`WorldGenerator::generate_chunk_with_climate`, `TerrainNoise::sample_height`, etc.). The bootstrap noise pipeline still reads `NoiseConfig::default()` constants; `bootstrap_splines` is dead code from the runtime path's perspective until F.3 wires.
+
+**Andrew-gate**: not applicable per campaign doc §0 ("Sub-phases without visible-terrain output gate on code-level verification only"). F.2 produces no visible terrain change.
+
+**Scope held**: F.2 only modified `astraweave-terrain/src/spline_types.rs` (existing file from F.1.A; extended), `astraweave-terrain/src/climate.rs` (existing file; added field + Copy removal), `astraweave-terrain/src/world_archetypes.rs` (existing file; populated bootstrap_splines in 5 catalog functions), `astraweave-terrain/src/biome_lookup.rs` (existing file; one test constructor fix), `astraweave-terrain/src/biome_param_blending.rs` (existing file; one test constructor fix), `astraweave-terrain/tests/phase_1_x_f2_bootstrap_splines_integration.rs` (new file), and this campaign doc (§9 + §10 + Status header in F.2.D). No other files. No "while-I'm-here" cleanups.
+
+**Next**: F.3 (spline wiring, single-archetype regression) starts after F.2.D's hash-fixup lands. F.3 reads §6 of this document and wires `BootstrapSplineSet::evaluate` into `WorldGenerator::generate_chunk_with_climate` for Continental Temperate only. **First sub-phase requiring Andrew-gate** per campaign doc §0.
 
 ---
 
