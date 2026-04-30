@@ -8608,6 +8608,30 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/spline_types/struct.Spline1D.html</loc>
+    <lastmod>2026-04-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/spline_types/index.html</loc>
+    <lastmod>2026-04-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/spline_types/enum.BootstrapParam.html</loc>
+    <lastmod>2026-04-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/spline_types/struct.PvFold.html</loc>
+    <lastmod>2026-04-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/lod_manager/fn.compute_pixel_error.html</loc>
     <lastmod>2026-04-30</lastmod>
     <changefreq>weekly</changefreq>
