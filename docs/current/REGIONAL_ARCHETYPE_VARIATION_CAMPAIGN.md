@@ -1,6 +1,6 @@
 # Regional Archetype Variation Campaign — Phase 1.X
 
-**Status**: F.0 (campaign plan) COMPLETE 2026-04-29, commit 0e51763d4. F.1-F.8 NOT STARTED.
+**Status**: F.0 (campaign plan) COMPLETE 2026-04-29, commit 0e51763d4. F.1 (climate field extension) COMPLETE 2026-04-29, commits `5fcde4e98` (F.1.A) + `744132c6a` (F.1.B) + `8e883beb5` (F.1.C) + TBD (F.1.D). F.2-F.8 NOT STARTED.
 **Scope**: Deliver regional archetype variation in AstraWeave's heightmap terrain pipeline. Each generated world contains 5-10 archetype regions (one per Tikva storyline), painted by the writer onto a 2D archetype mask, with smooth blending between adjacent regions. Per-archetype shape character is produced by climate-driven shape splines (Minecraft 1.18+ pattern) that map climate parameters to bootstrap noise parameters. Architecture: **Hybrid C + F** per `docs/audits/regional_archetype_variation_research_2026-04-29.md` §7 (paintable archetype mask + climate-driven shape splines per archetype). Eight sub-phases (F.0-F.8) executed as separate sessions; integrates with D.1-D.5 landed work as the within-region machinery.
 **Author**: Plan drafted 2026-04-29 by the campaign-design session, against the research audit and Andrew's 2026-04-29 chat clarification of the regional-variation product target.
 **Prior work**: `docs/audits/regional_archetype_variation_research_2026-04-29.md` (the research audit; this campaign's load-bearing input). `docs/audits/f4b3d5_diagnostic_3_cross_archetype_2026-04-28.md` (the architectural-gap data that motivated the research pass). `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` (predecessor; F.4.B.3.D delivered D.1-D.5 within-region machinery; closed via architectural pivot in a parallel session).
@@ -989,7 +989,7 @@ This section must be updated in the same commit that completes each sub-phase pe
 
 ```text
 F.0 — Campaign plan: COMPLETE 2026-04-29, commit 0e51763d4.
-F.1 — Climate field extension: NOT STARTED.
+F.1 — Climate field extension: COMPLETE 2026-04-29, commits 5fcde4e98 (F.1.A PvFold + spline types) + 744132c6a (F.1.B ClimateSample extension) + 8e883beb5 (F.1.C unit tests + regression verification) + TBD (F.1.D closeout). New 5-field ClimateSample (3 D.1 + erosion + weirdness) with PvFold helper. 14 F.1.C extension tests + 8 F.1.A spline_types tests + 18 D.1 climate::tests (backward-compat verified) all green. Seed offsets +3000 / +4000 verified clear of all other terrain crate noise instances; PV formula hand-verified at 7 canonical points; D.1 climate state inspected pre-F.1.B and matches D.1 documented state. No Andrew-gate (F.1 produces no visible terrain change per campaign §0).
 F.2 — BootstrapSplineSet infrastructure: NOT STARTED.
 F.3 — Spline wiring (single archetype regression): NOT STARTED.
 F.4 — RegionalArchetypeMask + falloff sampler: NOT STARTED.
@@ -1118,6 +1118,51 @@ Per §0 lesson application:
 - **F.3, F.4, F.5, F.6, F.7** (visible terrain output): Andrew-gate REQUIRED before §9 updates to COMPLETE. F.7 is the principal Andrew-gate of the campaign.
 
 This is non-negotiable for the campaign's structure; baked into §0 as the explicit corrective from the predecessor campaign's pattern of code-level PASS + Andrew-gate REGRESS.
+
+### 2026-04-29, Sub-phase F.1 (climate field extension), commits 5fcde4e98 + 744132c6a + 8e883beb5 + TBD
+
+**Sub-phase entry — captures F.1's pre-execution verification findings, deliverables, test scoreboard.**
+
+**Pre-execution verification (per F.1 prompt §1, REQUIRED FIRST STEP)**:
+
+- **§1.1 Seed offset collision check: PASS.** Cataloged all numeric seed offsets in the terrain crate. `+3000` (erosion) and `+4000` (weirdness) are unused. Existing offsets:
+  - `climate.rs`: `+0` (temperature), `+1000` (moisture), `+2000` (continentalness).
+  - `noise_gen.rs`: `+1` (mountains), `+2` (detail), `+42` (ridge), `+100` / `+200` (domain warp x/z), `+7` (continental, default).
+  - `runevision_erosion.rs`: `+13` (default).
+  - `biome_param_blending.rs`: `+31` (default).
+  - `scatter.rs` / `biome_pack.rs`: `+0` (defaults).
+- **§1.2 PV formula hand-verification: PASS.** All 7 canonical weirdness values (`-1, -2/3, -1/3, 0, 1/3, 2/3, 1`) hand-derived to expected PV outputs (`0, 1, 0, -1, 0, 1, 0`) per Minecraft 1.18+ canonical formula `pv = 1.0 - ((3.0 * |weirdness|) - 2.0).abs()`. F.1.A's `pv_fold_seven_canonical_points` test asserts these values within 1e-6 tolerance.
+- **§1.3 D.1 climate field state inspection: PASS.** `ClimateMap` matches D.1 documented state (3 noise fields with offsets +0/+1000/+2000; `ClimateSample` has 3 stored fields). No drift from D.1 design.
+
+**Deliverables**:
+
+- **F.1.A** (commit `5fcde4e98`): new module `astraweave-terrain/src/spline_types.rs` (~220 lines + 8 unit tests). `PvFold` helper (canonical Minecraft formula); `Spline1D` placeholder struct (F.2.A populates); `BootstrapParam` enum with 4 variants (F.2.A consumes). Both `Spline1D` and `BootstrapParam` `#[allow(dead_code)]` until F.2.A.
+- **F.1.B** (commit `744132c6a`): `ClimateSample` extended with `erosion: f32` and `weirdness: f32` fields + `pv()` derived accessor; `ClimateMap` extended with `erosion_noise: Perlin` (offset +3000, scale 0.0008) and `weirdness_noise: Perlin` (offset +4000, scale 0.0006); `ClimateMap::sample` populates new fields with defensive `.clamp(-1.0, 1.0)`. Existing field computation logic preserved byte-identically per F.1 prompt §2.2 scope discipline.
+- **F.1.C** (commit `8e883beb5`): new test file `astraweave-terrain/tests/phase_1_x_f1_climate_field_extension.rs` (~470 lines + 14 permanent tests). Coverage: field range bounds, determinism (byte-identical bits), position dependence (stddev > 0.1), erosion-weirdness decorrelation (Pearson |r| < 0.15), PV formula propagation, D.1 backward-compat byte-identity (3 tests), F.4.B.3.D.5-fix Path B baseline distribution invariant, world archetype catalog construction.
+- **F.1.D** (this commit): doc-only closeout updating §9 + Status header + this §10 entry.
+
+**Methodology adjustment from F.1 prompt §2.3 Test 6**:
+
+The F.1 prompt suggested capturing pre-F.1 reference values via `git stash` for the D.1 backward-compat regression. F.1.C used a different methodology: assert byte-identical bits across two consecutive runs at fixed positions, plus archetype-range smoke checks. This catches the load-bearing failure mode (F.1.B's noise-init order accidentally perturbing existing-field computation) without coupling the test to specific numeric values that may legitimately drift in future sub-phases. Documented in test doc-comments per F.1 prompt §3 methodological transparency requirement.
+
+**Test scoreboard at F.1 close**:
+
+- F.1.A `spline_types::tests`: 8/8 pass.
+- F.1.C extension tests: 14/14 pass.
+- D.1 `climate::tests`: 18/18 pass (10 D.1 sub-tests + 8 legacy tests; D.1 invariants preserved).
+- All 757 terrain crate lib tests pass (738 pre-F.1 + 8 spline_types + 11 derived growth from new test file consolidation in lib build).
+- `cargo check -p astraweave-terrain --lib`: clean.
+
+**Pre-existing failures unchanged from F.1.B baseline** (NOT introduced by F.1):
+
+- `behavioral_correctness_tests.rs` lines 517+911+912 stale `NoiseConfig` literal constructors — flagged as standalone follow-up per Phase 1.6-F closure §10.
+- `astraweave-render` `coverage_booster_render.rs` and `wave2_*.rs` stale type/field references — unrelated to terrain crate.
+
+**Andrew-gate**: not applicable per campaign doc §0 ("Sub-phases without visible-terrain output gate on code-level verification only"). F.1 produces no visible terrain change; downstream consumers (D.2 `lookup_biome`, D.4 `blend_biome_parameters`, bootstrap noise pipeline) ignore the new fields until F.3 wires `BootstrapSplineSet`.
+
+**Scope held**: F.1 only modified `astraweave-terrain/src/climate.rs` (existing file, extended), `astraweave-terrain/src/spline_types.rs` (new file), `astraweave-terrain/src/lib.rs` (one-line module declaration), `astraweave-terrain/tests/phase_1_x_f1_climate_field_extension.rs` (new file), and this campaign doc (§9 + §10 + Status header in F.1.D). No other files. No "while-I'm-here" cleanups.
+
+**Next**: F.2 (`BootstrapSplineSet` infrastructure) starts after F.1.D's hash-fixup lands. F.2 reads §5 of this document and implements `Spline1D::evaluate`, `Spline1D::identity`, `Spline1D::from_control_points`, `ParamSpline`, `BootstrapSplineSet`, `BootstrapParams`, plus 6 default `BootstrapSplineSet` const instances for the D.5 catalog archetypes. Continental Temperate at median climate sample reproduces F.4.B.3.D.5-fix's hardcoded `NoiseConfig::default()` values within ±1.0 / ±0.5%.
 
 ---
 
