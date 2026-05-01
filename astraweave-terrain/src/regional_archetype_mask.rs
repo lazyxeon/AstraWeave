@@ -1182,7 +1182,7 @@ mod tests {
     // =========================================================================
 
     use crate::spline_types::{
-        bootstrap_splines_continental_temperate, BootstrapParams, BootstrapSplineSet,
+        bootstrap_splines_continental_temperate, BootstrapSplineSet,
         ClimateInputDim, ParamSpline, Spline1D,
     };
 

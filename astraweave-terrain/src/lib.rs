@@ -167,6 +167,12 @@ pub struct WorldGenerator {
     climate: ClimateMap,
     chunk_manager: ChunkManager,
     structure_generator: structures::StructureGenerator,
+    /// Phase 1.X-F.4.E: optional paintable archetype mask. `None` =
+    /// Continental Temperate single-archetype (F.3 behavior); `Some(mask)`
+    /// = multi-archetype path with per-vertex blend per campaign doc §2.5.
+    /// Default: `None` (preserves F.3 byte-identity contract for the
+    /// no-mask path).
+    pub regional_archetype_mask: Option<crate::regional_archetype_mask::RegionalArchetypeMask>,
 }
 
 impl WorldGenerator {
@@ -185,6 +191,9 @@ impl WorldGenerator {
             climate,
             chunk_manager,
             structure_generator,
+            // Phase 1.X-F.4.E: default to None (no mask = F.3 single-
+            // archetype Continental Temperate path).
+            regional_archetype_mask: None,
         }
     }
 
@@ -502,24 +511,59 @@ impl WorldGenerator {
         // D.6 Andrew-gate informs whether to tune.
         let blend_config = crate::biome_param_blending::BiomeParamBlendConfig::default();
 
-        // Phase 1.X-F.3.B: archetype bootstrap splines, cached once for the
-        // entire halo. F.3 wires Continental Temperate only; F.4 reads the
-        // archetype identity from the painted RegionalArchetypeMask per
-        // vertex.
+        // Phase 1.X-F.3.B + F.4.E: archetype bootstrap splines.
         //
-        // **F.3 single-archetype scope**: every vertex evaluates Continental
-        // Temperate's BootstrapSplineSet, regardless of the climate sample
-        // (which determines which BiomeId each vertex resolves to but does
-        // not yet drive archetype selection). With F.2's single-control-point
-        // splines, the BootstrapParams are constant across all vertices and
-        // equal F.4.B.3.D.5-fix Path B baseline (mountains_amplitude=480,
-        // mountains_scale=0.002, continental_scale=0.0003,
-        // base_elevation_amplitude=150). Combined with the per-biome
-        // mountain_amplitude_multiplier from D.3b's BiomeParameters
-        // blending, this produces output within F.3 §10 tolerance of the
-        // legacy path (max divergence ~0.7mm at 100m heights, well under
-        // the 0.1m §6.3 fallback).
-        let archetype_splines = crate::spline_types::bootstrap_splines_continental_temperate();
+        // **F.3 None-mask path** (regional_archetype_mask = None): every
+        // vertex evaluates Continental Temperate's BootstrapSplineSet
+        // cached once at the start of this method; F.3 byte-identity
+        // contract preserved.
+        //
+        // **F.4 Some-mask path** (regional_archetype_mask = Some): per-
+        // vertex sample the mask + falloff via RegionalArchetypeBlend;
+        // for each contributing archetype, look up its BootstrapSplineSet
+        // from the F.4.E catalog cache (cached for all 6 archetypes
+        // once per chunk pass, indexed by WorldArchetypeId);
+        // blend_bootstrap_params produces per-vertex blended
+        // BootstrapParams per campaign doc §2.5.
+        //
+        // F.4.E catalog cache: 6 BootstrapSplineSet instances pre-fetched
+        // at the start of this method, indexed by WorldArchetypeId. The
+        // archetype_splines closure passed to blend_bootstrap_params is
+        // a simple match returning a reference to the cached entry.
+        // Avoids per-vertex factory calls.
+        let archetype_splines_continental = crate::spline_types::bootstrap_splines_continental_temperate();
+        let archetype_splines_tropical = crate::spline_types::bootstrap_splines_equatorial_tropical();
+        let archetype_splines_boreal = crate::spline_types::bootstrap_splines_boreal_subarctic();
+        let archetype_splines_mediterranean = crate::spline_types::bootstrap_splines_mediterranean();
+        let archetype_splines_desert = crate::spline_types::bootstrap_splines_desert();
+        let archetype_splines_custom = crate::spline_types::bootstrap_splines_custom();
+        let lookup_splines =
+            |id: crate::world_archetypes::WorldArchetypeId| -> crate::spline_types::BootstrapSplineSet {
+                match id {
+                    crate::world_archetypes::WorldArchetypeId::ContinentalTemperate => {
+                        archetype_splines_continental.clone()
+                    }
+                    crate::world_archetypes::WorldArchetypeId::EquatorialTropical => {
+                        archetype_splines_tropical.clone()
+                    }
+                    crate::world_archetypes::WorldArchetypeId::BorealSubarctic => {
+                        archetype_splines_boreal.clone()
+                    }
+                    crate::world_archetypes::WorldArchetypeId::Mediterranean => {
+                        archetype_splines_mediterranean.clone()
+                    }
+                    crate::world_archetypes::WorldArchetypeId::Desert => {
+                        archetype_splines_desert.clone()
+                    }
+                    crate::world_archetypes::WorldArchetypeId::Custom => {
+                        archetype_splines_custom.clone()
+                    }
+                }
+            };
+        let regional_blend = self
+            .regional_archetype_mask
+            .as_ref()
+            .map(crate::regional_archetype_mask::RegionalArchetypeBlend::new);
 
         let mut biome_ids = Vec::with_capacity(halo_res * halo_res);
         for z_idx in 0..halo_res {
@@ -544,13 +588,42 @@ impl WorldGenerator {
                     &blend_config,
                 );
 
-                // Phase 1.X-F.3.B: evaluate archetype BootstrapSplineSet
-                // at this vertex's climate sample. F.2's single-control-point
-                // catalog defaults make this evaluation a constant-output
-                // operation (BootstrapParams == F.4.B.3.D.5-fix baseline at
-                // any climate sample); F.7 differentiates per archetype.
+                // Phase 1.X-F.3.B + F.4.E: evaluate archetype BootstrapSplineSet(s)
+                // at this vertex's climate sample.
+                //
+                // **None-mask path (F.3 byte-identity contract)**: use
+                // Continental Temperate's BootstrapSplineSet directly.
+                // **Some-mask path (F.4 multi-archetype)**: sample mask +
+                // falloff via RegionalArchetypeBlend, evaluate each
+                // contributing archetype's splines, blend per §2.5.
                 let climate_sample = self.climate.sample(wx, wz, raw_height);
-                let bootstrap_params = archetype_splines.evaluate(&climate_sample);
+                let bootstrap_params = match &regional_blend {
+                    None => archetype_splines_continental.evaluate(&climate_sample),
+                    Some(blend) => {
+                        let contributors = blend.sample_at(wx_f32, wz_f32);
+                        // F.4.E empty-contributor guard: sampler invariants
+                        // guarantee non-empty (per F.4.C tests), but defensive
+                        // fallback to Continental Temperate solo prevents
+                        // all-zero BootstrapParams from reaching the noise
+                        // pipeline if a future change breaks the invariant.
+                        if contributors.is_empty() {
+                            debug_assert!(
+                                false,
+                                "RegionalArchetypeBlend::sample_at returned empty \
+                                 contributors at world ({}, {}); F.4.C invariant \
+                                 should prevent this",
+                                wx_f32, wz_f32
+                            );
+                            archetype_splines_continental.evaluate(&climate_sample)
+                        } else {
+                            crate::regional_archetype_mask::blend_bootstrap_params(
+                                &contributors,
+                                &lookup_splines,
+                                &climate_sample,
+                            )
+                        }
+                    }
+                };
 
                 // Phase 1.X-F.3.B: replace sample_height_with_mountain_amplitude
                 // with sample_height_with_params (composed with the per-biome
