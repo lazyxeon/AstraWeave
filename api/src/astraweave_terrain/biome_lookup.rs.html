@@ -705,52 +705,55 @@
 <a href=#705 id=705 data-nosnippet>705</a>            moisture_variance_mm: <span class="number">800.0</span>,
 <a href=#706 id=706 data-nosnippet>706</a>            continentalness_mean: <span class="number">0.4</span>,
 <a href=#707 id=707 data-nosnippet>707</a>            continentalness_variance: <span class="number">0.2</span>,
-<a href=#708 id=708 data-nosnippet>708</a>        };
-<a href=#709 id=709 data-nosnippet>709</a>        warm_archetype
-<a href=#710 id=710 data-nosnippet>710</a>            .validate()
-<a href=#711 id=711 data-nosnippet>711</a>            .expect(<span class="string">"test archetype must validate"</span>);
-<a href=#712 id=712 data-nosnippet>712</a>
-<a href=#713 id=713 data-nosnippet>713</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = ClimateConfig::default();
-<a href=#714 id=714 data-nosnippet>714</a>        config.archetype = warm_archetype;
-<a href=#715 id=715 data-nosnippet>715</a>        <span class="kw">let </span>climate = ClimateMap::new(<span class="kw-2">&amp;</span>config, <span class="number">67890</span>);
-<a href=#716 id=716 data-nosnippet>716</a>
-<a href=#717 id=717 data-nosnippet>717</a>        <span class="kw">let </span>half = config.world_latitude_half_extent_wu <span class="kw">as </span>f64;
-<a href=#718 id=718 data-nosnippet>718</a>        <span class="kw">let </span><span class="kw-2">mut </span>counts = std::collections::HashMap::&lt;BiomeId, u32&gt;::new();
-<a href=#719 id=719 data-nosnippet>719</a>        <span class="kw">const </span>N: u32 = <span class="number">10_000</span>;
-<a href=#720 id=720 data-nosnippet>720</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..N {
-<a href=#721 id=721 data-nosnippet>721</a>            <span class="kw">let </span>x = (det_random(<span class="number">13</span>, i * <span class="number">2</span>) * <span class="number">2.0 </span>- <span class="number">1.0</span>) <span class="kw">as </span>f64 * half;
-<a href=#722 id=722 data-nosnippet>722</a>            <span class="kw">let </span>z = (det_random(<span class="number">13</span>, i * <span class="number">2 </span>+ <span class="number">1</span>) * <span class="number">2.0 </span>- <span class="number">1.0</span>) <span class="kw">as </span>f64 * half;
-<a href=#723 id=723 data-nosnippet>723</a>            <span class="kw">let </span>elev_t = det_random(<span class="number">17</span>, i);
-<a href=#724 id=724 data-nosnippet>724</a>            <span class="kw">let </span>elevation = SEA_LEVEL - <span class="number">10.0 </span>+ elev_t * <span class="number">520.0</span>;
-<a href=#725 id=725 data-nosnippet>725</a>
-<a href=#726 id=726 data-nosnippet>726</a>            <span class="kw">let </span>s = climate.sample(x, z, elevation);
-<a href=#727 id=727 data-nosnippet>727</a>            <span class="kw">let </span>b = lookup_biome(s.temperature_c, s.moisture_mm, elevation);
-<a href=#728 id=728 data-nosnippet>728</a>            <span class="kw-2">*</span>counts.entry(b).or_insert(<span class="number">0</span>) += <span class="number">1</span>;
-<a href=#729 id=729 data-nosnippet>729</a>        }
-<a href=#730 id=730 data-nosnippet>730</a>
-<a href=#731 id=731 data-nosnippet>731</a>        <span class="kw">let </span>total = N <span class="kw">as </span>f32;
-<a href=#732 id=732 data-nosnippet>732</a>        <span class="kw">let </span>frac =
-<a href=#733 id=733 data-nosnippet>733</a>            |b: BiomeId| (<span class="kw-2">*</span>counts.get(<span class="kw-2">&amp;</span>b).unwrap_or(<span class="kw-2">&amp;</span><span class="number">0</span>) <span class="kw">as </span>f32) / total;
-<a href=#734 id=734 data-nosnippet>734</a>        <span class="kw">let </span>tropical_family = frac(BiomeId::TropicalRainforest)
-<a href=#735 id=735 data-nosnippet>735</a>            + frac(BiomeId::TropicalSeasonalForest)
-<a href=#736 id=736 data-nosnippet>736</a>            + frac(BiomeId::Savanna);
-<a href=#737 id=737 data-nosnippet>737</a>
-<a href=#738 id=738 data-nosnippet>738</a>        <span class="comment">// Warm archetype should produce SOME tropical biomes (&gt;5% combined).
-<a href=#739 id=739 data-nosnippet>739</a>        // Continental Temperate produced ≈0%; warm archetype should clearly
-<a href=#740 id=740 data-nosnippet>740</a>        // shift the distribution.
-<a href=#741 id=741 data-nosnippet>741</a>        </span><span class="macro">assert!</span>(
-<a href=#742 id=742 data-nosnippet>742</a>            tropical_family &gt; <span class="number">0.05</span>,
-<a href=#743 id=743 data-nosnippet>743</a>            <span class="string">"warm archetype should produce ≥5% tropical biomes; got {tropical_family:.3}"
-<a href=#744 id=744 data-nosnippet>744</a>        </span>);
-<a href=#745 id=745 data-nosnippet>745</a>
-<a href=#746 id=746 data-nosnippet>746</a>        <span class="comment">// Should produce zero Tundra (warm archetype has no cold latitudes
-<a href=#747 id=747 data-nosnippet>747</a>        // even at the world edges, and elevation-induced Tundra is rare at
-<a href=#748 id=748 data-nosnippet>748</a>        // Target B Y range; Tundra requires temp &lt; 0°C which warm archetype
-<a href=#749 id=749 data-nosnippet>749</a>        // can only reach at the highest elevations after lapse rate).
-<a href=#750 id=750 data-nosnippet>750</a>        </span><span class="macro">assert!</span>(
-<a href=#751 id=751 data-nosnippet>751</a>            frac(BiomeId::Tundra) &lt; <span class="number">0.03</span>,
-<a href=#752 id=752 data-nosnippet>752</a>            <span class="string">"warm archetype should produce &lt;3% Tundra; got {}"</span>,
-<a href=#753 id=753 data-nosnippet>753</a>            frac(BiomeId::Tundra)
-<a href=#754 id=754 data-nosnippet>754</a>        );
-<a href=#755 id=755 data-nosnippet>755</a>    }
-<a href=#756 id=756 data-nosnippet>756</a>}</code></pre></div></section></main></body></html>
+<a href=#708 id=708 data-nosnippet>708</a>            <span class="comment">// Phase 1.X-F.2.C: bootstrap_splines added; default to F.2 baseline
+<a href=#709 id=709 data-nosnippet>709</a>            // (test only exercises climate envelope, not bootstrap shape).
+<a href=#710 id=710 data-nosnippet>710</a>            </span>bootstrap_splines: Default::default(),
+<a href=#711 id=711 data-nosnippet>711</a>        };
+<a href=#712 id=712 data-nosnippet>712</a>        warm_archetype
+<a href=#713 id=713 data-nosnippet>713</a>            .validate()
+<a href=#714 id=714 data-nosnippet>714</a>            .expect(<span class="string">"test archetype must validate"</span>);
+<a href=#715 id=715 data-nosnippet>715</a>
+<a href=#716 id=716 data-nosnippet>716</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = ClimateConfig::default();
+<a href=#717 id=717 data-nosnippet>717</a>        config.archetype = warm_archetype;
+<a href=#718 id=718 data-nosnippet>718</a>        <span class="kw">let </span>climate = ClimateMap::new(<span class="kw-2">&amp;</span>config, <span class="number">67890</span>);
+<a href=#719 id=719 data-nosnippet>719</a>
+<a href=#720 id=720 data-nosnippet>720</a>        <span class="kw">let </span>half = config.world_latitude_half_extent_wu <span class="kw">as </span>f64;
+<a href=#721 id=721 data-nosnippet>721</a>        <span class="kw">let </span><span class="kw-2">mut </span>counts = std::collections::HashMap::&lt;BiomeId, u32&gt;::new();
+<a href=#722 id=722 data-nosnippet>722</a>        <span class="kw">const </span>N: u32 = <span class="number">10_000</span>;
+<a href=#723 id=723 data-nosnippet>723</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..N {
+<a href=#724 id=724 data-nosnippet>724</a>            <span class="kw">let </span>x = (det_random(<span class="number">13</span>, i * <span class="number">2</span>) * <span class="number">2.0 </span>- <span class="number">1.0</span>) <span class="kw">as </span>f64 * half;
+<a href=#725 id=725 data-nosnippet>725</a>            <span class="kw">let </span>z = (det_random(<span class="number">13</span>, i * <span class="number">2 </span>+ <span class="number">1</span>) * <span class="number">2.0 </span>- <span class="number">1.0</span>) <span class="kw">as </span>f64 * half;
+<a href=#726 id=726 data-nosnippet>726</a>            <span class="kw">let </span>elev_t = det_random(<span class="number">17</span>, i);
+<a href=#727 id=727 data-nosnippet>727</a>            <span class="kw">let </span>elevation = SEA_LEVEL - <span class="number">10.0 </span>+ elev_t * <span class="number">520.0</span>;
+<a href=#728 id=728 data-nosnippet>728</a>
+<a href=#729 id=729 data-nosnippet>729</a>            <span class="kw">let </span>s = climate.sample(x, z, elevation);
+<a href=#730 id=730 data-nosnippet>730</a>            <span class="kw">let </span>b = lookup_biome(s.temperature_c, s.moisture_mm, elevation);
+<a href=#731 id=731 data-nosnippet>731</a>            <span class="kw-2">*</span>counts.entry(b).or_insert(<span class="number">0</span>) += <span class="number">1</span>;
+<a href=#732 id=732 data-nosnippet>732</a>        }
+<a href=#733 id=733 data-nosnippet>733</a>
+<a href=#734 id=734 data-nosnippet>734</a>        <span class="kw">let </span>total = N <span class="kw">as </span>f32;
+<a href=#735 id=735 data-nosnippet>735</a>        <span class="kw">let </span>frac =
+<a href=#736 id=736 data-nosnippet>736</a>            |b: BiomeId| (<span class="kw-2">*</span>counts.get(<span class="kw-2">&amp;</span>b).unwrap_or(<span class="kw-2">&amp;</span><span class="number">0</span>) <span class="kw">as </span>f32) / total;
+<a href=#737 id=737 data-nosnippet>737</a>        <span class="kw">let </span>tropical_family = frac(BiomeId::TropicalRainforest)
+<a href=#738 id=738 data-nosnippet>738</a>            + frac(BiomeId::TropicalSeasonalForest)
+<a href=#739 id=739 data-nosnippet>739</a>            + frac(BiomeId::Savanna);
+<a href=#740 id=740 data-nosnippet>740</a>
+<a href=#741 id=741 data-nosnippet>741</a>        <span class="comment">// Warm archetype should produce SOME tropical biomes (&gt;5% combined).
+<a href=#742 id=742 data-nosnippet>742</a>        // Continental Temperate produced ≈0%; warm archetype should clearly
+<a href=#743 id=743 data-nosnippet>743</a>        // shift the distribution.
+<a href=#744 id=744 data-nosnippet>744</a>        </span><span class="macro">assert!</span>(
+<a href=#745 id=745 data-nosnippet>745</a>            tropical_family &gt; <span class="number">0.05</span>,
+<a href=#746 id=746 data-nosnippet>746</a>            <span class="string">"warm archetype should produce ≥5% tropical biomes; got {tropical_family:.3}"
+<a href=#747 id=747 data-nosnippet>747</a>        </span>);
+<a href=#748 id=748 data-nosnippet>748</a>
+<a href=#749 id=749 data-nosnippet>749</a>        <span class="comment">// Should produce zero Tundra (warm archetype has no cold latitudes
+<a href=#750 id=750 data-nosnippet>750</a>        // even at the world edges, and elevation-induced Tundra is rare at
+<a href=#751 id=751 data-nosnippet>751</a>        // Target B Y range; Tundra requires temp &lt; 0°C which warm archetype
+<a href=#752 id=752 data-nosnippet>752</a>        // can only reach at the highest elevations after lapse rate).
+<a href=#753 id=753 data-nosnippet>753</a>        </span><span class="macro">assert!</span>(
+<a href=#754 id=754 data-nosnippet>754</a>            frac(BiomeId::Tundra) &lt; <span class="number">0.03</span>,
+<a href=#755 id=755 data-nosnippet>755</a>            <span class="string">"warm archetype should produce &lt;3% Tundra; got {}"</span>,
+<a href=#756 id=756 data-nosnippet>756</a>            frac(BiomeId::Tundra)
+<a href=#757 id=757 data-nosnippet>757</a>        );
+<a href=#758 id=758 data-nosnippet>758</a>    }
+<a href=#759 id=759 data-nosnippet>759</a>}</code></pre></div></section></main></body></html>
