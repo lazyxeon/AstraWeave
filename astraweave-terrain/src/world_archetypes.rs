@@ -151,6 +151,37 @@ impl WorldArchetypeId {
             Self::Desert => desert(),
         }
     }
+
+    /// Phase 1.X-F.4.A: convert this archetype ID to its `RegionalArchetypeMask`
+    /// pixel-encoded uint8 value. ID 0 reserved for unpainted (sample-time
+    /// fallback to Continental Temperate); IDs 1-6 map to the 6 D.5 catalog
+    /// archetypes; IDs 7-255 reserved for future expansion.
+    pub const fn to_mask_id(self) -> u8 {
+        match self {
+            Self::ContinentalTemperate => 1,
+            Self::EquatorialTropical => 2,
+            Self::BorealSubarctic => 3,
+            Self::Mediterranean => 4,
+            Self::Desert => 5,
+            Self::Custom => 6,
+        }
+    }
+
+    /// Phase 1.X-F.4.A: inverse of [`Self::to_mask_id`]. Returns `None` for
+    /// 0 (unpainted; sampler returns Continental Temperate fallback) and for
+    /// reserved-but-unassigned IDs (7-255). The sampler treats `None` as
+    /// "unpainted" semantically.
+    pub const fn from_mask_id(id: u8) -> Option<Self> {
+        match id {
+            1 => Some(Self::ContinentalTemperate),
+            2 => Some(Self::EquatorialTropical),
+            3 => Some(Self::BorealSubarctic),
+            4 => Some(Self::Mediterranean),
+            5 => Some(Self::Desert),
+            6 => Some(Self::Custom),
+            _ => None,
+        }
+    }
 }
 
 // ============================================================================

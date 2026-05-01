@@ -31,6 +31,7 @@ pub mod biome_parameters; // Phase 1.6-F.4.B.3.D.3: per-BiomeId terrain paramete
 pub mod biome_param_blending; // Phase 1.6-F.4.B.3.D.4: scattered-convolution biome parameter blending (noiseposti.ng)
 pub mod world_archetypes; // Phase 1.6-F.4.B.3.D.5: world archetype catalog (6 climate envelope presets)
 pub mod spline_types; // Phase 1.X-F.1.A: PvFold + Spline1D + BootstrapParam (regional archetype variation)
+pub mod regional_archetype_mask; // Phase 1.X-F.4: paintable archetype mask + falloff distance field + sampler
 pub mod partition_integration;
 pub mod scatter;
 pub mod solver; // Phase 10: AI-Orchestrated Dynamic Terrain
