@@ -422,7 +422,61 @@ fn path_with_extension(base: &Path, ext: &str) -> std::path::PathBuf {
 // Phase 1.X-F.4.C: RegionalArchetypeBlend neighborhood-scan sampler
 // =============================================================================
 
+use crate::climate::ClimateSample;
+use crate::spline_types::{BootstrapParams, BootstrapSplineSet};
 use crate::world_archetypes::WorldArchetypeId;
+
+/// Phase 1.X-F.4.D: blend per-archetype `BootstrapParams` via spline-output
+/// blending per campaign doc §2.5. Each contributing archetype's
+/// `BootstrapSplineSet` evaluates against the same climate sample
+/// independently; weights from mask falloff combine spline outputs into
+/// per-vertex blended `BootstrapParams`.
+///
+/// Bootstrap noise pipeline runs ONCE per vertex with the blended params
+/// (per §2.5; not N times per vertex per archetype). This composes with
+/// F.3.B's `sample_height_with_params(blended_params, multiplier, x, z)`
+/// at the existing per-vertex call site.
+///
+/// **f32/f64 discipline (per F.3 deviation 2)**:
+/// - `mountains_amplitude`, `continental_scale`, `base_elevation_amplitude`:
+///   f32 weighted accumulation.
+/// - `mountains_scale`: f64 weighted accumulation (`weight as f64` cast
+///   before multiply) to preserve byte-identity for noise-coordinate
+///   multipliers.
+///
+/// **Convex combination invariants** (verified by tests):
+/// - Single-contributor case (`contributors.len() == 1`, weight = 1.0):
+///   output equals that archetype's `BootstrapParams` directly.
+/// - Identical-archetype case (e.g., `[(id, 0.5), (id, 0.5)]`): output
+///   equals that archetype's params within f32/f64 epsilon.
+/// - General convex case: blended params lie within convex hull of
+///   contributing archetypes' params (no overshoot).
+/// - Empty contributor list (degenerate; shouldn't occur per F.4.C
+///   invariants): returns all-zero `BootstrapParams`. F.4.E guards
+///   against passing empty lists to this function.
+pub fn blend_bootstrap_params(
+    contributors: &BlendContributors,
+    archetype_splines: &dyn Fn(WorldArchetypeId) -> BootstrapSplineSet,
+    sample: &ClimateSample,
+) -> BootstrapParams {
+    let mut blended = BootstrapParams {
+        mountains_amplitude: 0.0,
+        mountains_scale: 0.0,
+        continental_scale: 0.0,
+        base_elevation_amplitude: 0.0,
+    };
+    for (id, weight) in contributors.iter() {
+        let archetype_params = archetype_splines(id).evaluate(sample);
+        blended.mountains_amplitude += weight * archetype_params.mountains_amplitude;
+        // F.3 deviation 2: mountains_scale is f64; preserve precision via
+        // f64 weighted accumulation.
+        blended.mountains_scale += (weight as f64) * archetype_params.mountains_scale;
+        blended.continental_scale += weight * archetype_params.continental_scale;
+        blended.base_elevation_amplitude +=
+            weight * archetype_params.base_elevation_amplitude;
+    }
+    blended
+}
 
 /// Phase 1.X-F.4.C: small fixed-size container for up to 4
 /// `(WorldArchetypeId, weight)` blend contributors. Avoids per-vertex Vec
@@ -1121,5 +1175,266 @@ mod tests {
         let v: Vec<_> = c.iter().collect();
         assert_eq!(v[0].0, WorldArchetypeId::Mediterranean);
         assert!((v[0].1 - 1.0).abs() < 1e-6);
+    }
+
+    // =========================================================================
+    // Phase 1.X-F.4.D: blend_bootstrap_params multi-archetype blend math tests
+    // =========================================================================
+
+    use crate::spline_types::{
+        bootstrap_splines_continental_temperate, BootstrapParams, BootstrapSplineSet,
+        ClimateInputDim, ParamSpline, Spline1D,
+    };
+
+    /// Build a synthetic `BootstrapSplineSet` with the given mountain
+    /// amplitude, baseline values for other params. Used by F.4.D blend
+    /// math tests to verify per-archetype output is preserved through
+    /// blending.
+    fn synthetic_splines(mountains_amplitude: f32) -> BootstrapSplineSet {
+        BootstrapSplineSet {
+            mountains_amplitude: ParamSpline {
+                climate_input: ClimateInputDim::Pv,
+                spline: Spline1D::from_control_points(vec![(0.0, mountains_amplitude)])
+                    .unwrap(),
+            },
+            mountains_scale: 0.002, // f64 baseline
+            continental_scale: ParamSpline {
+                climate_input: ClimateInputDim::Continentalness,
+                spline: Spline1D::from_control_points(vec![(0.0, 0.0003)]).unwrap(),
+            },
+            base_elevation_amplitude: ParamSpline {
+                climate_input: ClimateInputDim::Pv,
+                spline: Spline1D::from_control_points(vec![(0.0, 150.0)]).unwrap(),
+            },
+        }
+    }
+
+    fn median_climate_sample() -> ClimateSample {
+        ClimateSample {
+            temperature_c: 12.0,
+            moisture_mm: 800.0,
+            continentalness: 0.5,
+            erosion: 0.0,
+            weirdness: 1.0, // pv = 0
+        }
+    }
+
+    /// Single-contributor blend produces output byte-identical to
+    /// `BootstrapSplineSet::evaluate` directly.
+    #[test]
+    fn blend_bootstrap_params_single_contributor_byte_identical_to_archetype_evaluate() {
+        let splines = bootstrap_splines_continental_temperate();
+        let sample = median_climate_sample();
+        let direct = splines.evaluate(&sample);
+
+        let contributors = BlendContributors::single(WorldArchetypeId::ContinentalTemperate);
+        let lookup = |_id: WorldArchetypeId| bootstrap_splines_continental_temperate();
+        let blended = blend_bootstrap_params(&contributors, &lookup, &sample);
+
+        assert_eq!(direct.mountains_amplitude.to_bits(), blended.mountains_amplitude.to_bits());
+        assert_eq!(direct.mountains_scale.to_bits(), blended.mountains_scale.to_bits());
+        assert_eq!(direct.continental_scale.to_bits(), blended.continental_scale.to_bits());
+        assert_eq!(
+            direct.base_elevation_amplitude.to_bits(),
+            blended.base_elevation_amplitude.to_bits()
+        );
+    }
+
+    /// Same archetype with weights 0.5+0.5 produces output equal to single-
+    /// contributor case within f32/f64 epsilon.
+    #[test]
+    fn blend_bootstrap_params_identical_archetype_two_halves() {
+        let mut contributors = BlendContributors {
+            items: [(WorldArchetypeId::ContinentalTemperate, 0.0); 4],
+            len: 0,
+        };
+        contributors.push(WorldArchetypeId::ContinentalTemperate, 0.5);
+        contributors.push(WorldArchetypeId::ContinentalTemperate, 0.5);
+        let lookup = |_id: WorldArchetypeId| bootstrap_splines_continental_temperate();
+        let sample = median_climate_sample();
+        let blended = blend_bootstrap_params(&contributors, &lookup, &sample);
+        let direct = bootstrap_splines_continental_temperate().evaluate(&sample);
+
+        assert!((blended.mountains_amplitude - direct.mountains_amplitude).abs() < 1e-3);
+        assert!((blended.mountains_scale - direct.mountains_scale).abs() < 1e-9);
+        assert!((blended.continental_scale - direct.continental_scale).abs() < 1e-7);
+        assert!(
+            (blended.base_elevation_amplitude - direct.base_elevation_amplitude).abs() < 1e-3
+        );
+    }
+
+    /// Two distinct archetypes (synthetic 480 + 800 amplitudes) at 50/50
+    /// weights → blended amplitude = 640 (within epsilon).
+    #[test]
+    fn blend_bootstrap_params_two_distinct_archetypes_50_50() {
+        let mut contributors = BlendContributors {
+            items: [(WorldArchetypeId::ContinentalTemperate, 0.0); 4],
+            len: 0,
+        };
+        contributors.push(WorldArchetypeId::ContinentalTemperate, 0.5);
+        contributors.push(WorldArchetypeId::BorealSubarctic, 0.5);
+        let lookup = |id: WorldArchetypeId| match id {
+            WorldArchetypeId::ContinentalTemperate => synthetic_splines(480.0),
+            WorldArchetypeId::BorealSubarctic => synthetic_splines(800.0),
+            _ => synthetic_splines(0.0),
+        };
+        let blended = blend_bootstrap_params(&contributors, &lookup, &median_climate_sample());
+        assert!(
+            (blended.mountains_amplitude - 640.0).abs() < 1e-3,
+            "blended amplitude should be 640.0; got {}",
+            blended.mountains_amplitude
+        );
+    }
+
+    /// Four archetypes at 0.25 each → blended amplitude = mean.
+    #[test]
+    fn blend_bootstrap_params_four_archetypes_quarter_each() {
+        let mut contributors = BlendContributors {
+            items: [(WorldArchetypeId::ContinentalTemperate, 0.0); 4],
+            len: 0,
+        };
+        contributors.push(WorldArchetypeId::ContinentalTemperate, 0.25);
+        contributors.push(WorldArchetypeId::EquatorialTropical, 0.25);
+        contributors.push(WorldArchetypeId::BorealSubarctic, 0.25);
+        contributors.push(WorldArchetypeId::Desert, 0.25);
+        let lookup = |id: WorldArchetypeId| match id {
+            WorldArchetypeId::ContinentalTemperate => synthetic_splines(480.0),
+            WorldArchetypeId::EquatorialTropical => synthetic_splines(350.0),
+            WorldArchetypeId::BorealSubarctic => synthetic_splines(800.0),
+            WorldArchetypeId::Desert => synthetic_splines(200.0),
+            _ => synthetic_splines(0.0),
+        };
+        let blended = blend_bootstrap_params(&contributors, &lookup, &median_climate_sample());
+        let expected_mean = (480.0 + 350.0 + 800.0 + 200.0) / 4.0; // = 457.5
+        assert!(
+            (blended.mountains_amplitude - expected_mean).abs() < 1e-3,
+            "blended amplitude should be {}; got {}",
+            expected_mean,
+            blended.mountains_amplitude
+        );
+    }
+
+    /// Convex combination invariant: blended `mountains_amplitude` is
+    /// between min and max of contributing archetypes' amplitudes across
+    /// 50 random contributor sets.
+    #[test]
+    fn blend_bootstrap_params_convex_hull_invariant() {
+        // Deterministic pseudo-random via incrementing seed-like values.
+        let amplitudes = [200.0_f32, 350.0, 480.0, 600.0, 800.0];
+        for trial in 0..50 {
+            let n = 1 + (trial % 4); // 1..=4 contributors
+            let mut contributors = BlendContributors {
+                items: [(WorldArchetypeId::ContinentalTemperate, 0.0); 4],
+                len: 0,
+            };
+            let archetypes = [
+                WorldArchetypeId::ContinentalTemperate,
+                WorldArchetypeId::EquatorialTropical,
+                WorldArchetypeId::BorealSubarctic,
+                WorldArchetypeId::Mediterranean,
+                WorldArchetypeId::Desert,
+            ];
+            let mut pseudo_weights = [0.0f32; 4];
+            let mut total = 0.0f32;
+            for i in 0..n {
+                let pw = ((trial * 7 + i * 13) % 100) as f32 / 100.0 + 0.1;
+                pseudo_weights[i] = pw;
+                total += pw;
+            }
+            for i in 0..n {
+                pseudo_weights[i] /= total;
+                contributors.push(archetypes[i], pseudo_weights[i]);
+            }
+
+            let lookup = |id: WorldArchetypeId| {
+                let amp = match id {
+                    WorldArchetypeId::ContinentalTemperate => amplitudes[0],
+                    WorldArchetypeId::EquatorialTropical => amplitudes[1],
+                    WorldArchetypeId::BorealSubarctic => amplitudes[2],
+                    WorldArchetypeId::Mediterranean => amplitudes[3],
+                    WorldArchetypeId::Desert => amplitudes[4],
+                    _ => 0.0,
+                };
+                synthetic_splines(amp)
+            };
+            let blended =
+                blend_bootstrap_params(&contributors, &lookup, &median_climate_sample());
+
+            // Compute min/max amplitudes among contributors.
+            let mut min_amp = f32::INFINITY;
+            let mut max_amp = f32::NEG_INFINITY;
+            for i in 0..n {
+                let amp = match archetypes[i] {
+                    WorldArchetypeId::ContinentalTemperate => amplitudes[0],
+                    WorldArchetypeId::EquatorialTropical => amplitudes[1],
+                    WorldArchetypeId::BorealSubarctic => amplitudes[2],
+                    WorldArchetypeId::Mediterranean => amplitudes[3],
+                    WorldArchetypeId::Desert => amplitudes[4],
+                    _ => 0.0,
+                };
+                if amp < min_amp {
+                    min_amp = amp;
+                }
+                if amp > max_amp {
+                    max_amp = amp;
+                }
+            }
+            assert!(
+                blended.mountains_amplitude >= min_amp - 1e-3
+                    && blended.mountains_amplitude <= max_amp + 1e-3,
+                "trial {}: blended amplitude {} not in convex hull [{}, {}]",
+                trial,
+                blended.mountains_amplitude,
+                min_amp,
+                max_amp
+            );
+        }
+    }
+
+    /// `mountains_scale` blend preserves f64 precision (per F.3 deviation 2).
+    /// Synthetic splines with mountains_scale 0.001 + 0.003 at 50/50 weights
+    /// → blended mountains_scale = 0.002 within f64 epsilon.
+    #[test]
+    fn blend_bootstrap_params_mountains_scale_f64_precision() {
+        let mut contributors = BlendContributors {
+            items: [(WorldArchetypeId::ContinentalTemperate, 0.0); 4],
+            len: 0,
+        };
+        contributors.push(WorldArchetypeId::ContinentalTemperate, 0.5);
+        contributors.push(WorldArchetypeId::BorealSubarctic, 0.5);
+        // Synthetic splines with different mountains_scale values
+        // (each archetype's BootstrapSplineSet stores it as direct f64).
+        let lookup = |id: WorldArchetypeId| {
+            let mut s = synthetic_splines(480.0);
+            s.mountains_scale = match id {
+                WorldArchetypeId::ContinentalTemperate => 0.001,
+                WorldArchetypeId::BorealSubarctic => 0.003,
+                _ => 0.002,
+            };
+            s
+        };
+        let blended = blend_bootstrap_params(&contributors, &lookup, &median_climate_sample());
+        // Expected: 0.5 * 0.001 + 0.5 * 0.003 = 0.002
+        assert!(
+            (blended.mountains_scale - 0.002).abs() < 1e-15,
+            "blended mountains_scale should be 0.002 (f64 exact); got {}",
+            blended.mountains_scale
+        );
+    }
+
+    /// Empty contributor list returns all-zero `BootstrapParams` (degenerate
+    /// case; F.4.E guards against this reaching the noise pipeline).
+    #[test]
+    fn blend_bootstrap_params_zero_contributors_returns_zero() {
+        let contributors = BlendContributors {
+            items: [(WorldArchetypeId::ContinentalTemperate, 0.0); 4],
+            len: 0,
+        };
+        let lookup = |_id: WorldArchetypeId| bootstrap_splines_continental_temperate();
+        let blended = blend_bootstrap_params(&contributors, &lookup, &median_climate_sample());
+        assert_eq!(blended.mountains_amplitude, 0.0);
+        assert_eq!(blended.mountains_scale, 0.0);
+        assert_eq!(blended.continental_scale, 0.0);
+        assert_eq!(blended.base_elevation_amplitude, 0.0);
     }
 }
