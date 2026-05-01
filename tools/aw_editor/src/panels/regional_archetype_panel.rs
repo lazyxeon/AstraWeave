@@ -12,7 +12,9 @@
 // - `WorldGenerator.regional_archetype_mask` field as integration surface.
 // - `WorldArchetypeId::to_mask_id` / `from_mask_id` for ID/enum bridging.
 
-use astraweave_terrain::regional_archetype_mask::RegionalArchetypeMask;
+use std::path::{Path, PathBuf};
+
+use astraweave_terrain::regional_archetype_mask::{MaskIoError, RegionalArchetypeMask};
 use astraweave_terrain::world_archetypes::WorldArchetypeId;
 use egui::Ui;
 
@@ -75,6 +77,21 @@ pub struct RegionalArchetypePanel {
     /// frame's pointer events and apply at end-of-frame via
     /// [`Self::apply_pending_paint_ops`] (F.5-paint.B).
     pub pending_paint_ops: Vec<PaintOp>,
+    /// F.5-paint.C: panel-owned mask. `None` until either
+    /// [`Self::ensure_mask`] (creates blank), [`Self::load_mask_from`]
+    /// (loads from disk), or [`Self::set_mask`] (caller provides one) is
+    /// called. The owned mask is what save/load and `_to_owned` brush
+    /// methods operate on.
+    pub mask: Option<RegionalArchetypeMask>,
+    /// F.5-paint.C: most recently saved-to or loaded-from mask base path
+    /// (without `.id.bin` / `.falloff.bin` / `.ron` extension; files are
+    /// derived from this stem). Used by "Save Mask" to write to the same
+    /// location without re-prompting the dialog.
+    pub current_mask_base_path: Option<PathBuf>,
+    /// F.5-paint.C: status string surfaced under the persistence buttons
+    /// (e.g. "Saved to <path>"; "Load failed: <error>"). Cleared on next
+    /// successful operation.
+    pub last_io_status: Option<String>,
 }
 
 impl Default for RegionalArchetypePanel {
@@ -86,6 +103,9 @@ impl Default for RegionalArchetypePanel {
             paint_mode: PaintMode::Paint,
             paint_active: false,
             pending_paint_ops: Vec::new(),
+            mask: None,
+            current_mask_base_path: None,
+            last_io_status: None,
         }
     }
 }
@@ -164,6 +184,155 @@ impl RegionalArchetypePanel {
 
         // Single batched falloff recompute after all ops land.
         mask.recompute_falloff();
+    }
+
+    // =========================================================================
+    // Phase 1.X-F.5-paint.C: panel-owned mask + save/load wiring
+    // =========================================================================
+
+    /// F.5-paint.C: ensure the panel owns a mask. If `self.mask` is
+    /// `None`, allocates a blank unpainted mask at the panel's
+    /// `falloff_radius_pixels` setting. If already populated, leaves the
+    /// existing mask untouched (idempotent).
+    ///
+    /// Uses [`RegionalArchetypeMask::DEFAULT_RESOLUTION`] (1024) and
+    /// [`RegionalArchetypeMask::DEFAULT_WORLD_EXTENT_WU`] (11264 WU) —
+    /// matches the F.4 production-default mask configuration.
+    pub fn ensure_mask(&mut self) {
+        if self.mask.is_none() {
+            let mut mask = RegionalArchetypeMask::new_unpainted(
+                RegionalArchetypeMask::DEFAULT_RESOLUTION,
+                RegionalArchetypeMask::DEFAULT_WORLD_EXTENT_WU,
+            );
+            mask.falloff_radius_pixels = self.falloff_radius_pixels;
+            self.mask = Some(mask);
+        }
+    }
+
+    /// F.5-paint.C: replace the panel's owned mask with the caller's
+    /// instance. Used by editor integration when the project's loaded
+    /// world hands over its `WorldGenerator.regional_archetype_mask`.
+    pub fn set_mask(&mut self, mask: RegionalArchetypeMask) {
+        self.mask = Some(mask);
+    }
+
+    /// F.5-paint.C: drop the panel's owned mask + clear the cached save
+    /// path. Used by "Clear Mask" button. Subsequent paint operations
+    /// will land in a fresh unpainted mask after the next
+    /// [`Self::ensure_mask`] call.
+    pub fn clear_mask(&mut self) {
+        self.mask = None;
+        self.current_mask_base_path = None;
+        self.last_io_status = Some("Mask cleared".to_string());
+    }
+
+    /// F.5-paint.C: apply pending paint ops to the panel-owned mask
+    /// (allocating blank one first via [`Self::ensure_mask`] if needed).
+    /// Convenience wrapper around [`Self::apply_pending_paint_ops`] for
+    /// editor frame-tick integration.
+    pub fn apply_pending_paint_ops_to_owned(&mut self) {
+        if self.pending_paint_ops.is_empty() {
+            return;
+        }
+        self.ensure_mask();
+        // Take/replace dance to avoid double-borrow of `self`.
+        if let Some(mut mask) = self.mask.take() {
+            self.apply_pending_paint_ops(&mut mask);
+            self.mask = Some(mask);
+        }
+    }
+
+    /// F.5-paint.C: save the panel's owned mask to disk at `base_path`.
+    /// Writes 3 files (`<base>.ron` + `<base>.id.bin` + `<base>.falloff.bin`)
+    /// per the F.4.B persistence format. Updates `current_mask_base_path`
+    /// so subsequent saves can reuse the same destination without
+    /// re-prompting.
+    ///
+    /// Returns `Err` if no mask is owned, or if the underlying I/O fails.
+    pub fn save_mask_to(&mut self, base_path: &Path) -> Result<(), MaskIoError> {
+        let mask = self.mask.as_ref().ok_or_else(|| {
+            MaskIoError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no mask to save (panel.mask is None)",
+            ))
+        })?;
+        mask.save_to_files(base_path)?;
+        self.current_mask_base_path = Some(base_path.to_path_buf());
+        self.last_io_status = Some(format!("Saved mask to {}", base_path.display()));
+        Ok(())
+    }
+
+    /// F.5-paint.C: load a mask from disk at `base_path` and replace the
+    /// panel's owned mask. Updates `current_mask_base_path`. Triggers a
+    /// `recompute_falloff` only if the loaded falloff field looks
+    /// uninitialized (binary file all-255) — usually the saved file is
+    /// valid and recompute is unnecessary.
+    pub fn load_mask_from(&mut self, base_path: &Path) -> Result<(), MaskIoError> {
+        let mask = RegionalArchetypeMask::load_from_files(base_path)?;
+        self.falloff_radius_pixels = mask.falloff_radius_pixels;
+        self.mask = Some(mask);
+        self.current_mask_base_path = Some(base_path.to_path_buf());
+        self.last_io_status = Some(format!("Loaded mask from {}", base_path.display()));
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Phase 1.X-F.5-paint.C: project storage layout helpers (sibling-directory)
+// =============================================================================
+
+/// F.5-paint.C: sibling-directory subfolder name where mask files live
+/// inside a project root. Established convention (Godot Terrain3D, Unity
+/// Terrain) is to keep large binary terrain side-data adjacent to the
+/// project's primary scene/world files in a dedicated subdirectory.
+///
+/// Full file layout under a project root `<root>/`:
+///
+/// ```text
+/// <root>/regional_archetype_masks/
+///     <world_name>.ron
+///     <world_name>.id.bin
+///     <world_name>.falloff.bin
+/// ```
+pub const MASK_STORAGE_SUBDIR: &str = "regional_archetype_masks";
+
+/// F.5-paint.C: directory inside `project_root` where mask files are
+/// stored. Caller is responsible for creating the directory if it doesn't
+/// exist (typically done by [`ensure_mask_storage_dir`]).
+pub fn default_mask_storage_dir(project_root: &Path) -> PathBuf {
+    project_root.join(MASK_STORAGE_SUBDIR)
+}
+
+/// F.5-paint.C: full base-path stem for a named world's mask files.
+/// Returns `<project_root>/regional_archetype_masks/<world_name>` (no
+/// extension; pass to [`RegionalArchetypePanel::save_mask_to`] /
+/// [`RegionalArchetypePanel::load_mask_from`]).
+pub fn default_mask_base_path(project_root: &Path, world_name: &str) -> PathBuf {
+    default_mask_storage_dir(project_root).join(world_name)
+}
+
+/// F.5-paint.C: ensure the mask storage subdirectory exists under
+/// `project_root`. Creates it if absent (idempotent). Returns the
+/// directory path.
+pub fn ensure_mask_storage_dir(project_root: &Path) -> std::io::Result<PathBuf> {
+    let dir = default_mask_storage_dir(project_root);
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+/// F.5-paint.C: strip a trailing `.ron` extension from `path` so the
+/// result is the stem suitable for [`RegionalArchetypeMask::save_to_files`]
+/// / [`RegionalArchetypeMask::load_from_files`]. Returns the original
+/// path unchanged if it doesn't end in `.ron`.
+///
+/// Example: `<dir>/foo.ron` → `<dir>/foo`. The save API derives
+/// `<dir>/foo.ron`, `<dir>/foo.id.bin`, `<dir>/foo.falloff.bin` from the
+/// stem — passing the `.ron` path directly would produce `<dir>/foo.ron.ron`.
+pub fn strip_ron_extension(path: &Path) -> PathBuf {
+    if path.extension().map(|e| e == "ron").unwrap_or(false) {
+        path.with_extension("")
+    } else {
+        path.to_path_buf()
     }
 }
 
@@ -357,26 +526,100 @@ impl RegionalArchetypePanel {
         });
     }
 
-    /// Save/Load/Clear mask buttons. F.5-paint.A scaffold; F.5-paint.C
-    /// wires to the project sibling-directory save flow.
+    /// Save/Load/Clear mask buttons. F.5-paint.C wires to the project
+    /// sibling-directory save flow via `rfd::FileDialog`.
     fn show_persistence_section(&mut self, ui: &mut Ui) {
         ui.heading("Persistence");
         ui.horizontal(|ui| {
-            // Buttons render but don't act yet at F.5-paint.A scope.
-            // F.5-paint.C wires save/load.
-            let _ = ui.button("Save Mask");
-            let _ = ui.button("Load Mask");
-            let _ = ui.button("Clear Mask");
+            if ui.button("Save Mask").clicked() {
+                self.trigger_save_dialog();
+            }
+            if ui.button("Save As...").clicked() {
+                self.trigger_save_as_dialog();
+            }
+            if ui.button("Load Mask").clicked() {
+                self.trigger_load_dialog();
+            }
+            if ui.button("Clear Mask").clicked() {
+                self.clear_mask();
+            }
         });
-        ui.label(
-            egui::RichText::new(
-                "Save/Load wiring lands in F.5-paint.C. Currently buttons \
-                 render but don't act.",
-            )
-            .small()
-            .italics()
-            .color(egui::Color32::GRAY),
-        );
+
+        if let Some(ref path) = self.current_mask_base_path {
+            ui.label(
+                egui::RichText::new(format!("Current: {}", path.display()))
+                    .small()
+                    .color(egui::Color32::LIGHT_GRAY),
+            );
+        }
+        if let Some(ref status) = self.last_io_status {
+            ui.label(egui::RichText::new(status).small().italics());
+        }
+    }
+
+    /// F.5-paint.C: "Save Mask" button handler. If a current path is
+    /// known, saves there silently. Otherwise prompts via "Save As".
+    fn trigger_save_dialog(&mut self) {
+        if let Some(path) = self.current_mask_base_path.clone() {
+            if let Err(e) = self.save_mask_to(&path) {
+                self.last_io_status = Some(format!("Save failed: {}", e));
+            }
+        } else {
+            self.trigger_save_as_dialog();
+        }
+    }
+
+    /// F.5-paint.C: "Save As..." button handler. Opens a native file
+    /// dialog rooted at the mask storage subdirectory (defaults to
+    /// CWD/regional_archetype_masks if no project root is known).
+    fn trigger_save_as_dialog(&mut self) {
+        // Default storage dir under current working directory (editor's
+        // project root is set by aw_editor main.rs; without that bridge
+        // we fall back to CWD-relative layout).
+        let default_dir = match std::env::current_dir() {
+            Ok(cwd) => default_mask_storage_dir(&cwd),
+            Err(_) => PathBuf::from(MASK_STORAGE_SUBDIR),
+        };
+        // Best-effort dir creation; failures surface in the save error.
+        let _ = std::fs::create_dir_all(&default_dir);
+
+        let chosen = rfd::FileDialog::new()
+            .set_title("Save Regional Archetype Mask (RON metadata stem)")
+            .set_directory(&default_dir)
+            .add_filter("Regional Archetype Mask metadata", &["ron"])
+            .save_file();
+
+        if let Some(picked) = chosen {
+            // User picks the .ron path; we pass the stem (without
+            // extension) to save_mask_to so all 3 sibling files write
+            // with consistent stems.
+            let base = strip_ron_extension(&picked);
+            if let Err(e) = self.save_mask_to(&base) {
+                self.last_io_status = Some(format!("Save failed: {}", e));
+            }
+        }
+    }
+
+    /// F.5-paint.C: "Load Mask" button handler. Opens a native file
+    /// dialog rooted at the mask storage subdirectory.
+    fn trigger_load_dialog(&mut self) {
+        let default_dir = match std::env::current_dir() {
+            Ok(cwd) => default_mask_storage_dir(&cwd),
+            Err(_) => PathBuf::from(MASK_STORAGE_SUBDIR),
+        };
+
+        let chosen = rfd::FileDialog::new()
+            .set_title("Load Regional Archetype Mask")
+            .set_directory(&default_dir)
+            .add_filter("Regional Archetype Mask metadata", &["ron"])
+            .pick_file();
+
+        if let Some(picked) = chosen {
+            let base = strip_ron_extension(&picked);
+            if let Err(e) = self.load_mask_from(&base) {
+                self.last_io_status = Some(format!("Load failed: {}", e));
+            }
+        }
     }
 
     /// Regenerate Terrain button. Triggers `TerrainPanel`'s regenerate
@@ -707,5 +950,236 @@ mod tests {
         assert_eq!(panel.pending_paint_ops.len(), 1);
         let op = &panel.pending_paint_ops[0];
         assert_eq!(op.archetype_id, 0); // erase = 0 regardless of selected_archetype
+    }
+
+    // =========================================================================
+    // Phase 1.X-F.5-paint.C: panel-owned mask + save/load tests
+    // =========================================================================
+
+    /// F.5-paint.C: panel default state has no owned mask, no path, no status.
+    #[test]
+    fn panel_default_persistence_state() {
+        let p = RegionalArchetypePanel::default();
+        assert!(p.mask.is_none());
+        assert!(p.current_mask_base_path.is_none());
+        assert!(p.last_io_status.is_none());
+    }
+
+    /// `ensure_mask` creates a default-sized unpainted mask only when
+    /// none is owned. Idempotent on subsequent calls.
+    #[test]
+    fn ensure_mask_allocates_only_once() {
+        let mut p = RegionalArchetypePanel::default();
+        p.ensure_mask();
+        let m = p.mask.as_ref().expect("mask allocated");
+        assert_eq!(m.resolution, RegionalArchetypeMask::DEFAULT_RESOLUTION);
+        assert_eq!(m.world_extent_wu, RegionalArchetypeMask::DEFAULT_WORLD_EXTENT_WU);
+
+        // Mutate the mask, call ensure_mask again, expect it untouched.
+        p.mask.as_mut().unwrap().ids[0] = 42;
+        p.ensure_mask();
+        assert_eq!(p.mask.as_ref().unwrap().ids[0], 42);
+    }
+
+    /// `clear_mask` drops the owned mask, the cached path, and writes a
+    /// status string.
+    #[test]
+    fn clear_mask_resets_all_state() {
+        let mut p = RegionalArchetypePanel::default();
+        p.ensure_mask();
+        p.current_mask_base_path = Some(PathBuf::from("/tmp/some/mask"));
+        assert!(p.mask.is_some());
+
+        p.clear_mask();
+        assert!(p.mask.is_none());
+        assert!(p.current_mask_base_path.is_none());
+        assert!(p.last_io_status.is_some());
+    }
+
+    /// `apply_pending_paint_ops_to_owned` allocates a fresh mask when
+    /// none exists and applies queued ops to it.
+    #[test]
+    fn apply_pending_paint_ops_to_owned_allocates_fresh_mask_if_needed() {
+        let mut p = RegionalArchetypePanel::default();
+        p.brush_size_pixels = 16;
+        // Paint at world origin; with default 1024² mask + 11264 WU
+        // extent, that's mask center (512, 512).
+        p.queue_paint_op(0.0, 0.0);
+        assert!(p.mask.is_none());
+
+        p.apply_pending_paint_ops_to_owned();
+
+        let m = p.mask.as_ref().expect("mask allocated by ensure_mask");
+        let ct_id = WorldArchetypeId::ContinentalTemperate.to_mask_id();
+        assert_eq!(m.id_at(512, 512), ct_id);
+        assert!(p.pending_paint_ops.is_empty()); // drained
+    }
+
+    /// Empty queue → no mask allocated, no mutation.
+    #[test]
+    fn apply_pending_paint_ops_to_owned_empty_queue_skips_alloc() {
+        let mut p = RegionalArchetypePanel::default();
+        assert!(p.mask.is_none());
+
+        p.apply_pending_paint_ops_to_owned();
+
+        // Mask still None because no work to do.
+        assert!(p.mask.is_none());
+    }
+
+    /// `save_mask_to` followed by `load_mask_from` round-trips the mask
+    /// content byte-identically and restores the cached base path.
+    #[test]
+    fn save_then_load_round_trips_mask() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aw_editor_f5_paint_c_save_load_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&tmp).expect("create tmp dir");
+        let base = tmp.join("test_world");
+
+        // Build a panel with a small painted mask to round-trip.
+        let mut original = RegionalArchetypePanel::default();
+        let mut mask = RegionalArchetypeMask::new_unpainted(64, 1000.0);
+        mask.ids[0] = 3;
+        mask.ids[100] = 5;
+        mask.recompute_falloff();
+        original.set_mask(mask);
+
+        // Save.
+        original.save_mask_to(&base).expect("save_mask_to");
+        assert_eq!(
+            original.current_mask_base_path.as_deref(),
+            Some(base.as_path())
+        );
+        assert!(original
+            .last_io_status
+            .as_ref()
+            .map(|s| s.starts_with("Saved mask to"))
+            .unwrap_or(false));
+
+        // Load into a fresh panel.
+        let mut loaded = RegionalArchetypePanel::default();
+        loaded.load_mask_from(&base).expect("load_mask_from");
+        assert_eq!(loaded.current_mask_base_path.as_deref(), Some(base.as_path()));
+
+        // Byte-identical mask content.
+        let a = original.mask.as_ref().unwrap();
+        let b = loaded.mask.as_ref().unwrap();
+        assert_eq!(a.resolution, b.resolution);
+        assert_eq!(a.world_extent_wu, b.world_extent_wu);
+        assert_eq!(a.ids, b.ids);
+        assert_eq!(a.falloff, b.falloff);
+
+        // Cleanup.
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// `save_mask_to` returns Err with NotFound-style I/O error when no
+    /// mask is owned.
+    #[test]
+    fn save_mask_to_with_no_owned_mask_errors() {
+        let mut p = RegionalArchetypePanel::default();
+        let result = p.save_mask_to(&PathBuf::from("/tmp/aw_no_mask_attempt"));
+        assert!(result.is_err());
+        assert!(p.current_mask_base_path.is_none()); // not updated on error
+    }
+
+    /// `default_mask_storage_dir` joins the project root with the
+    /// established subdirectory name.
+    #[test]
+    fn default_mask_storage_dir_joins_subdir() {
+        let root = PathBuf::from("/projects/veilweaver");
+        let dir = default_mask_storage_dir(&root);
+        assert_eq!(dir, root.join(MASK_STORAGE_SUBDIR));
+    }
+
+    /// `default_mask_base_path` returns `<root>/regional_archetype_masks/<world>`.
+    #[test]
+    fn default_mask_base_path_layout() {
+        let root = PathBuf::from("/projects/veilweaver");
+        let base = default_mask_base_path(&root, "main_world");
+        assert_eq!(
+            base,
+            PathBuf::from("/projects/veilweaver/regional_archetype_masks/main_world")
+        );
+    }
+
+    /// `ensure_mask_storage_dir` creates the directory if absent and
+    /// returns its path. Idempotent if already present.
+    #[test]
+    fn ensure_mask_storage_dir_creates_subdirectory() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aw_editor_f5_paint_c_storage_dir_{}",
+            std::process::id()
+        ));
+        // Ensure clean slate.
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("create tmp project root");
+
+        let dir = ensure_mask_storage_dir(&tmp).expect("ensure_mask_storage_dir");
+        assert!(dir.exists() && dir.is_dir());
+        assert_eq!(dir, tmp.join(MASK_STORAGE_SUBDIR));
+
+        // Idempotent call.
+        let dir2 = ensure_mask_storage_dir(&tmp).expect("ensure_mask_storage_dir idempotent");
+        assert_eq!(dir, dir2);
+
+        // Cleanup.
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// `strip_ron_extension` removes a trailing `.ron` and leaves other
+    /// paths unchanged.
+    #[test]
+    fn strip_ron_extension_strips_only_ron() {
+        let with_ron = PathBuf::from("/projects/world.ron");
+        assert_eq!(strip_ron_extension(&with_ron), PathBuf::from("/projects/world"));
+
+        let no_ext = PathBuf::from("/projects/world");
+        assert_eq!(strip_ron_extension(&no_ext), no_ext);
+
+        let other_ext = PathBuf::from("/projects/world.bin");
+        assert_eq!(strip_ron_extension(&other_ext), other_ext);
+    }
+
+    /// `set_mask` swaps in a caller-provided instance, preserving its
+    /// content.
+    #[test]
+    fn set_mask_replaces_owned_mask() {
+        let mut p = RegionalArchetypePanel::default();
+        let mask = RegionalArchetypeMask::new_unpainted(32, 200.0);
+        p.set_mask(mask);
+        let m = p.mask.as_ref().unwrap();
+        assert_eq!(m.resolution, 32);
+        assert_eq!(m.world_extent_wu, 200.0);
+    }
+
+    /// Loading a mask updates the panel's `falloff_radius_pixels` to
+    /// match the loaded mask's value (so subsequent paint ops use the
+    /// loaded falloff radius, not the default).
+    #[test]
+    fn load_mask_updates_falloff_radius_pixels() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aw_editor_f5_paint_c_falloff_inherit_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&tmp).expect("create tmp");
+        let base = tmp.join("custom_falloff");
+
+        let mut mask = RegionalArchetypeMask::new_unpainted(64, 1000.0);
+        mask.falloff_radius_pixels = 17; // non-default; verifies inheritance
+        mask.recompute_falloff();
+        mask.save_to_files(&base).expect("save");
+
+        let mut p = RegionalArchetypePanel::default();
+        assert_eq!(
+            p.falloff_radius_pixels,
+            RegionalArchetypePanel::DEFAULT_FALLOFF_RADIUS_PIXELS
+        );
+        p.load_mask_from(&base).expect("load");
+        assert_eq!(p.falloff_radius_pixels, 17);
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
