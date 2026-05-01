@@ -51,6 +51,7 @@ pub mod polish_panel;
 pub mod post_process_panel;
 pub mod profiler_panel;
 pub mod project_settings_panel;
+pub mod regional_archetype_panel; // Phase 1.X-F.5-paint: paintable archetype mask editor panel
 pub mod scene_stats_panel;
 pub mod spline_editor_panel;
 pub mod terrain_panel;
