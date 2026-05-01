@@ -501,6 +501,25 @@ impl WorldGenerator {
         // D.6 Andrew-gate informs whether to tune.
         let blend_config = crate::biome_param_blending::BiomeParamBlendConfig::default();
 
+        // Phase 1.X-F.3.B: archetype bootstrap splines, cached once for the
+        // entire halo. F.3 wires Continental Temperate only; F.4 reads the
+        // archetype identity from the painted RegionalArchetypeMask per
+        // vertex.
+        //
+        // **F.3 single-archetype scope**: every vertex evaluates Continental
+        // Temperate's BootstrapSplineSet, regardless of the climate sample
+        // (which determines which BiomeId each vertex resolves to but does
+        // not yet drive archetype selection). With F.2's single-control-point
+        // splines, the BootstrapParams are constant across all vertices and
+        // equal F.4.B.3.D.5-fix Path B baseline (mountains_amplitude=480,
+        // mountains_scale=0.002, continental_scale=0.0003,
+        // base_elevation_amplitude=150). Combined with the per-biome
+        // mountain_amplitude_multiplier from D.3b's BiomeParameters
+        // blending, this produces output within F.3 §10 tolerance of the
+        // legacy path (max divergence ~0.7mm at 100m heights, well under
+        // the 0.1m §6.3 fallback).
+        let archetype_splines = crate::spline_types::bootstrap_splines_continental_temperate();
+
         let mut biome_ids = Vec::with_capacity(halo_res * halo_res);
         for z_idx in 0..halo_res {
             for x_idx in 0..halo_res {
@@ -524,7 +543,21 @@ impl WorldGenerator {
                     &blend_config,
                 );
 
-                let modulated_height = self.noise.sample_height_with_mountain_amplitude(
+                // Phase 1.X-F.3.B: evaluate archetype BootstrapSplineSet
+                // at this vertex's climate sample. F.2's single-control-point
+                // catalog defaults make this evaluation a constant-output
+                // operation (BootstrapParams == F.4.B.3.D.5-fix baseline at
+                // any climate sample); F.7 differentiates per archetype.
+                let climate_sample = self.climate.sample(wx, wz, raw_height);
+                let bootstrap_params = archetype_splines.evaluate(&climate_sample);
+
+                // Phase 1.X-F.3.B: replace sample_height_with_mountain_amplitude
+                // with sample_height_with_params (composed with the per-biome
+                // multiplier from blended.mountains_amplitude). Per-archetype
+                // bootstrap parameters and per-biome amplitude are
+                // architecturally orthogonal layers that multiply.
+                let modulated_height = self.noise.sample_height_with_params(
+                    &bootstrap_params,
                     wx,
                     wz,
                     blended.mountains_amplitude as f32,

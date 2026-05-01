@@ -320,10 +320,24 @@ pub enum BootstrapParam {
 ///
 /// These four values map directly to [`crate::noise_gen::NoiseConfig`]
 /// fields:
-/// - `mountains_amplitude` → `NoiseConfig.mountains.amplitude`
-/// - `mountains_scale` → `NoiseConfig.mountains.scale`
-/// - `continental_scale` → `NoiseConfig.continental_scale`
-/// - `base_elevation_amplitude` → `NoiseConfig.base_elevation.amplitude`
+/// - `mountains_amplitude` → `NoiseConfig.mountains.amplitude` (f32; multiplied against `[-1, 1]` noise output, f32 precision sufficient)
+/// - `mountains_scale` → `NoiseConfig.mountains.scale` (**f64**; multiplied against world coordinates up to ~10000 WU, f64 precision required to preserve byte-identity with legacy `NoiseConfig::default()`)
+/// - `continental_scale` → `NoiseConfig.continental_scale` (**f64**; same rationale as `mountains_scale`)
+/// - `base_elevation_amplitude` → `NoiseConfig.base_elevation.amplitude` (f32)
+///
+/// **Phase 1.X-F.3.B retrofit (logged in `REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md`
+/// §10 F.3 entry)**: `mountains_scale` changed from `f32` to `f64`
+/// because F.2.B's f32 storage produced ~60-ulp precision drift
+/// relative to the legacy `NoiseConfig.mountains.scale: f64 = 0.002`
+/// exact representation. The drift propagated through erosion (which
+/// is sensitive to small position changes per F.3-phase-3 world-coord
+/// seeding finding) and produced 103 WU divergence at chunk shared
+/// edges, breaking the phase-2 continuity grassland threshold (80 WU).
+/// `continental_scale` stays `f32` because legacy
+/// `NoiseConfig.continental_scale` is also `f32` — both sides have the
+/// same f32 representation, no drift. Amplitude fields stay `f32`
+/// because they multiply `[-1, 1]` noise output where f32 precision is
+/// sufficient.
 ///
 /// F.3 wires the per-vertex `BootstrapParams` into the noise pipeline.
 /// F.2 ships the type without integration; downstream consumers (F.4
@@ -332,7 +346,7 @@ pub enum BootstrapParam {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BootstrapParams {
     pub mountains_amplitude: f32,
-    pub mountains_scale: f32,
+    pub mountains_scale: f64,
     pub continental_scale: f32,
     pub base_elevation_amplitude: f32,
 }
@@ -349,7 +363,18 @@ pub struct BootstrapParams {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BootstrapSplineSet {
     pub mountains_amplitude: ParamSpline,
-    pub mountains_scale: ParamSpline,
+    /// Phase 1.X-F.3.B retrofit: stored as plain `f64` (not a `ParamSpline`)
+    /// because the legacy `NoiseConfig.mountains.scale: f64 = 0.002` requires
+    /// f64 precision to preserve byte-identity through chunk-edge erosion.
+    /// `Spline1D` evaluates to `f32`, which drifts from the legacy f64 0.002
+    /// by ~60 ulps; that drift propagates through erosion's particle-tracking
+    /// sensitivity (per F.3-phase-3 finding) and produces ~30 WU divergence
+    /// at chunk shared edges, breaking phase-2 continuity. F.7 may replace
+    /// with a multi-control-point f64 spline (`Spline1DF64`-style) if
+    /// per-archetype scale variation surfaces a tuning need; F.2's
+    /// single-control-point catalog case is well-served by direct f64
+    /// storage.
+    pub mountains_scale: f64,
     pub continental_scale: ParamSpline,
     pub base_elevation_amplitude: ParamSpline,
 }
@@ -370,10 +395,18 @@ impl Default for BootstrapSplineSet {
 impl BootstrapSplineSet {
     /// Evaluate all four splines against the climate sample, producing
     /// a per-vertex [`BootstrapParams`].
+    ///
+    /// Scale fields (`mountains_scale`, `continental_scale`) widen from
+    /// `Spline1D::evaluate`'s `f32` output to `f64` for the BootstrapParams
+    /// struct. At F.2's single-control-point catalog defaults, the spline
+    /// output is a constant; widening to f64 introduces no additional
+    /// drift beyond what's intrinsic to the f32 spline storage. F.7 may
+    /// revisit if multi-control-point spline tuning surfaces precision
+    /// issues.
     pub fn evaluate(&self, sample: &crate::climate::ClimateSample) -> BootstrapParams {
         BootstrapParams {
             mountains_amplitude: self.mountains_amplitude.evaluate(sample),
-            mountains_scale: self.mountains_scale.evaluate(sample),
+            mountains_scale: self.mountains_scale,
             continental_scale: self.continental_scale.evaluate(sample),
             base_elevation_amplitude: self.base_elevation_amplitude.evaluate(sample),
         }
@@ -389,9 +422,13 @@ impl BootstrapSplineSet {
 
 /// F.4.B.3.D.5-fix `mountains.amplitude` baseline (`NoiseConfig::default()`).
 pub const D5FIX_BASELINE_MOUNTAINS_AMPLITUDE: f32 = 480.0;
-/// F.4.B.3.D.5-fix `mountains.scale` baseline.
-pub const D5FIX_BASELINE_MOUNTAINS_SCALE: f32 = 0.002;
-/// F.4.B.3.D.5-fix `continental_scale` baseline.
+/// F.4.B.3.D.5-fix `mountains.scale` baseline. **f64** to preserve
+/// byte-identity with legacy `NoiseConfig::default().mountains.scale: f64`
+/// (per F.3.B retrofit; see `BootstrapParams` doc-comment).
+pub const D5FIX_BASELINE_MOUNTAINS_SCALE: f64 = 0.002;
+/// F.4.B.3.D.5-fix `continental_scale` baseline. **f32** matching legacy
+/// `NoiseConfig.continental_scale: f32`; both sides share the same
+/// f32 representation, no precision drift.
 pub const D5FIX_BASELINE_CONTINENTAL_SCALE: f32 = 0.0003;
 /// F.4.B.3.D.5-fix `base_elevation.amplitude` baseline.
 pub const D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE: f32 = 150.0;
@@ -427,14 +464,10 @@ fn d5fix_baseline_spline_set() -> BootstrapSplineSet {
             )])
             .expect("single-point spline with finite values is valid"),
         },
-        mountains_scale: ParamSpline {
-            climate_input: ClimateInputDim::Erosion,
-            spline: Spline1D::from_control_points(vec![(
-                0.0,
-                D5FIX_BASELINE_MOUNTAINS_SCALE,
-            )])
-            .expect("single-point spline with finite values is valid"),
-        },
+        // Phase 1.X-F.3.B: direct f64 storage; see BootstrapSplineSet
+        // doc-comment for rationale (legacy NoiseConfig.mountains.scale: f64
+        // requires f64 precision through erosion).
+        mountains_scale: D5FIX_BASELINE_MOUNTAINS_SCALE,
         continental_scale: ParamSpline {
             climate_input: ClimateInputDim::Continentalness,
             spline: Spline1D::from_control_points(vec![(

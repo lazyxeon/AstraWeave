@@ -1655,22 +1655,26 @@ mod tests {
     }
 
     /// At baseline params + multiplier 1.0, `sample_height_with_params`
-    /// produces output within F.3 §10 tolerance of legacy `sample_height`
-    /// across 100 sample positions.
+    /// produces **byte-identical** output to legacy `sample_height` across
+    /// 100 sample positions.
     ///
-    /// **Tolerance methodology (logged in `REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md`
-    /// §10 F.3 entry, per F.3 prompt §6.3 fallback)**: byte-identical was
-    /// the primary contract, but `BootstrapParams.mountains_scale: f32`
-    /// (and `continental_scale: f32`) cannot exactly represent the legacy
-    /// `f64` `NoiseConfig::default()` values (0.002, 0.0003). Casting
-    /// f32→f64 inside this method introduces small precision drift relative
-    /// to the legacy path, which preserves f64 throughout. Empirical max
-    /// drift at F.3.A development: max f32 ulp-diff = 60 (~0.7mm at 100m
-    /// heights), well within the §6.3 fallback tolerance of 0.1m. Test
-    /// asserts max world-unit divergence < 0.01m (10mm; ~10× empirical
-    /// headroom over the measured 0.7mm) AND mean divergence < 0.001m
-    /// (1mm). If a future change widens drift beyond 10mm, this test
-    /// surfaces the regression immediately.
+    /// **F.3.B retrofit history (logged in `REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md`
+    /// §10 F.3 entry)**: F.3.A initially landed with
+    /// `BootstrapParams.mountains_scale: f32`, which produced ~60-ulp
+    /// precision drift relative to the legacy `NoiseConfig.mountains.scale: f64`
+    /// exact representation. The drift propagated through erosion (per
+    /// F.3-phase-3 world-coord seeding finding) and produced 103 WU
+    /// divergence at chunk shared edges, breaking phase-2 continuity
+    /// (80 WU threshold). F.3.B retrofit changed `BootstrapParams.mountains_scale`
+    /// from `f32` to `f64` and `BootstrapSplineSet.mountains_scale` from
+    /// a `ParamSpline` to a plain `f64` field, restoring byte-identity.
+    /// `continental_scale` stays `f32` because legacy
+    /// `NoiseConfig.continental_scale` is also `f32` — both sides share
+    /// the same f32 representation, no drift.
+    ///
+    /// Test asserts byte-identical (max world-unit divergence == 0.0).
+    /// If a future change introduces drift, this test surfaces the
+    /// regression immediately.
     #[test]
     fn sample_height_with_params_at_baseline_matches_sample_height() {
         let config = NoiseConfig::default();
@@ -1697,23 +1701,13 @@ mod tests {
         }
         let mean_diff = sum_diff / count as f32;
 
-        // Tolerance per F.3 §10 deviation:
-        // - max divergence < 10mm (well under §6.3's 0.1m fallback;
-        //   empirical ~0.7mm at F.3.A development).
-        // - mean divergence < 1mm (precision drift averages out).
-        assert!(
-            max_diff < 0.01,
-            "sample_height_with_params drift exceeds 10mm tolerance; \
-             max={:.6}m, mean={:.6}m",
-            max_diff,
-            mean_diff
-        );
-        assert!(
-            mean_diff < 0.001,
-            "sample_height_with_params mean drift exceeds 1mm tolerance; \
-             max={:.6}m, mean={:.6}m",
-            max_diff,
-            mean_diff
+        // Byte-identical contract: max divergence must be exactly 0.0
+        // after F.3.B retrofit (mountains_scale: f64).
+        assert_eq!(
+            max_diff, 0.0,
+            "sample_height_with_params at baseline must be byte-identical \
+             to legacy sample_height; max={:.9}m, mean={:.9}m",
+            max_diff, mean_diff
         );
     }
 
