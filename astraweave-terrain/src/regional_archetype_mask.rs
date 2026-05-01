@@ -19,6 +19,34 @@
 //! F.4.E wires into `WorldGenerator`.
 
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io;
+use std::path::Path;
+
+/// Phase 1.X-F.4.B: errors from [`RegionalArchetypeMask`] save/load operations.
+#[derive(Debug, thiserror::Error)]
+pub enum MaskIoError {
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+    #[error("RON serde error: {0}")]
+    Ron(String),
+    #[error("size mismatch: expected {expected} bytes, got {actual} bytes")]
+    Mismatch { expected: usize, actual: usize },
+    #[error("unsupported mask format version {0} (this build supports version 1)")]
+    UnsupportedVersion(u32),
+}
+
+impl From<ron::error::SpannedError> for MaskIoError {
+    fn from(e: ron::error::SpannedError) -> Self {
+        Self::Ron(e.to_string())
+    }
+}
+
+impl From<ron::Error> for MaskIoError {
+    fn from(e: ron::Error) -> Self {
+        Self::Ron(e.to_string())
+    }
+}
 
 /// Phase 1.X-F.4.A: paintable 2D archetype mask with precomputed
 /// Euclidean distance falloff field. Stored as two uint8 grids:
@@ -173,6 +201,221 @@ impl RegionalArchetypeMask {
         }
         self
     }
+
+    /// Phase 1.X-F.4.B + F.4.F test helper: builder-pattern wrapper around
+    /// [`Self::recompute_falloff`] returning `Self` for chaining.
+    pub fn with_falloff_recomputed(mut self) -> Self {
+        self.recompute_falloff();
+        self
+    }
+
+    // =========================================================================
+    // Phase 1.X-F.4.B: save/load file I/O
+    // =========================================================================
+
+    /// Save mask to disk as three files: `<base>.ron` (metadata),
+    /// `<base>.id.bin` (raw uint8 ID grid), `<base>.falloff.bin` (raw uint8
+    /// falloff grid). Files share the path stem `base_path`.
+    ///
+    /// At default 1024² resolution: ~1 MB per binary file + ~80 bytes RON.
+    pub fn save_to_files(&self, base_path: &Path) -> Result<(), MaskIoError> {
+        let metadata = RegionalArchetypeMaskMetadata::from_mask(self);
+
+        let ron_path = path_with_extension(base_path, "ron");
+        let id_path = path_with_extension(base_path, "id.bin");
+        let falloff_path = path_with_extension(base_path, "falloff.bin");
+
+        let ron_string = ron::ser::to_string_pretty(
+            &metadata,
+            ron::ser::PrettyConfig::default(),
+        )
+        .map_err(|e| MaskIoError::Ron(e.to_string()))?;
+        fs::write(&ron_path, ron_string)?;
+        fs::write(&id_path, &self.ids)?;
+        fs::write(&falloff_path, &self.falloff)?;
+        Ok(())
+    }
+
+    /// Load mask from the three companion files written by
+    /// [`Self::save_to_files`]. Validates RON metadata's `format_version`
+    /// (only 1 supported in this build) and binary file sizes against
+    /// `metadata.resolution²`.
+    pub fn load_from_files(base_path: &Path) -> Result<Self, MaskIoError> {
+        let ron_path = path_with_extension(base_path, "ron");
+        let id_path = path_with_extension(base_path, "id.bin");
+        let falloff_path = path_with_extension(base_path, "falloff.bin");
+
+        let ron_string = fs::read_to_string(&ron_path)?;
+        let metadata: RegionalArchetypeMaskMetadata = ron::from_str(&ron_string)?;
+
+        if metadata.format_version != 1 {
+            return Err(MaskIoError::UnsupportedVersion(metadata.format_version));
+        }
+
+        let ids = fs::read(&id_path)?;
+        let falloff = fs::read(&falloff_path)?;
+        let expected =
+            (metadata.resolution as usize).saturating_mul(metadata.resolution as usize);
+        if ids.len() != expected {
+            return Err(MaskIoError::Mismatch {
+                expected,
+                actual: ids.len(),
+            });
+        }
+        if falloff.len() != expected {
+            return Err(MaskIoError::Mismatch {
+                expected,
+                actual: falloff.len(),
+            });
+        }
+
+        Ok(Self {
+            resolution: metadata.resolution,
+            world_extent_wu: metadata.world_extent_wu,
+            falloff_radius_pixels: metadata.falloff_radius_pixels,
+            ids,
+            falloff,
+        })
+    }
+
+    // =========================================================================
+    // Phase 1.X-F.4.B: Euclidean distance transform (falloff field)
+    // =========================================================================
+
+    /// Compute the falloff distance field from the current `ids` field.
+    ///
+    /// For each pixel, computes the Euclidean distance to the nearest pixel
+    /// with a different (non-zero) archetype ID, normalized by
+    /// `falloff_radius_pixels` to uint8:
+    ///
+    /// - Pixels deep inside an archetype region (distance >
+    ///   `falloff_radius_pixels`) → 255.
+    /// - Pixels on archetype boundaries → 0.
+    /// - Pixels in unpainted (ID = 0) regions → 255 (no transitions in
+    ///   unpainted areas; sampler treats unpainted as Continental Temperate
+    ///   solo per F.4.C invariant).
+    /// - Pixels at distance d ∈ `[0, falloff_radius_pixels]` from a boundary
+    ///   → `(255 * d / falloff_radius_pixels).round() as u8`.
+    ///
+    /// Algorithm: two-pass chamfer distance transform (Borgefors 1986).
+    /// O(n) for n = resolution². Approximates Euclidean distance with
+    /// max relative error ~5%; uint8 quantization absorbs the error.
+    /// Sufficient for archetype-region authoring at the 32-pixel default
+    /// falloff radius.
+    pub fn recompute_falloff(&mut self) {
+        let n = (self.resolution as usize).saturating_mul(self.resolution as usize);
+        if n == 0 || self.ids.is_empty() {
+            return;
+        }
+        let res = self.resolution as i32;
+        // Sentinel for "unreached". 1e6 is large enough for any plausible
+        // mask resolution; at 1024 res the max possible distance is ~1450.
+        let inf: f32 = 1.0e6;
+
+        // Initialize distance field. For each pixel, distance = 0 if the
+        // pixel is on an archetype boundary (any 4-neighbor has a
+        // different non-zero ID, OR the pixel itself is unpainted with a
+        // painted neighbor). Otherwise distance = inf.
+        let mut dist: Vec<f32> = vec![inf; n];
+        for z in 0..res {
+            for x in 0..res {
+                let idx = (z * res + x) as usize;
+                let id = self.ids[idx];
+                let mut is_boundary = false;
+                for &(dx, dz) in &[(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
+                    let nx = x + dx;
+                    let nz = z + dz;
+                    if nx >= 0 && nx < res && nz >= 0 && nz < res {
+                        let nidx = (nz * res + nx) as usize;
+                        let nid = self.ids[nidx];
+                        // Boundary between two different archetype IDs (one or both can be 0).
+                        if nid != id && (nid != 0 || id != 0) {
+                            is_boundary = true;
+                            break;
+                        }
+                    }
+                }
+                if is_boundary {
+                    dist[idx] = 0.0;
+                }
+            }
+        }
+
+        // Forward pass (top-left → bottom-right). Standard 3×3 chamfer
+        // distance with 1.0 / sqrt(2) ≈ 1.41421356 weights.
+        const W_AXIS: f32 = 1.0;
+        const W_DIAG: f32 = 1.41421356;
+        for z in 0..res {
+            for x in 0..res {
+                let idx = (z * res + x) as usize;
+                let mut d = dist[idx];
+                // (-1, -1)
+                if x > 0 && z > 0 {
+                    d = d.min(dist[((z - 1) * res + (x - 1)) as usize] + W_DIAG);
+                }
+                // (0, -1)
+                if z > 0 {
+                    d = d.min(dist[((z - 1) * res + x) as usize] + W_AXIS);
+                }
+                // (1, -1)
+                if x < res - 1 && z > 0 {
+                    d = d.min(dist[((z - 1) * res + (x + 1)) as usize] + W_DIAG);
+                }
+                // (-1, 0)
+                if x > 0 {
+                    d = d.min(dist[(z * res + (x - 1)) as usize] + W_AXIS);
+                }
+                dist[idx] = d;
+            }
+        }
+
+        // Backward pass (bottom-right → top-left).
+        for z in (0..res).rev() {
+            for x in (0..res).rev() {
+                let idx = (z * res + x) as usize;
+                let mut d = dist[idx];
+                if x < res - 1 {
+                    d = d.min(dist[(z * res + (x + 1)) as usize] + W_AXIS);
+                }
+                if z < res - 1 && x < res - 1 {
+                    d = d.min(dist[((z + 1) * res + (x + 1)) as usize] + W_DIAG);
+                }
+                if z < res - 1 {
+                    d = d.min(dist[((z + 1) * res + x) as usize] + W_AXIS);
+                }
+                if z < res - 1 && x > 0 {
+                    d = d.min(dist[((z + 1) * res + (x - 1)) as usize] + W_DIAG);
+                }
+                dist[idx] = d;
+            }
+        }
+
+        // Quantize distance to uint8, normalized by falloff_radius_pixels.
+        // Unpainted (ID = 0) pixels stay at 255 regardless of distance —
+        // sampler treats unpainted as Continental Temperate solo.
+        let radius = self.falloff_radius_pixels.max(1) as f32;
+        for idx in 0..n {
+            let id = self.ids[idx];
+            if id == 0 {
+                self.falloff[idx] = 255;
+                continue;
+            }
+            let d = dist[idx];
+            let normalized = (d / radius).clamp(0.0, 1.0);
+            self.falloff[idx] = (normalized * 255.0).round() as u8;
+        }
+    }
+}
+
+/// Helper: append an extension to a path stem. `base.ext` form.
+fn path_with_extension(base: &Path, ext: &str) -> std::path::PathBuf {
+    let mut p = base.to_path_buf();
+    let new_name = match base.file_name() {
+        Some(name) => format!("{}.{}", name.to_string_lossy(), ext),
+        None => ext.to_string(),
+    };
+    p.set_file_name(new_name);
+    p
 }
 
 /// Phase 1.X-F.4.A: serde-serializable metadata for [`RegionalArchetypeMask`]
@@ -326,5 +569,175 @@ mod tests {
     fn world_archetype_id_unknown_is_none() {
         assert!(WorldArchetypeId::from_mask_id(200).is_none());
         assert!(WorldArchetypeId::from_mask_id(255).is_none());
+    }
+
+    // =========================================================================
+    // Phase 1.X-F.4.B: save/load + Euclidean distance transform tests
+    // =========================================================================
+
+    /// Save → load roundtrip on an unpainted mask preserves all bytes.
+    #[test]
+    fn regional_mask_save_load_roundtrip_unpainted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = dir.path().join("unpainted_test");
+        let original = RegionalArchetypeMask::new_unpainted(64, 100.0);
+        original.save_to_files(&base).expect("save");
+        let loaded = RegionalArchetypeMask::load_from_files(&base).expect("load");
+        assert_eq!(original, loaded);
+    }
+
+    /// Save → load roundtrip on a painted mask (with falloff recomputed)
+    /// preserves all bytes.
+    #[test]
+    fn regional_mask_save_load_roundtrip_painted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = dir.path().join("painted_test");
+        let original = RegionalArchetypeMask::new_unpainted(64, 100.0)
+            .with_painted_circle(32, 32, 16, 1)
+            .with_painted_rect(0, 0, 16, 16, 2)
+            .with_falloff_recomputed();
+        original.save_to_files(&base).expect("save");
+        let loaded = RegionalArchetypeMask::load_from_files(&base).expect("load");
+        assert_eq!(original, loaded);
+    }
+
+    /// Loading a RON file with `format_version: 2` returns
+    /// `MaskIoError::UnsupportedVersion(2)`.
+    #[test]
+    fn regional_mask_load_rejects_unsupported_version() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = dir.path().join("unsupported_test");
+        let ron_path = path_with_extension(&base, "ron");
+        let id_path = path_with_extension(&base, "id.bin");
+        let falloff_path = path_with_extension(&base, "falloff.bin");
+
+        let bad_metadata = RegionalArchetypeMaskMetadata {
+            resolution: 64,
+            world_extent_wu: 100.0,
+            falloff_radius_pixels: 8,
+            format_version: 2,
+        };
+        let ron_string = ron::ser::to_string_pretty(
+            &bad_metadata,
+            ron::ser::PrettyConfig::default(),
+        )
+        .unwrap();
+        std::fs::write(&ron_path, ron_string).unwrap();
+        std::fs::write(&id_path, vec![0u8; 64 * 64]).unwrap();
+        std::fs::write(&falloff_path, vec![255u8; 64 * 64]).unwrap();
+
+        let err = RegionalArchetypeMask::load_from_files(&base)
+            .expect_err("expected UnsupportedVersion");
+        assert!(matches!(err, MaskIoError::UnsupportedVersion(2)));
+    }
+
+    /// Loading a mask whose binary file size doesn't match the RON's
+    /// declared resolution returns `MaskIoError::Mismatch`.
+    #[test]
+    fn regional_mask_load_rejects_size_mismatch() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = dir.path().join("mismatch_test");
+        let ron_path = path_with_extension(&base, "ron");
+        let id_path = path_with_extension(&base, "id.bin");
+        let falloff_path = path_with_extension(&base, "falloff.bin");
+
+        let metadata = RegionalArchetypeMaskMetadata {
+            resolution: 1024,
+            world_extent_wu: 11264.0,
+            falloff_radius_pixels: 32,
+            format_version: 1,
+        };
+        let ron_string = ron::ser::to_string_pretty(
+            &metadata,
+            ron::ser::PrettyConfig::default(),
+        )
+        .unwrap();
+        std::fs::write(&ron_path, ron_string).unwrap();
+        // Write only 64×64 bytes instead of 1024² claimed by metadata.
+        std::fs::write(&id_path, vec![0u8; 64 * 64]).unwrap();
+        std::fs::write(&falloff_path, vec![255u8; 64 * 64]).unwrap();
+
+        let err = RegionalArchetypeMask::load_from_files(&base)
+            .expect_err("expected Mismatch");
+        assert!(matches!(err, MaskIoError::Mismatch { expected: 1048576, actual: 4096 }));
+    }
+
+    /// Unpainted mask (all IDs = 0) → recompute_falloff → all 255 (no
+    /// boundaries; sampler treats as Continental Temperate solo).
+    #[test]
+    fn distance_transform_unpainted_is_all_max() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(32, 100.0);
+        mask.recompute_falloff();
+        assert!(mask.falloff.iter().all(|&v| v == 255));
+    }
+
+    /// Painted-circle interior at distance > falloff_radius from boundary
+    /// has falloff = 255 (deep interior).
+    #[test]
+    fn distance_transform_single_archetype_interior_is_max() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(256, 100.0)
+            .with_painted_circle(128, 128, 80, 1);
+        // falloff_radius_pixels default = 32; interior pixels at distance
+        // > 32 from any boundary should hit 255.
+        mask.recompute_falloff();
+        // Center pixel is ~80 pixels from the nearest boundary → 255.
+        assert_eq!(mask.falloff_at(128, 128), 255);
+    }
+
+    /// Painted boundary pixels (distance 0 from a different ID) have
+    /// falloff = 0.
+    #[test]
+    fn distance_transform_boundary_is_zero() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(64, 100.0)
+            .with_painted_rect(0, 0, 32, 64, 1)
+            .with_painted_rect(32, 0, 64, 64, 2);
+        mask.recompute_falloff();
+        // The boundary between the two rects is at x=31/x=32. Pixels at
+        // x=31 are painted ID=1 with a different (ID=2) neighbor at
+        // x=32 → boundary → falloff = 0.
+        assert_eq!(mask.falloff_at(31, 32), 0);
+        assert_eq!(mask.falloff_at(32, 32), 0);
+    }
+
+    /// Pixels at distance ≈ falloff_radius/2 from a boundary have falloff
+    /// ≈ 128 (middle of the [0, 255] range).
+    #[test]
+    fn distance_transform_within_falloff_radius_is_intermediate() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(128, 100.0);
+        mask.falloff_radius_pixels = 32;
+        // Paint two adjacent rects sharing a boundary at x=64.
+        let mask = mask
+            .with_painted_rect(0, 0, 64, 128, 1)
+            .with_painted_rect(64, 0, 128, 128, 2);
+        let mut mask = mask;
+        mask.recompute_falloff();
+        // At x=48 (16 pixels left of boundary x=64), distance ≈ 16.
+        // Normalized: 16/32 = 0.5. Quantized: ~128 ± chamfer error.
+        let v = mask.falloff_at(48, 64);
+        assert!(
+            (110..=146).contains(&v),
+            "falloff at distance ~16/32 should be ~128; got {}",
+            v
+        );
+    }
+
+    /// Two adjacent archetype rects' shared boundary has falloff = 0;
+    /// deep interior of each has falloff = 255 (when far enough).
+    #[test]
+    fn distance_transform_two_archetypes_meet_at_boundary() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(256, 100.0);
+        mask.falloff_radius_pixels = 16;
+        let mut mask = mask
+            .with_painted_rect(0, 0, 128, 256, 1)
+            .with_painted_rect(128, 0, 256, 256, 2);
+        mask.recompute_falloff();
+        // Boundary at x=127/x=128.
+        assert_eq!(mask.falloff_at(127, 128), 0);
+        assert_eq!(mask.falloff_at(128, 128), 0);
+        // Deep interior of left rect: x=64 is 64 pixels from boundary;
+        // 64 > falloff_radius_pixels=16 → falloff = 255.
+        assert_eq!(mask.falloff_at(64, 128), 255);
+        // Deep interior of right rect: x=192 is 64 pixels from boundary.
+        assert_eq!(mask.falloff_at(192, 128), 255);
     }
 }
