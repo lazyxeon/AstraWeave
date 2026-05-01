@@ -418,6 +418,231 @@ fn path_with_extension(base: &Path, ext: &str) -> std::path::PathBuf {
     p
 }
 
+// =============================================================================
+// Phase 1.X-F.4.C: RegionalArchetypeBlend neighborhood-scan sampler
+// =============================================================================
+
+use crate::world_archetypes::WorldArchetypeId;
+
+/// Phase 1.X-F.4.C: small fixed-size container for up to 4
+/// `(WorldArchetypeId, weight)` blend contributors. Avoids per-vertex Vec
+/// allocation in the sampler. Returned by [`RegionalArchetypeBlend::sample_at`].
+///
+/// Iteration via `iter()` exposes `(WorldArchetypeId, f32)` tuples; weights
+/// sum to 1.0 ± f32 epsilon per F.4.C invariant.
+#[derive(Debug, Clone, Copy)]
+pub struct BlendContributors {
+    items: [(WorldArchetypeId, f32); 4],
+    len: u8,
+}
+
+impl BlendContributors {
+    /// Construct with a single contributor at weight 1.0. Used by sampler
+    /// fast paths (unpainted mask, deep interior).
+    pub fn single(id: WorldArchetypeId) -> Self {
+        Self {
+            items: [(id, 1.0); 4],
+            len: 1,
+        }
+    }
+
+    /// Number of active contributors (1-4).
+    pub fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Iterate active `(archetype, weight)` pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (WorldArchetypeId, f32)> + '_ {
+        self.items[..self.len as usize].iter().copied()
+    }
+
+    /// Push a contributor. Panics in debug if `len >= 4`; in release,
+    /// silently drops the new contributor (sampler caps at 4 strongest).
+    fn push(&mut self, id: WorldArchetypeId, weight: f32) {
+        debug_assert!(self.len < 4, "BlendContributors capacity exceeded");
+        if self.len < 4 {
+            self.items[self.len as usize] = (id, weight);
+            self.len += 1;
+        }
+    }
+
+    /// Normalize weights to sum to 1.0. No-op if empty.
+    fn normalize(&mut self) {
+        let total: f32 = self.iter().map(|(_, w)| w).sum();
+        if total > 0.0 {
+            for i in 0..self.len as usize {
+                self.items[i].1 /= total;
+            }
+        }
+    }
+}
+
+/// Phase 1.X-F.4.C: per-vertex sampler over a [`RegionalArchetypeMask`].
+/// Returns blended `(WorldArchetypeId, weight)` contributors at world
+/// coordinates via three paths:
+///
+/// 1. **Unpainted fast path**: pixel ID = 0 → single
+///    `(ContinentalTemperate, 1.0)` contributor.
+/// 2. **Deep interior fast path**: pixel falloff ≥ 200 (78% of max) →
+///    single `(WorldArchetypeId::from_mask_id(id).unwrap_or(ContinentalTemperate), 1.0)`.
+/// 3. **Transition zone slow path**: scan a `falloff_radius_pixels`-radius
+///    neighborhood; for each distinct archetype ID found, compute its
+///    weight as `clamp(1.0 - distance_to_nearest_pixel_of_that_id /
+///    falloff_radius_pixels, 0.0, 1.0)`. Normalize weights to sum to 1.0.
+///    Return up to 4 strongest contributors (ties broken by archetype ID
+///    for determinism); prune contributions < 0.05 weight.
+///
+/// Borrows the mask for its lifetime. Created once per chunk-generation
+/// pass; sampled per vertex with no allocation (returns
+/// [`BlendContributors`] on the stack).
+pub struct RegionalArchetypeBlend<'a> {
+    mask: &'a RegionalArchetypeMask,
+}
+
+impl<'a> RegionalArchetypeBlend<'a> {
+    /// Threshold for "deep interior" fast path. Pixels with falloff above
+    /// this are far enough from any boundary that single-contributor is
+    /// safe; saves the neighborhood-scan cost.
+    pub const DEEP_INTERIOR_THRESHOLD: u8 = 200;
+
+    /// Pruning threshold: contributions with weight below this are dropped
+    /// before normalization.
+    pub const PRUNE_WEIGHT_THRESHOLD: f32 = 0.05;
+
+    pub fn new(mask: &'a RegionalArchetypeMask) -> Self {
+        Self { mask }
+    }
+
+    /// Sample at world coordinates. Returns up to 4 contributors, weights
+    /// summing to 1.0 ± f32 epsilon.
+    pub fn sample_at(&self, world_x: f32, world_z: f32) -> BlendContributors {
+        // Convert world coords to mask pixel coords.
+        let half_extent = self.mask.world_extent_wu * 0.5;
+        let res = self.mask.resolution as f32;
+        let px_f = ((world_x + half_extent) / self.mask.world_extent_wu * res)
+            .clamp(0.0, res - 1.0);
+        let pz_f = ((world_z + half_extent) / self.mask.world_extent_wu * res)
+            .clamp(0.0, res - 1.0);
+        let px = px_f as u32;
+        let pz = pz_f as u32;
+
+        let center_id = self.mask.id_at(px, pz);
+
+        // Unpainted fast path.
+        if center_id == 0 {
+            return BlendContributors::single(WorldArchetypeId::ContinentalTemperate);
+        }
+
+        let center_falloff = self.mask.falloff_at(px, pz);
+
+        // Deep interior fast path.
+        if center_falloff >= Self::DEEP_INTERIOR_THRESHOLD {
+            let id = WorldArchetypeId::from_mask_id(center_id)
+                .unwrap_or(WorldArchetypeId::ContinentalTemperate);
+            return BlendContributors::single(id);
+        }
+
+        // Transition zone slow path: neighborhood scan.
+        let radius = self.mask.falloff_radius_pixels as i32;
+        let radius_f = radius as f32;
+        let res_i = self.mask.resolution as i32;
+        let cx = px as i32;
+        let cz = pz as i32;
+
+        // For each distinct archetype ID encountered, track the minimum
+        // distance to any pixel of that ID.
+        let mut min_distances: [(u8, f32); 8] = [(0, f32::INFINITY); 8];
+        let mut n_distinct: usize = 0;
+
+        let r2 = (radius_f * radius_f) as f32;
+        for dz in -radius..=radius {
+            let nz = cz + dz;
+            if nz < 0 || nz >= res_i {
+                continue;
+            }
+            for dx in -radius..=radius {
+                let nx = cx + dx;
+                if nx < 0 || nx >= res_i {
+                    continue;
+                }
+                let dist_sq = (dx * dx + dz * dz) as f32;
+                if dist_sq > r2 {
+                    continue;
+                }
+                let nid = self.mask.ids[(nz * res_i + nx) as usize];
+                if nid == 0 {
+                    continue;
+                }
+                let dist = dist_sq.sqrt();
+                // Find or insert this ID.
+                let mut found = false;
+                for slot in &mut min_distances[..n_distinct] {
+                    if slot.0 == nid {
+                        if dist < slot.1 {
+                            slot.1 = dist;
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+                if !found && n_distinct < 8 {
+                    min_distances[n_distinct] = (nid, dist);
+                    n_distinct += 1;
+                }
+            }
+        }
+
+        // Compute weights from min distances. Weight = clamp(1 - dist / radius, 0, 1).
+        // Skip IDs that don't map to a known WorldArchetypeId (reserved/unassigned).
+        let mut weighted: [(WorldArchetypeId, f32); 8] =
+            [(WorldArchetypeId::ContinentalTemperate, 0.0); 8];
+        let mut n_weighted: usize = 0;
+        for i in 0..n_distinct {
+            let (id, dist) = min_distances[i];
+            let weight = (1.0 - dist / radius_f).clamp(0.0, 1.0);
+            if weight < Self::PRUNE_WEIGHT_THRESHOLD {
+                continue;
+            }
+            if let Some(archetype) = WorldArchetypeId::from_mask_id(id) {
+                weighted[n_weighted] = (archetype, weight);
+                n_weighted += 1;
+            }
+        }
+
+        // Defensive fallback: if no contributors survived (e.g., all IDs
+        // mapped to None, or all weights < threshold), use the center
+        // pixel's archetype as a single contributor.
+        if n_weighted == 0 {
+            let id = WorldArchetypeId::from_mask_id(center_id)
+                .unwrap_or(WorldArchetypeId::ContinentalTemperate);
+            return BlendContributors::single(id);
+        }
+
+        // Sort by weight desc; ties broken by archetype ID for determinism.
+        weighted[..n_weighted].sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.0.to_mask_id().cmp(&b.0.to_mask_id()))
+        });
+
+        // Take up to 4 strongest.
+        let take = n_weighted.min(4);
+        let mut contributors = BlendContributors {
+            items: [(WorldArchetypeId::ContinentalTemperate, 0.0); 4],
+            len: 0,
+        };
+        for i in 0..take {
+            contributors.push(weighted[i].0, weighted[i].1);
+        }
+        contributors.normalize();
+        contributors
+    }
+}
+
 /// Phase 1.X-F.4.A: serde-serializable metadata for [`RegionalArchetypeMask`]
 /// persistence. Pairs with raw uint8 binary files (`<base>.id.bin` and
 /// `<base>.falloff.bin`) for full mask state.
@@ -739,5 +964,162 @@ mod tests {
         assert_eq!(mask.falloff_at(64, 128), 255);
         // Deep interior of right rect: x=192 is 64 pixels from boundary.
         assert_eq!(mask.falloff_at(192, 128), 255);
+    }
+
+    // =========================================================================
+    // Phase 1.X-F.4.C: RegionalArchetypeBlend sampler tests
+    // =========================================================================
+
+    /// Sample at any world position in an unpainted mask returns single
+    /// `(ContinentalTemperate, 1.0)` contributor.
+    #[test]
+    fn blend_unpainted_sample_returns_continental_temperate() {
+        let mask = RegionalArchetypeMask::new_unpainted(64, 100.0);
+        let blend = RegionalArchetypeBlend::new(&mask);
+        for &(x, z) in &[(0.0_f32, 0.0_f32), (-40.0, 30.0), (49.0, -49.0)] {
+            let c = blend.sample_at(x, z);
+            assert_eq!(c.len(), 1);
+            let v: Vec<_> = c.iter().collect();
+            assert_eq!(v[0].0, WorldArchetypeId::ContinentalTemperate);
+            assert!((v[0].1 - 1.0).abs() < 1e-6);
+        }
+    }
+
+    /// Sample at the deep interior of a painted region returns a single
+    /// contributor matching that region's archetype.
+    #[test]
+    fn blend_deep_interior_returns_single_contributor() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(256, 100.0)
+            .with_painted_rect(64, 64, 192, 192, WorldArchetypeId::EquatorialTropical.to_mask_id());
+        mask.recompute_falloff();
+        let blend = RegionalArchetypeBlend::new(&mask);
+        // Center of the rect at world (0, 0) → mask pixel (128, 128) → deep interior.
+        let c = blend.sample_at(0.0, 0.0);
+        assert_eq!(c.len(), 1);
+        let v: Vec<_> = c.iter().collect();
+        assert_eq!(v[0].0, WorldArchetypeId::EquatorialTropical);
+    }
+
+    /// Sample in the transition zone between two painted archetypes returns
+    /// 2 contributors with non-trivial weights.
+    #[test]
+    fn blend_transition_zone_returns_multiple_contributors() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(256, 100.0);
+        mask.falloff_radius_pixels = 32;
+        let mut mask = mask
+            .with_painted_rect(0, 0, 128, 256, WorldArchetypeId::BorealSubarctic.to_mask_id())
+            .with_painted_rect(128, 0, 256, 256, WorldArchetypeId::Desert.to_mask_id());
+        mask.recompute_falloff();
+        let blend = RegionalArchetypeBlend::new(&mask);
+        // World x=0 maps to mask px=128 (boundary). Falloff is small there
+        // (transition zone). Sample at world x=0 z=0.
+        let c = blend.sample_at(0.0, 0.0);
+        assert!(c.len() >= 2, "expected >=2 contributors at transition; got {}", c.len());
+        let total: f32 = c.iter().map(|(_, w)| w).sum();
+        assert!((total - 1.0).abs() < 1e-5);
+    }
+
+    /// Across 100 sample positions in a 3-archetype painted mask, all
+    /// returned weight lists sum to 1.0 ± f32 epsilon.
+    #[test]
+    fn blend_weights_sum_to_one() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(128, 100.0)
+            .with_painted_rect(0, 0, 64, 128, WorldArchetypeId::ContinentalTemperate.to_mask_id())
+            .with_painted_rect(64, 0, 96, 128, WorldArchetypeId::EquatorialTropical.to_mask_id())
+            .with_painted_rect(96, 0, 128, 128, WorldArchetypeId::BorealSubarctic.to_mask_id());
+        mask.recompute_falloff();
+        let blend = RegionalArchetypeBlend::new(&mask);
+        for i in 0..10 {
+            for j in 0..10 {
+                let x = -49.0 + i as f32 * 9.8;
+                let z = -49.0 + j as f32 * 9.8;
+                let c = blend.sample_at(x, z);
+                let total: f32 = c.iter().map(|(_, w)| w).sum();
+                assert!(
+                    (total - 1.0).abs() < 1e-5,
+                    "weights sum drift at ({}, {}): {} (n={})",
+                    x,
+                    z,
+                    total,
+                    c.len()
+                );
+            }
+        }
+    }
+
+    /// Returned contributor list never exceeds 4 entries.
+    #[test]
+    fn blend_returns_at_most_four_contributors() {
+        // Construct a 5-archetype world meeting at a near-corner.
+        let mut mask = RegionalArchetypeMask::new_unpainted(64, 100.0);
+        mask.falloff_radius_pixels = 32;
+        let mut mask = mask
+            .with_painted_rect(0, 0, 32, 32, 1)
+            .with_painted_rect(32, 0, 64, 32, 2)
+            .with_painted_rect(0, 32, 32, 64, 3)
+            .with_painted_rect(32, 32, 48, 64, 4)
+            .with_painted_rect(48, 32, 64, 64, 5);
+        mask.recompute_falloff();
+        let blend = RegionalArchetypeBlend::new(&mask);
+        let c = blend.sample_at(0.0, 0.0);
+        assert!(c.len() <= 4);
+    }
+
+    /// Sample twice at same position; byte-identical results.
+    #[test]
+    fn blend_determinism_same_inputs_same_outputs() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(128, 100.0)
+            .with_painted_rect(0, 0, 64, 128, 1)
+            .with_painted_rect(64, 0, 128, 128, 2);
+        mask.recompute_falloff();
+        let blend = RegionalArchetypeBlend::new(&mask);
+        let a = blend.sample_at(-12.5, 30.0);
+        let b = blend.sample_at(-12.5, 30.0);
+        assert_eq!(a.len(), b.len());
+        for (av, bv) in a.iter().zip(b.iter()) {
+            assert_eq!(av.0, bv.0);
+            assert_eq!(av.1.to_bits(), bv.1.to_bits());
+        }
+    }
+
+    /// `sample_at(0.0, 0.0)` in unpainted mask returns single CT contributor.
+    #[test]
+    fn blend_at_world_origin_with_continental_temperate_unpainted_returns_ct() {
+        let mask = RegionalArchetypeMask::new_unpainted(64, 100.0);
+        let blend = RegionalArchetypeBlend::new(&mask);
+        let c = blend.sample_at(0.0, 0.0);
+        assert_eq!(c.len(), 1);
+        let v: Vec<_> = c.iter().collect();
+        assert_eq!(v[0].0, WorldArchetypeId::ContinentalTemperate);
+    }
+
+    /// Same world coordinate sampled (corresponding to chunk shared edges)
+    /// produces identical contributor lists. F.4 inherits F.3-phase-3's
+    /// world-coord determinism contract.
+    #[test]
+    fn blend_chunk_edge_continuity() {
+        let mut mask = RegionalArchetypeMask::new_unpainted(128, 100.0)
+            .with_painted_rect(32, 32, 96, 96, WorldArchetypeId::EquatorialTropical.to_mask_id());
+        mask.recompute_falloff();
+        let blend = RegionalArchetypeBlend::new(&mask);
+        // Two chunks sharing edge at world x=0; both sample at the same x=0.
+        let chunk_a_edge = blend.sample_at(0.0, 5.0);
+        let chunk_b_edge = blend.sample_at(0.0, 5.0);
+        assert_eq!(chunk_a_edge.len(), chunk_b_edge.len());
+        for (a, b) in chunk_a_edge.iter().zip(chunk_b_edge.iter()) {
+            assert_eq!(a.0, b.0);
+            assert_eq!(a.1.to_bits(), b.1.to_bits());
+        }
+    }
+
+    /// `BlendContributors::single` constructs a 1-contributor instance with
+    /// weight 1.0.
+    #[test]
+    fn blend_contributors_single_helper() {
+        let c = BlendContributors::single(WorldArchetypeId::Mediterranean);
+        assert_eq!(c.len(), 1);
+        let v: Vec<_> = c.iter().collect();
+        assert_eq!(v[0].0, WorldArchetypeId::Mediterranean);
+        assert!((v[0].1 - 1.0).abs() < 1e-6);
     }
 }
