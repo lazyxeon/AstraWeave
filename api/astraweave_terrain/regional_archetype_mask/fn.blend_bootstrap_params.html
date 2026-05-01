@@ -1,0 +1,34 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Phase 1.X-F.4.D: blend per-archetype `BootstrapParams` via spline-output blending per campaign doc §2.5. Each contributing archetype’s `BootstrapSplineSet` evaluates against the same climate sample independently; weights from mask falloff combine spline outputs into per-vertex blended `BootstrapParams`."><title>blend_bootstrap_params in astraweave_terrain::regional_archetype_mask - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="astraweave_terrain" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0 (29483883e 2025-08-04)" data-channel="1.89.0" data-search-js="search-92309212.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc fn"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../astraweave_terrain/index.html">astraweave_<wbr>terrain</a><span class="version">0.4.0</span></h2></div><div class="sidebar-elems"><div id="rustdoc-modnav"><h2><a href="index.html">In astraweave_<wbr>terrain::<wbr>regional_<wbr>archetype_<wbr>mask</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">astraweave_terrain</a>::<wbr><a href="index.html">regional_archetype_mask</a></div><h1>Function <span class="fn">blend_bootstrap_params</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/astraweave_terrain/regional_archetype_mask.rs.html#457-479">Source</a> </span></div><pre class="rust item-decl"><code>pub fn blend_bootstrap_params(
+    contributors: &amp;<a class="struct" href="struct.BlendContributors.html" title="struct astraweave_terrain::regional_archetype_mask::BlendContributors">BlendContributors</a>,
+    archetype_splines: &amp;dyn <a class="trait" href="https://doc.rust-lang.org/1.89.0/core/ops/function/trait.Fn.html" title="trait core::ops::function::Fn">Fn</a>(<a class="enum" href="../world_archetypes/enum.WorldArchetypeId.html" title="enum astraweave_terrain::world_archetypes::WorldArchetypeId">WorldArchetypeId</a>) -&gt; <a class="struct" href="../spline_types/struct.BootstrapSplineSet.html" title="struct astraweave_terrain::spline_types::BootstrapSplineSet">BootstrapSplineSet</a>,
+    sample: &amp;<a class="struct" href="../climate/struct.ClimateSample.html" title="struct astraweave_terrain::climate::ClimateSample">ClimateSample</a>,
+) -&gt; <a class="struct" href="../spline_types/struct.BootstrapParams.html" title="struct astraweave_terrain::spline_types::BootstrapParams">BootstrapParams</a></code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Phase 1.X-F.4.D: blend per-archetype <code>BootstrapParams</code> via spline-output
+blending per campaign doc §2.5. Each contributing archetype’s
+<code>BootstrapSplineSet</code> evaluates against the same climate sample
+independently; weights from mask falloff combine spline outputs into
+per-vertex blended <code>BootstrapParams</code>.</p>
+<p>Bootstrap noise pipeline runs ONCE per vertex with the blended params
+(per §2.5; not N times per vertex per archetype). This composes with
+F.3.B’s <code>sample_height_with_params(blended_params, multiplier, x, z)</code>
+at the existing per-vertex call site.</p>
+<p><strong>f32/f64 discipline (per F.3 deviation 2)</strong>:</p>
+<ul>
+<li><code>mountains_amplitude</code>, <code>continental_scale</code>, <code>base_elevation_amplitude</code>:
+f32 weighted accumulation.</li>
+<li><code>mountains_scale</code>: f64 weighted accumulation (<code>weight as f64</code> cast
+before multiply) to preserve byte-identity for noise-coordinate
+multipliers.</li>
+</ul>
+<p><strong>Convex combination invariants</strong> (verified by tests):</p>
+<ul>
+<li>Single-contributor case (<code>contributors.len() == 1</code>, weight = 1.0):
+output equals that archetype’s <code>BootstrapParams</code> directly.</li>
+<li>Identical-archetype case (e.g., <code>[(id, 0.5), (id, 0.5)]</code>): output
+equals that archetype’s params within f32/f64 epsilon.</li>
+<li>General convex case: blended params lie within convex hull of
+contributing archetypes’ params (no overshoot).</li>
+<li>Empty contributor list (degenerate; shouldn’t occur per F.4.C
+invariants): returns all-zero <code>BootstrapParams</code>. F.4.E guards
+against passing empty lists to this function.</li>
+</ul>
+</div></details></section></div></main></body></html>

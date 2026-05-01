@@ -7936,6 +7936,48 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/regional_archetype_mask/index.html</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/regional_archetype_mask/fn.blend_bootstrap_params.html</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/regional_archetype_mask/struct.RegionalArchetypeBlend.html</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/regional_archetype_mask/enum.MaskIoError.html</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/regional_archetype_mask/struct.RegionalArchetypeMask.html</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/regional_archetype_mask/struct.BlendContributors.html</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/regional_archetype_mask/struct.RegionalArchetypeMaskMetadata.html</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_terrain/voxel_data/type.MaterialId.html</loc>
     <lastmod>2026-05-01</lastmod>
     <changefreq>weekly</changefreq>

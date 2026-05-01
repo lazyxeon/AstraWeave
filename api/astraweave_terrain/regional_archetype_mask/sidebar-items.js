@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["MaskIoError"],"fn":["blend_bootstrap_params"],"struct":["BlendContributors","RegionalArchetypeBlend","RegionalArchetypeMask","RegionalArchetypeMaskMetadata"]};
