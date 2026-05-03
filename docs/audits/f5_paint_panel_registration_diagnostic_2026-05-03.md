@@ -62,6 +62,30 @@ F.5-paint.A added `pub mod regional_archetype_panel;` at [tools/aw_editor/src/pa
 
 ---
 
+### Revision 2026-05-03 (per F.5-paint.F-fix.A-supplement, commit `722b70ae5`)
+
+**Methodology gap and corrected surface count.**
+
+The original §5 surface catalog enumerated 10 surfaces by grepping for `PanelType::Blueprint` references — a precedent-driven grep methodology. This was accurate for what it measured but structurally incomplete. F-fix.A-supplement's compile-driven discovery (post-fix, via Rust's E0004 exhaustiveness checker) identified 1 additional surface at [tools/aw_editor/src/dock_panels.rs:92](../../tools/aw_editor/src/dock_panels.rs#L92) — `DockPanelContext::render_panel` match dispatch — that did not reference `PanelType::Blueprint` at the match site (it uses other variants in its arms; the dispatch is category-based or per-variant rather than precedent-mirroring).
+
+**Corrected surface count**: **11 surfaces total** (10 catalogued + 1 supplemental).
+
+**Methodology lesson**: future audits investigating "find all sites that depend on this enum" must use the type system's exhaustiveness analysis as the canonical surface enumeration mechanism. Compile-driven discovery (E0004) is structurally complete by construction; precedent-driven grep is structurally incomplete when dispatch logic varies across enum variants. Grep remains useful as a starting point but should not be authoritative.
+
+**Multi-precedent dispatch observation**: investigation surfaced that `DockPanelContext` panels split into field-based (Terrain, Inspector, Hierarchy) and placeholder (Blueprint, BlendImport, BehaviorGraph, FrameDebugger, Animation, RegionalArchetype) groups. F-fix.A-supplement placed `RegionalArchetype` in the placeholder group as the simplest in-scope choice. Whether `RegionalArchetypePanel` should eventually migrate to the field-based group is a separate architectural decision deferrable to G-pointer-events-fix or later. The placeholder group works for current functionality; G-pointer-events-diagnostic will surface whether migration becomes necessary for pointer routing.
+
+**Forward applicability**: this methodology lesson applies beyond F.5-paint to any future enum-variant-addition work in the editor (or similar codebases). When adding a new variant to a type used in dispatch logic, the diagnostic phase should:
+
+1. Run `cargo check` immediately after adding the variant; let the compiler enumerate exhaustive-match surfaces.
+2. Catalog the surfaces from compile output, not from precedent-grep.
+3. Mirror the closest existing precedent at each surface (precedent-grep is appropriate at this *application* step, but not at the *enumeration* step).
+
+The Pattern A regression tests landed by F-fix.A (panel registry membership + `EditorTabViewer` instantiation) close the registration failure class. This methodology revision closes a different class — audit-incompleteness for surface enumeration. Both lessons are forward-applicable.
+
+**§5 preservation note**: the original 10-surface catalog in §5 below is **preserved as-is** for historical accuracy — it accurately documents what the diagnostic methodology produced when the audit was authored. This revision documents the methodology gap and the corrected count without modifying the original catalog. Future readers can compare original §5 against this revision to understand the methodology evolution.
+
+---
+
 ## §4 — Existing panel registration pattern (reference)
 
 Adding a new editor panel requires touching **10 distinct code surfaces** across **2 files** (with one additional re-export in `panels/mod.rs`). The TerrainPanel and the more recent BlueprintPanel both follow this pattern; the BlueprintPanel is the closest reference example since it was added under an analog "new panel for a new feature" workflow.
