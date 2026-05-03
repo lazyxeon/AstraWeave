@@ -1671,7 +1671,7 @@ Per Q1 Option B, the architectural choice is surfaced to Andrew rather than reco
 
 **Scope held**: G-diagnostic only modified `docs/audits/g_pointer_events_diagnostic_2026-05-03.md` (commit `ac4bc58a3`) and `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` (§9 + §10; this commit). NO production code changes; NO Pattern A regression test implementation (G-fix); NO single-path remediation recommendation (Andrew decides between G-diagnostic and G-fix); NO save/load investigation (H-saveload); NO Climate Preview overlay investigation (F.5-overlay-and-gate); NO TerrainPanel multi-texture limitation root cause investigation (Q4 Interpretation A informational only).
 
-### 2026-05-03, Sub-phase Pause-Artifacts (campaign pause for Editor Multi-Tool Architecture spinoff), this commit (`<Pause-Artifacts.B-hash>`)
+### 2026-05-03, Sub-phase Pause-Artifacts (campaign pause for Editor Multi-Tool Architecture spinoff), commits a64f12320 (Pause-Artifacts.A F.4 closeout) + 98fc063d9 (Pause-Artifacts.B F.5-paint pause)
 
 **Sub-phase entry — captures architectural decision to spin off G-pointer-events Option C as its own foundational campaign + Regional Archetype Variation pause + forward pointer to Editor Multi-Tool Architecture campaign. This entry is load-bearing for resumption: future-Andrew (or future-Claude in a new session) reading this entry months from now must be able to (a) understand why the campaign paused, (b) verify the resumption point is unambiguous, (c) connect to the Editor Multi-Tool Architecture campaign's outputs, (d) understand the discipline pattern that authorized the pause. The entry is self-contained on these four points.**
 
@@ -1753,7 +1753,7 @@ This session lands two commits:
 - **Commit 1 (Phase 1.X-pause.A, `a64f12320`)**: F.4 closeout — Status header + §9 F.4 line + §10 F.4.G deferred-closeout entry. F.4.A-F production work landed 2026-05-01 with verbal Andrew-gate PASS but §9 closeout commit was deferred during the F.5-paint cascade; reconciled retroactively.
 - **Commit 2 (Phase 1.X-pause.B, this commit)**: F.5-paint pause + Editor Multi-Tool Architecture spinoff — Status header + §9 F.5 entry + this §10 entry.
 
-Optional Commit 3 (Phase 1.X-pause.C) — hash-fixup commit if `<Pause-Artifacts.B-hash>` placeholder needs replacement, per F-fix.B / G-research.B / G-diagnostic.B hash-fixup discipline.
+Commit 3 (Phase 1.X-pause.C) — hash-fixup replacing the Pause-Artifacts.B placeholder with `98fc063d9` per F-fix.B / G-research.B / G-diagnostic.B hash-fixup discipline pattern.
 
 **Scope held**: Pause-Artifacts session only modifies `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` (Status header + §9 F.4 line in Commit 1; Status header + §9 F.5 line + this §10 entry in Commit 2). NO production code changes. NO audits modified. NO commits reverted. NO new audit documents (research pass is Session 2's job). NO new campaign doc (campaign-design pass is Session 3's job). Pure pause artifacts.
 
