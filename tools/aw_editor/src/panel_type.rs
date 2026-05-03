@@ -225,6 +225,11 @@ pub enum PanelType {
 
     /// 2D top-down blueprint zone editor for terrain generation zones
     Blueprint,
+
+    /// Phase 1.X-F.5-paint: paintable regional archetype mask editor.
+    /// Authors a 2D archetype mask that drives per-region terrain shape
+    /// variation via the F.4 RegionalArchetypeMask runtime path.
+    RegionalArchetype,
 }
 
 impl PanelType {
@@ -274,6 +279,7 @@ impl PanelType {
             Self::FrameDebugger => "Frame Debugger",
             Self::BlendImport => "Blend Import",
             Self::Blueprint => "Blueprint",
+            Self::RegionalArchetype => "Regional Archetypes",
         }
     }
 
@@ -323,6 +329,7 @@ impl PanelType {
             Self::FrameDebugger => "[FD]",
             Self::BlendImport => "[BI]",
             Self::Blueprint => "[BP]",
+            Self::RegionalArchetype => "[RA]",
         }
     }
 
@@ -404,7 +411,8 @@ impl PanelType {
             | Self::Pcg
             | Self::Physics
             | Self::PostProcess
-            | Self::BlendImport => PanelCategory::Content,
+            | Self::BlendImport
+            | Self::RegionalArchetype => PanelCategory::Content,
         }
     }
 
@@ -453,6 +461,9 @@ impl PanelType {
                 "Import Blender .blend scenes, decompose into assets, and generate biome packs"
             }
             Self::Blueprint => "2D top-down zone editor for defining terrain generation zones",
+            Self::RegionalArchetype => {
+                "Paint regional archetype mask to define per-region terrain shape variation"
+            }
         }
     }
 
@@ -534,6 +545,7 @@ impl PanelType {
             Self::FrameDebugger,
             Self::BlendImport,
             Self::Blueprint,
+            Self::RegionalArchetype,
         ]
     }
 
@@ -729,5 +741,54 @@ mod tests {
             // Just verify category() doesn't panic
             let _cat = panel.category();
         }
+    }
+
+    // =========================================================================
+    // Phase 1.X-F.5-paint.F-fix: Pattern A regression test 1 of 2.
+    //
+    // Catches the failure mode that produced the F.5-paint Andrew-gate
+    // REGRESS verdict (2026-05-03): panel struct exists with passing unit
+    // tests but is missing from `PanelType::all()`, making it
+    // structurally unreachable from the View/Window menu populator at
+    // tools/aw_editor/src/ui/menu_bar.rs:368, the "Add Panel" popup at
+    // tools/aw_editor/src/tab_viewer/mod.rs:475, and the console panel-
+    // list command at tools/aw_editor/src/main.rs:5941. All three iterate
+    // PanelType::all() as the source of truth.
+    //
+    // Audit reference: docs/audits/f5_paint_panel_registration_diagnostic_2026-05-03.md §6.
+    // =========================================================================
+
+    #[test]
+    fn regional_archetype_panel_registered_in_panel_type_enum() {
+        let all = PanelType::all();
+        assert!(
+            all.contains(&PanelType::RegionalArchetype),
+            "PanelType::RegionalArchetype must be in PanelType::all() to surface in \
+             the View/Window menu. Regression catches the F.5-paint.A registration \
+             gap that produced the Andrew-gate REGRESS verdict on 2026-05-03; \
+             without this entry the panel is structurally unreachable from any \
+             user-facing panel-discovery surface."
+        );
+        assert_eq!(PanelType::RegionalArchetype.title(), "Regional Archetypes");
+        assert_eq!(
+            PanelType::RegionalArchetype.category(),
+            PanelCategory::Content,
+            "RegionalArchetype belongs in the Content category (matches Terrain \
+             precedent for terrain-authoring content)"
+        );
+        assert!(
+            !PanelType::RegionalArchetype.description().is_empty(),
+            "RegionalArchetype must have a non-empty description for the View/Window \
+             menu hover tooltip"
+        );
+        assert!(
+            !PanelType::RegionalArchetype.icon().is_empty(),
+            "RegionalArchetype must have a non-empty icon for compact tab views"
+        );
+        assert!(
+            PanelType::RegionalArchetype.is_closable(),
+            "RegionalArchetype is a content-authoring panel; should be closable like \
+             other content panels"
+        );
     }
 }

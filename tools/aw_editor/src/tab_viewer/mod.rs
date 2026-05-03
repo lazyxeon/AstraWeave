@@ -704,6 +704,8 @@ pub struct EditorTabViewer {
     blend_import_panel: BlendImportPanel,
     /// Blueprint zone editor panel
     blueprint_panel: crate::panels::BlueprintPanel,
+    /// Phase 1.X-F.5-paint: paintable regional archetype mask editor panel
+    regional_archetype_panel: crate::panels::regional_archetype_panel::RegionalArchetypePanel,
     /// Blend asset scanner (discovers .blend files in configured directories)
     blend_scanner: crate::blend_scanner::BlendAssetScanner,
     /// Zone registry (manages all active blueprint zones)
@@ -982,6 +984,8 @@ impl EditorTabViewer {
             frame_debugger_panel: crate::panels::FrameDebuggerPanel::new(),
             blend_import_panel: BlendImportPanel::new(),
             blueprint_panel: crate::panels::BlueprintPanel::new(),
+            regional_archetype_panel:
+                crate::panels::regional_archetype_panel::RegionalArchetypePanel::new(),
             blend_scanner: crate::blend_scanner::BlendAssetScanner::new(Vec::new()),
             zone_registry: astraweave_terrain::ZoneRegistry::new(),
             material_editor_panel: MaterialEditorPanel::new(),
@@ -7717,6 +7721,18 @@ impl TabViewer for EditorTabViewer {
                 use crate::panels::Panel;
                 self.blueprint_panel.show(ui);
             }
+            PanelType::RegionalArchetype => {
+                use crate::panels::Panel;
+                // Phase 1.X-F.5-paint.F-fix: panel registration to make
+                // RegionalArchetypePanel reachable via View/Window menu.
+                // Apply any pending paint operations to the panel-owned
+                // mask before rendering so the persistence section shows
+                // up-to-date status. Brush queue is fed by future
+                // viewport-pointer-event wiring (out of F.5-paint.F-fix
+                // scope per Q1 deferral).
+                self.regional_archetype_panel.apply_pending_paint_ops_to_owned();
+                self.regional_archetype_panel.show(ui);
+            }
         }
     }
 
@@ -8094,5 +8110,51 @@ mod tests {
         assert!(BehaviorNodeType::Action.is_leaf());
         assert!(BehaviorNodeType::Condition.is_leaf());
         assert!(!BehaviorNodeType::Action.can_have_children());
+    }
+
+    // =========================================================================
+    // Phase 1.X-F.5-paint.F-fix: Pattern A regression test 2 of 2.
+    //
+    // Asserts that EditorTabViewer::new() instantiates the
+    // regional_archetype_panel field with the panel struct correctly
+    // populated. Catches the failure mode where the PanelType variant
+    // exists but the EditorTabViewer struct field / new() initializer is
+    // missing (which would produce compile errors for the dispatch arm,
+    // but a paranoid runtime check guards against future copy-paste
+    // regressions where the field exists but is mis-wired).
+    //
+    // Combined with the panel_type.rs Pattern A test, this pair would
+    // have caught F.5-paint's gap immediately at unit-test time.
+    //
+    // Audit reference: docs/audits/f5_paint_panel_registration_diagnostic_2026-05-03.md §6.
+    // =========================================================================
+
+    #[test]
+    fn editor_tab_viewer_instantiates_regional_archetype_panel() {
+        use crate::panels::Panel;
+        let tab_viewer = EditorTabViewer::new();
+        assert_eq!(
+            tab_viewer.regional_archetype_panel.name(),
+            "Regional Archetypes",
+            "EditorTabViewer::new() must instantiate regional_archetype_panel \
+             with the F.5-paint.A panel struct. Regression catches the F.5-paint.A \
+             registration gap that produced the Andrew-gate REGRESS verdict on \
+             2026-05-03."
+        );
+        // Verify the panel was constructed in its expected default state
+        // (paint mode, default brush size, no owned mask yet).
+        assert_eq!(
+            tab_viewer.regional_archetype_panel.brush_size_pixels,
+            crate::panels::regional_archetype_panel::RegionalArchetypePanel::DEFAULT_BRUSH_SIZE_PIXELS,
+        );
+        assert!(
+            tab_viewer.regional_archetype_panel.mask.is_none(),
+            "regional_archetype_panel.mask should start None until ensure_mask / \
+             load_mask_from / set_mask is called"
+        );
+        assert!(
+            tab_viewer.regional_archetype_panel.pending_paint_ops.is_empty(),
+            "regional_archetype_panel.pending_paint_ops should start empty"
+        );
     }
 }
