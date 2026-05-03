@@ -1505,7 +1505,7 @@ Replaces the F2/G/H mixed scheme considered earlier. Letter-per-concern is clean
 
 **Scope held**: F-fix.B only modified `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` (Status header + §9 + this §10 entry) and `docs/audits/f5_paint_panel_registration_diagnostic_2026-05-03.md` (revision paragraph in §3). No production code changes; no test changes; no architectural decisions revisited.
 
-### 2026-05-03, Sub-phase G-pointer-events-research, commits 6992f4b39 + <G-research.B-hash>
+### 2026-05-03, Sub-phase G-pointer-events-research, commits 6992f4b39 + e748a6304
 
 **Sub-phase entry — captures research-only session execution per Andrew's Q7 Structure B split (research-then-diagnostic). First sub-phase of the G-pointer-events remediation chain (research → diagnostic → fix).**
 
