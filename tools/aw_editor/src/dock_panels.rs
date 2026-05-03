@@ -231,6 +231,19 @@ impl<'a> DockPanelContext<'a> {
                 ui.label("2D top-down zone editor for defining terrain generation zones.");
                 ui.label("Switch to docking mode for the full interactive canvas.");
             }
+            PanelType::RegionalArchetype => {
+                // Phase 1.X-F.5-paint.F-fix.A-supplement: placeholder
+                // dispatch mirroring Blueprint's pattern (full-featured
+                // panel without a DockPanelContext field; rendered via
+                // EditorTabViewer in tab_viewer/mod.rs in docking mode).
+                // Adding a regional_archetype_panel field on
+                // DockPanelContext would be structural refactoring
+                // (out of supplement scope per prompt §2.3).
+                ui.heading("Regional Archetypes");
+                ui.separator();
+                ui.label("Paint regional archetype mask to define per-region terrain shape variation.");
+                ui.label("Switch to docking mode for the full interactive panel.");
+            }
         }
     }
 
