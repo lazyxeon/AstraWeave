@@ -1,6 +1,6 @@
 # Editor Multi-Tool Architecture Campaign — Phase 1.X
 
-**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `75b68e7c7` (Design.A campaign doc) + `8fad61bd3` (Design.B Regional Archetype Variation cross-reference) + `8c92890b9` (Design.C hash-fixup). **Sub-phase 1 — Diagnostic COMPLETE 2026-05-04**, commits `4556c267b` (Diagnostic.A audit) + `0a7df3cdf` (Diagnostic.B campaign doc update); audit at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md`; **all ten §2.X commitments verified COMPATIBILITY-CONFIRMED; zero gap-evidence findings; 2 open-questions deferred (§2.7 ToolContext exposure for depth-buffer access → Sub-phase 2 prompt drafting; §2.11 undo_stack access mechanism → Sub-phase 5 prompt drafting); NO Andrew-gate triggered; Sub-phase 2 prompt drafting + execution may proceed with §2 commitments intact**. Sub-phases 2-6 + Dedicated Mediator Removal session NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
+**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `75b68e7c7` (Design.A campaign doc) + `8fad61bd3` (Design.B Regional Archetype Variation cross-reference) + `8c92890b9` (Design.C hash-fixup). **Sub-phase 1 — Diagnostic COMPLETE 2026-05-04**, commits `4556c267b` (Diagnostic.A audit) + `0a7df3cdf` (Diagnostic.B campaign doc update) + `6924e39db` (Diagnostic.C hash-fixup); audit at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md`; all ten §2.X commitments compatibility-confirmed; 2 open-questions deferred. **Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API COMPLETE 2026-05-04**, commits `813ac29a1` (Core.A trait + types + ToolContext) + `2c791fa39` (Core.B Dispatcher) + `ece7bb3b4` (Core.C 15 unit tests + MockActiveTool fixture) + `<Core.D-hash>` (Core.D campaign doc update); new module at `tools/aw_editor/src/active_tool/`; resolves §2.7 ToolContext open question via pre-computed world-XZ projection fields + method accessors; module isolated (no external usages in ViewportWidget/main.rs/panels/tab_viewer); 15 unit tests pass; code-level only (NOT Andrew-gated per Q9). Sub-phases 3-6 + Dedicated Mediator Removal session NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
 
 **Scope**: Replace AstraWeave editor's approach (B) — viewport widget + main.rs per-frame mediator hardcoded for TerrainPanel — with canonical Approach I+II hybrid dispatcher architecture per research audit §7.7 synthesis (registry/manager owns trait-object collection; per-event dispatch on active trait-implementation; UUID identity for open-set extensibility). Production-readiness threshold per Q3: level (ii) — full multi-tool dispatcher with proper mutex arbitration + lifecycle + Pattern A regression test coverage for dispatcher class. Both TerrainPanel + RegionalArchetypePanel migrated to ActiveTool; mediator code removed; campaign closes with editor's foundational tool architecture canonical and forward-compatible for future paint tools (splat, scatter, vegetation override, weather zones) per Q1 timeline.
 
@@ -905,8 +905,8 @@ This section must be updated in the same commit that completes each sub-phase pe
 
 ```text
 Editor Multi-Tool Architecture campaign-design pass: COMPLETE 2026-05-04, commits 75b68e7c7 + 8fad61bd3 + 8c92890b9.
-Sub-phase 1 — Diagnostic: COMPLETE 2026-05-04, commits 4556c267b (Diagnostic.A audit) + 0a7df3cdf (Diagnostic.B campaign doc update). All ten §2.X commitments compatibility-confirmed; zero gap-evidence; 2 open-questions deferred to Sub-phase 2 + Sub-phase 5 prompt drafting; NO Andrew-gate triggered.
-Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API: NOT STARTED.
+Sub-phase 1 — Diagnostic: COMPLETE 2026-05-04, commits 4556c267b (Diagnostic.A audit) + 0a7df3cdf (Diagnostic.B campaign doc update) + 6924e39db (Diagnostic.C hash-fixup). All ten §2.X commitments compatibility-confirmed; zero gap-evidence; 2 open-questions deferred to Sub-phase 2 + Sub-phase 5 prompt drafting; NO Andrew-gate triggered.
+Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API: COMPLETE 2026-05-04, commits 813ac29a1 (Core.A trait + types + ToolContext) + 2c791fa39 (Core.B Dispatcher) + ece7bb3b4 (Core.C 15 unit tests + MockActiveTool fixture) + <Core.D-hash> (Core.D campaign doc update). New module at tools/aw_editor/src/active_tool/ with mod.rs (~280 lines: trait + types) + dispatcher.rs (~190 lines: Dispatcher impl) + tests.rs (~470 lines: MockActiveTool + DefaultOnlyTool fixtures + 15 test scenarios). §2.7 ToolContext open question resolved via pre-computed world-XZ projection fields + world_xz_at_pointer/world_xz_at_y0 method accessors. Module isolation verified: Dispatcher + ActiveTool referenced only within active_tool/ (no external usages). Code-level only; NOT Andrew-gated per Q9.
 Sub-phase 3 — TerrainPanel ActiveTool implementation (additive): NOT STARTED.
 Sub-phase 4 — Pattern A regression infrastructure for dispatcher class: NOT STARTED.
 Sub-phase 5 — RegionalArchetypePanel ActiveTool implementation + registration: NOT STARTED.
@@ -988,6 +988,74 @@ Per-decision verification:
 3. Through Sub-phase 6 + Mediator Removal session per campaign doc §3-§9.
 
 **Scope held**: Sub-phase 1 Diagnostic session only modified `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md` (commit `4556c267b`) and this Editor Multi-Tool Architecture campaign doc Status header + §11 phase status block + §12 (this commit). NO production code changes. NO test changes. NO implementation sketches. NO sub-phase prompt drafting.
+
+### 2026-05-04, Sub-phase 2 ActiveTool trait + dispatcher core + register_tool API, commits 813ac29a1 (Core.A) + 2c791fa39 (Core.B) + ece7bb3b4 (Core.C) + <Core.D-hash> (Core.D)
+
+**Sub-phase 2 — captures execution of foundational dispatcher infrastructure per campaign doc §4. Code-level only per Q9 (NOT Andrew-gated). Resolves §2.7 ToolContext open question per Sub-phase 1 Diagnostic audit §12.4.**
+
+**Pre-execution verification** (per Sub-phase 2 prompt §1):
+
+- §1.1 Campaign doc re-read for §2.2-§2.5 + §2.7-§2.8 commitments: complete.
+- §1.2 Sub-phase 1 Diagnostic audit re-read for §12.4 deferrals + §2.X verification findings: complete; §2.7 open question resolved this sub-phase, §2.11 deferred to Sub-phase 5.
+- §1.3 ViewportWidget inspection for ToolContext design: complete; OrbitCamera::ray_from_screen + unproject_depth_to_world located at viewport/camera.rs:511 + 541; ViewportRenderer::read_depth_at_pixel located at viewport/renderer.rs:1145; existing depth-then-Y0-fallback pattern at viewport/widget.rs:1219-1247; F.5-paint.B's `screen_to_world_xz_y0` standalone function located at panels/regional_archetype_panel.rs:414. ToolContext design committed to pre-computed world-XZ values (fields) + method accessors (avoids Arc<Mutex<Renderer>> lock + tight camera coupling).
+- §1.4 Anti-drift discipline reaffirmation: held; 9 specific drift temptations enumerated and resisted (no ViewportWidget/main.rs/panels modifications; no TerrainPanel/RegionalArchetypePanel impls; no Pattern A regression infrastructure; no §2.11 undo_stack via ToolContext; no multi-active-tool support; no hover-feedback methods; no tool composition primitives; no §2 architectural revisions).
+
+**Deliverables**:
+
+- **Core.A** (commit `813ac29a1`): ActiveTool trait + EventDisposition enum + MouseEvent/KeyEvent/MouseEventKind/KeyEventKind types + ToolContext struct at `tools/aw_editor/src/active_tool/mod.rs`. lib.rs gets single-line `pub mod active_tool;` addition. Default-implementation pattern per Andrew Q4 (a)(b); `#[non_exhaustive]` enum per Q4. ToolContext owned struct (no lifetime parameter); pre-computed world-XZ fields + method accessors per Andrew Q2 (b). Per-event handlers default to PassThrough; lifecycle methods + on_mouse_enter/on_mouse_leave default to no-op; make_button defaults to selectable_label using name() per Andrew Q4 (b). UUID identity per Q5 mod-friendliness.
+
+- **Core.B** (commit `2c791fa39`): Dispatcher struct + register_tool/set_active_tool/dispatch_mouse_event/dispatch_key_event/dispatch_mouse_enter/dispatch_mouse_leave/update_active_tool methods + helper accessors (is_registered/active_tool_uuid/registered_uuids/tool_count) at `tools/aw_editor/src/active_tool/dispatcher.rs`. Approach I+II hybrid synthesis per research audit §7.7. HashMap<Uuid, Box<dyn ActiveTool>> tool collection. Push-based per-event dispatch routes to active tool only. Framework-enforced single-active-tool mutex via active_tool: Option<Uuid>. Graceful handling: dispatch returns PassThrough if active_tool is None OR active tool's UUID is not registered. set_active_tool no-op for re-setting same UUID (avoids spurious deactivate/activate).
+
+- **Core.C** (commit `ece7bb3b4`): module-level unit tests + MockActiveTool fixture + DefaultOnlyTool fixture at `tools/aw_editor/src/active_tool/tests.rs`. 15 test scenarios (12 prompt-spec + 3 additional). MockActiveTool tracks lifecycle + per-event calls via Rc<RefCell<MockToolState>> shared state; configurable return_disposition for per-event method returns. DefaultOnlyTool overrides ONLY required methods (uuid, name) to verify default-implementation pass-through.
+
+- **Core.D** (this commit): campaign doc Status header + §11 phase status block + §12 entry.
+
+**§2.7 ToolContext open question resolution per audit §12.4**:
+
+ToolContext shape (final):
+
+```rust
+pub struct ToolContext {
+    pub viewport_rect: egui::Rect,
+    pub pointer_pos: Option<egui::Pos2>,
+    pub modifiers: egui::Modifiers,
+    world_xz_at_pointer_cached: Option<(f32, f32)>,  // private; method accessor
+    world_xz_at_y0_cached: Option<(f32, f32)>,        // private; method accessor
+}
+
+impl ToolContext {
+    pub fn new(viewport_rect, pointer_pos, modifiers, world_xz_at_pointer, world_xz_at_y0) -> Self;
+    #[cfg(test)] pub fn for_test() -> Self;
+    pub fn world_xz_at_pointer(&self) -> Option<(f32, f32)>;
+    pub fn world_xz_at_y0(&self) -> Option<(f32, f32)>;
+}
+```
+
+Design rationale per §1.3 ViewportWidget inspection:
+
+- **Pre-computed world-XZ projections** rather than exposing camera + depth_buffer references directly. ViewportWidget computes per-frame before dispatching events; tools just read via method accessors. Avoids exposing `Arc<Mutex<Renderer>>` lock pattern (viewport/widget.rs:333 `with_renderer` closure) + tight coupling to OrbitCamera type.
+- **Owned struct (no lifetime parameter)** simplifies dispatcher API + enables synthetic test fixtures via `for_test()` constructor without borrow orchestration.
+- **Mutable scene-state access deferred** to Sub-phase 3+ tools' choice. TerrainPanel + RegionalArchetypePanel may add ToolContext fields, use existing pending_actions queue patterns, or pass scene references through other mechanisms. Sub-phase 5 prompt drafting may resolve when RegionalArchetypePanel registration forces the decision (analogous to §2.11 undo_stack deferral).
+- **Methods wrap two canonical projection patterns**: `world_xz_at_pointer()` wraps depth-buffer + unprojection per viewport/widget.rs:1219-1234; `world_xz_at_y0()` wraps F.5-paint.B's `screen_to_world_xz_y0` ray-plane projection per regional_archetype_panel.rs:414.
+
+**Test scoreboard at Sub-phase 2 close**:
+
+- 15 active_tool::tests scenarios: pass.
+- All upstream tests: still green (regression check; no other code modified).
+- `cargo check -p aw_editor --lib`: clean (only pre-existing nalgebra warning unrelated).
+- Module isolation: `Dispatcher` + `ActiveTool` referenced only within `active_tool/` (verified via grep).
+
+**Forward chain**:
+
+1. **Sub-phase 3 — TerrainPanel ActiveTool implementation (additive)** (next session): implements `impl ActiveTool for TerrainPanel`; adds dispatcher field to EditorApp + register_tool call at Editor::new(); ViewportWidget routes events to dispatcher (alongside existing main.rs mediator). Andrew-gate REQUIRED per Q9. Both ActiveTool path + main.rs mediator coexist additively per Q2 risk-bounding.
+
+2. **Sub-phase 4 — Pattern A regression infrastructure** (later): extends MockActiveTool fixture for comprehensive dispatcher class regression coverage. Code-level only.
+
+3. **Sub-phase 5 — RegionalArchetypePanel ActiveTool implementation + registration**: implements ActiveTool for RegionalArchetypePanel; resolves §2.11 undo_stack access mechanism per audit §12.4. Andrew-gate REQUIRED. Likely subsumes G-pointer-events-fix per research audit §8.4.
+
+4. **Dedicated Mediator Removal session** + **Sub-phase 6 Closeout**.
+
+**Scope held**: Sub-phase 2 only modified `tools/aw_editor/src/active_tool/` (3 new files: mod.rs + dispatcher.rs + tests.rs) + `tools/aw_editor/src/lib.rs` (single `pub mod active_tool;` addition) + this Editor Multi-Tool Architecture campaign doc Status header + §11 + §12 (this commit). NO modifications to ViewportWidget, panels, tab_viewer, main.rs runtime path. NO Pattern A regression infrastructure beyond minimal MockActiveTool fixture (Sub-phase 4's job). NO §2 architectural revisions.
 
 ---
 
