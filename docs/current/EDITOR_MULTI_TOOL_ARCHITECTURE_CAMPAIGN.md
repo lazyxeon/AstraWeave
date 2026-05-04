@@ -1,6 +1,6 @@
 # Editor Multi-Tool Architecture Campaign — Phase 1.X
 
-**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `75b68e7c7` (Design.A campaign doc) + `8fad61bd3` (Design.B Regional Archetype Variation cross-reference). Sub-phases 1-6 + Dedicated Mediator Removal session NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
+**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `75b68e7c7` (Design.A campaign doc) + `8fad61bd3` (Design.B Regional Archetype Variation cross-reference) + `8c92890b9` (Design.C hash-fixup). **Sub-phase 1 — Diagnostic COMPLETE 2026-05-04**, commits `4556c267b` (Diagnostic.A audit) + `<Diagnostic.B-hash>` (Diagnostic.B campaign doc update); audit at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md`; **all ten §2.X commitments verified COMPATIBILITY-CONFIRMED; zero gap-evidence findings; 2 open-questions deferred (§2.7 ToolContext exposure for depth-buffer access → Sub-phase 2 prompt drafting; §2.11 undo_stack access mechanism → Sub-phase 5 prompt drafting); NO Andrew-gate triggered; Sub-phase 2 prompt drafting + execution may proceed with §2 commitments intact**. Sub-phases 2-6 + Dedicated Mediator Removal session NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
 
 **Scope**: Replace AstraWeave editor's approach (B) — viewport widget + main.rs per-frame mediator hardcoded for TerrainPanel — with canonical Approach I+II hybrid dispatcher architecture per research audit §7.7 synthesis (registry/manager owns trait-object collection; per-event dispatch on active trait-implementation; UUID identity for open-set extensibility). Production-readiness threshold per Q3: level (ii) — full multi-tool dispatcher with proper mutex arbitration + lifecycle + Pattern A regression test coverage for dispatcher class. Both TerrainPanel + RegionalArchetypePanel migrated to ActiveTool; mediator code removed; campaign closes with editor's foundational tool architecture canonical and forward-compatible for future paint tools (splat, scatter, vegetation override, weather zones) per Q1 timeline.
 
@@ -904,8 +904,8 @@ Items explicitly out of scope per Q1 + Q3 + Q9 production-readiness threshold:
 This section must be updated in the same commit that completes each sub-phase per §0 discipline.
 
 ```text
-Editor Multi-Tool Architecture campaign-design pass: COMPLETE 2026-05-04, commits 75b68e7c7 + 8fad61bd3.
-Sub-phase 1 — Diagnostic: NOT STARTED.
+Editor Multi-Tool Architecture campaign-design pass: COMPLETE 2026-05-04, commits 75b68e7c7 + 8fad61bd3 + 8c92890b9.
+Sub-phase 1 — Diagnostic: COMPLETE 2026-05-04, commits 4556c267b (Diagnostic.A audit) + <Diagnostic.B-hash> (Diagnostic.B campaign doc update). All ten §2.X commitments compatibility-confirmed; zero gap-evidence; 2 open-questions deferred to Sub-phase 2 + Sub-phase 5 prompt drafting; NO Andrew-gate triggered.
 Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API: NOT STARTED.
 Sub-phase 3 — TerrainPanel ActiveTool implementation (additive): NOT STARTED.
 Sub-phase 4 — Pattern A regression infrastructure for dispatcher class: NOT STARTED.
@@ -931,11 +931,63 @@ Format for entries:
 **Impact:** <what parts of later sub-phases or other systems are affected>
 ```
 
-### 2026-05-04, Campaign-design pass, commits 75b68e7c7 + 8fad61bd3
+### 2026-05-04, Campaign-design pass, commits 75b68e7c7 + 8fad61bd3 + 8c92890b9 (hash-fixup)
 
 **No deviations from research audit §7 framework or Andrew Q1-Q10 strategic factors.** Campaign-design pass committed to Approach I+II hybrid synthesis per research audit §7.7 + concrete §2 architectural decisions per audit §8.1's ten enumeration. Sub-phase chain sized per Q8 scope-driven framing (6 sub-phases + 1 dedicated Mediator Removal session = 7 distinct campaign sessions per Q2 + Q6 + Q7 + Q8 strategic factors).
 
 **Inheritance from Regional Archetype Variation §0** preserved per Q10: research-pass-before-reframe discipline pattern; Andrew-gate authoritative for visible-output sub-phases; sub-phase completion + status header maintenance discipline; §2 architectural commitments respected.
+
+### 2026-05-04, Sub-phase 1 Diagnostic, commits 4556c267b (Diagnostic.A audit) + <Diagnostic.B-hash> (Diagnostic.B campaign doc update)
+
+**Sub-phase 1 Diagnostic — captures pre-implementation feasibility audit findings. Cross-reference entry; the diagnostic audit at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md` is the load-bearing artifact.**
+
+**Pre-execution verification** (per Sub-phase 1 prompt §1):
+- §1.1 Campaign doc re-read for §2 commitments: complete; §2.X verification map produced inline.
+- §1.2 Predecessor diagnostic methodology re-read: complete; F.5-paint.E-diagnostic §3 methodology revision + G-diagnostic §7 four-option decision-request precedent applied (§2-decision-organized structure per Q1; precedent-driven discovery per F.5-paint.E precedent).
+- §1.3 Campaign doc state confirmed at commits 75b68e7c7 + 8fad61bd3 + 8c92890b9.
+- §1.4 Anti-drift discipline reaffirmation: held; no implementation sketches; no §2 revision; no exploratory inspection beyond §3.1 scope.
+
+**Deliverables**:
+
+- **Diagnostic.A** (commit `4556c267b`): audit document at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md` (~470 lines, §1-§13 structure with §2-decision-organized verification per Q1).
+- **Diagnostic.B** (this commit): cross-reference §12 entry + Status header line + §11 phase status block update in this campaign doc.
+
+**Findings summary**:
+
+**All ten §2.X commitments verified COMPATIBILITY-CONFIRMED. Zero gap-evidence findings; NO Andrew-gate triggered. Sub-phase 2 prompt drafting + execution may proceed with §2 commitments intact.**
+
+Per-decision verification:
+
+- **§2.2 ActiveTool trait shape**: COMPATIBILITY CONFIRMED. TerrainPanel + RegionalArchetypePanel API surfaces map cleanly to Fyrox-style trait. Identical signature `fn(&mut self, world_x: f32, world_z: f32)` across `apply_brush_at` (terrain_panel.rs:819) + `queue_paint_op` (regional_archetype_panel.rs:138).
+- **§2.3 EventDisposition enum**: COMPATIBILITY CONFIRMED. Existing ViewportWidget event-handling has binary tool-consumed-or-camera-pass-through semantics implicitly (viewport/widget.rs:1180-1255 per G-diagnostic).
+- **§2.4 Dispatcher mechanism**: COMPATIBILITY CONFIRMED. egui `Sense::click_and_drag()` + `Response` API produces discrete events compatible with push-based per-event dispatch.
+- **§2.5 Registration model**: COMPATIBILITY CONFIRMED. Editor::new() pattern (main.rs:472+) structurally additive for `register_tool` calls. PanelType enum and ActiveTool registration orthogonal concerns.
+- **§2.6 Mediator removal**: COMPATIBILITY CONFIRMED. Extent bounded — 51 grep occurrences across 3 files; 44 lines of mediator code (main.rs:3833-3877) + 6 ViewportWidget fields (viewport/widget.rs:163-177) + 4 handle_input branches + 6 tab_viewer accessors. Dedicated session scope per Q6 appropriately sized.
+- **§2.7 ViewportWidget integration**: COMPATIBILITY CONFIRMED. Post-removal end-state achievable.
+- **§2.8 Mutex arbitration**: COMPATIBILITY CONFIRMED. Existing single-active-tool pattern (hardcoded `terrain_brush_active`) generalizes cleanly to `active_tool: Option<Uuid>`.
+- **§2.9 Tool composition**: COMPATIBILITY CONFIRMED. No cross-tool composition patterns; deferral uncomplicated. TerrainPanel BrushMode (terrain_panel.rs:509-595) correctly classified as tool-internal state.
+- **§2.10 State persistence**: COMPATIBILITY CONFIRMED. Per-panel state patterns already each panel's responsibility.
+- **§2.11 Action transactionality**: COMPATIBILITY CONFIRMED. Existing `EditorCommand` trait (command.rs:71) + `UndoStack` (command.rs:236) + `TerrainBrushCommand` (command.rs:1691) is appropriate integration target.
+
+**Open questions** (do NOT trigger Andrew-gate; deferred per audit §12.4):
+
+1. **§2.7 ToolContext exposure mechanism for depth-buffer access**: concrete API shape for `ToolContext::world_xz_at_pointer()` closure wrapping the existing depth-buffer read at viewport/widget.rs:1219-1234. **Deferral target**: Sub-phase 2 prompt drafting (when ToolContext type is concretely defined).
+
+2. **§2.11 undo_stack access mechanism from tool event methods**: ergonomic choice between (a) pass `&mut UndoStack` through `ToolContext`; (b) tool emits `EditorAction` analog of TerrainAction with main.rs draining; (c) tool returns `Box<dyn EditorCommand>` from event methods. **Deferral target**: Sub-phase 5 prompt drafting (when second tool's undo/redo plumbing forces the choice).
+
+**Methodology lessons** (audit §13):
+
+- **§13.1 Pre-implementation feasibility audit pattern as canonical for foundational architectural campaigns**: three-mode evidence framework (compatibility / gap / open-question) + Andrew-gate-only-on-gap behavior + open-question deferral to downstream sub-phases. Future foundational campaigns inherit this pattern.
+- **§13.2 §2-decision-organized vs hypothesis-classification audit structure**: choice based on audit purpose. Pre-implementation feasibility audits use §2-decision-organized; failure-diagnosis audits (F.5-paint.E-diagnostic, G-diagnostic) use hypothesis-classification.
+- **§13.3 Single-reference-points discipline**: predecessor findings are reference points; bounded inspection scope expansion per §2.X verification need.
+
+**Forward chain**:
+
+1. **Sub-phase 2 prompt drafting** (next session): drafts execution prompt for ActiveTool trait + dispatcher core + register_tool API. References this audit's §2.7 open-question for ToolContext design + §2.5 PanelType-orthogonal classification + Editor::new() additive pattern.
+2. **Sub-phase 2 execution** (Sessions 5+): per the Sub-phase 2 prompt.
+3. Through Sub-phase 6 + Mediator Removal session per campaign doc §3-§9.
+
+**Scope held**: Sub-phase 1 Diagnostic session only modified `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md` (commit `4556c267b`) and this Editor Multi-Tool Architecture campaign doc Status header + §11 phase status block + §12 (this commit). NO production code changes. NO test changes. NO implementation sketches. NO sub-phase prompt drafting.
 
 ---
 
