@@ -189,6 +189,34 @@ pub struct ViewportWidget {
 
     /// Last viewport rect (for ground-plane raycasting from outside the show() method)
     last_viewport_rect: Option<egui::Rect>,
+
+    /// Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: cached discrete
+    /// events captured during ui()/handle_input. Drained by
+    /// [`Self::dispatch_cached_events`] (called from main.rs once per frame
+    /// after viewport.ui() returns). Each entry is (event, kind); main.rs
+    /// constructs ToolContext + iterates the cache + calls
+    /// `dispatcher.dispatch_mouse_event(event, kind, &mut tool_context)`.
+    ///
+    /// Per Andrew Q3 default + cached-then-dispatch design rationale:
+    /// avoids threading `&mut Dispatcher` through 5 ui() call sites;
+    /// preserves additive coexistence with existing main.rs:3833-3877
+    /// mediator path; isolates dispatcher integration to a single new
+    /// accessor.
+    cached_mouse_events: Vec<(crate::active_tool::MouseEvent, crate::active_tool::MouseEventKind)>,
+    /// Cached mouse-enter notification (true if pointer entered viewport this frame).
+    cached_mouse_enter: bool,
+    /// Cached mouse-leave notification (true if pointer left viewport this frame).
+    cached_mouse_leave: bool,
+    /// Cached pre-computed ToolContext fields for dispatch_cached_events to construct
+    /// ToolContext at dispatch time (per Sub-phase 2 §2.7 resolution: ViewportWidget
+    /// pre-computes world-XZ projections; ToolContext stores cached values).
+    cached_pointer_pos: Option<egui::Pos2>,
+    cached_modifiers: egui::Modifiers,
+    cached_world_xz_at_pointer: Option<(f32, f32)>,
+    cached_world_xz_at_y0: Option<(f32, f32)>,
+    /// Whether this frame produced a hovered + focused viewport context worth dispatching.
+    /// false: dispatch_cached_events is a no-op (cache may be stale or empty).
+    cached_hovered_this_frame: bool,
 }
 
 impl ViewportWidget {
@@ -271,6 +299,15 @@ impl ViewportWidget {
             drag_plane_y: 0.0,
             pending_game_input: None,
             last_viewport_rect: None,
+            // Sub-phase 3 cached-then-dispatch fields:
+            cached_mouse_events: Vec::new(),
+            cached_mouse_enter: false,
+            cached_mouse_leave: false,
+            cached_pointer_pos: None,
+            cached_modifiers: egui::Modifiers::NONE,
+            cached_world_xz_at_pointer: None,
+            cached_world_xz_at_y0: None,
+            cached_hovered_this_frame: false,
         })
     }
 
@@ -325,6 +362,15 @@ impl ViewportWidget {
             drag_plane_y: 0.0,
             pending_game_input: None,
             last_viewport_rect: None,
+            // Sub-phase 3 cached-then-dispatch fields:
+            cached_mouse_events: Vec::new(),
+            cached_mouse_enter: false,
+            cached_mouse_leave: false,
+            cached_pointer_pos: None,
+            cached_modifiers: egui::Modifiers::NONE,
+            cached_world_xz_at_pointer: None,
+            cached_world_xz_at_y0: None,
+            cached_hovered_this_frame: false,
         })
     }
 
@@ -373,6 +419,116 @@ impl ViewportWidget {
     /// Take captured game input (returns None if not in play mode or no input this frame)
     pub fn take_game_input(&mut self) -> Option<crate::runtime::GameInput> {
         self.pending_game_input.take()
+    }
+
+    /// Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: populate cached
+    /// discrete events + ToolContext fields from the current frame's
+    /// `egui::Response`. Called from `Self::ui` after `handle_input` returns;
+    /// cached values are drained by [`Self::dispatch_cached_events`] (called
+    /// from main.rs's per-frame update loop).
+    ///
+    /// Per Sub-phase 2 §2.7 resolution: pre-computes both world-XZ projections
+    /// (`world_xz_at_pointer` via depth-buffer + camera unprojection;
+    /// `world_xz_at_y0` via ray-plane intersection at Y=0). Tools that need
+    /// either projection read via `ToolContext::world_xz_at_pointer()` /
+    /// `world_xz_at_y0()` method accessors at dispatch time.
+    fn cache_active_tool_events(
+        &mut self,
+        response: &egui::Response,
+        ctx: &egui::Context,
+        viewport_size: egui::Vec2,
+    ) {
+        // Reset cache to current frame state.
+        self.cached_mouse_events.clear();
+        self.cached_mouse_enter = false;
+        self.cached_mouse_leave = false;
+        self.cached_pointer_pos = response.hover_pos();
+        self.cached_modifiers = ctx.input(|i| i.modifiers);
+        self.cached_hovered_this_frame = response.hovered();
+
+        // Pre-compute world-XZ projections per Sub-phase 2 §2.7.
+        // depth-buffer projection (existing pattern at viewport/widget.rs:1219-1234):
+        // Sub-phase 3 design choice: skip depth-buffer pre-compute in this method;
+        // the renderer lock contention + per-frame cost are non-trivial. Instead,
+        // dispatch_cached_events (called from main.rs) reads depth on-demand for
+        // tools that actually need it. For Sub-phase 3 (additive coexistence;
+        // dispatcher path is wired-but-inert), leaving these as None matches the
+        // dispatcher-path's no-op semantics.
+        //
+        // Future Sub-phase 5 / Mediator Removal session may pre-compute here if
+        // RegionalArchetypePanel benefits from depth-accurate projection (per
+        // F.5-paint.B's screen_to_world_xz_y0 pattern uses Y=0 ray-plane
+        // intersection, NOT depth-buffer; so RegionalArchetype may not need it).
+        self.cached_world_xz_at_pointer = None;
+        self.cached_world_xz_at_y0 = None;
+
+        // Cache discrete events from response.
+        let pointer_pos = self.cached_pointer_pos.unwrap_or(egui::Pos2::ZERO);
+        let drag_delta = response.drag_delta();
+        let modifiers = self.cached_modifiers;
+        let mouse_event = crate::active_tool::MouseEvent {
+            pointer_pos,
+            modifiers,
+            drag_delta,
+        };
+
+        // Discrete event detection from egui Response API.
+        if response.clicked_by(egui::PointerButton::Primary) {
+            // Treat single-click as LeftButtonDown + LeftButtonUp pair within the same frame.
+            self.cached_mouse_events.push((mouse_event, crate::active_tool::MouseEventKind::LeftButtonDown));
+            self.cached_mouse_events.push((mouse_event, crate::active_tool::MouseEventKind::LeftButtonUp));
+        } else if response.dragged_by(egui::PointerButton::Primary) {
+            // Continuous drag → emit Move events each frame the drag is active.
+            self.cached_mouse_events.push((mouse_event, crate::active_tool::MouseEventKind::Move));
+        } else if response.drag_stopped_by(egui::PointerButton::Primary) {
+            // Drag-end → emit LeftButtonUp.
+            self.cached_mouse_events.push((mouse_event, crate::active_tool::MouseEventKind::LeftButtonUp));
+        }
+
+        // Note: cached_mouse_enter / cached_mouse_leave detection is deferred —
+        // requires frame-to-frame state diff (was_hovered_last_frame vs hovered_this_frame).
+        // Sub-phase 5 may add if RegionalArchetypePanel needs hover lifecycle.
+
+        let _ = viewport_size; // reserved for Sub-phase 5 / Mediator Removal session world-XZ pre-compute
+    }
+
+    /// Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: drain cached
+    /// events + dispatch to dispatcher's active tool. Called from main.rs's
+    /// per-frame update loop AFTER `viewport.ui()` returns.
+    ///
+    /// Constructs `ToolContext` from cached values + iterates cached events.
+    /// Per Andrew Q3 default: dispatcher returns `PassThrough` when no tool
+    /// is active, so this method is safe to call unconditionally.
+    ///
+    /// Per Sub-phase 3 §0.1: dispatch is unconditional; ViewportWidget doesn't
+    /// gate on active-tool state. Caller (main.rs) doesn't gate either; the
+    /// dispatcher's own `active_tool: Option<Uuid>` mutex check is the
+    /// arbitration point.
+    pub fn dispatch_cached_events(&mut self, dispatcher: &mut crate::active_tool::Dispatcher) {
+        if !self.cached_hovered_this_frame || self.cached_mouse_events.is_empty() {
+            return;
+        }
+
+        let viewport_rect = self
+            .last_viewport_rect
+            .unwrap_or_else(|| egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(0.0, 0.0)));
+
+        let mut tool_context = crate::active_tool::ToolContext::new(
+            viewport_rect,
+            self.cached_pointer_pos,
+            self.cached_modifiers,
+            self.cached_world_xz_at_pointer,
+            self.cached_world_xz_at_y0,
+        );
+
+        // Drain cached events; dispatch each to active tool via dispatcher.
+        let events = std::mem::take(&mut self.cached_mouse_events);
+        for (event, kind) in events {
+            let _disposition = dispatcher.dispatch_mouse_event(&event, kind, &mut tool_context);
+            // Disposition is informational during Sub-phase 3 (additive coexistence per Q2);
+            // existing terrain_brush_active-branched code at viewport/widget.rs:1180-1255
+            // still runs unchanged. Mediator Removal session will gate on disposition.
+        }
     }
 
     /// Get access to the underlying renderer
@@ -472,6 +628,15 @@ impl ViewportWidget {
             undo_stack,
             opt_prefab_mgr,
         )?;
+
+        // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: cache discrete
+        // events + ToolContext fields for main.rs's per-frame
+        // dispatch_cached_events call. Cached-then-dispatch design rationale:
+        // avoids threading `&mut Dispatcher` through 5 ui() call sites; preserves
+        // additive coexistence with existing main.rs:3833-3877 mediator path
+        // (which is unchanged). The cache reflects the same egui::Response
+        // state that handle_input just processed.
+        self.cache_active_tool_events(&response, ui.ctx(), available);
 
         // Capture game input for play mode (WASD, mouse, action keys)
         if is_playing && self.has_focus {

@@ -97,6 +97,7 @@ use astraweave_quests::Quest;
 use behavior_graph::{BehaviorGraphDocument, BehaviorGraphEditorUi};
 use editor_mode::EditorMode;
 use eframe::egui;
+use active_tool::{Dispatcher, ToolContext};
 use entity_manager::MaterialSlot;
 use entity_manager::{EntityManager, SelectionSet};
 use gizmo::snapping::SnappingConfig;
@@ -325,6 +326,12 @@ struct EditorApp {
     // Phase 11: Professional Docking System
     dock_layout: DockLayout,
     dock_tab_viewer: EditorTabViewer,
+    /// Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: ActiveTool
+    /// dispatcher per campaign doc §2.5 + Q5 mod-friendliness. Owns the
+    /// trait-object collection + tracks active tool by UUID. Sub-phase 3
+    /// registers TerrainPanel; Sub-phase 5 will register
+    /// RegionalArchetypePanel.
+    dispatcher: Dispatcher,
     use_docking: bool,
     /// Asset registry for counting loaded assets
     asset_registry: AssetRegistry,
@@ -574,6 +581,21 @@ impl Default for EditorApp {
                 .and_then(|json| DockLayout::from_json(json).ok())
                 .unwrap_or_else(|| DockLayout::from_preset(LayoutPreset::Default)),
             dock_tab_viewer: EditorTabViewer::new(),
+            // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: register
+            // TerrainPanel with dispatcher per campaign doc §5.2 + Q5
+            // mod-friendliness. Note: this creates a structurally-distinct
+            // TerrainPanel from the one inside dock_tab_viewer.terrain_panel
+            // (the UI-rendered instance). Per Q2 additive coexistence: the
+            // dispatcher path is "wired up but inert" during Sub-phase 3
+            // (apply_brush_at on the dispatcher's panel has no terrain
+            // state, so it's a no-op); the existing main.rs:3833-3877
+            // mediator path remains the canonical functional path. The
+            // Mediator Removal session per Q6 resolves ownership semantics.
+            dispatcher: {
+                let mut d = Dispatcher::new();
+                d.register_tool(Box::new(crate::panels::terrain_panel::TerrainPanel::default()));
+                d
+            },
             use_docking: true, // Re-enabled after fixing layout gap
             asset_registry: AssetRegistry::default(),
             last_save_time: None,
@@ -3879,6 +3901,25 @@ impl EditorApp {
             }
         }
 
+        // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: drain pending
+        // SetActiveTool actions captured by tab_viewer + apply to dispatcher.
+        // Per campaign doc §5.2: synthesizes a lifecycle ToolContext (no
+        // event-time fields) for activate/deactivate transitions; tools'
+        // lifecycle methods don't typically need pointer/depth context.
+        {
+            let pending = self.dock_tab_viewer.take_pending_set_active_tool_actions();
+            for uuid in pending {
+                let mut lifecycle_context = ToolContext::new(
+                    egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(0.0, 0.0)),
+                    None,
+                    egui::Modifiers::NONE,
+                    None,
+                    None,
+                );
+                self.dispatcher.set_active_tool(uuid, &mut lifecycle_context);
+            }
+        }
+
         // Drain terrain undo queue (side-channel from undo/redo commands)
         {
             let actions: Vec<command::TerrainUndoAction> = {
@@ -5577,6 +5618,15 @@ impl EditorApp {
                             if let Some(gi) = viewport.take_game_input() {
                                 self.runtime.inject_input(gi);
                             }
+
+                            // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3:
+                            // dispatch cached viewport events to dispatcher's active
+                            // tool. Per cached-then-dispatch design: ViewportWidget
+                            // populates cache during ui()/handle_input; main.rs calls
+                            // this method once per frame to drain cache + apply to
+                            // dispatcher. Additive coexistence per Q2: existing
+                            // main.rs:3833-3877 mediator path still runs unchanged.
+                            viewport.dispatch_cached_events(&mut self.dispatcher);
                         } else {
                             ui.label("No world available for rendering");
                         }

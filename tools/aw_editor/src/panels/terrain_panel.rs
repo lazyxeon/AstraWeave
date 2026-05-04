@@ -2700,7 +2700,9 @@ mod tests {
     #[test]
     fn test_panel_trait() {
         let panel = TerrainPanel::new();
-        assert_eq!(panel.name(), "Terrain");
+        // Disambiguate: post-Sub-phase 3, TerrainPanel implements both
+        // `Panel` (returns "Terrain") and `ActiveTool` (returns "Terrain Brush").
+        assert_eq!(<TerrainPanel as Panel>::name(&panel), "Terrain");
     }
 
     // ============================================================

@@ -739,6 +739,12 @@ pub struct EditorTabViewer {
     panel_search: String,
     /// Currently selected graph node ID (visual scripting)
     selected_graph_node: Option<u32>,
+    /// Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: pending
+    /// `TerrainAction::SetActiveTool` actions captured from TerrainPanel
+    /// drain sites (`take_events` + per-frame render arm). main.rs drains
+    /// these via `take_pending_set_active_tool_actions()` and applies to
+    /// `dispatcher.set_active_tool(uuid, &mut tool_context)`.
+    pending_set_active_tool: Vec<Option<uuid::Uuid>>,
 }
 
 impl Default for EditorTabViewer {
@@ -1002,6 +1008,7 @@ impl EditorTabViewer {
             confirm_clear_all: false,
             panel_search: String::new(),
             selected_graph_node: None,
+            pending_set_active_tool: Vec::new(),
         }
     }
 
@@ -1272,6 +1279,11 @@ impl EditorTabViewer {
                     crate::panels::terrain_panel::TerrainAction::BrushUpdate => {
                         self.emit_event(PanelEvent::TerrainBrushUpdate);
                     }
+                    // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3:
+                    // capture SetActiveTool for main.rs drain.
+                    crate::panels::terrain_panel::TerrainAction::SetActiveTool { uuid } => {
+                        self.pending_set_active_tool.push(uuid);
+                    }
                     _ => {}
                 }
             }
@@ -1339,6 +1351,14 @@ impl EditorTabViewer {
     /// Returns true if terrain brush is active and terrain exists
     pub fn is_terrain_brush_active(&self) -> bool {
         self.terrain_panel.is_brush_active()
+    }
+
+    /// Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: drain pending
+    /// `TerrainAction::SetActiveTool` actions captured from TerrainPanel's
+    /// emission. main.rs calls this each frame and applies the resulting
+    /// transitions to `dispatcher.set_active_tool(uuid, &mut tool_context)`.
+    pub fn take_pending_set_active_tool_actions(&mut self) -> Vec<Option<uuid::Uuid>> {
+        std::mem::take(&mut self.pending_set_active_tool)
     }
 
     /// Whether terrain rendering should be active (has generated terrain).
@@ -7635,6 +7655,11 @@ impl TabViewer for EditorTabViewer {
                             }
                             crate::panels::terrain_panel::TerrainAction::BrushUpdate => {
                                 self.emit_event(PanelEvent::TerrainBrushUpdate);
+                            }
+                            // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3:
+                            // capture SetActiveTool for main.rs drain.
+                            crate::panels::terrain_panel::TerrainAction::SetActiveTool { uuid } => {
+                                self.pending_set_active_tool.push(uuid);
                             }
                             _ => {} // Other actions (seed, biome, etc.) handled internally
                         }
