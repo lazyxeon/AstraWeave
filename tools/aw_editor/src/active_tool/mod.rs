@@ -320,3 +320,6 @@ pub trait ActiveTool {
 
 mod dispatcher;
 pub use dispatcher::Dispatcher;
+
+#[cfg(test)]
+mod tests;
