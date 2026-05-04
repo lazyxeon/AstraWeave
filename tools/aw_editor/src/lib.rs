@@ -3,6 +3,7 @@
 
 extern crate self as aw_editor_lib;
 
+pub mod active_tool;
 pub mod animation_bridge;
 pub mod asset_pack;
 pub mod audio_bridge;
