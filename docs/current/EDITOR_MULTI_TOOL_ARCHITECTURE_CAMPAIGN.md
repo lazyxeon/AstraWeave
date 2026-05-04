@@ -1,6 +1,6 @@
 # Editor Multi-Tool Architecture Campaign — Phase 1.X
 
-**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `<Design.A-hash>` (Design.A campaign doc) + `<Design.B-hash>` (Design.B Regional Archetype Variation cross-reference). Sub-phases 1-6 + Dedicated Mediator Removal session NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
+**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `75b68e7c7` (Design.A campaign doc) + `8fad61bd3` (Design.B Regional Archetype Variation cross-reference). Sub-phases 1-6 + Dedicated Mediator Removal session NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
 
 **Scope**: Replace AstraWeave editor's approach (B) — viewport widget + main.rs per-frame mediator hardcoded for TerrainPanel — with canonical Approach I+II hybrid dispatcher architecture per research audit §7.7 synthesis (registry/manager owns trait-object collection; per-event dispatch on active trait-implementation; UUID identity for open-set extensibility). Production-readiness threshold per Q3: level (ii) — full multi-tool dispatcher with proper mutex arbitration + lifecycle + Pattern A regression test coverage for dispatcher class. Both TerrainPanel + RegionalArchetypePanel migrated to ActiveTool; mediator code removed; campaign closes with editor's foundational tool architecture canonical and forward-compatible for future paint tools (splat, scatter, vegetation override, weather zones) per Q1 timeline.
 
@@ -904,7 +904,7 @@ Items explicitly out of scope per Q1 + Q3 + Q9 production-readiness threshold:
 This section must be updated in the same commit that completes each sub-phase per §0 discipline.
 
 ```text
-Editor Multi-Tool Architecture campaign-design pass: COMPLETE 2026-05-04, commits <Design.A-hash> + <Design.B-hash>.
+Editor Multi-Tool Architecture campaign-design pass: COMPLETE 2026-05-04, commits 75b68e7c7 + 8fad61bd3.
 Sub-phase 1 — Diagnostic: NOT STARTED.
 Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API: NOT STARTED.
 Sub-phase 3 — TerrainPanel ActiveTool implementation (additive): NOT STARTED.
@@ -931,7 +931,7 @@ Format for entries:
 **Impact:** <what parts of later sub-phases or other systems are affected>
 ```
 
-### 2026-05-04, Campaign-design pass, commits <Design.A-hash> + <Design.B-hash>
+### 2026-05-04, Campaign-design pass, commits 75b68e7c7 + 8fad61bd3
 
 **No deviations from research audit §7 framework or Andrew Q1-Q10 strategic factors.** Campaign-design pass committed to Approach I+II hybrid synthesis per research audit §7.7 + concrete §2 architectural decisions per audit §8.1's ten enumeration. Sub-phase chain sized per Q8 scope-driven framing (6 sub-phases + 1 dedicated Mediator Removal session = 7 distinct campaign sessions per Q2 + Q6 + Q7 + Q8 strategic factors).
 
