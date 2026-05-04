@@ -11,8 +11,18 @@
 //! - Voxel brush tools for sculpting
 
 use super::Panel;
+use crate::active_tool::{
+    ActiveTool, EventDisposition, KeyEvent, MouseEvent, ToolContext,
+};
 use crate::terrain_integration::{cached_biome_options, TerrainState};
 use egui::{Color32, RichText, Ui};
+use uuid::{uuid, Uuid};
+
+/// Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: stable first-party
+/// UUID for `TerrainPanel` per ActiveTool registration model (campaign doc
+/// §2.5 + Andrew Q5 mod-friendliness). UUID generated 2026-05-04; documented
+/// constant; third-party tools generate their own UUIDs that won't collide.
+pub const TERRAIN_PANEL_UUID: Uuid = uuid!("a3f1b8c2-7e4d-4a5b-9f3c-1d2e8b7a4c6f");
 
 /// Erosion preset types for quick configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -640,6 +650,13 @@ pub enum TerrainAction {
     ImportHeightmap { path: String },
     /// Toggle auto-regenerate
     ToggleAutoRegenerate(bool),
+    /// Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3: route active-tool
+    /// transition through the dispatcher. Emitted when the brush-mode toggle
+    /// flips `brush_enabled` (terrain_panel.rs:1180); drained in
+    /// `tab_viewer/mod.rs` and forwarded to main.rs which calls
+    /// `dispatcher.set_active_tool(uuid, &mut tool_context)`. `Some(uuid)`
+    /// activates this tool; `None` deactivates the active tool.
+    SetActiveTool { uuid: Option<Uuid> },
 }
 
 #[derive(Default, Clone)]
@@ -1178,6 +1195,17 @@ impl TerrainPanel {
                 .clicked()
             {
                 self.brush_enabled = !self.brush_enabled;
+                // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3:
+                // route active-tool transition through dispatcher per
+                // campaign doc §5.2. Drained in tab_viewer + forwarded
+                // to main.rs which calls dispatcher.set_active_tool.
+                let new_active = if self.brush_enabled {
+                    Some(TERRAIN_PANEL_UUID)
+                } else {
+                    None
+                };
+                self.pending_actions
+                    .push(TerrainAction::SetActiveTool { uuid: new_active });
             }
             if self.brush_enabled {
                 ui.label(
@@ -2118,6 +2146,138 @@ impl TerrainPanel {
                 }
             }
         }
+    }
+}
+
+// =============================================================================
+// Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3:
+// `impl ActiveTool for TerrainPanel` (additive coexistence with main.rs:3833-3877
+// mediator code per Andrew Q2 risk-bounding). Both ActiveTool path + main.rs
+// mediator path are active simultaneously through Sub-phase 3 + Sub-phase 5;
+// Mediator Removal session (per campaign doc §6 + Q6) removes the mediator code
+// once both tools are registered + Andrew-gate verifies the dispatcher path.
+//
+// Per Sub-phase 1 Diagnostic audit §2.2.3 verification: TerrainPanel's
+// `apply_brush_at(world_x, world_z)` (line 819) + `end_brush_stroke()` (line 864)
+// are the integration targets. Per-event handlers route to these existing methods
+// with world-XZ coordinates from `ToolContext::world_xz_at_pointer()` (Sub-phase 2
+// §2.7 resolution; depth-buffer-based projection per viewport/widget.rs:1219-1234).
+// =============================================================================
+
+impl ActiveTool for TerrainPanel {
+    fn uuid(&self) -> Uuid {
+        TERRAIN_PANEL_UUID
+    }
+
+    fn name(&self) -> &str {
+        "Terrain Brush"
+    }
+
+    /// Lifecycle: tool activated when dispatcher's set_active_tool selects this.
+    /// Coexistence note: existing `is_brush_active()` at line 797 returns
+    /// `self.brush_enabled && self.terrain_state.has_terrain()`. The UI-side
+    /// toggle at line ~1180 sets `brush_enabled` and emits SetActiveTool
+    /// action; the dispatcher's set_active_tool then calls activate() here.
+    /// activate() does NOT modify brush_enabled (already set by UI toggle);
+    /// this is intentional to keep both ActiveTool path + main.rs mediator
+    /// path in sync per Q2 additive coexistence.
+    fn activate(&mut self, _context: &mut ToolContext) {
+        // Brush_enabled already set by UI toggle that emitted SetActiveTool.
+        // No additional state change needed here for additive coexistence.
+    }
+
+    /// Lifecycle: tool deactivated when dispatcher selects another tool or None.
+    /// Symmetric with activate(): UI toggle clears brush_enabled before emitting
+    /// SetActiveTool { uuid: None }.
+    fn deactivate(&mut self, _context: &mut ToolContext) {
+        // Brush_enabled already cleared by UI toggle. No additional state change.
+    }
+
+    /// Per-event handler: stroke start. Route to existing `apply_brush_at` API
+    /// with world-XZ from depth-buffer-based projection (`world_xz_at_pointer`).
+    /// Falls back to PassThrough if pointer projection fails (sky depth = 1.0,
+    /// pointer outside viewport, depth buffer unavailable).
+    ///
+    /// Coexistence note: existing main.rs mediator path at viewport/widget.rs:
+    /// 1200-1255 also calls `apply_brush_at` via `take_terrain_brush_hits` drain
+    /// (main.rs:3862-3877). Sub-phase 3 keeps both paths active; the mediator
+    /// path remains the primary functional path during Andrew-gate verification.
+    /// `apply_brush_at` is idempotent for repeated calls at the same world
+    /// position within the same frame (existing behavior; not modified).
+    fn on_left_mouse_button_down(
+        &mut self,
+        _event: &MouseEvent,
+        context: &mut ToolContext,
+    ) -> EventDisposition {
+        if let Some((world_x, world_z)) = context.world_xz_at_pointer() {
+            self.apply_brush_at(world_x, world_z);
+            EventDisposition::Consumed
+        } else {
+            EventDisposition::PassThrough
+        }
+    }
+
+    /// Per-event handler: stroke continuation. Routes to `apply_brush_at`
+    /// identically to on_left_mouse_button_down. Throttling is preserved by
+    /// `apply_brush_at`'s internal `last_brush_time` check (per audit §2.2.2);
+    /// no throttling logic duplicated at ActiveTool layer.
+    fn on_mouse_move(
+        &mut self,
+        _event: &MouseEvent,
+        context: &mut ToolContext,
+    ) -> EventDisposition {
+        if let Some((world_x, world_z)) = context.world_xz_at_pointer() {
+            self.apply_brush_at(world_x, world_z);
+            EventDisposition::Consumed
+        } else {
+            EventDisposition::PassThrough
+        }
+    }
+
+    /// Per-event handler: stroke end. Per Sub-phase 3 prompt §2.1 option (b):
+    /// does NOT call `end_brush_stroke()` here. The existing main.rs mediator
+    /// path at main.rs:3867-3877 detects stroke-end via
+    /// `viewport.take_terrain_brush_stroke_ended()` and emits
+    /// TerrainBrushCommand to undo_stack. Calling end_brush_stroke() here too
+    /// would produce duplicate undo entries; deferring to mediator preserves
+    /// Sub-phase 5's §2.11 undo_stack-via-ToolContext deferral discipline.
+    ///
+    /// The Mediator Removal session (per campaign doc §6 + Q6) will resolve
+    /// stroke-end coordination by either (a) moving end_brush_stroke +
+    /// TerrainBrushCommand emission into this method, or (b) routing through
+    /// the resolved ToolContext.undo_stack mechanism per Sub-phase 5.
+    fn on_left_mouse_button_up(
+        &mut self,
+        _event: &MouseEvent,
+        _context: &mut ToolContext,
+    ) -> EventDisposition {
+        // Mediator path handles stroke-end + undo emission per coexistence pattern.
+        EventDisposition::PassThrough
+    }
+
+    /// Per-event handler: key press. TerrainPanel's brush mode switching is
+    /// currently UI-driven (selectable_value buttons at line ~1192-1200).
+    /// Future enhancement: keyboard shortcuts for brush mode cycling would land
+    /// here. Default PassThrough preserves existing keyboard behavior.
+    fn on_key_down(
+        &mut self,
+        _key: &KeyEvent,
+        _context: &mut ToolContext,
+    ) -> EventDisposition {
+        EventDisposition::PassThrough
+    }
+
+    /// UI integration: provide a toolbar button for the dispatcher's tool
+    /// palette. Sub-phase 3 uses the default `selectable_label(name())`
+    /// pattern from Sub-phase 2's trait default; richer UI deferred until
+    /// dispatcher's tool palette UI is built (likely Mediator Removal session
+    /// or a UI-polish follow-up).
+    ///
+    /// Note: clicking this button does NOT directly toggle dispatcher state.
+    /// The brush-mode toggle at line ~1180 is the canonical activation site;
+    /// this button is for tool palette display only.
+    fn make_button(&mut self, ui: &mut Ui, selected: bool) {
+        let _ = ui.selectable_label(selected, ActiveTool::name(self));
     }
 }
 

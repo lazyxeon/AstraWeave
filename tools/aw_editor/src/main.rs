@@ -15,6 +15,8 @@ astraweave_alloc::setup_global_allocator!();
 // tests and benchmarks. Items appear "dead" in the binary but are exercised
 // through the library target. allow(dead_code) suppresses binary-only warnings.
 #[allow(dead_code)]
+mod active_tool; // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-2 - ActiveTool dispatcher
+#[allow(dead_code)]
 mod animation_bridge;
 #[allow(dead_code)]
 mod asset_pack;
