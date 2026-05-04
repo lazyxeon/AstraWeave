@@ -315,6 +315,8 @@ pub trait ActiveTool {
 }
 
 // =============================================================================
-// Dispatcher (Sub-phase 2 Core.B) lands `mod dispatcher;` + `pub use Dispatcher;`
-// in this file. Tests (Sub-phase 2 Core.C) land `#[cfg(test)] mod tests;`.
+// Dispatcher (Sub-phase 2 Core.B)
 // =============================================================================
+
+mod dispatcher;
+pub use dispatcher::Dispatcher;
