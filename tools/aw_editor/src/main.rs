@@ -3864,11 +3864,20 @@ impl EditorApp {
                 let mut context =
                     EditorDrawContext::new(&mut self.dock_tab_viewer, &mut self.extra_viewports);
 
-                if let (Some(world), Some(viewport)) = (world_opt, self.viewport.as_mut()) {
-                    // Sync terrain brush state: tell viewport when brush is active
+                // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3-Mediator-Brush-Fix:
+                // Sync terrain brush state to viewport (independent of world presence).
+                // Previously placed inside the `Some(world)` gate below (introduced at
+                // f84eb09049 2026-03-17), which silently disabled the brush when terrain
+                // was generated via TerrainPanel without a loaded scene. See diagnostic
+                // audit §4.5 / §5.2 (docs/audits/editor_multi_tool_architecture_subphase_
+                // 3_mediator_brush_diagnostic_2026-05-05.md).
+                if let Some(viewport) = self.viewport.as_mut() {
                     viewport.set_terrain_brush_active(brush_active);
                     viewport.set_terrain_brush_params(brush_radius, brush_is_paint);
+                }
 
+                // EditorDrawContext requires both world and viewport
+                if let (Some(world), Some(viewport)) = (world_opt, self.viewport.as_mut()) {
                     context = context
                         .with_viewport(viewport)
                         .with_world(world)
