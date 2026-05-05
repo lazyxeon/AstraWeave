@@ -1,6 +1,6 @@
 # Editor Multi-Tool Architecture Campaign — Phase 1.X
 
-**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `75b68e7c7` (Design.A campaign doc) + `8fad61bd3` (Design.B Regional Archetype Variation cross-reference) + `8c92890b9` (Design.C hash-fixup). **Sub-phase 1 — Diagnostic COMPLETE 2026-05-04**, commits `4556c267b` (Diagnostic.A audit) + `0a7df3cdf` (Diagnostic.B campaign doc update) + `6924e39db` (Diagnostic.C hash-fixup); audit at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md`; all ten §2.X commitments compatibility-confirmed; 2 open-questions deferred. **Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API COMPLETE 2026-05-04**, commits `813ac29a1` (Core.A trait + types + ToolContext) + `2c791fa39` (Core.B Dispatcher) + `ece7bb3b4` (Core.C 15 unit tests + MockActiveTool fixture) + `6016b3c8f` (Core.D campaign doc update); new module at `tools/aw_editor/src/active_tool/`; resolves §2.7 ToolContext open question via pre-computed world-XZ projection fields + method accessors; module isolated (no external usages in ViewportWidget/main.rs/panels/tab_viewer); 15 unit tests pass; code-level only (NOT Andrew-gated per Q9). Sub-phases 3-6 + Dedicated Mediator Removal session NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
+**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `75b68e7c7` (Design.A campaign doc) + `8fad61bd3` (Design.B Regional Archetype Variation cross-reference) + `8c92890b9` (Design.C hash-fixup). **Sub-phase 1 — Diagnostic COMPLETE 2026-05-04**, commits `4556c267b` (Diagnostic.A audit) + `0a7df3cdf` (Diagnostic.B campaign doc update) + `6924e39db` (Diagnostic.C hash-fixup); audit at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md`; all ten §2.X commitments compatibility-confirmed; 2 open-questions deferred. **Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API COMPLETE 2026-05-04**, commits `813ac29a1` (Core.A trait + types + ToolContext) + `2c791fa39` (Core.B Dispatcher) + `ece7bb3b4` (Core.C 15 unit tests + MockActiveTool fixture) + `6016b3c8f` (Core.D campaign doc update); new module at `tools/aw_editor/src/active_tool/`; resolves §2.7 ToolContext open question via pre-computed world-XZ projection fields + method accessors; module isolated (no external usages in ViewportWidget/main.rs/panels/tab_viewer); 15 unit tests pass; code-level only (NOT Andrew-gated per Q9). **Sub-phase 3 — TerrainPanel ActiveTool implementation (additive) IN PROGRESS**: 3.A `0dea0bebc` (impl ActiveTool for TerrainPanel + TerrainAction::SetActiveTool variant + UI emission + TERRAIN_PANEL_UUID constant) + 3.B `41ec3b192` (tab_viewer SetActiveTool capture + EditorApp.dispatcher field + ViewportWidget cached-then-dispatch integration) landed; 3.C closeout DEFERRED pending mediator brush fix. **Sub-phase 3 Mediator Brush Diagnostic COMPLETE 2026-05-05**, commits `e5e32f486` (Diagnostic.A audit) + `<Diagnostic.B-hash>` (this commit, campaign doc update); audit at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_2026-05-05.md`; H5 (Mediator drain logic regression) CONFIRMED at commit `f84eb09049` (2026-03-17, "imported kaykit complete asset package") — `viewport.set_terrain_brush_active` + `viewport.set_terrain_brush_params` placed inside `if let (Some(world), Some(viewport))` gate at main.rs:3867, brush state never reaches viewport when no scene loaded; H1-H4 + H6-H8 REFUTED or non-causal; recommended fix small (~10 lines, single-commit, no architectural changes); defect predates Sub-phase 3 by ~7 weeks per Andrew Q1 verification. Sub-phase 4-6 + Dedicated Mediator Removal session + Sub-phase 3 Mediator Brush Fix + Sub-phase 3.C closeout NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
 
 **Scope**: Replace AstraWeave editor's approach (B) — viewport widget + main.rs per-frame mediator hardcoded for TerrainPanel — with canonical Approach I+II hybrid dispatcher architecture per research audit §7.7 synthesis (registry/manager owns trait-object collection; per-event dispatch on active trait-implementation; UUID identity for open-set extensibility). Production-readiness threshold per Q3: level (ii) — full multi-tool dispatcher with proper mutex arbitration + lifecycle + Pattern A regression test coverage for dispatcher class. Both TerrainPanel + RegionalArchetypePanel migrated to ActiveTool; mediator code removed; campaign closes with editor's foundational tool architecture canonical and forward-compatible for future paint tools (splat, scatter, vegetation override, weather zones) per Q1 timeline.
 
@@ -907,7 +907,10 @@ This section must be updated in the same commit that completes each sub-phase pe
 Editor Multi-Tool Architecture campaign-design pass: COMPLETE 2026-05-04, commits 75b68e7c7 + 8fad61bd3 + 8c92890b9.
 Sub-phase 1 — Diagnostic: COMPLETE 2026-05-04, commits 4556c267b (Diagnostic.A audit) + 0a7df3cdf (Diagnostic.B campaign doc update) + 6924e39db (Diagnostic.C hash-fixup). All ten §2.X commitments compatibility-confirmed; zero gap-evidence; 2 open-questions deferred to Sub-phase 2 + Sub-phase 5 prompt drafting; NO Andrew-gate triggered.
 Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API: COMPLETE 2026-05-04, commits 813ac29a1 (Core.A trait + types + ToolContext) + 2c791fa39 (Core.B Dispatcher) + ece7bb3b4 (Core.C 15 unit tests + MockActiveTool fixture) + 6016b3c8f (Core.D campaign doc update). New module at tools/aw_editor/src/active_tool/ with mod.rs (~280 lines: trait + types) + dispatcher.rs (~190 lines: Dispatcher impl) + tests.rs (~470 lines: MockActiveTool + DefaultOnlyTool fixtures + 15 test scenarios). §2.7 ToolContext open question resolved via pre-computed world-XZ projection fields + world_xz_at_pointer/world_xz_at_y0 method accessors. Module isolation verified: Dispatcher + ActiveTool referenced only within active_tool/ (no external usages). Code-level only; NOT Andrew-gated per Q9.
-Sub-phase 3 — TerrainPanel ActiveTool implementation (additive): NOT STARTED.
+Sub-phase 3 — TerrainPanel ActiveTool implementation (additive): IN PROGRESS — 3.A 0dea0bebc + 3.B 41ec3b192 landed (build clean; 15/15 active_tool tests pass); Andrew-gate REGRESS verdict 2026-05-04 surfaced upstream mediator brush regression (NOT caused by Sub-phase 3 per Andrew Q1 verification at 79e483e6c); Sub-phase 3.C closeout DEFERRED pending mediator brush fix.
+Sub-phase 3 Mediator Brush Diagnostic — TerrainPanel brush mediator path failure-diagnosis: COMPLETE 2026-05-05, commits e5e32f486 (Diagnostic.A audit) + <Diagnostic.B-hash> (Diagnostic.B campaign doc update). Single confirmed root cause: H5 mediator drain logic regression at f84eb09049 (2026-03-17) — viewport.set_terrain_brush_active + viewport.set_terrain_brush_params at main.rs:3869-3870 placed inside `if let (Some(world), Some(viewport))` gate, brush state never reaches viewport when no scene loaded. H1 (F.5-paint cascade) REFUTED. Recommended fix: small (~10 lines), single-commit, no architectural changes.
+Sub-phase 3 Mediator Brush Fix — relocate brush sync calls outside Some(world) gate: NOT STARTED (gated on Andrew review of diagnostic findings).
+Sub-phase 3.C — closeout: NOT STARTED (gated on mediator brush fix Andrew-gate PASS).
 Sub-phase 4 — Pattern A regression infrastructure for dispatcher class: NOT STARTED.
 Sub-phase 5 — RegionalArchetypePanel ActiveTool implementation + registration: NOT STARTED.
 Dedicated Session — Mediator Removal: NOT STARTED.
@@ -1056,6 +1059,102 @@ Design rationale per §1.3 ViewportWidget inspection:
 4. **Dedicated Mediator Removal session** + **Sub-phase 6 Closeout**.
 
 **Scope held**: Sub-phase 2 only modified `tools/aw_editor/src/active_tool/` (3 new files: mod.rs + dispatcher.rs + tests.rs) + `tools/aw_editor/src/lib.rs` (single `pub mod active_tool;` addition) + this Editor Multi-Tool Architecture campaign doc Status header + §11 + §12 (this commit). NO modifications to ViewportWidget, panels, tab_viewer, main.rs runtime path. NO Pattern A regression infrastructure beyond minimal MockActiveTool fixture (Sub-phase 4's job). NO §2 architectural revisions.
+
+### 2026-05-04, Sub-phase 3.A + 3.B (TerrainPanel ActiveTool implementation — additive), commits 0dea0bebc (3.A) + 41ec3b192 (3.B)
+
+**Sub-phase 3 in-progress entry — captures execution of TerrainPanel ActiveTool integration. Sub-phase 3.C closeout DEFERRED pending Sub-phase 3 Mediator Brush Diagnostic findings + fix (see next entry).**
+
+**Pre-execution verification** (per Sub-phase 3 prompt §1):
+- Sub-phase 1 Diagnostic + Sub-phase 2 commitments preserved unchanged.
+- §2.7 ToolContext API as resolved by Sub-phase 2 (pre-computed world-XZ fields + accessor methods) used as-is.
+
+**Deliverables**:
+
+- **Sub-phase 3.A** (commit `0dea0bebc`): `impl ActiveTool for TerrainPanel` block at `tools/aw_editor/src/panels/terrain_panel.rs` (~165 lines added) + `TERRAIN_PANEL_UUID` constant (`uuid!("a3f1b8c2-7e4d-4a5b-9f3c-1d2e8b7a4c6f")`) + `TerrainAction::SetActiveTool { uuid: Option<Uuid> }` variant + UI emission at brush-mode toggle (line ~1180: pushes SetActiveTool action when brush_enabled flips). main.rs gets single `mod active_tool;` declaration. Per-event handlers: on_left_mouse_button_down + on_mouse_move route to existing `apply_brush_at(world_x, world_z)` via `ToolContext::world_xz_at_pointer()`. on_left_mouse_button_up returns PassThrough per option (b) coexistence — existing main.rs:3891 mediator handles stroke-end. Throttling preservation per Sub-phase 1 Diagnostic audit §2.2.2.
+
+- **Sub-phase 3.B** (commit `41ec3b192`): tab_viewer SetActiveTool capture (`pending_set_active_tool: Vec<Option<Uuid>>` field + capture in TerrainAction drain sites + `take_pending_set_active_tool_actions` accessor) + EditorApp.dispatcher field (initialized with TerrainPanel::default() registered) + per-frame drain in main.rs that applies pending SetActiveTool to dispatcher.set_active_tool + ViewportWidget cached-then-dispatch integration (8 cache fields + `cache_active_tool_events` helper called from ui() + `dispatch_cached_events` public method drained from main.rs). Cached-then-dispatch design rationale (vs prompt §2.4 illustrative sketch with `&mut Dispatcher` parameter): avoids threading parameter through 5 ui() call sites; preserves additive coexistence with existing main.rs:3833-3877 mediator path; isolates dispatcher integration to single accessor.
+
+**Coexistence design** (per Q2 additive risk-bounding):
+
+- Existing main.rs mediator path remains canonical functional path during Sub-phase 3.
+- Dispatcher path is wired-up but inert: `dispatcher.register_tool(Box::new(TerrainPanel::default()))` creates a structurally-distinct TerrainPanel from the dock-rendered instance; its `apply_brush_at` receives no terrain state, so dispatch produces no observable effect. Mediator Removal session per Q6 resolves dual ownership.
+
+**Test scoreboard at Sub-phase 3.B close**:
+- 15/15 active_tool::tests pass.
+- 3990 other lib tests pass.
+- 1 pre-existing test_terrain_panel_creation failure (chunk_radius drift documented in F-fix.A-supplement; UNRELATED to Sub-phase 3; not investigated/fixed per anti-drift discipline).
+- cargo build -p aw_editor: clean.
+
+**Andrew-gate REGRESS 2026-05-04**:
+
+Andrew tested all 8 brush modes per Q9 verification criteria. Verdict: REGRESS. All 8 modes non-functional on TerrainPanel-generated terrain (no cursor change, no ring overlay, no terrain modification on click+drag; no panic; FPS spike on paint mode switch). Q1 confirmed: pre-Sub-phase 3 also broken (verified at commit `79e483e6c` Sub-phase 2 Core.E pre-Sub-phase 3 state). Q4: "scult and flatten worked at one point in past"; uncertain when last functional. Defect predates Sub-phase 3 — surfaced by Sub-phase 3 Andrew-gate's required comprehensive verification, not introduced by Sub-phase 3.
+
+Sub-phase 3.C closeout DEFERRED. Sub-phase 3 Mediator Brush Diagnostic session triggered per Andrew Q2 (diagnostic-only, no fixes; fix prompt drafted post-Andrew-review).
+
+**Forward chain**:
+
+1. **Sub-phase 3 Mediator Brush Diagnostic** (next session, this entry): root-cause TerrainPanel brush mediator regression. See next §12 entry.
+2. **Mediator Brush Fix session** (post-Andrew-review): per diagnostic findings.
+3. **Sub-phase 3 Andrew-gate re-run** (post-fix): all 8 brush modes verified.
+4. **Sub-phase 3.C closeout** (post-Andrew-gate-PASS).
+5. Sub-phase 4 + Sub-phase 5 + Mediator Removal session + Sub-phase 6 per campaign doc §3-§9.
+
+**Scope held**: Sub-phase 3.A + 3.B only modified `tools/aw_editor/src/panels/terrain_panel.rs` + `tools/aw_editor/src/main.rs` + `tools/aw_editor/src/tab_viewer/mod.rs` + `tools/aw_editor/src/viewport/widget.rs`. NO modifications to existing main.rs:3833-3877 mediator code (preserved unchanged for additive coexistence). NO Sub-phase 4/5/6 work scope. NO Mediator Removal work.
+
+### 2026-05-05, Sub-phase 3 Mediator Brush Diagnostic, commits e5e32f486 (Diagnostic.A audit) + <Diagnostic.B-hash>
+
+**Sub-phase 3 sub-task — failure-diagnosis of TerrainPanel brush mediator path regression. Triggered by Sub-phase 3 Andrew-gate REGRESS 2026-05-04. Defect predates Sub-phase 3 per Andrew Q1 verification. Cross-reference entry; the diagnostic audit at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_2026-05-05.md` is the load-bearing artifact.**
+
+**Pre-execution verification** (per Sub-phase 3 Mediator Brush Diagnostic prompt §1):
+- §1.1 Sub-phase 3 status confirmed (3.A `0dea0bebc` + 3.B `41ec3b192` landed; 3.C deferred; build clean; 15/15 active_tool tests pass).
+- §1.2 Sub-phase 3 not-causal confirmed (3.A modifies `panels/terrain_panel.rs` + single `mod active_tool;` line in main.rs; 3.B adds new fields/methods to tab_viewer/main.rs/viewport/widget.rs but does NOT modify existing mediator branches at main.rs:3833-3902 nor handle_input branches at viewport/widget.rs brush sections).
+- §1.3 Predecessor diagnostic methodology re-read: F.5-paint.E-diagnostic + G-pointer-events-diagnostic precedent applied.
+- §1.4 F.5-paint cascade prime-suspect framing applied as initial investigation target — ultimately REFUTED (F.5-paint commits did NOT modify mediator-relevant files).
+- §1.5 Anti-drift discipline reaffirmation: held; 5 specific drift temptations enumerated and resisted (no fix sketching beyond §5.3 recommended scope; no architectural refactoring; no scope expansion to non-mediator concerns; no FPS-spike optimization; no unrelated fixes).
+
+**Deliverables**:
+
+- **Diagnostic.A** (commit `e5e32f486`): audit document at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_2026-05-05.md` (~470 lines, hypothesis-classification structure per Sub-phase 1 Diagnostic audit §13.2 + F.5-paint.E-diagnostic + G-pointer-events-diagnostic precedent).
+- **Diagnostic.B** (this commit): cross-reference §12 entry + Status header line + §11 phase status block update.
+
+**Findings summary — single confirmed root cause**:
+
+H5 (Mediator drain logic regression) CONFIRMED at commit `f84eb09049` (2026-03-17, "imported kaykit complete asset package"). The brush sync calls at `tools/aw_editor/src/main.rs:3869-3870`:
+
+```rust
+viewport.set_terrain_brush_active(brush_active);
+viewport.set_terrain_brush_params(brush_radius, brush_is_paint);
+```
+
+are placed inside an `if let (Some(world), Some(viewport)) = (world_opt, self.viewport.as_mut())` gate at line 3867. The `Some(world)` arm requires `self.scene_state` to be `Some`. When user generates terrain via TerrainPanel without first loading a scene, `scene_state` is `None`, `world_opt` is `None`, the `if let` arm doesn't execute, and `viewport.terrain_brush_active` remains its default `false` — silently defeating all three brush-active gates in viewport/widget.rs (lines 1365 hit collection, 1423 stroke-end, 1428 cursor + ring render).
+
+Single defect explains ALL three observable symptoms parsimoniously:
+- "No cursor change on brush activation" ← line 1428 gate false
+- "No ring overlay on terrain hover" ← same line 1428 gate (cursor + ring share render block)
+- "No terrain modification on click+drag" ← line 1365 gate false
+
+Andrew's Q4 "scult and flatten worked at one point" memory consistent with path-conditional behavior: brush works when scene IS loaded; silently fails when terrain is generated standalone. Bug has been latent on main for ~7 weeks since `f84eb09049`.
+
+**Hypotheses refuted**: H1 (F.5-paint cascade) — F.5-paint commits did NOT modify mediator-relevant files; H3 (TerrainPanel state machine) — internal logic correct; H4 (ViewportWidget input flow) — handle_input branches correct; H6 (tab_viewer accessor) — single-instance ownership + correct delegation; H8 (build-system / dependency) — no relevant Cargo or cfg changes.
+
+**Hypothesis partially confirmed (secondary observation)**: H7 (FPS spike on paint mode switch) — `ensure_thumbnails_loaded` first-call cost at terrain_panel.rs:1257 is bounded one-frame quirk; NOT brush regression cause.
+
+**Recommended fix scope per audit §5.3**: SMALL (~10 lines), single-commit, no architectural changes, no API changes. Relocate the two setter calls outside the `Some(world)` gate into a separate `if let Some(viewport) = self.viewport.as_mut()` block. Two sequential `&mut self.viewport` borrows in the same closure are non-overlapping; borrow checker accepts.
+
+**Methodology lessons** (audit §7):
+- §7.1 Sub-phase Andrew-gate as defect-discovery mechanism: comprehensive verification surfaces latent defects in surrounding code beyond current sub-phase scope.
+- §7.2 Sub-phase Andrew-gate REGRESS-not-from-sub-phase pattern: verify causality before assuming sub-phase regression; route fix per causality (in-scope expansion vs separate session).
+- §7.3 Symptom-to-code-path tracing as primary investigation tool when prime-suspect framing is wrong.
+- §7.4 "Catch-all gate" anti-pattern: independent state syncs should not aggregate under a conjunction stricter than necessary.
+
+**Forward chain**:
+
+1. **Andrew reviews diagnostic findings** (next session): Andrew assesses confirmed root cause + recommended fix scope; decides on fix prompt drafting approach.
+2. **Mediator brush fix session**: per Andrew's call. Likely small (1-3 commits) once root cause known. Fix re-runs Sub-phase 3 Andrew-gate post-fix.
+3. **Sub-phase 3.C closeout**: lands after fix Andrew-gate PASSES.
+4. **Sub-phase 4 + Sub-phase 5 + Mediator Removal session + Sub-phase 6**: per campaign doc.
+
+**Scope held**: Sub-phase 3 Mediator Brush Diagnostic session only modified `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_2026-05-05.md` (commit `e5e32f486`) and this Editor Multi-Tool Architecture campaign doc Status header + §11 phase status block + §12 (this commit). NO production code changes. NO test changes. NO fixes. NO Sub-phase 3.C closeout. NO modifications to Sub-phase 3.A + 3.B commits (preserved unchanged).
 
 ---
 
