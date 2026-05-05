@@ -139,6 +139,23 @@ impl<'a> TabViewer for EditorDrawContext<'a> {
         match tab {
             PanelType::Viewport => {
                 // Multi-viewport rendering: split the available rect based on layout
+                // [INSTRUMENTATION Point 2 (PRIMARY) — Mediator-Brush-Diagnostic-Instrumentation.A 2026-05-05]
+                // New prime suspect post-§1.3 code-read: this gate may be the silent
+                // failure site since EditorApp::new():2700-2703 auto-populates
+                // scene_state, ruling out the Sub-phase 3 Mediator Brush Diagnostic's
+                // H5 mechanism. Capture which of the four conditions evaluates false
+                // when brush silently fails.
+                eprintln!(
+                    "[BRUSH-DBG] tab_viewer-gate: viewport={}, world={}, entity={}, undo={}, full={}",
+                    self.viewport.is_some(),
+                    self.world.is_some(),
+                    self.entity_manager.is_some(),
+                    self.undo_stack.is_some(),
+                    self.viewport.is_some()
+                        && self.world.is_some()
+                        && self.entity_manager.is_some()
+                        && self.undo_stack.is_some()
+                );
                 if let (Some(viewport), Some(world), Some(entity_manager), Some(undo_stack)) = (
                     self.viewport.as_mut(),
                     self.world.as_mut(),
