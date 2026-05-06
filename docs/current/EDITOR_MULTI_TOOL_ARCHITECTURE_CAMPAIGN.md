@@ -1,6 +1,6 @@
 # Editor Multi-Tool Architecture Campaign — Phase 1.X
 
-**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `75b68e7c7` (Design.A campaign doc) + `8fad61bd3` (Design.B Regional Archetype Variation cross-reference) + `8c92890b9` (Design.C hash-fixup). **Sub-phase 1 — Diagnostic COMPLETE 2026-05-04**, commits `4556c267b` (Diagnostic.A audit) + `0a7df3cdf` (Diagnostic.B campaign doc update) + `6924e39db` (Diagnostic.C hash-fixup); audit at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md`; all ten §2.X commitments compatibility-confirmed; 2 open-questions deferred. **Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API COMPLETE 2026-05-04**, commits `813ac29a1` (Core.A trait + types + ToolContext) + `2c791fa39` (Core.B Dispatcher) + `ece7bb3b4` (Core.C 15 unit tests + MockActiveTool fixture) + `6016b3c8f` (Core.D campaign doc update); new module at `tools/aw_editor/src/active_tool/`; resolves §2.7 ToolContext open question via pre-computed world-XZ projection fields + method accessors; module isolated (no external usages in ViewportWidget/main.rs/panels/tab_viewer); 15 unit tests pass; code-level only (NOT Andrew-gated per Q9). **Sub-phase 3 — TerrainPanel ActiveTool implementation (additive) IN PROGRESS**: 3.A `0dea0bebc` (impl ActiveTool for TerrainPanel + TerrainAction::SetActiveTool variant + UI emission + TERRAIN_PANEL_UUID constant) + 3.B `41ec3b192` (tab_viewer SetActiveTool capture + EditorApp.dispatcher field + ViewportWidget cached-then-dispatch integration) landed; 3.C closeout DEFERRED pending mediator brush fix. **Sub-phase 3 Mediator Brush Diagnostic COMPLETE 2026-05-05**, commits `e5e32f486` (Diagnostic.A audit) + `f5c96836f` (this commit, campaign doc update); audit at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_2026-05-05.md`; H5 (Mediator drain logic regression) CONFIRMED at commit `f84eb09049` (2026-03-17, "imported kaykit complete asset package") — `viewport.set_terrain_brush_active` + `viewport.set_terrain_brush_params` placed inside `if let (Some(world), Some(viewport))` gate at main.rs:3867, brush state never reaches viewport when no scene loaded; H1-H4 + H6-H8 REFUTED or non-causal; recommended fix small (~10 lines, single-commit, no architectural changes); defect predates Sub-phase 3 by ~7 weeks per Andrew Q1 verification. **Sub-phase 3 Mediator Brush Fix landed but REGRESS-verdict 2026-05-05** at commit `8f4668599` (`Mediator-Brush-Fix.A` — single-file relocation of two setter calls outside `Some(world)` gate; +11/-2 lines). Path 1 brush UX unchanged post-fix; FPS spike on paint mode disappeared (signal that fix reached intended code path). **Sub-phase 3 Mediator Brush Diagnostic Instrumentation Round 1 COMPLETE 2026-05-06**, commits `e037d63b5` (Round 1 Instrumentation.A — 5 eprintlns) + `040d90b16` (Round 1 Instrumentation.B — revert) + `df4a50e74` (this commit). Round 1 captured runtime evidence contradicted three hypotheses: H5 (Mediator Brush Diagnostic root cause) WRONG (scene_state always Some); tab_viewer:142 catch-all gate (Round 1 prime suspect) WRONG (gate fires every frame); audit §4.4 H4 REFUTAL ("ViewportWidget input-flow regression") WRONG (egui response is broken — `pointer=false` despite confirmed click+drag). Two distinct defects identified: **Defect A** (input routing — `dragged_by(Primary)` + `clicked_by(Primary)` return false) + **Defect B** (render body silent no-op — render-gate full=true every frame yet no visible cursor/ring). Mediator Brush Fix `8f4668599` retroactively classified as harmless redundancy; revert deferred to eventual real-fix session for clean recovery narrative. **Sub-phase 3 Mediator Brush Diagnostic Instrumentation Round 2 COMPLETE 2026-05-06**, commits `0b6bc6f50` (Round 2 Instrumentation.A — 6 eprintlns) + `4a2aca24b` (Round 2 Instrumentation.B — revert). Round 2 captured output refuted Defect A (egui captures input correctly: `dragged_primary=true, sense_click=true, sense_drag=true` during click+drag) AND partially refuted Defect B (render body executes with valid-looking parameters: `cursor_center=(809.78,888.48,809.96), radius=50.0, line_count=48, depth_pick_succeeded=true, color=[0.2, 1.0, 0.3]`). Brush IS fully functional at data layer (`drag_dist=172.3`, `1 chunks modified`, `Recorded: Terrain Sculpt`) yet Andrew sees nothing visually. Defect class identified: **rendering-pipeline failure between draw call and visible pixel** — narrower hypothesis space than original framing. **Sub-phase 3 Mediator Brush Round 3 Re-Diagnostic COMPLETE 2026-05-06**, commits `7dc342a42` (Round-3-Re-Diagnostic.A audit) + `19eccad3c` (this commit, campaign doc Round-2-Closure + Round-3-Re-Diagnostic entries); audit at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_round_3_re_diagnostic_2026-05-06.md`; honors Andrew's earlier Option B directive ("option a then b if a doesn't work"); 8 hypothesis classes enumerated for rendering-pipeline defect (Classes 1-2 PLAUSIBLE; Classes 3+5+6 PLAUSIBLE-MEDIUM; Classes 4+7 PLAUSIBLE-LOW; Class 8 ACKNOWLEDGED); 12 Round 4 instrumentation targets specified across hypothesis classes; 5 methodology lessons codified (three-rounds-wrong-from-code-reading; multi-round instrument-and-narrow as canonical pattern; pre-execution actual-code verification; audit-confidence-calibration honesty; synthesizing-artifact threshold round-3-or-later). Mediator Brush Fix `8f4668599` retroactively classified as harmless redundancy (revert deferred to eventual real-fix session for clean recovery narrative). **Sub-phase 3 Mediator Brush Round 4 Instrumentation IMMINENT** — Round 4 prompt drafting next session per Andrew's two-session-minimum directive; references Round 3 Re-Diagnostic audit's hypothesis classes + instrumentation specifications. Sub-phase 4-6 + Dedicated Mediator Removal session + Sub-phase 3 real-fix + Sub-phase 3.C closeout NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
+**Status**: Campaign-design pass COMPLETE 2026-05-04, commits `75b68e7c7` (Design.A campaign doc) + `8fad61bd3` (Design.B Regional Archetype Variation cross-reference) + `8c92890b9` (Design.C hash-fixup). **Sub-phase 1 — Diagnostic COMPLETE 2026-05-04**, commits `4556c267b` (Diagnostic.A audit) + `0a7df3cdf` (Diagnostic.B campaign doc update) + `6924e39db` (Diagnostic.C hash-fixup); audit at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md`; all ten §2.X commitments compatibility-confirmed; 2 open-questions deferred. **Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API COMPLETE 2026-05-04**, commits `813ac29a1` (Core.A trait + types + ToolContext) + `2c791fa39` (Core.B Dispatcher) + `ece7bb3b4` (Core.C 15 unit tests + MockActiveTool fixture) + `6016b3c8f` (Core.D campaign doc update); new module at `tools/aw_editor/src/active_tool/`; resolves §2.7 ToolContext open question via pre-computed world-XZ projection fields + method accessors; module isolated (no external usages in ViewportWidget/main.rs/panels/tab_viewer); 15 unit tests pass; code-level only (NOT Andrew-gated per Q9). **Sub-phase 3 — TerrainPanel ActiveTool implementation (additive) IN PROGRESS**: 3.A `0dea0bebc` (impl ActiveTool for TerrainPanel + TerrainAction::SetActiveTool variant + UI emission + TERRAIN_PANEL_UUID constant) + 3.B `41ec3b192` (tab_viewer SetActiveTool capture + EditorApp.dispatcher field + ViewportWidget cached-then-dispatch integration) landed; 3.C closeout DEFERRED pending mediator brush fix. **Sub-phase 3 Mediator Brush Diagnostic COMPLETE 2026-05-05**, commits `e5e32f486` (Diagnostic.A audit) + `f5c96836f` (this commit, campaign doc update); audit at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_2026-05-05.md`; H5 (Mediator drain logic regression) CONFIRMED at commit `f84eb09049` (2026-03-17, "imported kaykit complete asset package") — `viewport.set_terrain_brush_active` + `viewport.set_terrain_brush_params` placed inside `if let (Some(world), Some(viewport))` gate at main.rs:3867, brush state never reaches viewport when no scene loaded; H1-H4 + H6-H8 REFUTED or non-causal; recommended fix small (~10 lines, single-commit, no architectural changes); defect predates Sub-phase 3 by ~7 weeks per Andrew Q1 verification. **Sub-phase 3 Mediator Brush Fix landed but REGRESS-verdict 2026-05-05** at commit `8f4668599` (`Mediator-Brush-Fix.A` — single-file relocation of two setter calls outside `Some(world)` gate; +11/-2 lines). Path 1 brush UX unchanged post-fix; FPS spike on paint mode disappeared (signal that fix reached intended code path). **Sub-phase 3 Mediator Brush Diagnostic Instrumentation Round 1 COMPLETE 2026-05-06**, commits `e037d63b5` (Round 1 Instrumentation.A — 5 eprintlns) + `040d90b16` (Round 1 Instrumentation.B — revert) + `df4a50e74` (this commit). Round 1 captured runtime evidence contradicted three hypotheses: H5 (Mediator Brush Diagnostic root cause) WRONG (scene_state always Some); tab_viewer:142 catch-all gate (Round 1 prime suspect) WRONG (gate fires every frame); audit §4.4 H4 REFUTAL ("ViewportWidget input-flow regression") WRONG (egui response is broken — `pointer=false` despite confirmed click+drag). Two distinct defects identified: **Defect A** (input routing — `dragged_by(Primary)` + `clicked_by(Primary)` return false) + **Defect B** (render body silent no-op — render-gate full=true every frame yet no visible cursor/ring). Mediator Brush Fix `8f4668599` retroactively classified as harmless redundancy; revert deferred to eventual real-fix session for clean recovery narrative. **Sub-phase 3 Mediator Brush Diagnostic Instrumentation Round 2 COMPLETE 2026-05-06**, commits `0b6bc6f50` (Round 2 Instrumentation.A — 6 eprintlns) + `4a2aca24b` (Round 2 Instrumentation.B — revert). Round 2 captured output refuted Defect A (egui captures input correctly: `dragged_primary=true, sense_click=true, sense_drag=true` during click+drag) AND partially refuted Defect B (render body executes with valid-looking parameters: `cursor_center=(809.78,888.48,809.96), radius=50.0, line_count=48, depth_pick_succeeded=true, color=[0.2, 1.0, 0.3]`). Brush IS fully functional at data layer (`drag_dist=172.3`, `1 chunks modified`, `Recorded: Terrain Sculpt`) yet Andrew sees nothing visually. Defect class identified: **rendering-pipeline failure between draw call and visible pixel** — narrower hypothesis space than original framing. **Sub-phase 3 Mediator Brush Round 3 Re-Diagnostic COMPLETE 2026-05-06**, commits `7dc342a42` (Round-3-Re-Diagnostic.A audit) + `19eccad3c` (this commit, campaign doc Round-2-Closure + Round-3-Re-Diagnostic entries); audit at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_round_3_re_diagnostic_2026-05-06.md`; honors Andrew's earlier Option B directive ("option a then b if a doesn't work"); 8 hypothesis classes enumerated for rendering-pipeline defect (Classes 1-2 PLAUSIBLE; Classes 3+5+6 PLAUSIBLE-MEDIUM; Classes 4+7 PLAUSIBLE-LOW; Class 8 ACKNOWLEDGED); 12 Round 4 instrumentation targets specified across hypothesis classes; 5 methodology lessons codified (three-rounds-wrong-from-code-reading; multi-round instrument-and-narrow as canonical pattern; pre-execution actual-code verification; audit-confidence-calibration honesty; synthesizing-artifact threshold round-3-or-later). Mediator Brush Fix `8f4668599` retroactively classified as harmless redundancy (revert deferred to eventual real-fix session for clean recovery narrative). **Sub-phase 3 Mediator Brush Diagnostic Round 4 Instrumentation COMPLETE 2026-05-06**, commits `de1986301` (Round 4 Instrumentation.A — 12 targeted eprintlns across 8 hypothesis classes per Round 3 audit §4.2) + `bc9c8d5bd` (Round 4 Instrumentation.B — revert). Round 4 captured `brush-dbg-r4.txt` (6,641 BRUSH-DBG lines) proving brush IS fully functional at data layer (T6.A `modified=true`, T6.B `dirty_count=1, dirty_indices=[242], viewport_is_some=true`, chunk 242 modified + upload event fires per stroke). Ring-not-visible + terrain-modification-not-visible are downstream symptoms of cursor_center being computed at cam_pos rather than at terrain surface. **Defect class narrows to depth pick chain**: `read_depth_at_pixel` (camera.rs:~1145) + `unproject_depth_to_world` (camera.rs:~541) + depth target binding lifecycle. Round 4 evidence — cursor_center stays invariantly within ~0.5 world units of cam_pos across hundreds of distinct screen positions; ndc_z=0.0000, clip_w=0.5000 directly indicates near-plane unprojection. **Sub-phase 3 Mediator Brush Round-4-Closure.A COMPLETE 2026-05-06**, commit `<Round-4-Closure.A-hash>` (this commit, campaign doc Status header + §11 entries + §12 Round-4-Closure entry); supersedes `bc9c8d5bd` commit-message body which codified wrong conclusion ("Class 3 confirmed at clip-plane level, root-caused by Andrew zooming in"); preserved as methodology-lesson exhibit on derived-value reasoning trap (`cam_dist=0.5` is derived from cam_pos and cursor_center at log-time, not a primary fact about camera position; first-frame fallback evidence shows cam_dist-to-target=1322 proving normal orbit distance). New methodology lesson surfaces (sibling to Round 3 audit §7.1-§7.5): when two values are unexpectedly equal, check whether one is being computed from the other before reasoning about the equality as causal. **Sub-phase 3 Mediator Brush Round 5 Instrumentation IMMINENT** — Round 5 prompt drafting next session (smaller scope ~5-6 eprintlns targeting depth pick chain). Sub-phase 4-6 + Dedicated Mediator Removal session + Sub-phase 3 real-fix + Sub-phase 3.C closeout NOT STARTED. Foundational dispatcher architecture campaign launched as spinoff from Regional Archetype Variation pause artifacts (commits `a64f12320` + `98fc063d9` + `13ef70132`); Andrew architectural decision 2026-05-03 + strategic-factors enumeration Q1-Q10 ground §2 architectural decisions. Research pass at `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` (commits `8ba6cd13e` + `29b8c53b3` + `c3bc7ca0c`) is load-bearing input to §2; G-research + G-diagnostic audits inherited as predecessor research per research audit §2.
 
 **Scope**: Replace AstraWeave editor's approach (B) — viewport widget + main.rs per-frame mediator hardcoded for TerrainPanel — with canonical Approach I+II hybrid dispatcher architecture per research audit §7.7 synthesis (registry/manager owns trait-object collection; per-event dispatch on active trait-implementation; UUID identity for open-set extensibility). Production-readiness threshold per Q3: level (ii) — full multi-tool dispatcher with proper mutex arbitration + lifecycle + Pattern A regression test coverage for dispatcher class. Both TerrainPanel + RegionalArchetypePanel migrated to ActiveTool; mediator code removed; campaign closes with editor's foundational tool architecture canonical and forward-compatible for future paint tools (splat, scatter, vegetation override, weather zones) per Q1 timeline.
 
@@ -913,8 +913,10 @@ Sub-phase 3 Mediator Brush Fix — relocate brush sync calls outside Some(world)
 Sub-phase 3 Mediator Brush Diagnostic Instrumentation Round 1 — 5-point eprintln supplement for runtime evidence capture: COMPLETE 2026-05-06, commits e037d63b5 (Round 1 Instrumentation.A) + 040d90b16 (Round 1 Instrumentation.B revert) + df4a50e74 (Round-1-Closure.A this commit). Defects A (input routing) + B (render body silent no-op) identified. Three hypotheses contradicted (H5; tab_viewer:142; audit §4.4 H4 REFUTAL).
 Sub-phase 3 Mediator Brush Diagnostic Instrumentation Round 2 — 6-point eprintln supplement to disambiguate Defects A + B: COMPLETE 2026-05-06, commits 0b6bc6f50 (Round 2 Instrumentation.A) + 4a2aca24b (Round 2 Instrumentation.B revert). Defect A framing REFUTED (egui captures input correctly); Defect B framing PARTIALLY REFUTED (render body executes with valid-looking parameters); rendering-pipeline defect class identified.
 Sub-phase 3 Mediator Brush Round 3 Re-Diagnostic — formal synthesizing audit per Andrew's Option B directive: COMPLETE 2026-05-06, commits 7dc342a42 (Round-3-Re-Diagnostic.A audit ~700 lines) + 19eccad3c (Round-3-Re-Diagnostic.B campaign doc update this commit). 8 hypothesis classes enumerated; 12 Round 4 instrumentation targets specified; 5 methodology lessons codified.
-Sub-phase 3 Mediator Brush Round 4 Instrumentation — 12-point eprintln supplement targeting hypothesis classes 1-7: NOT STARTED (Round 4 prompt drafting next session per Andrew's two-session-minimum directive).
-Sub-phase 3 real-fix — defect resolution per Round 4 outcome: NOT STARTED (gated on Round 4 evidence).
+Sub-phase 3 Mediator Brush Round 4 Instrumentation — 12-point eprintln supplement targeting hypothesis classes 1-7: COMPLETE 2026-05-06, commits de1986301 (Round 4 Instrumentation.A — 10 functional targets, ~14 actual eprintln points after code-drift adjustments per Round-4-Instrumentation.A commit body; T3.B+C and T4.B skipped because pipeline state is in astraweave_physics crate; T5.B subsumed by T5.A since renderer uses same OrbitCamera reference) + bc9c8d5bd (Round 4 Instrumentation.B revert). Captured brush-dbg-r4.txt (6,641 BRUSH-DBG lines). Hypothesis classes 1, 2, 4, 5, 6, 7 all REFUTED. Class 3 (z-depth) DOWNSTREAM SYMPTOM not root cause (line0_ndc_z=1.0167 is consequence of cursor_center=cam_pos; ring vertices necessarily fall outside view frustum when their center IS the camera position). Outcome 5 per Round 4 prompt §5: unexpected mechanism — defect class is upstream of all eight Round 3 audit §3 enumerated mechanisms.
+Sub-phase 3 Mediator Brush Round-4-Closure.A — campaign doc codification of corrected analysis: COMPLETE 2026-05-06, commit <Round-4-Closure.A-hash> (this commit). Defect class narrows to depth pick chain (read_depth_at_pixel + unproject_depth_to_world + depth target binding lifecycle). Brush IS fully functional at data layer; ring-not-visible + terrain-modification-not-visible are downstream symptoms of cursor_center invariantly equal to cam_pos regardless of screen click position. Supersedes bc9c8d5bd commit-message body (codifies wrong conclusion preserved as methodology-lesson exhibit on derived-value reasoning trap). New methodology lesson surfaces (sibling to Round 3 audit §7.1-§7.5).
+Sub-phase 3 Mediator Brush Round 5 Instrumentation — 5-6-point eprintln supplement targeting depth pick chain: NOT STARTED (Round 5 prompt drafting next session per Andrew's two-session-minimum directive).
+Sub-phase 3 real-fix — defect resolution per Round 5 outcome: NOT STARTED (gated on Round 5 evidence).
 Sub-phase 3.C — closeout: NOT STARTED (gated on real-fix Andrew-gate PASS).
 Sub-phase 4 — Pattern A regression infrastructure for dispatcher class: NOT STARTED.
 Sub-phase 5 — RegionalArchetypePanel ActiveTool implementation + registration: NOT STARTED.
@@ -1335,6 +1337,171 @@ Honors Andrew's earlier Option B directive ("option a then b if a doesn't work")
 - §6.4 Observability gap (existing Selection check log line useful; similar built-in observability for rendering pipeline would prevent diagnostic burden) — future logging additions could prevent.
 
 **Scope held**: Round 3 Re-Diagnostic session only modified `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_round_3_re_diagnostic_2026-05-06.md` (commit `7dc342a42`) + `tools/aw_editor/src/viewport/widget.rs` (Round 2 Instrumentation.B revert at `4a2aca24b` per §1.2 deferred-precondition discipline) + this Editor Multi-Tool Architecture campaign doc Status header + §11 phase status block + §12 (Round-2-Closure entry above + Round-3-Re-Diagnostic entry, this commit). NO production behavior retained post-revert. NO Round 4 instrumentation. NO fixes. NO Mediator Brush Fix revert (deferred). NO architectural reconsideration. NO new code-reading-derived mechanism claims.
+
+### 2026-05-06, Sub-phase 3 Mediator Brush Diagnostic Round 4 Closure, commit <Round-4-Closure.A-hash>
+
+**Round 4 instrumentation closure — captures runtime evidence resolving rendering-pipeline defect class to depth pick chain. 12 targeted eprintlns across 8 hypothesis classes per Round 3 audit §4.2; aggressive scope per Andrew's directive; ~14 actual eprintln points landed per code-drift adjustments in Round-4-Instrumentation.A `de1986301`. Captured output `brush-dbg-r4.txt` totals 6,641 BRUSH-DBG lines.**
+
+**Defect class narrows to depth pick chain**: `read_depth_at_pixel` (viewport/camera.rs:~1145) + `unproject_depth_to_world` (viewport/camera.rs:~541) + depth target binding lifecycle. Brush IS fully functional at data layer; ring-not-visible + terrain-modification-not-visible are downstream symptoms of cursor_center being computed at cam_pos rather than at terrain surface.
+
+**Round 4 captured signal lines** (representative samples from 6,641 total BRUSH-DBG lines):
+
+T1.A+B+D first frame (depth pick falls back to Y=0 plane raycast):
+
+```
+[BRUSH-DBG] proj-cursor: world=(-123.49,0.00,885.05), screen=(384.8,567.2),
+  ndc_z=0.9996, clip_w=970.27, cam_pos=(810.1,888.8,810.1),
+  cam_target=(0.0,227.4,0.0), cam_dist=1291.2, screen_radius=18.1,
+  viewport_size=(1014,562), response_rect=(236,52)..(1250,614)
+```
+
+T1.A+B+D subsequent frames (depth pick "succeeds" — but returns near-plane depth):
+
+```
+[BRUSH-DBG] proj-cursor: world=(809.77,888.45,809.99), screen=(592.5,495.5),
+  ndc_z=0.0000, clip_w=0.5000, cam_pos=(810.1,888.8,810.1),
+  cam_target=(0.0,227.4,0.0), cam_dist=0.5, screen_radius=615.5,
+  viewport_size=(1014,562), response_rect=(236,52)..(1250,614)
+```
+
+T3.A every frame (line0 clip-z beyond far plane):
+
+```
+[BRUSH-DBG] ring-z: line0_start_ndc_z=1.0167, line0_end_ndc_z=1.0148,
+  line0_y_offset=0.15
+```
+
+T2.A only one fire (dock-based path; standalone never fires):
+
+```
+[BRUSH-DBG] render-path: dock-based-viewport-ui (tab_viewer:142)
+```
+
+T2.B every render (composite reaches with 48 lines; renderer initialized):
+
+```
+[BRUSH-DBG] render-lines-at-composite: brush_cursor_lines.len()=48,
+  gizmo_lines=0, phys_lines=0, zone_overlay_lines=0, total=48,
+  physics_renderer_init=true
+```
+
+T4.A first call (RGB only; DebugLine has no alpha):
+
+```
+[BRUSH-DBG] line-color-rgb: r=0.200, g=1.000, b=0.300, line_count=48
+  (NOTE: DebugLine has no alpha; alpha is shader-implicit)
+```
+
+T5.A every throttle (cam-widget matrices stable across frames):
+
+```
+[BRUSH-DBG] cam-widget: view_row0=(0.7071,0.0000,-0.7071,-0.0000),
+  proj_row0=(0.9611,0.0000,0.0000,0.0000),
+  proj_diag=(0.9611,1.7321,-1.0001,0.0000)
+```
+
+T6.A every brush apply (modified=true; chunk consistently 242):
+
+```
+[BRUSH-DBG] apply-brush-at: world_x=809.87, world_z=809.89, mode=Sculpt,
+  radius=50.0, strength=1.00, modified=true, pending_actions_len=0
+```
+
+T6.B every brush event (chunk 242 dirty; viewport available):
+
+```
+[BRUSH-DBG] terrain-brush-update-event: dirty_count=1,
+  dirty_indices=[242], viewport_is_some=true
+```
+
+T7.A every set-lines call (success-1489 dominates during active hover; fallback-1494-no-hover-pos when pointer leaves; no wipe pattern within frame):
+
+```
+[BRUSH-DBG] set-lines-call: site=success-1489, lines_count=48
+[BRUSH-DBG] set-lines-call: site=fallback-1494-no-hover-pos, lines_count=0
+[BRUSH-DBG] set-lines-call: site=fallback-1497-gate-off, lines_count=0,
+  brush_active=false, gizmo_active=false
+```
+
+**Hypothesis class confirmation per Round 4 evidence**:
+
+| Class | Status | Evidence |
+|-------|--------|----------|
+| 1 — World-to-screen projection off-screen | REFUTED at projection level | screen positions all INSIDE response_rect=(236,52)..(1250,614). The projection math itself is fine. |
+| 2 — Render target mismatch | REFUTED | T2.A only fires dock-based path; T2.B shows brush_cursor_lines.len()=48 reaches composite; physics_renderer_init=true. |
+| 3 — Z-depth occlusion | DOWNSTREAM SYMPTOM, not root cause | line0_ndc_z=1.0167 > 1.0 (beyond far plane) is downstream of cursor_center being placed at cam_pos. Ring vertices necessarily fall outside view frustum when their center IS the camera position. Class 3 framing assumed ring center was at terrain surface and vertices were near-plane occluded; actual mechanism is different. |
+| 4 — Color/alpha | REFUTED | r=0.200, g=1.000, b=0.300 (bright green); 48 lines; DebugLine API has no alpha field — alpha is shader-implicit (set per-pipeline, not per-line). |
+| 5 — Coordinate system mismatch | REFUTED | T5.A cam-widget matrices stable across hundreds of throttled samples; renderer uses same OrbitCamera reference. |
+| 6 — Terrain mesh not regenerating | REFUTED at the data layer; downstream visibility issue remains | T6.A modified=true on every apply-brush-at; T6.B dirty_count=1, dirty_indices=[242] every event; viewport_is_some=true. Modification IS reaching the GPU — the chunk being modified happens to be at world (~810, ~810) which corresponds to camera position, so visual confirmation requires looking at chunk 242 specifically. Not a regen failure; a "modification happens at unexpected world location" consequence of upstream defect. |
+| 7 — Set-lines wipe | REFUTED | T7.A shows clean control flow: `success-1489` during active hover; `fallback-1494-no-hover-pos` only when pointer leaves viewport (no hover position); no interleaved wipe pattern within a single frame. |
+| 8 — Unenumerated mechanism | NOT NEEDED for primary root cause | Depth pick chain explanation sufficient. |
+
+**Outcome classification per Round 4 prompt §5**: **Outcome 5 (unexpected mechanism)** — the rendering-pipeline defect class enumeration in Round 3 audit §3 was incomplete. None of the enumerated mechanisms within Classes 1-7 capture the actual root cause. Round 4 evidence narrows defect to a sub-class not separately enumerated: **depth pick chain (read_depth_at_pixel → unproject_depth_to_world → cursor_center) returns near-plane depth instead of terrain surface depth**. This is upstream of all eight enumerated rendering-pipeline classes; its consequences masquerade as Class 3 (z-depth) symptoms.
+
+**Critical correction — supersedes `bc9c8d5bd` commit message body**:
+
+`bc9c8d5bd` (Round-4-Instrumentation.B) commit body codifies the analysis: *"Class 3 confirmed at clip-plane level, root-caused by camera positioning. cam_dist=0.5 world units while ring radius=50 world units; camera is geometrically INSIDE the ring; Andrew zoomed in extremely close to a mountain peak."* This analysis is **wrong**. The §12 entry corrects it forward.
+
+Why the agent's interpretation is wrong:
+
+1. **Camera was not zoomed in.** cam_pos=(810.1, 888.8, 810.1) and cam_target=(0.0, 227.4, 0.0). Distance from cam_pos to cam_target is sqrt(810² + 661² + 810²) ≈ 1322 world units. The OrbitCamera is at default-orbit-distance from its pivot — not zoomed in. If Andrew had truly zoomed in to a mountain peak at (810, 888, 810), the orbit camera's `cam_target` would be at or near (810, 888, 810), not at world origin.
+
+2. **First-frame evidence directly disproves the "zoomed in" interpretation.** The very first capture frame shows the depth-pick fallback path: `world=(-123.49, 0.00, 885.05), cam_dist=1291.2`. This is the Y=0 ground-plane raycast that fires when depth pick fails. cam_dist=1291.2 in this frame proves the camera was at normal orbit distance — nowhere near "zoomed in." Yet cam_pos and cam_target did NOT change between this first frame and subsequent frames showing cam_dist=0.5. Only the depth-pick result changed.
+
+3. **`cam_dist=0.5` is a derived value, not a primary fact.** `cam_dist` is computed from cam_pos and cursor_center at log-time: `cam_dist = (cursor_center - cam_pos).length()`. When cursor_center ≈ cam_pos, cam_dist ≈ 0 by definition. The agent treated this derived equality as causal evidence ("camera close to brush") when it is actually a *consequence* of cursor_center being incorrectly computed at cam_pos.
+
+4. **`cursor_center` is computed by the depth pick chain, not by Andrew's input.** Andrew's screen cursor position varies substantially across frames (screen=(592.5,495.5) → (706.5,499.5) → (740.4,495.5) → (1079.5,133.5) → many distinct positions during a 6,641-line capture). Yet cursor_center stays invariantly within a tiny range: x ∈ (809.5, 810.0), y ∈ (888.4, 888.6), z ∈ (809.7, 810.0) ≈ cam_pos to within ~0.5 world units. **Regardless of where Andrew clicks on screen, the brush position is computed at the camera position.** This is the diagnostic signal: the depth pick chain is broken.
+
+5. **NDC z=0.0000, clip_w=0.5000 directly indicates near-plane unprojection.** Standard wgpu projection has NDC z ∈ [0, 1] where 0 is near plane and 1 is far plane. `unproject_depth_to_world(screen_pos, depth=0.0)` returns the world-space point on the near clip plane along the screen ray. For a near plane at ~0.5 world units in front of the camera, this returns a world position approximately at cam_pos plus a tiny screen-position-dependent offset — exactly the pattern observed in cursor_center.
+
+6. **The agent's verification recommendation (zoom out and re-test) would not work.** Zooming out moves cam_pos farther from cam_target along the orbit radius. cursor_center would still equal cam_pos because the depth pick still returns ~0.0; the brush would still modify the chunk under the camera, just a *different* chunk. The agent's prediction that "brush will work visually at normal zoom levels" is falsified by Round 4's own data — the camera was already at normal zoom levels (cam_dist-to-target=1322) and the brush still didn't work.
+
+**Updated defect framing**:
+
+The brush has **always been working at the data layer**: T6.A modified=true on every apply-brush-at; T6.B dirty_count=1 dirty_indices=[242] on every event; viewport_is_some=true. The defect is upstream in the **depth pick chain**: when Andrew clicks on screen at pixel (px, py), the chain `read_depth_at_pixel(px, py) → unproject_depth_to_world(screen_uv, depth) → cursor_center` returns a world position at the camera's near plane (≈cam_pos) regardless of what's actually rendered at (px, py).
+
+This explains every Andrew-gate symptom across all rounds simultaneously:
+
+- **No visible ring** — ring center is at cam_pos; ring vertices project to behind near plane (negative w; discarded by GPU clip) and beyond far plane (line0_ndc_z=1.0167; clipped). Only a degenerate sliver of ring would be in NDC range; with line width 1px, invisible.
+- **No visible terrain modification** — modification IS happening at world (~810, ~810) because that's what the broken depth pick returns; chunk 242 IS being dirtied; upload IS reaching GPU. But chunk 242 corresponds to a world position at the camera, not under Andrew's cursor. The modification is happening "under the camera" or behind it relative to view direction (since cam_target is far from cam_pos, the camera is looking AWAY from cam_pos toward origin).
+- **No cursor change** — same mechanism as no visible ring.
+
+**Possible mechanisms within depth pick chain** (Round 5 instrumentation will runtime-verify):
+
+1. `read_depth_at_pixel` reads from a depth texture that doesn't contain terrain depth — perhaps a different render target, perhaps the depth for an overlay pass, perhaps an uninitialized buffer.
+2. `read_depth_at_pixel` reads correctly but the depth buffer is cleared between terrain render and the depth read — reads return ~0 (cleared depth value).
+3. `read_depth_at_pixel` reads correctly but the pixel coordinates being sampled are outside the terrain-rendered region — reads return cleared near-plane value.
+4. `unproject_depth_to_world` has a math error that handles depth=0.0 incorrectly (e.g., reverse-Z assumption when buffer uses standard projection, or vice versa).
+5. The depth buffer has correct values but `read_depth_at_pixel` reads the wrong mip level / wrong texture array slice / wrong region.
+6. Some other unenumerated mechanism within the chain.
+
+Round 5 instrumentation specifications target these candidates: log raw depth value returned by `read_depth_at_pixel`, log depth target binding lifecycle, log pixel coordinates used for depth pick + viewport rect alignment, log depth texture handle/binding identity.
+
+**Forward chain**:
+
+1. **Round 5 instrumentation prompt drafted next session** (per Andrew's two-session-minimum directive) — targets depth pick chain at 5-6 eprintln points: `read_depth_at_pixel` raw return value, depth texture identity at sample time, depth target binding lifecycle (create / clear / bind), terrain pipeline depth-write-enabled state, pixel coords + viewport rect alignment. Smaller scope than Round 4's 12 targets; one capture session expected to resolve.
+2. **Round 5 Instrumentation.A lands** following session.
+3. **Andrew runs editor + captures `brush-dbg-r5.txt`**.
+4. **Round-5-Closure.A** classifies outcome — single mechanism confirmed → small fix prompt; multiple mechanisms → combined or sequential fix; all refuted → Round 6 instrumentation or architectural reconsideration of depth pick chain.
+5. **Real-fix Andrew-gate-PASS** → Mediator Brush Fix `8f4668599` reverted as cleanup → Sub-phase 3.C closeout.
+6. **Sub-phase 4 + 5 + Mediator Removal session + Sub-phase 6 closeout** per established forward chain.
+
+**Methodology lesson surfacing — derived-value reasoning trap**:
+
+This is a new lesson candidate, sibling to Round 3 audit §7.1-§7.5. Future re-diagnostic audits (Round 6+ if needed) can compile this into §7 audit lessons. Codified here for first-pass reference.
+
+**Pattern**: When an evidence-collection session captures multiple values, some primary (read directly from runtime state) and some derived (computed from primary values at log-time), reasoning about value relationships requires distinguishing primary from derived. The agent treated `cam_dist=0.5` as primary causal evidence ("camera close to brush") when it is a derived quantity computed from cam_pos and cursor_center. The actual primary fact is: cursor_center ≈ cam_pos invariantly. The derived fact (cam_dist≈0) is a consequence.
+
+This lesson generalizes: **when two values are unexpectedly equal, ask whether one is being computed from the other before reasoning about the equality as causal**. If yes, the equality is mathematical, not empirical — reasoning must trace upstream to whatever produced the input that, when computed, yielded the equality.
+
+Sibling-lesson cross-references:
+
+- **§7.1 (three-rounds-wrong-from-code-reading)** — both lessons concern misattribution of causation. §7.1: code-reading produces mechanism hypotheses that don't survive runtime; §7.6 candidate: derived values produce causation hypotheses that don't survive primary-value tracing.
+- **§7.4 (audit-confidence-calibration honesty)** — both concern the importance of distinguishing evidence types. §7.4: code-reading vs runtime-verified claims; §7.6 candidate: primary vs derived evidence within a single runtime capture.
+
+**Anti-drift safeguard for future closure-drafting agents**: the prior agent's `bc9c8d5bd` commit body is preserved as a methodology-lesson exhibit. Future agents reading this §12 entry should also read `git show bc9c8d5bd` to see the wrong analysis in full context — recognizing the trap-pattern is the lesson's intent.
+
+**Scope held**: Round-4-Closure.A session only landed campaign-doc updates (Status header + §11 entries + this §12 Round-4-Closure entry). NO production code changes. NO fixes applied. NO Mediator Brush Fix `8f4668599` revert. NO modifications to prior commits including `bc9c8d5bd` (preserved as-landed; campaign doc supersedes its commit message body as authoritative source of truth).
 
 ---
 
