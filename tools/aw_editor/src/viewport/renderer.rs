@@ -549,6 +549,29 @@ impl ViewportRenderer {
                 + phys_lines.len()
                 + self.brush_cursor_lines.len()
                 + self.zone_overlay_lines.len();
+            // [INSTRUMENTATION Round 4 T2.B — Mediator-Brush-Diagnostic-Round-4-Instrumentation.A 2026-05-06]
+            // Composite-time line count. If brush_cursor_lines.len()=0 here despite Round 2
+            // evidence of line_count=48 going to setter → Class 7 wipe pattern (cross-ref T7.A).
+            // If lines reach composite but ring not visible → Class 1/3/5 not Class 2.
+            // Throttled to ~30 frames.
+            static COMPOSITE_FRAME: std::sync::atomic::AtomicU32 =
+                std::sync::atomic::AtomicU32::new(0);
+            let _cframe = COMPOSITE_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if _cframe % 30 == 0
+                && (!self.brush_cursor_lines.is_empty() || total_lines > 0)
+            {
+                eprintln!(
+                    "[BRUSH-DBG] render-lines-at-composite: brush_cursor_lines.len()={}, \
+                     gizmo_lines={}, phys_lines={}, zone_overlay_lines={}, total={}, \
+                     physics_renderer_init={}",
+                    self.brush_cursor_lines.len(),
+                    self.component_gizmo_lines.len(),
+                    phys_lines.len(),
+                    self.zone_overlay_lines.len(),
+                    total_lines,
+                    self.physics_renderer.is_some(),
+                );
+            }
             if total_lines > 0 {
                 if let Some(physics) = self.physics_renderer.as_mut() {
                     // Pre-allocate exact capacity to avoid reallocation churn

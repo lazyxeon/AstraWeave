@@ -139,6 +139,14 @@ impl<'a> TabViewer for EditorDrawContext<'a> {
         match tab {
             PanelType::Viewport => {
                 // Multi-viewport rendering: split the available rect based on layout
+                // [INSTRUMENTATION Round 4 T2.A — Mediator-Brush-Diagnostic-Round-4-Instrumentation.A 2026-05-06]
+                // Dock-based viewport render path marker. State-change filter (0=unset, 2=dock).
+                static DOCK_RENDER_PATH: std::sync::atomic::AtomicU8 =
+                    std::sync::atomic::AtomicU8::new(0);
+                let _last = DOCK_RENDER_PATH.swap(2, std::sync::atomic::Ordering::Relaxed);
+                if _last != 2 {
+                    eprintln!("[BRUSH-DBG] render-path: dock-based-viewport-ui (tab_viewer:142)");
+                }
                 if let (Some(viewport), Some(world), Some(entity_manager), Some(undo_stack)) = (
                     self.viewport.as_mut(),
                     self.world.as_mut(),
