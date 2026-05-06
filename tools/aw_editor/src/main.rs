@@ -3851,18 +3851,8 @@ impl EditorApp {
             .show(ctx, |ui| {
                 ui.set_min_size(ui.available_size());
 
-                // [INSTRUMENTATION Point 1 — Mediator-Brush-Diagnostic-Instrumentation.A 2026-05-05]
-                // Capture scene_state.is_some() before world_opt borrow to avoid E0502.
-                let _scene_state_present = self.scene_state.is_some();
-
                 // Get mutable world from scene state
                 let world_opt = self.scene_state.as_mut().map(|s| s.world_mut());
-
-                eprintln!(
-                    "[BRUSH-DBG] scene_state.is_some()={}, world_opt.is_some()={}",
-                    _scene_state_present,
-                    world_opt.is_some()
-                );
 
                 // Check terrain brush state before borrowing dock_tab_viewer mutably
                 let brush_active = self.dock_tab_viewer.is_terrain_brush_active();

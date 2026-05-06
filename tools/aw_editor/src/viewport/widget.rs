@@ -1037,14 +1037,6 @@ impl ViewportWidget {
     ) -> Result<()> {
         use crate::gizmo::GizmoMode;
 
-        // [INSTRUMENTATION Point 3 — Mediator-Brush-Diagnostic-Instrumentation.A 2026-05-05]
-        // Confirms whether handle_input runs at all. If Point 2's tab_viewer-gate
-        // fails, viewport.ui() is never called and Point 3 produces no output.
-        eprintln!(
-            "[BRUSH-DBG] handle_input-entry: terrain_brush_active={}, terrain_brush_radius={}, terrain_brush_is_paint={}",
-            self.terrain_brush_active, self.terrain_brush_radius, self.terrain_brush_is_paint
-        );
-
         // Update gizmo state with current mouse position
         if let Some(pos) = response.hover_pos() {
             let mouse_pos = glam::Vec2::new(pos.x, pos.y);
@@ -1367,24 +1359,6 @@ impl ViewportWidget {
             self.camera.orbit(delta.x, delta.y);
         }
 
-        // [INSTRUMENTATION Point 4 — Mediator-Brush-Diagnostic-Instrumentation.A 2026-05-05]
-        // Decomposes the hit-collection gate at this site. If brush_active=true
-        // but no_gizmo or pointer is false, brush hits never accumulate. Logged
-        // only when something brush-relevant is happening, to limit spam.
-        let _gate_active = self.terrain_brush_active;
-        let _gate_no_gizmo = !self.gizmo_state.is_active();
-        let _gate_pointer = response.dragged_by(egui::PointerButton::Primary)
-            || response.clicked_by(egui::PointerButton::Primary);
-        if _gate_active || _gate_pointer {
-            eprintln!(
-                "[BRUSH-DBG] hit-gate: brush_active={}, no_gizmo={}, pointer={}, full={}",
-                _gate_active,
-                _gate_no_gizmo,
-                _gate_pointer,
-                _gate_active && _gate_no_gizmo && _gate_pointer
-            );
-        }
-
         // Terrain brush: depth-based hit detection on click/drag
         // Reads the depth buffer at the mouse pixel to find the exact terrain surface.
         // Falls back to Y=0 plane intersection if no depth is available.
@@ -1448,18 +1422,6 @@ impl ViewportWidget {
         // Detect end of terrain brush stroke (mouse released after drag)
         if self.terrain_brush_active && response.drag_stopped_by(egui::PointerButton::Primary) {
             self.terrain_brush_stroke_ended = true;
-        }
-
-        // [INSTRUMENTATION Point 5 — Mediator-Brush-Diagnostic-Instrumentation.A 2026-05-05]
-        // Decomposes the cursor + ring render gate at this site. Logged only
-        // when brush_active=true to limit spam.
-        if self.terrain_brush_active {
-            eprintln!(
-                "[BRUSH-DBG] render-gate: brush_active={}, no_gizmo={}, full={}",
-                self.terrain_brush_active,
-                !self.gizmo_state.is_active(),
-                self.terrain_brush_active && !self.gizmo_state.is_active()
-            );
         }
 
         // Brush cursor visualization — circle draped on terrain at hover position
