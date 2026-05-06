@@ -597,86 +597,6 @@ impl ViewportWidget {
         // Store viewport rect for external ground-position queries
         self.last_viewport_rect = Some(rect);
 
-        // [INSTRUMENTATION Round 2 Points 1+2+3+6 — Mediator-Brush-Diagnostic-Round-2-Instrumentation.A 2026-05-06]
-        {
-            // Point 1 — response state. Log when pointer is in rect OR any button pressed.
-            let _resp_contains = response.contains_pointer();
-            let _any_pressed = ui.ctx().input(|i| i.pointer.any_pressed());
-            let _primary_down = ui.ctx().input(|i| i.pointer.primary_down());
-            if _resp_contains || _any_pressed || _primary_down {
-                eprintln!(
-                    "[BRUSH-DBG] response-state: rect=({:.0},{:.0})..({:.0},{:.0}), \
-                     contains_pointer={}, dragged_primary={}, clicked_primary={}, \
-                     is_pointer_button_down_on={}, sense_click={}, sense_drag={}",
-                    response.rect.min.x,
-                    response.rect.min.y,
-                    response.rect.max.x,
-                    response.rect.max.y,
-                    response.contains_pointer(),
-                    response.dragged_by(egui::PointerButton::Primary),
-                    response.clicked_by(egui::PointerButton::Primary),
-                    response.is_pointer_button_down_on(),
-                    response.sense.senses_click(),
-                    response.sense.senses_drag(),
-                );
-            }
-            // Point 2 — global pointer state. Log only on transitions.
-            let _any_released = ui.ctx().input(|i| i.pointer.any_released());
-            let _primary_clicked = ui.ctx().input(|i| i.pointer.primary_clicked());
-            let _latest_pos = ui.ctx().pointer_latest_pos();
-            if _any_pressed || _any_released || _primary_clicked {
-                eprintln!(
-                    "[BRUSH-DBG] global-pointer: any_pressed={}, any_released={}, \
-                     primary_clicked={}, primary_down={}, latest_pos={:?}",
-                    _any_pressed,
-                    _any_released,
-                    _primary_clicked,
-                    _primary_down,
-                    _latest_pos,
-                );
-            }
-            // Point 3 — geometry (response_rect vs painter clip_rect). Log first 3 frames only.
-            static GEOMETRY_LOG_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-            let _gcount = GEOMETRY_LOG_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if _gcount < 3 {
-                let _clip = ui.painter().clip_rect();
-                eprintln!(
-                    "[BRUSH-DBG] geometry: response_rect=({:.0},{:.0})..({:.0},{:.0}), \
-                     viewport_size=({:.0},{:.0}), painter_clip_rect=({:.0},{:.0})..({:.0},{:.0})",
-                    response.rect.min.x,
-                    response.rect.min.y,
-                    response.rect.max.x,
-                    response.rect.max.y,
-                    viewport_size.x,
-                    viewport_size.y,
-                    _clip.min.x,
-                    _clip.min.y,
-                    _clip.max.x,
-                    _clip.max.y,
-                );
-            }
-            // Point 6 — layer detection at pointer position. Log only on layer changes.
-            if let Some(_pos) = _latest_pos {
-                let _layer_at_pointer = ui.ctx().layer_id_at(_pos);
-                let _viewport_layer = Some(ui.layer_id());
-                static LAST_LAYER_DBG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(u64::MAX);
-                // Encode layer as a hash of its Debug repr for change-detection.
-                let _layer_hash = {
-                    use std::hash::{Hash, Hasher};
-                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    format!("{:?}", _layer_at_pointer).hash(&mut hasher);
-                    hasher.finish()
-                };
-                let _last = LAST_LAYER_DBG.swap(_layer_hash, std::sync::atomic::Ordering::Relaxed);
-                if _last != _layer_hash {
-                    eprintln!(
-                        "[BRUSH-DBG] layer-at-pointer: pos=({:.0},{:.0}), layer_id={:?}, viewport_layer={:?}",
-                        _pos.x, _pos.y, _layer_at_pointer, _viewport_layer,
-                    );
-                }
-            }
-        }
-
         // Request focus only on click (not hover) to avoid stealing focus from other panels
         if response.clicked() {
             trace!(
@@ -1506,23 +1426,6 @@ impl ViewportWidget {
 
         // Brush cursor visualization — circle draped on terrain at hover position
         if self.terrain_brush_active && !self.gizmo_state.is_active() {
-            // [INSTRUMENTATION Round 2 Point 4 — Mediator-Brush-Diagnostic-Round-2-Instrumentation.A 2026-05-06]
-            // Render-body pointer state. response.hover_pos() being None despite
-            // response.contains_pointer()=true (per Round 1 evidence) would silently
-            // skip the entire ring-render branch — a candidate for Defect B.
-            // Throttled to once per ~30 frames to limit spam.
-            static RENDER_LOG_FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-            let _rframe = RENDER_LOG_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if _rframe % 30 == 0 {
-                eprintln!(
-                    "[BRUSH-DBG] render-body-pointer: hover_pos={:?}, response_rect=({:.0},{:.0})..({:.0},{:.0})",
-                    response.hover_pos(),
-                    response.rect.min.x,
-                    response.rect.min.y,
-                    response.rect.max.x,
-                    response.rect.max.y,
-                );
-            }
             if let Some(mouse_pos_abs) = response.hover_pos() {
                 let viewport_size = response.rect.size();
                 let mouse_pos = egui::Pos2 {
@@ -1583,36 +1486,8 @@ impl ViewportWidget {
                             color,
                         ));
                     }
-                    // [INSTRUMENTATION Round 2 Point 5 — Mediator-Brush-Diagnostic-Round-2-Instrumentation.A 2026-05-06]
-                    // Render-body cursor_center + lines count + depth pick path. Confirms
-                    // ring is being submitted to the renderer's debug-line pipeline at
-                    // sensible world coords (or reveals coordinate / pipeline issue).
-                    // Throttled.
-                    static DRAW_LOG_FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-                    let _dframe = DRAW_LOG_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    if _dframe % 30 == 0 {
-                        eprintln!(
-                            "[BRUSH-DBG] render-body-drawcall: cursor_center=({:.2},{:.2},{:.2}), \
-                             radius={:.1}, line_count={}, depth_pick_succeeded={}, color={:?}",
-                            center.x,
-                            center.y,
-                            center.z,
-                            self.terrain_brush_radius,
-                            lines.len(),
-                            depth_val.is_some_and(|d| d < 1.0),
-                            color,
-                        );
-                    }
                     self.set_brush_cursor_lines(lines);
                 } else {
-                    static NOCENTER_LOG_FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-                    let _nframe = NOCENTER_LOG_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    if _nframe % 30 == 0 {
-                        eprintln!(
-                            "[BRUSH-DBG] render-body-drawcall: cursor_center=NONE (depth pick + Y=0 fallback both failed), depth_val={:?}",
-                            depth_val,
-                        );
-                    }
                     self.set_brush_cursor_lines(Vec::new());
                 }
             } else {
