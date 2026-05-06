@@ -5399,16 +5399,6 @@ impl EditorApp {
                 tab_viewer::PanelEvent::TerrainBrushUpdate => {
                     // Incremental GPU update — only re-upload dirty chunk vertex buffers
                     let dirty = self.dock_tab_viewer.take_terrain_dirty_chunks();
-                    // [INSTRUMENTATION Round 4 T6.B — Mediator-Brush-Diagnostic-Round-4-Instrumentation.A 2026-05-06]
-                    // Log dirty chunks received + upload count. Compares to T6.A apply-brush-at
-                    // modified flag; if T6.A modified=true but T6.B fires with dirty.is_empty() →
-                    // event-routing path broken; if T6.B fires + viewport.is_some()=false → upload skipped.
-                    eprintln!(
-                        "[BRUSH-DBG] terrain-brush-update-event: dirty_count={}, dirty_indices={:?}, viewport_is_some={}",
-                        dirty.len(),
-                        dirty.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
-                        self.viewport.is_some()
-                    );
                     if let Some(viewport) = &self.viewport {
                         for (chunk_index, verts) in &dirty {
                             let gpu_verts: Vec<crate::viewport::types::TerrainVertex> = verts
@@ -5620,15 +5610,6 @@ impl EditorApp {
                         if let Some(world) = world_to_render {
                             if runtime_state == RuntimeState::Editing {
                                 edited_world = true;
-                            }
-                            // [INSTRUMENTATION Round 4 T2.A — Mediator-Brush-Diagnostic-Round-4-Instrumentation.A 2026-05-06]
-                            // Standalone (non-dock) viewport render path marker. State-change filter
-                            // via static AtomicU8 (0=unset, 1=standalone, 2=dock).
-                            static LAST_RENDER_PATH: std::sync::atomic::AtomicU8 =
-                                std::sync::atomic::AtomicU8::new(0);
-                            let _last = LAST_RENDER_PATH.swap(1, std::sync::atomic::Ordering::Relaxed);
-                            if _last != 1 {
-                                eprintln!("[BRUSH-DBG] render-path: standalone-viewport-render (main.rs)");
                             }
                             if let Err(e) = viewport.ui(
                                 ui,

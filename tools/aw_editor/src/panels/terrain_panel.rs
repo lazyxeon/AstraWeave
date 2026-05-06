@@ -871,20 +871,6 @@ impl TerrainPanel {
                 self.noise_scale,
             )
         };
-        // [INSTRUMENTATION Round 4 T6.A — Mediator-Brush-Diagnostic-Round-4-Instrumentation.A 2026-05-06]
-        // Log apply_brush_at calls + modified flag. Throttled to ~30 calls.
-        // If modified=false despite Round 2 evidence of "1 chunks modified" → terrain_state.apply_brush
-        // not dirtying chunks; investigate further.
-        static APPLY_BRUSH_CALL: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let _abc = APPLY_BRUSH_CALL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if _abc % 30 == 0 {
-            eprintln!(
-                "[BRUSH-DBG] apply-brush-at: world_x={:.2}, world_z={:.2}, mode={:?}, \
-                 radius={:.1}, strength={:.2}, modified={}, pending_actions_len={}",
-                world_x, world_z, self.brush_mode, self.brush_radius, self.brush_strength,
-                modified, self.pending_actions.len()
-            );
-        }
         if modified {
             self.pending_actions.push(TerrainAction::BrushUpdate);
         }

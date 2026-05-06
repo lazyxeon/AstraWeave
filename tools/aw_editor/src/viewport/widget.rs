@@ -1486,123 +1486,14 @@ impl ViewportWidget {
                             color,
                         ));
                     }
-                    // [INSTRUMENTATION Round 4 T1.A+B+D + T3.A + T4.A + T5.A — Mediator-Brush-Diagnostic-Round-4-Instrumentation.A 2026-05-06]
-                    // Combined widget-side instrumentation. Throttled to ~30 frames.
-                    static WIDGET_BLOCK_FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-                    let _frame = WIDGET_BLOCK_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    if _frame % 30 == 0 {
-                        // T1.A: project world cursor_center → clip → NDC → screen pixels.
-                        let _vp = self.camera.view_projection_matrix();
-                        let _world = glam::Vec4::new(center.x, center.y, center.z, 1.0);
-                        let _clip = _vp * _world;
-                        let _w = _clip.w;
-                        let (_screen_x, _screen_y, _ndc_z, _w_safe) = if _w.abs() > 1e-6 {
-                            let _ndc_x = _clip.x / _w;
-                            let _ndc_y = _clip.y / _w;
-                            let _ndc_z = _clip.z / _w;
-                            // Convert NDC [-1,1] to screen pixels (with viewport-relative + Y flip).
-                            // Note: ring is drawn relative to response.rect.min; full screen coord = response_rect.min + (ndc → viewport-pixel).
-                            let _vp_x = (_ndc_x * 0.5 + 0.5) * viewport_size.x;
-                            let _vp_y = (1.0 - (_ndc_y * 0.5 + 0.5)) * viewport_size.y;
-                            let _scr_x = response.rect.min.x + _vp_x;
-                            let _scr_y = response.rect.min.y + _vp_y;
-                            (_scr_x, _scr_y, _ndc_z, _w)
-                        } else {
-                            (f32::NAN, f32::NAN, f32::NAN, _w)
-                        };
-                        // T1.B: camera state.
-                        let _cam_pos = self.camera.position();
-                        let _cam_target = self.camera.target();
-                        let _cam_dist = (center - _cam_pos).length();
-                        // T1.D: project world radius=50 to screen-space pixels.
-                        let _nearby = glam::Vec3::new(center.x + self.terrain_brush_radius, center.y, center.z);
-                        let _nearby_w4 = glam::Vec4::new(_nearby.x, _nearby.y, _nearby.z, 1.0);
-                        let _nearby_clip = _vp * _nearby_w4;
-                        let _screen_radius = if _nearby_clip.w.abs() > 1e-6 && _w_safe.abs() > 1e-6 {
-                            let _nearby_vp_x = (_nearby_clip.x / _nearby_clip.w * 0.5 + 0.5) * viewport_size.x;
-                            let _nearby_vp_y = (1.0 - (_nearby_clip.y / _nearby_clip.w * 0.5 + 0.5)) * viewport_size.y;
-                            let _center_vp_x = (_clip.x / _w_safe * 0.5 + 0.5) * viewport_size.x;
-                            let _center_vp_y = (1.0 - (_clip.y / _w_safe * 0.5 + 0.5)) * viewport_size.y;
-                            let _dx = _nearby_vp_x - _center_vp_x;
-                            let _dy = _nearby_vp_y - _center_vp_y;
-                            (_dx * _dx + _dy * _dy).sqrt()
-                        } else {
-                            -1.0
-                        };
-                        eprintln!(
-                            "[BRUSH-DBG] proj-cursor: world=({:.2},{:.2},{:.2}), \
-                             screen=({:.1},{:.1}), ndc_z={:.4}, clip_w={:.4}, \
-                             cam_pos=({:.1},{:.1},{:.1}), cam_target=({:.1},{:.1},{:.1}), \
-                             cam_dist={:.1}, screen_radius={:.1}, viewport_size=({:.0},{:.0}), \
-                             response_rect=({:.0},{:.0})..({:.0},{:.0})",
-                            center.x, center.y, center.z,
-                            _screen_x, _screen_y, _ndc_z, _w_safe,
-                            _cam_pos.x, _cam_pos.y, _cam_pos.z,
-                            _cam_target.x, _cam_target.y, _cam_target.z,
-                            _cam_dist, _screen_radius,
-                            viewport_size.x, viewport_size.y,
-                            response.rect.min.x, response.rect.min.y,
-                            response.rect.max.x, response.rect.max.y,
-                        );
-                        // T3.A: per-line clip-z sample for ring's first line.
-                        if let Some(_first) = lines.first() {
-                            let _start = glam::Vec4::new(_first.start[0], _first.start[1], _first.start[2], 1.0);
-                            let _end = glam::Vec4::new(_first.end[0], _first.end[1], _first.end[2], 1.0);
-                            let _start_clip = _vp * _start;
-                            let _end_clip = _vp * _end;
-                            let _start_ndc_z = if _start_clip.w.abs() > 1e-6 { _start_clip.z / _start_clip.w } else { f32::NAN };
-                            let _end_ndc_z = if _end_clip.w.abs() > 1e-6 { _end_clip.z / _end_clip.w } else { f32::NAN };
-                            eprintln!(
-                                "[BRUSH-DBG] ring-z: line0_start_ndc_z={:.4}, line0_end_ndc_z={:.4}, line0_y_offset=0.15",
-                                _start_ndc_z, _end_ndc_z,
-                            );
-                        }
-                        // T5.A: camera matrices first row + diagonal.
-                        let _view = self.camera.view_matrix();
-                        let _proj = self.camera.projection_matrix();
-                        eprintln!(
-                            "[BRUSH-DBG] cam-widget: view_row0=({:.4},{:.4},{:.4},{:.4}), \
-                             proj_row0=({:.4},{:.4},{:.4},{:.4}), proj_diag=({:.4},{:.4},{:.4},{:.4})",
-                            _view.x_axis.x, _view.y_axis.x, _view.z_axis.x, _view.w_axis.x,
-                            _proj.x_axis.x, _proj.y_axis.x, _proj.z_axis.x, _proj.w_axis.x,
-                            _proj.x_axis.x, _proj.y_axis.y, _proj.z_axis.z, _proj.w_axis.w,
-                        );
-                    }
-                    // T4.A: full color RGB (DebugLine has no alpha channel; alpha is shader-implicit).
-                    static COLOR_LOG_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-                    if !COLOR_LOG_DONE.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                        eprintln!(
-                            "[BRUSH-DBG] line-color-rgb: r={:.3}, g={:.3}, b={:.3}, line_count={} (NOTE: DebugLine has no alpha; alpha is shader-implicit)",
-                            color[0], color[1], color[2], lines.len()
-                        );
-                    }
-                    // T7.A site=success-1489: log every call.
-                    eprintln!(
-                        "[BRUSH-DBG] set-lines-call: site=success-1489, lines_count={}",
-                        lines.len()
-                    );
                     self.set_brush_cursor_lines(lines);
                 } else {
-                    // T7.A site=fallback-1491 (cursor_center None — depth pick + Y=0 fallback both failed).
-                    eprintln!("[BRUSH-DBG] set-lines-call: site=fallback-1491-no-cursor-center, lines_count=0");
                     self.set_brush_cursor_lines(Vec::new());
                 }
             } else {
-                // T7.A site=fallback-1494 (response.hover_pos() returned None).
-                eprintln!("[BRUSH-DBG] set-lines-call: site=fallback-1494-no-hover-pos, lines_count=0");
                 self.set_brush_cursor_lines(Vec::new());
             }
         } else {
-            // T7.A site=fallback-1497 (terrain_brush_active false OR gizmo_state active).
-            // Throttle this to avoid spam every frame when brush is off.
-            static FALLBACK_OFF_FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-            let _ff = FALLBACK_OFF_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if _ff % 60 == 0 {
-                eprintln!(
-                    "[BRUSH-DBG] set-lines-call: site=fallback-1497-gate-off, lines_count=0, brush_active={}, gizmo_active={}",
-                    self.terrain_brush_active, self.gizmo_state.is_active()
-                );
-            }
             self.set_brush_cursor_lines(Vec::new());
         }
 
