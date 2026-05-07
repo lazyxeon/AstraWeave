@@ -911,6 +911,17 @@ impl EngineRenderAdapter {
         depth_view: Option<&wgpu::TextureView>,
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<()> {
+        // [INSTRUMENTATION Round 6 T9.F render — Mediator-Brush-Diagnostic-Round-6-Instrumentation.A 2026-05-07]
+        // Log adapter instance address at render time. Cross-reference with T9.C
+        // upload-site adapter_ptr — if different IDs, multi-instance trap (Mech C variant).
+        // Once at first render via static AtomicBool to avoid spam.
+        static R6F_RENDER_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !R6F_RENDER_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            eprintln!(
+                "[BRUSH-DBG] engine-adapter-id: site=render_to_texture, adapter_ptr={:p}, terrain_chunks_len={}, terrain_clusters_len={}",
+                self as *const _, self.terrain_chunks.len(), self.terrain_clusters.len()
+            );
+        }
         let t0 = std::time::Instant::now();
         self.renderer
             .draw_into(target, depth_view, encoder)
@@ -2458,12 +2469,33 @@ impl EngineRenderAdapter {
     /// models, so an update rebuilds the owning clustered model(s) instead of
     /// attempting to replace a no-longer-existent one-chunk GPU model.
     pub fn update_terrain_chunk(&mut self, chunk_index: usize, vertices: &[TerrainVertex]) {
+        // [INSTRUMENTATION Round 6 T9.C + T9.F — Mediator-Brush-Diagnostic-Round-6-Instrumentation.A 2026-05-07]
+        // T9.C: log incoming chunk_index + slot_map lookup result + cluster rebuild count.
+        // Smoking-gun candidate for Mech C (mesh resource identity trap, sibling §7.7
+        // at mesh layer). Two early-return paths: slot_map missing OR stored chunk missing.
+        // T9.F: log engine_adapter instance address (paired with creation log + render log).
+        let _r6c_chunk_idx = chunk_index;
+        let _r6c_slot_lookup = self.terrain_chunk_slot_map.get(chunk_index).copied();
+        let _r6c_slot_map_len = self.terrain_chunk_slot_map.len();
+        let _r6c_terrain_chunks_len = self.terrain_chunks.len();
+        let _r6c_vertices_len = vertices.len();
+        let _r6f_adapter_ptr = format!("{:p}", self as *const _);
+        eprintln!(
+            "[BRUSH-DBG] mesh-upload: site=update_terrain_chunk-entry, chunk_index={}, vertices_len={}, slot_map_lookup={:?}, slot_map_len={}, terrain_chunks_len={}, adapter_ptr={}",
+            _r6c_chunk_idx, _r6c_vertices_len, _r6c_slot_lookup, _r6c_slot_map_len, _r6c_terrain_chunks_len, _r6f_adapter_ptr
+        );
+
         if vertices.is_empty() {
+            eprintln!("[BRUSH-DBG] mesh-upload: site=update_terrain_chunk-early-return-empty-vertices");
             return;
         }
 
         let Some(Some(stored_chunk_index)) = self.terrain_chunk_slot_map.get(chunk_index).copied()
         else {
+            eprintln!(
+                "[BRUSH-DBG] mesh-upload: site=update_terrain_chunk-early-return-no-slot-map, chunk_index={} (Mech C confirmed: chunk_index has no slot_map entry)",
+                chunk_index
+            );
             tracing::warn!(
                 "update_terrain_chunk: unknown logical source chunk index {chunk_index} for clustered terrain"
             );
@@ -2473,6 +2505,10 @@ impl EngineRenderAdapter {
         let indices = match self.terrain_chunks.get(stored_chunk_index) {
             Some(chunk) => chunk.indices.clone(),
             None => {
+                eprintln!(
+                    "[BRUSH-DBG] mesh-upload: site=update_terrain_chunk-early-return-no-stored-chunk, stored_chunk_index={} (Mech C confirmed: slot_map maps to missing stored chunk)",
+                    stored_chunk_index
+                );
                 tracing::warn!(
                     "update_terrain_chunk: missing stored chunk {stored_chunk_index} for logical source chunk {chunk_index}"
                 );
@@ -2481,8 +2517,18 @@ impl EngineRenderAdapter {
         };
 
         self.terrain_chunks[stored_chunk_index] = Self::convert_terrain_chunk(vertices, &indices);
+        // Count affected clusters BEFORE rebuild (per terrain_clusters.filter at line 1898 logic).
+        let _r6c_affected_count = self
+            .terrain_clusters
+            .iter()
+            .filter(|c| c.chunk_indices.contains(&stored_chunk_index))
+            .count();
         self.rebuild_terrain_clusters_for_chunk(stored_chunk_index);
         self.refresh_terrain_ground_plane();
+        eprintln!(
+            "[BRUSH-DBG] mesh-upload: site=update_terrain_chunk-success, stored_chunk_index={}, affected_clusters={}, terrain_clusters_total={} (if affected=0, second §7.7 trap candidate at terrain_clusters.filter)",
+            stored_chunk_index, _r6c_affected_count, self.terrain_clusters.len()
+        );
     }
 
     // ── Scatter / vegetation feeding ────────────────────────────────────

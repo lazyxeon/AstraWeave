@@ -842,6 +842,24 @@ impl TerrainPanel {
             self.terrain_state.begin_stroke();
         }
 
+        // [INSTRUMENTATION Round 6 T9.A + T9.E pre — Mediator-Brush-Diagnostic-Round-6-Instrumentation.A 2026-05-07]
+        // T9.A: log brush apply world position + mode + radius. Distinguishes Mech A
+        // (cursor source mismatch — brush applies at different world coords than ring
+        // renders at). Throttled ~5 Hz.
+        // T9.E pre: sample height at brush center BEFORE apply. Paired with T9.E post
+        // below to compute delta. Distinguishes Mech E (sub-perceptible delta) and
+        // Mech 6 (brush logic regression — heights not changing).
+        static R6_APPLY_FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let _r6a_n = R6_APPLY_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let _r6_throttle = _r6a_n % 12 == 0;
+        let _height_pre = self.terrain_state.sample_height_at(world_x, world_z);
+        if _r6_throttle {
+            eprintln!(
+                "[BRUSH-DBG] brush-apply-at: world=({:.2}, {:.2}), mode={:?}, radius={:.1}, strength={:.2}, height_pre={:?}",
+                world_x, world_z, self.brush_mode, self.brush_radius, self.brush_strength, _height_pre
+            );
+        }
+
         let modified = if self.brush_mode == BrushMode::Paint {
             self.terrain_state.apply_brush_paint_material(
                 world_x,
@@ -871,6 +889,22 @@ impl TerrainPanel {
                 self.noise_scale,
             )
         };
+        // [INSTRUMENTATION Round 6 T9.E post — Mediator-Brush-Diagnostic-Round-6-Instrumentation.A 2026-05-07]
+        // T9.E post: sample height at brush center AFTER apply; compute delta vs T9.E pre.
+        // delta == 0.0 when modified=true → Mech 6 (brush logic regression). delta in
+        // (0, 0.1) → Mech E (sub-perceptible). delta >> 0.1 → heights ARE changing
+        // measurably → defect is in mesh-update chain (T9.B/C/D).
+        if _r6_throttle {
+            let _height_post = self.terrain_state.sample_height_at(world_x, world_z);
+            let _delta = match (_height_pre, _height_post) {
+                (Some(pre), Some(post)) => Some(post - pre),
+                _ => None,
+            };
+            eprintln!(
+                "[BRUSH-DBG] brush-height-delta: world=({:.2}, {:.2}), height_pre={:?}, height_post={:?}, delta={:?}, modified={}",
+                world_x, world_z, _height_pre, _height_post, _delta, modified
+            );
+        }
         if modified {
             self.pending_actions.push(TerrainAction::BrushUpdate);
         }

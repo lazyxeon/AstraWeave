@@ -1277,6 +1277,8 @@ impl EditorTabViewer {
                         self.emit_event(PanelEvent::TerrainReady);
                     }
                     crate::panels::terrain_panel::TerrainAction::BrushUpdate => {
+                        // [INSTRUMENTATION Round 6 T9.B emit (site=take_events:1280) — Mediator-Brush-Diagnostic-Round-6-Instrumentation.A 2026-05-07]
+                        eprintln!("[BRUSH-DBG] terrain-brush-update-emit: site=take_events_drain:1280");
                         self.emit_event(PanelEvent::TerrainBrushUpdate);
                     }
                     // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3:
@@ -7654,6 +7656,8 @@ impl TabViewer for EditorTabViewer {
                                 self.emit_event(PanelEvent::TerrainReady);
                             }
                             crate::panels::terrain_panel::TerrainAction::BrushUpdate => {
+                                // [INSTRUMENTATION Round 6 T9.B emit (site=render_arm:7658) — Mediator-Brush-Diagnostic-Round-6-Instrumentation.A 2026-05-07]
+                                eprintln!("[BRUSH-DBG] terrain-brush-update-emit: site=render_arm:7658");
                                 self.emit_event(PanelEvent::TerrainBrushUpdate);
                             }
                             // Phase 1.X-Editor-Multi-Tool-Architecture-Sub-phase-3:
