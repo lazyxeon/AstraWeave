@@ -1,21 +1,24 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-04-04 | **Version**: 0.5.0 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Version**: 0.6.0 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.6.0 update**: Full cartography audit — impostor infrastructure catalogued, astraweave-alloc added, workspace count verified at 143 members, viewport module inventory updated, Regional Archetype Variation campaign status integrated.
 > **0.5.0 update**: Reflects Fix 27 Unified Pipeline Campaign — EntityRenderer deleted, astraweave-render is now non-optional in aw_editor.
 
 ---
 
 ## 1. Workspace Overview
 
-- **Total workspace members**: 140 (listed in root Cargo.toml)
-- **Production crates**: ~49
+- **Total workspace members**: 143 (listed in root Cargo.toml) — **+3 since v0.5.0**
+- **Production crates**: ~51 (core engine infrastructure)
 - **Examples**: ~45
-- **Tools**: 10 (`aw_editor`, `aw_asset_cli`, `astraweave-assets`, `aw_debug`, `aw_build`, `aw_texture_gen`, `aw_headless`, `ollama_probe`, `asset_signing`, `aw_release`, `aw_demo_builder`, `aw_save_cli`)
+- **Tools**: 12 (`aw_editor`, `aw_asset_cli`, `astraweave-assets`, `aw_debug`, `aw_build`, `aw_texture_gen`, `aw_headless`, `ollama_probe`, `asset_signing`, `aw_release`, `aw_demo_builder`, `aw_save_cli`)
+- **Crates/** subdirectory**: 5 (`astraweave-blend`, `astraweave-alloc`, `astraweave-persistence-player`, `astract`, `astract/astract-macro`)
 - **Networking sub-crates**: 3 (`aw-net-proto`, `aw-net-server`, `aw-net-client`)
 - **Persistence**: `aw-save`, `aw_save_cli`, `astraweave-persistence-ecs`, `astraweave-persistence-player`
 - **Resolver**: 2
 - **Build profiles**: dev (opt-level 0, deps opt-level 2), release-fast (no LTO), release (thin LTO)
+- **Excludes**: `astraweave-ecs/fuzz` (must be built separately)
 
 ---
 
@@ -31,6 +34,7 @@
 | `astraweave-ecs` | profiling |
 | `astraweave-core` | ecs, behavior |
 | `astraweave-sdk` | core |
+| `astraweave-alloc` | _(optional: mimalloc)_ — **NEW v0.6.0** |
 
 **AI (orchestration, planning, LLM)**
 
@@ -60,6 +64,12 @@
 | `astraweave-asset` | blend |
 | `astraweave-asset-pipeline` | _(none)_ |
 | `astraweave-blend` | _(in crates/)_ |
+
+**Impostor Infrastructure (added April 16, 2026 — v0.6.0):**
+- **Render modules**: `impostor_bake` (offline/lazy atlas bake), `impostor_lod3` (billboard sampling shader), `impostor_pass` (reusable draw helper)
+- **Editor modules**: `impostor_registry` (content-hashed disk cache), `impostor_wiring` (scatter-to-bake bridge)
+- **Feature**: `impostor-bake` (now in `aw_editor` default features as of April 2026)
+- **CLI**: `astraweave-render/src/bin/aw_impostor_bake.rs` (feature-gated, offline atlas generator)
 
 **Physics & World**
 
@@ -131,6 +141,12 @@
 - Trait: `GameAdapter`
 - C ABI: `aw_version()`, `aw_world_create()`, `aw_world_destroy()`, `aw_world_tick()`, `aw_world_snapshot_json()`, `aw_world_submit_intent_json()`
 
+**astraweave-alloc** — **NEW v0.6.0**
+- Macro: `setup_global_allocator!()` (opt-in mimalloc replacement)
+- Feature: `fast-alloc` (disabled by default; binaries opt in)
+- Re-export: `MiMalloc` (when `fast-alloc` enabled)
+- Purpose: Zero-cost opt-in allocator swap for binaries (library crates unaffected)
+
 **astraweave-core**
 - Types: `WorldSnapshot`, `CompanionState`, `PlayerState`, `EnemyState`, `Poi`, `PlanIntent`, `ActionStep`
 - Bridges ECS ↔ AI via WorldSnapshot serialization
@@ -151,9 +167,10 @@
 
 **astraweave-render**
 - Types: `Renderer`, `Camera`, `CameraController`, `Texture`, `Vertex`, `Mesh`, `MaterialManager`, `Skeleton`, `AnimationClip`, `JointPalette`, `GBuffer`
-- 60+ modules: clustered lighting, MegaLights, CSM shadows, bloom, TAA, SSAO, SSGI, SSR, volumetric fog, god rays, atmosphere, auto-exposure, particle system, terrain materials, weather
-- Features: PBR, deferred, forward+, lumen GI, GPU particles, decals, water
-- Key methods used by editor: `Renderer::new_from_device()`, `draw_into(target, encoder)`, `update_camera()`, `add_model()`, `clear_model()`, `has_model()`, `update_instances()`, `create_mesh_from_cpu_mesh()`, `create_mesh_from_arrays()`, `create_mesh_from_full_arrays()`, `set_sky_config()`, `set_weather()`, `set_water_renderer()`, `scene_environment_mut()`, `time_of_day_mut()`, `shadows_enabled()`, `set_shadows_enabled()`
+- **Impostor types (v0.6.0)**: `ImpostorBaker`, `ImpostorAtlasSpec`, `ImpostorAtlasSidecar`, `ImpostorPass`, `Lod3Resources`, `Lod3InstanceRaw`, `SpeciesRowGpu`
+- 60+ modules: clustered lighting, MegaLights, CSM shadows, bloom, TAA, SSAO, SSGI, SSR, volumetric fog, god rays, atmosphere, auto-exposure, particle system, terrain materials, weather, **impostor_bake**, **impostor_lod3**, **impostor_pass**
+- Features: PBR, deferred, forward+, lumen GI, GPU particles, decals, water, **impostor-bake** (LOD3 billboard system)
+- Key methods used by editor: `Renderer::new_from_device()`, `draw_into(target, encoder)`, `update_camera()`, `add_model()`, `clear_model()`, `has_model()`, `update_instances()`, `create_mesh_from_cpu_mesh()`, `create_mesh_from_arrays()`, `create_mesh_from_full_arrays()`, `set_sky_config()`, `set_weather()`, `set_water_renderer()`, `scene_environment_mut()`, `time_of_day_mut()`, `shadows_enabled()`, `set_shadows_enabled()`, **`install_impostor_pass()`**, **`remove_impostor_pass()`**, **`impostor_pass_mut()`**, **`current_view_proj()`**, **`update_all_impostor_cameras()`**
 - Key re-exports: `WeatherKind` (via `effects::WeatherKind`), `SkyConfig`, `WaterRenderer`, `TerrainVertex`, `Instance`
 
 **astraweave-materials**
@@ -353,6 +370,11 @@ User input (mouse, keyboard, gamepad)
 | `tools/aw_editor/src/viewport/physics_renderer.rs` | `PhysicsDebugRenderer` — collider wireframes, brush cursor | ~medium |
 | `tools/aw_editor/src/viewport/blueprint_overlay.rs` | `BlueprintOverlay` — zone visualization | ~medium |
 | `tools/aw_editor/src/viewport/toolbar.rs` | `ViewportToolbar`, `GridType` | ~medium |
+| `tools/aw_editor/src/viewport/terrain_splat.rs` | **NEW v0.6.0** — Terrain material splat pipeline | ~medium |
+| `tools/aw_editor/src/viewport/terrain_splat_builder.rs` | **NEW v0.6.0** — Splat texture builder | ~medium |
+| `tools/aw_editor/src/viewport/terrain_biome_placeholder.rs` | **NEW v0.6.0** — Biome placeholder rendering | ~small |
+| `tools/aw_editor/src/viewport/impostor_registry.rs` | **NEW v0.6.0** — Content-hashed impostor atlas cache | ~340 |
+| `tools/aw_editor/src/viewport/impostor_wiring.rs` | **NEW v0.6.0** — Scatter-to-bake bridge helpers | ~280 |
 | `tools/aw_editor/src/viewport/shaders/tonemap.wgsl` | HDR→LDR blit: ACES (mode=0), PBR Neutral/Khronos (mode=1), Reinhard (mode=2) | ~small |
 | `tools/aw_editor/src/viewport/shaders/grid.wgsl` | Floor grid with axes, anti-aliased lines | ~small |
 | `tools/aw_editor/src/viewport/shaders/gizmo.wgsl` | Transform handle geometry | ~small |
@@ -630,7 +652,74 @@ Team color mapping (when not selected):
 
 ---
 
-## 11. Recent Changes (v0.4.0 → v0.5.0, 2026-04-04)
+## 11. Recent Changes (v0.5.0 → v0.6.0, 2026-05-07)
+
+### Workspace Growth (+3 members)
+
+**New Crates**:
+- `astraweave-alloc` (in `crates/`) — Opt-in mimalloc global allocator replacement; `setup_global_allocator!()` macro; MIT-licensed; zero-cost when disabled
+- `astraweave-optimization` — LLM optimization experiments
+- `crates/astract` + `crates/astract/astract-macro` — Attribute macro system
+
+**Incomplete/Temporary Crates**:
+- `astraweave-ai-gen/` — Directory exists but no Cargo.toml; likely temporary or work-in-progress
+
+**Not in Workspace but Present**:
+- `tools/parse_probe` — Has Cargo.toml but excluded from workspace members
+- `tools/aw_plugin_template` — Has Cargo.toml but excluded from workspace members
+
+### Impostor LOD3 System (April 16, 2026)
+
+**Render Crate** (`astraweave-render`):
+- `impostor_bake.rs` — Offline/lazy atlas renderer + I/O (57 tests)
+- `impostor_lod3.rs` — Billboard sampling shader + pipeline (5 GPU tests)
+- `impostor_pass.rs` — Reusable draw helper with auto-growing instance buffer (8 tests)
+- `bin/aw_impostor_bake.rs` — CLI tool (feature-gated on `impostor-bake-cli`)
+
+**Editor Viewport** (`tools/aw_editor/src/viewport/`):
+- `impostor_registry.rs` — Content-hashed disk cache (8 tests)
+- `impostor_wiring.rs` — Scatter-to-bake bridge (4 tests)
+- `engine_adapter.rs` — `upload_impostor_pass_for_primitive()`, `retire_stale_impostor_passes()` (13 tests)
+
+**Feature Changes**:
+- `aw_editor` default features now include `impostor-bake` (was opt-in)
+- Legacy PBR-quad LOD3 fallback removed (graceful degradation: `--no-default-features` gives LOD0/1/2 only)
+
+**Total New Tests**: 57 (impostor family)
+
+### Terrain Enhancements
+
+**New Viewport Modules**:
+- `terrain_splat.rs` — Terrain material splat pipeline
+- `terrain_splat_builder.rs` — Splat texture builder
+- `terrain_biome_placeholder.rs` — Biome placeholder rendering
+
+**Regional Archetype Variation Campaign**:
+- Campaign plan at `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md`
+- Status: F.0-F.4 COMPLETE, F.5-paint IN PROGRESS (paused May 3, 2026 pending Editor Multi-Tool Architecture campaign)
+- Climate field extensions, spline infrastructure, archetype mask system landed
+- Andrew-gate PASSes: F.3 (single-archetype), F.4 (multi-archetype blend)
+
+### ECS Architecture
+
+**ParallelSchedule Removal** (April 18, 2026):
+- `astraweave-ecs` is now **deterministic single-threaded** per tick
+- Removed `ParallelSchedule`, `SystemAccess`, `SystemDescriptor`
+- Audit: `docs/audits/parallel_schedule_removal_2026-04-18.md`
+- Parallelism moved to subsystem level (rayon, tokio, GPU compute)
+
+### Editor Default Features
+
+**Changed**:
+- `impostor-bake` — NOW in default features (April 2026)
+- `terrain-splat-arrays` — NOW in default features
+- `fast-alloc` — NOW in default features (mimalloc experiment, April 17, 2026)
+
+**Opt-out**: `--no-default-features --features editor-core` for platform allocator or lean builds
+
+---
+
+## 12. Recent Changes (v0.4.0 → v0.5.0, 2026-04-04)
 
 ### Fix 27 — Unified Rendering Pipeline
 
