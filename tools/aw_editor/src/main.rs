@@ -5399,18 +5399,6 @@ impl EditorApp {
                 tab_viewer::PanelEvent::TerrainBrushUpdate => {
                     // Incremental GPU update — only re-upload dirty chunk vertex buffers
                     let dirty = self.dock_tab_viewer.take_terrain_dirty_chunks();
-                    // [INSTRUMENTATION Round 6 T9.B handle — Mediator-Brush-Diagnostic-Round-6-Instrumentation.A 2026-05-07]
-                    // Distinguishes Mech B (handler missing or not calling upload). Logs dirty
-                    // count + viewport availability + per-chunk update_terrain_chunk_vertices
-                    // dispatch. If dirty is non-empty + viewport is Some + each chunk is
-                    // dispatched, Mech B ruled out and defect is at T9.C/T9.D layer.
-                    eprintln!(
-                        "[BRUSH-DBG] terrain-brush-update-handle: received_dirty_count={}, dirty_indices={:?}, viewport_is_some={}, upload_call_made_per_chunk={}",
-                        dirty.len(),
-                        dirty.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
-                        self.viewport.is_some(),
-                        !dirty.is_empty() && self.viewport.is_some()
-                    );
                     if let Some(viewport) = &self.viewport {
                         for (chunk_index, verts) in &dirty {
                             let gpu_verts: Vec<crate::viewport::types::TerrainVertex> = verts

@@ -5742,28 +5742,6 @@ fn vs(input: VSIn) -> VSOut {
                     drawn_models += 1;
                 }
                 self.rendered_model_count = drawn_models;
-
-                // [INSTRUMENTATION Round 6 T9.D — Mediator-Brush-Diagnostic-Round-6-Instrumentation.A 2026-05-07]
-                // Log render-time model count + count of terrain_cluster_* models (the
-                // editor's clustered terrain entries). If terrain_cluster_* count is 0
-                // or stays static after brush stroke, terrain mesh is not reaching the
-                // render path. Throttled to once per ~60 frames (every ~1 sec at 60fps).
-                static R6_RENDER_MODELS_FRAME: std::sync::atomic::AtomicU32 =
-                    std::sync::atomic::AtomicU32::new(0);
-                let _r6d_n = R6_RENDER_MODELS_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                if _r6d_n % 60 == 0 {
-                    let _r6d_terrain_cluster_count = self
-                        .models
-                        .keys()
-                        .filter(|k| k.starts_with("terrain_cluster"))
-                        .count();
-                    eprintln!(
-                        "[BRUSH-DBG] terrain-render-source: models_total={}, drawn_models={}, terrain_cluster_models={}",
-                        self.models.len(),
-                        drawn_models,
-                        _r6d_terrain_cluster_count
-                    );
-                }
             }
 
             // Phase 1 — forward-lit terrain draws (Option D).
