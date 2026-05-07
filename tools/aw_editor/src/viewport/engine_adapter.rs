@@ -1548,83 +1548,17 @@ impl EngineRenderAdapter {
                 // out-of-bounds memory as vertex positions). Using the
                 // closed-form `sqrt(total + 4) - 2` inverse of the skirts
                 // formula gives the correct N.
-                let grid_dim = match infer_surface_grid_dim(vertices.len()) {
-                    Some(n) if n >= 2 => n,
-                    _ => {
-                        tracing::warn!(
-                            target: "aw_editor::viewport::terrain_forward",
-                            "chunk {chunk_index}: could not infer surface grid \
-                             dim from vertex count {}; skipping forward upload",
-                            vertices.len(),
-                        );
-                        continue;
-                    }
-                };
-                let grid_dim_u32 = grid_dim as u32;
-                let grid_verts = grid_dim * grid_dim;
-                let surface_verts = &vertices[..grid_verts];
-
-                match super::terrain_splat_builder::build_chunk_splat_maps(
-                    surface_verts,
-                    grid_dim_u32,
-                    grid_dim_u32,
-                ) {
-                    Ok(splat_maps) => {
-                        // Build per-vertex [0, 1] UVs from grid position.
-                        // Vertices are row-major: vertex i lives at
-                        // column (i % grid_dim), row (i / grid_dim).
-                        let grid_span = (grid_dim - 1) as f32;
-                        let splat_vertices: Vec<astraweave_render::TerrainSplatVertex> =
-                            (0..grid_verts)
-                                .map(|i| {
-                                    let v = &surface_verts[i];
-                                    let gx = (i % grid_dim) as f32;
-                                    let gy = (i / grid_dim) as f32;
-                                    astraweave_render::TerrainSplatVertex {
-                                        position: v.position,
-                                        normal: v.normal,
-                                        uv: [gx / grid_span, gy / grid_span],
-                                    }
-                                })
-                                .collect();
-
-                        // Triangle-by-triangle filter: keep only triangles
-                        // whose three corners all reference surface
-                        // vertices (indices < grid_verts). Skirt triangles
-                        // (which have two skirt-vertex corners) are
-                        // dropped. Works whether the editor's index buffer
-                        // is partitioned (all surface triangles first,
-                        // then all skirt triangles — current behavior per
-                        // `terrain_integration.rs:790-867`) or interleaved
-                        // (a future edit that mixes them). Belt-and-
-                        // suspenders against the prefix-take bug pattern.
-                        let surface_vert_count = grid_verts as u32;
-                        let surface_indices =
-                            filter_surface_triangles(indices, surface_vert_count);
-
-                        let chunk_key = chunk_index as u64;
-                        if let Err(e) = self.renderer.upload_terrain_chunk(
-                            chunk_key,
-                            &splat_vertices,
-                            &surface_indices,
-                            &splat_maps.splat_0,
-                            &splat_maps.splat_1,
-                            (splat_maps.width, splat_maps.height),
-                        ) {
-                            tracing::warn!(
-                                target: "aw_editor::viewport::terrain_forward",
-                                "Phase 1.E.4.c upload_terrain_chunk failed \
-                                 for chunk {chunk_key}: {e:#}"
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            target: "aw_editor::viewport::terrain_forward",
-                            "Phase 1.E.4.c build_chunk_splat_maps failed \
-                             for chunk {chunk_index}: {e:#}"
-                        );
-                    }
+                // Real-Fix.B per Round-6-Closure.A c7f3b50b3 §12 Option 1:
+                // initial-upload path now routes through the shared
+                // `upload_or_update_terrain_chunk_forward` helper (single
+                // canonical implementation per CLAUDE.md v0.10.1 Edit 2).
+                if let Err(e) =
+                    self.upload_or_update_terrain_chunk_forward(chunk_index, vertices, indices)
+                {
+                    tracing::warn!(
+                        target: "aw_editor::viewport::terrain_forward",
+                        "Phase 1.E.4.c initial upload failed for chunk {chunk_index}: {e:#}"
+                    );
                 }
             }
         }
@@ -2452,6 +2386,82 @@ impl EngineRenderAdapter {
         self.terrain_total_indices
     }
 
+    /// Build splat-vertex array, filter surface triangles, build splat maps,
+    /// and call `Renderer::upload_terrain_chunk` for the live `terrain_forward`
+    /// path. Used by both initial upload (`upload_terrain_chunks`) and
+    /// incremental update (`update_terrain_chunk`) to ensure both paths route
+    /// through the same canonical terrain rendering abstraction
+    /// (`Renderer::terrain_forward.chunks`).
+    ///
+    /// Real-Fix.B per Round-6-Closure.A `c7f3b50b3` §12 (Option 1): replaces
+    /// dual-variant §7.7 trap (initial-upload routes to live; incremental-
+    /// update routes to legacy dead path) with single canonical implementation
+    /// per CLAUDE.md v0.10.1 Edit 2 (no-second-implementation).
+    ///
+    /// Errors are returned for caller-side `tracing::warn!` logging in the
+    /// existing style; `?`-propagated within the helper for grid_dim inference
+    /// failure, splat-map build failure, and upload failure.
+    #[cfg(feature = "terrain-splat-arrays")]
+    fn upload_or_update_terrain_chunk_forward(
+        &mut self,
+        chunk_index: usize,
+        vertices: &[TerrainVertex],
+        indices: &[u32],
+    ) -> anyhow::Result<()> {
+        // Phase 1.E.4.c surface grid inference: closed-form `sqrt(total + 4) - 2`
+        // inverse of the editor's `N² + 4N` with-skirts vertex layout.
+        let grid_dim = infer_surface_grid_dim(vertices.len())
+            .filter(|n| *n >= 2)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "could not infer surface grid dim from vertex count {}",
+                    vertices.len()
+                )
+            })?;
+        let grid_dim_u32 = grid_dim as u32;
+        let grid_verts = grid_dim * grid_dim;
+        let surface_verts = &vertices[..grid_verts];
+
+        let splat_maps = super::terrain_splat_builder::build_chunk_splat_maps(
+            surface_verts,
+            grid_dim_u32,
+            grid_dim_u32,
+        )?;
+
+        // Build per-vertex [0, 1] UVs from grid position (row-major).
+        let grid_span = (grid_dim - 1) as f32;
+        let splat_vertices: Vec<astraweave_render::TerrainSplatVertex> = (0..grid_verts)
+            .map(|i| {
+                let v = &surface_verts[i];
+                let gx = (i % grid_dim) as f32;
+                let gy = (i / grid_dim) as f32;
+                astraweave_render::TerrainSplatVertex {
+                    position: v.position,
+                    normal: v.normal,
+                    uv: [gx / grid_span, gy / grid_span],
+                }
+            })
+            .collect();
+
+        // Triangle-by-triangle filter: drop skirt triangles (indices >= grid_verts).
+        let surface_vert_count = grid_verts as u32;
+        let surface_indices = filter_surface_triangles(indices, surface_vert_count);
+
+        let chunk_key = chunk_index as u64;
+        self.renderer
+            .upload_terrain_chunk(
+                chunk_key,
+                &splat_vertices,
+                &surface_indices,
+                &splat_maps.splat_0,
+                &splat_maps.splat_1,
+                (splat_maps.width, splat_maps.height),
+            )
+            .map_err(|e| anyhow::anyhow!("upload_terrain_chunk failed for chunk {chunk_key}: {e:#}"))?;
+
+        Ok(())
+    }
+
     /// Incrementally update a single source terrain chunk on the GPU.
     ///
     /// The engine viewport clusters multiple source chunks into fewer render
@@ -2481,6 +2491,32 @@ impl EngineRenderAdapter {
         };
 
         self.terrain_chunks[stored_chunk_index] = Self::convert_terrain_chunk(vertices, &indices);
+
+        // Real-Fix.B per Round-6-Closure.A c7f3b50b3 §12 Option 1: route
+        // incremental update through the live terrain_forward path via the
+        // shared helper. Resolves Mechanism C (mesh resource identity trap;
+        // sibling §7.7 instance at mesh-data layer) — pre-fix, this function
+        // routed only to the legacy dead cluster path (T9.D evidence:
+        // self.models["terrain_cluster_*"] never read at render time);
+        // post-fix, helper writes to Renderer::terrain_forward.chunks
+        // HashMap which IS read at render time, so brush modifications
+        // become visible.
+        #[cfg(feature = "terrain-splat-arrays")]
+        if let Err(e) =
+            self.upload_or_update_terrain_chunk_forward(chunk_index, vertices, &indices)
+        {
+            tracing::warn!(
+                target: "aw_editor::viewport::terrain_forward",
+                "Real-Fix.B incremental update failed for chunk {chunk_index}: {e:#}"
+            );
+        }
+
+        // Legacy cluster path PRESERVED during Real-Fix.B per audit §5.1
+        // discipline. Round 6 T9.D evidence proves this path is dead code at
+        // current configuration (terrain_cluster_models=0 across 238 samples)
+        // — the call below is harmless but redundant. Cleanup-A session
+        // (post-Andrew-gate-PASS) deletes legacy path for clean diff
+        // narrative.
         self.rebuild_terrain_clusters_for_chunk(stored_chunk_index);
         self.refresh_terrain_ground_plane();
     }
