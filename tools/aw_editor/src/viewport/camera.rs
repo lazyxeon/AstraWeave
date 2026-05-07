@@ -555,7 +555,31 @@ impl OrbitCamera {
         let world_rel = inv_vp_rel.project_point3(Vec3::new(ndc_x, ndc_y, depth));
 
         // Add camera position to go from camera-relative → absolute world
-        world_rel + self.position()
+        let world = world_rel + self.position();
+
+        // [INSTRUMENTATION Round 5 T8.E — Mediator-Brush-Diagnostic-Round-5-Instrumentation.A 2026-05-07]
+        // Math sanity check on unproject_depth_to_world. Logs input depth_value,
+        // computed ndc_x/y/z (NOTE: ndc_z = depth direct pass-through; NO reverse-Z
+        // flip applied), output world position. If depth>0 but world ≈ cam_pos →
+        // math broken (mechanism 4 sub-class). If depth=0 + world ≈ cam_pos → math
+        // is consistent (depth=0 → ndc_z=0 → near plane unprojection); upstream
+        // cause (mechanism 1/2/3). Throttled ~5 Hz.
+        static R5_UNPROJECT_FRAME: std::sync::atomic::AtomicU32 =
+            std::sync::atomic::AtomicU32::new(0);
+        let _r5_up_n = R5_UNPROJECT_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if _r5_up_n % 12 == 0 {
+            let cam_pos = self.position();
+            let dist_to_cam = (world - cam_pos).length();
+            eprintln!(
+                "[BRUSH-DBG] unproject-input: depth_value={:.6}, ndc_x={:.4}, ndc_y={:.4}, ndc_z={:.4} (=depth, no reverse-Z flip), world=({:.2}, {:.2}, {:.2}), cam_pos=({:.1}, {:.1}, {:.1}), dist_world_to_cam={:.2}",
+                depth, ndc_x, ndc_y, depth,
+                world.x, world.y, world.z,
+                cam_pos.x, cam_pos.y, cam_pos.z,
+                dist_to_cam,
+            );
+        }
+
+        world
     }
 
     /// Validate and sanitize camera state after deserialization.

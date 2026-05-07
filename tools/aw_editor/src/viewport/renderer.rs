@@ -470,6 +470,35 @@ impl ViewportRenderer {
         // The engine renderer handles: sky, shadows, terrain, scatter,
         // water, entities, weather particles, post-processing.
         // Editor overlays (grid, gizmo, physics debug) render on top.
+        // [INSTRUMENTATION Round 5 T8.B-write + T8.C — Mediator-Brush-Diagnostic-Round-5-Instrumentation.A 2026-05-07]
+        // Smoking-gun logging: engine_adapter.render_to_texture takes ONLY
+        // scene_target_view + encoder — depth target is NOT bound from
+        // self.depth_view here. Engine adapter manages its own internal
+        // depth target; terrain depth values do NOT reach self.depth_texture
+        // (which read_depth_at_pixel reads). T8.B-write evidence: terrain
+        // pipeline writes to engine-internal depth, depth-pick reads from
+        // self.depth_texture — if these are different textures, mechanism 1
+        // (wrong texture) is confirmed. T8.C evidence: aw_editor cannot
+        // configure the engine adapter's terrain pipeline depth-write state
+        // from this scope; that pipeline is in astraweave_render crate.
+        // Logged once at first render via static AtomicBool.
+        static R5_ENGINE_RENDER_LOGGED: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
+        if !R5_ENGINE_RENDER_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            eprintln!(
+                "[BRUSH-DBG] terrain-pipeline-depth-state: \
+                 engine_adapter.render_to_texture(scene_target_view, encoder) — \
+                 depth target NOT passed; engine adapter owns terrain depth target internally; \
+                 self.depth_view (used by overlay passes + read by read_depth_at_pixel) \
+                 is a DIFFERENT texture: label='Viewport Depth Texture' format=Depth32Float size=({}, {})",
+                self.size.0, self.size.1,
+            );
+            eprintln!(
+                "[BRUSH-DBG] depth-target-write: pass=engine-adapter-terrain, \
+                 depth_target=ENGINE-INTERNAL (not aw_editor's self.depth_view), \
+                 depth_target_attached_to_self_view=false"
+            );
+        }
         {
             astraweave_profiling::span!("engine_render");
             if let Some(adapter) = self.engine_adapter.as_mut() {
@@ -526,6 +555,32 @@ impl ViewportRenderer {
                 });
             }
         } // end engine_render span
+
+        // [INSTRUMENTATION Round 5 T8.B-write — Mediator-Brush-Diagnostic-Round-5-Instrumentation.A 2026-05-07]
+        // Log overlay passes that DO use self.depth_view. These are the only
+        // passes that aw_editor controls depth-target binding for; if engine
+        // adapter's terrain depth lives elsewhere, only these writes reach
+        // self.depth_texture.
+        static R5_OVERLAY_PASSES_LOGGED: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
+        if !R5_OVERLAY_PASSES_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            eprintln!(
+                "[BRUSH-DBG] depth-target-write: pass=grid-overlay (gated by show_grid), \
+                 depth_target=self.depth_view, depth_target_attached_to_self_view=true"
+            );
+            eprintln!(
+                "[BRUSH-DBG] depth-target-write: pass=physics-debug-overlay (gated by total_lines>0), \
+                 depth_target=self.depth_view, depth_target_attached_to_self_view=true"
+            );
+            eprintln!(
+                "[BRUSH-DBG] depth-target-write: pass=gizmo-overlay (gated by selected+gizmo-active), \
+                 depth_target=self.depth_view, depth_target_attached_to_self_view=true"
+            );
+            eprintln!(
+                "[BRUSH-DBG] depth-target-write: pass=headless-fallback-clear (only when engine_adapter is None), \
+                 depth_target=self.depth_view, load_op=Clear(1.0), store_op=Store"
+            );
+        }
 
         // Grid overlay (on top of engine scene)
         if show_grid {
@@ -1144,7 +1199,33 @@ impl ViewportRenderer {
     /// Returns `None` on the first frame or if the depth buffer isn't available.
     pub fn read_depth_at_pixel(&mut self, px: u32, py: u32) -> Option<f32> {
         let (w, h) = self.size;
+        // [INSTRUMENTATION Round 5 T8.A + T8.B-read + T8.D — Mediator-Brush-Diagnostic-Round-5-Instrumentation.A 2026-05-07]
+        // Combined inside-function logging: pixel coords + viewport bounds (T8.D),
+        // depth_texture identity at read site (T8.B-read), and return value (T8.A).
+        // Throttled to ~5 Hz (every 12th call assuming ~60 FPS).
+        static R5_DEPTH_PICK_FRAME: std::sync::atomic::AtomicU32 =
+            std::sync::atomic::AtomicU32::new(0);
+        let _r5_dp_n = R5_DEPTH_PICK_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let _r5_throttle = _r5_dp_n % 12 == 0;
+        if _r5_throttle {
+            eprintln!(
+                "[BRUSH-DBG] depth-pick-coords: pixel=({}, {}), viewport_size=({}, {}), \
+                 inside_viewport={}, depth_texture_present={}, depth_staging_present={}, \
+                 depth_read_pending={}",
+                px, py, w, h,
+                px < w && py < h,
+                self.depth_texture.is_some(),
+                self.depth_staging_buffer.is_some(),
+                self.depth_read_pending,
+            );
+        }
         if px >= w || py >= h {
+            if _r5_throttle {
+                eprintln!(
+                    "[BRUSH-DBG] depth-pick-raw: pixel=({}, {}), depth_value=None (out-of-bounds)",
+                    px, py,
+                );
+            }
             return None;
         }
         let depth_tex = self.depth_texture.as_ref()?;
@@ -1229,6 +1310,20 @@ impl ViewportRenderer {
             self.depth_read_pending = true;
         }
 
+        // [INSTRUMENTATION Round 5 T8.A — Mediator-Brush-Diagnostic-Round-5-Instrumentation.A 2026-05-07]
+        // Log final return value (Option<f32>). Same throttle key as entry log.
+        if _r5_throttle {
+            match cached_depth {
+                Some(v) => eprintln!(
+                    "[BRUSH-DBG] depth-pick-raw: pixel=({}, {}), depth_value=Some({:.6})",
+                    px, py, v
+                ),
+                None => eprintln!(
+                    "[BRUSH-DBG] depth-pick-raw: pixel=({}, {}), depth_value=None (cached_depth_value still None — first frame or async not ready)",
+                    px, py
+                ),
+            }
+        }
         cached_depth
     }
 
