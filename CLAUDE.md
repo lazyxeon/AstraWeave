@@ -19,11 +19,14 @@ AstraWeave is a **scientific proof of concept**: a production-grade AI-native ga
 
 Make ONLY the changes requested. Do not refactor, rename, reorganize, or "improve" adjacent code unless specifically asked. Do not add features, abstractions, or "nice to haves" beyond the stated task.
 
+**Never build a second implementation of a logical system that already exists** (rendering path, vertex format, material pipeline, scheduler, tonemap chain, scene serializer). Before adding any such system, run `rg 'struct <Name>\|trait <Name>'` workspace-wide; if a peer implementation exists, extend it or surface the conflict to the user. The Fix-27 campaign and the editor-render-divergence audit each took weeks to unwind a duplicate pipeline that was created without this check.
+
 ### Error Handling Policy
 
 - **FIX ALL COMPILATION ERRORS** — zero tolerance. Never leave broken code.
 - **Warnings may be deferred** — document for future cleanup.
 - Run `cargo check -p <crate>` after **every** code change. This is mandatory.
+- **Never discard `Result` on user-facing fallible operations** (asset I/O, GPU state, file ops, prefab/scene reload, watcher creation). Use `?.context("…")` or a named recovery function. `let _ =` and `.ok()` on such calls are forbidden — they produced 12 CRITICAL + 18 HIGH editor-audit findings where features silently no-op'd.
 
 ---
 
@@ -47,6 +50,14 @@ Make ONLY the changes requested. Do not refactor, rename, reorganize, or "improv
 5. `cargo fmt --all`
 6. `cargo clippy -p <crate> --all-features -- -D warnings`
 7. Run `hello_companion` or `unified_showcase` for integration validation
+
+### Integration Completeness (before declaring work complete)
+
+A feature is incomplete until it is wired end-to-end. Before marking any task done, verify all three:
+
+1. **Production caller exists.** Every new public type, function, or module must have ≥1 non-test, non-feature-gated call site. Run `rg '<Name>::new\|<fn>\(' --type rust -g '!*test*' -g '!benches/*'`. Zero matches = dormant code (this is how `ParallelSchedule`, the render-graph DAG, `AdvancedErosionSimulator`, and `RegionalArchetypePanel` all shipped — and were later removed or rewritten).
+2. **All registration surfaces touched.** When adding an enum variant, panel type, component, or system, list every match arm, registry, and initializer in a comment first. After editing, `cargo check` must pass without exhaustiveness warnings AND `rg <new_name>` must show every site updated. Panel registration alone has 11 surfaces — the F.5-paint diagnostic is the canonical failure.
+3. **Every UI/API-exposed config field is read.** A field that is settable but never observed downstream is a bug. Confirm with a grep for the field name in the consuming subsystem before completion.
 
 ### Build Strategy
 
@@ -312,10 +323,10 @@ Any new or modified `unsafe` code **MUST** pass both verification pipelines:
 2. **Only parallelize >5ms workloads** (Rayon overhead ~50-100 us)
 3. **Trust glam auto-vectorization** (80-85% of hand-written AVX2)
 4. **Cache locality cascades**: Spatial hash improved ALL systems 9-17%
-5. **API verification first**: Always read actual struct definitions before generating code
+5. **API verification first**: Read actual struct definitions AND `rg 'struct <Name>'` workspace-wide for parallel definitions before generating code (dual TerrainVertex / shadow-layout / FastPreview pipelines each cost multi-day cleanups)
 6. **Case sensitivity matters**: snake_case vs PascalCase mismatch caused 100% false positives
-7. **Debug early**: One debug log revealed a critical validation bug
-8. **Production first**: Working demo over 100% test coverage
+7. **Silent failures cost weeks**: `let _ =` and `.ok()` on `Result` hide the bugs that produce the longest debugging sessions (12 CRITICAL editor findings traced here)
+8. **Wired beats tested**: A subsystem with passing tests and zero production callers is dormant code, not a feature — verify via the Integration Completeness checklist
 
 ### Documentation Organization
 
@@ -355,4 +366,4 @@ Read these when you need deeper context. **Do not ask the user for information t
 
 ---
 
-**Version**: 0.10.0 | **Rust**: 1.89.0 | **License**: MIT | **Status**: Miri + Kani Validated
+**Version**: 0.10.1 | **Rust**: 1.89.0 | **License**: MIT | **Status**: Miri + Kani Validated
