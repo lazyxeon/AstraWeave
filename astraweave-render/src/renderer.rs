@@ -5224,9 +5224,17 @@ fn vs(input: VSIn) -> VSOut {
         Ok(())
     }
 
+    /// Render the scene into the given color target.
+    ///
+    /// `depth_view`: optional caller-provided depth attachment. When `Some(v)`, terrain + sky
+    /// passes write depth into `v` (compatible Depth32Float texture required); enables external
+    /// consumers (e.g., editor depth-pick) to read terrain depth post-render. When `None`, falls
+    /// back to internal `self.depth.view` (preserves prior behavior for non-editor callers).
+    /// See Sub-phase 3 Mediator Brush Real-Fix per Round-5-Closure 569415a7a §12 Option (a).
     pub fn draw_into(
         &mut self,
         view: &wgpu::TextureView,
+        depth_view: Option<&wgpu::TextureView>,
         enc: &mut wgpu::CommandEncoder,
     ) -> Result<()> {
         // --- GPU timestamp profiling: poll previous frame, begin new frame, pre-allocate ---
@@ -5510,7 +5518,8 @@ fn vs(input: VSIn) -> VSOut {
                 &self.device,
                 enc,
                 &self.hdr_view,
-                &self.depth.view,
+                // Real-Fix.A: route to caller-provided depth when Some, else internal fallback.
+                depth_view.unwrap_or(&self.depth.view),
                 vp_sky,
                 &self.queue,
                 sky_tex,
@@ -5618,7 +5627,8 @@ fn vs(input: VSIn) -> VSOut {
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth.view,
+                    // Real-Fix.A: route to caller-provided depth when Some, else internal fallback.
+                    view: depth_view.unwrap_or(&self.depth.view),
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Load, // Load sky depth (should be far plane)
                         store: wgpu::StoreOp::Store,
@@ -6193,7 +6203,8 @@ fn vs(input: VSIn) -> VSOut {
             });
 
         // First render the 3D scene into the frame (draw_into posts to view)
-        self.draw_into(&view, &mut enc)?;
+        // Real-Fix.A: pass None — internal Renderer::render path uses internal depth fallback.
+        self.draw_into(&view, None, &mut enc)?;
 
         // Then allow caller to composite additional passes (e.g., egui)
         f(

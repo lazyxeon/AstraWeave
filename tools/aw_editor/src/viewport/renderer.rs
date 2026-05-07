@@ -475,8 +475,13 @@ impl ViewportRenderer {
             if let Some(adapter) = self.engine_adapter.as_mut() {
                 adapter.update_camera(camera);
                 adapter.feed_entities(world, &self.entity_mesh_map, &self.selected_entities);
+                // Real-Fix.A per Round-5-Closure 569415a7a §12 Option (a):
+                // pass self.depth_view as the depth attachment so terrain + sky passes
+                // write terrain depth into the same texture read_depth_at_pixel samples.
+                // Resolves Mechanism 1 (wrong texture) + latent overlay-vs-terrain
+                // depth-test bug self-resolves as side effect.
                 adapter
-                    .render_to_texture(scene_target_view, &mut encoder)
+                    .render_to_texture(scene_target_view, Some(depth_view), &mut encoder)
                     .context("Engine render failed")?;
             } else {
                 // Headless/fallback: clear to dark background when engine adapter unavailable

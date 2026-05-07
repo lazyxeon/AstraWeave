@@ -898,14 +898,22 @@ impl EngineRenderAdapter {
         }
     }
 
+    /// Render the scene into the given color target.
+    ///
+    /// `depth_view`: optional caller-provided depth attachment. When `Some(v)`, terrain + sky
+    /// passes write depth into `v` (compatible Depth32Float texture required); enables external
+    /// consumers (e.g., editor depth-pick at viewport/renderer.rs:read_depth_at_pixel) to read
+    /// terrain depth post-render. When `None`, falls back to internal depth target.
+    /// See Sub-phase 3 Mediator Brush Real-Fix per Round-5-Closure 569415a7a §12 Option (a).
     pub fn render_to_texture(
         &mut self,
         target: &wgpu::TextureView,
+        depth_view: Option<&wgpu::TextureView>,
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<()> {
         let t0 = std::time::Instant::now();
         self.renderer
-            .draw_into(target, encoder)
+            .draw_into(target, depth_view, encoder)
             .context("Engine draw_into failed")?;
         let elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0;
 

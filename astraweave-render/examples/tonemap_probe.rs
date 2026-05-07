@@ -355,7 +355,7 @@ async fn probe(
     // frame. Both go through the same passthrough path so the observation
     // is the second frame.
     renderer
-        .draw_into(&probe_view, &mut encoder)
+        .draw_into(&probe_view, None, &mut encoder)
         .context("warm-up draw_into failed")?;
     queue.submit(std::iter::once(encoder.finish()));
 
@@ -364,7 +364,7 @@ async fn probe(
         label: Some("tonemap_probe measurement encoder"),
     });
     renderer
-        .draw_into(&probe_view, &mut encoder)
+        .draw_into(&probe_view, None, &mut encoder)
         .context("measurement draw_into failed")?;
 
     encoder.copy_texture_to_buffer(

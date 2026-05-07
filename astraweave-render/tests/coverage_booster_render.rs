@@ -574,7 +574,7 @@ async fn test_renderer_full_pipeline() {
         });
 
     // Execute the main rendering logic
-    let _ = renderer.draw_into(&view, &mut encoder);
+    let _ = renderer.draw_into(&view, None, &mut encoder);
 
     // Submit (optional, but good for coverage of queue logic)
     renderer.queue().submit(std::iter::once(encoder.finish()));
@@ -945,7 +945,7 @@ async fn test_render_loop_and_materials() {
             label: Some("test-encoder"),
         });
 
-    renderer.draw_into(&target_view, &mut encoder).unwrap();
+    renderer.draw_into(&target_view, None, &mut encoder).unwrap();
     renderer.queue().submit(std::iter::once(encoder.finish()));
     let _ = renderer.device().poll(wgpu::MaintainBase::Wait);
     println!("Renderer::draw_into tested.");
