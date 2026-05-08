@@ -308,8 +308,7 @@ impl TerrainHeightGrid {
         // get a usable grid and dense meshes don't blow the memory cap.
         let area = extent_x * extent_z;
         let density_cell = (area / total_verts as f32).sqrt();
-        let mut cell_size =
-            density_cell.clamp(Self::MIN_CELL_SIZE, Self::MAX_CELL_SIZE);
+        let mut cell_size = density_cell.clamp(Self::MIN_CELL_SIZE, Self::MAX_CELL_SIZE);
 
         let compute_dims = |cs: f32| -> (usize, usize) {
             let w = ((extent_x / cs).ceil() as usize + 1).max(2);
@@ -319,9 +318,7 @@ impl TerrainHeightGrid {
         let (mut width, mut height) = compute_dims(cell_size);
 
         // Enforce the memory cap by inflating cell_size if necessary.
-        while width.saturating_mul(height) > Self::MAX_CELLS
-            && cell_size < Self::MAX_CELL_SIZE
-        {
+        while width.saturating_mul(height) > Self::MAX_CELLS && cell_size < Self::MAX_CELL_SIZE {
             cell_size = (cell_size * 2.0).min(Self::MAX_CELL_SIZE);
             let (w, h) = compute_dims(cell_size);
             width = w;
@@ -521,9 +518,7 @@ fn infer_surface_grid_dim(vertex_count: usize) -> Option<usize> {
 fn filter_surface_triangles(indices: &[u32], surface_vert_count: u32) -> Vec<u32> {
     let mut out = Vec::with_capacity(indices.len());
     for tri in indices.chunks_exact(3) {
-        if tri[0] < surface_vert_count
-            && tri[1] < surface_vert_count
-            && tri[2] < surface_vert_count
+        if tri[0] < surface_vert_count && tri[1] < surface_vert_count && tri[2] < surface_vert_count
         {
             out.extend_from_slice(tri);
         }
@@ -876,8 +871,7 @@ impl EngineRenderAdapter {
         // rate-limit refreshes to at most once per 250 ms during sustained
         // motion to keep frame times stable.
         const LOD_REFRESH_POSITION_THRESHOLD: f32 = 8.0;
-        const LOD_REFRESH_MIN_INTERVAL: std::time::Duration =
-            std::time::Duration::from_millis(250);
+        const LOD_REFRESH_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
         let position_delta = self.camera_position - self.scatter_lod_camera_pos;
         let exceeded_distance = position_delta.length_squared()
             > LOD_REFRESH_POSITION_THRESHOLD * LOD_REFRESH_POSITION_THRESHOLD;
@@ -1454,8 +1448,7 @@ impl EngineRenderAdapter {
                         })
                         .collect();
 
-                    let mut gpu_material =
-                        astraweave_render::TerrainMaterialGpu::default();
+                    let mut gpu_material = astraweave_render::TerrainMaterialGpu::default();
                     // Each biome is one layer (one albedo texture). Set the
                     // per-layer material factors so roughness/metallic come
                     // from the neutral ORM map unchanged.
@@ -1466,9 +1459,7 @@ impl EngineRenderAdapter {
                         layer.texture_indices = [i as u32, i as u32, i as u32, i as u32];
                     }
 
-                    if let Err(e) =
-                        self.renderer.set_terrain_materials(&gpu_material, &layers)
-                    {
+                    if let Err(e) = self.renderer.set_terrain_materials(&gpu_material, &layers) {
                         tracing::warn!(
                             target: "aw_editor::viewport::terrain_forward",
                             "Phase 1.E.4 set_terrain_materials failed: {e:#}"
@@ -2442,16 +2433,20 @@ impl EngineRenderAdapter {
         let surface_indices = filter_surface_triangles(indices, surface_vert_count);
 
         let chunk_key = chunk_index as u64;
+        // Real-Fix.D 2026-05-08: builder now produces NUM_SPLAT_MAPS=8 splat
+        // textures (was 2). Convert Vec<Vec<u8>> to &[&[u8]].
+        let splat_refs: Vec<&[u8]> = splat_maps.splats.iter().map(|v| v.as_slice()).collect();
         self.renderer
             .upload_terrain_chunk(
                 chunk_key,
                 &splat_vertices,
                 &surface_indices,
-                &splat_maps.splat_0,
-                &splat_maps.splat_1,
+                &splat_refs,
                 (splat_maps.width, splat_maps.height),
             )
-            .map_err(|e| anyhow::anyhow!("upload_terrain_chunk failed for chunk {chunk_key}: {e:#}"))?;
+            .map_err(|e| {
+                anyhow::anyhow!("upload_terrain_chunk failed for chunk {chunk_key}: {e:#}")
+            })?;
 
         Ok(())
     }
@@ -2496,8 +2491,7 @@ impl EngineRenderAdapter {
         // HashMap which IS read at render time, so brush modifications
         // become visible.
         #[cfg(feature = "terrain-splat-arrays")]
-        if let Err(e) =
-            self.upload_or_update_terrain_chunk_forward(chunk_index, vertices, &indices)
+        if let Err(e) = self.upload_or_update_terrain_chunk_forward(chunk_index, vertices, &indices)
         {
             tracing::warn!(
                 target: "aw_editor::viewport::terrain_forward",
@@ -3579,7 +3573,9 @@ impl EngineRenderAdapter {
     /// subdirectories under this root on first bake.
     #[cfg(feature = "impostor-bake")]
     fn default_impostor_cache_root() -> std::path::PathBuf {
-        std::path::PathBuf::from("assets").join("cache").join("impostors")
+        std::path::PathBuf::from("assets")
+            .join("cache")
+            .join("impostors")
     }
 
     /// Retire every impostor pass currently installed on the renderer
@@ -3701,14 +3697,21 @@ impl EngineRenderAdapter {
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("impostor registry not initialised"))?;
 
-        let spec = ImpostorAtlasSpec::uniform(atlas_width, atlas_height, angle_count, &[species_name]);
+        let spec =
+            ImpostorAtlasSpec::uniform(atlas_width, atlas_height, angle_count, &[species_name]);
 
         // Clone cheap Arc-backed device/queue handles so the bake closure can
         // own them without conflicting with `registry`'s &mut borrow on self.
         let bake_device = device_clone.clone();
         let bake_queue = queue_clone.clone();
         let loaded = registry.ensure(&hash, &spec, move |s| {
-            bake_primitive_pixels(&bake_device, &bake_queue, primitive_full_mesh, s, species_name)
+            bake_primitive_pixels(
+                &bake_device,
+                &bake_queue,
+                primitive_full_mesh,
+                s,
+                species_name,
+            )
         })?;
 
         let pass = ImpostorPass::new(
@@ -3978,11 +3981,11 @@ mod tests {
         assert_eq!(infer_surface_grid_dim(vertex_count), Some(129));
 
         // Smaller cases to exercise the algorithm.
-        assert_eq!(infer_surface_grid_dim(2 * 2 + 4 * 2), Some(2));       // 12
-        assert_eq!(infer_surface_grid_dim(3 * 3 + 4 * 3), Some(3));       // 21
-        assert_eq!(infer_surface_grid_dim(4 * 4 + 4 * 4), Some(4));       // 32
-        assert_eq!(infer_surface_grid_dim(17 * 17 + 4 * 17), Some(17));   // 357
-        assert_eq!(infer_surface_grid_dim(65 * 65 + 4 * 65), Some(65));   // 4485
+        assert_eq!(infer_surface_grid_dim(2 * 2 + 4 * 2), Some(2)); // 12
+        assert_eq!(infer_surface_grid_dim(3 * 3 + 4 * 3), Some(3)); // 21
+        assert_eq!(infer_surface_grid_dim(4 * 4 + 4 * 4), Some(4)); // 32
+        assert_eq!(infer_surface_grid_dim(17 * 17 + 4 * 17), Some(17)); // 357
+        assert_eq!(infer_surface_grid_dim(65 * 65 + 4 * 65), Some(65)); // 4485
         assert_eq!(infer_surface_grid_dim(257 * 257 + 4 * 257), Some(257)); // 67077
     }
 
@@ -4023,11 +4026,8 @@ mod tests {
         // skirt triangles. Surface vertex count = 4.
         let indices: Vec<u32> = vec![
             // Surface triangles — all indices < 4.
-            0, 1, 2,
-            1, 3, 2,
-            // Skirt triangles — each has a corner at index 4 or 5.
-            0, 4, 1,
-            1, 4, 5,
+            0, 1, 2, 1, 3, 2, // Skirt triangles — each has a corner at index 4 or 5.
+            0, 4, 1, 1, 4, 5,
         ];
         let out = filter_surface_triangles(&indices, 4);
         assert_eq!(out, vec![0, 1, 2, 1, 3, 2]);
@@ -4038,10 +4038,10 @@ mod tests {
         // Skirts interleaved with surface triangles — the filter must
         // drop the right ones regardless of ordering.
         let indices: Vec<u32> = vec![
-            0, 1, 2,  // surface
-            0, 4, 1,  // skirt
-            2, 3, 0,  // surface
-            1, 5, 4,  // skirt
+            0, 1, 2, // surface
+            0, 4, 1, // skirt
+            2, 3, 0, // surface
+            1, 5, 4, // skirt
         ];
         let out = filter_surface_triangles(&indices, 4);
         assert_eq!(out, vec![0, 1, 2, 2, 3, 0]);
@@ -4066,9 +4066,9 @@ mod tests {
         }
         let out = filter_surface_triangles(&indices, 25);
         assert_eq!(out.len(), 32 * 3);
-        assert!(out.chunks_exact(3).all(|t| {
-            t[0] < 25 && t[1] < 25 && t[2] < 25
-        }));
+        assert!(out
+            .chunks_exact(3)
+            .all(|t| { t[0] < 25 && t[1] < 25 && t[2] < 25 }));
     }
 
     #[test]
@@ -4234,16 +4234,8 @@ mod tests {
         // Real-Fix.C: vertex weights placed in material_* slots; biome
         // aggregator populated from material_ids 0-7 layers in add_vertex.
         let vertices = vec![
-            terrain_vertex(
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-            ),
-            terrain_vertex(
-                [4.0, 2.0, 8.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-            ),
+            terrain_vertex([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]),
+            terrain_vertex([4.0, 2.0, 8.0], [1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]),
         ];
 
         let chunk = EngineRenderAdapter::convert_terrain_chunk(&vertices, &[0, 1, 0]);
@@ -4257,8 +4249,9 @@ mod tests {
         let mut expected_material_weights = [0.0; 22];
         expected_material_weights[0] = 1.0;
         expected_material_weights[1] = 1.0;
-        let expected_material = weighted_palette_tint(&expected_material_weights, &TERRAIN_MATERIAL_TINTS)
-            .expect("expected material tint");
+        let expected_material =
+            weighted_palette_tint(&expected_material_weights, &TERRAIN_MATERIAL_TINTS)
+                .expect("expected material tint");
         let expected_tint = blend_tints(expected_biome, expected_material, 0.65);
 
         assert_eq!(chunk.indices, vec![0, 1, 0]);
@@ -4303,11 +4296,7 @@ mod tests {
     #[test]
     fn height_grid_build_returns_none_for_degenerate_extent() {
         // All vertices at the same XZ — zero extent on both axes.
-        let chunk = make_chunk(vec![
-            [5.0, 1.0, 5.0],
-            [5.0, 2.0, 5.0],
-            [5.0, 3.0, 5.0],
-        ]);
+        let chunk = make_chunk(vec![[5.0, 1.0, 5.0], [5.0, 2.0, 5.0], [5.0, 3.0, 5.0]]);
         assert!(TerrainHeightGrid::build(std::slice::from_ref(&chunk)).is_none());
     }
 
@@ -4364,7 +4353,10 @@ mod tests {
         // All samples should be within the ramp range [0, 7] extended by
         // at most one cell for max-Y rasterisation.
         for y in [y_low, y_mid, y_high] {
-            assert!((0.0..=8.0).contains(&y), "sample {y} outside expected range");
+            assert!(
+                (0.0..=8.0).contains(&y),
+                "sample {y} outside expected range"
+            );
         }
     }
 
@@ -4414,8 +4406,8 @@ mod tests {
             [5.0, 5.0, 5.0],
         ];
         let chunk = make_chunk(positions);
-        let grid = TerrainHeightGrid::build(std::slice::from_ref(&chunk))
-            .expect("grid should build");
+        let grid =
+            TerrainHeightGrid::build(std::slice::from_ref(&chunk)).expect("grid should build");
         let y = grid.sample(0.05, 0.05).expect("sample near origin");
         assert!(y >= 8.9, "expected max-Y ~9.0, got {y}");
     }

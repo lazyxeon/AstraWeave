@@ -1,11 +1,16 @@
-// pbr_terrain.wgsl — 8-layer PBR terrain splatting with triplanar projection
+// pbr_terrain.wgsl — 32-layer PBR terrain splatting with triplanar projection
 //
-// Supports up to 8 material layers blended via splat maps (2 × RGBA textures).
+// Supports up to 32 material layers blended via splat maps (8 × RGBA textures).
 // Features:
 //   - Height-based blending for natural transitions
 //   - Triplanar projection for steep slopes (avoids UV stretching)
 //   - Reoriented Normal Mapping (RNM) for correct normal blending
 //   - Per-layer UV scaling and PBR material properties
+//
+// Real-Fix.D 2026-05-08: bumped from 8 to 32 layers + 2 to 8 splat textures
+// per Andrew-gate decision (h) Option D-2 (canonical material library). The
+// 32-layer cap matches `astraweave_render::MAX_TERRAIN_LAYERS` and is the
+// canonical authority for terrain layer capacity at every boundary.
 
 // ============================================================================
 // Uniforms
@@ -22,9 +27,12 @@ struct TerrainLayer {
 }
 
 struct TerrainParams {
-    layers: array<TerrainLayer, 8>,
-    splat_map_index_0: u32,   // R=layer0..A=layer3
-    splat_map_index_1: u32,   // R=layer4..A=layer7
+    // Real-Fix.D 2026-05-08: 32 layers (was 8). Must match
+    // `astraweave_render::MAX_TERRAIN_LAYERS` and `TerrainMaterialGpu` byte-
+    // for-byte (32 × 64 = 2048 B for layer params + 64 B common = 2112 B).
+    layers: array<TerrainLayer, 32>,
+    splat_map_index_0: u32,   // dead field; preserved for byte layout
+    splat_map_index_1: u32,   // dead field; preserved for byte layout
     splat_uv_scale:    f32,
     triplanar_enabled: u32,
     normal_blend_method: u32,
@@ -47,12 +55,20 @@ struct CameraUniforms {
 @group(0) @binding(0) var<uniform> camera: CameraUniforms;
 @group(1) @binding(0) var<uniform> terrain: TerrainParams;
 @group(2) @binding(0) var terrain_sampler: sampler;
-@group(2) @binding(1) var splat_map_0: texture_2d<f32>;
-@group(2) @binding(2) var splat_map_1: texture_2d<f32>;
-@group(2) @binding(3) var layer_albedo: texture_2d_array<f32>;
-@group(2) @binding(4) var layer_normal: texture_2d_array<f32>;
-@group(2) @binding(5) var layer_orm:    texture_2d_array<f32>;
-@group(2) @binding(6) var layer_height: texture_2d_array<f32>;
+// Real-Fix.D 2026-05-08: 8 splat textures (was 2) for 32-channel weights.
+// splat_map_i carries layers (i*4)..(i*4+3) in channels R..A.
+@group(2) @binding(1) var splat_map_0: texture_2d<f32>;   // layers 0..3
+@group(2) @binding(2) var splat_map_1: texture_2d<f32>;   // layers 4..7
+@group(2) @binding(3) var splat_map_2: texture_2d<f32>;   // layers 8..11
+@group(2) @binding(4) var splat_map_3: texture_2d<f32>;   // layers 12..15
+@group(2) @binding(5) var splat_map_4: texture_2d<f32>;   // layers 16..19
+@group(2) @binding(6) var splat_map_5: texture_2d<f32>;   // layers 20..23
+@group(2) @binding(7) var splat_map_6: texture_2d<f32>;   // layers 24..27
+@group(2) @binding(8) var splat_map_7: texture_2d<f32>;   // layers 28..31
+@group(2) @binding(9)  var layer_albedo: texture_2d_array<f32>;
+@group(2) @binding(10) var layer_normal: texture_2d_array<f32>;
+@group(2) @binding(11) var layer_orm:    texture_2d_array<f32>;
+@group(2) @binding(12) var layer_height: texture_2d_array<f32>;
 
 // ============================================================================
 // Vertex stage
@@ -175,20 +191,34 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let use_triplanar = terrain.triplanar_enabled != 0u
         && slope > (terrain.triplanar_slope_threshold / 90.0);
 
-    // Splat weights from two RGBA maps
+    // Splat weights from eight RGBA maps (Real-Fix.D 2026-05-08)
     let splat_uv = in.uv * terrain.splat_uv_scale;
     let splat0 = textureSample(splat_map_0, terrain_sampler, splat_uv);
     let splat1 = textureSample(splat_map_1, terrain_sampler, splat_uv);
+    let splat2 = textureSample(splat_map_2, terrain_sampler, splat_uv);
+    let splat3 = textureSample(splat_map_3, terrain_sampler, splat_uv);
+    let splat4 = textureSample(splat_map_4, terrain_sampler, splat_uv);
+    let splat5 = textureSample(splat_map_5, terrain_sampler, splat_uv);
+    let splat6 = textureSample(splat_map_6, terrain_sampler, splat_uv);
+    let splat7 = textureSample(splat_map_7, terrain_sampler, splat_uv);
 
-    var raw_weights: array<f32, 8>;
-    raw_weights[0] = splat0.r;
-    raw_weights[1] = splat0.g;
-    raw_weights[2] = splat0.b;
-    raw_weights[3] = splat0.a;
-    raw_weights[4] = splat1.r;
-    raw_weights[5] = splat1.g;
-    raw_weights[6] = splat1.b;
-    raw_weights[7] = splat1.a;
+    var raw_weights: array<f32, 32>;
+    raw_weights[0]  = splat0.r;  raw_weights[1]  = splat0.g;
+    raw_weights[2]  = splat0.b;  raw_weights[3]  = splat0.a;
+    raw_weights[4]  = splat1.r;  raw_weights[5]  = splat1.g;
+    raw_weights[6]  = splat1.b;  raw_weights[7]  = splat1.a;
+    raw_weights[8]  = splat2.r;  raw_weights[9]  = splat2.g;
+    raw_weights[10] = splat2.b;  raw_weights[11] = splat2.a;
+    raw_weights[12] = splat3.r;  raw_weights[13] = splat3.g;
+    raw_weights[14] = splat3.b;  raw_weights[15] = splat3.a;
+    raw_weights[16] = splat4.r;  raw_weights[17] = splat4.g;
+    raw_weights[18] = splat4.b;  raw_weights[19] = splat4.a;
+    raw_weights[20] = splat5.r;  raw_weights[21] = splat5.g;
+    raw_weights[22] = splat5.b;  raw_weights[23] = splat5.a;
+    raw_weights[24] = splat6.r;  raw_weights[25] = splat6.g;
+    raw_weights[26] = splat6.b;  raw_weights[27] = splat6.a;
+    raw_weights[28] = splat7.r;  raw_weights[29] = splat7.g;
+    raw_weights[30] = splat7.b;  raw_weights[31] = splat7.a;
 
     // Normalize weights for active layers
     let count = terrain.active_layer_count;
@@ -219,8 +249,8 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let ddx_xy = dpdx(in.world_pos.xy);
     let ddy_xy = dpdy(in.world_pos.xy);
 
-    // Sample height maps for height blending
-    var layer_heights: array<f32, 8>;
+    // Sample height maps for height blending (32 layers per Real-Fix.D)
+    var layer_heights: array<f32, 32>;
     for (var i: u32 = 0u; i < count; i++) {
         let layer = terrain.layers[i];
         let h_idx = layer.texture_indices.w;

@@ -157,9 +157,7 @@ impl EditorTerrainSplat {
         layers: &[LayerTextures<'_>],
     ) -> Result<()> {
         let Some(manager) = self.manager.as_mut() else {
-            anyhow::bail!(
-                "EditorTerrainSplat::upload_material called before initialize()"
-            );
+            anyhow::bail!("EditorTerrainSplat::upload_material called before initialize()");
         };
         manager.set_material(queue, gpu_material, layers)?;
         self.material_uploaded = true;
@@ -197,13 +195,16 @@ impl EditorTerrainSplat {
                 "EditorTerrainSplat::upload_chunk_from_vertices called before initialize()"
             );
         };
+        // Real-Fix.D 2026-05-08: builder produces NUM_SPLAT_MAPS=8 splat
+        // textures (was 2). Convert Vec<Vec<u8>> to &[&[u8]] for the
+        // manager's set_chunk_splat signature.
         let ChunkSplatMaps {
-            splat_0,
-            splat_1,
+            splats,
             width: w,
             height: h,
         } = build_chunk_splat_maps(vertices, width, height)?;
-        manager.set_chunk_splat(device, queue, chunk, &splat_0, &splat_1, (w, h))?;
+        let splat_refs: Vec<&[u8]> = splats.iter().map(|v| v.as_slice()).collect();
+        manager.set_chunk_splat(device, queue, chunk, &splat_refs, (w, h))?;
         self.chunk_count = manager.chunk_splat_count();
         Ok(())
     }

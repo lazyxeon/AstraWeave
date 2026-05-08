@@ -169,58 +169,14 @@ impl WeatherKind {
 pub use crate::terrain_integration::ScatterPlacement;
 
 // ─── Material Constants ──────────────────────────────────────────────────────
+//
+// Real-Fix.D 2026-05-08: re-exported from `astraweave_render::material_library`
+// per Andrew-gate decision (h) Option D-2 (canonical material library).
+// Identity unified at the UI/renderer boundary; both UI panel material list
+// AND renderer texture-array allocation derive from the same canonical
+// source. Use `astraweave_render::MaterialLibrary` for new code.
 
-/// Canonical material names matching texture array layer ordering.
-/// Layers 0-7 match biome indices for backward compatibility.
-pub const MATERIAL_NAMES: [&str; 22] = [
-    "grass",         //  0: Grassland biome
-    "sand",          //  1: Desert biome (also Beach via remap)
-    "forest_floor",  //  2: Forest biome
-    "mountain_rock", //  3: Mountain biome
-    "snow",          //  4: Tundra biome
-    "mud",           //  5: Swamp biome
-    "wood_planks",   //  6: (was sand dupe; Beach biome remapped to 1)
-    "stone",         //  7: River biome
-    "rock_slate",    //  8: steep rock
-    "dirt",          //  9: dirt breakup
-    "cobblestone",   // 10
-    "cloth",         // 11
-    "default",       // 12
-    "gravel",        // 13
-    "ice",           // 14
-    "metal_rusted",  // 15
-    "moss",          // 16
-    "plaster",       // 17
-    "rock_lichen",   // 18
-    "roof_tile",     // 19
-    "tree_bark",     // 20
-    "tree_leaves",   // 21
-];
-
-pub const MATERIAL_DISPLAY_NAMES: [&str; 22] = [
-    "Grass",
-    "Sand",
-    "Forest Floor",
-    "Mountain Rock",
-    "Snow",
-    "Mud",
-    "Wood Planks",
-    "Stone",
-    "Rock Slate",
-    "Dirt",
-    "Cobblestone",
-    "Cloth",
-    "Default",
-    "Gravel",
-    "Ice",
-    "Metal Rusted",
-    "Moss",
-    "Plaster",
-    "Rock Lichen",
-    "Roof Tile",
-    "Tree Bark",
-    "Tree Leaves",
-];
+pub use astraweave_render::{MATERIAL_DISPLAY_NAMES, MATERIAL_NAMES};
 
 // ─── Asset Directory Discovery ───────────────────────────────────────────────
 

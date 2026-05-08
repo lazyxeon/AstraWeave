@@ -51,13 +51,16 @@ struct TerrainLayer {
 }
 
 // Terrain material UBO — mirrors `TerrainMaterialGpu` in
-// `astraweave-render/src/terrain_material.rs:54-87` (576 bytes).
-// Reused from the deferred pipeline; most fields (triplanar, normal_blend_method,
-// height_blend_enabled) are ignored by Phase 1's simplified blending path.
+// `astraweave-render/src/terrain_material.rs` (Real-Fix.D 2026-05-08:
+// 2112 bytes, was 576). Reused from the deferred pipeline; most fields
+// (triplanar, normal_blend_method, height_blend_enabled) are ignored by
+// Phase 1's simplified blending path.
 struct TerrainParams {
-    layers: array<TerrainLayer, 8>,
-    splat_map_index_0: u32,
-    splat_map_index_1: u32,
+    // Real-Fix.D 2026-05-08: 32 layers (was 8). Must match
+    // `astraweave_render::MAX_TERRAIN_LAYERS`.
+    layers: array<TerrainLayer, 32>,
+    splat_map_index_0: u32,   // dead field; preserved for byte layout
+    splat_map_index_1: u32,   // dead field; preserved for byte layout
     splat_uv_scale: f32,
     triplanar_enabled: u32,
     normal_blend_method: u32,
@@ -103,15 +106,23 @@ struct TerrainSceneEnv {
 @group(1) @binding(4) var layer_normal: texture_2d_array<f32>;
 @group(1) @binding(5) var layer_orm:    texture_2d_array<f32>;
 
-@group(2) @binding(0) var splat_map_0: texture_2d<f32>;
-@group(2) @binding(1) var splat_map_1: texture_2d<f32>;
+// Real-Fix.D 2026-05-08: 8 splat textures (was 2) for 32-channel weights.
+// splat_map_i carries layers (i*4)..(i*4+3) in channels R..A.
+@group(2) @binding(0) var splat_map_0: texture_2d<f32>;   // layers 0..3
+@group(2) @binding(1) var splat_map_1: texture_2d<f32>;   // layers 4..7
+@group(2) @binding(2) var splat_map_2: texture_2d<f32>;   // layers 8..11
+@group(2) @binding(3) var splat_map_3: texture_2d<f32>;   // layers 12..15
+@group(2) @binding(4) var splat_map_4: texture_2d<f32>;   // layers 16..19
+@group(2) @binding(5) var splat_map_5: texture_2d<f32>;   // layers 20..23
+@group(2) @binding(6) var splat_map_6: texture_2d<f32>;   // layers 24..27
+@group(2) @binding(7) var splat_map_7: texture_2d<f32>;   // layers 28..31
 // Phase 1 re-cleanup Issue 1 fix: dedicated ClampToEdge sampler for per-
 // chunk splat textures. `terrain_sampler` (group 1 binding 2) uses Repeat
 // addressing which tiles layer textures correctly but wraps splat UVs
 // at `uv == 1.0`, producing a linear-blend of the chunk's rightmost and
 // leftmost biome weights at every chunk boundary — the root cause of the
 // visible chunk seam grid.
-@group(2) @binding(2) var splat_sampler: sampler;
+@group(2) @binding(8) var splat_sampler: sampler;
 
 // ============================================================================
 // Vertex stage
@@ -161,22 +172,37 @@ fn apply_terrain_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {
 
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
-    // 1. Sample both splat textures at the fragment UV.
-    //    Use the dedicated ClampToEdge `splat_sampler`, not the tiling
-    //    `terrain_sampler` — see the binding's comment for the rationale.
+    // 1. Sample all 8 splat textures at the fragment UV (Real-Fix.D
+    //    2026-05-08; was 2). Use the dedicated ClampToEdge `splat_sampler`,
+    //    not the tiling `terrain_sampler` — see the binding's comment for
+    //    the rationale.
     let splat_uv = in.uv * uTerrain.splat_uv_scale;
     let splat0 = textureSample(splat_map_0, splat_sampler, splat_uv);
     let splat1 = textureSample(splat_map_1, splat_sampler, splat_uv);
+    let splat2 = textureSample(splat_map_2, splat_sampler, splat_uv);
+    let splat3 = textureSample(splat_map_3, splat_sampler, splat_uv);
+    let splat4 = textureSample(splat_map_4, splat_sampler, splat_uv);
+    let splat5 = textureSample(splat_map_5, splat_sampler, splat_uv);
+    let splat6 = textureSample(splat_map_6, splat_sampler, splat_uv);
+    let splat7 = textureSample(splat_map_7, splat_sampler, splat_uv);
 
-    var raw_weights: array<f32, 8>;
-    raw_weights[0] = splat0.r;
-    raw_weights[1] = splat0.g;
-    raw_weights[2] = splat0.b;
-    raw_weights[3] = splat0.a;
-    raw_weights[4] = splat1.r;
-    raw_weights[5] = splat1.g;
-    raw_weights[6] = splat1.b;
-    raw_weights[7] = splat1.a;
+    var raw_weights: array<f32, 32>;
+    raw_weights[0]  = splat0.r;  raw_weights[1]  = splat0.g;
+    raw_weights[2]  = splat0.b;  raw_weights[3]  = splat0.a;
+    raw_weights[4]  = splat1.r;  raw_weights[5]  = splat1.g;
+    raw_weights[6]  = splat1.b;  raw_weights[7]  = splat1.a;
+    raw_weights[8]  = splat2.r;  raw_weights[9]  = splat2.g;
+    raw_weights[10] = splat2.b;  raw_weights[11] = splat2.a;
+    raw_weights[12] = splat3.r;  raw_weights[13] = splat3.g;
+    raw_weights[14] = splat3.b;  raw_weights[15] = splat3.a;
+    raw_weights[16] = splat4.r;  raw_weights[17] = splat4.g;
+    raw_weights[18] = splat4.b;  raw_weights[19] = splat4.a;
+    raw_weights[20] = splat5.r;  raw_weights[21] = splat5.g;
+    raw_weights[22] = splat5.b;  raw_weights[23] = splat5.a;
+    raw_weights[24] = splat6.r;  raw_weights[25] = splat6.g;
+    raw_weights[26] = splat6.b;  raw_weights[27] = splat6.a;
+    raw_weights[28] = splat7.r;  raw_weights[29] = splat7.g;
+    raw_weights[30] = splat7.b;  raw_weights[31] = splat7.a;
 
     // 2. Normalize weights over the active layer count.
     let count = uTerrain.active_layer_count;

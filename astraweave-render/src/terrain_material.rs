@@ -1,9 +1,15 @@
 // Phase PBR-F: Terrain Layering System with Splat Maps and Triplanar Projection
 // Rust-side terrain material definitions for multi-layer terrain rendering
+//
+// Real-Fix.D 2026-05-08: bumped layer count from 8 to 32 per Andrew-gate
+// decision (h) Option D-2 (canonical material library). The capacity is now
+// driven by `crate::material_library::MAX_TERRAIN_LAYERS` (= 32).
 
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+use crate::material_library::MAX_TERRAIN_LAYERS;
 
 /// GPU representation of a single terrain layer
 /// Size: 64 bytes (16-byte aligned)
@@ -49,13 +55,19 @@ impl Default for TerrainLayerGpu {
     }
 }
 
-/// Extended terrain material supporting up to 8 layers with splat map blending
-/// Size: 576 bytes (512 for layers + 64 for common params)
+/// Extended terrain material supporting up to 32 layers with splat map blending.
+/// Size: 2112 bytes (32 × 64 = 2048 for layers + 64 for common params).
+///
+/// Real-Fix.D 2026-05-08: bumped from 8 to 32 layers (canonical capacity from
+/// `material_library::MAX_TERRAIN_LAYERS`). WGSL shaders
+/// (`pbr_terrain.wgsl`, `pbr_terrain_forward.wgsl`) declare matching
+/// `array<TerrainLayer, 32>`.
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct TerrainMaterialGpu {
-    /// Eight terrain layers (grass, rock, sand, snow, etc.)
-    pub layers: [TerrainLayerGpu; 8],
+    /// 32 terrain layers (canonical material slots; see
+    /// `material_library::MaterialLibrary`).
+    pub layers: [TerrainLayerGpu; MAX_TERRAIN_LAYERS as usize],
 
     /// Splat map 0 texture index (R=layer0, G=layer1, B=layer2, A=layer3)
     pub splat_map_index_0: u32,
@@ -89,7 +101,7 @@ pub struct TerrainMaterialGpu {
 impl Default for TerrainMaterialGpu {
     fn default() -> Self {
         Self {
-            layers: [TerrainLayerGpu::default(); 8],
+            layers: [TerrainLayerGpu::default(); MAX_TERRAIN_LAYERS as usize],
             splat_map_index_0: 0,
             splat_map_index_1: 0,
             splat_uv_scale: 1.0,
@@ -473,10 +485,15 @@ impl TerrainMaterialDesc {
         gpu_material.normal_blend_method = self.normal_blend_to_gpu();
         gpu_material.triplanar_slope_threshold = self.triplanar_slope_threshold;
         gpu_material.height_blend_enabled = if self.height_blend_enabled { 1 } else { 0 };
-        gpu_material.active_layer_count = self.layers.len().min(8) as u32;
+        gpu_material.active_layer_count = self.layers.len().min(MAX_TERRAIN_LAYERS as usize) as u32;
 
-        // Convert up to 8 layers
-        for (i, layer_desc) in self.layers.iter().take(8).enumerate() {
+        // Convert up to MAX_TERRAIN_LAYERS layers (Real-Fix.D 2026-05-08: 32)
+        for (i, layer_desc) in self
+            .layers
+            .iter()
+            .take(MAX_TERRAIN_LAYERS as usize)
+            .enumerate()
+        {
             let layer = &mut gpu_material.layers[i];
 
             // Texture indices
@@ -521,8 +538,10 @@ mod tests {
 
     #[test]
     fn test_terrain_material_size() {
-        // Verify TerrainMaterialGpu is exactly 576 bytes (8*64 + 64)
-        assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 576);
+        // Verify TerrainMaterialGpu is exactly 2112 bytes (32*64 + 64)
+        // Real-Fix.D 2026-05-08: was 576 bytes (8*64+64); canonical
+        // MAX_TERRAIN_LAYERS=32 grows the layer array.
+        assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 2112);
         assert_eq!(std::mem::align_of::<TerrainMaterialGpu>(), 16);
     }
 
@@ -637,7 +656,8 @@ mod tests {
     #[test]
     fn test_pod_zeroable_terrain_material() {
         // Verify we can create from bytes (Pod requirement)
-        let bytes = [0u8; 576];
+        // Real-Fix.D 2026-05-08: 2112 bytes (was 576).
+        let bytes = [0u8; 2112];
         let material: TerrainMaterialGpu = bytemuck::cast(bytes);
         assert_eq!(material.splat_uv_scale, 0.0);
     }
@@ -701,8 +721,13 @@ mod tests {
     }
 
     #[test]
-    fn test_more_than_four_layers() {
-        // EDGE CASE: More than 8 layers (should truncate to 8)
+    fn test_more_than_max_layers_truncates() {
+        // EDGE CASE: More than MAX_TERRAIN_LAYERS (=32) layers should truncate.
+        // Real-Fix.D 2026-05-08: was 8; canonical MAX_TERRAIN_LAYERS=32.
+        let mut layers = Vec::new();
+        for _ in 0..(MAX_TERRAIN_LAYERS as usize + 4) {
+            layers.push(TerrainLayerDesc::default());
+        }
         let desc = TerrainMaterialDesc {
             name: "many_layers".to_string(),
             biome: "complex".to_string(),
@@ -712,26 +737,15 @@ mod tests {
             triplanar_slope_threshold: 45.0,
             normal_blend_method: "rnm".to_string(),
             height_blend_enabled: true,
-            layers: vec![
-                TerrainLayerDesc::default(),
-                TerrainLayerDesc::default(),
-                TerrainLayerDesc::default(),
-                TerrainLayerDesc::default(),
-                TerrainLayerDesc::default(),
-                TerrainLayerDesc::default(),
-                TerrainLayerDesc::default(),
-                TerrainLayerDesc::default(),
-                TerrainLayerDesc::default(), // 9th layer (should be ignored)
-                TerrainLayerDesc::default(), // 10th layer (should be ignored)
-            ],
+            layers,
         };
 
         let resolver = |_: &PathBuf| -> u32 { 0 };
         let gpu = desc.to_gpu(&resolver);
 
-        // Only 8 layers should be in GPU struct
-        // (This is tested by not crashing and having exactly 8 layers in array)
-        assert_eq!(gpu.layers.len(), 8);
+        // Only MAX_TERRAIN_LAYERS layers should be in GPU struct.
+        assert_eq!(gpu.layers.len(), MAX_TERRAIN_LAYERS as usize);
+        assert_eq!(gpu.active_layer_count, MAX_TERRAIN_LAYERS);
     }
 
     #[test]

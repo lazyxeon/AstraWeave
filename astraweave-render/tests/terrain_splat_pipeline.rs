@@ -8,9 +8,15 @@
 
 use astraweave_render::{
     LayerTextures, TerrainMaterialConfig, TerrainMaterialGpu, TerrainMaterialManager,
-    TerrainSplatVertex, MAX_TERRAIN_LAYERS,
+    TerrainSplatVertex, MAX_TERRAIN_LAYERS, NUM_SPLAT_MAPS,
 };
 use wgpu::util::DeviceExt;
+
+/// Helper: build NUM_SPLAT_MAPS=8 splat slices of identical content.
+/// Real-Fix.D 2026-05-08: was 2 splats; bumped to 8 for 32-layer pipeline.
+fn make_splat_refs(buf: &[u8]) -> [&[u8]; NUM_SPLAT_MAPS] {
+    [buf, buf, buf, buf, buf, buf, buf, buf]
+}
 
 mod test_utils;
 
@@ -111,13 +117,14 @@ fn terrain_manager_registers_and_removes_chunk_splats() {
         };
         let mut manager = TerrainMaterialManager::new(&device, config).expect("manager");
 
-        // 8×8 RGBA8 splat maps.
+        // 8×8 RGBA8 splat maps × NUM_SPLAT_MAPS=8 slices.
         let map = vec![64u8; 8 * 8 * 4];
+        let splats = make_splat_refs(&map);
         manager
-            .set_chunk_splat(&device, &queue, 1, &map, &map, (8, 8))
+            .set_chunk_splat(&device, &queue, 1, &splats, (8, 8))
             .expect("chunk 1");
         manager
-            .set_chunk_splat(&device, &queue, 2, &map, &map, (8, 8))
+            .set_chunk_splat(&device, &queue, 2, &splats, (8, 8))
             .expect("chunk 2");
         assert_eq!(manager.chunk_splat_count(), 2);
         assert_eq!(manager.chunk_splat_dims(1), Some((8, 8)));
@@ -155,8 +162,9 @@ fn terrain_manager_full_pipeline_records_draw_without_validation_errors() {
             .set_material(&queue, &gpu_material, &layers)
             .expect("set_material");
         let map = vec![128u8; 4 * 4 * 4];
+        let splats = make_splat_refs(&map);
         manager
-            .set_chunk_splat(&device, &queue, 42, &map, &map, (4, 4))
+            .set_chunk_splat(&device, &queue, 42, &splats, (4, 4))
             .expect("chunk splat");
 
         // Update the camera so the UBO has finite values (prevents NaN warnings).
@@ -332,29 +340,40 @@ fn terrain_manager_forward_round_trip() {
         let scene = astraweave_render::TerrainSceneEnvGpu::default();
         manager.update_forward_scene(&queue, &scene);
 
-        // 3. Upload two small splat maps for one chunk.
+        // 3. Upload NUM_SPLAT_MAPS=8 small splat maps for one chunk
+        //    (Real-Fix.D 2026-05-08; was 2).
         let splat_bytes = vec![128u8; 8 * 8 * 4];
+        let splats = make_splat_refs(&splat_bytes);
         manager
-            .set_chunk_splat_forward(&device, &queue, 42, &splat_bytes, &splat_bytes, (8, 8))
+            .set_chunk_splat_forward(&device, &queue, 42, &splats, (8, 8))
             .expect("set_chunk_splat_forward");
         assert_eq!(manager.forward_chunk_count(), 1);
 
         // 4. Bad-dim error path.
+        let empty: [&[u8]; NUM_SPLAT_MAPS] = [&[]; NUM_SPLAT_MAPS];
         let err = manager
-            .set_chunk_splat_forward(&device, &queue, 43, &[], &[], (0, 8))
+            .set_chunk_splat_forward(&device, &queue, 43, &empty, (0, 8))
             .unwrap_err();
-        assert!(format!("{err}").contains("non-zero"), "unexpected error: {err}");
+        assert!(
+            format!("{err}").contains("non-zero"),
+            "unexpected error: {err}"
+        );
 
-        // 5. Payload size mismatch error path.
+        // 5. Payload size mismatch error path: pass slice with too-few bytes
+        //    in one position.
+        let short = &splat_bytes[..10];
+        let mismatched: [&[u8]; NUM_SPLAT_MAPS] = [
+            &splat_bytes,
+            short,
+            &splat_bytes,
+            &splat_bytes,
+            &splat_bytes,
+            &splat_bytes,
+            &splat_bytes,
+            &splat_bytes,
+        ];
         let err = manager
-            .set_chunk_splat_forward(
-                &device,
-                &queue,
-                44,
-                &splat_bytes,
-                &splat_bytes[..10],
-                (8, 8),
-            )
+            .set_chunk_splat_forward(&device, &queue, 44, &mismatched, (8, 8))
             .unwrap_err();
         assert!(
             format!("{err}").contains("payload mismatch"),

@@ -5597,13 +5597,10 @@ fn vs(input: VSIn) -> VSOut {
                 if let Some(tf) = self.terrain_forward.as_mut() {
                     tf.manager
                         .ensure_forward_pipeline(&self.device, color_format, depth_format);
-                    tf.manager.update_forward_camera(
-                        &self.queue,
-                        view_proj,
-                        light_dir,
-                        camera_pos,
-                    );
-                    tf.manager.update_forward_scene(&self.queue, &terrain_scene_gpu);
+                    tf.manager
+                        .update_forward_camera(&self.queue, view_proj, light_dir, camera_pos);
+                    tf.manager
+                        .update_forward_scene(&self.queue, &terrain_scene_gpu);
                 }
             }
         }
@@ -6022,50 +6019,42 @@ fn vs(input: VSIn) -> VSOut {
     /// on the next frame's draw. Requires `init_terrain_forward` to have
     /// been called.
     ///
-    /// `splat_0` and `splat_1` must each be `splat_dims.0 * splat_dims.1 * 4`
-    /// bytes of RGBA8 data, rasterized from per-vertex biome weights.
+    /// Real-Fix.D 2026-05-08: takes [`crate::material_library::NUM_SPLAT_MAPS`]
+    /// = 8 splat slices (was 2). Each must be `splat_dims.0 * splat_dims.1 * 4`
+    /// bytes of RGBA8 data; channel mapping `splats[i]` R..A → layers
+    /// `i*4+0..i*4+3`.
     #[cfg(feature = "terrain-splat-arrays")]
     pub fn upload_terrain_chunk(
         &mut self,
         key: u64,
         vertices: &[crate::terrain_material_manager::TerrainSplatVertex],
         indices: &[u32],
-        splat_0: &[u8],
-        splat_1: &[u8],
+        splats: &[&[u8]],
         splat_dims: (u32, u32),
     ) -> Result<()> {
         use wgpu::util::DeviceExt;
 
-        let tf = self
-            .terrain_forward
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!(
-                "terrain_forward not initialized; call init_terrain_forward first"
-            ))?;
+        let tf = self.terrain_forward.as_mut().ok_or_else(|| {
+            anyhow::anyhow!("terrain_forward not initialized; call init_terrain_forward first")
+        })?;
 
-        let vertex_buffer = self.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
+        let vertex_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("terrain-forward-chunk-vertices"),
                 contents: bytemuck::cast_slice(vertices),
                 usage: wgpu::BufferUsages::VERTEX,
-            },
-        );
-        let index_buffer = self.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
+            });
+        let index_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("terrain-forward-chunk-indices"),
                 contents: bytemuck::cast_slice(indices),
                 usage: wgpu::BufferUsages::INDEX,
-            },
-        );
+            });
 
-        tf.manager.set_chunk_splat_forward(
-            &self.device,
-            &self.queue,
-            key,
-            splat_0,
-            splat_1,
-            splat_dims,
-        )?;
+        tf.manager
+            .set_chunk_splat_forward(&self.device, &self.queue, key, splats, splat_dims)?;
 
         tf.chunks.insert(
             key,
@@ -6172,11 +6161,7 @@ fn vs(input: VSIn) -> VSOut {
     /// Call this per frame after [`Renderer::update_camera`] so the billboards
     /// pick the correct atlas cell based on the *current* camera direction.
     #[cfg(feature = "impostor-bake")]
-    pub fn update_all_impostor_cameras(
-        &mut self,
-        view_proj: glam::Mat4,
-        camera_pos: glam::Vec3,
-    ) {
+    pub fn update_all_impostor_cameras(&mut self, view_proj: glam::Mat4, camera_pos: glam::Vec3) {
         for pass in self.impostor_passes.values_mut() {
             pass.update_camera(&self.queue, view_proj, camera_pos);
         }

@@ -80,6 +80,7 @@ pub mod hiz_pyramid; // Shared Hi-Z min-depth pyramid for SSR/SSGI ray accelerat
 pub mod lumen; // Lumen Global Illumination orchestrator (Phase 5)
 pub mod material; // shared authored materials API + GPU arrays
 pub mod material_extended; // Phase PBR-E: Advanced materials (clearcoat, anisotropy, SSS, sheen, transmission)
+pub mod material_library; // Real-Fix.D 2026-05-08: canonical terrain material library (UI/renderer single source of truth)
 #[cfg(feature = "textures")]
 pub mod material_loader; // internal builder helpers
 #[cfg(any(feature = "gltf-assets", feature = "assets"))]
@@ -155,6 +156,12 @@ pub mod effects; // NEW
 pub mod gpu_erosion;
 pub mod gpu_particles; // GPU compute-based particle system
 pub mod grass_blade; // Procedural per-blade grass geometry rendering
+#[cfg(feature = "impostor-bake")]
+pub mod impostor_bake; // Phase 5.3: offline/lazy impostor atlas bake pipeline
+#[cfg(feature = "impostor-bake")]
+pub mod impostor_lod3; // Phase 5.3 T4: LOD3 live draw sampling pipeline
+#[cfg(feature = "impostor-bake")]
+pub mod impostor_pass; // Phase 5.3 T7 (stage 1): reusable LOD3 draw helper
 pub mod material_bindless; // Bindless texture array material system
 pub mod msaa; // MSAA anti-aliasing resources
 pub mod oit; // Weighted Blended Order-Independent Transparency
@@ -168,12 +175,6 @@ pub mod transparency; // Transparency depth sorting and render pass // Advanced 
 pub mod vegetation_gpu; // GPU-instanced vegetation scatter and frustum cull pipeline
 pub mod vegetation_interaction; // Entity proximity grass bending stamp system
 pub mod vegetation_lod; // Tree LOD chain with billboard/impostor support
-#[cfg(feature = "impostor-bake")]
-pub mod impostor_bake; // Phase 5.3: offline/lazy impostor atlas bake pipeline
-#[cfg(feature = "impostor-bake")]
-pub mod impostor_lod3; // Phase 5.3 T4: LOD3 live draw sampling pipeline
-#[cfg(feature = "impostor-bake")]
-pub mod impostor_pass; // Phase 5.3 T7 (stage 1): reusable LOD3 draw helper
 pub mod weather_gpu; // GPU-accelerated weather particle emitter configurations
 
 // GPU memory management
@@ -247,13 +248,19 @@ pub use surface_cache::{
 };
 pub use taa::TaaConfig;
 pub use temporal_upscale::{TemporalUpscalePass, UpscaleConfig, UpscaleQuality};
+// Note: `material_library::Material` is intentionally NOT re-exported at the
+// crate root to avoid colliding with `types::Material`. Access it via
+// `astraweave_render::material_library::Material` if a typed handle is needed.
+pub use material_library::{
+    MaterialLibrary, MATERIAL_DISPLAY_NAMES, MATERIAL_NAMES, MAX_TERRAIN_LAYERS, NUM_SPLAT_MAPS,
+};
 pub use terrain_material::{
     TerrainLayerDesc, TerrainLayerGpu, TerrainMaterialDesc, TerrainMaterialGpu,
 };
 #[cfg(feature = "terrain-splat-arrays")]
 pub use terrain_material_manager::{
     CameraForwardGpu, ChunkKey, LayerTextures, TerrainMaterialConfig, TerrainMaterialManager,
-    TerrainSceneEnvGpu, TerrainSplatVertex, MAX_TERRAIN_LAYERS,
+    TerrainSceneEnvGpu, TerrainSplatVertex,
 };
 pub use texture_streaming::{TextureStreamingManager, TextureStreamingStats};
 pub use transparency::{create_blend_state, BlendMode, TransparencyManager, TransparentInstance};

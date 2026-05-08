@@ -1,15 +1,19 @@
 //! Terrain splat-array material pipeline manager (Phase 2.2 — Issue #9 fix).
 //!
-//! Binds the 8-layer splat shader in `shaders/pbr_terrain.wgsl` (plus the
+//! Real-Fix.D 2026-05-08: bumped from 8 to 32 canonical layers + 2 to 8 splat
+//! textures per Andrew-gate decision (h) Option D-2 (canonical material
+//! library). Capacity now derives from `crate::material_library::MAX_TERRAIN_LAYERS`.
+//!
+//! Binds the 32-layer splat shader in `shaders/pbr_terrain.wgsl` (plus the
 //! companion vertex stage in `shaders/pbr_terrain_vs.wgsl`) into a complete
 //! render pipeline and owns the GPU resources required to draw multi-material
 //! terrain chunks:
 //!
 //! * Four `texture_2d_array<f32>` shared across all chunks — `layer_albedo`,
-//!   `layer_normal`, `layer_orm`, `layer_height`, each with up to 8 layers
+//!   `layer_normal`, `layer_orm`, `layer_height`, each with up to 32 layers
 //!   (configurable resolution via [`TerrainMaterialConfig`]).
-//! * Two per-chunk `texture_2d<f32>` splat maps (`splat_0` = RGBA weights for
-//!   layers 0..3, `splat_1` = RGBA weights for layers 4..7).
+//! * Eight per-chunk `texture_2d<f32>` splat maps (`splat_0` = RGBA weights
+//!   for layers 0..3, `splat_1` = layers 4..7, ..., `splat_7` = layers 28..31).
 //! * A single `TerrainMaterialGpu` uniform buffer describing the active layer
 //!   count, triplanar/height-blend settings, and per-layer material factors.
 //!
@@ -41,6 +45,7 @@ use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
+use crate::material_library::{MAX_TERRAIN_LAYERS, NUM_SPLAT_MAPS};
 use crate::terrain_material::TerrainMaterialGpu;
 
 /// Opaque identifier for a loaded terrain chunk splat pair.
@@ -48,9 +53,6 @@ use crate::terrain_material::TerrainMaterialGpu;
 /// The editor maps its logical chunk coordinates to `ChunkKey` values; the
 /// manager does not interpret the key beyond hash-lookup.
 pub type ChunkKey = u64;
-
-/// Maximum number of terrain layers supported by [`pbr_terrain.wgsl`].
-pub const MAX_TERRAIN_LAYERS: u32 = 8;
 
 /// Number of components per layer texture (RGBA8).
 const BYTES_PER_TEXEL: u32 = 4;
@@ -171,10 +173,13 @@ const TERRAIN_FORWARD_SHADER: &str = concat!(
     include_str!("../shaders/pbr_terrain_forward.wgsl"),
 );
 
-/// Per-chunk bind group storing the two splat maps (group 2 bindings 1 & 2).
+/// Per-chunk bind group storing the eight splat maps (group 2 bindings 1..8).
+///
+/// Real-Fix.D 2026-05-08: was 2 splat textures; now NUM_SPLAT_MAPS=8 to
+/// support 32 canonical material layers (4 channels per splat × 8 splats).
 struct ChunkSplat {
-    _splat_0: wgpu::Texture,
-    _splat_1: wgpu::Texture,
+    /// Held to keep the GPU textures alive while the bind group references them.
+    _splats: [wgpu::Texture; NUM_SPLAT_MAPS],
     bind_group: wgpu::BindGroup,
     dims: (u32, u32),
 }
@@ -368,8 +373,8 @@ pub struct TerrainMaterialManager {
 /// forward path is active; `chunk_splats` stays empty. A future
 /// optimization could share underlying textures between the two paths.
 struct ChunkSplatForward {
-    _splat_0: wgpu::Texture,
-    _splat_1: wgpu::Texture,
+    /// Held to keep the GPU textures alive while the bind group references them.
+    _splats: [wgpu::Texture; NUM_SPLAT_MAPS],
     bind_group: wgpu::BindGroup,
     #[allow(dead_code)] // reserved for introspection/tests
     dims: (u32, u32),
@@ -381,9 +386,7 @@ impl TerrainMaterialManager {
     /// The manager internally creates its own camera bind group layout (group 0)
     /// matching `CameraUniforms` in `pbr_terrain.wgsl`.
     pub fn new(device: &wgpu::Device, config: TerrainMaterialConfig) -> Result<Self> {
-        config
-            .validate()
-            .context("invalid TerrainMaterialConfig")?;
+        config.validate().context("invalid TerrainMaterialConfig")?;
 
         let shared = create_shared_resources(device, &config);
 
@@ -415,44 +418,31 @@ impl TerrainMaterialManager {
             }],
         });
 
+        // Real-Fix.D 2026-05-08: bumped from 2 to NUM_SPLAT_MAPS=8 splat
+        // textures + shifted layer-array bindings from 3..6 to 9..12 so the
+        // bindings align with `pbr_terrain.wgsl`.
+        let mut splat_entries = vec![
+            // 0: sampler (shared)
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ];
+        // 1..=NUM_SPLAT_MAPS: per-chunk splat textures
+        for slot in 0..NUM_SPLAT_MAPS as u32 {
+            splat_entries.push(splat_texture_entry(slot + 1));
+        }
+        // (NUM_SPLAT_MAPS+1)..=(NUM_SPLAT_MAPS+4): shared layer arrays
+        let array_base = NUM_SPLAT_MAPS as u32 + 1;
+        splat_entries.push(array_entry(array_base));
+        splat_entries.push(array_entry(array_base + 1));
+        splat_entries.push(array_entry(array_base + 2));
+        splat_entries.push(array_entry(array_base + 3));
         let splat_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("terrain-splat-arrays-bgl"),
-            entries: &[
-                // 0: sampler (shared)
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                // 1: splat_map_0 (per chunk)
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                // 2: splat_map_1 (per chunk)
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                // 3-6: layer arrays (albedo, normal, orm, height)
-                array_entry(3),
-                array_entry(4),
-                array_entry(5),
-                array_entry(6),
-            ],
+            entries: &splat_entries,
         });
 
         let terrain_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -475,8 +465,8 @@ impl TerrainMaterialManager {
 
         // ── Phase 1.E forward-pipeline bind group layouts ───────────────
         // Group 0 (camera): one uniform binding holding CameraForwardGpu (96 B).
-        let forward_camera_bgl = device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
+        let forward_camera_bgl =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("terrain-forward-camera-bgl"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -488,14 +478,13 @@ impl TerrainMaterialManager {
                     },
                     count: None,
                 }],
-            },
-        );
+            });
 
         // Group 1 (terrain): TerrainMaterialGpu UBO + TerrainSceneEnvGpu UBO +
         // sampler + 3 layer arrays (albedo, normal, orm). 6 bindings under
         // the default 8-per-group limit.
-        let forward_terrain_bgl = device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
+        let forward_terrain_bgl =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("terrain-forward-terrain-bgl"),
                 entries: &[
                     // 0: TerrainMaterialGpu UBO
@@ -525,9 +514,7 @@ impl TerrainMaterialManager {
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(
-                            wgpu::SamplerBindingType::Filtering,
-                        ),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
                     // 3-5: layer arrays (albedo, normal, orm). Height is
@@ -536,52 +523,26 @@ impl TerrainMaterialManager {
                     array_entry(4),
                     array_entry(5),
                 ],
-            },
-        );
+            });
 
-        // Group 2 (per-chunk splat): 2 texture bindings (splat_0, splat_1).
-        let forward_splat_bgl = device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
-                label: Some("terrain-forward-splat-bgl"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float {
-                                filterable: true,
-                            },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float {
-                                filterable: true,
-                            },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    // Phase 1 re-cleanup Issue 1 fix: dedicated ClampToEdge
-                    // sampler for per-chunk splat sampling; see SharedResources
-                    // `splat_sampler` docs.
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(
-                            wgpu::SamplerBindingType::Filtering,
-                        ),
-                        count: None,
-                    },
-                ],
-            },
-        );
+        // Group 2 (per-chunk splat): NUM_SPLAT_MAPS=8 splat texture bindings
+        // (0..NUM_SPLAT_MAPS) + ClampToEdge sampler at NUM_SPLAT_MAPS.
+        // Real-Fix.D 2026-05-08: was 2 splat textures + sampler at binding 2.
+        let mut forward_splat_entries: Vec<wgpu::BindGroupLayoutEntry> = (0..NUM_SPLAT_MAPS as u32)
+            .map(splat_texture_entry)
+            .collect();
+        // Phase 1 re-cleanup Issue 1 fix: dedicated ClampToEdge sampler for
+        // per-chunk splat sampling; see SharedResources `splat_sampler` docs.
+        forward_splat_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: NUM_SPLAT_MAPS as u32,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
+        });
+        let forward_splat_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("terrain-forward-splat-bgl"),
+            entries: &forward_splat_entries,
+        });
 
         // Forward-path UBO buffers (zero-initialized; written per frame by
         // update_forward_camera / update_forward_scene).
@@ -719,7 +680,8 @@ impl TerrainMaterialManager {
         layers: &[LayerTextures<'_>],
     ) -> Result<()> {
         // Validate each layer payload matches the expected byte size.
-        let albedo_bytes = (self.config.albedo_resolution as usize).pow(2) * BYTES_PER_TEXEL as usize;
+        let albedo_bytes =
+            (self.config.albedo_resolution as usize).pow(2) * BYTES_PER_TEXEL as usize;
         let aux_bytes = (self.config.aux_resolution as usize).pow(2) * BYTES_PER_TEXEL as usize;
 
         let layer_count = self.config.layer_count as usize;
@@ -803,33 +765,49 @@ impl TerrainMaterialManager {
         Ok(())
     }
 
-    /// Register or replace the two splat maps for a chunk.
+    /// Register or replace the splat maps for a chunk.
     ///
-    /// `splat_0` and `splat_1` must each be `dims.0 * dims.1 * 4` bytes (RGBA8).
+    /// Real-Fix.D 2026-05-08: takes [`NUM_SPLAT_MAPS`] = 8 splat slices (was 2).
+    ///
+    /// Each slice in `splats` must be `dims.0 * dims.1 * 4` bytes (RGBA8).
     /// Channel mapping matches `pbr_terrain.wgsl`:
-    /// * `splat_0`: R=layer0, G=layer1, B=layer2, A=layer3
-    /// * `splat_1`: R=layer4, G=layer5, B=layer6, A=layer7
+    /// * `splats[0]`: R=layer0,  G=layer1,  B=layer2,  A=layer3
+    /// * `splats[1]`: R=layer4,  G=layer5,  B=layer6,  A=layer7
+    /// * `splats[2]`: R=layer8,  G=layer9,  B=layer10, A=layer11
+    /// * `splats[3]`: R=layer12, G=layer13, B=layer14, A=layer15
+    /// * `splats[4]`: R=layer16, G=layer17, B=layer18, A=layer19
+    /// * `splats[5]`: R=layer20, G=layer21, B=layer22, A=layer23
+    /// * `splats[6]`: R=layer24, G=layer25, B=layer26, A=layer27
+    /// * `splats[7]`: R=layer28, G=layer29, B=layer30, A=layer31
     pub fn set_chunk_splat(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         chunk: ChunkKey,
-        splat_0: &[u8],
-        splat_1: &[u8],
+        splats: &[&[u8]],
         dims: (u32, u32),
     ) -> Result<()> {
         let (w, h) = dims;
         if w == 0 || h == 0 {
             anyhow::bail!("chunk splat dims must be non-zero, got {w}x{h}");
         }
-        let expected = (w as usize) * (h as usize) * BYTES_PER_TEXEL as usize;
-        if splat_0.len() != expected || splat_1.len() != expected {
+        if splats.len() != NUM_SPLAT_MAPS {
             anyhow::bail!(
-                "chunk splat payload mismatch: expected {} bytes, got {} / {}",
-                expected,
-                splat_0.len(),
-                splat_1.len()
+                "chunk splat slice count mismatch: expected {}, got {}",
+                NUM_SPLAT_MAPS,
+                splats.len()
             );
+        }
+        let expected = (w as usize) * (h as usize) * BYTES_PER_TEXEL as usize;
+        for (i, slice) in splats.iter().enumerate() {
+            if slice.len() != expected {
+                anyhow::bail!(
+                    "chunk splat[{}] payload mismatch: expected {} bytes, got {}",
+                    i,
+                    expected,
+                    slice.len()
+                );
+            }
         }
 
         let tex_desc = wgpu::TextureDescriptor {
@@ -847,54 +825,57 @@ impl TerrainMaterialManager {
             view_formats: &[],
         };
 
-        let tex_0 = device.create_texture(&tex_desc);
-        let tex_1 = device.create_texture(&tex_desc);
-        upload_full_2d(queue, &tex_0, w, h, splat_0);
-        upload_full_2d(queue, &tex_1, w, h, splat_1);
+        let textures: [wgpu::Texture; NUM_SPLAT_MAPS] =
+            std::array::from_fn(|_| device.create_texture(&tex_desc));
+        for (i, slice) in splats.iter().enumerate() {
+            upload_full_2d(queue, &textures[i], w, h, slice);
+        }
 
-        let view_0 = tex_0.create_view(&wgpu::TextureViewDescriptor::default());
-        let view_1 = tex_1.create_view(&wgpu::TextureViewDescriptor::default());
+        let views: [wgpu::TextureView; NUM_SPLAT_MAPS] = std::array::from_fn(|i| {
+            textures[i].create_view(&wgpu::TextureViewDescriptor::default())
+        });
 
+        // Real-Fix.D 2026-05-08: build bind group entries dynamically — sampler
+        // at 0, NUM_SPLAT_MAPS=8 splat textures at 1..=8, then 4 layer arrays
+        // at 9..=12.
+        let mut entries: Vec<wgpu::BindGroupEntry> = Vec::with_capacity(NUM_SPLAT_MAPS + 5);
+        entries.push(wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::Sampler(&self.shared.sampler),
+        });
+        for (i, view) in views.iter().enumerate() {
+            entries.push(wgpu::BindGroupEntry {
+                binding: (i + 1) as u32,
+                resource: wgpu::BindingResource::TextureView(view),
+            });
+        }
+        let array_base = NUM_SPLAT_MAPS as u32 + 1;
+        entries.push(wgpu::BindGroupEntry {
+            binding: array_base,
+            resource: wgpu::BindingResource::TextureView(&self.shared.layer_albedo),
+        });
+        entries.push(wgpu::BindGroupEntry {
+            binding: array_base + 1,
+            resource: wgpu::BindingResource::TextureView(&self.shared.layer_normal),
+        });
+        entries.push(wgpu::BindGroupEntry {
+            binding: array_base + 2,
+            resource: wgpu::BindingResource::TextureView(&self.shared.layer_orm),
+        });
+        entries.push(wgpu::BindGroupEntry {
+            binding: array_base + 3,
+            resource: wgpu::BindingResource::TextureView(&self.shared.layer_height),
+        });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("terrain-splat-chunk-bg"),
             layout: &self.splat_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Sampler(&self.shared.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&view_0),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&view_1),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&self.shared.layer_albedo),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&self.shared.layer_normal),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::TextureView(&self.shared.layer_orm),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::TextureView(&self.shared.layer_height),
-                },
-            ],
+            entries: &entries,
         });
 
         self.chunk_splats.insert(
             chunk,
             ChunkSplat {
-                _splat_0: tex_0,
-                _splat_1: tex_1,
+                _splats: textures,
                 bind_group,
                 dims,
             },
@@ -1112,11 +1093,7 @@ impl TerrainMaterialManager {
             camera_pos: camera_pos.to_array(),
             _pad1: 0.0,
         };
-        queue.write_buffer(
-            &self.forward_camera_buffer,
-            0,
-            bytemuck::bytes_of(&gpu),
-        );
+        queue.write_buffer(&self.forward_camera_buffer, 0, bytemuck::bytes_of(&gpu));
     }
 
     /// Write the Phase 1 forward-path scene-env UBO (96 B, matches SHADER_SRC SceneEnv).
@@ -1126,42 +1103,46 @@ impl TerrainMaterialManager {
     /// engine's live scene_env state is — see the corresponding helper in
     /// `Renderer` (added in 1.E.3).
     pub fn update_forward_scene(&self, queue: &wgpu::Queue, scene_env: &TerrainSceneEnvGpu) {
-        queue.write_buffer(
-            &self.forward_scene_buffer,
-            0,
-            bytemuck::bytes_of(scene_env),
-        );
+        queue.write_buffer(&self.forward_scene_buffer, 0, bytemuck::bytes_of(scene_env));
     }
 
     /// Upload per-chunk splat textures and build the forward-path bind group.
     ///
-    /// Called by `Renderer::upload_terrain_chunk` (Phase 1.E.3). The two
-    /// RGBA8 buffers are rasterized from the editor's per-vertex biome
-    /// weights by `terrain_splat_builder::build_chunk_splat_maps`.
+    /// Called by `Renderer::upload_terrain_chunk` (Phase 1.E.3). The
+    /// [`NUM_SPLAT_MAPS`] = 8 RGBA8 buffers are rasterized from the editor's
+    /// per-vertex material weights by `terrain_splat_builder::build_chunk_splat_maps`.
     ///
-    /// `splat_0`: R=biome0 weight, G=biome1 weight, B=biome2, A=biome3.
-    /// `splat_1`: R=biome4, G=biome5, B=biome6, A=biome7.
+    /// Real-Fix.D 2026-05-08: takes 8 splat slices (was 2). Channel mapping:
+    /// `splats[i]` channel R..A → layers `i*4+0..i*4+3`.
     pub fn set_chunk_splat_forward(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         chunk: ChunkKey,
-        splat_0: &[u8],
-        splat_1: &[u8],
+        splats: &[&[u8]],
         dims: (u32, u32),
     ) -> Result<()> {
         let (w, h) = dims;
         if w == 0 || h == 0 {
             anyhow::bail!("forward chunk splat dims must be non-zero, got {w}x{h}");
         }
-        let expected = (w as usize) * (h as usize) * BYTES_PER_TEXEL as usize;
-        if splat_0.len() != expected || splat_1.len() != expected {
+        if splats.len() != NUM_SPLAT_MAPS {
             anyhow::bail!(
-                "forward chunk splat payload mismatch: expected {} bytes, got {} / {}",
-                expected,
-                splat_0.len(),
-                splat_1.len()
+                "forward chunk splat slice count mismatch: expected {}, got {}",
+                NUM_SPLAT_MAPS,
+                splats.len()
             );
+        }
+        let expected = (w as usize) * (h as usize) * BYTES_PER_TEXEL as usize;
+        for (i, slice) in splats.iter().enumerate() {
+            if slice.len() != expected {
+                anyhow::bail!(
+                    "forward chunk splat[{}] payload mismatch: expected {} bytes, got {}",
+                    i,
+                    expected,
+                    slice.len()
+                );
+            }
         }
 
         let tex_desc = wgpu::TextureDescriptor {
@@ -1179,42 +1160,42 @@ impl TerrainMaterialManager {
             view_formats: &[],
         };
 
-        let tex_0 = device.create_texture(&tex_desc);
-        let tex_1 = device.create_texture(&tex_desc);
-        upload_full_2d(queue, &tex_0, w, h, splat_0);
-        upload_full_2d(queue, &tex_1, w, h, splat_1);
+        let textures: [wgpu::Texture; NUM_SPLAT_MAPS] =
+            std::array::from_fn(|_| device.create_texture(&tex_desc));
+        for (i, slice) in splats.iter().enumerate() {
+            upload_full_2d(queue, &textures[i], w, h, slice);
+        }
 
-        let view_0 = tex_0.create_view(&wgpu::TextureViewDescriptor::default());
-        let view_1 = tex_1.create_view(&wgpu::TextureViewDescriptor::default());
+        let views: [wgpu::TextureView; NUM_SPLAT_MAPS] = std::array::from_fn(|i| {
+            textures[i].create_view(&wgpu::TextureViewDescriptor::default())
+        });
 
+        // Real-Fix.D 2026-05-08: 8 splat textures at bindings 0..7 + sampler
+        // at NUM_SPLAT_MAPS=8.
+        let mut entries: Vec<wgpu::BindGroupEntry> = views
+            .iter()
+            .enumerate()
+            .map(|(i, view)| wgpu::BindGroupEntry {
+                binding: i as u32,
+                resource: wgpu::BindingResource::TextureView(view),
+            })
+            .collect();
+        // Phase 1 re-cleanup Issue 1 fix: ClampToEdge splat sampler
+        // (shared across chunks, lives in SharedResources).
+        entries.push(wgpu::BindGroupEntry {
+            binding: NUM_SPLAT_MAPS as u32,
+            resource: wgpu::BindingResource::Sampler(&self.shared.splat_sampler),
+        });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("terrain-forward-chunk-splat-bg"),
             layout: &self.forward_splat_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view_0),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&view_1),
-                },
-                // Phase 1 re-cleanup Issue 1 fix: ClampToEdge splat sampler
-                // (shared across chunks, lives in SharedResources).
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(
-                        &self.shared.splat_sampler,
-                    ),
-                },
-            ],
+            entries: &entries,
         });
 
         self.forward_chunk_splats.insert(
             chunk,
             ChunkSplatForward {
-                _splat_0: tex_0,
-                _splat_1: tex_1,
+                _splats: textures,
                 bind_group,
                 dims,
             },
@@ -1308,6 +1289,20 @@ fn array_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
         ty: wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Float { filterable: true },
             view_dimension: wgpu::TextureViewDimension::D2Array,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+/// Bind group entry for a single 2D splat texture (Real-Fix.D 2026-05-08).
+fn splat_texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
             multisampled: false,
         },
         count: None,
@@ -1600,7 +1595,9 @@ mod tests {
         cfg.layer_count = 0;
         assert!(cfg.validate().is_err());
 
-        cfg.layer_count = 9;
+        // Real-Fix.D 2026-05-08: cap is now MAX_TERRAIN_LAYERS=32 (was 8);
+        // any value above the cap must still fail validation.
+        cfg.layer_count = MAX_TERRAIN_LAYERS + 1;
         assert!(cfg.validate().is_err());
 
         cfg.layer_count = MAX_TERRAIN_LAYERS;
