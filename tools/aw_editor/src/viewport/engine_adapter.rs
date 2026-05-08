@@ -2408,57 +2408,6 @@ impl EngineRenderAdapter {
         vertices: &[TerrainVertex],
         indices: &[u32],
     ) -> anyhow::Result<()> {
-        // [BRUSH-DBG] Round 7 T10.B — splat data state at helper entry.
-        // Captures both biome_weights_0/1 (the channels build_chunk_splat_maps
-        // ACTUALLY reads — see terrain_splat_builder.rs:64-70) and
-        // material_ids/material_weights (the channels apply_brush_paint_material
-        // ACTUALLY writes — see terrain_integration.rs:2048). If H1 holds (paint
-        // writes to wrong attribute set), content_hash over biome_weights stays
-        // invariant across multiple paint applies despite material_* changing.
-        // Sample at vertex 0 + grid center for spatial context.
-        {
-            static R7_B_FRAME: std::sync::atomic::AtomicU32 =
-                std::sync::atomic::AtomicU32::new(0);
-            let _r7b_n = R7_B_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if _r7b_n % 12 == 0 && !vertices.is_empty() {
-                let center_idx = vertices.len() / 2;
-                let v0 = &vertices[0];
-                let vc = &vertices[center_idx];
-                // Content hash over biome_weights + material_* across all
-                // surface vertices. FxHash-style polynomial hash on quantized
-                // f32 (×1000 i32) for stability.
-                let mut hash_biome: u64 = 0xcbf29ce484222325;
-                let mut hash_material: u64 = 0xcbf29ce484222325;
-                for v in vertices.iter() {
-                    for f in v.biome_weights_0.iter().chain(v.biome_weights_1.iter()) {
-                        let q = (f * 1000.0) as i32 as u64;
-                        hash_biome = hash_biome.wrapping_mul(0x100000001b3) ^ q;
-                    }
-                    for f in v.material_ids.iter().chain(v.material_weights.iter()) {
-                        let q = (f * 1000.0) as i32 as u64;
-                        hash_material = hash_material.wrapping_mul(0x100000001b3) ^ q;
-                    }
-                }
-                eprintln!(
-                    "[BRUSH-DBG] helper-entry-splat: chunk_index={}, vert_count={}, \
-                     v0_biome_w0=[{:.2},{:.2},{:.2},{:.2}], v0_mat_ids=[{:.1},{:.1},{:.1},{:.1}], \
-                     v0_mat_w=[{:.2},{:.2},{:.2},{:.2}], \
-                     vc_biome_w0=[{:.2},{:.2},{:.2},{:.2}], vc_mat_ids=[{:.1},{:.1},{:.1},{:.1}], \
-                     vc_mat_w=[{:.2},{:.2},{:.2},{:.2}], \
-                     hash_biome={:016x}, hash_material={:016x}",
-                    chunk_index,
-                    vertices.len(),
-                    v0.biome_weights_0[0], v0.biome_weights_0[1], v0.biome_weights_0[2], v0.biome_weights_0[3],
-                    v0.material_ids[0], v0.material_ids[1], v0.material_ids[2], v0.material_ids[3],
-                    v0.material_weights[0], v0.material_weights[1], v0.material_weights[2], v0.material_weights[3],
-                    vc.biome_weights_0[0], vc.biome_weights_0[1], vc.biome_weights_0[2], vc.biome_weights_0[3],
-                    vc.material_ids[0], vc.material_ids[1], vc.material_ids[2], vc.material_ids[3],
-                    vc.material_weights[0], vc.material_weights[1], vc.material_weights[2], vc.material_weights[3],
-                    hash_biome, hash_material,
-                );
-            }
-        }
-
         // Phase 1.E.4.c surface grid inference: closed-form `sqrt(total + 4) - 2`
         // inverse of the editor's `N² + 4N` with-skirts vertex layout.
         let grid_dim = infer_surface_grid_dim(vertices.len())

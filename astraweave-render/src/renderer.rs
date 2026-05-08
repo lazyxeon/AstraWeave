@@ -5753,37 +5753,6 @@ fn vs(input: VSIn) -> VSOut {
             // above (which includes the editor's terrain_cluster_* entries).
             #[cfg(feature = "terrain-splat-arrays")]
             if let Some(tf) = self.terrain_forward.as_ref() {
-                // [BRUSH-DBG] Round 7 T10.D — terrain-forward draw loop.
-                // Captures renderer's per-frame view of which chunks survive
-                // to draw, with index_count proving the chunk_gpu entries are
-                // valid (vertex/index buffers exist). Cross-correlate with
-                // T10.C: every (chunk_key, frame) here should map back to a
-                // T10.C upload — if T10.C shows splat_0_hash invariant across
-                // paint applies but T10.D draws the chunk every frame, the
-                // splat texture being sampled is invariant by construction.
-                let r7d_throttle = {
-                    static R7_D_FRAME: std::sync::atomic::AtomicU32 =
-                        std::sync::atomic::AtomicU32::new(0);
-                    let n = R7_D_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    n % 60 == 0
-                };
-                if r7d_throttle {
-                    let chunks_count = tf.chunks.len();
-                    let total_idx: u32 = tf.chunks.values().map(|c| c.index_count).sum();
-                    eprintln!(
-                        "[BRUSH-DBG] renderer-draw-frame: chunks_count={}, total_index_count={}",
-                        chunks_count, total_idx,
-                    );
-                    for (key, chunk_gpu) in tf.chunks.iter().take(3) {
-                        eprintln!(
-                            "[BRUSH-DBG] renderer-draw-chunk: key={}, index_count={}, vbuf_size={}, ibuf_size={}",
-                            key,
-                            chunk_gpu.index_count,
-                            chunk_gpu.vertex_buffer.size(),
-                            chunk_gpu.index_buffer.size(),
-                        );
-                    }
-                }
                 for (key, chunk_gpu) in &tf.chunks {
                     let _ = tf.manager.draw_chunk_forward(
                         &mut rp,
@@ -6066,36 +6035,6 @@ fn vs(input: VSIn) -> VSOut {
         splat_dims: (u32, u32),
     ) -> Result<()> {
         use wgpu::util::DeviceExt;
-
-        // [BRUSH-DBG] Round 7 T10.C — renderer's view of splat data at upload.
-        // Captures content hash of splat_0/splat_1 buffer bytes that the helper
-        // produced via build_chunk_splat_maps. If the helper's content_hash over
-        // biome_weights stays invariant despite paint applies (T10.B evidence),
-        // splat_0_hash here will also stay invariant — confirming the splat
-        // texture is rebuilt from invariant data and paint never reaches the
-        // renderer's bound textures.
-        let (r7c_throttle, r7c_n) = {
-            static R7_C_FRAME: std::sync::atomic::AtomicU32 =
-                std::sync::atomic::AtomicU32::new(0);
-            let n = R7_C_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            (n % 12 == 0, n)
-        };
-        if r7c_throttle {
-            let mut hash_s0: u64 = 0xcbf29ce484222325;
-            for b in splat_0.iter() {
-                hash_s0 = hash_s0.wrapping_mul(0x100000001b3) ^ (*b as u64);
-            }
-            let mut hash_s1: u64 = 0xcbf29ce484222325;
-            for b in splat_1.iter() {
-                hash_s1 = hash_s1.wrapping_mul(0x100000001b3) ^ (*b as u64);
-            }
-            eprintln!(
-                "[BRUSH-DBG] renderer-upload-pre: key={}, frame={}, splat_0_len={}, splat_1_len={}, \
-                 splat_0_hash={:016x}, splat_1_hash={:016x}, splat_dims={}x{}, vert_count={}, idx_count={}",
-                key, r7c_n, splat_0.len(), splat_1.len(), hash_s0, hash_s1,
-                splat_dims.0, splat_dims.1, vertices.len(), indices.len(),
-            );
-        }
 
         let tf = self
             .terrain_forward

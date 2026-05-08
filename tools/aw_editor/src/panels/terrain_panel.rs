@@ -842,29 +842,6 @@ impl TerrainPanel {
             self.terrain_state.begin_stroke();
         }
 
-        // [INSTRUMENTATION Round 7 T10.A pre — Mediator-Brush-Diagnostic-Round-7-Instrumentation.A 2026-05-07]
-        // T10.A pre: log brush mode + target route + sample of vertex attributes the
-        // brush writes (material_ids/material_weights for Paint via apply_brush_paint_material;
-        // height + biome_weights for height-mutation brushes via apply_brush). Throttled
-        // ~5 Hz. Distinguishes H1 (paint writes to wrong attribute), H3 (parallel code path),
-        // H6 (parameter issue).
-        static R7_A_FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let _r7a_n = R7_A_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let _r7_throttle = _r7a_n % 12 == 0;
-        if _r7_throttle {
-            let route = if self.brush_mode == BrushMode::Paint {
-                "apply_brush_paint_material → mutates vertex.material_ids/material_weights"
-            } else if self.brush_mode == BrushMode::ZoneBlend {
-                "apply_brush (ZoneBlend NO-OP per terrain_integration.rs:1915 stub)"
-            } else {
-                "apply_brush → mutates heightmap → regenerates vertices"
-            };
-            eprintln!(
-                "[BRUSH-DBG] paint-zoneblend-apply: mode={:?}, world=({:.2}, {:.2}), radius={:.1}, strength={:.2}, route=\"{}\", selected_material={}",
-                self.brush_mode, world_x, world_z, self.brush_radius, self.brush_strength, route, self.selected_material
-            );
-        }
-
         let modified = if self.brush_mode == BrushMode::Paint {
             self.terrain_state.apply_brush_paint_material(
                 world_x,
@@ -894,18 +871,6 @@ impl TerrainPanel {
                 self.noise_scale,
             )
         };
-
-        // [INSTRUMENTATION Round 7 T10.E — paint/zoneblend event emission ]
-        // T10.E: log brush mode + modified flag + whether emission fires. Distinguishes
-        // H4 (emission gated for paint/zoneblend). Per §1.2.3 finding: emission is
-        // unconditional on `modified`; if paint/zoneblend return modified=false, emission
-        // doesn't fire — same as H4 effective outcome.
-        if _r7_throttle {
-            eprintln!(
-                "[BRUSH-DBG] paint-zoneblend-emit: mode={:?}, modified={}, emission_will_fire={}",
-                self.brush_mode, modified, modified
-            );
-        }
         if modified {
             self.pending_actions.push(TerrainAction::BrushUpdate);
         }
