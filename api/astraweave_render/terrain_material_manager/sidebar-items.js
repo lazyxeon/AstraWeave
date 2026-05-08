@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["MAX_TERRAIN_LAYERS"],"struct":["CameraForwardGpu","LayerTextures","TerrainMaterialConfig","TerrainMaterialManager","TerrainSceneEnvGpu","TerrainSplatVertex"],"type":["ChunkKey"]};
+window.SIDEBAR_ITEMS = {"struct":["CameraForwardGpu","LayerTextures","TerrainMaterialConfig","TerrainMaterialManager","TerrainSceneEnvGpu","TerrainSplatVertex"],"type":["ChunkKey"]};

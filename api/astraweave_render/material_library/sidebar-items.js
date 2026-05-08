@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MATERIAL_DISPLAY_NAMES","MATERIAL_NAMES","MAX_TERRAIN_LAYERS","NUM_SPLAT_MAPS"],"struct":["Material","MaterialLibrary"]};
