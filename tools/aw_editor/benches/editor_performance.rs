@@ -165,8 +165,6 @@ fn bench_terrain_vertex_conversion(c: &mut Criterion) {
                     position: [f * 0.1, (f * 0.3).sin() * 5.0, f * 0.1],
                     normal: [0.0, 1.0, 0.0],
                     uv: [(f * 0.01) % 1.0, (f * 0.01) % 1.0],
-                    biome_weights_0: [0.6, 0.3, 0.1, 0.0],
-                    biome_weights_1: [0.0, 0.0, 0.0, 0.0],
                     material_ids: [0.0, 1.0, 2.0, 0.0],
                     material_weights: [0.5, 0.3, 0.2, 0.0],
                 }

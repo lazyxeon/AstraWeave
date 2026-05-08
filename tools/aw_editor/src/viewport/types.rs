@@ -14,42 +14,37 @@ use bytemuck::{Pod, Zeroable};
 /// This is the *viewport* vertex layout consumed by both the engine adapter
 /// (which converts it to engine meshes) and the legacy terrain renderer.
 /// A separate `terrain_integration::TerrainVertex` exists for the CPU side.
+///
+/// Real-Fix.C 2026-05-08: unified `biome_weights_0/1` and `material_ids/
+/// material_weights` into a single canonical material attribute set
+/// (Option C per Andrew-gate decision). Resolves §7.7 sibling-attribute
+/// drift trap at texture-data layer (Round 7 evidence). Splat textures are
+/// rebuilt directly from `material_ids/material_weights`; biome blending
+/// at higher abstraction layers (astraweave-terrain) preserved per Model A.
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct TerrainVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
-    pub biome_weights_0: [f32; 4],
-    pub biome_weights_1: [f32; 4],
-    /// Material texture layer indices (0-21) packed as f32 for vertex attr compat
+    /// Material texture layer indices (0-7 valid; mapped to 8-channel splat)
+    /// packed as f32 for vertex attribute compatibility.
     pub material_ids: [f32; 4],
-    /// Blend weights for each material slot (sum to 1.0)
+    /// Blend weights for each material slot (sum to 1.0).
     pub material_weights: [f32; 4],
 }
 
 impl TerrainVertex {
-    /// Convert to engine-compatible vertex by extracting the dominant biome ID.
-    /// The engine uses a single biome_id per vertex; we pick the biome with the
-    /// highest weight from biome_weights_0/1 (8 slots → indices 0-7).
+    /// Convert to engine-compatible vertex by extracting the dominant material
+    /// slot. The engine uses a single biome_id per vertex; post-Real-Fix.C
+    /// this is the material_id of the highest-weight slot.
     pub fn to_engine_vertex(&self) -> astraweave_render::TerrainVertex {
-        // Find dominant biome from the 8 weight slots
-        let weights = [
-            self.biome_weights_0[0],
-            self.biome_weights_0[1],
-            self.biome_weights_0[2],
-            self.biome_weights_0[3],
-            self.biome_weights_1[0],
-            self.biome_weights_1[1],
-            self.biome_weights_1[2],
-            self.biome_weights_1[3],
-        ];
-        let mut best_idx = 0u32;
-        let mut best_weight = weights[0];
-        for (i, &w) in weights.iter().enumerate().skip(1) {
-            if w > best_weight {
-                best_weight = w;
-                best_idx = i as u32;
+        let mut best_idx = 0usize;
+        let mut best_weight = self.material_weights[0];
+        for i in 1..4 {
+            if self.material_weights[i] > best_weight {
+                best_weight = self.material_weights[i];
+                best_idx = i;
             }
         }
 
@@ -57,7 +52,7 @@ impl TerrainVertex {
             position: self.position,
             normal: self.normal,
             uv: self.uv,
-            biome_id: best_idx,
+            biome_id: self.material_ids[best_idx] as u32,
         }
     }
 }

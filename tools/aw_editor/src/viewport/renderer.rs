@@ -1102,8 +1102,6 @@ impl ViewportRenderer {
                             position: v.position,
                             normal: v.normal,
                             uv: v.uv,
-                            biome_weights_0: v.biome_weights_0,
-                            biome_weights_1: v.biome_weights_1,
                             material_ids: v.material_ids,
                             material_weights: v.material_weights,
                         })

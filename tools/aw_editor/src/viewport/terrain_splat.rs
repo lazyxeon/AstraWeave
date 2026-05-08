@@ -329,15 +329,36 @@ impl EditorTerrainSplat {
 mod tests {
     use super::*;
 
+    /// Real-Fix.C 2026-05-08: builds a vertex from 8-slot dense weights via
+    /// the same top-4 sparse encoding biome generation produces; mirrors
+    /// terrain_integration::TerrainState::biome_weights_8_to_material_slots.
     fn v(w0: [f32; 4], w1: [f32; 4]) -> TerrainVertex {
+        let weights_8 = [w0[0], w0[1], w0[2], w0[3], w1[0], w1[1], w1[2], w1[3]];
+        let mut entries: [(f32, f32); 8] = [
+            (0.0, weights_8[0]),
+            (1.0, weights_8[1]),
+            (2.0, weights_8[2]),
+            (3.0, weights_8[3]),
+            (4.0, weights_8[4]),
+            (5.0, weights_8[5]),
+            (6.0, weights_8[6]),
+            (7.0, weights_8[7]),
+        ];
+        entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let mut top4: [(f32, f32); 4] = [entries[0], entries[1], entries[2], entries[3]];
+        top4.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut ids = [0.0f32; 4];
+        let mut ws = [0.0f32; 4];
+        for i in 0..4 {
+            ids[i] = top4[i].0;
+            ws[i] = top4[i].1;
+        }
         TerrainVertex {
             position: [0.0; 3],
             normal: [0.0, 1.0, 0.0],
             uv: [0.0; 2],
-            biome_weights_0: w0,
-            biome_weights_1: w1,
-            material_ids: [0.0; 4],
-            material_weights: [1.0, 0.0, 0.0, 0.0],
+            material_ids: ids,
+            material_weights: ws,
         }
     }
 

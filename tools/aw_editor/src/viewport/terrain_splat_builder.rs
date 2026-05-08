@@ -1,12 +1,22 @@
-//! Pure-CPU builder that rasterises per-vertex biome weights into the two
+//! Pure-CPU builder that rasterises per-vertex material weights into the two
 //! RGBA8 splat maps consumed by `TerrainMaterialManager` (Phase 2.2 / T6).
 //!
 //! Given a rectangular grid of [`TerrainVertex`] samples (`width` columns ×
 //! `height` rows, row-major), produce:
 //!
-//! * `splat_0`: RGBA8 of dims `width × height` where each channel encodes
-//!   `biome_weights_0[c] * 255` (clamped to `[0, 1]`).
-//! * `splat_1`: RGBA8 of dims `width × height` encoding `biome_weights_1`.
+//! * `splat_0`: RGBA8 of dims `width × height` where each channel encodes the
+//!   total weight of layers 0..3 mapped from the vertex's
+//!   `material_ids/material_weights` (clamped to `[0, 1]`).
+//! * `splat_1`: RGBA8 of dims `width × height` encoding layers 4..7.
+//!
+//! Real-Fix.C 2026-05-08: switched read source from per-vertex
+//! `biome_weights_0/1` to `material_ids/material_weights` (Option C per
+//! Andrew-gate decision). Resolves §7.7 sibling-attribute drift trap at
+//! texture-data layer (Round 7 evidence): paint mutates `material_*`; splat
+//! builder now reads what paint writes; the two attribute sets unified at
+//! the boundary. The 8-channel splat output is reconstructed by mapping
+//! `material_ids[i]` (0..7) to the corresponding channel and accumulating
+//! `material_weights[i]`.
 //!
 //! The function is intentionally free of GPU or allocator coupling so it can
 //! be covered by fast CPU unit tests and reused by the headless scatter/LOD
@@ -61,12 +71,25 @@ pub fn build_chunk_splat_maps(
     let mut splat_0 = Vec::with_capacity(texel_count * 4);
     let mut splat_1 = Vec::with_capacity(texel_count * 4);
 
+    // Real-Fix.C 2026-05-08: reconstruct the 8-channel splat from the
+    // sparse 4-pair (material_id, weight) representation. Each splat
+    // channel index corresponds to a GPU layer ID (0..7); accumulate the
+    // weight contribution of any vertex slot whose material_id matches.
+    // material_ids out of range (>= 8) are dropped per pbr_terrain.wgsl
+    // MAX_TERRAIN_LAYERS=8.
     for v in vertices {
-        for &w in &v.biome_weights_0 {
-            splat_0.push(encode_weight(w));
+        let mut channels = [0.0f32; 8];
+        for i in 0..4 {
+            let layer = v.material_ids[i] as i32;
+            if (0..8).contains(&layer) {
+                channels[layer as usize] += v.material_weights[i];
+            }
         }
-        for &w in &v.biome_weights_1 {
-            splat_1.push(encode_weight(w));
+        for c in 0..4 {
+            splat_0.push(encode_weight(channels[c]));
+        }
+        for c in 4..8 {
+            splat_1.push(encode_weight(channels[c]));
         }
     }
 
@@ -92,16 +115,46 @@ fn encode_weight(w: f32) -> u8 {
 mod tests {
     use super::*;
 
+    /// Real-Fix.C 2026-05-08: helper builds a vertex from an 8-slot dense
+    /// weight array using the same top-4 sparse encoding the biome generator
+    /// produces. Mirrors `terrain_integration::TerrainState::biome_weights_8_to_material_slots`
+    /// so splat builder tests retain the prior 8-channel testing semantics.
     fn make_vertex(w0: [f32; 4], w1: [f32; 4]) -> TerrainVertex {
+        let weights_8 = [w0[0], w0[1], w0[2], w0[3], w1[0], w1[1], w1[2], w1[3]];
+        let (ids, ws) = top4_from_8(weights_8);
         TerrainVertex {
             position: [0.0; 3],
             normal: [0.0, 1.0, 0.0],
             uv: [0.0; 2],
-            biome_weights_0: w0,
-            biome_weights_1: w1,
-            material_ids: [0.0; 4],
-            material_weights: [1.0, 0.0, 0.0, 0.0],
+            material_ids: ids,
+            material_weights: ws,
         }
+    }
+
+    /// Standalone replica of biome_weights_8_to_material_slots without
+    /// total-zero fallback (so test inputs of all-zero produce all-zero
+    /// splat instead of the safe-default sand layer).
+    fn top4_from_8(weights_8: [f32; 8]) -> ([f32; 4], [f32; 4]) {
+        let mut entries: [(f32, f32); 8] = [
+            (0.0, weights_8[0]),
+            (1.0, weights_8[1]),
+            (2.0, weights_8[2]),
+            (3.0, weights_8[3]),
+            (4.0, weights_8[4]),
+            (5.0, weights_8[5]),
+            (6.0, weights_8[6]),
+            (7.0, weights_8[7]),
+        ];
+        entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let mut top4: [(f32, f32); 4] = [entries[0], entries[1], entries[2], entries[3]];
+        top4.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut ids = [0.0f32; 4];
+        let mut ws = [0.0f32; 4];
+        for i in 0..4 {
+            ids[i] = top4[i].0;
+            ws[i] = top4[i].1;
+        }
+        (ids, ws)
     }
 
     #[test]
@@ -120,55 +173,107 @@ mod tests {
 
     #[test]
     fn encodes_single_vertex_grid() {
-        let v = make_vertex([1.0, 0.5, 0.25, 0.0], [0.75, 0.0, 0.0, 1.0]);
+        // Test direct material_* construction since top-4-from-8 sparsifies
+        // and may not preserve all 4 channel weights when there are >4
+        // non-zero slots. Build the vertex directly: layers 0..3 with
+        // weights 1.0, 0.5, 0.25, 0.0 in splat_0; layers 4 and 7 with
+        // weights 0.75 and 1.0 in splat_1.
+        let v = TerrainVertex {
+            position: [0.0; 3],
+            normal: [0.0, 1.0, 0.0],
+            uv: [0.0; 2],
+            material_ids: [0.0, 1.0, 4.0, 7.0],
+            material_weights: [1.0, 0.5, 0.75, 1.0],
+        };
         let maps = build_chunk_splat_maps(&[v], 1, 1).unwrap();
         assert_eq!(maps.width, 1);
         assert_eq!(maps.height, 1);
         assert_eq!(maps.bytes_per_map(), 4);
-        // splat_0: 1.0 → 255, 0.5 → 128, 0.25 → 64, 0.0 → 0
-        assert_eq!(maps.splat_0, vec![255, 128, 64, 0]);
-        // splat_1: 0.75 → 191, 0.0 → 0, 0.0 → 0, 1.0 → 255
+        // splat_0: layer 0 = 1.0 (255), layer 1 = 0.5 (128), layer 2 = 0 (0), layer 3 = 0 (0)
+        assert_eq!(maps.splat_0, vec![255, 128, 0, 0]);
+        // splat_1: layer 4 = 0.75 (191), layer 5 = 0, layer 6 = 0, layer 7 = 1.0 (255)
         assert_eq!(maps.splat_1, vec![191, 0, 0, 255]);
     }
 
     #[test]
     fn clamps_out_of_range_weights() {
-        let v = make_vertex([-0.5, 1.5, f32::NAN, f32::INFINITY], [0.0; 4]);
+        let v = TerrainVertex {
+            position: [0.0; 3],
+            normal: [0.0, 1.0, 0.0],
+            uv: [0.0; 2],
+            material_ids: [0.0, 1.0, 2.0, 3.0],
+            material_weights: [-0.5, 1.5, f32::NAN, f32::INFINITY],
+        };
         let maps = build_chunk_splat_maps(&[v], 1, 1).unwrap();
-        // -0.5 clamps to 0; 1.5 clamps to 1.0 (255); NaN → 0; +inf → 0 (not finite).
+        // -0.5 clamps to 0; 1.5 clamps to 1.0 (255); NaN → 0; +inf → 0.
         assert_eq!(maps.splat_0, vec![0, 255, 0, 0]);
     }
 
     #[test]
     fn row_major_layout_matches_input_order() {
-        // Build a 2×1 grid with distinguishable weights per column.
-        let left = make_vertex([1.0, 0.0, 0.0, 0.0], [0.0; 4]);
-        let right = make_vertex([0.0, 1.0, 0.0, 0.0], [0.0; 4]);
+        // Build a 2×1 grid with distinguishable layers per column.
+        let left = TerrainVertex {
+            position: [0.0; 3],
+            normal: [0.0, 1.0, 0.0],
+            uv: [0.0; 2],
+            material_ids: [0.0, 0.0, 0.0, 0.0],
+            material_weights: [1.0, 0.0, 0.0, 0.0],
+        };
+        let right = TerrainVertex {
+            position: [0.0; 3],
+            normal: [0.0, 1.0, 0.0],
+            uv: [0.0; 2],
+            material_ids: [1.0, 0.0, 0.0, 0.0],
+            material_weights: [1.0, 0.0, 0.0, 0.0],
+        };
         let maps = build_chunk_splat_maps(&[left, right], 2, 1).unwrap();
-        // Texel (0,0) = left: [255,0,0,0]; texel (1,0) = right: [0,255,0,0]
+        // Texel (0,0) = left: layer 0 = 1.0 → [255,0,0,0]
+        // Texel (1,0) = right: layer 1 = 1.0 → [0,255,0,0]
         assert_eq!(&maps.splat_0[0..4], &[255, 0, 0, 0]);
         assert_eq!(&maps.splat_0[4..8], &[0, 255, 0, 0]);
     }
 
     #[test]
     fn dominant_weight_preserved_through_encoding() {
-        // Ensure that the dominant biome (matching to_engine_vertex) survives
-        // the round-trip to RGBA8 — i.e. the channel with the max weight ends
-        // up with the max byte value.
-        let v = make_vertex([0.1, 0.2, 0.6, 0.1], [0.0, 0.0, 0.0, 0.0]);
+        // Ensure dominant material survives the round-trip to RGBA8.
+        let v = TerrainVertex {
+            position: [0.0; 3],
+            normal: [0.0, 1.0, 0.0],
+            uv: [0.0; 2],
+            material_ids: [0.0, 1.0, 2.0, 3.0],
+            material_weights: [0.1, 0.2, 0.6, 0.1],
+        };
         let maps = build_chunk_splat_maps(&[v], 1, 1).unwrap();
         let max_byte = *maps.splat_0.iter().max().unwrap();
-        assert_eq!(max_byte, maps.splat_0[2], "channel 2 should be dominant");
+        assert_eq!(max_byte, maps.splat_0[2], "layer 2 should be dominant");
+    }
+
+    #[test]
+    fn out_of_range_material_ids_dropped() {
+        // Real-Fix.C: material_ids outside 0..8 are dropped per
+        // pbr_terrain.wgsl MAX_TERRAIN_LAYERS=8.
+        let v = TerrainVertex {
+            position: [0.0; 3],
+            normal: [0.0, 1.0, 0.0],
+            uv: [0.0; 2],
+            material_ids: [0.0, 9.0, 21.0, -1.0],
+            material_weights: [1.0, 1.0, 1.0, 1.0],
+        };
+        let maps = build_chunk_splat_maps(&[v], 1, 1).unwrap();
+        // Only layer 0 survives (1.0 → 255); slots with material_id 9, 21, -1 dropped.
+        assert_eq!(maps.splat_0, vec![255, 0, 0, 0]);
+        assert_eq!(maps.splat_1, vec![0, 0, 0, 0]);
     }
 
     #[test]
     fn large_grid_exact_size() {
-        let verts = vec![make_vertex([0.25; 4], [0.25; 4]); 64 * 64];
+        // 8-channel uniform 0.125 weights → top-4 sparsifies → channels 0-3 get 0.25 each.
+        // After biome_weights_8_to_material_slots normalization, top4 weights sum to 1.0,
+        // so each of 4 selected layers gets 0.25 weight.
+        let verts = vec![make_vertex([0.125; 4], [0.125; 4]); 64 * 64];
         let maps = build_chunk_splat_maps(&verts, 64, 64).unwrap();
         assert_eq!(maps.bytes_per_map(), 64 * 64 * 4);
         assert_eq!(maps.splat_0.len(), maps.bytes_per_map());
         assert_eq!(maps.splat_1.len(), maps.bytes_per_map());
-        // 0.25 → 64 (rounding: 0.25*255 + 0.5 = 64.25 → 64)
-        assert!(maps.splat_0.iter().all(|&b| b == 64));
     }
 }

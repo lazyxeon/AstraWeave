@@ -59,17 +59,24 @@ pub struct GeneratedChunk {
     pub world_position: Vec3,
 }
 
+/// Terrain vertex (CPU-side, mirroring viewport::types::TerrainVertex layout).
+///
+/// Real-Fix.C 2026-05-08: unified `biome_weights_0/1` and `material_ids/
+/// material_weights` into a single canonical material attribute set
+/// (Option C per Andrew-gate decision). Resolves §7.7 sibling-attribute
+/// drift trap at texture-data layer (Round 7 evidence). Splat textures are
+/// rebuilt directly from `material_ids/material_weights`; biome blending
+/// at higher abstraction layers (astraweave-terrain) preserved per Model A.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct TerrainVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
-    pub biome_weights_0: [f32; 4],
-    pub biome_weights_1: [f32; 4],
-    /// Material texture layer indices (0-21) packed as f32 for vertex attr compat
+    /// Material texture layer indices (0-7 valid; mapped to 8-channel splat)
+    /// packed as f32 for vertex attribute compatibility.
     pub material_ids: [f32; 4],
-    /// Blend weights for each material slot (sum to 1.0)
+    /// Blend weights for each material slot (sum to 1.0).
     pub material_weights: [f32; 4],
 }
 
@@ -78,8 +85,6 @@ impl TerrainVertex {
         position: [f32; 3],
         normal: [f32; 3],
         uv: [f32; 2],
-        biome_weights_0: [f32; 4],
-        biome_weights_1: [f32; 4],
         material_ids: [f32; 4],
         material_weights: [f32; 4],
     ) -> Self {
@@ -87,8 +92,6 @@ impl TerrainVertex {
             position,
             normal,
             uv,
-            biome_weights_0,
-            biome_weights_1,
             material_ids,
             material_weights,
         }
@@ -792,30 +795,34 @@ impl TerrainState {
 
                 // Phase 1.5: per-vertex biome weights are driven by vertex
                 // world-space elevation relative to sea level, biased by the
-                // climate derived from `primary_biome`. The 8-slot output is
-                // split slots [0..4] → biome_weights_0, [4..8] → biome_weights_1
-                // matching the TerrainVertex packing consumed by the Phase 1
-                // forward-lit splat pipeline.
+                // climate derived from `primary_biome`. The 8-slot output
+                // feeds the canonical `material_ids/material_weights` vertex
+                // attribute set post-Real-Fix.C: top-4 slot extraction via
+                // `splat_weights_to_material_slots_from_array`.
                 //
                 // Phase 1.6-F.3-phase-1: when `pre_erosion_biome_weights` is
                 // provided, use those directly — they were computed from the
                 // PRE-erosion heightmap in `WorldGenerator::generate_chunk_with_climate`.
                 // Otherwise fall back to computing from the current heights
                 // (pre-F.3 behavior for any caller that doesn't populate them).
+                //
+                // Real-Fix.C 2026-05-08: when splat_map source is absent,
+                // derive material_* from biome_weights_8 directly via top-4
+                // slot extraction (preserves visual biome blending; pre-fix
+                // fallback defaulted to material[0] which would have lost
+                // blending entirely post-unification).
                 let biome_weights_8: [f32; 8] = pre_erosion_biome_weights
                     .and_then(|slice| slice.get(biome_idx).copied())
                     .unwrap_or_else(|| {
                         elevation_to_biome_weights(height, SEA_LEVEL, climate)
                     });
-                let mut biome_weights_0 = [0.0f32; 4];
-                let mut biome_weights_1 = [0.0f32; 4];
-                biome_weights_0.copy_from_slice(&biome_weights_8[0..4]);
-                biome_weights_1.copy_from_slice(&biome_weights_8[4..8]);
                 let (material_ids, material_weights) = splat_map
                     .get(biome_idx)
                     .copied()
                     .map(Self::splat_weights_to_material_slots)
-                    .unwrap_or(([0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]));
+                    .unwrap_or_else(|| {
+                        Self::biome_weights_8_to_material_slots(biome_weights_8)
+                    });
 
                 // One detail texture tile per chunk (256 units). This eliminates
                 // visible tiling/crosshatch from any camera height while the
@@ -828,8 +835,6 @@ impl TerrainState {
                     [world_x, height, world_z],
                     [normal.x, normal.y, normal.z],
                     [tiled_u, tiled_v],
-                    biome_weights_0,
-                    biome_weights_1,
                     material_ids,
                     material_weights,
                 ));
@@ -873,8 +878,6 @@ impl TerrainState {
                     [sv.position[0], sv.position[1] - skirt_drop, sv.position[2]],
                     outward_normal,
                     sv.uv,
-                    sv.biome_weights_0,
-                    sv.biome_weights_1,
                     sv.material_ids,
                     sv.material_weights,
                 ));
@@ -1094,26 +1097,46 @@ impl TerrainState {
     /// Convert 8-channel SplatWeights into top-4 material slots (ids + weights).
     /// Channel indices map 1:1 to texture layer indices for channels 0-7.
     fn splat_weights_to_material_slots(weights: SplatWeights) -> ([f32; 4], [f32; 4]) {
-        // Collect all non-zero (channel_as_layer_id, weight) pairs
+        Self::biome_weights_8_to_material_slots([
+            weights.weights_0.x,
+            weights.weights_0.y,
+            weights.weights_0.z,
+            weights.weights_0.w,
+            weights.weights_1.x,
+            weights.weights_1.y,
+            weights.weights_1.z,
+            weights.weights_1.w,
+        ])
+    }
+
+    /// Convert dense 8-slot biome weight array into top-4 material slots
+    /// (ids + weights). Slot index IS the material/layer ID (0-7).
+    /// Real-Fix.C 2026-05-08: shared core logic between splat-map-driven
+    /// generation (via splat_weights_to_material_slots) and elevation-derived
+    /// fallback path (when splat_map source is absent). Resolves §7.7 trap:
+    /// vertex storage now exclusively uses material_*; this conversion at
+    /// generation time replaces the prior `biome_weights_0/1` direct write.
+    fn biome_weights_8_to_material_slots(weights_8: [f32; 8]) -> ([f32; 4], [f32; 4]) {
+        // Collect all (channel_as_layer_id, weight) pairs.
         let mut entries: [(f32, f32); 8] = [
-            (0.0, weights.weights_0.x),
-            (1.0, weights.weights_0.y),
-            (2.0, weights.weights_0.z),
-            (3.0, weights.weights_0.w),
-            (4.0, weights.weights_1.x),
-            (5.0, weights.weights_1.y),
-            (6.0, weights.weights_1.z),
-            (7.0, weights.weights_1.w),
+            (0.0, weights_8[0]),
+            (1.0, weights_8[1]),
+            (2.0, weights_8[2]),
+            (3.0, weights_8[3]),
+            (4.0, weights_8[4]),
+            (5.0, weights_8[5]),
+            (6.0, weights_8[6]),
+            (7.0, weights_8[7]),
         ];
 
-        // Sort by weight descending to find top 4
+        // Sort by weight descending to find top 4.
         entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Take top 4
+        // Take top 4.
         let mut top4: [(f32, f32); 4] = [entries[0], entries[1], entries[2], entries[3]];
 
         // Sort top 4 by material_id ascending for consistent slot assignment
-        // across adjacent vertices (prevents interpolation artifacts)
+        // across adjacent vertices (prevents interpolation artifacts).
         top4.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
         let mut ids = [0.0f32; 4];

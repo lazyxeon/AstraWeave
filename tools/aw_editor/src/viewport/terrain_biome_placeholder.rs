@@ -9,16 +9,21 @@
 //! blending is visibly working without requiring production assets.
 //!
 //! The color ordering **must match** the editor's `TerrainVertex`
-//! biome-weight layout:
-//!   `biome_weights_0` → [Grassland, Desert, Forest, Mountain]
-//!   `biome_weights_1` → [Tundra,    Swamp,  Beach,  River]
+//! material layer indices (post-Real-Fix.C unification, 2026-05-08):
+//!   layers 0-3 → [Grassland, Desert, Forest, Mountain]  (splat_0 RGBA)
+//!   layers 4-7 → [Tundra,    Swamp,  Beach,  River]     (splat_1 RGBA)
+//!
+//! Pre-Real-Fix.C, this layout matched `biome_weights_0`/`biome_weights_1`
+//! vertex fields. Those fields were eliminated by Real-Fix.C (Option C
+//! attribute-set unification); the same layer-index ordering is preserved
+//! in `material_ids` (now the canonical source).
 //!
 //! Colors are chosen for obvious at-a-glance distinction under sun +
 //! ambient lighting, avoiding fully saturated or fully bright values so
 //! the PBR lighting model doesn't blow them out.
 
 /// Placeholder albedo color per biome, sRGB8 (RGBA). Slot order matches
-/// the editor's `biome_weights_0` / `biome_weights_1` packing.
+/// the editor's `material_ids` layer-index packing (layers 0-7).
 pub const BIOME_PLACEHOLDER_COLORS_SRGB: [[u8; 4]; 8] = [
     [85, 140, 60, 255],    // 0 Grassland: muted green
     [200, 170, 110, 255],  // 1 Desert: sandy tan

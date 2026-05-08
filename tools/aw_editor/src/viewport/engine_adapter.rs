@@ -123,20 +123,11 @@ struct TerrainSurfaceSummary {
 
 impl TerrainSurfaceSummary {
     fn add_vertex(&mut self, vertex: &TerrainVertex) {
-        let biome_weights = [
-            vertex.biome_weights_0[0],
-            vertex.biome_weights_0[1],
-            vertex.biome_weights_0[2],
-            vertex.biome_weights_0[3],
-            vertex.biome_weights_1[0],
-            vertex.biome_weights_1[1],
-            vertex.biome_weights_1[2],
-            vertex.biome_weights_1[3],
-        ];
-        for (idx, weight) in biome_weights.iter().enumerate() {
-            self.biome_weights[idx] += weight.max(0.0);
-        }
-
+        // Real-Fix.C 2026-05-08: biome_weights aggregator reconstructed from
+        // material_* (layers 0..7 in the canonical material attribute set
+        // correspond to the biome layers). Pre-fix, biome_weights came from
+        // separate vertex.biome_weights_0/1 fields; post-fix those fields are
+        // eliminated per Option C unification (§7.7 trap resolution).
         for slot in 0..4 {
             let weight = vertex.material_weights[slot].max(0.0);
             if weight <= 0.0 {
@@ -147,6 +138,9 @@ impl TerrainSurfaceSummary {
                 continue;
             }
             let material_idx = material_id as usize;
+            if material_idx < self.biome_weights.len() {
+                self.biome_weights[material_idx] += weight;
+            }
             if material_idx < self.material_weights.len() {
                 self.material_weights[material_idx] += weight;
             }
@@ -4105,8 +4099,6 @@ mod tests {
 
     fn terrain_vertex(
         position: [f32; 3],
-        biome_weights_0: [f32; 4],
-        biome_weights_1: [f32; 4],
         material_ids: [f32; 4],
         material_weights: [f32; 4],
     ) -> TerrainVertex {
@@ -4114,8 +4106,6 @@ mod tests {
             position,
             normal: [0.0, 1.0, 0.0],
             uv: [position[0], position[2]],
-            biome_weights_0,
-            biome_weights_1,
             material_ids,
             material_weights,
         }
@@ -4190,19 +4180,41 @@ mod tests {
         assert_eq!(plan, vec![vec![0], vec![1], vec![2]]);
     }
 
+    // Real-Fix.C 2026-05-08: tests below updated for unified material attribute
+    // set. Pre-fix, biome_weights_0/1 and material_ids/material_weights were
+    // independent vertex attributes (drift trap §7.7 at texture-data layer);
+    // post-fix, the biome aggregator is reconstructed from material_* layers
+    // 0-7. Tests exercising biome-vs-material blend now use material_id >= 8
+    // (which only populates material aggregator) to exercise the
+    // material-only fallback, OR use the same layer index in both aggregators
+    // (which is now the typical case for layers 0-7).
+
     #[test]
-    fn terrain_surface_summary_blends_material_tint_over_biome_fallback() {
+    fn terrain_surface_summary_blends_biome_and_material_at_same_layer() {
         let mut summary = TerrainSurfaceSummary::default();
         summary.add_vertex(&terrain_vertex(
             [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0, 0.0],
             [1.0, 0.0, 0.0, 0.0],
         ));
 
-        let expected = blend_tints(TERRAIN_BIOME_TINTS[0], TERRAIN_MATERIAL_TINTS[1], 0.65);
+        // Layer 2 populates BOTH biome_weights[2] and material_weights[2].
+        // resolve_tint blends biome_tint[2] with material_tint[2] at 65%.
+        let expected = blend_tints(TERRAIN_BIOME_TINTS[2], TERRAIN_MATERIAL_TINTS[2], 0.65);
         assert_color_approx_eq(summary.resolve_tint(), expected);
+    }
+
+    #[test]
+    fn terrain_surface_summary_uses_material_only_for_high_material_ids() {
+        // material_id 10 is outside the 8-channel biome range; only the
+        // material aggregator gets populated → material-only tint.
+        let mut summary = TerrainSurfaceSummary::default();
+        summary.add_vertex(&terrain_vertex(
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+        ));
+        assert_color_approx_eq(summary.resolve_tint(), TERRAIN_MATERIAL_TINTS[10]);
     }
 
     #[test]
@@ -4210,8 +4222,6 @@ mod tests {
         let mut summary = TerrainSurfaceSummary::default();
         summary.add_vertex(&terrain_vertex(
             [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0],
             [3.0, 5.0, 0.0, 0.0],
             [0.25, 0.75, 0.0, 0.0],
         ));
@@ -4221,29 +4231,35 @@ mod tests {
 
     #[test]
     fn convert_terrain_chunk_accumulates_surface_summary_across_vertices() {
+        // Real-Fix.C: vertex weights placed in material_* slots; biome
+        // aggregator populated from material_ids 0-7 layers in add_vertex.
         let vertices = vec![
             terrain_vertex(
                 [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0],
                 [1.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0],
             ),
             terrain_vertex(
                 [4.0, 2.0, 8.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0, 0.0],
             ),
         ];
 
         let chunk = EngineRenderAdapter::convert_terrain_chunk(&vertices, &[0, 1, 0]);
-        let mut expected_biomes = [0.0; 8];
-        expected_biomes[0] = 1.0;
-        expected_biomes[1] = 1.0;
-        let expected_tint = weighted_palette_tint(&expected_biomes, &TERRAIN_BIOME_TINTS)
+        // Both biome_weights and material_weights have [1,1,0,0,0,0,0,0]
+        // at layers 0,1. resolve_tint blends biome_tint with material_tint.
+        let mut expected_layers = [0.0; 8];
+        expected_layers[0] = 1.0;
+        expected_layers[1] = 1.0;
+        let expected_biome = weighted_palette_tint(&expected_layers, &TERRAIN_BIOME_TINTS)
             .expect("expected biome tint");
+        let mut expected_material_weights = [0.0; 22];
+        expected_material_weights[0] = 1.0;
+        expected_material_weights[1] = 1.0;
+        let expected_material = weighted_palette_tint(&expected_material_weights, &TERRAIN_MATERIAL_TINTS)
+            .expect("expected material tint");
+        let expected_tint = blend_tints(expected_biome, expected_material, 0.65);
 
         assert_eq!(chunk.indices, vec![0, 1, 0]);
         assert_eq!(chunk.aabb_min, [0.0, 0.0, 0.0]);
