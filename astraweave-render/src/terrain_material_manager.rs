@@ -723,6 +723,34 @@ impl TerrainMaterialManager {
         let aux_bytes = (self.config.aux_resolution as usize).pow(2) * BYTES_PER_TEXEL as usize;
 
         let layer_count = self.config.layer_count as usize;
+
+        // [INSTRUMENTATION Round 8 T11.D — Mediator-Brush-Diagnostic-Round-8-Instrumentation.A 2026-05-08]
+        // T11.D: log renderer texture array slot capacity + per-slot loaded
+        // status at init. Distinguishes H8.2 (asset/texture pipeline incomplete
+        // — caller passes fewer layers than capacity) from H8.1 (capacity mismatch
+        // — caller passes more layers than capacity, excess silently dropped by
+        // .take(layer_count)). Once-per-set_material call (init phase only).
+        {
+            let mut loaded_status = String::with_capacity(layer_count * 8);
+            for (i, layer) in layers.iter().take(layer_count).enumerate() {
+                let has_albedo = layer.albedo.is_some();
+                if i > 0 {
+                    loaded_status.push(',');
+                }
+                use std::fmt::Write as _;
+                let _ = write!(&mut loaded_status, "{}={}", i, if has_albedo { "T" } else { "F" });
+            }
+            let dropped = layers.len().saturating_sub(layer_count);
+            eprintln!(
+                "[BRUSH-DBG] renderer-texture-array-init: max_layers={}, layer_count_config={}, layers_supplied={}, layers_dropped_at_cap={}, slot_albedo_loaded=[{}]",
+                MAX_TERRAIN_LAYERS,
+                layer_count,
+                layers.len(),
+                dropped,
+                loaded_status,
+            );
+        }
+
         for (i, layer) in layers.iter().take(layer_count).enumerate() {
             if let Some(data) = layer.albedo {
                 if data.len() != albedo_bytes {
