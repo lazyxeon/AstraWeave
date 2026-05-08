@@ -842,32 +842,6 @@ impl TerrainPanel {
             self.terrain_state.begin_stroke();
         }
 
-        // [INSTRUMENTATION Round 8 T11.A — Mediator-Brush-Diagnostic-Round-8-Instrumentation.A 2026-05-08]
-        // T11.A: log paint mode + UI selected_material at brush dispatch.
-        // Throttled ~5 Hz. material_id is what UI selected; downstream T11.B
-        // logs what the paint function receives, T11.C what splat-build sees,
-        // T11.D whether renderer has a texture slot for it. Distinguishes
-        // H8.1 (UI/renderer capacity mismatch — selected_material >= 8 fails)
-        // from H8.3/H8.4/H8.5 (downstream defects).
-        if self.brush_mode == BrushMode::Paint {
-            static R8_A_FRAME: std::sync::atomic::AtomicU32 =
-                std::sync::atomic::AtomicU32::new(0);
-            let _r8a_n = R8_A_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if _r8a_n % 12 == 0 {
-                let mat_name = crate::viewport::types::MATERIAL_NAMES
-                    .get(self.selected_material)
-                    .copied()
-                    .unwrap_or("OUT_OF_RANGE");
-                eprintln!(
-                    "[BRUSH-DBG] ui-material-selected: idx={}, name=\"{}\", material_id={}, ui_library_total={}, max_terrain_layers=8",
-                    self.selected_material,
-                    mat_name,
-                    self.selected_material,
-                    crate::viewport::types::MATERIAL_NAMES.len(),
-                );
-            }
-        }
-
         let modified = if self.brush_mode == BrushMode::Paint {
             self.terrain_state.apply_brush_paint_material(
                 world_x,

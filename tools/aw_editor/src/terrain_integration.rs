@@ -2081,28 +2081,6 @@ impl TerrainState {
         let mat_id_f32 = material_id as f32;
         let mut modified = false;
 
-        // [INSTRUMENTATION Round 8 T11.B — Mediator-Brush-Diagnostic-Round-8-Instrumentation.A 2026-05-08]
-        // T11.B: log material_id received by paint function. No translation
-        // happens between UI selected_material (T11.A) and what's passed here:
-        // panel passes self.selected_material as u32 directly. So written_to_vertex
-        // == ui_material_id == material_id parameter. T11.B confirms paint receives
-        // the value unmodified and proceeds to write it to vertex.material_ids.
-        // Distinguishes H8.5 (paint writes wrong value) — would be refuted if
-        // the value here matches T11.A's ui_material_id.
-        {
-            static R8_B_FRAME: std::sync::atomic::AtomicU32 =
-                std::sync::atomic::AtomicU32::new(0);
-            let _r8b_n = R8_B_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if _r8b_n % 12 == 0 {
-                eprintln!(
-                    "[BRUSH-DBG] paint-dispatch-write: ui_material_id={}, written_to_vertex={}, translated=false, max_terrain_layers=8, in_range={}",
-                    material_id,
-                    material_id,
-                    material_id < 8,
-                );
-            }
-        }
-
         let chunk_ids: Vec<ChunkId> = self.generated_chunks.keys().cloned().collect();
 
         for chunk_id in chunk_ids {

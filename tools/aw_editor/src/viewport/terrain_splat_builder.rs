@@ -77,35 +77,12 @@ pub fn build_chunk_splat_maps(
     // weight contribution of any vertex slot whose material_id matches.
     // material_ids out of range (>= 8) are dropped per pbr_terrain.wgsl
     // MAX_TERRAIN_LAYERS=8.
-    //
-    // [INSTRUMENTATION Round 8 T11.C — Mediator-Brush-Diagnostic-Round-8-Instrumentation.A 2026-05-08]
-    // Counts vertices with kept vs dropped material_ids per chunk. Distinguishes
-    // H8.1 (capacity mismatch — dropped_count > 0 with non-working IDs) from
-    // H8.3 (mapping bug producing out-of-range IDs from in-range UI selections).
-    // Throttled to once-per-N invocations to avoid log spam during scrubbing.
-    let mut t11c_kept_slots: u32 = 0;
-    let mut t11c_dropped_slots: u32 = 0;
-    let mut t11c_dropped_ids: [i32; 8] = [-1; 8];
-    let mut t11c_dropped_id_count: usize = 0;
-
     for v in vertices {
         let mut channels = [0.0f32; 8];
         for i in 0..4 {
             let layer = v.material_ids[i] as i32;
             if (0..8).contains(&layer) {
                 channels[layer as usize] += v.material_weights[i];
-                if v.material_weights[i] > 0.0 {
-                    t11c_kept_slots += 1;
-                }
-            } else if v.material_weights[i] > 0.0 {
-                t11c_dropped_slots += 1;
-                if t11c_dropped_id_count < t11c_dropped_ids.len() {
-                    let already_seen = t11c_dropped_ids[..t11c_dropped_id_count].contains(&layer);
-                    if !already_seen {
-                        t11c_dropped_ids[t11c_dropped_id_count] = layer;
-                        t11c_dropped_id_count += 1;
-                    }
-                }
             }
         }
         for c in 0..4 {
@@ -113,21 +90,6 @@ pub fn build_chunk_splat_maps(
         }
         for c in 4..8 {
             splat_1.push(encode_weight(channels[c]));
-        }
-    }
-
-    {
-        static R8_C_FRAME: std::sync::atomic::AtomicU32 =
-            std::sync::atomic::AtomicU32::new(0);
-        let _r8c_n = R8_C_FRAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if _r8c_n % 12 == 0 {
-            eprintln!(
-                "[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count={}, kept_slots={}, dropped_slots={}, dropped_ids_sample={:?}",
-                vertices.len(),
-                t11c_kept_slots,
-                t11c_dropped_slots,
-                &t11c_dropped_ids[..t11c_dropped_id_count],
-            );
         }
     }
 
