@@ -1,3 +1,5 @@
+# Trace Verification Prompt Template
+
 You are running a verification pass against an architecture trace document for the
 AstraWeave engine. The document at {{TRACE_DOC_PATH}} contains markers indicating
 unverified or inferred claims:
