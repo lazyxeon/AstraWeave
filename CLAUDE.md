@@ -21,6 +21,8 @@ Make ONLY the changes requested. Do not refactor, rename, reorganize, or "improv
 
 **Never build a second implementation of a logical system that already exists** (rendering path, vertex format, material pipeline, scheduler, tonemap chain, scene serializer). Before adding any such system, run `rg 'struct <Name>\|trait <Name>'` workspace-wide; if a peer implementation exists, extend it or surface the conflict to the user. The Fix-27 campaign and the editor-render-divergence audit each took weeks to unwind a duplicate pipeline that was created without this check.
 
+**Wrapped-Component Resource Identity (§7.7 structural axiom).** When component A wraps component B and both manage state of the same logical role (depth target, terrain chunk map, splat buffer, material library, input action queue, audio bus state, animation clip library), A's reads do not reflect B's writes unless the wrapper explicitly delegates. The Editor Multi-Tool Architecture Sub-phase 3 campaign confirmed this at four layers (depth target, mesh-data, texture-data attribute set, UI/renderer capacity) across eight diagnostic rounds (2026-05-04 → 2026-05-08). The trap recurs at non-rendering boundaries: editor `input_bindings_panel.rs` (2,511 LoC) reinventing astraweave-input without depending on it; editor `AudioPanel` UI knobs (10 of ~25 `AudioAction` variants) that no engine code reads; `astraweave-fluids/src/editor.rs` (5,823 LoC) forward-design surface not wired to `tools/aw_editor`. Before adding any wrapper-layer resource, check whether the wrapped layer holds the same logical resource — if so, the wrapper must delegate, not duplicate. See `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` §7.7 for the full forensic trail.
+
 ### Error Handling Policy
 
 - **FIX ALL COMPILATION ERRORS** — zero tolerance. Never leave broken code.
@@ -35,7 +37,7 @@ Make ONLY the changes requested. Do not refactor, rename, reorganize, or "improv
 ### Chain of Thought
 
 1. **Understand**: Analyze the request against mission-critical standards.
-2. **Context**: Check `docs/current/` for latest state. Read reference files when needed. **For any cross-crate work, read `docs/current/ARCHITECTURE_MAP.md` first** — it contains the full dependency graph, integration seams, data flow paths, and blast-radius analysis.
+2. **Context**: Check `docs/current/` for latest state. **For any cross-crate work, read `docs/current/ARCHITECTURE_MAP.md` first** (dependency graph, integration seams, blast-radius analysis). **For subsystem-internal work, read the relevant `docs/architecture/<system>.md` trace first** (file map, conflict map, decision log, invariants, open questions). Read other reference files as needed.
 3. **Plan**: Break down the task. Identify risks. Consult the Architecture Map for dependency direction and shared types before modifying any public API.
 4. **Execute**: Generate code/docs. **Verify compilation immediately.**
 5. **Validate**: Run tests/benchmarks. Ensure 90%+ confidence.
@@ -53,11 +55,50 @@ Make ONLY the changes requested. Do not refactor, rename, reorganize, or "improv
 
 ### Integration Completeness (before declaring work complete)
 
-A feature is incomplete until it is wired end-to-end. Before marking any task done, verify all three:
+A feature is incomplete until it is wired end-to-end. Before marking any task done, verify all four:
 
 1. **Production caller exists.** Every new public type, function, or module must have ≥1 non-test, non-feature-gated call site. Run `rg '<Name>::new\|<fn>\(' --type rust -g '!*test*' -g '!benches/*'`. Zero matches = dormant code (this is how `ParallelSchedule`, the render-graph DAG, `AdvancedErosionSimulator`, and `RegionalArchetypePanel` all shipped — and were later removed or rewritten).
 2. **All registration surfaces touched.** When adding an enum variant, panel type, component, or system, list every match arm, registry, and initializer in a comment first. After editing, `cargo check` must pass without exhaustiveness warnings AND `rg <new_name>` must show every site updated. Panel registration alone has 11 surfaces — the F.5-paint diagnostic is the canonical failure.
 3. **Every UI/API-exposed config field is read.** A field that is settable but never observed downstream is a bug. Confirm with a grep for the field name in the consuming subsystem before completion.
+4. **Architecture trace is current.** If you modified code in a subsystem that has a trace under `docs/architecture/`, update the trace in the same commit (or note the deferred update in the commit message). At minimum touch §5 Active File Map, §8 Invariants if any changed, and §11 Open Questions if any closed or opened. Bump the doc version and add a revision history entry. Untraced subsystems: when adding non-trivial new surface, run the trace-generation prompt against the subsystem before declaring the feature complete.
+
+### Architecture Trace Maintenance
+
+The workspace has a per-subsystem architecture trace campaign under `docs/architecture/`. Each trace is the canonical forensic reference for one subsystem — authoritative pipeline, semantic vocabulary, file map, conflict map, decision log, invariants, open questions. **Trace docs are part of the production contract**: when you change code in a traced subsystem, you update the trace in the same commit.
+
+**Existing traces (as of 2026-05-12):**
+
+| Trace | Subsystem |
+|---|---|
+| `docs/architecture/terrain_materials.md` | Terrain Material System (canonical reference example) |
+| `docs/architecture/render_pipeline_material_system_shader_infrastructure.md` | Render Pipeline + Material System + Shader Infrastructure |
+| `docs/architecture/physics.md` | Physics (Rapier3D wrapping + subsystems) |
+| `docs/architecture/persistence_ecs.md` | Persistence (aw-save + persistence-ecs) |
+| `docs/architecture/net.md` | Net (snapshot-based game server) |
+| `docs/architecture/net_ecs.md` | Net-ECS + standalone matchmaking |
+| `docs/architecture/input.md` | Input |
+| `docs/architecture/fluids.md` | Fluids |
+| `docs/architecture/ecs_math_core_sdk_foundation.md` | ECS substrate + Math/Core/SDK |
+| `docs/architecture/audio.md` | Audio |
+| `docs/architecture/animation.md` | Animation System |
+| `docs/architecture/ai_pipeline.md` | AI Pipeline (with 8 subsystem traces) |
+| `docs/architecture/aw_editor.md` | aw_editor (Visual Editor) |
+
+**The 5-prompt trace toolkit lives at `docs/architecture/_meta/`:**
+
+- `ARCHITECTURE_TRACE_TEMPLATE.md` — 12-section trace structure
+- `TRACE_PROMPT_TEMPLATE.md` — generation prompt (new traces)
+- `TRACE_VERIFICATION_PROMPT_TEMPLATE.md` — verification pass (resolve [INFERRED]/[NEEDS VERIFICATION] markers)
+- `DEEP_TRACE_INVESTIGATION_TEMPLATE.md` — close factual Open Questions / enrich decisional ones
+- `SUBSYSTEM_TRACE_EXPANSION_PROMPT_TEMPLATE.md` — additive subsystem expansion within a parent trace
+
+**Workflow:**
+
+1. **Before** modifying code: read the trace's §6 Conflict Map, §7 Decision Log, §8 Invariants. If your change would break an invariant or contradict a decision, surface that explicitly.
+2. **After** modifying code: update §5 Active File Map, §8 Invariants, §11 Open Questions, and revision history in the same commit.
+3. **For untraced subsystems:** when adding non-trivial new surface, run the trace-generation prompt against the subsystem in a separate doc-only commit before the feature commit lands.
+
+The traces are the workspace's forensic counterweight to documentation drift — see Documentation Hazards below.
 
 ### Build Strategy
 
@@ -269,12 +310,13 @@ The ECS scheduler is **deterministic single-threaded** per tick. Systems within 
 
 All crate names are prefixed with `astraweave-`.
 
-> **Agents**: For the full dependency graph, public API surface per crate, integration seams with risk levels, and known architectural anomalies (e.g. `terrain` → `gameplay` reverse dep, `render` → `aw_asset_cli` tool dep), see **`docs/current/ARCHITECTURE_MAP.md`**. Read it before any cross-crate modification, shared type change, or dependency analysis.
+> **Agents**: For the full dependency graph, public API surface per crate, integration seams with risk levels, and known architectural anomalies (e.g. `terrain` → `gameplay` reverse dep, `render` → `aw_asset_cli` tool dep), see **`docs/current/ARCHITECTURE_MAP.md`**. Read it before any cross-crate modification, shared type change, or dependency analysis. For subsystem-internal work, see the relevant **`docs/architecture/<system>.md`** trace.
 
 ### Where to Look
 
 | Need | Location |
 |------|----------|
+| **Architecture Traces** | **`docs/architecture/<system>.md`** — per-subsystem forensic reference (terrain, render, physics, persistence, net, net-ecs, input, fluids, ECS foundation, audio, animation, AI pipeline, aw_editor). Toolkit at `docs/architecture/_meta/`. |
 | **Architecture Map** | **`docs/current/ARCHITECTURE_MAP.md`** — dependency graph, API surface, seams, data flows |
 | AI Systems | `astraweave-ai/src/{orchestrator,tool_sandbox,core_loop}.rs` |
 | ECS Internals | `astraweave-ecs/src/{archetype,system_param,events}.rs` |
@@ -317,6 +359,26 @@ Any new or modified `unsafe` code **MUST** pass both verification pipelines:
 - **LLM crates**: `astraweave-llm`, `llm_toolcall` excluded from standard builds
 - **`.unwrap()` in test code only**: All `.unwrap()` calls are inside `#[cfg(test)]` modules — justified for test assertions. Zero production-path unwraps in engine runtime crates.
 
+### Documentation Hazards
+
+**Aspirational documentation drift.** A 2025-09-08 commit (`28bc94f21`, "Create comprehensive bespoke wiki with 51-section documentation structure (#34)", authored by GitHub Copilot bot) added ~80 doc files under `docs/src/` referencing types that do not exist in the code. Affected surfaces include:
+
+- `docs/src/core-systems/audio.md` — references `AudioConfig`, `AudioBackend`, `AudioListener`, `SpatialSound`, `AttenuationModel`, `ReverbZone`, `MusicManager`, `MusicLayer`, `SfxManager`, `SoundPool`, `AudioMixer` — **none of which exist in `astraweave-audio/src/lib.rs`'s re-exports**
+- `docs/src/core-systems/input.md` — references `InputSystem`, `InputConfig`, `ActionMap`, `BindingRecorder`, `BindingProfile`, `ContextPriority`, `InputBuffer`, `InputPredictor`, `InputRecorder` — none of which exist in `astraweave-input/src/lib.rs`'s re-exports
+- `docs/src/core-systems/networking.md` — claims QUIC via Quinn; actual implementation is WebSocket via tokio-tungstenite over TCP (architectural-class mismatch)
+
+Treat `docs/src/` content as **historical/aspirational** unless cross-validated against actual `pub use` re-exports in the relevant crate's `lib.rs`. The architecture traces in `docs/architecture/` are the falsification mechanism.
+
+**Doc-comment migration drift.** Doc-comments and CLAUDE.md frequently describe target state ahead of runtime wiring. Confirmed examples:
+
+- **AI runtime model**: doc-comments and CLAUDE.md describe Qwen3-based hybrid; `astraweave-ai/src/orchestrator.rs:488-490` defaults `OLLAMA_MODEL` to `"phi3:medium"`. Set `OLLAMA_MODEL=qwen3:8b` to get the documented behavior, or update the default if Qwen3 is the canonical choice.
+- **Networking signature**: `net/README.md` describes XOR `sign16` as MVP and HMAC-SHA256 as production upgrade. Standalone server runs HMAC verification; standalone client still computes `sign16`. Every signature verification fails — server warns but does not kick.
+- **HNSW vector index**: `astraweave-embeddings/src/lib.rs:9` advertises HNSW with `hnsw_rs` dependency declared and feature default-on; actual `VectorStore::search` is a linear scan over a DashMap.
+- **SpatialHash broadphase**: `astraweave-physics/src/lib.rs:25-26` doc-comment advertises `SpatialHash` as broadphase ("99.96% pair reduction"); actual broadphase is Rapier's `DefaultBroadPhase`. The in-crate `SpatialHash` (1,038 LoC) is dormant.
+- **Multiple "stub" surfaces**: `astraweave-llm/src/llm_adapter.rs::safe_llm_invoke` has zero workspace callers (the `MAX_PROMPT_LENGTH = 4096` invariant is unreachable code); `astraweave-persistence-ecs::auto_save_system` is a comment-only TODO; `compute_poses_stub` in scene; `process_destructible_hits` no-op stub in physics.
+
+When a doc-comment describes desired behavior, treat it as a hypothesis to verify against the code path, not as ground truth.
+
 ### Key Lessons (Apply to All Future Work)
 
 1. **Batching > Scattering**: ECS collect/writeback 3-5x faster than scattered `get_mut()`
@@ -326,7 +388,16 @@ Any new or modified `unsafe` code **MUST** pass both verification pipelines:
 5. **API verification first**: Read actual struct definitions AND `rg 'struct <Name>'` workspace-wide for parallel definitions before generating code (dual TerrainVertex / shadow-layout / FastPreview pipelines each cost multi-day cleanups)
 6. **Case sensitivity matters**: snake_case vs PascalCase mismatch caused 100% false positives
 7. **Silent failures cost weeks**: `let _ =` and `.ok()` on `Result` hide the bugs that produce the longest debugging sessions (12 CRITICAL editor findings traced here)
-8. **Wired beats tested**: A subsystem with passing tests and zero production callers is dormant code, not a feature — verify via the Integration Completeness checklist
+8. **Wired beats tested**: A subsystem with passing tests and zero production callers is dormant code, not a feature. The workspace currently carries ~200K LoC across this taxonomy:
+   - **In-design-but-tested** — passes tests, zero workspace callers (Memory pipeline ~11K, Coordination crate ~5.3K, Advanced GOAP ~16.7K, LLM Production Hardening ~15K, RAG stack ~12.3K, Fluids ~84K, Dialogue LLM layer ~2.9K, NPC isolated subsystem)
+   - **Dormant scaffolding** — module exists, body is TODO comments (`auto_save_system`, `replay_system` event application, `safe_llm_invoke`, `compute_poses_stub`)
+   - **Orphan source** — file on disk, not declared as a module (`astraweave-net-ecs/src/lib_temp.rs`, `archive/temp_files/temp/temp_lib.rs`, `astraweave-ai/src/rag/`, `astraweave-ai/src/persona/`)
+   - **Declared-but-unused Cargo deps** — listed in Cargo.toml, zero `use` statements (`astraweave-author` + `astraweave-observability` in aw_editor; `astraweave-llm` + `astraweave-embeddings` + `astraweave-rag` in astraweave-memory)
+   - **Dormant feature flags** — gate zero `#[cfg(feature = "X")]` sites (`editor-graphs`, `editor-materials`, `editor-terrain`, `editor-nav`, `editor-sim`, `editor-full`)
+   - **Aspirational-doc-only types** — referenced in `docs/src/` but not in any `pub use` (the 28bc94f21 wiki sweep, see Documentation Hazards)
+
+   Verify via the Integration Completeness checklist. See `docs/architecture/` traces for per-subsystem inventory.
+9. **Phase numbering is local, not global**: References to "Phase 1.1", "Phase 4.2", "Phase 5.3 T7 stage 3a", "Phase 7 Arbiter", "Phase PBR-E", etc. reflect parallel campaigns, not a unified timeline. Cross-reference against the relevant `docs/current/PHASE_*.md` or campaign-specific doc; don't try to linearize them.
 
 ### Documentation Organization
 
@@ -336,6 +407,8 @@ All new documents must be categorized before creation:
 - **Completed phases/weeks/days** → `docs/journey/{phases,weeks,daily}/`
 - **Lessons & patterns** → `docs/lessons/`
 - **Setup & reference** → `docs/supplemental/`
+- **Subsystem architecture traces** → `docs/architecture/`
+- **Trace toolkit prompts** → `docs/architecture/_meta/`
 
 **Never create files in root `docs/`.** Preserve git history with `git mv`.
 
@@ -351,8 +424,10 @@ Read these when you need deeper context. **Do not ask the user for information t
 
 | File | Contains |
 |------|----------|
+| `docs/architecture/<system>.md` | **Per-subsystem architecture traces** — forensic reference for traced subsystems (terrain, render, physics, persistence, net, net-ecs, input, fluids, ECS foundation, audio, animation, AI pipeline, aw_editor). Read the relevant trace before modifying a traced subsystem; update it in the same commit when you do. Toolkit at `docs/architecture/_meta/`. |
 | `docs/current/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams, editor viewport pipeline (unified post-Fix-27), data flow paths, unsafe code inventory. |
 | `docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` | 37-fix behavioral correctness audit: visual math, data pipeline, undo system, silent failures, integration seams. Completed 2026-04-05. |
+| `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` | 8-round diagnostic narrowing that elevated the §7.7 wrapped-component resource identity trap to structural axiom. Real-Fix.A/B/C landed, .D pending. |
 | `docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md` | 7-phase campaign plan that eliminated the dual FastPreview/EnginePBR rendering pipeline. |
 | `docs/current/PROJECT_STATUS.md` | Current state, active work, recently completed milestones |
 | `docs/current/ARCHITECTURE_REFERENCE.md` | Full API patterns (7 arbiter patterns, testing, benchmarking), performance data, formal verification details |
