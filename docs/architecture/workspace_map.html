@@ -457,6 +457,8 @@
         <span class="pill"><span id="node-count">—</span> nodes</span>
         <span class="pill"><span id="edge-count">—</span> edges</span>
         <span class="pill">13 traces</span>
+        <a id="repo-link" class="pill" href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine"
+           target="_blank" rel="noopener" style="text-decoration:none;color:var(--link);">View on GitHub ↗</a>
       </div>
     </div>
     <button class="htu-toggle" id="htu-toggle" aria-expanded="false" aria-controls="htu-body">How to use ↓</button>
@@ -587,6 +589,45 @@ const RECONCILE = workspaceData.reconciliationNotes;
 const META = workspaceData.metadata;
 
 const domainColor = Object.fromEntries(DOMAINS.map(d => [d.id, d.color]));
+
+// ============================================================
+// Trace-link base URL
+//   Local (file://)   → relative `./` links (the .md sits next to the .html)
+//   GitHub Pages      → GitHub blob view (browsers render .md there;
+//                        Pages serves .md as text/plain which is ugly)
+//   Any other host    → relative (preserves authored layout)
+// ============================================================
+const REPO_BLOB = 'https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/';
+const TRACE_BASE = (function() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    if (params.get('mode') === 'pages') return REPO_BLOB;
+    if (params.get('mode') === 'local') return './';
+    const host = window.location.hostname || '';
+    if (host.endsWith('.github.io')) return REPO_BLOB;
+  } catch (_) {}
+  return './';
+})();
+// Rewrite static .md links in the page (header/footer) once on load. Runs
+// whenever TRACE_BASE points at a GitHub blob URL — i.e. when served from
+// github.io, or when `?mode=pages` is in the query string for preview.
+function rewriteStaticTraceLinks() {
+  if (TRACE_BASE === './') return;
+  document.querySelectorAll('a[href*=".md"], a[href$="/_meta/"]').forEach(a => {
+    const href = a.getAttribute('href') || '';
+    let m = href.match(/^\.\/(_meta\/[^\/]+\.md)(#.*)?$/);
+    if (m) { a.setAttribute('href', REPO_BLOB + m[1] + (m[2] || '')); return; }
+    m = href.match(/^\.\/_meta\/?$/);
+    if (m) { a.setAttribute('href', REPO_BLOB + '_meta/'); return; }
+    m = href.match(/^\.\/?([^\/]+\.md)(#.*)?$/);
+    if (m) { a.setAttribute('href', REPO_BLOB + m[1] + (m[2] || '')); return; }
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', rewriteStaticTraceLinks);
+} else {
+  rewriteStaticTraceLinks();
+}
 
 // Pre-compute neighbor maps for fast in/out edge lookup
 const incoming = new Map();
@@ -1178,7 +1219,7 @@ function escapeHtml(s) {
 
 function traceLink(trace, section) {
   if (!trace) return '';
-  const href = section ? `./${trace}${section}` : `./${trace}`;
+  const href = section ? `${TRACE_BASE}${trace}${section}` : `${TRACE_BASE}${trace}`;
   return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(trace)}${section ? ' '+escapeHtml(section) : ''}</a>`;
 }
 
@@ -1193,11 +1234,11 @@ function renderNodePanel(n) {
       <h3>Trace</h3>
       <div>${traceLink(n.trace)}</div>
       <div class="meta-row" style="margin-top:6px;font-size:11px;">
-        <a href="./${escapeHtml(n.trace)}#5-active-file-map" target="_blank" rel="noopener">§5 File Map</a> ·
-        <a href="./${escapeHtml(n.trace)}#6-conflict-map" target="_blank" rel="noopener">§6 Conflicts</a> ·
-        <a href="./${escapeHtml(n.trace)}#7-decision-log" target="_blank" rel="noopener">§7 Decisions</a> ·
-        <a href="./${escapeHtml(n.trace)}#8-invariants" target="_blank" rel="noopener">§8 Invariants</a> ·
-        <a href="./${escapeHtml(n.trace)}#11-open-questions" target="_blank" rel="noopener">§11 Open Questions</a>
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#5-active-file-map" target="_blank" rel="noopener">§5 File Map</a> ·
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#6-conflict-map" target="_blank" rel="noopener">§6 Conflicts</a> ·
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#7-decision-log" target="_blank" rel="noopener">§7 Decisions</a> ·
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#8-invariants" target="_blank" rel="noopener">§8 Invariants</a> ·
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#11-open-questions" target="_blank" rel="noopener">§11 Open Questions</a>
       </div>
     </div>` : `
     <div class="panel-section">

@@ -71,6 +71,12 @@ jobs:
           mkdir -p docs/book/dashboard/benchmark_dashboard
           cp -r docs/archive/benchmark_dashboard/* docs/book/dashboard/benchmark_dashboard/ 2>/dev/null || true
 
+      - name: Copy workspace architecture map
+        run: |
+          mkdir -p docs/book/architecture
+          cp docs/architecture/workspace_map.html docs/book/architecture/index.html
+          echo "Workspace architecture map copied; URL slug /architecture/"
+
       - name: Install system dependencies (for cargo doc)
         continue-on-error: true
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev
