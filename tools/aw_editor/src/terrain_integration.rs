@@ -2162,6 +2162,384 @@ impl TerrainState {
         modified
     }
 
+    /// Real-Fix.E 2026-05-08: ZoneBlend brush — biome boundary feathering.
+    ///
+    /// Active brush mode per Andrew-gate (l) l-1. Blends a vertex's biome
+    /// composition with its neighborhood by:
+    ///   1. expanding sparse `(material_ids, material_weights)` to dense
+    ///      32-channel weights (Real-Fix.D MAX_TERRAIN_LAYERS capacity),
+    ///   2. computing a distance-weighted average across neighborhood
+    ///      vertices (sample radius = `radius * 1.5` per Smooth brush
+    ///      analog),
+    ///   3. re-sparsifying back to top-4 via the same logic as
+    ///      `biome_weights_8_to_material_slots` (Real-Fix.C precedent,
+    ///      extended to 32 channels),
+    ///   4. lerping current vertex slots toward the blended target by
+    ///      `strength * falloff_curve.eval(t)`.
+    ///
+    /// Does NOT modify height (biome layer only). Material assignments
+    /// flow naturally from the blended sparse data via the existing
+    /// splat-build pipeline (Real-Fix.D 32-channel splats).
+    pub fn apply_brush_zoneblend(
+        &mut self,
+        world_x: f32,
+        world_z: f32,
+        radius: f32,
+        strength: f32,
+        falloff_curve: crate::panels::terrain_panel::FalloffCurve,
+    ) -> bool {
+        let chunk_size = self.config.chunk_size;
+        let sample_radius = radius * 1.5;
+        let sample_radius_sq = sample_radius * sample_radius;
+        let mut modified = false;
+
+        let chunk_ids: Vec<ChunkId> = self.generated_chunks.keys().cloned().collect();
+
+        // First pass: collect neighborhood samples from all overlapping chunks.
+        // Each sample is `(position_xz, dense_32_channels)`.
+        let mut samples: Vec<([f32; 2], [f32; 32])> = Vec::new();
+        for chunk_id in &chunk_ids {
+            let chunk_origin_x = chunk_id.x as f32 * chunk_size;
+            let chunk_origin_z = chunk_id.z as f32 * chunk_size;
+            let closest_x = world_x.clamp(chunk_origin_x, chunk_origin_x + chunk_size);
+            let closest_z = world_z.clamp(chunk_origin_z, chunk_origin_z + chunk_size);
+            let dx = world_x - closest_x;
+            let dz = world_z - closest_z;
+            if dx * dx + dz * dz > sample_radius_sq {
+                continue;
+            }
+            if let Some(gen_chunk) = self.generated_chunks.get(chunk_id) {
+                for vertex in &gen_chunk.vertices {
+                    let vx = vertex.position[0];
+                    let vz = vertex.position[2];
+                    let ddx = vx - world_x;
+                    let ddz = vz - world_z;
+                    if ddx * ddx + ddz * ddz > sample_radius_sq {
+                        continue;
+                    }
+                    samples.push((
+                        [vx, vz],
+                        Self::expand_sparse_to_dense_32(
+                            vertex.material_ids,
+                            vertex.material_weights,
+                        ),
+                    ));
+                }
+            }
+        }
+
+        if samples.is_empty() {
+            return false;
+        }
+
+        // Second pass: blend affected vertices toward the distance-weighted
+        // average of the neighborhood samples.
+        let radius_sq = radius * radius;
+        for chunk_id in chunk_ids {
+            let chunk_origin_x = chunk_id.x as f32 * chunk_size;
+            let chunk_origin_z = chunk_id.z as f32 * chunk_size;
+            let closest_x = world_x.clamp(chunk_origin_x, chunk_origin_x + chunk_size);
+            let closest_z = world_z.clamp(chunk_origin_z, chunk_origin_z + chunk_size);
+            let dx = world_x - closest_x;
+            let dz = world_z - closest_z;
+            if dx * dx + dz * dz > radius_sq {
+                continue;
+            }
+
+            if let Some(gen_chunk) = self.generated_chunks.get_mut(&chunk_id) {
+                let mut chunk_modified = false;
+                for vertex in gen_chunk.vertices.iter_mut() {
+                    let vx = vertex.position[0];
+                    let vz = vertex.position[2];
+                    let ddx = vx - world_x;
+                    let ddz = vz - world_z;
+                    let dist_sq = ddx * ddx + ddz * ddz;
+                    if dist_sq > radius_sq {
+                        continue;
+                    }
+                    let dist = dist_sq.sqrt();
+                    let t = (dist / radius).clamp(0.0, 1.0);
+                    let influence = strength * falloff_curve.eval(t);
+                    if influence <= 0.0 {
+                        continue;
+                    }
+
+                    // Compute distance-weighted average of neighborhood
+                    // dense-32 channels around this vertex.
+                    let target = Self::weighted_average_dense_32(&samples, vx, vz, sample_radius);
+                    let current = Self::expand_sparse_to_dense_32(
+                        vertex.material_ids,
+                        vertex.material_weights,
+                    );
+                    let blended = Self::lerp_dense_32(&current, &target, influence);
+                    let (ids, ws) = Self::top4_from_dense_32(blended);
+                    vertex.material_ids = ids;
+                    vertex.material_weights = ws;
+                    chunk_modified = true;
+                }
+
+                if chunk_modified {
+                    if let Some(gpu_idx) = self.chunk_order.iter().position(|id| *id == chunk_id) {
+                        if !self.dirty_chunk_indices.contains(&gpu_idx) {
+                            self.dirty_chunk_indices.push(gpu_idx);
+                        }
+                    }
+                    modified = true;
+                }
+            }
+        }
+
+        modified
+    }
+
+    /// Real-Fix.E 2026-05-08: passive global ZoneBlend pass per Andrew-gate
+    /// (l) l-1. One-shot operation: iterates all terrain vertices, detects
+    /// vertices on/near biome boundaries (via dense-channel variance across
+    /// a small neighborhood), and applies a modest blend with configurable
+    /// `strength` (default 0.3 per Andrew-gate (m) m-3). Non-boundary
+    /// vertices are skipped.
+    ///
+    /// Returns true if any vertices were modified.
+    pub fn apply_zoneblend_pass(&mut self, strength: f32) -> bool {
+        // Tuned defaults: small sample radius keeps the variance check
+        // local-only (so the pass affects only boundary vertices, not the
+        // entire terrain). Variance threshold chosen so a vertex whose
+        // top-4 sparse representation differs from at least one neighbor
+        // by ≥ ~10% per dominant channel triggers the blend.
+        let sample_radius = 8.0_f32;
+        let variance_threshold = 0.05_f32;
+        let mut modified = false;
+
+        let chunk_ids: Vec<ChunkId> = self.generated_chunks.keys().cloned().collect();
+
+        // Pre-compute every vertex's dense representation + world position.
+        // Two-pass design avoids borrow conflicts: read-only collect first,
+        // then mutate during second pass.
+        let mut all_samples: Vec<([f32; 2], [f32; 32])> = Vec::new();
+        for chunk_id in &chunk_ids {
+            if let Some(gen_chunk) = self.generated_chunks.get(chunk_id) {
+                for vertex in &gen_chunk.vertices {
+                    all_samples.push((
+                        [vertex.position[0], vertex.position[2]],
+                        Self::expand_sparse_to_dense_32(
+                            vertex.material_ids,
+                            vertex.material_weights,
+                        ),
+                    ));
+                }
+            }
+        }
+
+        if all_samples.is_empty() {
+            return false;
+        }
+
+        let sample_radius_sq = sample_radius * sample_radius;
+        for chunk_id in chunk_ids {
+            if let Some(gen_chunk) = self.generated_chunks.get_mut(&chunk_id) {
+                let mut chunk_modified = false;
+                for vertex in gen_chunk.vertices.iter_mut() {
+                    let vx = vertex.position[0];
+                    let vz = vertex.position[2];
+
+                    // Find neighbors within sample_radius (linear scan;
+                    // acceptable for one-shot passive pass).
+                    let neighbors: Vec<&([f32; 2], [f32; 32])> = all_samples
+                        .iter()
+                        .filter(|(pos, _)| {
+                            let ddx = pos[0] - vx;
+                            let ddz = pos[1] - vz;
+                            ddx * ddx + ddz * ddz <= sample_radius_sq
+                        })
+                        .collect();
+                    if neighbors.len() < 2 {
+                        continue;
+                    }
+
+                    // Boundary detection: per-channel variance across
+                    // neighborhood. If max variance exceeds threshold,
+                    // vertex is on a biome boundary.
+                    let neighbor_densities: Vec<&[f32; 32]> =
+                        neighbors.iter().map(|(_, dense)| dense).collect();
+                    let variance =
+                        Self::dense_32_max_channel_variance(&neighbor_densities);
+                    if variance < variance_threshold {
+                        continue;
+                    }
+
+                    // Compute the dense average of all neighbors (uniform
+                    // weighting for passive pass; the variance check
+                    // already filters to boundary vertices).
+                    let mut sum = [0.0f32; 32];
+                    for (_, dense) in &neighbors {
+                        for i in 0..32 {
+                            sum[i] += dense[i];
+                        }
+                    }
+                    let inv_n = 1.0 / neighbors.len() as f32;
+                    for v in sum.iter_mut() {
+                        *v *= inv_n;
+                    }
+
+                    let current = Self::expand_sparse_to_dense_32(
+                        vertex.material_ids,
+                        vertex.material_weights,
+                    );
+                    let blended = Self::lerp_dense_32(&current, &sum, strength);
+                    let (ids, ws) = Self::top4_from_dense_32(blended);
+                    vertex.material_ids = ids;
+                    vertex.material_weights = ws;
+                    chunk_modified = true;
+                }
+
+                if chunk_modified {
+                    if let Some(gpu_idx) = self.chunk_order.iter().position(|id| *id == chunk_id) {
+                        if !self.dirty_chunk_indices.contains(&gpu_idx) {
+                            self.dirty_chunk_indices.push(gpu_idx);
+                        }
+                    }
+                    modified = true;
+                }
+            }
+        }
+
+        modified
+    }
+
+    /// Expand sparse `(material_ids, material_weights)` top-4 representation
+    /// to a dense 32-channel weight array. Channel index `i` accumulates the
+    /// weight of any slot whose `material_id == i`. Out-of-range IDs
+    /// (≥ 32 or negative) are dropped. Real-Fix.E 2026-05-08.
+    fn expand_sparse_to_dense_32(ids: [f32; 4], weights: [f32; 4]) -> [f32; 32] {
+        let mut dense = [0.0f32; 32];
+        for i in 0..4 {
+            let id = ids[i];
+            if !id.is_finite() {
+                continue;
+            }
+            let id_int = id.round() as i32;
+            if (0..32).contains(&id_int) {
+                let w = weights[i];
+                if w.is_finite() && w > 0.0 {
+                    dense[id_int as usize] += w;
+                }
+            }
+        }
+        dense
+    }
+
+    /// Re-sparsify a dense 32-channel weight array back to top-4 sparse
+    /// `(material_ids, material_weights)`. Normalizes weights so the
+    /// returned slots sum to 1.0; falls back to layer-0 with weight 1.0 if
+    /// the dense array is all-zero. Mirrors
+    /// `biome_weights_8_to_material_slots` semantics extended to 32
+    /// channels. Real-Fix.E 2026-05-08.
+    fn top4_from_dense_32(dense: [f32; 32]) -> ([f32; 4], [f32; 4]) {
+        // Collect all (channel_as_layer_id, weight) pairs.
+        let mut entries: [(f32, f32); 32] = [(0.0, 0.0); 32];
+        for (i, w) in dense.iter().enumerate() {
+            entries[i] = (i as f32, *w);
+        }
+        // Sort by weight descending to find top 4.
+        entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let mut top4: [(f32, f32); 4] = [entries[0], entries[1], entries[2], entries[3]];
+        // Sort top 4 by id ascending for consistent slot assignment across
+        // adjacent vertices (prevents interpolation artifacts).
+        top4.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut ids = [0.0f32; 4];
+        let mut ws = [0.0f32; 4];
+        let mut total = 0.0f32;
+        for i in 0..4 {
+            ids[i] = top4[i].0;
+            ws[i] = top4[i].1;
+            total += ws[i];
+        }
+        if total > 0.0001 {
+            for w in &mut ws {
+                *w /= total;
+            }
+        } else {
+            // Fallback: all-zero dense → layer 0 with full weight.
+            ids[0] = 0.0;
+            ws[0] = 1.0;
+        }
+        (ids, ws)
+    }
+
+    /// Distance-weighted average of dense-32 channels across a sample set.
+    /// Weight per sample = 1 - (dist / sample_radius), clamped to [0, 1].
+    /// Real-Fix.E 2026-05-08.
+    fn weighted_average_dense_32(
+        samples: &[([f32; 2], [f32; 32])],
+        center_x: f32,
+        center_z: f32,
+        sample_radius: f32,
+    ) -> [f32; 32] {
+        let mut sum = [0.0f32; 32];
+        let mut total_weight = 0.0f32;
+        for (pos, dense) in samples {
+            let ddx = pos[0] - center_x;
+            let ddz = pos[1] - center_z;
+            let dist = (ddx * ddx + ddz * ddz).sqrt();
+            let w = (1.0 - dist / sample_radius).max(0.0);
+            if w <= 0.0 {
+                continue;
+            }
+            for i in 0..32 {
+                sum[i] += dense[i] * w;
+            }
+            total_weight += w;
+        }
+        if total_weight > 0.0001 {
+            for v in sum.iter_mut() {
+                *v /= total_weight;
+            }
+        }
+        sum
+    }
+
+    /// Linear interpolation between two dense-32 channel arrays.
+    /// Result = (1 - t) * a + t * b per channel. Real-Fix.E 2026-05-08.
+    fn lerp_dense_32(a: &[f32; 32], b: &[f32; 32], t: f32) -> [f32; 32] {
+        let t = t.clamp(0.0, 1.0);
+        let mut out = [0.0f32; 32];
+        let one_minus_t = 1.0 - t;
+        for i in 0..32 {
+            out[i] = a[i] * one_minus_t + b[i] * t;
+        }
+        out
+    }
+
+    /// Maximum per-channel variance across a neighborhood of dense-32 arrays.
+    /// Used by the passive pass to detect biome boundaries: a vertex whose
+    /// neighborhood has high per-channel variance is on a transition; a
+    /// vertex whose neighborhood is uniform is in a biome interior.
+    /// Real-Fix.E 2026-05-08.
+    fn dense_32_max_channel_variance(samples: &[&[f32; 32]]) -> f32 {
+        let n = samples.len() as f32;
+        if n < 2.0 {
+            return 0.0;
+        }
+        let mut max_variance = 0.0f32;
+        for channel in 0..32 {
+            let mut mean = 0.0f32;
+            for s in samples {
+                mean += s[channel];
+            }
+            mean /= n;
+            let mut sum_sq = 0.0f32;
+            for s in samples {
+                let d = s[channel] - mean;
+                sum_sq += d * d;
+            }
+            let variance = sum_sq / n;
+            if variance > max_variance {
+                max_variance = variance;
+            }
+        }
+        max_variance
+    }
+
     /// Get terrain statistics
     pub fn stats(&self) -> TerrainStats {
         TerrainStats {
@@ -3014,4 +3392,188 @@ mod tests {
     //  - Existing `WorldGenerator::generate_chunk_with_climate` tests.
     // Per D.3 plan §1.5: "Some preset-specific tests may not have a clean
     // architecture-equivalent. Document and remove."
+
+    // ====================================================================
+    // Real-Fix.E 2026-05-08: ZoneBlend brush helpers (pure CPU; no GPU /
+    // chunk machinery needed). Exercises the sparse↔dense round-trip,
+    // weighted averaging, and variance-based boundary detection that the
+    // active brush + passive global pass both rely on.
+    // ====================================================================
+
+    #[test]
+    fn zoneblend_expand_then_top4_round_trip_preserves_dominant_layer() {
+        // Sparse representation: layer 5 with weight 1.0.
+        let (ids, ws) = TerrainState::top4_from_dense_32(
+            TerrainState::expand_sparse_to_dense_32(
+                [5.0, 0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0, 0.0],
+            ),
+        );
+        // After re-sparsify: layer 5 should still be the dominant slot.
+        let dominant_slot = ws
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap()
+            .0;
+        assert!(ids[dominant_slot].round() as i32 == 5, "dominant layer lost");
+        assert!((ws[dominant_slot] - 1.0).abs() < 1e-4, "weight not preserved");
+    }
+
+    #[test]
+    fn zoneblend_top4_renormalizes_sum_to_one() {
+        // Mix of layers; top4_from_dense_32 should normalize to sum=1.0.
+        let mut dense = [0.0f32; 32];
+        dense[0] = 0.3;
+        dense[5] = 0.5;
+        dense[10] = 0.1;
+        dense[21] = 0.1;
+        let (_, ws) = TerrainState::top4_from_dense_32(dense);
+        let sum: f32 = ws.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-4, "sum != 1.0: {sum}");
+    }
+
+    #[test]
+    fn zoneblend_top4_falls_back_to_layer_zero_on_all_zero() {
+        let dense = [0.0f32; 32];
+        let (ids, ws) = TerrainState::top4_from_dense_32(dense);
+        // Fallback: layer 0 with full weight.
+        assert_eq!(ids[0], 0.0);
+        assert!((ws[0] - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn zoneblend_expand_drops_out_of_range_ids() {
+        // ID 32 is out of range (Real-Fix.D MAX_TERRAIN_LAYERS=32 cap).
+        let dense = TerrainState::expand_sparse_to_dense_32(
+            [0.0, 32.0, 50.0, -1.0],
+            [0.5, 1.0, 1.0, 1.0],
+        );
+        // Only layer 0 should have contribution.
+        assert!((dense[0] - 0.5).abs() < 1e-6);
+        for v in dense.iter().skip(1) {
+            assert_eq!(*v, 0.0);
+        }
+    }
+
+    #[test]
+    fn zoneblend_expand_drops_nan_and_infinity() {
+        let dense = TerrainState::expand_sparse_to_dense_32(
+            [0.0, 1.0, 2.0, 3.0],
+            [1.0, f32::NAN, f32::INFINITY, -0.5],
+        );
+        assert_eq!(dense[0], 1.0);
+        assert_eq!(dense[1], 0.0); // NaN dropped
+        assert_eq!(dense[2], 0.0); // +inf dropped
+        assert_eq!(dense[3], 0.0); // negative dropped
+    }
+
+    #[test]
+    fn zoneblend_lerp_interpolates_per_channel() {
+        let mut a = [0.0f32; 32];
+        a[0] = 1.0;
+        let mut b = [0.0f32; 32];
+        b[5] = 1.0;
+        let mid = TerrainState::lerp_dense_32(&a, &b, 0.5);
+        assert!((mid[0] - 0.5).abs() < 1e-6);
+        assert!((mid[5] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn zoneblend_lerp_clamps_t_to_unit_range() {
+        let a = [1.0f32; 32];
+        let b = [0.0f32; 32];
+        // t > 1.0 should clamp to 1.0 → returns b unchanged.
+        let out = TerrainState::lerp_dense_32(&a, &b, 5.0);
+        for v in out.iter() {
+            assert!((*v - 0.0).abs() < 1e-6, "t>1 should clamp; got {v}");
+        }
+        // t < 0.0 should clamp to 0.0 → returns a unchanged.
+        let out2 = TerrainState::lerp_dense_32(&a, &b, -2.0);
+        for v in out2.iter() {
+            assert!((*v - 1.0).abs() < 1e-6, "t<0 should clamp; got {v}");
+        }
+    }
+
+    #[test]
+    fn zoneblend_weighted_average_respects_distance() {
+        // Two samples: one nearby (layer 0), one far (layer 5). The
+        // weighted average at the center should be dominated by the
+        // near sample.
+        let mut near = [0.0f32; 32];
+        near[0] = 1.0;
+        let mut far = [0.0f32; 32];
+        far[5] = 1.0;
+        let samples = vec![([0.0, 0.0], near), ([9.0, 0.0], far)];
+        let avg = TerrainState::weighted_average_dense_32(&samples, 0.0, 0.0, 10.0);
+        // Near sample has weight ~1.0 (dist=0); far sample has weight ~0.1
+        // (dist=9, sample_radius=10). After normalization: near ~0.91,
+        // far ~0.09.
+        assert!(avg[0] > avg[5], "near sample should dominate");
+        assert!(avg[0] > 0.5, "near contribution too small: {}", avg[0]);
+    }
+
+    #[test]
+    fn zoneblend_variance_low_for_uniform_neighborhood() {
+        let mut sample = [0.0f32; 32];
+        sample[3] = 1.0;
+        let samples = vec![&sample, &sample, &sample];
+        let var = TerrainState::dense_32_max_channel_variance(&samples);
+        assert!(var < 1e-6, "uniform neighborhood should have zero variance");
+    }
+
+    #[test]
+    fn zoneblend_variance_high_at_biome_boundary() {
+        // Two distinct biomes mixed in a neighborhood.
+        let mut a = [0.0f32; 32];
+        a[0] = 1.0; // grass
+        let mut b = [0.0f32; 32];
+        b[3] = 1.0; // mountain_rock
+        let samples = vec![&a, &b, &a, &b];
+        let var = TerrainState::dense_32_max_channel_variance(&samples);
+        assert!(var > 0.1, "biome boundary should have high variance: got {var}");
+    }
+
+    #[test]
+    fn zoneblend_blend_of_two_layers_produces_intermediate_slots() {
+        // Two pure-biome vertices: layer 0 and layer 5. Average their
+        // dense representations, re-sparsify. Result should occupy both
+        // slot 0 and slot 5 with equal-ish weights.
+        let a = TerrainState::expand_sparse_to_dense_32(
+            [0.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+        );
+        let b = TerrainState::expand_sparse_to_dense_32(
+            [5.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+        );
+        let blended = TerrainState::lerp_dense_32(&a, &b, 0.5);
+        let (ids, ws) = TerrainState::top4_from_dense_32(blended);
+        // After re-sparsify, layers 0 and 5 should both have weight ~0.5.
+        let mut has_layer_0 = false;
+        let mut has_layer_5 = false;
+        for i in 0..4 {
+            if ids[i] == 0.0 && ws[i] > 0.4 {
+                has_layer_0 = true;
+            }
+            if ids[i] == 5.0 && ws[i] > 0.4 {
+                has_layer_5 = true;
+            }
+        }
+        assert!(has_layer_0, "missing blended layer 0: ids={ids:?}, ws={ws:?}");
+        assert!(has_layer_5, "missing blended layer 5: ids={ids:?}, ws={ws:?}");
+    }
+
+    #[test]
+    fn zoneblend_round_trip_preserves_normalization() {
+        // Start with normalized sparse representation; round-trip
+        // through dense + re-sparsify; verify still normalized.
+        let dense = TerrainState::expand_sparse_to_dense_32(
+            [0.0, 5.0, 10.0, 21.0],
+            [0.4, 0.3, 0.2, 0.1],
+        );
+        let (_, ws) = TerrainState::top4_from_dense_32(dense);
+        let sum: f32 = ws.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-4, "round-trip lost normalization: sum={sum}");
+    }
 }

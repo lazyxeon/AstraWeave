@@ -150,6 +150,9 @@ pub struct BiomeBlendParams {
     pub secondary_biome: String,
     pub tertiary_biome: String,
     pub show_blend_preview: bool,
+    /// Real-Fix.E 2026-05-08: passive ZoneBlend pass strength
+    /// (Andrew-gate (m) m-3 default = 0.3, range 0.0..=1.0).
+    pub zoneblend_pass_strength: f32,
 }
 
 impl Default for BiomeBlendParams {
@@ -162,6 +165,7 @@ impl Default for BiomeBlendParams {
             secondary_biome: "desert".to_string(),
             tertiary_biome: "mountains".to_string(),
             show_blend_preview: false,
+            zoneblend_pass_strength: 0.3,
         }
     }
 }
@@ -842,34 +846,42 @@ impl TerrainPanel {
             self.terrain_state.begin_stroke();
         }
 
-        let modified = if self.brush_mode == BrushMode::Paint {
-            self.terrain_state.apply_brush_paint_material(
+        let modified = match self.brush_mode {
+            BrushMode::Paint => self.terrain_state.apply_brush_paint_material(
                 world_x,
                 world_z,
                 self.brush_radius,
                 self.brush_strength,
                 self.selected_material as u32,
                 self.brush_falloff,
-            )
-        } else {
-            // Capture flatten target on first click
-            if self.brush_mode == BrushMode::Flatten && self.flatten_target_height.is_none() {
-                self.flatten_target_height = Some(
-                    self.terrain_state
-                        .sample_height_at(world_x, world_z)
-                        .unwrap_or(0.0),
-                );
-            }
-            self.terrain_state.apply_brush(
+            ),
+            BrushMode::ZoneBlend => self.terrain_state.apply_brush_zoneblend(
                 world_x,
                 world_z,
                 self.brush_radius,
                 self.brush_strength,
-                self.brush_mode,
                 self.brush_falloff,
-                self.flatten_target_height,
-                self.noise_scale,
-            )
+            ),
+            _ => {
+                // Capture flatten target on first click
+                if self.brush_mode == BrushMode::Flatten && self.flatten_target_height.is_none() {
+                    self.flatten_target_height = Some(
+                        self.terrain_state
+                            .sample_height_at(world_x, world_z)
+                            .unwrap_or(0.0),
+                    );
+                }
+                self.terrain_state.apply_brush(
+                    world_x,
+                    world_z,
+                    self.brush_radius,
+                    self.brush_strength,
+                    self.brush_mode,
+                    self.brush_falloff,
+                    self.flatten_target_height,
+                    self.noise_scale,
+                )
+            }
         };
         if modified {
             self.pending_actions.push(TerrainAction::BrushUpdate);
@@ -1365,18 +1377,23 @@ impl TerrainPanel {
                 .add_enabled(has_terrain, egui::Button::new(apply_text))
                 .clicked()
             {
-                let modified = if self.brush_mode == BrushMode::Paint {
-                    // Paint mode: directly modify vertex material slots
-                    self.terrain_state.apply_brush_paint_material(
+                let modified = match self.brush_mode {
+                    BrushMode::Paint => self.terrain_state.apply_brush_paint_material(
                         self.brush_pos_x,
                         self.brush_pos_z,
                         self.brush_radius,
                         self.brush_strength,
                         self.selected_material as u32,
                         self.brush_falloff,
-                    )
-                } else {
-                    self.terrain_state.apply_brush(
+                    ),
+                    BrushMode::ZoneBlend => self.terrain_state.apply_brush_zoneblend(
+                        self.brush_pos_x,
+                        self.brush_pos_z,
+                        self.brush_radius,
+                        self.brush_strength,
+                        self.brush_falloff,
+                    ),
+                    _ => self.terrain_state.apply_brush(
                         self.brush_pos_x,
                         self.brush_pos_z,
                         self.brush_radius,
@@ -1385,7 +1402,7 @@ impl TerrainPanel {
                         self.brush_falloff,
                         self.flatten_target_height,
                         self.noise_scale,
-                    )
+                    ),
                 };
                 if modified {
                     self.pending_actions.push(TerrainAction::BrushUpdate);
@@ -1598,6 +1615,38 @@ impl TerrainPanel {
     fn show_biome_blend_section(&mut self, ui: &mut Ui) {
         ui.add_space(10.0);
         ui.collapsing("[Glb] Biome Blending", |ui| {
+            // Real-Fix.E 2026-05-08: passive global ZoneBlend pass per
+            // Andrew-gate (l) l-1. One-shot operation that softens
+            // biome boundaries across the whole terrain so authors can
+            // refine the result with the active ZoneBlend brush.
+            let has_terrain = self.terrain_state.has_terrain();
+            ui.horizontal(|ui| {
+                ui.label("ZoneBlend Pass Strength:");
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.biome_blend.zoneblend_pass_strength,
+                        0.0..=1.0,
+                    )
+                    .fixed_decimals(2),
+                );
+            });
+            if ui
+                .add_enabled(
+                    has_terrain,
+                    egui::Button::new("Apply ZoneBlend Pass"),
+                )
+                .clicked()
+            {
+                let modified = self
+                    .terrain_state
+                    .apply_zoneblend_pass(self.biome_blend.zoneblend_pass_strength);
+                if modified {
+                    self.pending_actions.push(TerrainAction::BrushUpdate);
+                }
+            }
+
+            ui.separator();
+
             ui.checkbox(&mut self.biome_blend.enabled, "Enable Biome Blending");
 
             if self.biome_blend.enabled {
