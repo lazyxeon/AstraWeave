@@ -265,7 +265,7 @@ Make ONLY the changes requested. Do not refactor, rename, reorganize, or "improv
 ### Chain of Thought
 
 1. **Understand**: Analyze the request against mission-critical standards.
-2. **Context**: Check `docs/current/` for latest state. Read reference files when needed. **For any cross-crate work, read `docs/current/ARCHITECTURE_MAP.md` first** — it contains the full dependency graph, integration seams, data flow paths, and blast-radius analysis.
+2. **Context**: Check `docs/current/` for latest state. Read reference files when needed. **For any cross-crate work, read `docs/architecture/ARCHITECTURE_MAP.md` first** — it contains the full dependency graph, integration seams, data flow paths, and blast-radius analysis.
 3. **Plan**: Break down the task. Identify risks. Consult the Architecture Map for dependency direction and shared types before modifying any public API.
 4. **Execute**: Generate code/docs. **Verify compilation immediately.**
 5. **Validate**: Run tests/benchmarks. Ensure 90%+ confidence.
@@ -499,13 +499,13 @@ The ECS scheduler is **deterministic single-threaded** per tick. Systems within 
 
 All crate names are prefixed with `astraweave-`.
 
-> **Agents**: For the full dependency graph, public API surface per crate, integration seams with risk levels, and known architectural anomalies (e.g. `terrain` → `gameplay` reverse dep, `render` → `aw_asset_cli` tool dep), see **`docs/current/ARCHITECTURE_MAP.md`**. Read it before any cross-crate modification, shared type change, or dependency analysis.
+> **Agents**: For the full dependency graph, public API surface per crate, integration seams with risk levels, and known architectural anomalies (e.g. `terrain` → `gameplay` reverse dep, `render` → `aw_asset_cli` tool dep), see **`docs/architecture/ARCHITECTURE_MAP.md`**. Read it before any cross-crate modification, shared type change, or dependency analysis.
 
 ### Where to Look
 
 | Need | Location |
 |------|----------|
-| **Architecture Map** | **`docs/current/ARCHITECTURE_MAP.md`** — dependency graph, API surface, seams, data flows |
+| **Architecture Map** | **`docs/architecture/ARCHITECTURE_MAP.md`** — dependency graph, API surface, seams, data flows |
 | AI Systems | `astraweave-ai/src/{orchestrator,tool_sandbox,core_loop}.rs` |
 | ECS Internals | `astraweave-ecs/src/{archetype,system_param,events}.rs` |
 | Rendering | `astraweave-render/src/{lib,material,skinning_gpu,vertex_compression}.rs` |
@@ -581,7 +581,7 @@ Read these when you need deeper context. **Do not ask the user for information t
 
 | File | Contains |
 |------|----------|
-| `docs/current/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams, editor viewport pipeline (unified post-Fix-27), data flow paths, unsafe code inventory. |
+| `docs/architecture/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams, editor viewport pipeline (unified post-Fix-27), data flow paths, unsafe code inventory. |
 | `docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` | 37-fix behavioral correctness audit: visual math, data pipeline, undo system, silent failures, integration seams. Completed 2026-04-05. |
 | `docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md` | 7-phase campaign plan that eliminated the dual FastPreview/EnginePBR rendering pipeline. |
 | `docs/current/PROJECT_STATUS.md` | Current state, active work, recently completed milestones |

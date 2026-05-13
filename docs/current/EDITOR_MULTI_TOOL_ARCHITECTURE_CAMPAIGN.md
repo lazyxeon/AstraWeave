@@ -841,7 +841,7 @@ Updates parent campaign references; updates ARCHITECTURE_MAP.md editor section; 
   - Status header line: Editor Multi-Tool Architecture campaign COMPLETE entry.
   - §9 status block: Editor Multi-Tool Architecture COMPLETE; Regional Archetype Variation resumption pointer (post-Sub-phase 5, G-pointer-events-fix likely subsumed).
   - §10 entry capturing Editor Multi-Tool Architecture campaign closure + Regional Archetype Variation resumption shape.
-- Updates to `docs/current/ARCHITECTURE_MAP.md` editor section: reflect ActiveTool dispatcher + register_tool API + canonical pattern. Document the post-removal end-state architecture.
+- Updates to `docs/architecture/ARCHITECTURE_MAP.md` editor section: reflect ActiveTool dispatcher + register_tool API + canonical pattern. Document the post-removal end-state architecture.
 - Updates to this campaign's §11: mark all sub-phases COMPLETE.
 - Updates to this campaign's Status header: COMPLETE.
 

@@ -918,7 +918,7 @@ Update parent campaign (`TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md`) to reflect Region
 - Update `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md`:
   - §7 reflects Regional Archetype Variation campaign COMPLETE.
   - §9 receives a closeout entry referencing this campaign's final commit hash.
-- Update `docs/current/ARCHITECTURE_MAP.md` terrain section:
+- Update `docs/architecture/ARCHITECTURE_MAP.md` terrain section:
   - Add `RegionalArchetypeMask`, `BootstrapSplineSet`, `RegionalArchetypeBlend` types.
   - Update terrain crate dependency diagram if applicable.
   - Update editor section to reflect `RegionalArchetypePanel`.
@@ -1869,7 +1869,7 @@ The campaign-pause-and-spinoff workflow pattern Regional Archetype Variation dem
 - `docs/audits/f4b3d5_diagnostic_2_real_heightmap_2026-04-28.md` — predecessor real-chunk biome distribution measurement.
 - `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` — predecessor campaign (D.1-D.5 within-region machinery; closed via architectural pivot in a parallel session).
 - `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` — parent campaign; gets §7 update at F.8 closeout; gets §9 entry at F.0 launch (this commit).
-- `docs/current/ARCHITECTURE_MAP.md` — terrain section gets updated at F.8 closeout to reflect new types (`RegionalArchetypeMask`, `BootstrapSplineSet`, `RegionalArchetypeBlend`, `RegionalArchetypePanel`).
+- `docs/architecture/ARCHITECTURE_MAP.md` — terrain section gets updated at F.8 closeout to reflect new types (`RegionalArchetypeMask`, `BootstrapSplineSet`, `RegionalArchetypeBlend`, `RegionalArchetypePanel`).
 - `docs/supplemental/WORLD_SCALE_CONVENTIONS.md` — Target B scale conventions (1 WU = 1 m, 115 km² world extent); referenced by §2.4 mask resolution math.
 - `astraweave-terrain/src/climate.rs` — `ClimateMap` extended in F.1.
 - `astraweave-terrain/src/world_archetypes.rs` — `WorldArchetype` extended with `bootstrap_splines` in F.2.

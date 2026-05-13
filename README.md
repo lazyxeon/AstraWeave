@@ -85,7 +85,7 @@ cargo run -p unified_showcase --release
 **Note**: Editor (`aw_editor`) has 3,892+ tests. See workflow tests in `tools/aw_editor/tests`.
 
 **Key Documentation**:
-- [Architecture Map](docs/current/ARCHITECTURE_MAP.md) — Crate relationships, editor viewport pipeline, data flow diagrams
+- [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) — Crate relationships, editor viewport pipeline, data flow diagrams
 - [Editor Behavioral Audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md) — 37-fix correctness audit with visual, data pipeline, and state machine verification
 - [Unified Pipeline Plan](docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md) — 7-phase architectural refactor eliminating the dual rendering pipeline
 
@@ -169,7 +169,7 @@ flowchart TB
  
  **Materials**: Advanced shaders (Clearcoat, Sheen/Charlie, SSS, Anisotropy). Tonemapping: ACES, Khronos PBR Neutral (2024), Reinhard.
  
- **Unified Editor Pipeline**: Editor viewport renders through the engine — single source of truth for PBR, shadows, IBL, and post-processing. See [Architecture Map](docs/current/ARCHITECTURE_MAP.md).
+ **Unified Editor Pipeline**: Editor viewport renders through the engine — single source of truth for PBR, shadows, IBL, and post-processing. See [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md).
 
 ### 🍎 Physics & Simulation
  **Rapier3D Integration**: Rigid bodies, character controllers, and spatial queries.

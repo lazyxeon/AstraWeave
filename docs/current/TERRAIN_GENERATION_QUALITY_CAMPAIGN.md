@@ -432,7 +432,7 @@ Wire the editor's `TerrainPanel::apply_erosion` action handler so the "Apply Ero
 - Replace the stub at `tools/aw_editor/src/panels/terrain_panel.rs:1707-1730` with a real erosion invocation that triggers re-running the chunk-generation path (which now includes `AdvancedErosionSimulator` per F.3) for the loaded terrain and queues GPU re-upload.
 - Decide: does "Apply Erosion" regenerate from scratch (simple, slow) or apply erosion to existing chunks in place (fast, requires the stateful generator to support mid-lifecycle erosion)? Default: regenerate from scratch; the loaded seed + preset + erosion-preset combination determines the output deterministically. F.5 logs the decision in §10 if the in-place option is chosen.
 - End-to-end integration tuning pass across all eight presets plus `"mixed"`. Tropical vs. arid vs. wetland should read as visibly different worlds, not just different colors. Tuning touches preset `base_noise_type`/`DomainWarpConfig`/amplitudes and the §2.2 erosion-preset mapping. Record any mapping adjustments in §10.
-- Update `docs/current/ARCHITECTURE_MAP.md` terrain section to describe the new generation pipeline (halo-based erosion, climate-as-spatial-field, preset-driven DomainWarp). May defer to parent campaign's Phase 3 closeout if that closeout lands first — F.5 picks whichever order is natural and logs the choice.
+- Update `docs/architecture/ARCHITECTURE_MAP.md` terrain section to describe the new generation pipeline (halo-based erosion, climate-as-spatial-field, preset-driven DomainWarp). May defer to parent campaign's Phase 3 closeout if that closeout lands first — F.5 picks whichever order is natural and logs the choice.
 - Update parent campaign `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` §7 to re-mark Phase 1 and Phase 1.5 COMPLETE. Update parent campaign's §9 with a close-out entry referencing this campaign's final commit.
 - Remove any temporary diagnostic tests added during F.1–F.4.
 
@@ -2152,7 +2152,7 @@ F.5's original scope was: (a) wire `apply_erosion` handler, (b) 8-climate integr
 
 **Andrew-gate**: not applicable to a closure session (no behavior change). The visual Andrew-gate that F.4.B.3.D.5 + D.5-fix returned REGRESS on (archetype-as-coloring) is acknowledged as the architectural-pivot trigger; the new campaign's F.7 is where per-archetype visual variety actually gets validated.
 
-**Scope held**: closure session only modifies `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` (§9 + §10 + Status header), `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` (§7 + §9), `docs/current/ARCHITECTURE_MAP.md` (terrain section). No production code changes; no test changes; no new architectural decisions.
+**Scope held**: closure session only modifies `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` (§9 + §10 + Status header), `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` (§7 + §9), `docs/architecture/ARCHITECTURE_MAP.md` (terrain section). No production code changes; no test changes; no new architectural decisions.
 
 **Next**: new campaign F.1 (climate field extension) starts after this closure session lands. Per new campaign's §0 anti-drift discipline, F.1 begins from a clean state (predecessor campaign closed; new campaign F.0 landed; deferred-work split documented in both campaigns' §10).
 

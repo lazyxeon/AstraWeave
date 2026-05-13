@@ -21,7 +21,7 @@ Updated:
 
 - `README.md` — added a sequential-ECS + subsystem-parallelism framing to the Core Engine section, with measured FPS numbers at 1000 entities.
 - `CLAUDE.md` — updated the ECS System Stages section to explicitly state "deterministic single-threaded" and reference this report for the removal rationale. Added the `SYNC` stage to the canonical list.
-- `docs/current/ARCHITECTURE_MAP.md` — removed `ParallelSchedule` from the Types list; added the single-threaded clarification and a removal note.
+- `docs/architecture/ARCHITECTURE_MAP.md` — removed `ParallelSchedule` from the Types list; added the single-threaded clarification and a removal note.
 - The four prior audit documents in `docs/audits/parallel_schedule_*.md` — each received a supersede note at the top pointing to this report. Bodies unchanged (historical record).
 
 Verified (full details §3 below):
@@ -79,7 +79,7 @@ Not touched:
 |---|---|
 | `README.md` | Added ~5 lines to the Core Engine section: explicit "single-threaded archetype scheduler" framing, subsystem parallelism enumeration (rayon in terrain/fluids, tokio in async I/O / LLM / network, GPU compute in rendering), and sequential throughput numbers at 1000 entities citing the schedule-stage-fix report. |
 | `CLAUDE.md` | Updated the "ECS System Stages" header section: added "deterministic single-threaded" language, expanded canonical stage list from 7 to 8 (inserted `SYNC` between `SIMULATION` and `AI_PLANNING` per `App::new()`'s actual order), added a pointer to this report. |
-| `docs/current/ARCHITECTURE_MAP.md` | `astraweave-ecs` crate entry at line 118: removed `ParallelSchedule` from the Types list; removed `parallel` from the Modules list; added the SYNC stage to the stage list; added a removal note. |
+| `docs/architecture/ARCHITECTURE_MAP.md` | `astraweave-ecs` crate entry at line 118: removed `ParallelSchedule` from the Types list; removed `parallel` from the Modules list; added the SYNC stage to the stage list; added a removal note. |
 | `docs/audits/parallel_schedule_binary_inventory_2026-04-18.md` | Added supersede header pointing to this report. Body unchanged. |
 | `docs/audits/parallel_schedule_experiment_2026-04-18.md` | Added supersede header. Body unchanged. |
 | `docs/audits/parallel_schedule_experiment_ecs_ai_showcase_2026-04-18.md` | Added supersede header. Body unchanged. |

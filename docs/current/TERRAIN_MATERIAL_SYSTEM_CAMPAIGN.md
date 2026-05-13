@@ -448,7 +448,7 @@ Ship all five settings, the first-open wizard, the import conflict dialog, and t
 - **Project file schema:** Add the `TerrainMaterialSettings` struct to the project file format. Load on project open, write on change.
 - **First-open wizard:** On new project creation, or first open of a project that has no `TerrainMaterialSettings`, show a wizard that surfaces the five settings with explanatory text for each. Default values populate. User confirms or adjusts.
 - **Import conflict dialog:** When importing a terrain whose material count exceeds the project's tier, show the Auto-drop / Change tier / Cancel dialog described in design session. Manual Remap is logged as future-phase feature (see §8).
-- **Documentation update:** Update `docs/current/ARCHITECTURE_MAP.md` in the same commit as Phase 3 completion, to describe the new terrain material system accurately. Document the forward-vs-deferred decision in the terrain section: state that AstraWeave renders terrain forward-lit via `pbr_terrain_forward.wgsl` and that the dormant deferred `pbr_terrain.wgsl` is reference-only material, not part of the active pipeline.
+- **Documentation update:** Update `docs/architecture/ARCHITECTURE_MAP.md` in the same commit as Phase 3 completion, to describe the new terrain material system accurately. Document the forward-vs-deferred decision in the terrain section: state that AstraWeave renders terrain forward-lit via `pbr_terrain_forward.wgsl` and that the dormant deferred `pbr_terrain.wgsl` is reference-only material, not part of the active pipeline.
 
 **Out of scope for Phase 3:**
 - Manual Remap import workflow (future-phase, §8).
@@ -997,7 +997,7 @@ Phase 1.6-F (Terrain Generation Quality Campaign) CLOSED VIA ARCHITECTURAL PIVOT
 - `docs/audits/tonemap_double_application_investigation_2026-04-19.md` — ruled out double-tonemapping as a cause of terrain visual issues.
 - `docs/audits/terrain_material_flow_investigation_2026-04-19.md` — established the precise data-loss point and the dormant splat infrastructure that this campaign activates.
 - `docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md` — prior campaign document whose half-shipped state motivated the discipline requirements in §0.
-- `docs/current/ARCHITECTURE_MAP.md` §4.5 and §6 — current terrain-related architectural description; must be updated as part of Phase 3 completion.
+- `docs/architecture/ARCHITECTURE_MAP.md` §4.5 and §6 — current terrain-related architectural description; must be updated as part of Phase 3 completion.
 
 ---
 

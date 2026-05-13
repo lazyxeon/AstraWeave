@@ -576,7 +576,7 @@ Mar 25 ── v1.49: Blueprint Zone Editor (9 phases, 125+ tests)
 - **Undo system completion**: All 9 previously-bypassing operations now route through undo stack
 - **Silent failure resolution**: 60 error-swallowing patterns identified, critical ones fixed with structured logging
 
-**Documents**: [Audit Report](../current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md) | [Architecture Map](../current/ARCHITECTURE_MAP.md) | [Campaign Plan](../current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md)
+**Documents**: [Audit Report](../current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md) | [Architecture Map](../architecture/ARCHITECTURE_MAP.md) | [Campaign Plan](../current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md)
 
 ---
 

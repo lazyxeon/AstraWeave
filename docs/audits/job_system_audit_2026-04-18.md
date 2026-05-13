@@ -602,7 +602,7 @@ Deduplicated list of every file read or cited, grouped by crate. Line references
 - `Cargo.toml` — `tokio = { version = "1", features = ["full"] }`.
 - `CLAUDE.md` — 60 Hz and stage-order claims.
 - `docs/audits/allocation_audit_2026-04-17.md`, `docs/audits/mimalloc_experiment_2026-04-17.md` — prior context.
-- `docs/current/ARCHITECTURE_MAP.md` — only doc hit for `ParallelSchedule`.
+- `docs/architecture/ARCHITECTURE_MAP.md` — only doc hit for `ParallelSchedule`.
 
 ---
 

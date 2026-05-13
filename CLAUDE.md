@@ -37,7 +37,7 @@ Make ONLY the changes requested. Do not refactor, rename, reorganize, or "improv
 ### Chain of Thought
 
 1. **Understand**: Analyze the request against mission-critical standards.
-2. **Context**: Check `docs/current/` for latest state. **For any cross-crate work, read `docs/current/ARCHITECTURE_MAP.md` first** (dependency graph, integration seams, blast-radius analysis). **For subsystem-internal work, read the relevant `docs/architecture/<system>.md` trace first** (file map, conflict map, decision log, invariants, open questions). Read other reference files as needed.
+2. **Context**: Check `docs/current/` for latest state. **For any cross-crate work, read `docs/architecture/ARCHITECTURE_MAP.md` first** (dependency graph, integration seams, blast-radius analysis). **For subsystem-internal work, read the relevant `docs/architecture/<system>.md` trace first** (file map, conflict map, decision log, invariants, open questions). Read other reference files as needed.
 3. **Plan**: Break down the task. Identify risks. Consult the Architecture Map for dependency direction and shared types before modifying any public API.
 4. **Execute**: Generate code/docs. **Verify compilation immediately.**
 5. **Validate**: Run tests/benchmarks. Ensure 90%+ confidence.
@@ -310,14 +310,14 @@ The ECS scheduler is **deterministic single-threaded** per tick. Systems within 
 
 All crate names are prefixed with `astraweave-`.
 
-> **Agents**: For the full dependency graph, public API surface per crate, integration seams with risk levels, and known architectural anomalies (e.g. `terrain` → `gameplay` reverse dep, `render` → `aw_asset_cli` tool dep), see **`docs/current/ARCHITECTURE_MAP.md`**. Read it before any cross-crate modification, shared type change, or dependency analysis. For subsystem-internal work, see the relevant **`docs/architecture/<system>.md`** trace.
+> **Agents**: For the full dependency graph, public API surface per crate, integration seams with risk levels, and known architectural anomalies (e.g. `terrain` → `gameplay` reverse dep, `render` → `aw_asset_cli` tool dep), see **`docs/architecture/ARCHITECTURE_MAP.md`**. Read it before any cross-crate modification, shared type change, or dependency analysis. For subsystem-internal work, see the relevant **`docs/architecture/<system>.md`** trace.
 
 ### Where to Look
 
 | Need | Location |
 |------|----------|
 | **Architecture Traces** | **`docs/architecture/<system>.md`** — per-subsystem forensic reference (terrain, render, physics, persistence, net, net-ecs, input, fluids, ECS foundation, audio, animation, AI pipeline, aw_editor). Toolkit at `docs/architecture/_meta/`. |
-| **Architecture Map** | **`docs/current/ARCHITECTURE_MAP.md`** — dependency graph, API surface, seams, data flows |
+| **Architecture Map** | **`docs/architecture/ARCHITECTURE_MAP.md`** — dependency graph, API surface, seams, data flows |
 | AI Systems | `astraweave-ai/src/{orchestrator,tool_sandbox,core_loop}.rs` |
 | ECS Internals | `astraweave-ecs/src/{archetype,system_param,events}.rs` |
 | Rendering | `astraweave-render/src/{lib,material,skinning_gpu,vertex_compression}.rs` |
@@ -425,7 +425,7 @@ Read these when you need deeper context. **Do not ask the user for information t
 | File | Contains |
 |------|----------|
 | `docs/architecture/<system>.md` | **Per-subsystem architecture traces** — forensic reference for traced subsystems (terrain, render, physics, persistence, net, net-ecs, input, fluids, ECS foundation, audio, animation, AI pipeline, aw_editor). Read the relevant trace before modifying a traced subsystem; update it in the same commit when you do. Toolkit at `docs/architecture/_meta/`. |
-| `docs/current/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams, editor viewport pipeline (unified post-Fix-27), data flow paths, unsafe code inventory. |
+| `docs/architecture/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams, editor viewport pipeline (unified post-Fix-27), data flow paths, unsafe code inventory. |
 | `docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` | 37-fix behavioral correctness audit: visual math, data pipeline, undo system, silent failures, integration seams. Completed 2026-04-05. |
 | `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` | 8-round diagnostic narrowing that elevated the §7.7 wrapped-component resource identity trap to structural axiom. Real-Fix.A/B/C landed, .D pending. |
 | `docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md` | 7-phase campaign plan that eliminated the dual FastPreview/EnginePBR rendering pipeline. |

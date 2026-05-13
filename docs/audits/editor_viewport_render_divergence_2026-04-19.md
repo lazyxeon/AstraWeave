@@ -4,7 +4,7 @@
 **Scope**: `tools/aw_editor/src/viewport/` vs. `astraweave-render`
 **Mode**: Read-only. No code edits, no commits beyond this report.
 **Prior documents treated as hypotheses**:
-`docs/current/ARCHITECTURE_MAP.md` §6 and §11,
+`docs/architecture/ARCHITECTURE_MAP.md` §6 and §11,
 `docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md`.
 
 ---

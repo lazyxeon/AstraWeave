@@ -152,7 +152,7 @@ There are several distinct flows through this layer. The first is the canonical 
 **File:** `astraweave-core/src/schema.rs`
 **Role:** Canonical typed data shipped between subsystems and serialized to/from LLM prompts.
 **Key types:** `IVec2` (line 173), `Stance`, `CoverType`, `WorldSnapshot` (line 270), `PlayerState`, `CompanionState`, `EnemyState`, `Poi`, `PlanIntent`, `ActionStep` (latter four defined later in the file and re-exported from `crate::schema::*` via `astraweave-core/src/lib.rs:52`).
-**Notes:** Per `docs/current/ARCHITECTURE_MAP.md:233`, `WorldSnapshot` is **CRITICAL** because field names are hard-coded in LLM prompts. Renaming `me.pos` or `enemies` would simultaneously break Rust compilation and AI behavior — even after compilation is fixed, the LLM has been trained against the existing field names.
+**Notes:** Per `docs/architecture/ARCHITECTURE_MAP.md:233`, `WorldSnapshot` is **CRITICAL** because field names are hard-coded in LLM prompts. Renaming `me.pos` or `enemies` would simultaneously break Rust compilation and AI behavior — even after compilation is fixed, the LLM has been trained against the existing field names.
 
 #### Stage 7: Legacy `World` and ECS bridge
 **Files:** `astraweave-core/src/world.rs`, `astraweave-core/src/ecs_adapter.rs`, `astraweave-core/src/ecs_bridge.rs`, `astraweave-core/src/ecs_components.rs`
@@ -239,7 +239,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 ### Bidirectional / Coupled
 
-- **`astraweave-core` ↔ `astraweave-ecs`**: `astraweave-core` depends on `astraweave-ecs` (per `docs/current/ARCHITECTURE_MAP.md:35`: `astraweave-core` → `ecs, behavior`). The coupling is via `astraweave-core::ecs_adapter::build_app`, which mints an `astraweave_ecs::App`, populates it from a legacy `World`, and writes the legacy `World` back as a resource. `astraweave-core::ecs_bridge::EntityBridge` keeps both entity-ID spaces in sync.
+- **`astraweave-core` ↔ `astraweave-ecs`**: `astraweave-core` depends on `astraweave-ecs` (per `docs/architecture/ARCHITECTURE_MAP.md:35`: `astraweave-core` → `ecs, behavior`). The coupling is via `astraweave-core::ecs_adapter::build_app`, which mints an `astraweave_ecs::App`, populates it from a legacy `World`, and writes the legacy `World` back as a resource. `astraweave-core::ecs_bridge::EntityBridge` keeps both entity-ID spaces in sync.
 - **`astraweave-sdk` ↔ `astraweave-core`**: `astraweave-sdk` wraps an `astraweave_core::World` (not the ECS World) and exposes it through the C ABI. It is a one-way dependency; `astraweave-core` does not know about `astraweave-sdk`.
 - **`astraweave-math` ↔ everything else**: Standalone, downstream-only. No reverse coupling.
 
@@ -281,7 +281,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | `astraweave-math/src/simd_mat.rs` | SIMD Mat4 multiply, transpose, transform | Active | Uses `unsafe` for intrinsics; SAFETY comments document target-feature gates |
 | `astraweave-math/src/simd_quat.rs` | SIMD Quat multiply, normalize, slerp | Active | `mul_quat_simd`, `slerp_simd` |
 | `astraweave-math/src/simd_movement.rs` | Batched SIMD `position += velocity * dt` for 1k+ entities | Active | `update_positions_simd` |
-| `astraweave-math/src/simd_vec_kani.rs` | Kani proofs for SIMD vec operations | Active (kani gate) | Verified per `docs/current/ARCHITECTURE_MAP.md:549` |
+| `astraweave-math/src/simd_vec_kani.rs` | Kani proofs for SIMD vec operations | Active (kani gate) | Verified per `docs/architecture/ARCHITECTURE_MAP.md:549` |
 | `astraweave-math/src/mutation_tests.rs` | Inline mutation tests | Active (test gate) | |
 | `astraweave-math/tests/mutation_resistant_comprehensive_tests.rs` | Integration test file | Active | |
 | `astraweave-math/benches/*` | 4 criterion bench files (simd_benchmarks, simd_mat_benchmarks, simd_quat_benchmarks, simd_movement) | Active | |
@@ -360,7 +360,7 @@ There are several distinct flows through this layer. The first is the canonical 
 - **Trap**: Calling `World::register_component::<T>()` and expecting all archetypes to switch to BlobVec mode.
   **What's actually true**: Box mode and BlobVec mode coexist per-archetype. Registration enables the BlobVec path but does not migrate existing archetypes. New archetypes created after registration that contain the registered component will use the BlobVec column for that type; this is documented at `astraweave-ecs/src/lib.rs:108-119` and `astraweave-ecs/src/archetype.rs:45-93`.
 - **Trap**: Treating `WorldSnapshot` field names as flexible.
-  **What's actually true**: The names `me`, `enemies`, `pois`, `obstacles`, `objective`, `player`, `t`, plus inner fields like `me.pos`, `me.ammo`, `me.cooldowns`, are hard-coded in LLM prompts. Renaming any of them requires a coordinated LLM-prompt update. See `docs/current/ARCHITECTURE_MAP.md:233-235`.
+  **What's actually true**: The names `me`, `enemies`, `pois`, `obstacles`, `objective`, `player`, `t`, plus inner fields like `me.pos`, `me.ammo`, `me.cooldowns`, are hard-coded in LLM prompts. Renaming any of them requires a coordinated LLM-prompt update. See `docs/architecture/ARCHITECTURE_MAP.md:233-235`.
 
 ---
 
@@ -436,7 +436,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 6 | Mutation of a component stamps the current change tick on that entity's row | Yes | `insert` and `each_mut` route through `add_entity_with_tick` / `stamp_change_tick::<T>` (`astraweave-ecs/src/lib.rs:308-310, 526-527`). `get_mut` also stamps (conservative Bevy-style change detection, `astraweave-ecs/src/lib.rs:446-447`) |
 | 7 | `EntityBridge::insert_pair` preserves bidirectional consistency: every entry in the forward map has a matching entry in the reverse map (and vice-versa) | Yes | `ecs_bridge.rs:17-34` removes any conflicting old forward/reverse mappings before insertion. Tested in `astraweave-core/tests/ecs_integration_tests.rs` |
 | 8 | LLM-facing JSON keys produced from `WorldSnapshot` remain stable. Top-level keys (`t`, `player`, `me`, `enemies`, `pois`, `obstacles`, `objective`) are emitted 1:1 with Rust field names; sub-level keys are **translated** by some serializers (e.g. `prompts.rs:212` emits `"position"` for `snapshot.player.pos`; `prompts.rs:229` emits `"points_of_interest"` for `snapshot.pois`; `prompts.rs:213` emits `"health"` for `snapshot.player.hp`) and preserved by others (`compression.rs:152` emits `"pois"`; `prompt_template.rs:227-251` uses `pos`/`hp` directly in few-shot example strings) | Partially | Rust-side compilation enforces struct shape and catches access-site renames. Cross-LLM-prompt alignment between Rust fields, the three serializers (`astraweave-llm/src/prompts.rs:209-238`, `astraweave-llm/src/compression.rs:139-300`, `astraweave-llm/src/prompt_template.rs:227-251`), and the LLM training corpus is doc-only — no build script, lint, or test compares serializer output keys to schema field names. Kani proof in `astraweave-core/src/schema_kani.rs` covers `IVec2` numerical properties and `WorldSnapshot` helper correctness (`schema_kani.rs:1-60+`), not field-name stability |
-| 9 | All `unsafe` in this layer has a corresponding Kani proof or Miri test | Partially | Miri CI weekly (`miri.yml`, `docs/current/ARCHITECTURE_MAP.md:577`): `ecs` (120m), `core` (90m). Kani CI weekly (`kani.yml`): `ecs` (120m), `math` (60m), `sdk` (60m), `core` (90m). 977 tests, 0 UB per CLAUDE.md and `MIRI_VALIDATION_REPORT.md` |
+| 9 | All `unsafe` in this layer has a corresponding Kani proof or Miri test | Partially | Miri CI weekly (`miri.yml`, `docs/architecture/ARCHITECTURE_MAP.md:577`): `ecs` (120m), `core` (90m). Kani CI weekly (`kani.yml`): `ecs` (120m), `math` (60m), `sdk` (60m), `core` (90m). 977 tests, 0 UB per CLAUDE.md and `MIRI_VALIDATION_REPORT.md` |
 | 10 | C ABI entry points reject NULL handles and NULL string pointers without UB | Yes | `astraweave-sdk/src/lib.rs:177, 245, 265, 389-393` explicit null checks; `astraweave-sdk/src/lib_kani.rs` proves FFI safety properties |
 | 11 | `Schedule::add_system` for an unregistered stage name does not panic — it either logs (debug) or silently drops (release) | Yes (behavioural) | `astraweave-ecs/src/lib.rs:708-724`. This is the documented behavioural contract — silent-drop is intentional for optional custom stages, while debug-mode logging surfaces typos |
 | 12 | `Component` and `Resource` traits are blanket-implemented for `'static + Send + Sync` types — any such type can be both | Yes (compile-time) | `astraweave-ecs/src/lib.rs:85-90` |
@@ -489,10 +489,10 @@ There are several distinct flows through this layer. The first is the canonical 
   - `astraweave-math/benches/`: `simd_benchmarks.rs`, `simd_mat_benchmarks.rs`, `simd_quat_benchmarks.rs`, `simd_movement.rs`
   - `astraweave-sdk/benches/`: `sdk_benchmarks.rs`, `sdk_adversarial.rs`
 - **Miri validation (UB detection):**
-  - CI workflow `.github/workflows/miri.yml`, weekly, nightly toolchain. Per `docs/current/ARCHITECTURE_MAP.md:577`: `ecs` (120m), `core` (90m). Per CLAUDE.md and `docs/current/MIRI_VALIDATION_REPORT.md`: 977 tests across `ecs`, `math`, `core`, `sdk` with ZERO undefined behaviour.
+  - CI workflow `.github/workflows/miri.yml`, weekly, nightly toolchain. Per `docs/architecture/ARCHITECTURE_MAP.md:577`: `ecs` (120m), `core` (90m). Per CLAUDE.md and `docs/current/MIRI_VALIDATION_REPORT.md`: 977 tests across `ecs`, `math`, `core`, `sdk` with ZERO undefined behaviour.
 - **Kani formal verification:**
-  - CI workflow `.github/workflows/kani.yml`, weekly. Per `docs/current/ARCHITECTURE_MAP.md:578`: `ecs` (120m), `math` (60m), `sdk` (60m), `core` (90m).
-  - Proof files (per `docs/current/ARCHITECTURE_MAP.md:546-550`):
+  - CI workflow `.github/workflows/kani.yml`, weekly. Per `docs/architecture/ARCHITECTURE_MAP.md:578`: `ecs` (120m), `math` (60m), `sdk` (60m), `core` (90m).
+  - Proof files (per `docs/architecture/ARCHITECTURE_MAP.md:546-550`):
     - `astraweave-ecs/src/blob_vec_kani.rs` — BlobVec invariants
     - `astraweave-ecs/src/entity_allocator_kani.rs` — Generational index correctness
     - `astraweave-math/src/simd_vec_kani.rs` — SIMD operation correctness
