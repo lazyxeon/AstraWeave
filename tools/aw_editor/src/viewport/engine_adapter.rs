@@ -76,9 +76,6 @@ struct ScatterLodAssets {
     model_half_width: f32,
 }
 
-const TERRAIN_CLUSTER_GRID: usize = 2;
-const TERRAIN_MAX_VERTICES_PER_CLUSTER: usize = 5_000_000;
-
 const TERRAIN_BIOME_TINTS: [[f32; 4]; 8] = [
     [0.80, 1.00, 0.70, 1.0],
     [1.10, 1.00, 0.75, 1.0],
@@ -199,33 +196,10 @@ struct TerrainChunkRenderData {
 }
 
 #[derive(Clone, Debug)]
-struct TerrainClusterRecord {
-    name: String,
-    chunk_indices: Vec<usize>,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct TerrainChunkPlanningInfo {
-    aabb_min: [f32; 3],
-    aabb_max: [f32; 3],
-    vertex_count: usize,
-}
-
-#[derive(Clone, Debug)]
 struct TerrainMaterialSurfaceSet {
     albedo: (u32, u32, Vec<u8>),
     normal: (u32, u32, Vec<u8>),
     metallic_roughness: (u32, u32, Vec<u8>),
-}
-
-impl From<&TerrainChunkRenderData> for TerrainChunkPlanningInfo {
-    fn from(chunk: &TerrainChunkRenderData) -> Self {
-        Self {
-            aabb_min: chunk.aabb_min,
-            aabb_max: chunk.aabb_max,
-            vertex_count: chunk.positions.len(),
-        }
-    }
 }
 
 /// Coarse world-space regular grid of terrain heights, rebuilt from the
@@ -526,80 +500,18 @@ fn filter_surface_triangles(indices: &[u32], surface_vert_count: u32) -> Vec<u32
     out
 }
 
-fn build_terrain_cluster_plan(
-    chunks: &[TerrainChunkPlanningInfo],
-    grid: usize,
-    max_vertices_per_cluster: usize,
-) -> Vec<Vec<usize>> {
-    if chunks.is_empty() || grid == 0 {
-        return Vec::new();
-    }
-
-    let mut global_aabb_min = [f32::MAX; 3];
-    let mut global_aabb_max = [f32::MIN; 3];
-    for chunk in chunks {
-        for axis in 0..3 {
-            global_aabb_min[axis] = global_aabb_min[axis].min(chunk.aabb_min[axis]);
-            global_aabb_max[axis] = global_aabb_max[axis].max(chunk.aabb_max[axis]);
-        }
-    }
-
-    let span_x = (global_aabb_max[0] - global_aabb_min[0]).max(1.0);
-    let span_z = (global_aabb_max[2] - global_aabb_min[2]).max(1.0);
-    let cell_w = span_x / grid as f32;
-    let cell_d = span_z / grid as f32;
-
-    let mut bins: Vec<Vec<usize>> = vec![Vec::new(); grid * grid];
-    for (chunk_index, chunk) in chunks.iter().enumerate() {
-        let center_x = (chunk.aabb_min[0] + chunk.aabb_max[0]) * 0.5;
-        let center_z = (chunk.aabb_min[2] + chunk.aabb_max[2]) * 0.5;
-        let gx = (((center_x - global_aabb_min[0]) / cell_w) as usize).min(grid - 1);
-        let gz = (((center_z - global_aabb_min[2]) / cell_d) as usize).min(grid - 1);
-        bins[gz * grid + gx].push(chunk_index);
-    }
-
-    let mut clusters = Vec::new();
-    for bin in bins {
-        if bin.is_empty() {
-            continue;
-        }
-
-        let mut chunk_indices = Vec::new();
-        let mut cluster_vertex_count = 0usize;
-        for chunk_index in bin {
-            let next_vertex_count = chunks[chunk_index].vertex_count;
-            if !chunk_indices.is_empty()
-                && cluster_vertex_count + next_vertex_count > max_vertices_per_cluster
-            {
-                clusters.push(std::mem::take(&mut chunk_indices));
-                cluster_vertex_count = 0;
-            }
-
-            chunk_indices.push(chunk_index);
-            cluster_vertex_count += next_vertex_count;
-        }
-
-        if !chunk_indices.is_empty() {
-            clusters.push(chunk_indices);
-        }
-    }
-
-    clusters
-}
-
 pub struct EngineRenderAdapter {
     renderer: astraweave_render::Renderer,
     initialized: bool,
-    /// Tracks which clustered terrain model names are currently uploaded.
-    terrain_model_names: Vec<String>,
-    /// Converted source terrain chunks preserved in clustered upload order.
+    /// Converted source terrain chunks preserved in upload order. After
+    /// Cleanup-A (2026-05-08), upload order matches the canonical
+    /// forward-lit splat pipeline (Real-Fix.D 32-channel splats); the
+    /// legacy cluster path has been deleted.
     terrain_chunks: Vec<TerrainChunkRenderData>,
     /// Maps logical source chunk indices to entries in `terrain_chunks`.
-    /// Empty logical chunks retain identity as `None` so incremental updates
-    /// do not misroute after clustered uploads.
+    /// Empty logical chunks retain identity as `None` so incremental
+    /// updates do not misroute.
     terrain_chunk_slot_map: Vec<Option<usize>>,
-    /// Stable cluster ownership records used for targeted rebuilds after brush edits.
-    terrain_clusters: Vec<TerrainClusterRecord>,
     /// Number of logical terrain chunks supplied by the editor.
     terrain_source_chunk_count: usize,
     /// Tracks scatter model names for cleanup.
@@ -763,10 +675,8 @@ impl EngineRenderAdapter {
         let mut adapter = Self {
             renderer,
             initialized: true,
-            terrain_model_names: Vec::new(),
             terrain_chunks: Vec::new(),
             terrain_chunk_slot_map: Vec::new(),
-            terrain_clusters: Vec::new(),
             terrain_source_chunk_count: 0,
             scatter_model_names: Vec::new(),
             terrain_total_triangles: 0,
@@ -1412,13 +1322,11 @@ impl EngineRenderAdapter {
             );
         }
 
-        // Clear previous terrain models
-        for name in self.terrain_model_names.drain(..) {
-            self.renderer.clear_model(&name);
-        }
+        // Clear previous terrain state (Cleanup-A 2026-05-08: legacy
+        // cluster model registrations deleted; forward-lit splat path is
+        // canonical).
         self.terrain_chunks.clear();
         self.terrain_chunk_slot_map.clear();
-        self.terrain_clusters.clear();
         self.terrain_source_chunk_count = chunks.len();
         self.terrain_total_triangles = 0;
         self.terrain_total_indices = 0;
@@ -1553,57 +1461,14 @@ impl EngineRenderAdapter {
             return;
         }
 
-        // Terrain Material System campaign — Phase 1.E.4.c.
-        // When the forward-lit splat path is active AND has uploaded at
-        // least one chunk, skip the legacy cluster-building + model
-        // registration. The forward path renders terrain directly inside
-        // `Renderer::draw_into` via its own pipeline; no cluster models
-        // are needed. `terrain_clusters` and `terrain_model_names` stay
-        // empty — downstream cluster rebuild paths (brush edits, etc.)
-        // are inert until per-vertex material authoring reaches the
-        // shader in Phase 2.
-        //
-        // When the feature is off, or `init_terrain_forward` failed, or
-        // chunk upload failed for every chunk, the legacy path runs
-        // unchanged — preserves the feature-off fallback and the
-        // reversibility promise in plan §3.5.
-        #[cfg(feature = "terrain-splat-arrays")]
-        let forward_active = self
-            .renderer
-            .terrain_forward()
-            .map(|tf| !tf.chunks.is_empty())
-            .unwrap_or(false);
-        #[cfg(not(feature = "terrain-splat-arrays"))]
-        let forward_active = false;
-
-        if !forward_active {
-            let planning: Vec<_> = self
-                .terrain_chunks
-                .iter()
-                .map(TerrainChunkPlanningInfo::from)
-                .collect();
-            self.terrain_clusters = build_terrain_cluster_plan(
-                &planning,
-                TERRAIN_CLUSTER_GRID,
-                TERRAIN_MAX_VERTICES_PER_CLUSTER,
-            )
-            .into_iter()
-            .enumerate()
-            .map(|(cluster_index, chunk_indices)| TerrainClusterRecord {
-                name: format!("terrain_cluster_{cluster_index}"),
-                chunk_indices,
-            })
-            .collect();
-            self.terrain_model_names = self
-                .terrain_clusters
-                .iter()
-                .map(|cluster| cluster.name.clone())
-                .collect();
-
-            for cluster_index in 0..self.terrain_clusters.len() {
-                self.rebuild_terrain_cluster(cluster_index);
-            }
-        }
+        // Cleanup-A 2026-05-08: legacy cluster-building + model
+        // registration deleted. Terrain renders via the canonical
+        // forward-lit splat path (Real-Fix.A/B/C/D/E pipeline) inside
+        // `Renderer::draw_into`; per-chunk uploads happen in
+        // `upload_or_update_terrain_chunk_forward`. The bypass
+        // approach Mediator Brush Fix `8f4668599` introduced is no
+        // longer needed because the canonical pipeline handles all
+        // brush modes mechanically + correctly.
 
         let mut global_aabb_min = [f32::MAX; 3];
         let mut global_aabb_max = [f32::MIN; 3];
@@ -1632,9 +1497,8 @@ impl EngineRenderAdapter {
 
         tracing::info!(
             target: "aw_editor::viewport",
-            "Terrain uploaded: {} chunks → {} GPU models, {} total tris, {} total verts",
+            "Terrain uploaded: {} chunks via forward-lit splat path, {} total tris, {} total verts",
             chunks.len(),
-            self.terrain_model_names.len(),
             self.terrain_total_triangles,
             total_verts,
         );
@@ -1720,115 +1584,6 @@ impl EngineRenderAdapter {
             self.terrain_source_chunk_count,
             self.terrain_total_triangles,
         );
-    }
-
-    fn rebuild_terrain_cluster(&mut self, cluster_index: usize) {
-        let Some(cluster) = self.terrain_clusters.get(cluster_index).cloned() else {
-            return;
-        };
-
-        let mut merged_positions = Vec::new();
-        let mut merged_normals = Vec::new();
-        let mut merged_tangents = Vec::new();
-        let mut merged_uvs = Vec::new();
-        let mut merged_indices = Vec::new();
-        let mut cluster_aabb_min = [f32::MAX; 3];
-        let mut cluster_aabb_max = [f32::MIN; 3];
-        let mut surface_summary = TerrainSurfaceSummary::default();
-        let mut vertex_offset = 0u32;
-
-        for chunk_index in cluster.chunk_indices {
-            let Some(chunk) = self.terrain_chunks.get(chunk_index) else {
-                continue;
-            };
-
-            for &idx in &chunk.indices {
-                merged_indices.push(idx + vertex_offset);
-            }
-            vertex_offset += chunk.positions.len() as u32;
-
-            merged_positions.extend_from_slice(&chunk.positions);
-            merged_normals.extend_from_slice(&chunk.normals);
-            merged_tangents.extend_from_slice(&chunk.tangents);
-            merged_uvs.extend_from_slice(&chunk.uvs);
-            surface_summary.merge(&chunk.surface_summary);
-
-            for axis in 0..3 {
-                cluster_aabb_min[axis] = cluster_aabb_min[axis].min(chunk.aabb_min[axis]);
-                cluster_aabb_max[axis] = cluster_aabb_max[axis].max(chunk.aabb_max[axis]);
-            }
-        }
-
-        if merged_positions.is_empty() {
-            self.renderer.clear_model(&cluster.name);
-            return;
-        }
-
-        let prototype_name = surface_summary
-            .dominant_material_index()
-            .and_then(|material_index| self.ensure_terrain_material_prototype(material_index));
-        let resolved_tint = surface_summary.resolve_tint();
-        let instance = astraweave_render::Instance::from_pos_scale_color(
-            glam::Vec3::ZERO,
-            glam::Vec3::ONE,
-            if prototype_name.is_some() {
-                blend_tints([1.0, 1.0, 1.0, 1.0], resolved_tint, 0.20)
-            } else {
-                resolved_tint
-            },
-        );
-        if let Some(prototype_name) = prototype_name.as_deref() {
-            let mesh = self.renderer.create_mesh_from_full_arrays(
-                &merged_positions,
-                &merged_normals,
-                &merged_tangents,
-                &merged_uvs,
-                &merged_indices,
-            );
-            if self.renderer.add_model_sharing_texture_with_bounds(
-                &cluster.name,
-                mesh,
-                &[instance.clone()],
-                prototype_name,
-                cluster_aabb_min,
-                cluster_aabb_max,
-            ) {
-                return;
-            }
-        }
-
-        let mesh = self.renderer.create_mesh_from_full_arrays(
-            &merged_positions,
-            &merged_normals,
-            &merged_tangents,
-            &merged_uvs,
-            &merged_indices,
-        );
-        self.renderer.add_model_with_bounds(
-            &cluster.name,
-            mesh,
-            &[instance],
-            cluster_aabb_min,
-            cluster_aabb_max,
-        );
-    }
-
-    fn rebuild_terrain_clusters_for_chunk(&mut self, chunk_index: usize) {
-        let affected_clusters: Vec<_> = self
-            .terrain_clusters
-            .iter()
-            .enumerate()
-            .filter_map(|(cluster_index, cluster)| {
-                cluster
-                    .chunk_indices
-                    .contains(&chunk_index)
-                    .then_some(cluster_index)
-            })
-            .collect();
-
-        for cluster_index in affected_clusters {
-            self.rebuild_terrain_cluster(cluster_index);
-        }
     }
 
     fn refresh_terrain_ground_plane(&mut self) {
@@ -2334,15 +2089,11 @@ impl EngineRenderAdapter {
 
     /// Clear all terrain data from the engine renderer.
     pub fn clear_terrain(&mut self) {
-        for name in self.terrain_model_names.drain(..) {
-            self.renderer.clear_model(&name);
-        }
         for prototype_name in self.terrain_material_prototypes.values() {
             self.renderer.clear_model(prototype_name);
         }
         self.terrain_chunks.clear();
         self.terrain_chunk_slot_map.clear();
-        self.terrain_clusters.clear();
         self.terrain_material_surfaces.clear();
         self.terrain_material_prototypes.clear();
         self.terrain_source_chunk_count = 0;
@@ -2499,13 +2250,9 @@ impl EngineRenderAdapter {
             );
         }
 
-        // Legacy cluster path PRESERVED during Real-Fix.B per audit §5.1
-        // discipline. Round 6 T9.D evidence proves this path is dead code at
-        // current configuration (terrain_cluster_models=0 across 238 samples)
-        // — the call below is harmless but redundant. Cleanup-A session
-        // (post-Andrew-gate-PASS) deletes legacy path for clean diff
-        // narrative.
-        self.rebuild_terrain_clusters_for_chunk(stored_chunk_index);
+        // Cleanup-A 2026-05-08: legacy cluster path deleted. The incremental
+        // update flows entirely through the canonical forward-lit splat
+        // path via `upload_or_update_terrain_chunk_forward` above.
         self.refresh_terrain_ground_plane();
     }
 
@@ -4122,63 +3869,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn terrain_cluster_plan_covers_all_chunks_once() {
-        let chunks = [
-            TerrainChunkPlanningInfo {
-                aabb_min: [0.0, 0.0, 0.0],
-                aabb_max: [10.0, 1.0, 10.0],
-                vertex_count: 100,
-            },
-            TerrainChunkPlanningInfo {
-                aabb_min: [12.0, 0.0, 0.0],
-                aabb_max: [22.0, 1.0, 10.0],
-                vertex_count: 100,
-            },
-            TerrainChunkPlanningInfo {
-                aabb_min: [0.0, 0.0, 12.0],
-                aabb_max: [10.0, 1.0, 22.0],
-                vertex_count: 100,
-            },
-            TerrainChunkPlanningInfo {
-                aabb_min: [12.0, 0.0, 12.0],
-                aabb_max: [22.0, 1.0, 22.0],
-                vertex_count: 100,
-            },
-        ];
-
-        let mut planned_chunks: Vec<_> = build_terrain_cluster_plan(&chunks, 2, 10_000)
-            .into_iter()
-            .flatten()
-            .collect();
-        planned_chunks.sort_unstable();
-
-        assert_eq!(planned_chunks, vec![0, 1, 2, 3]);
-    }
-
-    #[test]
-    fn terrain_cluster_plan_splits_large_bins_by_vertex_budget() {
-        let chunks = [
-            TerrainChunkPlanningInfo {
-                aabb_min: [0.0, 0.0, 0.0],
-                aabb_max: [4.0, 1.0, 4.0],
-                vertex_count: 4,
-            },
-            TerrainChunkPlanningInfo {
-                aabb_min: [1.0, 0.0, 1.0],
-                aabb_max: [5.0, 1.0, 5.0],
-                vertex_count: 4,
-            },
-            TerrainChunkPlanningInfo {
-                aabb_min: [2.0, 0.0, 2.0],
-                aabb_max: [6.0, 1.0, 6.0],
-                vertex_count: 4,
-            },
-        ];
-
-        let plan = build_terrain_cluster_plan(&chunks, 1, 5);
-        assert_eq!(plan, vec![vec![0], vec![1], vec![2]]);
-    }
+    // Cleanup-A 2026-05-08: tests `terrain_cluster_plan_covers_all_chunks_once`
+    // and `terrain_cluster_plan_splits_large_bins_by_vertex_budget` deleted
+    // alongside the legacy cluster path production code. The canonical
+    // forward-lit splat pipeline (Real-Fix.D 32-channel splats) handles all
+    // terrain rendering; cluster planning is obsolete.
 
     // Real-Fix.C 2026-05-08: tests below updated for unified material attribute
     // set. Pre-fix, biome_weights_0/1 and material_ids/material_weights were

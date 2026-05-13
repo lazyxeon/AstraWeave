@@ -5745,9 +5745,10 @@ fn vs(input: VSIn) -> VSOut {
             // Runs after opaque models, before impostor / water / weather.
             // All &mut state updates happened before the render pass was
             // opened; here we only need &self.terrain_forward. When the
-            // field is None (1.E.4 hasn't opted in yet), the block is a
-            // no-op and terrain renders via the legacy `self.models` path
-            // above (which includes the editor's terrain_cluster_* entries).
+            // field is None (terrain_forward not initialized), the block
+            // is a no-op. Cleanup-A 2026-05-08: the editor's legacy
+            // cluster path (formerly `self.models["terrain_cluster_*"]`)
+            // has been deleted; the forward-lit splat path is canonical.
             #[cfg(feature = "terrain-splat-arrays")]
             if let Some(tf) = self.terrain_forward.as_ref() {
                 for (key, chunk_gpu) in &tf.chunks {
