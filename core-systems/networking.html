@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c4d8145e.js";
+            window.path_to_searchindex_js = "../searchindex-f46bb8b6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -218,749 +218,89 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="networking-system"><a class="header" href="#networking-system">Networking System</a></h1>
-<p>AstraWeave’s networking system provides robust client-server architecture with state synchronization, delta encoding, lag compensation, and prediction for responsive multiplayer gameplay.</p>
-<h2 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture Overview</a></h2>
-<p>The networking system is built on a client-server model with authoritative server and client-side prediction.</p>
-<pre class="mermaid">graph TD
-    A[Server] --&gt; B[State Authority]
-    A --&gt; C[Physics Simulation]
-    A --&gt; D[Game Logic]
-    B --&gt; E[Delta Encoding]
-    E --&gt; F[Network Transport]
-    F --&gt; G[Client 1]
-    F --&gt; H[Client 2]
-    F --&gt; I[Client N]
-    G --&gt; J[Prediction]
-    G --&gt; K[Interpolation]
-    J --&gt; L[Reconciliation]
-</pre>
-
-<h3 id="key-components"><a class="header" href="#key-components">Key Components</a></h3>
-<ul>
-<li><strong>Transport Layer</strong>: UDP-based reliable/unreliable messaging with Quinn (QUIC)</li>
-<li><strong>State Synchronization</strong>: Efficient delta compression and entity replication</li>
-<li><strong>Client Prediction</strong>: Responsive input with server reconciliation</li>
-<li><strong>Lag Compensation</strong>: Server-side hit detection with rewind</li>
-<li><strong>Network Relevancy</strong>: Bandwidth optimization through spatial partitioning</li>
-</ul>
-<pre><code class="language-admonish info">AstraWeave uses QUIC (via Quinn) for modern, secure, and multiplexed networking with built-in congestion control and 0-RTT connection establishment.
+                        <!--
+  Networking System page — replaced 2026-05-15 as part of the post-trace-campaign
+  reconciliation.
+  Source: ARCHITECTURE_MAP.md §7.1 (Documentation Hazards) and `net.md` / `net_ecs.md`
+  trace files. The pre-trace version of this page (committed 2025-09-08 by GitHub
+  Copilot bot as part of commit 28bc94f21) described a QUIC-based transport with
+  fictional Server / ServerConfig / Client / ClientConfig types. None of those
+  types exist in the actual codebase; actual networking is WebSocket over TCP
+  via tokio-tungstenite. The pre-trace page has been archived in git history.
+-->
+<h1 id="networking-systems"><a class="header" href="#networking-systems">Networking Systems</a></h1>
+<pre><code class="language-admonish warning title=&quot;Documentation under reconciliation&quot;">This page was rewritten on 2026-05-15 to reflect the engineering reality surfaced by the
+architecture trace campaign. A prior version (added in commit 28bc94f21,
+2025-09-08, by an automated documentation pass) described a QUIC-based transport and
+API surface that **does not exist in the codebase**. If you arrived here from an
+external link expecting that API, see the architecture-trace links below.
 </code></pre>
-<h2 id="server-setup"><a class="header" href="#server-setup">Server Setup</a></h2>
-<h3 id="creating-a-server"><a class="header" href="#creating-a-server">Creating a Server</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::{Server, ServerConfig};
-
-let config = ServerConfig {
-    bind_address: "0.0.0.0:7777".parse()?,
-    max_clients: 64,
-    tick_rate: 60,              // Server updates per second
-    timeout_seconds: 10.0,
-    enable_encryption: true,
-    max_bandwidth_kbps: 1024,
-    ..Default::default()
-};
-
-let mut server = Server::new(config)?;
-<span class="boring">}</span></code></pre>
-<h3 id="server-loop"><a class="header" href="#server-loop">Server Loop</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::{ServerEvent, ClientId};
-
-loop {
-    let delta_time = 1.0 / 60.0; // 60 Hz tick rate
-    
-    // Process incoming events
-    while let Some(event) = server.poll_event() {
-        match event {
-            ServerEvent::ClientConnected { client_id, address } =&gt; {
-                println!("Client {} connected from {}", client_id, address);
-                spawn_player(client_id);
-            }
-            ServerEvent::ClientDisconnected { client_id, reason } =&gt; {
-                println!("Client {} disconnected: {:?}", client_id, reason);
-                despawn_player(client_id);
-            }
-            ServerEvent::MessageReceived { client_id, message } =&gt; {
-                handle_client_message(client_id, message);
-            }
-        }
-    }
-    
-    // Update game state
-    update_game_state(delta_time);
-    
-    // Send state updates to clients
-    server.broadcast_state_update(&amp;world_state)?;
-    
-    // Tick network
-    server.tick(delta_time)?;
-    
-    std::thread::sleep(std::time::Duration::from_secs_f32(delta_time));
-}
-<span class="boring">}</span></code></pre>
-<h2 id="client-setup"><a class="header" href="#client-setup">Client Setup</a></h2>
-<h3 id="connecting-to-server"><a class="header" href="#connecting-to-server">Connecting to Server</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::{Client, ClientConfig};
-
-let config = ClientConfig {
-    server_address: "127.0.0.1:7777".parse()?,
-    timeout_seconds: 10.0,
-    enable_prediction: true,
-    interpolation_delay_ms: 100,
-    ..Default::default()
-};
-
-let mut client = Client::connect(config).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="client-loop"><a class="header" href="#client-loop">Client Loop</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::ClientEvent;
-
-loop {
-    let delta_time = 1.0 / 60.0;
-    
-    // Process server events
-    while let Some(event) = client.poll_event() {
-        match event {
-            ClientEvent::Connected =&gt; {
-                println!("Connected to server");
-            }
-            ClientEvent::Disconnected { reason } =&gt; {
-                println!("Disconnected: {:?}", reason);
-                break;
-            }
-            ClientEvent::StateUpdate { state } =&gt; {
-                apply_state_update(state);
-            }
-            ClientEvent::MessageReceived { message } =&gt; {
-                handle_server_message(message);
-            }
-        }
-    }
-    
-    // Get local input
-    let input = gather_input();
-    
-    // Send input to server
-    client.send_input(input)?;
-    
-    // Client-side prediction
-    if config.enable_prediction {
-        simulate_local_player(input, delta_time);
-    }
-    
-    // Interpolate remote entities
-    interpolate_entities(delta_time);
-    
-    // Tick network
-    client.tick(delta_time)?;
-    
-    std::thread::sleep(std::time::Duration::from_secs_f32(delta_time));
-}
-<span class="boring">}</span></code></pre>
-<h2 id="state-synchronization"><a class="header" href="#state-synchronization">State Synchronization</a></h2>
-<h3 id="entity-replication"><a class="header" href="#entity-replication">Entity Replication</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::replication::{NetEntity, ReplicationMode};
-
-#[derive(NetEntity)]
-pub struct Player {
-    #[replicate(mode = ReplicationMode::Always)]
-    pub entity_id: u64,
-    
-    #[replicate(mode = ReplicationMode::OnChange, priority = 10)]
-    pub position: Vec3,
-    
-    #[replicate(mode = ReplicationMode::OnChange, priority = 10)]
-    pub rotation: Quat,
-    
-    #[replicate(mode = ReplicationMode::OnChange, priority = 5)]
-    pub velocity: Vec3,
-    
-    #[replicate(mode = ReplicationMode::OnChange, priority = 2)]
-    pub health: f32,
-    
-    #[replicate(mode = ReplicationMode::OnChange, priority = 1)]
-    pub ammo: u32,
-    
-    // Not replicated
-    #[replicate(mode = ReplicationMode::Never)]
-    local_animation_state: AnimationState,
-}
-<span class="boring">}</span></code></pre>
-<h3 id="replication-modes"><a class="header" href="#replication-modes">Replication Modes</a></h3>
+<p>AstraWeave’s workspace contains <strong>two networking subsystems</strong> with disjoint data
+models, wire formats, and integration patterns. Neither imports the other.</p>
+<!-- Source: net.md §1 + net_ecs.md §1 + ARCHITECTURE_MAP.md §8.8 -->
+<h2 id="astraweave-net--snapshot-based-server"><a class="header" href="#astraweave-net--snapshot-based-server"><code>astraweave-net</code> — snapshot-based server</a></h2>
+<ul>
+<li><strong>Data model:</strong> 2D grid, <code>IVec2</code> positions. Maps to the original AI-companion / tactical
+game model.</li>
+<li><strong>Wire format:</strong> JSON over WebSocket text frames via <code>tokio-tungstenite</code>. <strong>Not QUIC.</strong>
+There is no <code>quinn</code> dependency in the workspace.</li>
+<li><strong>Tick:</strong> 60 Hz fixed tick on <code>GameServer</code>. Broadcast cadence: full snapshot every 60
+ticks, deltas every 3 ticks.</li>
+<li><strong>Interest filtering:</strong> four <code>Interest</code> impls — <code>Full</code>, <code>RadiusTeam</code>, <code>Fov</code>, <code>FovLos</code>.</li>
+<li><strong>Trace:</strong> <a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/net.md"><code>net.md</code></a> — file map, conflict map, decision log, invariants, open questions.</li>
+</ul>
+<h2 id="astraweave-net-ecs--standalone-trio-aw-net-protoclientserver"><a class="header" href="#astraweave-net-ecs--standalone-trio-aw-net-protoclientserver"><code>astraweave-net-ecs</code> + standalone trio (<code>aw-net-{proto,client,server}</code>)</a></h2>
+<ul>
+<li><strong>Data model:</strong> ECS world, <code>Vec3</code> positions. Matchmaking-oriented multiplayer.</li>
+<li><strong>Wire format:</strong> <code>Codec::PostcardLz4</code> (standalone server) or <code>Codec::Bincode</code> (ECS Plugin
+layer). Carried over WebSocket — <code>wss://</code> for the standalone server, <code>ws://</code> for the
+ECS Plugin variant.</li>
+<li><strong>Matchmaking:</strong> room cap 4, <code>tick_hz = 30</code> (hardcoded), 32-byte session key,
+8-byte session hint.</li>
+<li><strong>Status (per trace §1):</strong> the standalone server/client trio is production-style; the
+ECS Plugin layer is <strong>dormant</strong> — <code>astraweave-stress-test</code> declares the crate as a
+dependency but never imports it.</li>
+<li><strong>Trace:</strong> <a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/net_ecs.md"><code>net_ecs.md</code></a>.</li>
+</ul>
+<h2 id="known-integration-hazards-surfaced-by-traces"><a class="header" href="#known-integration-hazards-surfaced-by-traces">Known integration hazards (surfaced by traces)</a></h2>
+<!-- Source: ARCHITECTURE_MAP.md §4.3 (silent failures) and net.md §6 / net_ecs.md §6 -->
+<ul>
+<li><strong>HMAC signature mismatch.</strong> The standalone server runs HMAC-SHA256 input-frame
+verification; the standalone client still computes the legacy 16-byte XOR
+<code>sign16</code>. Every signature verification fails for two independent reasons (length
+mismatch + algorithm mismatch). The failure is <code>warn!</code> only — the server does not
+kick the client. Tracked as Q17 in <code>ARCHITECTURE_MAP.md</code> §14.</li>
+<li><strong><code>apply_delta</code> silent no-op on tick mismatch</strong> (<code>astraweave-net/src/lib.rs:404-406</code>).</li>
+<li><strong><code>EntityState</code> type collision.</strong> Both crates define a struct named <code>EntityState</code>
+with different field shapes (<code>{ pos: IVec2, hp, team, ammo }</code> vs.
+<code>{ position: Vec3, health }</code>). Qualify imports.</li>
+<li><strong>Long-term disposition</strong> of the two subsystems is an open question (Q16 in §14
+of the architecture map): coexist long-term, retire one, or refactor toward a
+unified model?</li>
+</ul>
+<h2 id="where-to-actually-look-in-the-code"><a class="header" href="#where-to-actually-look-in-the-code">Where to actually look in the code</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Mode</th><th>Description</th><th>Use Case</th></tr>
+<tr><th>Need</th><th>File</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Always</code></td><td>Send every frame</td><td>Entity ID, critical state</td></tr>
-<tr><td><code>OnChange</code></td><td>Send when value changes</td><td>Position, health</td></tr>
-<tr><td><code>OnChangeThreshold</code></td><td>Send when change exceeds threshold</td><td>Analog values</td></tr>
-<tr><td><code>Never</code></td><td>Never replicate</td><td>Client-only data</td></tr>
+<tr><td>Snapshot pipeline</td><td><code>astraweave-net/src/lib.rs</code></td></tr>
+<tr><td>Standalone server entry</td><td><code>net/aw-net-server/src/main.rs</code></td></tr>
+<tr><td>Standalone client entry</td><td><code>net/aw-net-client/src/main.rs</code></td></tr>
+<tr><td>ECS Plugin layer</td><td><code>astraweave-net-ecs/src/lib.rs</code></td></tr>
+<tr><td>Wire-format types</td><td><code>net/aw-net-proto/src/lib.rs</code></td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="world-state-updates"><a class="header" href="#world-state-updates">World State Updates</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::state::{WorldState, EntityState};
-
-// Server: Build world state
-let mut world_state = WorldState::new();
-
-for player in players.iter() {
-    world_state.add_entity(player.entity_id, EntityState {
-        position: player.position,
-        rotation: player.rotation,
-        velocity: player.velocity,
-        custom_data: serialize_player_data(player),
-    });
-}
-
-// Send to all clients
-server.broadcast_state_update(&amp;world_state)?;
-
-// Client: Apply state update
-fn apply_state_update(state: WorldState) {
-    for (entity_id, entity_state) in state.entities() {
-        if let Some(entity) = world.get_entity_mut(entity_id) {
-            entity.position = entity_state.position;
-            entity.rotation = entity_state.rotation;
-            entity.velocity = entity_state.velocity;
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="delta-encoding"><a class="header" href="#delta-encoding">Delta Encoding</a></h2>
-<p>Delta encoding dramatically reduces bandwidth by only sending changed values.</p>
-<h3 id="automatic-delta-compression"><a class="header" href="#automatic-delta-compression">Automatic Delta Compression</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::delta::{DeltaEncoder, DeltaDecoder};
-
-// Server: Encode state changes
-let mut encoder = DeltaEncoder::new();
-
-// First frame: full state
-let full_state = encoder.encode_full(&amp;world_state)?;
-server.broadcast(full_state)?;
-
-// Subsequent frames: only deltas
-loop {
-    let new_state = get_current_world_state();
-    let delta = encoder.encode_delta(&amp;new_state)?;
-    
-    if delta.size_bytes() &lt; full_state.size_bytes() * 0.8 {
-        server.broadcast(delta)?;
-    } else {
-        // Send full state if delta is too large
-        server.broadcast(encoder.encode_full(&amp;new_state)?)?;
-    }
-}
-
-// Client: Decode deltas
-let mut decoder = DeltaDecoder::new();
-
-match received_message {
-    NetworkMessage::FullState(state) =&gt; {
-        decoder.apply_full_state(state);
-    }
-    NetworkMessage::DeltaState(delta) =&gt; {
-        decoder.apply_delta(delta);
-    }
-}
-
-let current_state = decoder.get_state();
-<span class="boring">}</span></code></pre>
-<h3 id="custom-delta-serialization"><a class="header" href="#custom-delta-serialization">Custom Delta Serialization</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::serialization::{BitWriter, BitReader};
-
-impl Player {
-    pub fn write_delta(&amp;self, previous: &amp;Player, writer: &amp;mut BitWriter) {
-        // Position (quantized)
-        if self.position != previous.position {
-            writer.write_bit(true);
-            writer.write_vec3_quantized(self.position, -1000.0, 1000.0, 0.01);
-        } else {
-            writer.write_bit(false);
-        }
-        
-        // Rotation (quaternion compression)
-        if self.rotation != previous.rotation {
-            writer.write_bit(true);
-            writer.write_quaternion_compressed(self.rotation);
-        } else {
-            writer.write_bit(false);
-        }
-        
-        // Health (8-bit)
-        if self.health != previous.health {
-            writer.write_bit(true);
-            writer.write_u8((self.health * 255.0) as u8);
-        } else {
-            writer.write_bit(false);
-        }
-    }
-    
-    pub fn read_delta(&amp;mut self, reader: &amp;mut BitReader) {
-        if reader.read_bit() {
-            self.position = reader.read_vec3_quantized(-1000.0, 1000.0, 0.01);
-        }
-        if reader.read_bit() {
-            self.rotation = reader.read_quaternion_compressed();
-        }
-        if reader.read_bit() {
-            self.health = reader.read_u8() as f32 / 255.0;
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<pre><code class="language-admonish tip">Quantize floating-point values to reduce precision and save bandwidth. For example, position precision of 1cm (0.01m) is sufficient for most games.
-</code></pre>
-<h2 id="client-prediction"><a class="header" href="#client-prediction">Client Prediction</a></h2>
-<p>Client-side prediction makes the game feel responsive despite network latency.</p>
-<h3 id="input-prediction"><a class="header" href="#input-prediction">Input Prediction</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::prediction::{PredictionSystem, InputBuffer};
-
-pub struct PredictedPlayer {
-    // Authoritative state from server
-    server_position: Vec3,
-    server_velocity: Vec3,
-    server_tick: u64,
-    
-    // Predicted state
-    predicted_position: Vec3,
-    predicted_velocity: Vec3,
-    
-    // Input history
-    input_buffer: InputBuffer,
-}
-
-impl PredictedPlayer {
-    pub fn send_input(&amp;mut self, input: PlayerInput, client: &amp;mut Client) {
-        // Store input locally
-        self.input_buffer.push(input.clone());
-        
-        // Send to server
-        client.send_input(input)?;
-        
-        // Predict movement
-        self.simulate_movement(input, TICK_DELTA);
-    }
-    
-    pub fn reconcile(&amp;mut self, server_state: PlayerState) {
-        self.server_position = server_state.position;
-        self.server_velocity = server_state.velocity;
-        self.server_tick = server_state.tick;
-        
-        // Start from server state
-        self.predicted_position = server_state.position;
-        self.predicted_velocity = server_state.velocity;
-        
-        // Re-simulate inputs after server tick
-        for input in self.input_buffer.after_tick(server_state.tick) {
-            self.simulate_movement(input, TICK_DELTA);
-        }
-        
-        // Clear old inputs
-        self.input_buffer.clear_before_tick(server_state.tick);
-    }
-    
-    fn simulate_movement(&amp;mut self, input: PlayerInput, delta_time: f32) {
-        // Same movement code as server
-        let acceleration = input.move_direction * MOVE_SPEED;
-        self.predicted_velocity += acceleration * delta_time;
-        self.predicted_velocity *= 0.9; // Friction
-        self.predicted_position += self.predicted_velocity * delta_time;
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="prediction-error-correction"><a class="header" href="#prediction-error-correction">Prediction Error Correction</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Smooth correction of prediction errors
-pub fn correct_prediction_error(&amp;mut self, delta_time: f32) {
-    let error = self.server_position - self.predicted_position;
-    let error_magnitude = error.length();
-    
-    if error_magnitude &gt; 0.01 {
-        // Smooth correction over time
-        let correction_speed = 10.0; // Adjust for smoothness
-        let correction = error * correction_speed * delta_time;
-        
-        self.predicted_position += correction;
-    } else {
-        // Snap if very close
-        self.predicted_position = self.server_position;
-    }
-}
-<span class="boring">}</span></code></pre>
-<pre class="mermaid">sequenceDiagram
-    participant Client
-    participant Server
-    
-    Client-&gt;&gt;Client: Input (frame 1)
-    Client-&gt;&gt;Client: Predict movement
-    Client-&gt;&gt;Server: Send input (frame 1)
-    
-    Client-&gt;&gt;Client: Input (frame 2)
-    Client-&gt;&gt;Client: Predict movement
-    Client-&gt;&gt;Server: Send input (frame 2)
-    
-    Server-&gt;&gt;Server: Process input (frame 1)
-    Server-&gt;&gt;Client: State update (frame 1)
-    
-    Client-&gt;&gt;Client: Reconcile with server
-    Client-&gt;&gt;Client: Re-simulate frames 2+
-</pre>
-
-<h2 id="entity-interpolation"><a class="header" href="#entity-interpolation">Entity Interpolation</a></h2>
-<p>Remote entities are interpolated between snapshots for smooth movement.</p>
-<h3 id="snapshot-interpolation"><a class="header" href="#snapshot-interpolation">Snapshot Interpolation</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::interpolation::{SnapshotBuffer, InterpolationTarget};
-
-pub struct InterpolatedEntity {
-    snapshots: SnapshotBuffer&lt;EntitySnapshot&gt;,
-    interpolation_delay: f32, // 100ms
-}
-
-#[derive(Clone)]
-pub struct EntitySnapshot {
-    timestamp: f32,
-    position: Vec3,
-    rotation: Quat,
-    velocity: Vec3,
-}
-
-impl InterpolatedEntity {
-    pub fn add_snapshot(&amp;mut self, snapshot: EntitySnapshot) {
-        self.snapshots.push(snapshot);
-    }
-    
-    pub fn interpolate(&amp;self, current_time: f32) -&gt; InterpolationTarget {
-        // Render time is current time minus interpolation delay
-        let render_time = current_time - self.interpolation_delay;
-        
-        // Find bracketing snapshots
-        let (before, after) = self.snapshots.get_bracketing(render_time);
-        
-        // Calculate interpolation factor
-        let t = (render_time - before.timestamp) / (after.timestamp - before.timestamp);
-        let t = t.clamp(0.0, 1.0);
-        
-        InterpolationTarget {
-            position: before.position.lerp(after.position, t),
-            rotation: before.rotation.slerp(after.rotation, t),
-            velocity: before.velocity.lerp(after.velocity, t),
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="extrapolation-for-missing-snapshots"><a class="header" href="#extrapolation-for-missing-snapshots">Extrapolation for Missing Snapshots</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub fn extrapolate(&amp;self, current_time: f32) -&gt; InterpolationTarget {
-    let latest = self.snapshots.latest();
-    let time_diff = current_time - latest.timestamp;
-    
-    if time_diff &gt; 0.2 {
-        // Too old, don't extrapolate
-        return InterpolationTarget {
-            position: latest.position,
-            rotation: latest.rotation,
-            velocity: latest.velocity,
-        };
-    }
-    
-    // Linear extrapolation using velocity
-    InterpolationTarget {
-        position: latest.position + latest.velocity * time_diff,
-        rotation: latest.rotation,
-        velocity: latest.velocity,
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="lag-compensation"><a class="header" href="#lag-compensation">Lag Compensation</a></h2>
-<p>Server-side lag compensation ensures fair hit detection.</p>
-<h3 id="rewinding-game-state"><a class="header" href="#rewinding-game-state">Rewinding Game State</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::lag_compensation::{HistoryBuffer, HistoricalState};
-
-pub struct LagCompensationSystem {
-    history: HistoryBuffer&lt;WorldSnapshot&gt;,
-    max_rewind_ms: u64,
-}
-
-impl LagCompensationSystem {
-    pub fn record_snapshot(&amp;mut self, world: &amp;World, timestamp: u64) {
-        let snapshot = WorldSnapshot {
-            timestamp,
-            entities: world.entities().map(|e| e.clone()).collect(),
-        };
-        
-        self.history.push(snapshot);
-        self.history.prune_older_than(timestamp - self.max_rewind_ms);
-    }
-    
-    pub fn rewind_and_test(&amp;self, client_latency_ms: u64, raycast: Ray) -&gt; Option&lt;Hit&gt; {
-        let rewind_time = current_time() - client_latency_ms;
-        let snapshot = self.history.get_at_time(rewind_time)?;
-        
-        // Test hit detection against historical state
-        for entity in &amp;snapshot.entities {
-            if let Some(hit) = raycast.intersect(&amp;entity.hitbox) {
-                return Some(Hit {
-                    entity_id: entity.id,
-                    position: hit.point,
-                    distance: hit.distance,
-                });
-            }
-        }
-        
-        None
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="server-side-hit-validation"><a class="header" href="#server-side-hit-validation">Server-Side Hit Validation</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub fn process_shot(
-    &amp;mut self,
-    client_id: ClientId,
-    shot_data: ShotData,
-) -&gt; Result&lt;Option&lt;Hit&gt;&gt; {
-    let client = self.clients.get(client_id)?;
-    let latency_ms = client.round_trip_time() / 2;
-    
-    // Rewind to client's view of the world
-    let hit = self.lag_compensation.rewind_and_test(
-        latency_ms,
-        shot_data.raycast,
-    );
-    
-    if let Some(hit) = hit {
-        // Validate hit (anti-cheat)
-        if validate_shot(&amp;shot_data, &amp;hit) {
-            apply_damage(hit.entity_id, shot_data.damage);
-            return Ok(Some(hit));
-        }
-    }
-    
-    Ok(None)
-}
-<span class="boring">}</span></code></pre>
-<pre><code class="language-admonish warning">Limit maximum rewind time (typically 200-250ms) to prevent abuse and reduce server memory usage.
-</code></pre>
-<h2 id="network-relevancy"><a class="header" href="#network-relevancy">Network Relevancy</a></h2>
-<p>Only send relevant entities to each client to save bandwidth.</p>
-<h3 id="spatial-partitioning"><a class="header" href="#spatial-partitioning">Spatial Partitioning</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::relevancy::{RelevancySystem, SpatialGrid};
-
-pub struct RelevancySystem {
-    grid: SpatialGrid,
-    relevancy_range: f32,
-}
-
-impl RelevancySystem {
-    pub fn update_relevancy(&amp;mut self, clients: &amp;[Client], entities: &amp;[Entity]) {
-        self.grid.clear();
-        
-        // Insert entities into spatial grid
-        for entity in entities {
-            self.grid.insert(entity.id, entity.position);
-        }
-        
-        // Calculate relevant entities for each client
-        for client in clients {
-            let player_pos = client.player_position();
-            let relevant = self.grid.query_radius(player_pos, self.relevancy_range);
-            client.set_relevant_entities(relevant);
-        }
-    }
-    
-    pub fn should_replicate(&amp;self, client_id: ClientId, entity_id: EntityId) -&gt; bool {
-        let client = self.clients.get(client_id);
-        client.relevant_entities.contains(&amp;entity_id)
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="priority-based-updates"><a class="header" href="#priority-based-updates">Priority-Based Updates</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub struct ReplicationPriority {
-    pub distance_factor: f32,
-    pub importance: f32,
-    pub update_frequency: f32,
-}
-
-impl ReplicationPriority {
-    pub fn calculate(client_pos: Vec3, entity: &amp;Entity) -&gt; f32 {
-        let distance = (entity.position - client_pos).length();
-        let distance_priority = 1.0 / (1.0 + distance * 0.1);
-        
-        let importance_priority = match entity.entity_type {
-            EntityType::Player =&gt; 1.0,
-            EntityType::Projectile =&gt; 0.8,
-            EntityType::Enemy =&gt; 0.6,
-            EntityType::Pickup =&gt; 0.4,
-            EntityType::Decoration =&gt; 0.1,
-        };
-        
-        distance_priority * importance_priority
-    }
-}
-
-// Send high-priority entities every frame, low-priority less often
-pub fn send_updates(&amp;mut self, delta_time: f32) {
-    for client in &amp;mut self.clients {
-        let mut updates = Vec::new();
-        
-        for entity_id in &amp;client.relevant_entities {
-            let entity = self.world.get_entity(*entity_id);
-            let priority = ReplicationPriority::calculate(client.position(), entity);
-            
-            // Update frequency based on priority
-            let update_interval = 1.0 / (60.0 * priority);
-            
-            if entity.time_since_update(client.id) &gt;= update_interval {
-                updates.push(entity.create_update());
-                entity.mark_updated(client.id);
-            }
-        }
-        
-        client.send_updates(updates)?;
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
-<h3 id="multiplayer-fps-game"><a class="header" href="#multiplayer-fps-game">Multiplayer FPS Game</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_net::*;
-
-// Server
-pub struct GameServer {
-    server: Server,
-    world: World,
-    lag_compensation: LagCompensationSystem,
-    relevancy: RelevancySystem,
-}
-
-impl GameServer {
-    pub fn run(&amp;mut self) {
-        loop {
-            let delta_time = 1.0 / 60.0;
-            
-            // Process events
-            while let Some(event) = self.server.poll_event() {
-                match event {
-                    ServerEvent::MessageReceived { client_id, message } =&gt; {
-                        self.handle_message(client_id, message);
-                    }
-                    _ =&gt; {}
-                }
-            }
-            
-            // Update game logic
-            self.world.update(delta_time);
-            
-            // Record for lag compensation
-            self.lag_compensation.record_snapshot(&amp;self.world, current_time());
-            
-            // Update relevancy
-            self.relevancy.update_relevancy(&amp;self.server.clients(), &amp;self.world.entities());
-            
-            // Send state updates
-            self.send_state_updates();
-            
-            self.server.tick(delta_time).unwrap();
-            std::thread::sleep(std::time::Duration::from_secs_f32(delta_time));
-        }
-    }
-    
-    fn handle_message(&amp;mut self, client_id: ClientId, message: ClientMessage) {
-        match message {
-            ClientMessage::Input(input) =&gt; {
-                self.process_input(client_id, input);
-            }
-            ClientMessage::Shot(shot_data) =&gt; {
-                if let Some(hit) = self.process_shot(client_id, shot_data) {
-                    self.broadcast_hit(hit);
-                }
-            }
-        }
-    }
-}
-
-// Client
-pub struct GameClient {
-    client: Client,
-    local_player: PredictedPlayer,
-    remote_players: HashMap&lt;EntityId, InterpolatedEntity&gt;,
-}
-
-impl GameClient {
-    pub fn run(&amp;mut self) {
-        loop {
-            let delta_time = 1.0 / 60.0;
-            
-            // Process server messages
-            while let Some(event) = self.client.poll_event() {
-                match event {
-                    ClientEvent::StateUpdate { state } =&gt; {
-                        self.apply_state_update(state);
-                    }
-                    _ =&gt; {}
-                }
-            }
-            
-            // Gather input
-            let input = self.gather_input();
-            self.local_player.send_input(input, &amp;mut self.client);
-            
-            // Interpolate remote entities
-            let current_time = current_time();
-            for entity in self.remote_players.values_mut() {
-                let target = entity.interpolate(current_time);
-                // Apply to visual representation
-            }
-            
-            self.client.tick(delta_time).unwrap();
-            std::thread::sleep(std::time::Duration::from_secs_f32(delta_time));
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="related-documentation"><a class="header" href="#related-documentation">Related Documentation</a></h2>
+<h2 id="further-reading"><a class="header" href="#further-reading">Further reading</a></h2>
 <ul>
-<li><a href="../physics/physics.html">Physics System</a> - Server-side physics simulation</li>
-<li><a href="../ecs/networking.html">ECS Integration</a> - Network-replicated components</li>
-<li><a href="../security/anti-cheat.html">Security</a> - Anti-cheat and validation</li>
-<li><a href="../optimization/networking.html">Performance Guide</a> - Network optimization</li>
-</ul>
-<h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
-<p>For complete API documentation, see:</p>
-<ul>
-<li><a href="https://docs.rs/astraweave-net">astraweave_net API docs</a></li>
-<li><a href="https://docs.rs/quinn">Quinn (QUIC) documentation</a></li>
+<li><strong>Interactive workspace map</strong> — the
+<a href="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/#story=networking_coexistence">Networking Coexistence</a>
+story preset highlights both subsystems side by side.</li>
+<li><a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/net.md"><code>net.md</code></a> — snapshot-server trace.</li>
+<li><a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/net_ecs.md"><code>net_ecs.md</code></a> — matchmaking-trio trace.</li>
+<li><a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md"><code>ARCHITECTURE_MAP.md</code></a> §8.8 — data-flow diagrams for both subsystems.</li>
 </ul>
 
                     </main>

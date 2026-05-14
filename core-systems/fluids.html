@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c4d8145e.js";
+            window.path_to_searchindex_js = "../searchindex-f46bb8b6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -218,376 +218,87 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="fluids-system"><a class="header" href="#fluids-system">Fluids System</a></h1>
+                        <!--
+  Fluids page — replaced 2026-05-15 as part of the post-trace-campaign
+  reconciliation.
+  Source: ARCHITECTURE_MAP.md §5.1 (Dormant-Code Inventory) and `fluids.md` trace §1, §11.
+  Fluids is the single largest dormant-code reservoir in the workspace (~84.5K LoC).
+  Only `examples/fluids_demo` consumes it; no production game-loop crate
+  (astraweave-render, astraweave-gameplay, astraweave-physics, astraweave-scene,
+   astraweave-terrain, astraweave-ecs) depends on astraweave-fluids.
+  The pre-trace page framed fluids as "Production Ready (A+ Grade)"; the rewrite
+  classifies it accurately as research surface awaiting production wiring.
+-->
+<h1 id="fluid-simulation-research-surface"><a class="header" href="#fluid-simulation-research-surface">Fluid Simulation (Research Surface)</a></h1>
+<pre><code class="language-admonish warning title=&quot;Research surface not a production-wired engine system&quot;">Per `ARCHITECTURE_MAP.md` §5.1, `astraweave-fluids` is **dormant for runtime engine use**:
+
+* **~84.5K LoC** across 35 source files plus 8 WGSL shaders — the single largest
+  dormant-code reservoir in the workspace.
+* The **only** workspace consumer outside the crate itself is
+  `examples/fluids_demo/src/main.rs:18-21`.
+* **No production game-loop crate** depends on `astraweave-fluids`. Specifically,
+  `astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`,
+  `astraweave-terrain`, and `astraweave-ecs` all lack the dependency.
+* `astraweave-fluids/src/editor.rs` (5,823 LoC) is forward-design infrastructure —
+  the visual editor (`tools/aw_editor`) does not depend on `astraweave-fluids`,
+  verified 2026-05-12.
+
+The crate exists, builds, and ships with comprehensive tests (2,404 tests / 600+ inline
+plus an integration suite — benchmark-caliber by per-trace §10 grade). It is the
+clearest example of the workspace's *in-design-but-tested* dormant-code category.
+</code></pre>
+<h2 id="whats-in-the-crate"><a class="header" href="#whats-in-the-crate">What’s in the crate</a></h2>
+<!-- Source: fluids.md §1, §5 -->
+<p><code>astraweave-fluids</code> carries <strong>five parallel solver and manager surfaces</strong> that have not
+been unified:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Surface</th><th>Role</th></tr>
+</thead>
+<tbody>
+<tr><td><code>FluidSystem</code></td><td><code>lib.rs</code> PBD GPU pipeline</td></tr>
+<tr><td><code>UnifiedSolver</code></td><td>High-level coordinator</td></tr>
+<tr><td><code>ResearchFluidSystem</code></td><td>Research-grade umbrella</td></tr>
+<tr><td><code>PCISPHSystem</code></td><td>Standalone PCISPH solver</td></tr>
+<tr><td><code>WaterEffectsManager</code></td><td>Visual coordinator</td></tr>
+</tbody>
+</table>
+</div>
+<p>Plus auxiliary types: <code>WaterBuildingManager</code>, <code>CausticsSystem</code>, <code>WaterQualityPreset</code>
+(Low/Medium/High/Ultra/Custom).</p>
+<p>The largest single file is <code>simd_ops.rs</code> at 39,554 LoC; second-largest is
+<code>editor.rs</code> at 5,823 LoC.</p>
+<h2 id="status-grade"><a class="header" href="#status-grade">Status grade</a></h2>
+<p>Per <code>docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md</code> (2026-05-12), the audit
+rates current state at <strong>“Grade B (Good for games, insufficient for research)”</strong> — the
+intent is research-grade simulation; the existing surface has comprehensive tests but
+no production-engine integration path.</p>
+<h2 id="why-this-matters"><a class="header" href="#why-this-matters">Why this matters</a></h2>
+<p>The fluids crate is the canonical example used by the architecture trace campaign to
+illustrate the <em>“wired beats tested”</em> axiom:</p>
 <blockquote>
-<p><strong>Status</strong>: Production Ready (A+ Grade)<br><strong>Coverage</strong>: 94.2% (2,404 tests)<br><strong>Crate</strong>: <code>astraweave-fluids</code></p>
+<p>A subsystem with passing tests and zero production callers is dormant code, not a
+feature. Tests are necessary but not sufficient. The Integration Completeness
+checklist requires a production caller, all registration surfaces touched, every
+UI/API-exposed config field read, and the architecture trace current.</p>
 </blockquote>
-<p>AstraWeave’s fluid simulation system provides production-quality water effects for games, featuring Position-Based Dynamics (PBD) particle simulation, volumetric grids, and comprehensive visual effects.</p>
-<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
-<h3 id="core-systems"><a class="header" href="#core-systems">Core Systems</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>System</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Position-Based Dynamics (PBD)</strong></td><td>GPU-accelerated particle simulation</td></tr>
-<tr><td><strong>Volumetric Grid</strong></td><td>Voxel-based water for building/terrain interaction</td></tr>
-<tr><td><strong>Terrain Integration</strong></td><td>Automatic river, lake, and waterfall detection</td></tr>
-<tr><td><strong>SPH Kernels</strong></td><td>Smoothed Particle Hydrodynamics (poly6, spiky, viscosity)</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="visual-effects"><a class="header" href="#visual-effects">Visual Effects</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Effect</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Caustics</strong></td><td>Underwater light refraction patterns</td></tr>
-<tr><td><strong>God Rays</strong></td><td>Volumetric light shafts through water</td></tr>
-<tr><td><strong>Reflections</strong></td><td>Screen-space and planar water reflections</td></tr>
-<tr><td><strong>Foam</strong></td><td>Dynamic whitecaps, wakes, and shore foam</td></tr>
-<tr><td><strong>Particles</strong></td><td>Waterfalls, bubbles, debris, and spray</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::{WaterEffectsManager, WaterQualityPreset};
-
-// Create water effects manager with quality preset
-let manager = WaterEffectsManager::from_preset(WaterQualityPreset::High)?;
-
-// Game loop
-loop {
-    // Update water simulation
-    manager.update(delta_time, camera_pos, water_height);
-    
-    // Render water
-    manager.render(&amp;render_context);
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
-<h3 id="module-overview"><a class="header" href="#module-overview">Module Overview</a></h3>
-<pre><code>astraweave-fluids/
-├── Core Simulation
-│   ├── pcisph_system.rs      # PCISPH pressure solver
-│   ├── unified_solver.rs     # Combined solver
-│   ├── viscosity.rs          # Viscosity handling
-│   ├── boundary.rs           # Domain boundaries
-│   └── simd_ops.rs           # SIMD optimizations
-├── Visual Effects
-│   ├── caustics.rs           # Light caustics
-│   ├── god_rays.rs           # Volumetric rays
-│   ├── foam.rs               # Foam generation
-│   ├── water_reflections.rs  # Reflection system
-│   └── underwater.rs         # Underwater effects
-├── Terrain Integration
-│   ├── terrain_integration.rs
-│   ├── volume_grid.rs
-│   └── waterfall.rs
-└── Editor/Tools
-    ├── editor.rs             # Editor integration
-    ├── profiling.rs          # Performance stats
-    └── serialization.rs      # Save/load
+<p>— <code>ARCHITECTURE_MAP.md</code> §4.4</p>
+<p>Listing fluid simulation as a working AstraWeave engine feature would violate this
+axiom. It is documented honestly here as a research surface awaiting a production
+wiring decision (Q12 in <code>ARCHITECTURE_MAP.md</code> §14).</p>
+<h2 id="running-the-demo"><a class="header" href="#running-the-demo">Running the demo</a></h2>
+<p>The <code>fluids_demo</code> example exercises the crate in isolation:</p>
+<pre><code class="language-bash">cargo run -p fluids_demo --release
 </code></pre>
-<hr>
-<h2 id="sph-simulation"><a class="header" href="#sph-simulation">SPH Simulation</a></h2>
-<h3 id="kernel-functions"><a class="header" href="#kernel-functions">Kernel Functions</a></h3>
-<p>AstraWeave implements standard SPH kernels:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Poly6 kernel for density calculation
-fn poly6_kernel(r_sq: f32, h: f32) -&gt; f32 {
-    let h2 = h * h;
-    if r_sq &gt; h2 { return 0.0; }
-    let diff = h2 - r_sq;
-    POLY6_FACTOR / h.powi(9) * diff * diff * diff
-}
-
-// Spiky kernel for pressure gradient
-fn spiky_gradient(r: Vec3, r_len: f32, h: f32) -&gt; Vec3 {
-    if r_len &gt; h || r_len &lt; 1e-6 { return Vec3::ZERO; }
-    let diff = h - r_len;
-    SPIKY_FACTOR / h.powi(6) * diff * diff * (-r / r_len)
-}
-
-// Viscosity kernel for velocity diffusion
-fn viscosity_laplacian(r_len: f32, h: f32) -&gt; f32 {
-    if r_len &gt; h { return 0.0; }
-    VISCOSITY_FACTOR / h.powi(3) * (h - r_len)
-}
-<span class="boring">}</span></code></pre>
-<h3 id="performance"><a class="header" href="#performance">Performance</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>1K Particles</th><th>10K Particles</th><th>100K Particles</th></tr>
-</thead>
-<tbody>
-<tr><td>Density calc</td><td>5.3 µs</td><td>53 µs</td><td>530 µs</td></tr>
-<tr><td>Pressure solve</td><td>12 µs</td><td>120 µs</td><td>1.2 ms</td></tr>
-<tr><td>SPH kernels</td><td>—</td><td>—</td><td>171-223 µs</td></tr>
-<tr><td>Full step</td><td>1.8-3.0 ms</td><td>—</td><td>—</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="volume-grid"><a class="header" href="#volume-grid">Volume Grid</a></h2>
-<p>For voxel-based water simulation:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::{VolumeGrid, FlowDirection};
-
-// Create volume grid
-let mut grid = VolumeGrid::new(
-    dimensions: (64, 32, 64),  // Grid size
-    cell_size: 0.5,            // World units per cell
-);
-
-// Fill cells
-grid.set_water_level(x, y, z, 1.0);
-
-// Simulate flow
-grid.simulate_step(delta_time);
-
-// Query water at position
-let water_level = grid.sample_at(world_pos);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="water-effects-manager"><a class="header" href="#water-effects-manager">Water Effects Manager</a></h2>
-<p>The <code>WaterEffectsManager</code> coordinates all water visual effects:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::{
-    WaterEffectsManager,
-    WaterQualityPreset,
-    CausticsConfig,
-    GodRaysConfig,
-    FoamConfig,
-};
-
-// Create with custom configuration
-let manager = WaterEffectsManager::new()
-    .with_caustics(CausticsConfig {
-        intensity: 0.8,
-        scale: 2.0,
-        speed: 0.5,
-    })
-    .with_god_rays(GodRaysConfig {
-        density: 0.3,
-        decay: 0.95,
-        samples: 64,
-    })
-    .with_foam(FoamConfig {
-        threshold: 0.7,
-        persistence: 2.0,
-    });
-<span class="boring">}</span></code></pre>
-<h3 id="quality-presets"><a class="header" href="#quality-presets">Quality Presets</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Preset</th><th>Particles</th><th>Grid Resolution</th><th>Effects</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Low</strong></td><td>1,000</td><td>32³</td><td>Basic reflections</td></tr>
-<tr><td><strong>Medium</strong></td><td>5,000</td><td>64³</td><td>+ Caustics</td></tr>
-<tr><td><strong>High</strong></td><td>10,000</td><td>128³</td><td>+ God rays, foam</td></tr>
-<tr><td><strong>Ultra</strong></td><td>25,000</td><td>256³</td><td>All effects</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="terrain-integration"><a class="header" href="#terrain-integration">Terrain Integration</a></h2>
-<p>Automatic water body detection:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::{TerrainWaterIntegration, WaterBodyType};
-
-let integration = TerrainWaterIntegration::new(&amp;terrain);
-
-// Detect water bodies
-let water_bodies = integration.detect_water_bodies();
-
-for body in water_bodies {
-    match body.body_type {
-        WaterBodyType::Lake { depth, .. } =&gt; {
-            println!("Lake detected: depth = {}", depth);
-        }
-        WaterBodyType::River { flow_speed, .. } =&gt; {
-            println!("River detected: flow = {}", flow_speed);
-        }
-        WaterBodyType::Waterfall { height, .. } =&gt; {
-            println!("Waterfall detected: height = {}", height);
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="building-integration"><a class="header" href="#building-integration">Building Integration</a></h2>
-<p>Interactive water elements for building systems:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::{
-    WaterBuildingManager,
-    WaterDispenser,
-    WaterDrain,
-    WaterGate,
-    WaterWheel,
-};
-
-let mut water_manager = WaterBuildingManager::new(&amp;volume_grid);
-
-// Water source
-let dispenser = WaterDispenser::new(position, flow_rate: 5.0);
-water_manager.add_dispenser(dispenser);
-
-// Water sink
-let drain = WaterDrain::new(position, capacity: 10.0);
-water_manager.add_drain(drain);
-
-// Player-controlled gate
-let gate = WaterGate::new(position, width: 2.0);
-water_manager.add_gate(gate);
-
-// Power generator
-let wheel = WaterWheel::new(position, radius: 1.5);
-water_manager.add_wheel(wheel);
-
-// Query power generation
-let power = water_manager.get_wheel_power(&amp;wheel);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="editor-integration"><a class="header" href="#editor-integration">Editor Integration</a></h2>
-<p>Full editor support with undo/redo:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::editor::{
-    FluidEditorConfig,
-    ConfigHistory,
-    ValidationIssue,
-};
-
-let mut config = FluidEditorConfig::default();
-let mut history = ConfigHistory::new();
-
-// Make changes with history tracking
-history.push(config.clone());
-config.physics.viscosity = 0.5;
-
-// Undo
-if let Some(prev) = history.undo() {
-    config = prev;
-}
-
-// Validate configuration
-let issues: Vec&lt;ValidationIssue&gt; = config.validate();
-for issue in issues {
-    eprintln!("{}: {}", issue.severity, issue.message);
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="serialization"><a class="header" href="#serialization">Serialization</a></h2>
-<p>Save and load fluid state:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::serialization::{FluidSnapshot, save_snapshot, load_snapshot};
-
-// Save current state
-let snapshot = FluidSnapshot::capture(&amp;simulation);
-save_snapshot(&amp;snapshot, "saves/water_state.bin")?;
-
-// Load state
-let loaded = load_snapshot("saves/water_state.bin")?;
-simulation.restore(&amp;loaded);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h2>
-<h3 id="simd-operations"><a class="header" href="#simd-operations">SIMD Operations</a></h3>
-<p>The fluids system uses SIMD for critical operations:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::simd_ops;
-
-// Batch particle updates (SIMD accelerated)
-simd_ops::update_positions_batch(&amp;mut particles, delta_time);
-simd_ops::compute_densities_batch(&amp;particles, &amp;neighbors, kernel_h);
-<span class="boring">}</span></code></pre>
-<h3 id="lod-system"><a class="header" href="#lod-system">LOD System</a></h3>
-<p>Distance-based quality reduction:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::lod::{FluidLodConfig, LodLevel};
-
-let lod_config = FluidLodConfig {
-    levels: vec![
-        LodLevel { distance: 0.0, particle_skip: 1 },   // Full detail
-        LodLevel { distance: 50.0, particle_skip: 2 },  // 50% particles
-        LodLevel { distance: 100.0, particle_skip: 4 }, // 25% particles
-    ],
-    cull_distance: 200.0,
-};
-<span class="boring">}</span></code></pre>
-<h3 id="profiling"><a class="header" href="#profiling">Profiling</a></h3>
-<p>Built-in performance monitoring:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_fluids::profiling::FluidProfiler;
-
-let profiler = FluidProfiler::new();
-
-// Wrap simulation step
-profiler.begin("simulation_step");
-simulation.step(dt);
-profiler.end("simulation_step");
-
-// Get statistics
-let stats = profiler.get_stats();
-println!("Avg step time: {:?}", stats.avg_step_time);
-println!("Particle count: {}", stats.active_particles);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="benchmarks"><a class="header" href="#benchmarks">Benchmarks</a></h2>
-<p>From <a href="../performance/benchmarks.html">Master Benchmark Report</a>:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Benchmark</th><th>Result</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>Particle operations (1K)</td><td>5.3 µs</td><td>100-322 Melem/s</td></tr>
-<tr><td>Spatial hashing</td><td>163 µs - 5.6 ms</td><td>38-62% improvement</td></tr>
-<tr><td>SPH kernels (100K)</td><td>171-223 µs</td><td>poly6/spiky/viscosity</td></tr>
-<tr><td>Simulation step (1K)</td><td>1.8-3.0 ms</td><td>—</td></tr>
-<tr><td>Multi-step</td><td>450-500 µs</td><td>45-57% faster</td></tr>
-<tr><td>GPU data prep</td><td>0.9-2.6 ns</td><td>Sub-nanosecond</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
-<h3 id="basic-water-pool"><a class="header" href="#basic-water-pool">Basic Water Pool</a></h3>
-<pre><code class="language-bash">cargo run --example fluids_demo -- --preset pool
-</code></pre>
-<h3 id="interactive-waterfall"><a class="header" href="#interactive-waterfall">Interactive Waterfall</a></h3>
-<pre><code class="language-bash">cargo run --example fluids_demo -- --preset waterfall
-</code></pre>
-<h3 id="building-water-system"><a class="header" href="#building-water-system">Building Water System</a></h3>
-<pre><code class="language-bash">cargo run --example fluids_demo -- --preset building
-</code></pre>
-<hr>
-<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<p>This is the entire production exposure of the subsystem.</p>
+<h2 id="further-reading"><a class="header" href="#further-reading">Further reading</a></h2>
 <ul>
-<li><a href="../api/fluids.html">API Reference</a> - Detailed API documentation</li>
-<li><a href="../performance/benchmarks.html">Benchmarks</a> - Performance data</li>
-<li><a href="./physics.html">Physics System</a> - Physics integration</li>
-<li><a href="./terrain.html">Terrain System</a> - Terrain integration</li>
+<li><a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/fluids.md"><code>fluids.md</code></a> — full fluids trace.</li>
+<li><a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md"><code>ARCHITECTURE_MAP.md</code></a> §5.1 (dormant in-design inventory),
+§4.4 (wired-beats-tested axiom), §14 (Q12 open question).</li>
+<li><strong>Interactive workspace map</strong> — the <em>Dormant Surface Inventory</em> story preset
+highlights fluids along with the other ~200K LoC of dormant-but-designed surface.</li>
 </ul>
 
                     </main>

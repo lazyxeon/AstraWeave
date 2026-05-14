@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c4d8145e.js";
+            window.path_to_searchindex_js = "../searchindex-f46bb8b6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -218,604 +218,89 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="audio-system"><a class="header" href="#audio-system">Audio System</a></h1>
-<p>AstraWeave’s audio system provides comprehensive spatial audio, dialogue management, and music/SFX playback capabilities using modern Rust audio libraries (kira/rodio).</p>
-<h2 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture Overview</a></h2>
-<p>The audio system is designed for real-time game audio with low latency, spatial positioning, and dynamic mixing.</p>
-<pre class="mermaid">graph TD
-    A[Audio Engine] --&gt; B[Spatial Audio]
-    A --&gt; C[Dialogue Runtime]
-    A --&gt; D[Music Manager]
-    A --&gt; E[SFX Manager]
-    B --&gt; F[3D Positioning]
-    B --&gt; G[Attenuation]
-    C --&gt; H[Voice System]
-    D --&gt; I[Adaptive Music]
-    E --&gt; J[Sound Pool]
-</pre>
-
-<h3 id="key-components"><a class="header" href="#key-components">Key Components</a></h3>
+                        <!--
+  Audio System page — replaced 2026-05-15 as part of the post-trace-campaign
+  reconciliation.
+  Source: ARCHITECTURE_MAP.md §7.1 (Documentation Hazards) and `audio.md` trace.
+  Pre-trace version (commit 28bc94f21, 2025-09-08, automated documentation pass)
+  described AudioConfig, AudioBackend, BackendType, AudioListener, SpatialSound,
+  AttenuationModel, ReverbZone, AudioOcclusion, MusicManager, MusicLayer,
+  SfxManager, SoundPool, AudioMixer, Bus — none of which exist in
+  astraweave-audio/src/lib.rs re-exports. The actual public surface is ~30 lines:
+  AudioEngine, DialoguePlayer, VoiceBank, EmitterId, ListenerPose.
+-->
+<h1 id="audio-system"><a class="header" href="#audio-system">Audio System</a></h1>
+<pre><code class="language-admonish warning title=&quot;Documentation under reconciliation&quot;">This page was rewritten on 2026-05-15 to reflect the engineering reality surfaced by the
+architecture trace campaign. A prior version (added in commit 28bc94f21,
+2025-09-08, by an automated documentation pass) described an extensive `AudioConfig` /
+`AudioBackend` / `MusicManager` / `SfxManager` / `AudioMixer` API surface that
+**does not exist in the codebase**. The actual public surface is small (~30 lines of
+re-exports). See the trace below for evidence-grounded detail.
+</code></pre>
+<h2 id="actual-public-surface"><a class="header" href="#actual-public-surface">Actual public surface</a></h2>
+<!-- Source: audio.md trace §1, §5 -->
+<p>The <code>astraweave-audio</code> crate is a focused facade over <code>rodio</code> / <code>cpal</code>. The <code>lib.rs</code>
+re-exports are:</p>
 <ul>
-<li><strong>Audio Engine</strong>: Core audio processing and device management</li>
-<li><strong>Spatial Audio</strong>: 3D positional audio with HRTF and distance attenuation</li>
-<li><strong>Dialogue Runtime</strong>: Conversation system with voice line playback</li>
-<li><strong>Music Manager</strong>: Adaptive music with crossfading and layering</li>
-<li><strong>SFX Manager</strong>: Sound effect pooling and priority management</li>
+<li><code>AudioEngine</code> — owns the rodio <code>OutputStream</code> chain. <strong><code>!Send + !Sync</code></strong> because
+<code>cpal::Stream</code> is non-Send-Sync across all platforms. Consequence: cannot be an
+ECS Resource, cannot be wrapped in <code>Arc&lt;RwLock&lt;_&gt;&gt;</code> for cross-thread sharing.
+Consumers hold it directly.</li>
+<li><code>DialoguePlayer</code> — voice-line playback.</li>
+<li><code>VoiceBank</code> — voice-line collection.</li>
+<li><code>EmitterId</code> — <code>u64</code>, with no allocator and no sentinel. Collisions silently
+merge <code>SpatialSink</code>s (documented hazard, <code>audio.md</code> §6 trap).</li>
+<li><code>ListenerPose</code> — ear-position pose for spatial panning.</li>
 </ul>
-<pre><code class="language-admonish info">The audio system supports multiple backends (WASAPI, ALSA, CoreAudio) and automatically selects the best available option for the platform.
-</code></pre>
-<h2 id="audio-engine-initialization"><a class="header" href="#audio-engine-initialization">Audio Engine Initialization</a></h2>
-<h3 id="basic-setup"><a class="header" href="#basic-setup">Basic Setup</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::{AudioEngine, AudioConfig};
-
-let config = AudioConfig {
-    sample_rate: 48000,
-    buffer_size: 512,
-    num_channels: 2,
-    enable_spatial_audio: true,
-    max_voices: 64,
-    ..Default::default()
-};
-
-let mut audio_engine = AudioEngine::new(config)?;
-<span class="boring">}</span></code></pre>
-<h3 id="backend-selection"><a class="header" href="#backend-selection">Backend Selection</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::backend::{AudioBackend, BackendType};
-
-// Explicitly select backend
-let backend = AudioBackend::new(BackendType::WASAPI)?;
-let audio_engine = AudioEngine::with_backend(backend, config)?;
-
-// Or use automatic selection
-let audio_engine = AudioEngine::auto_detect(config)?;
-<span class="boring">}</span></code></pre>
-<pre><code class="language-admonish tip">For lowest latency on Windows, use WASAPI in exclusive mode. For compatibility, use the automatic backend selection.
-</code></pre>
-<h2 id="spatial-audio"><a class="header" href="#spatial-audio">Spatial Audio</a></h2>
-<p>AstraWeave’s spatial audio system provides realistic 3D sound positioning with distance attenuation, obstruction, and HRTF (Head-Related Transfer Function) support.</p>
-<h3 id="3d-audio-listener"><a class="header" href="#3d-audio-listener">3D Audio Listener</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::spatial::{AudioListener, ListenerOrientation};
-
-// Create listener (typically attached to camera/player)
-let mut listener = AudioListener::new();
-
-// Update listener position and orientation each frame
-listener.set_position([player_pos.x, player_pos.y, player_pos.z]);
-listener.set_orientation(ListenerOrientation {
-    forward: [forward.x, forward.y, forward.z],
-    up: [up.x, up.y, up.z],
-});
-
-audio_engine.set_listener(listener);
-<span class="boring">}</span></code></pre>
-<h3 id="spatial-sound-sources"><a class="header" href="#spatial-sound-sources">Spatial Sound Sources</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::spatial::{SpatialSound, AttenuationModel};
-
-// Load and play spatial sound
-let sound = audio_engine.load_sound("assets/audio/footstep.ogg")?;
-
-let spatial_sound = SpatialSound::new(sound)
-    .with_position([10.0, 0.0, 5.0])
-    .with_velocity([0.0, 0.0, 0.0]) // For Doppler effect
-    .with_attenuation(AttenuationModel::InverseDistance {
-        reference_distance: 1.0,
-        max_distance: 50.0,
-        rolloff_factor: 1.0,
-    })
-    .with_cone(90.0, 180.0, 0.5) // Directional sound
-    .with_volume(0.8);
-
-let handle = audio_engine.play_spatial(spatial_sound)?;
-<span class="boring">}</span></code></pre>
-<h3 id="attenuation-models"><a class="header" href="#attenuation-models">Attenuation Models</a></h3>
-<p>AstraWeave supports multiple distance attenuation models:</p>
+<h2 id="bus-layout"><a class="header" href="#bus-layout">Bus layout</a></h2>
+<!-- Source: audio.md §1 status note — the lib.rs:8 docstring is stale -->
+<p><code>AudioEngine</code> mixes through <strong>5 buses</strong>: <code>master</code>, <code>music</code>, <code>ambient</code>, <code>voice</code>, <code>SFX</code>.
+The <code>lib.rs:8</code> doc-comment that advertises “4-bus mixer (master, music, SFX, voice)”
+is stale — the ambient bus was added in commit <code>745c100a8</code> alongside biome material
+work. The bus count is documented in <code>audio.md</code> §1 as a status note.</p>
+<h2 id="editor-integration"><a class="header" href="#editor-integration">Editor integration</a></h2>
+<!-- Source: audio.md §6 (10+ no-op AudioAction variants) and aw_editor.md §6 -->
+<p>The visual editor’s <code>AudioPanel</code> exposes ~25 audio control knobs (HRTF, Doppler,
+distance model, reverb, crossfade duration, shuffle/loop). <strong>10+ of these have
+bodyless or comment-only match arms in <code>tools/aw_editor/src/audio_bridge.rs:165-205</code></strong> —
+they are forward-design UI placeholders that update editor state but do not reach
+the runtime audio engine. Tracked as Q22 in <code>ARCHITECTURE_MAP.md</code> §14.</p>
+<p>Specific documented no-ops:</p>
+<ul>
+<li><code>pan_mode</code> field is stored and updated but <strong>never read</strong> by any other method;
+spatial sinks already created continue using rodio’s spatial panning regardless.</li>
+<li>HRTF / distance-model / reverb knobs accept user input that the engine does not
+consume.</li>
+</ul>
+<h2 id="aspirational-documentation-docssrc"><a class="header" href="#aspirational-documentation-docssrc">Aspirational documentation (<code>docs/src/</code>)</a></h2>
+<p>Per <code>audio.md</code> §6 and <code>ARCHITECTURE_MAP.md</code> §7.1, the prior version of this page —
+along with <code>docs/src/api/audio.md</code> — referenced a comprehensive audio
+backend / manager API. Treat any older references to <code>AudioConfig</code>,
+<code>AudioBackend</code>, <code>BackendType</code>, <code>AudioListener</code>, <code>SpatialSound</code>, <code>AttenuationModel</code>,
+<code>ReverbZone</code>, <code>AudioOcclusion</code>, <code>MusicManager</code>, <code>MusicLayer</code>, <code>SfxManager</code>,
+<code>SoundPool</code>, <code>AudioMixer</code>, or <code>Bus</code> as historical aspirational documentation. Those
+types are not in <code>astraweave-audio/src/lib.rs</code> re-exports.</p>
+<h2 id="where-to-actually-look-in-the-code"><a class="header" href="#where-to-actually-look-in-the-code">Where to actually look in the code</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Model</th><th>Formula</th><th>Use Case</th></tr>
+<tr><th>Need</th><th>File</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Linear</strong></td><td><code>1 - d/max</code></td><td>Simple, predictable falloff</td></tr>
-<tr><td><strong>Inverse Distance</strong></td><td><code>ref / (ref + rolloff * (d - ref))</code></td><td>Realistic physical attenuation</td></tr>
-<tr><td><strong>Exponential</strong></td><td><code>(d / ref)^(-rolloff)</code></td><td>Dramatic falloff for emphasis</td></tr>
-<tr><td><strong>Custom</strong></td><td>User-defined curve</td><td>Complete control</td></tr>
+<tr><td>Public re-exports</td><td><code>astraweave-audio/src/lib.rs</code></td></tr>
+<tr><td>Audio engine implementation</td><td><code>astraweave-audio/src/</code></td></tr>
+<tr><td>Editor bridge (10+ no-op action variants)</td><td><code>tools/aw_editor/src/audio_bridge.rs:165-205</code></td></tr>
+<tr><td>Editor audio panel UI</td><td><code>tools/aw_editor/src/panels/audio_panel.rs</code></td></tr>
 </tbody>
 </table>
 </div>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::spatial::AttenuationModel;
-
-// Custom attenuation curve
-let custom_attenuation = AttenuationModel::Custom(Box::new(|distance| {
-    if distance &lt; 5.0 {
-        1.0
-    } else if distance &lt; 20.0 {
-        1.0 - ((distance - 5.0) / 15.0).powi(2)
-    } else {
-        0.0
-    }
-}));
-<span class="boring">}</span></code></pre>
-<h3 id="doppler-effect"><a class="header" href="#doppler-effect">Doppler Effect</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Enable Doppler shift based on velocity
-spatial_sound.set_doppler_factor(1.0); // 1.0 = realistic, 0.0 = disabled
-spatial_sound.set_velocity([velocity.x, velocity.y, velocity.z]);
-<span class="boring">}</span></code></pre>
-<h3 id="obstruction-and-occlusion"><a class="header" href="#obstruction-and-occlusion">Obstruction and Occlusion</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::spatial::Obstruction;
-
-// Simple obstruction (lowpass filter based on raycast)
-if raycast_to_listener_blocked {
-    spatial_sound.set_obstruction(Obstruction {
-        direct_gain: 0.3,      // Reduce direct sound
-        lowpass_cutoff: 1000.0, // Apply lowpass filter
-    });
-} else {
-    spatial_sound.clear_obstruction();
-}
-<span class="boring">}</span></code></pre>
-<pre class="mermaid">graph LR
-    A[Sound Source] --&gt; B{Line of Sight?}
-    B --&gt;|Clear| C[Direct Sound]
-    B --&gt;|Blocked| D[Obstructed Sound]
-    D --&gt; E[Apply Lowpass]
-    D --&gt; F[Reduce Gain]
-    E --&gt; G[Audio Output]
-    F --&gt; G
-    C --&gt; G
-</pre>
-
-<h2 id="dialogue-runtime"><a class="header" href="#dialogue-runtime">Dialogue Runtime</a></h2>
-<p>The dialogue runtime manages conversation playback with support for branching, voice lines, and subtitles.</p>
-<h3 id="dialogue-graph"><a class="header" href="#dialogue-graph">Dialogue Graph</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::dialogue::{DialogueGraph, DialogueNode, DialogueChoice};
-
-let mut dialogue = DialogueGraph::new();
-
-// Add dialogue nodes
-let node1 = dialogue.add_node(DialogueNode {
-    id: "greeting",
-    speaker: "NPC_Guard",
-    text: "Halt! What's your business here?",
-    voice_line: Some("assets/voice/guard_greeting.ogg"),
-    duration: 3.0,
-});
-
-let node2 = dialogue.add_node(DialogueNode {
-    id: "response_friendly",
-    speaker: "Player",
-    text: "Just passing through, friend.",
-    voice_line: Some("assets/voice/player_friendly.ogg"),
-    duration: 2.5,
-});
-
-let node3 = dialogue.add_node(DialogueNode {
-    id: "response_hostile",
-    speaker: "Player",
-    text: "None of your concern.",
-    voice_line: Some("assets/voice/player_hostile.ogg"),
-    duration: 2.0,
-});
-
-// Add choices
-dialogue.add_choice(node1, DialogueChoice {
-    text: "Be friendly",
-    next_node: node2,
-    condition: None,
-});
-
-dialogue.add_choice(node1, DialogueChoice {
-    text: "Be hostile",
-    next_node: node3,
-    condition: None,
-});
-<span class="boring">}</span></code></pre>
-<h3 id="playing-dialogue"><a class="header" href="#playing-dialogue">Playing Dialogue</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::dialogue::DialoguePlayer;
-
-let mut player = DialoguePlayer::new(&amp;audio_engine);
-
-// Start dialogue
-player.start_dialogue(dialogue, "greeting")?;
-
-// Update each frame
-loop {
-    player.update(delta_time)?;
-    
-    if let Some(current_node) = player.current_node() {
-        println!("Speaker: {}", current_node.speaker);
-        println!("Text: {}", current_node.text);
-        
-        // Display choices when node finishes
-        if player.is_waiting_for_choice() {
-            let choices = player.available_choices();
-            for (idx, choice) in choices.iter().enumerate() {
-                println!("{}: {}", idx, choice.text);
-            }
-        }
-    }
-    
-    if player.is_finished() {
-        break;
-    }
-}
-
-// Handle player input
-player.select_choice(0)?; // Select first choice
-<span class="boring">}</span></code></pre>
-<h3 id="voice-system"><a class="header" href="#voice-system">Voice System</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::voice::{VoiceConfig, VoiceEffect};
-
-// Configure voice processing
-let voice_config = VoiceConfig {
-    normalize: true,
-    compress: true,      // Dynamic range compression
-    eq_preset: Some(VoiceEffect::RadioFilter), // Apply effects
-    ducking: true,       // Duck music/sfx during dialogue
-};
-
-player.set_voice_config(voice_config);
-<span class="boring">}</span></code></pre>
-<h3 id="subtitle-synchronization"><a class="header" href="#subtitle-synchronization">Subtitle Synchronization</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::dialogue::SubtitleTrack;
-
-// Load subtitle track
-let subtitles = SubtitleTrack::load("assets/dialogue/quest1.srt")?;
-player.set_subtitles(subtitles);
-
-// Get current subtitle
-if let Some(subtitle) = player.current_subtitle() {
-    ui.draw_subtitle(subtitle.text, subtitle.speaker);
-}
-<span class="boring">}</span></code></pre>
-<pre><code class="language-admonish warning">Ensure voice line durations match actual audio file lengths. Use the `analyze_duration()` function to automatically detect durations from audio files.
-</code></pre>
-<h2 id="music-manager"><a class="header" href="#music-manager">Music Manager</a></h2>
-<p>The music manager provides adaptive music with layering, crossfading, and dynamic transitions.</p>
-<h3 id="music-tracks"><a class="header" href="#music-tracks">Music Tracks</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::music::{MusicManager, MusicTrack, MusicLayer};
-
-let mut music_manager = MusicManager::new(&amp;audio_engine);
-
-// Load music track with layers
-let mut combat_music = MusicTrack::new("combat");
-combat_music.add_layer(MusicLayer {
-    name: "percussion",
-    file: "assets/music/combat_percussion.ogg",
-    volume: 1.0,
-    loop_start: 0.0,
-    loop_end: 32.0, // Loop point in seconds
-});
-combat_music.add_layer(MusicLayer {
-    name: "strings",
-    file: "assets/music/combat_strings.ogg",
-    volume: 0.8,
-    loop_start: 0.0,
-    loop_end: 32.0,
-});
-combat_music.add_layer(MusicLayer {
-    name: "brass",
-    file: "assets/music/combat_brass.ogg",
-    volume: 0.6,
-    loop_start: 0.0,
-    loop_end: 32.0,
-});
-
-music_manager.register_track(combat_music);
-<span class="boring">}</span></code></pre>
-<h3 id="adaptive-music-system"><a class="header" href="#adaptive-music-system">Adaptive Music System</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Play music with intensity control
-music_manager.play("combat")?;
-
-// Dynamically adjust layers based on game state
-match combat_intensity {
-    CombatIntensity::Low =&gt; {
-        music_manager.set_layer_volume("combat", "percussion", 1.0);
-        music_manager.set_layer_volume("combat", "strings", 0.3);
-        music_manager.set_layer_volume("combat", "brass", 0.0);
-    }
-    CombatIntensity::Medium =&gt; {
-        music_manager.set_layer_volume("combat", "percussion", 1.0);
-        music_manager.set_layer_volume("combat", "strings", 0.8);
-        music_manager.set_layer_volume("combat", "brass", 0.4);
-    }
-    CombatIntensity::High =&gt; {
-        music_manager.set_layer_volume("combat", "percussion", 1.0);
-        music_manager.set_layer_volume("combat", "strings", 1.0);
-        music_manager.set_layer_volume("combat", "brass", 1.0);
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="crossfading-and-transitions"><a class="header" href="#crossfading-and-transitions">Crossfading and Transitions</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::music::TransitionType;
-
-// Immediate transition
-music_manager.transition_to("exploration", TransitionType::Immediate)?;
-
-// Crossfade over 2 seconds
-music_manager.transition_to("exploration", TransitionType::Crossfade(2.0))?;
-
-// Wait for musical bar/beat
-music_manager.transition_to("exploration", TransitionType::OnBeat {
-    bars: 1,  // Wait for next bar
-    fade_duration: 1.0,
-})?;
-
-// Sequential (finish current, then play next)
-music_manager.transition_to("victory", TransitionType::Sequential)?;
-<span class="boring">}</span></code></pre>
-<h3 id="music-states"><a class="header" href="#music-states">Music States</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::music::MusicState;
-
-// Create music state machine
-let mut music_states = MusicState::new();
-music_states.add_state("explore", "exploration_music");
-music_states.add_state("combat", "combat_music");
-music_states.add_state("boss", "boss_music");
-
-// Define transitions
-music_states.add_transition("explore", "combat", TransitionType::Crossfade(1.5));
-music_states.add_transition("combat", "explore", TransitionType::OnBeat {
-    bars: 2,
-    fade_duration: 2.0,
-});
-
-// Trigger state changes
-music_states.change_state("combat")?;
-<span class="boring">}</span></code></pre>
-<pre class="mermaid">stateDiagram-v2
-    [*] --&gt; Exploration
-    Exploration --&gt; Combat: Enemy Detected
-    Combat --&gt; Exploration: Combat Ended
-    Combat --&gt; Boss: Boss Appears
-    Boss --&gt; Victory: Boss Defeated
-    Victory --&gt; Exploration: Return
-</pre>
-
-<h2 id="sfx-manager"><a class="header" href="#sfx-manager">SFX Manager</a></h2>
-<p>The SFX manager handles sound effect pooling, priority management, and one-shot sounds.</p>
-<h3 id="sound-pool"><a class="header" href="#sound-pool">Sound Pool</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::sfx::{SfxManager, SoundPool};
-
-let mut sfx_manager = SfxManager::new(&amp;audio_engine);
-
-// Create sound pool for common effects
-let footstep_pool = SoundPool::new()
-    .add_variant("assets/sfx/footstep_01.ogg")
-    .add_variant("assets/sfx/footstep_02.ogg")
-    .add_variant("assets/sfx/footstep_03.ogg")
-    .add_variant("assets/sfx/footstep_04.ogg")
-    .with_random_pitch(0.95, 1.05)
-    .with_max_instances(4); // Limit concurrent sounds
-
-sfx_manager.register_pool("footstep", footstep_pool);
-<span class="boring">}</span></code></pre>
-<h3 id="playing-sound-effects"><a class="header" href="#playing-sound-effects">Playing Sound Effects</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Play from pool (automatically selects variant)
-sfx_manager.play("footstep")?;
-
-// Play with position
-sfx_manager.play_at("footstep", player_position)?;
-
-// Play with custom parameters
-sfx_manager.play_with("explosion", SfxParams {
-    position: Some(explosion_pos),
-    volume: 1.0,
-    pitch: 1.0,
-    priority: SoundPriority::High,
-})?;
-<span class="boring">}</span></code></pre>
-<h3 id="priority-system"><a class="header" href="#priority-system">Priority System</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::sfx::SoundPriority;
-
-// Define sound priorities
-pub enum SoundPriority {
-    Critical = 100,  // UI, dialogue
-    High = 75,       // Explosions, important events
-    Medium = 50,     // Gunfire, abilities
-    Low = 25,        // Footsteps, ambient
-    VeryLow = 10,    // Background details
-}
-
-// Priority-based voice stealing
-sfx_manager.set_max_voices(32);
-sfx_manager.set_voice_stealing(true); // Steal low priority when full
-<span class="boring">}</span></code></pre>
-<h3 id="sound-categories"><a class="header" href="#sound-categories">Sound Categories</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::sfx::SoundCategory;
-
-// Create categories for volume control
-sfx_manager.create_category("master", 1.0);
-sfx_manager.create_category("sfx", 0.8);
-sfx_manager.create_category("ui", 1.0);
-sfx_manager.create_category("ambient", 0.6);
-
-// Assign sounds to categories
-sfx_manager.set_category("footstep", "sfx");
-sfx_manager.set_category("button_click", "ui");
-
-// Adjust category volumes
-sfx_manager.set_category_volume("sfx", 0.5);
-<span class="boring">}</span></code></pre>
-<h2 id="audio-effects-and-processing"><a class="header" href="#audio-effects-and-processing">Audio Effects and Processing</a></h2>
-<h3 id="built-in-effects"><a class="header" href="#built-in-effects">Built-in Effects</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::effects::{Effect, Reverb, LowPassFilter, HighPassFilter};
-
-// Add reverb to spatial sound
-let reverb = Reverb {
-    room_size: 0.7,
-    damping: 0.5,
-    wet: 0.3,
-    dry: 0.7,
-};
-spatial_sound.add_effect(Effect::Reverb(reverb));
-
-// Lowpass filter for underwater effect
-let underwater_filter = LowPassFilter {
-    cutoff: 800.0,
-    resonance: 1.0,
-};
-audio_engine.add_global_effect(Effect::LowPass(underwater_filter));
-<span class="boring">}</span></code></pre>
-<h3 id="custom-dsp"><a class="header" href="#custom-dsp">Custom DSP</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::dsp::{AudioProcessor, AudioBuffer};
-
-struct CustomDistortion {
-    gain: f32,
-    threshold: f32,
-}
-
-impl AudioProcessor for CustomDistortion {
-    fn process(&amp;mut self, buffer: &amp;mut AudioBuffer) {
-        for sample in buffer.samples_mut() {
-            *sample *= self.gain;
-            *sample = sample.clamp(-self.threshold, self.threshold);
-        }
-    }
-}
-
-// Apply custom processor
-let distortion = CustomDistortion {
-    gain: 2.0,
-    threshold: 0.8,
-};
-sfx_manager.add_processor("distortion", Box::new(distortion));
-<span class="boring">}</span></code></pre>
-<h2 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h2>
-<h3 id="voice-limiting"><a class="header" href="#voice-limiting">Voice Limiting</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Limit total active voices
-audio_engine.set_max_voices(64);
-
-// Per-pool limiting
-let gunshot_pool = SoundPool::new()
-    .add_variant("gunshot.ogg")
-    .with_max_instances(8); // Max 8 simultaneous gunshots
-<span class="boring">}</span></code></pre>
-<h3 id="streaming-vs-loaded"><a class="header" href="#streaming-vs-loaded">Streaming vs. Loaded</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Load small sounds into memory
-let ui_click = audio_engine.load_sound_static("click.ogg")?;
-
-// Stream large files (music, ambience)
-let music = audio_engine.load_sound_streaming("music.ogg")?;
-<span class="boring">}</span></code></pre>
-<h3 id="audio-budget"><a class="header" href="#audio-budget">Audio Budget</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::budget::AudioBudget;
-
-let budget = AudioBudget {
-    max_memory_mb: 256,
-    max_streaming_sources: 4,
-    max_static_sources: 60,
-};
-
-audio_engine.set_budget(budget);
-<span class="boring">}</span></code></pre>
-<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
-<h3 id="game-audio-system"><a class="header" href="#game-audio-system">Game Audio System</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::*;
-
-pub struct GameAudio {
-    engine: AudioEngine,
-    music: MusicManager,
-    sfx: SfxManager,
-    dialogue: DialoguePlayer,
-}
-
-impl GameAudio {
-    pub fn new() -&gt; Result&lt;Self&gt; {
-        let mut engine = AudioEngine::new(AudioConfig::default())?;
-        let music = MusicManager::new(&amp;engine);
-        let sfx = SfxManager::new(&amp;engine);
-        let dialogue = DialoguePlayer::new(&amp;engine);
-        
-        Ok(Self { engine, music, sfx, dialogue })
-    }
-    
-    pub fn update(&amp;mut self, delta_time: f32, listener_pos: Vec3, listener_forward: Vec3) {
-        // Update listener
-        let mut listener = AudioListener::new();
-        listener.set_position([listener_pos.x, listener_pos.y, listener_pos.z]);
-        listener.set_orientation(ListenerOrientation {
-            forward: [listener_forward.x, listener_forward.y, listener_forward.z],
-            up: [0.0, 1.0, 0.0],
-        });
-        self.engine.set_listener(listener);
-        
-        // Update managers
-        self.music.update(delta_time);
-        self.dialogue.update(delta_time).ok();
-    }
-    
-    pub fn play_footstep(&amp;mut self, position: Vec3) {
-        self.sfx.play_at("footstep", [position.x, position.y, position.z]).ok();
-    }
-    
-    pub fn start_combat_music(&amp;mut self) {
-        self.music.transition_to("combat", TransitionType::Crossfade(1.5)).ok();
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="related-documentation"><a class="header" href="#related-documentation">Related Documentation</a></h2>
+<h2 id="further-reading"><a class="header" href="#further-reading">Further reading</a></h2>
 <ul>
-<li><a href="../pipeline/assets.html">Asset Pipeline</a> - Audio asset loading and processing</li>
-<li><a href="../ecs/audio-components.html">ECS Integration</a> - Audio components and systems</li>
-<li><a href="../editor/audio-tools.html">Editor Tools</a> - Audio editing and preview</li>
-<li><a href="../optimization/audio.html">Performance Guide</a> - Audio optimization techniques</li>
-</ul>
-<h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
-<p>For complete API documentation, see:</p>
-<ul>
-<li><a href="https://docs.rs/astraweave-audio">astraweave_audio API docs</a></li>
-<li><a href="https://docs.rs/kira">kira documentation</a></li>
-<li><a href="https://docs.rs/rodio">rodio documentation</a></li>
+<li><a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/audio.md"><code>audio.md</code></a> — full audio-system trace (file map, conflict map, decision
+log, invariants, open questions).</li>
+<li><a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md"><code>ARCHITECTURE_MAP.md</code></a> §7.1 — documentation-hazard inventory.</li>
+<li><strong>Interactive workspace map</strong> — select <code>astraweave-audio</code> to see the
+panel detail with dormancy evidence and the §4.3 silent-failure shapes.</li>
 </ul>
 
                     </main>

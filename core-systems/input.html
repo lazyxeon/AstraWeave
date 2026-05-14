@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c4d8145e.js";
+            window.path_to_searchindex_js = "../searchindex-f46bb8b6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -218,697 +218,90 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="input-system"><a class="header" href="#input-system">Input System</a></h1>
-<p>AstraWeave’s input system provides comprehensive input handling with action mapping, binding system, controller support, input replay, and cross-platform abstraction.</p>
-<h2 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture Overview</a></h2>
-<p>The input system is designed to decouple raw input events from gameplay actions, enabling flexible control schemes and remapping.</p>
-<pre class="mermaid">graph TD
-    A[Raw Input] --&gt; B[Input Devices]
-    B --&gt; C[Keyboard]
-    B --&gt; D[Mouse]
-    B --&gt; E[Gamepad]
-    B --&gt; F[Touch]
-    C --&gt; G[Input Mapper]
-    D --&gt; G
-    E --&gt; G
-    F --&gt; G
-    G --&gt; H[Action System]
-    H --&gt; I[Gameplay Actions]
-    H --&gt; J[UI Actions]
-</pre>
-
-<h3 id="key-components"><a class="header" href="#key-components">Key Components</a></h3>
-<ul>
-<li><strong>Input Devices</strong>: Cross-platform abstraction for keyboard, mouse, gamepad, and touch</li>
-<li><strong>Action Mapping</strong>: Map raw inputs to high-level gameplay actions</li>
-<li><strong>Binding System</strong>: Customizable control schemes with conflict detection</li>
-<li><strong>Input Context</strong>: Hierarchical input contexts for different game states</li>
-<li><strong>Input Replay</strong>: Record and playback input sequences for testing and demos</li>
-</ul>
-<pre><code class="language-admonish info">The input system uses winit for window events and gilrs for gamepad support, providing consistent cross-platform input handling.
+                        <!--
+  Input System page — replaced 2026-05-15 as part of the post-trace-campaign
+  reconciliation.
+  Source: ARCHITECTURE_MAP.md §7.1 (Documentation Hazards) and `input.md` trace.
+  Pre-trace version (commit 28bc94f21, 2025-09-08, automated documentation pass)
+  described InputSystem / InputConfig / ActionMap / BindingRecorder / BindingProfile /
+  ContextPriority / InputBuffer / InputPredictor / InputRecorder and submodules
+  mapping / rebinding / replay / buffer / device. None of those types or submodules
+  exist in astraweave-input/src/lib.rs re-exports. Actual API is Action / Binding /
+  BindingSet / InputManager / Axis2.
+-->
+<h1 id="input-system"><a class="header" href="#input-system">Input System</a></h1>
+<pre><code class="language-admonish warning title=&quot;Documentation under reconciliation&quot;">This page was rewritten on 2026-05-15 to reflect the engineering reality surfaced by the
+architecture trace campaign. A prior version (added in commit 28bc94f21,
+2025-09-08, by an automated documentation pass) described `InputSystem`, `InputConfig`,
+`ActionMap`, `BindingRecorder`, `BindingProfile`, `ContextPriority`, `InputBuffer`,
+`InputPredictor`, `InputRecorder` and a `mapping` / `rebinding` / `replay` / `buffer` /
+`device` submodule layout. **None of those types or submodules exist** in
+`astraweave-input/src/lib.rs` re-exports.
 </code></pre>
-<h2 id="input-system-initialization"><a class="header" href="#input-system-initialization">Input System Initialization</a></h2>
-<h3 id="basic-setup"><a class="header" href="#basic-setup">Basic Setup</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::{InputSystem, InputConfig};
-
-let config = InputConfig {
-    deadzone: 0.15,              // Gamepad deadzone
-    mouse_sensitivity: 1.0,
-    enable_raw_mouse_input: true, // For FPS games
-    double_click_time_ms: 300,
-    key_repeat_delay_ms: 500,
-    key_repeat_rate_ms: 50,
-    ..Default::default()
-};
-
-let mut input_system = InputSystem::new(config);
-<span class="boring">}</span></code></pre>
-<h3 id="processing-window-events"><a class="header" href="#processing-window-events">Processing Window Events</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use winit::event::{Event, WindowEvent};
-
-event_loop.run(move |event, _, control_flow| {
-    // Feed events to input system
-    input_system.handle_event(&amp;event);
-    
-    match event {
-        Event::WindowEvent { event, .. } =&gt; {
-            match event {
-                WindowEvent::Focused(false) =&gt; {
-                    input_system.clear_input_state();
-                }
-                _ =&gt; {}
-            }
-        }
-        Event::MainEventsCleared =&gt; {
-            // Update input system
-            input_system.update(delta_time);
-            
-            // Process actions
-            update_game(&amp;input_system);
-        }
-        _ =&gt; {}
-    }
-});
-<span class="boring">}</span></code></pre>
-<h2 id="action-mapping"><a class="header" href="#action-mapping">Action Mapping</a></h2>
-<h3 id="defining-actions"><a class="header" href="#defining-actions">Defining Actions</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::action::{Action, ActionType};
-
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
-pub enum GameAction {
-    // Movement
-    MoveForward,
-    MoveBackward,
-    MoveLeft,
-    MoveRight,
-    Jump,
-    Crouch,
-    Sprint,
-    
-    // Camera
-    LookHorizontal,
-    LookVertical,
-    
-    // Combat
-    Fire,
-    AimDownSights,
-    Reload,
-    SwitchWeapon,
-    
-    // Interaction
-    Interact,
-    UseItem,
-    
-    // UI
-    OpenMenu,
-    Inventory,
-}
-
-impl Action for GameAction {
-    fn action_type(&amp;self) -&gt; ActionType {
-        match self {
-            // Button actions (pressed/released)
-            GameAction::Jump | GameAction::Fire | GameAction::Interact =&gt; {
-                ActionType::Button
-            }
-            // Axis actions (continuous values)
-            GameAction::MoveForward | GameAction::LookHorizontal =&gt; {
-                ActionType::Axis
-            }
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="creating-action-maps"><a class="header" href="#creating-action-maps">Creating Action Maps</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::mapping::{ActionMap, InputBinding};
-use astraweave_input::device::{Key, MouseButton, GamepadButton, GamepadAxis};
-
-let mut action_map = ActionMap::new("default");
-
-// Keyboard bindings
-action_map.bind(GameAction::MoveForward, InputBinding::Key(Key::W));
-action_map.bind(GameAction::MoveBackward, InputBinding::Key(Key::S));
-action_map.bind(GameAction::MoveLeft, InputBinding::Key(Key::A));
-action_map.bind(GameAction::MoveRight, InputBinding::Key(Key::D));
-action_map.bind(GameAction::Jump, InputBinding::Key(Key::Space));
-action_map.bind(GameAction::Crouch, InputBinding::Key(Key::ControlLeft));
-action_map.bind(GameAction::Sprint, InputBinding::Key(Key::ShiftLeft));
-
-// Mouse bindings
-action_map.bind(GameAction::Fire, InputBinding::MouseButton(MouseButton::Left));
-action_map.bind(GameAction::AimDownSights, InputBinding::MouseButton(MouseButton::Right));
-action_map.bind(GameAction::LookHorizontal, InputBinding::MouseAxisX);
-action_map.bind(GameAction::LookVertical, InputBinding::MouseAxisY);
-
-// Gamepad bindings
-action_map.bind(GameAction::Jump, InputBinding::GamepadButton(GamepadButton::South));
-action_map.bind(GameAction::Fire, InputBinding::GamepadButton(GamepadButton::RightTrigger2));
-action_map.bind(GameAction::MoveForward, InputBinding::GamepadAxis {
-    axis: GamepadAxis::LeftStickY,
-    threshold: 0.0,
-    inverted: false,
-});
-action_map.bind(GameAction::LookHorizontal, InputBinding::GamepadAxis {
-    axis: GamepadAxis::RightStickX,
-    threshold: 0.0,
-    inverted: false,
-});
-
-// Register action map
-input_system.register_action_map(action_map);
-<span class="boring">}</span></code></pre>
-<h3 id="multiple-bindings"><a class="header" href="#multiple-bindings">Multiple Bindings</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Bind multiple inputs to the same action
-action_map.bind(GameAction::MoveForward, InputBinding::Key(Key::W));
-action_map.bind(GameAction::MoveForward, InputBinding::Key(Key::ArrowUp));
-action_map.bind(GameAction::MoveForward, InputBinding::GamepadAxis {
-    axis: GamepadAxis::LeftStickY,
-    threshold: 0.2,
-    inverted: false,
-});
-<span class="boring">}</span></code></pre>
-<h3 id="input-modifiers"><a class="header" href="#input-modifiers">Input Modifiers</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::modifier::{InputModifier, ModifierKey};
-
-// Bind with modifier keys (e.g., Shift+E for fast interaction)
-action_map.bind_with_modifiers(
-    GameAction::Interact,
-    InputBinding::Key(Key::E),
-    &amp;[ModifierKey::Shift],
-);
-
-// Input modifiers for axis scaling
-action_map.bind_with_modifier_fn(
-    GameAction::LookHorizontal,
-    InputBinding::MouseAxisX,
-    |value| value * mouse_sensitivity,
-);
-<span class="boring">}</span></code></pre>
-<h2 id="querying-input-state"><a class="header" href="#querying-input-state">Querying Input State</a></h2>
-<h3 id="button-state"><a class="header" href="#button-state">Button State</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Check if action is currently pressed
-if input_system.is_action_pressed(GameAction::Jump) {
-    player.jump();
-}
-
-// Check if action was just pressed this frame
-if input_system.is_action_just_pressed(GameAction::Fire) {
-    weapon.fire();
-}
-
-// Check if action was just released this frame
-if input_system.is_action_just_released(GameAction::AimDownSights) {
-    player.stop_aiming();
-}
-
-// Get how long action has been held
-let sprint_duration = input_system.action_duration(GameAction::Sprint);
-if sprint_duration &gt; 2.0 {
-    player.start_breathing_heavily();
-}
-<span class="boring">}</span></code></pre>
-<h3 id="axis-values"><a class="header" href="#axis-values">Axis Values</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Get axis value (-1.0 to 1.0)
-let move_forward = input_system.action_value(GameAction::MoveForward);
-let move_right = input_system.action_value(GameAction::MoveRight);
-
-// Create movement vector
-let movement = Vec3::new(move_right, 0.0, move_forward).normalize_or_zero();
-player.move_direction(movement);
-
-// Get raw axis value (before deadzone)
-let raw_look = input_system.raw_action_value(GameAction::LookHorizontal);
-
-// Get axis delta (change since last frame)
-let look_delta = input_system.action_delta(GameAction::LookHorizontal);
-camera.rotate_yaw(look_delta * sensitivity);
-<span class="boring">}</span></code></pre>
-<h3 id="composite-inputs"><a class="header" href="#composite-inputs">Composite Inputs</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::composite::Vec2Input;
-
-// Create 2D input from multiple actions
-let movement_input = Vec2Input::new(
-    GameAction::MoveRight,   // X axis
-    GameAction::MoveForward, // Y axis
-);
-
-let movement = movement_input.get_value(&amp;input_system);
-player.move_direction(Vec3::new(movement.x, 0.0, movement.y));
-<span class="boring">}</span></code></pre>
-<h2 id="binding-system"><a class="header" href="#binding-system">Binding System</a></h2>
-<h3 id="runtime-rebinding"><a class="header" href="#runtime-rebinding">Runtime Rebinding</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::rebinding::BindingRecorder;
-
-// Start recording new binding
-let mut recorder = BindingRecorder::new();
-recorder.start_recording(GameAction::Jump);
-
-// Wait for user input
-loop {
-    input_system.update(delta_time);
-    
-    if let Some(binding) = recorder.check_input(&amp;input_system) {
-        // User pressed a key/button
-        println!("New binding: {:?}", binding);
-        
-        // Check for conflicts
-        if let Some(conflict) = action_map.find_conflict(GameAction::Jump, &amp;binding) {
-            println!("Warning: {} already bound to {:?}", conflict, binding);
-            
-            // Optionally swap or clear conflict
-            action_map.unbind(conflict, &amp;binding);
-        }
-        
-        // Apply new binding
-        action_map.bind(GameAction::Jump, binding);
-        break;
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="saving-and-loading-bindings"><a class="header" href="#saving-and-loading-bindings">Saving and Loading Bindings</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::persistence::BindingProfile;
-
-// Save bindings
-let profile = BindingProfile::from_action_map(&amp;action_map);
-profile.save_to_file("user_bindings.json")?;
-
-// Load bindings
-let profile = BindingProfile::load_from_file("user_bindings.json")?;
-let action_map = profile.to_action_map();
-input_system.register_action_map(action_map);
-<span class="boring">}</span></code></pre>
-<h3 id="preset-binding-schemes"><a class="header" href="#preset-binding-schemes">Preset Binding Schemes</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Create multiple preset schemes
-let keyboard_mouse = ActionMap::keyboard_mouse_preset();
-let gamepad = ActionMap::gamepad_preset();
-let left_handed = ActionMap::left_handed_preset();
-
-// Switch schemes
-input_system.set_active_action_map("keyboard_mouse");
-<span class="boring">}</span></code></pre>
-<h2 id="input-contexts"><a class="header" href="#input-contexts">Input Contexts</a></h2>
-<p>Input contexts allow different parts of the game to handle input differently (e.g., gameplay vs. menu).</p>
-<h3 id="creating-contexts"><a class="header" href="#creating-contexts">Creating Contexts</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::context::{InputContext, ContextPriority};
-
-// Gameplay context
-let mut gameplay_context = InputContext::new("gameplay", ContextPriority::Normal);
-gameplay_context.set_action_map(gameplay_action_map);
-
-// UI context (higher priority)
-let mut ui_context = InputContext::new("ui", ContextPriority::High);
-ui_context.set_action_map(ui_action_map);
-
-// Add contexts to system
-input_system.add_context(gameplay_context);
-input_system.add_context(ui_context);
-<span class="boring">}</span></code></pre>
-<h3 id="context-activation"><a class="header" href="#context-activation">Context Activation</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Activate/deactivate contexts
-input_system.activate_context("gameplay");
-input_system.deactivate_context("ui");
-
-// Push/pop context stack
-input_system.push_context("menu"); // Menu now receives input
-// ... menu is open ...
-input_system.pop_context(); // Back to previous context
-
-// Query which contexts are active
-if input_system.is_context_active("gameplay") {
-    // Process gameplay input
-}
-<span class="boring">}</span></code></pre>
-<h3 id="input-consumption"><a class="header" href="#input-consumption">Input Consumption</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Higher priority contexts can consume input
-ui_context.set_consumes_input(true); // UI blocks input from reaching gameplay
-
-// Check if input was consumed
-if !input_system.was_action_consumed(GameAction::Fire) {
-    weapon.fire();
-}
-<span class="boring">}</span></code></pre>
-<h2 id="controller-support"><a class="header" href="#controller-support">Controller Support</a></h2>
-<h3 id="gamepad-detection"><a class="header" href="#gamepad-detection">Gamepad Detection</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::gamepad::{Gamepad, GamepadEvent};
-
-// List connected gamepads
-for gamepad in input_system.gamepads() {
-    println!("Gamepad {}: {}", gamepad.id(), gamepad.name());
-}
-
-// Handle gamepad events
-while let Some(event) = input_system.poll_gamepad_event() {
-    match event {
-        GamepadEvent::Connected(id) =&gt; {
-            println!("Gamepad {} connected", id);
-        }
-        GamepadEvent::Disconnected(id) =&gt; {
-            println!("Gamepad {} disconnected", id);
-        }
-        GamepadEvent::ButtonPressed(id, button) =&gt; {
-            println!("Gamepad {} button {:?} pressed", id, button);
-        }
-        _ =&gt; {}
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="vibrationhaptics"><a class="header" href="#vibrationhaptics">Vibration/Haptics</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::gamepad::{VibrationEffect, VibrationDuration};
-
-// Simple vibration
-input_system.vibrate_gamepad(
-    gamepad_id,
-    0.5, // Weak motor (0.0 - 1.0)
-    0.8, // Strong motor (0.0 - 1.0)
-    VibrationDuration::Milliseconds(200),
-);
-
-// Complex effect
-let effect = VibrationEffect::explosion()
-    .with_intensity(1.0)
-    .with_duration_ms(500);
-
-input_system.play_vibration_effect(gamepad_id, effect);
-<span class="boring">}</span></code></pre>
-<h3 id="per-player-input"><a class="header" href="#per-player-input">Per-Player Input</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::player::PlayerInput;
-
-// Assign gamepads to players
-let player1_input = PlayerInput::new()
-    .with_gamepad(0)
-    .with_keyboard_mouse();
-
-let player2_input = PlayerInput::new()
-    .with_gamepad(1);
-
-// Query player-specific input
-if player1_input.is_action_pressed(&amp;input_system, GameAction::Jump) {
-    player1.jump();
-}
-
-if player2_input.is_action_pressed(&amp;input_system, GameAction::Jump) {
-    player2.jump();
-}
-<span class="boring">}</span></code></pre>
-<pre><code class="language-admonish tip">For split-screen games, use separate PlayerInput instances to isolate input between players.
-</code></pre>
-<h2 id="input-replay"><a class="header" href="#input-replay">Input Replay</a></h2>
-<p>Input replay enables testing, demo playback, and replay systems.</p>
-<h3 id="recording-input"><a class="header" href="#recording-input">Recording Input</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::replay::{InputRecorder, InputRecording};
-
-// Start recording
-let mut recorder = InputRecorder::new();
-recorder.start();
-
-// Update each frame (automatically records input)
-loop {
-    input_system.update(delta_time);
-    recorder.record_frame(&amp;input_system);
-    
-    // ... game logic ...
-}
-
-// Stop and save
-recorder.stop();
-let recording = recorder.finalize();
-recording.save_to_file("replay.bin")?;
-<span class="boring">}</span></code></pre>
-<h3 id="playback"><a class="header" href="#playback">Playback</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::replay::InputPlayer;
-
-// Load recording
-let recording = InputRecording::load_from_file("replay.bin")?;
-let mut player = InputPlayer::new(recording);
-
-// Playback loop
-loop {
-    // Apply recorded input to system
-    player.update(delta_time, &amp;mut input_system);
-    
-    // Game state will be driven by recorded input
-    update_game(&amp;input_system);
-    
-    if player.is_finished() {
-        break;
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="replay-controls"><a class="header" href="#replay-controls">Replay Controls</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Pause/resume
-player.pause();
-player.resume();
-
-// Seek
-player.seek_to_time(10.0); // Seek to 10 seconds
-player.seek_to_frame(600); // Seek to frame 600
-
-// Playback speed
-player.set_playback_speed(0.5); // Half speed
-player.set_playback_speed(2.0); // Double speed
-
-// Loop
-player.set_loop(true);
-<span class="boring">}</span></code></pre>
-<h2 id="advanced-features"><a class="header" href="#advanced-features">Advanced Features</a></h2>
-<h3 id="input-buffering"><a class="header" href="#input-buffering">Input Buffering</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::buffer::InputBuffer;
-
-// Create input buffer for fighting game-style combo inputs
-let mut buffer = InputBuffer::new()
-    .with_buffer_duration(0.3) // 300ms window
-    .with_max_inputs(8);
-
-// Add inputs to buffer
-buffer.record_input(&amp;input_system);
-
-// Check for sequences
-if buffer.matches_sequence(&amp;[
-    GameAction::MoveForward,
-    GameAction::MoveDown,
-    GameAction::MoveForward,
-    GameAction::Fire,
-]) {
-    character.perform_special_move("Hadouken");
-    buffer.clear();
-}
-<span class="boring">}</span></code></pre>
-<h3 id="input-prediction-networking"><a class="header" href="#input-prediction-networking">Input Prediction (Networking)</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::prediction::InputPredictor;
-
-// For networked games, predict input during lag
-let mut predictor = InputPredictor::new();
-
-// Record recent inputs
-predictor.record(&amp;input_system);
-
-// Predict future input (e.g., during packet loss)
-let predicted_input = predictor.predict_next_frame();
-
-// Use predicted input until real input arrives
-if network.has_input() {
-    apply_input(network.get_input());
-} else {
-    apply_input(predicted_input);
-}
-<span class="boring">}</span></code></pre>
-<h3 id="touch-input"><a class="header" href="#touch-input">Touch Input</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::touch::{TouchEvent, TouchPhase};
-
-// Handle touch events (mobile/tablet)
-while let Some(event) = input_system.poll_touch_event() {
-    match event.phase {
-        TouchPhase::Started =&gt; {
-            println!("Touch started at {:?}", event.position);
-        }
-        TouchPhase::Moved =&gt; {
-            let delta = event.position - event.previous_position;
-            camera.rotate(delta);
-        }
-        TouchPhase::Ended =&gt; {
-            println!("Touch ended");
-        }
-        TouchPhase::Cancelled =&gt; {
-            println!("Touch cancelled");
-        }
-    }
-}
-
-// Multi-touch gestures
-if let Some(pinch) = input_system.get_pinch_gesture() {
-    camera.zoom(pinch.scale);
-}
-
-if let Some(swipe) = input_system.get_swipe_gesture() {
-    player.dodge(swipe.direction);
-}
-<span class="boring">}</span></code></pre>
-<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
-<h3 id="fps-input-system"><a class="header" href="#fps-input-system">FPS Input System</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_input::*;
-
-pub struct FPSInput {
-    input_system: InputSystem,
-    gameplay_context: ContextId,
-    menu_context: ContextId,
-}
-
-impl FPSInput {
-    pub fn new() -&gt; Self {
-        let mut input_system = InputSystem::new(InputConfig::default());
-        
-        // Create gameplay action map
-        let mut gameplay_map = ActionMap::new("gameplay");
-        gameplay_map.bind(GameAction::MoveForward, InputBinding::Key(Key::W));
-        gameplay_map.bind(GameAction::MoveBackward, InputBinding::Key(Key::S));
-        gameplay_map.bind(GameAction::MoveLeft, InputBinding::Key(Key::A));
-        gameplay_map.bind(GameAction::MoveRight, InputBinding::Key(Key::D));
-        gameplay_map.bind(GameAction::Jump, InputBinding::Key(Key::Space));
-        gameplay_map.bind(GameAction::Fire, InputBinding::MouseButton(MouseButton::Left));
-        gameplay_map.bind(GameAction::LookHorizontal, InputBinding::MouseAxisX);
-        gameplay_map.bind(GameAction::LookVertical, InputBinding::MouseAxisY);
-        
-        // Create menu action map
-        let mut menu_map = ActionMap::new("menu");
-        menu_map.bind(GameAction::OpenMenu, InputBinding::Key(Key::Escape));
-        
-        // Register contexts
-        let gameplay_context = input_system.add_context(
-            InputContext::new("gameplay", ContextPriority::Normal)
-                .with_action_map(gameplay_map)
-        );
-        
-        let menu_context = input_system.add_context(
-            InputContext::new("menu", ContextPriority::High)
-                .with_action_map(menu_map)
-                .with_consumes_input(true)
-        );
-        
-        // Start with gameplay active
-        input_system.activate_context(gameplay_context);
-        
-        Self {
-            input_system,
-            gameplay_context,
-            menu_context,
-        }
-    }
-    
-    pub fn update(&amp;mut self, delta_time: f32, player: &amp;mut Player, camera: &amp;mut Camera) {
-        self.input_system.update(delta_time);
-        
-        // Handle menu toggle
-        if self.input_system.is_action_just_pressed(GameAction::OpenMenu) {
-            self.toggle_menu();
-        }
-        
-        // Process gameplay input if not in menu
-        if self.input_system.is_context_active(self.gameplay_context) {
-            self.process_gameplay_input(player, camera);
-        }
-    }
-    
-    fn process_gameplay_input(&amp;self, player: &amp;mut Player, camera: &amp;mut Camera) {
-        // Movement
-        let move_forward = self.input_system.action_value(GameAction::MoveForward);
-        let move_right = self.input_system.action_value(GameAction::MoveRight);
-        let movement = Vec3::new(move_right, 0.0, move_forward);
-        player.set_movement(movement);
-        
-        // Jump
-        if self.input_system.is_action_just_pressed(GameAction::Jump) {
-            player.jump();
-        }
-        
-        // Camera look
-        let look_x = self.input_system.action_delta(GameAction::LookHorizontal);
-        let look_y = self.input_system.action_delta(GameAction::LookVertical);
-        camera.rotate(look_x, look_y);
-        
-        // Fire weapon
-        if self.input_system.is_action_pressed(GameAction::Fire) {
-            player.fire_weapon();
-        }
-    }
-    
-    fn toggle_menu(&amp;mut self) {
-        if self.input_system.is_context_active(self.menu_context) {
-            self.input_system.deactivate_context(self.menu_context);
-            self.input_system.activate_context(self.gameplay_context);
-        } else {
-            self.input_system.deactivate_context(self.gameplay_context);
-            self.input_system.activate_context(self.menu_context);
-        }
-    }
-    
-    pub fn handle_event(&amp;mut self, event: &amp;Event&lt;()&gt;) {
-        self.input_system.handle_event(event);
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="related-documentation"><a class="header" href="#related-documentation">Related Documentation</a></h2>
+<h2 id="actual-public-surface"><a class="header" href="#actual-public-surface">Actual public surface</a></h2>
+<!-- Source: input.md §1, §5 -->
+<p><code>astraweave-input</code> is a pure facade over <code>winit</code> (window/keyboard/mouse events) and
+<code>gilrs</code> (gamepad). The <code>lib.rs</code> re-exports are:</p>
 <ul>
-<li><a href="../gameplay/player-controller.html">Player Controller</a> - Character movement and control</li>
-<li><a href="../ui/input-handling.html">UI System</a> - UI interaction and focus</li>
-<li><a href="../networking/input-sync.html">Networking</a> - Network input synchronization</li>
-<li><a href="../accessibility/input.html">Accessibility</a> - Accessible input options</li>
+<li><code>Action</code> — high-level input action enum.</li>
+<li><code>Binding</code> — single key/button/axis-to-action mapping.</li>
+<li><code>BindingSet</code> — collection of bindings (load / save / merge).</li>
+<li><code>InputManager</code> — runtime state, polls device events, drains an action queue.</li>
+<li><code>Axis2</code> — 2D axis value (gamepad sticks, mouse delta).</li>
 </ul>
-<h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
-<p>For complete API documentation, see:</p>
+<p>That is the complete external surface. There is <strong>no</strong> <code>InputSystem</code>, no <code>InputConfig</code>,
+no <code>BindingRecorder</code>, no <code>InputBuffer</code>, no <code>InputPredictor</code>, no <code>InputRecorder</code>.</p>
+<h2 id="declared-but-unused-dependency-hazard"><a class="header" href="#declared-but-unused-dependency-hazard">Declared-but-unused dependency hazard</a></h2>
+<!-- Source: ARCHITECTURE_MAP.md §2.3 anomaly 8 + input.md §4, §11 -->
+<p>Two workspace crates declare <code>astraweave-input</code> as a Cargo dependency but <strong>never
+import it</strong> in any source file:</p>
 <ul>
-<li><a href="https://docs.rs/astraweave-input">astraweave_input API docs</a></li>
-<li><a href="https://docs.rs/winit">winit documentation</a></li>
-<li><a href="https://docs.rs/gilrs">gilrs documentation</a></li>
+<li><code>astraweave-gameplay/Cargo.toml</code></li>
+<li><code>astraweave-ui/Cargo.toml</code></li>
+</ul>
+<p>Verified by workspace-grep for <code>use astraweave_input</code>. The dep additions left no
+source-file imports in git history. This is documented in <code>input.md</code> §4 and §11
+and tracked as Q21 in <code>ARCHITECTURE_MAP.md</code> §14.</p>
+<p>The single in-tree consumer of <code>astraweave-input</code> is <code>examples/ui_controls_demo</code>,
+and even that demo does not read the <code>InputManager</code> state — it <code>match</code>es raw
+<code>winit</code> <code>KeyCode</code> directly.</p>
+<h2 id="editor-reinvents-the-input-domain"><a class="header" href="#editor-reinvents-the-input-domain">Editor reinvents the input domain</a></h2>
+<!-- Source: input.md §6 (§7.7 wrapped-component trap) and aw_editor.md §6 -->
+<p>The visual editor’s input-bindings panel
+(<code>tools/aw_editor/src/panels/input_bindings_panel.rs</code>, 2,511 LoC, 13 types)
+reimplements the entire input vocabulary in-place, <strong>without depending on
+<code>astraweave-input</code></strong>. This is one of the four confirmed instances of the §7.7
+wrapped-component resource identity trap surfaced by the Editor Multi-Tool
+Architecture campaign — the editor’s input layer and the engine’s input layer
+manage the same logical resource but neither delegates to the other.</p>
+<p>Tracked as Q22 in <code>ARCHITECTURE_MAP.md</code> §14.</p>
+<h2 id="silent-failure-shape"><a class="header" href="#silent-failure-shape">Silent-failure shape</a></h2>
+<!-- Source: ARCHITECTURE_MAP.md §4.3 -->
+<p><code>load_bindings</code> in <code>astraweave-input/src/save.rs:16-19</code> collapses every error
+mode (file not found, parse error, schema mismatch) to <code>None</code>. Users get a default
+binding set with no diagnostic indication of what failed.</p>
+<h2 id="where-to-actually-look-in-the-code"><a class="header" href="#where-to-actually-look-in-the-code">Where to actually look in the code</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Need</th><th>File</th></tr>
+</thead>
+<tbody>
+<tr><td>Public re-exports</td><td><code>astraweave-input/src/lib.rs</code></td></tr>
+<tr><td>Action &amp; Binding types</td><td><code>astraweave-input/src/</code></td></tr>
+<tr><td>Editor’s parallel input domain</td><td><code>tools/aw_editor/src/panels/input_bindings_panel.rs</code></td></tr>
+<tr><td>In-tree consumer (raw KeyCode usage)</td><td><code>examples/ui_controls_demo/src/main.rs</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="further-reading"><a class="header" href="#further-reading">Further reading</a></h2>
+<ul>
+<li><a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/input.md"><code>input.md</code></a> — full input-system trace (file map, conflict map, decision log,
+invariants, open questions).</li>
+<li><a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md"><code>ARCHITECTURE_MAP.md</code></a> §2.3 (anomaly 8), §7.1, §14 (Q21, Q22).</li>
+<li><strong>Interactive workspace map</strong> — select <code>astraweave-input</code> to see the
+declared-but-unused dependency edges from <code>astraweave-gameplay</code> and
+<code>astraweave-ui</code> rendered as dashed/tee-terminated lines.</li>
 </ul>
 
                     </main>
