@@ -1,6 +1,8 @@
 # Terrain Asset Quality Campaign
 
-**Status**: **Research-pass landed 2026-05-14**, this commit. Audit document at `docs/audits/terrain_asset_quality_campaign_research_pass_2026-05-14.md` is load-bearing input. Sub-phase decomposition + Andrew-gate decisions (a)-(f) surfaced for routing. Sub-phase A NOT STARTED (gated on Andrew-gate (a)+(b)+(c) decisions).
+**Status**: **Sub-phase A.1 BLOCKED 2026-05-14** (marker commit) pending Sub-phase A.0 fetcher capability extension session. Pre-execution surfaced fetcher capability gap (no ARM-packed map fetch in `tools/astraweave-assets` PolyHaven provider — fetcher delivers 5 separate maps instead of single `_arm` packed file; audit §3.1's "rename-only" premise falsified) + missing local ImageMagick tooling for channel-packing workaround. Andrew-gate routing 2026-05-14 chose "Pause + extend fetcher (recommended)"; A.0 session opens before A.1 acquisition can proceed. `default` material reclassified per Andrew-gate (iii) as dead-code; flagged for separate cleanup commit (out of this campaign's scope); reduces A.1 acquisition target from 10 to 9 materials. New §7.11 methodology lesson candidate surfaced (research-pass-recommendation falsification at pre-execution; deferred elevation to Sub-phase E).
+
+**Research-pass landed 2026-05-14 commit `b1223b49f`** (audit at `docs/audits/terrain_asset_quality_campaign_research_pass_2026-05-14.md`). Sub-phase decomposition + Andrew-gate decisions (a)-(f) routed.
 
 **Methodology body of practice inherited from Editor Multi-Tool Architecture Sub-phase 3.C closeout `b220442a7`** (§13 of that campaign doc). Nine canonical methodology lessons (§7.1-§7.9) + §7.7 structural axiom + Edit 2 multi-granularity discipline + canonical pipeline composability + single-concern session discipline + Andrew-gate routing + multi-session forward-chain structure apply.
 
@@ -491,7 +493,10 @@ This section must be updated in the same commit that completes each sub-phase pe
 
 ```text
 Terrain Asset Quality Campaign research-pass: COMPLETE 2026-05-14, this commit. Audit at docs/audits/terrain_asset_quality_campaign_research_pass_2026-05-14.md. Andrew-gate (a)+(b)+(c)+(d)+(e)+(f) pending for sub-phase routing.
-Sub-phase A — Source acquisition + baking gap closure: NOT STARTED (gated on Andrew-gate decisions).
+Sub-phase A.1 — Source acquisition: BLOCKED 2026-05-14, this commit (marker). Pre-execution surfaced fetcher capability gap (no ARM-packed map fetch in tools/astraweave-assets PolyHaven provider) + missing local ImageMagick tooling for post-fetch channel-packing. Andrew-gate routing 2026-05-14 chose "Pause + extend fetcher" path; A.0 fetcher extension session opens before A.1 acquisition can proceed. `default` material reclassified per Andrew-gate (iii): flag for separate cleanup (dead-code removal from MaterialLibrary; out of this campaign scope; reduces acquisition target from 10 to 9 materials).
+Sub-phase A.0 — Fetcher capability extension (NEW): NOT STARTED. Add "arm" map name to `tools/astraweave-assets/src/polyhaven.rs::polyhaven_map_names`; verify PolyHaven `_arm` packed files reachable; ~5-line change + tests. Restores audit §3.1's "rename-only" conversion premise.
+Sub-phase A.1 — Source acquisition (re-scoped to 9 materials post-A.0): NOT STARTED (gated on A.0 PASS).
+Sub-phase A.2 — Bake (re-scoped: 21 materials baked; `default` excluded pending cleanup): NOT STARTED (gated on A.1 PASS).
 Sub-phase B — Engine/project asset organization: NOT STARTED (recommend skip via Andrew-gate (b) b-3).
 Sub-phase C — Tier 1 content quality upgrade (biome-grouped): NOT STARTED (gated on Sub-phase A PASS + Andrew-gate (a)).
 Sub-phase D — Performance verification + optimization: NOT STARTED (gated on Sub-phase C PASS).
@@ -584,6 +589,117 @@ This section records design decisions made during execution that deviate from th
 5. Resume Editor Multi-Tool Architecture campaign Sub-phase 4+.
 
 **Scope held**: research-pass session only produced the new audit document + this new campaign doc. NO production code changes. NO asset file changes. NO modifications to Editor Multi-Tool Architecture campaign doc or any prior campaign chain commit. Working-tree unrelated changes intentionally not staged.
+
+---
+
+### 2026-05-14, Sub-phase A.1 BLOCKED (marker commit), this commit
+
+**Sub-phase A.1 source acquisition BLOCKED pending Sub-phase A.0 fetcher capability extension. NO assets fetched; NO assets_src/materials/ modifications; NO production code changes. Marker commit pattern analogous to Editor Multi-Tool Architecture Cleanup-B (`f7732d5d9`) — preserves pre-execution work + Andrew-gate decisions for the next session.**
+
+**Pre-execution verification per §1.2 of A.1 prompt (7+1 sub-items)**:
+
+- **§1.2.1 `astraweave-assets` PolyHaven provider characterization**:
+  - CLI: `cargo run -p astraweave-assets -- fetch [--provider polyhaven]`.
+  - Manifest at `assets/asset_manifest.toml` (TOML); per-asset `[[assets]]` entries with `handle`, `provider`, `type`, `id`, `resolution`, `format`.
+  - Output: `assets/_downloaded/<handle>/<handle>_<map>.<ext>` (per `organize.rs`).
+  - Default maps per material: `albedo`, `normal`, `roughness`, `metallic`, `ao` (5 SEPARATE maps per `polyhaven_provider.rs:56-62`).
+  - Map name aliases per `polyhaven.rs:340-351`: "albedo"→[Diffuse/diff/Color], "normal"→[nor_gl/nor_dx/Normal], "roughness"→[Rough/Roughness], "metallic"→[Metal/Metalness], "ao"→[AO/ambient_occlusion], "height/displacement"→[Displacement/disp/Bump/Height]. **NO "arm" map name supported.**
+
+- **§1.2.2 Invocation example**: `cargo run -p astraweave-assets -- fetch --provider polyhaven` reads default manifest; downloads each entry's 5 maps; deposits in `assets/_downloaded/<handle>/`.
+
+- **§1.2.3 Candidate PolyHaven sets per material** (Andrew-gate surface point 1 enumerated):
+  - cobblestone → `old_stone_path` (existing manifest entry; preserved).
+  - default → SKIP per Andrew-gate (iii) reclassification (dead code; separate cleanup).
+  - gravel → `gravel_concrete_03` or `gravel_embedded_concrete` (2K).
+  - ice → `ice_001` (2K).
+  - metal_rusted → `rust_coarse_01` (2K).
+  - moss → `moss_01` or `mossy_forest_floor` (2K).
+  - mountain_rock → REUSE existing `assets/textures/aerial_rocks_01_*_4k.jpg` (downsample to 2K).
+  - mud → `mud_riverbed_01` (2K).
+  - snow → `snow_03` (2K).
+  - wood_planks → `wood_floor` (existing manifest entry maps to `wood_floor_deck`; preserved).
+
+- **§1.2.4 `assets_src/materials/` pre-state**: 12 source triples confirmed (cloth, dirt, forest_floor, grass, plaster, rock_lichen, rock_slate, roof_tile, sand, stone, tree_bark, tree_leaves). Unchanged this session.
+
+- **§1.2.5 ARM-to-ORM rename verification — CAPABILITY GAP IDENTIFIED**: audit §3.1 anticipated PolyHaven's `_arm_*.jpg` as fetcher output (rename-only to `_mra.png`). Fetcher actually delivers FIVE separate maps (roughness/metallic/ao as individual PNGs). Producing AstraWeave's ORM-packed `_mra.png` requires channel-packing post-processing (combine R=AO + G=Roughness + B=Metallic into one RGB PNG).
+
+- **§1.2.6 Per-material conversion pipeline — TOOLING GAP IDENTIFIED**: image manipulation tooling NOT available in dev environment. `which magick` returns not-found; only Windows file-system `convert` (NOT ImageMagick) is on PATH. No ffmpeg. The fetcher's individual-map output cannot be channel-packed without external tooling install.
+
+- **§1.2.7 `default` material investigation**: defined at `astraweave-render/src/material_library.rs:125-129` as canonical material slot ID=12, display_name="Default". Not referenced by any biome `materials.toml`. UI-only presence (in `MATERIAL_NAMES` constant). Treatment recommendation surfaced (i)/(ii)/(iii).
+
+- **§1.2.8 Anti-drift discipline**: 17 named temptations held throughout; explicitly avoided fetcher code modification (resisted #6).
+
+**Andrew-gate surface points processed inline 2026-05-14**:
+
+- **Surface 1 (A.1 path)**: User selected **"Pause + extend fetcher (recommended)"**. Open Sub-phase A.0 fetcher capability extension session before A.1 acquisition. Modify `polyhaven_map_names` to add `"arm" => vec!["arm", "ARM"]` mapping; verify PolyHaven serves `<id>_arm_<res>.jpg` directly; ~5-line change + tests.
+
+- **Surface 2 (`default` treatment)**: User selected **"(iii) Flag for separate cleanup"**. `default` reclassified as dead-code; remove from `MaterialLibrary::MATERIALS` + `MATERIAL_NAMES` + `MATERIAL_DISPLAY_NAMES` in a separate cleanup commit out of this campaign's scope. Acquisition target reduced from 10 to 9 materials.
+
+**Sub-phase chain reframe**:
+
+| Sub-phase | Status before | Status after |
+|-----------|--------------|--------------|
+| A.0 — Fetcher capability extension (NEW) | n/a | NOT STARTED |
+| A.1 — Source acquisition (re-scoped: 9 materials) | NOT STARTED | BLOCKED on A.0 |
+| A.2 — Bake (re-scoped: 21 materials; default excluded) | NOT STARTED | BLOCKED on A.1 |
+| `default` cleanup (NEW; out-of-campaign) | n/a | NOT STARTED |
+| Sub-phases B, C, D, E | NOT STARTED | unchanged |
+
+**Methodology lessons applied**:
+
+- **§7.1 instrument-and-narrow**: not applicable (analytical pre-execution; no instrumentation needed for fetcher characterization).
+- **§7.2 pre-execution actual-code verification**: ✅ applied (8 sub-items mandatory; surfaced critical capability gap before any irreversible operation).
+- **§7.3 symbol/signature pinning**: ✅ applied (re-greped `polyhaven_map_names`, `MATERIAL_NAMES`, manifest format, `default` material location).
+- **§7.4 drift documentation**: ✅ applied (this entry documents inventory-vs-actual drift — fetcher capability gap differs from audit §3.1's "rename-only" presumption).
+- **§7.5 semantic-invariant tests**: deferred.
+- **§7.8 audit-era misclassification**: ✅ applied — audit §3.1's "rename-only" framing was retrospectively imprecise once fetcher capability was characterized. Marker commit records drift without retro-revising audit (per Sub-phase 3 chronological-archeology discipline).
+- **§7.9 state-propagation pathway equivalence**: applicable — fetcher pathway (5 individual maps) and audit-anticipated pathway (single `_arm` packed) currently diverge. A.0 fetcher extension unifies pathways.
+- **§7.10 candidate (content-vs-structural-defect distinction)**: empirically tested this session — content-driven work surfaces capability gaps in tooling that wouldn't arise in structural-defect investigation. Reinforces §7.10 candidate elevation at Sub-phase E.
+
+**New methodology lesson candidate surfaced** (deferred elevation per anti-drift discipline):
+
+**§7.11 candidate — research-pass-recommendation falsification at pre-execution**: research-pass audits surface recommendations based on code-reading + inventory characterization. Pre-execution at sub-phase start may falsify those recommendations when tooling boundaries surface that the research-pass couldn't characterize without invoking the tool. This is sibling to §7.1 (three-rounds-wrong-from-code-reading) but at content-driven granularity: research recommendations about content-pipeline behavior are falsifiable by pre-execution. Cleanup-D research-pass recommended (q) q-1 direct fix based on code-reading; this proved correct. A.1 audit recommended "rename-only" PolyHaven conversion based on file-name inspection; this proved incorrect once fetcher behavior was characterized. §7.11 candidate: when research-pass recommendations touch tooling behavior (not just code structure), pre-execution must invoke or characterize the tooling, not just inspect its output artifacts. Elevation deferred to Sub-phase E closeout.
+
+**Out of scope per A.1 prompt §0.1 + §1.2.8 anti-drift discipline (17 named temptations); all 17 held**:
+- NO fetcher invocation (per "Pause" decision).
+- NO `aw_asset_cli cook` invocation (A.2's scope; further deferred).
+- NO Tier 1 runtime PNG replacement (Sub-phase C's scope).
+- NO biome TOML modifications.
+- NO modifications to `MaterialLibrary` or any canonical pipeline primitive (the `default` cleanup is a SEPARATE commit; NOT this commit).
+- NO ARM-to-ORM channel swizzle attempts.
+- NO `polyhaven` biome schema reconciliation.
+- NO `astraweave-assets` fetcher code modifications (A.0's scope; separate session).
+- NO additional PolyHaven sets beyond 9-material scope (post-reclassification).
+- NO pre-baking source PNGs to KTX2.
+- NO performance measurements.
+- NO CLAUDE.md amendment elevation.
+- NO ARCHITECTURE_MAP.md updates.
+- NO modifications to `assets/materials/placeholder_backup/`.
+- NO higher-than-2K acquisition.
+- NO Editor Multi-Tool Architecture Sub-phase 4+ work.
+- NO Regional Archetype Variation resumption.
+
+**Forward chain post-this-marker-commit**:
+
+1. **Sub-phase A.0 prompt drafted** (next session): fetcher capability extension. Add `"arm"` map name to `polyhaven_map_names`; verify PolyHaven serves `<id>_arm_<res>.jpg` directly; minimal test coverage. ~5-10 line code change.
+2. **Sub-phase A.0 lands**: code change committed; cargo check + tests clean.
+3. **`default` cleanup commit** (parallel-work; out of this campaign): remove `default` from `MaterialLibrary::MATERIALS` + `MATERIAL_NAMES` + `MATERIAL_DISPLAY_NAMES`. Reclassify slot 12 as reserved. Verify no biome TOML references; verify UI gracefully handles 21-material library.
+4. **Sub-phase A.1 (re-scoped) lands**: fetch 9 materials via extended fetcher; rename `_arm.png` → `_mra.png`; deposit in `assets_src/materials/`. Andrew-gate per per-material approval (Surface point 1 recommendations now load-bearing).
+5. **Sub-phase A.2 (re-scoped)**: bake 21 materials via `aw_asset_cli cook`.
+6. **Sub-phase C biome batches → D → E** per campaign forward chain.
+
+**Files modified this commit**:
+- `docs/current/TERRAIN_ASSET_QUALITY_CAMPAIGN.md` (this doc) — Status header + §11 + §12 marker entry.
+
+**Files NOT modified this commit**:
+- `assets_src/materials/` — UNCHANGED.
+- `assets/materials/` — UNCHANGED.
+- `tools/astraweave-assets/src/` — UNCHANGED (A.0's scope).
+- `astraweave-render/src/material_library.rs` — UNCHANGED (separate `default` cleanup commit).
+- `aw_pipeline.toml` — UNCHANGED.
+- Any biome `materials.toml` / `arrays.toml` — UNCHANGED.
+
+**Scope held**: marker-commit session produced only this campaign doc's Status header + §11 + §12 update. NO production code changes. NO asset file changes. NO modifications to predecessor commits. Working tree unrelated changes intentionally not staged.
 
 ---
 
