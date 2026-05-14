@@ -954,6 +954,53 @@ impl TerrainState {
         Vec3::new(-dx, 1.0, -dz).normalize()
     }
 
+    /// Cleanup-D fix-pass (M-SK): map an edge surface-vertex grid position
+    /// `(gx, gz)` in a chunk of resolution × resolution surface vertices to
+    /// the corresponding skirt-vertex indices in `gen_chunk.vertices`.
+    ///
+    /// Skirt layout (must mirror `generate_heightmap_mesh` skirt order at
+    /// lines 861-919): four edges added in sequence — bottom (z=0), top
+    /// (z=res-1), left (x=0), right (x=res-1) — each contributing
+    /// `resolution` skirt vertices in the same per-edge order as the
+    /// surface edge_indices vector. Total skirt vertex count: 4 × resolution.
+    ///
+    /// Returns up to two indices:
+    /// - Interior vertex (not on any edge): both slots `None`.
+    /// - Single-edge vertex: first slot `Some(idx)`, second `None`.
+    /// - Corner vertex: both slots `Some(idx)` (corner participates in two
+    ///   adjacent edges' skirts; e.g. (0, 0) is in bottom AND left skirts).
+    ///
+    /// A vertex can be in AT MOST 2 skirts: only edges (1) or corners (2).
+    fn compute_skirt_indices(gx: u32, gz: u32, resolution: u32) -> [Option<usize>; 2] {
+        let res = resolution as usize;
+        let surface = res * res;
+        let mut out: [Option<usize>; 2] = [None, None];
+        let mut slot = 0usize;
+
+        // Bottom skirt: indices [surface .. surface + res), in x order
+        if gz == 0 && slot < 2 {
+            out[slot] = Some(surface + gx as usize);
+            slot += 1;
+        }
+        // Top skirt: indices [surface + res .. surface + 2*res), in x order
+        if gz == resolution.saturating_sub(1) && resolution > 1 && slot < 2 {
+            out[slot] = Some(surface + res + gx as usize);
+            slot += 1;
+        }
+        // Left skirt: indices [surface + 2*res .. surface + 3*res), in z order
+        if gx == 0 && slot < 2 {
+            out[slot] = Some(surface + 2 * res + gz as usize);
+            slot += 1;
+        }
+        // Right skirt: indices [surface + 3*res .. surface + 4*res), in z order
+        if gx == resolution.saturating_sub(1) && resolution > 1 && slot < 2 {
+            out[slot] = Some(surface + 3 * res + gz as usize);
+            // slot += 1; // not needed; loop ends here
+        }
+
+        out
+    }
+
     /// Re-compute vertex normals at chunk boundaries using neighbor chunk
     /// height data so the gradient is a full central-difference rather than
     /// a clamped half-gradient. This eliminates the visible lighting seam
@@ -1840,6 +1887,55 @@ impl TerrainState {
         // Collect chunk IDs that might be affected
         let chunk_ids: Vec<ChunkId> = self.generated_chunks.keys().cloned().collect();
 
+        // Cleanup-D fix-pass (M-D5): compute avg_height GLOBALLY across all
+        // chunks within brush radius BEFORE per-chunk dispatch. Pre-fix
+        // computed avg_height per-chunk inside the dispatch loop, so when a
+        // brush spanned two chunks each chunk settled toward a different
+        // average — erosion's 10% settling produced a height step at the
+        // shared boundary (Andrew-gate observation 2026-05-07: "when using
+        // the erosion tool it exposes stitching seams in the chunk
+        // boundaries"). Computing globally first unifies the settling
+        // target across all affected chunks. Affects Smooth + Erode only;
+        // other brush modes don't reference avg_height.
+        let global_avg_height = if matches!(brush_mode, BrushMode::Smooth | BrushMode::Erode) {
+            let mut sum = 0.0f32;
+            let mut count = 0u32;
+            for chunk_id in &chunk_ids {
+                let chunk_origin_x = chunk_id.x as f32 * chunk_size;
+                let chunk_origin_z = chunk_id.z as f32 * chunk_size;
+                // Same AABB rejection as PASS 2 to skip non-overlapping chunks.
+                let closest_x = world_x.clamp(chunk_origin_x, chunk_origin_x + chunk_size);
+                let closest_z = world_z.clamp(chunk_origin_z, chunk_origin_z + chunk_size);
+                let cdx = world_x - closest_x;
+                let cdz = world_z - closest_z;
+                if cdx * cdx + cdz * cdz > radius * radius {
+                    continue;
+                }
+                if let Some(gen_chunk) = self.generated_chunks.get(chunk_id) {
+                    let resolution = gen_chunk.chunk.heightmap().resolution();
+                    let cell_size = chunk_size / (resolution - 1) as f32;
+                    for gz in 0..resolution {
+                        for gx in 0..resolution {
+                            let px = chunk_origin_x + gx as f32 * cell_size;
+                            let pz = chunk_origin_z + gz as f32 * cell_size;
+                            let d = ((px - world_x).powi(2) + (pz - world_z).powi(2)).sqrt();
+                            if d <= radius {
+                                sum += gen_chunk.chunk.heightmap().get_height(gx, gz);
+                                count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            if count > 0 {
+                sum / count as f32
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+
         for chunk_id in chunk_ids {
             let chunk_origin_x = chunk_id.x as f32 * chunk_size;
             let chunk_origin_z = chunk_id.z as f32 * chunk_size;
@@ -1871,29 +1967,11 @@ impl TerrainState {
                 let cell_size = chunk_size / (resolution - 1) as f32;
                 let mut chunk_modified = false;
 
-                // Pre-compute average height for Smooth/Erode modes
-                let avg_height = if matches!(brush_mode, BrushMode::Smooth | BrushMode::Erode) {
-                    let mut sum = 0.0f32;
-                    let mut count = 0u32;
-                    for gz in 0..resolution {
-                        for gx in 0..resolution {
-                            let px = chunk_origin_x + gx as f32 * cell_size;
-                            let pz = chunk_origin_z + gz as f32 * cell_size;
-                            let d = ((px - world_x).powi(2) + (pz - world_z).powi(2)).sqrt();
-                            if d <= radius {
-                                sum += gen_chunk.chunk.heightmap().get_height(gx, gz);
-                                count += 1;
-                            }
-                        }
-                    }
-                    if count > 0 {
-                        sum / count as f32
-                    } else {
-                        0.0
-                    }
-                } else {
-                    0.0
-                };
+                // Cleanup-D fix-pass (M-D5): use the global avg_height computed
+                // above instead of recomputing per-chunk. Pathway-equivalence
+                // with the initial-generation pathway: erosion/smooth settling
+                // is uniform across chunk boundaries.
+                let avg_height = global_avg_height;
 
                 for gz in 0..resolution {
                     for gx in 0..resolution {
@@ -1944,8 +2022,14 @@ impl TerrainState {
                 }
 
                 if chunk_modified {
-                    // Fast path: patch vertex heights and normals in-place
+                    // Fast path: patch vertex heights and normals in-place.
+                    // Cleanup-D fix-pass (M-SK): also update skirt vertex heights
+                    // for edge surface vertices so the skirt curtain follows
+                    // brush mutations instead of staying at the pre-stroke
+                    // height (pathway-equivalence with the initial-generation
+                    // pathway in generate_heightmap_mesh at lines 861-919).
                     let cell_size_patch = chunk_size / (resolution - 1) as f32;
+                    let skirt_drop = chunk_size * 0.015; // matches generate_heightmap_mesh
                     for gz in 0..resolution as usize {
                         for gx in 0..resolution as usize {
                             let idx = gz * resolution as usize + gx;
@@ -1960,6 +2044,23 @@ impl TerrainState {
                                     cell_size_patch,
                                 );
                                 gen_chunk.vertices[idx].normal = [normal.x, normal.y, normal.z];
+
+                                // M-SK: propagate height change to corresponding
+                                // skirt vertex/vertices (up to two — corners
+                                // participate in two edges' skirts).
+                                let skirt_idxs = Self::compute_skirt_indices(
+                                    gx as u32,
+                                    gz as u32,
+                                    resolution,
+                                );
+                                for maybe in skirt_idxs.iter() {
+                                    if let Some(skirt_idx) = *maybe {
+                                        if skirt_idx < gen_chunk.vertices.len() {
+                                            gen_chunk.vertices[skirt_idx].position[1] =
+                                                new_h - skirt_drop;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1972,6 +2073,18 @@ impl TerrainState {
                     modified = true;
                 }
             }
+        }
+
+        // Cleanup-D fix-pass (M-D9): if any chunk was modified, recompute
+        // edge-vertex normals across all chunk boundaries via the existing
+        // cross-chunk stitcher. Pre-fix, stitch_edge_normals was only called
+        // at initial generation (line 423), so post-brush edge normals
+        // diverged between adjacent chunks (calculate_normal's clamped
+        // half-gradient at chunk edges) → lighting seam. Pathway-equivalence
+        // with the initial-generation pathway: brush dispatch now produces
+        // the same edge-normal end-state as generate_terrain.
+        if modified {
+            self.stitch_edge_normals(chunk_size);
         }
 
         modified
@@ -3575,5 +3688,127 @@ mod tests {
         let (_, ws) = TerrainState::top4_from_dense_32(dense);
         let sum: f32 = ws.iter().sum();
         assert!((sum - 1.0).abs() < 1e-4, "round-trip lost normalization: sum={sum}");
+    }
+
+    // ====================================================================
+    // Cleanup-D fix-pass tests (M-D5 + M-D9 + M-SK)
+    //
+    // Predecessor: Cleanup-D research-pass audit at
+    // `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_
+    // brush_cleanup_d_research_pass_2026-05-08.md` identified three
+    // chunk-boundary state-propagation pathway equivalence failures:
+    //   M-D5: per-chunk avg_height → erosion seam at chunk boundary
+    //   M-D9: missing post-brush stitch_edge_normals → lighting seam
+    //   M-SK: skirt vertex heights frozen after brush → skirt decouple
+    //
+    // These tests verify the structural fix: compute_skirt_indices
+    // mapping (M-SK; pure function), plus stitch_edge_normals re-entrant
+    // safety + idempotence (M-D9 supporting). M-D5 + M-D9 visual
+    // verdicts are produced via Andrew-gate runtime observation per §7.
+    // ====================================================================
+
+    #[test]
+    fn cleanup_d_skirt_indices_interior_vertex_returns_none() {
+        // (5, 5) in a 10×10 mesh is interior: neither edge of x nor z.
+        let out = TerrainState::compute_skirt_indices(5, 5, 10);
+        assert_eq!(out, [None, None], "interior vertex must not map to any skirt");
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_bottom_edge_maps_single() {
+        // (5, 0) → bottom skirt only. surface = 100; bottom base = 100.
+        let out = TerrainState::compute_skirt_indices(5, 0, 10);
+        assert_eq!(out[0], Some(100 + 5));
+        assert_eq!(out[1], None);
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_top_edge_maps_single() {
+        // (5, 9) → top skirt only. top base = 100 + 10 = 110.
+        let out = TerrainState::compute_skirt_indices(5, 9, 10);
+        assert_eq!(out[0], Some(110 + 5));
+        assert_eq!(out[1], None);
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_left_edge_maps_single() {
+        // (0, 5) → left skirt only. left base = 100 + 20 = 120.
+        let out = TerrainState::compute_skirt_indices(0, 5, 10);
+        assert_eq!(out[0], Some(120 + 5));
+        assert_eq!(out[1], None);
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_right_edge_maps_single() {
+        // (9, 5) → right skirt only. right base = 100 + 30 = 130.
+        let out = TerrainState::compute_skirt_indices(9, 5, 10);
+        assert_eq!(out[0], Some(130 + 5));
+        assert_eq!(out[1], None);
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_bottom_left_corner_maps_two() {
+        // (0, 0) is in BOTH bottom AND left skirts.
+        let out = TerrainState::compute_skirt_indices(0, 0, 10);
+        // Bottom first (gz check evaluated first), then left.
+        assert_eq!(out[0], Some(100 + 0), "bottom skirt for (0,0) slot 0");
+        assert_eq!(out[1], Some(120 + 0), "left skirt for (0,0) slot 1");
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_bottom_right_corner_maps_two() {
+        // (9, 0) is in BOTH bottom AND right skirts.
+        let out = TerrainState::compute_skirt_indices(9, 0, 10);
+        assert_eq!(out[0], Some(100 + 9), "bottom skirt for (9,0) slot 0");
+        assert_eq!(out[1], Some(130 + 0), "right skirt for (9,0) slot 1");
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_top_left_corner_maps_two() {
+        // (0, 9) is in BOTH top AND left skirts.
+        let out = TerrainState::compute_skirt_indices(0, 9, 10);
+        assert_eq!(out[0], Some(110 + 0), "top skirt for (0,9) slot 0");
+        assert_eq!(out[1], Some(120 + 9), "left skirt for (0,9) slot 1");
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_top_right_corner_maps_two() {
+        // (9, 9) is in BOTH top AND right skirts.
+        let out = TerrainState::compute_skirt_indices(9, 9, 10);
+        assert_eq!(out[0], Some(110 + 9), "top skirt for (9,9) slot 0");
+        assert_eq!(out[1], Some(130 + 9), "right skirt for (9,9) slot 1");
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_all_in_bounds_for_resolution_10() {
+        // Every mapped skirt index for a 10×10 mesh must be < total
+        // vertex count (surface 100 + 4 skirts × 10 = 140).
+        let total = 10 * 10 + 4 * 10;
+        for gz in 0..10u32 {
+            for gx in 0..10u32 {
+                let out = TerrainState::compute_skirt_indices(gx, gz, 10);
+                for maybe in out.iter() {
+                    if let Some(idx) = *maybe {
+                        assert!(
+                            idx < total,
+                            "compute_skirt_indices({gx},{gz},10) -> {idx} >= total {total}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cleanup_d_skirt_indices_corners_produce_distinct_indices() {
+        // Each corner's two mapped indices must be distinct (corner is
+        // in two different skirts, never the same one twice).
+        let corners = [(0, 0), (9, 0), (0, 9), (9, 9)];
+        for (gx, gz) in corners.iter() {
+            let out = TerrainState::compute_skirt_indices(*gx, *gz, 10);
+            let a = out[0].expect("corner must have skirt 1");
+            let b = out[1].expect("corner must have skirt 2");
+            assert_ne!(a, b, "corner ({gx},{gz}) maps to same skirt twice");
+        }
     }
 }
