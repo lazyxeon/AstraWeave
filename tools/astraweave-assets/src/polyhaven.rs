@@ -345,6 +345,11 @@ impl PolyHavenClient {
             "roughness" => vec!["Rough", "Roughness"],
             "metallic" => vec!["Metal", "Metallic", "Metalness"],
             "ao" => vec!["AO", "ao", "ambient_occlusion"],
+            // ARM = AO+Roughness+Metallic single-image packing per PolyHaven CDN
+            // (channel layout R=AO, G=Roughness, B=Metallic matches AstraWeave's
+            // ORM convention; see pbr_terrain.wgsl:334-338 + audit §3.1).
+            // Terrain Asset Quality Sub-phase A.0.A 2026-05-14.
+            "arm" => vec!["arm", "ARM", "Arm"],
             "height" | "displacement" => vec!["Displacement", "disp", "Bump", "Height"],
             _ => vec![],
         }
@@ -411,6 +416,12 @@ mod tests {
         let normal = client.polyhaven_map_names("normal");
         assert!(normal.contains(&"nor_gl"));
         assert!(normal.contains(&"Normal"));
+
+        // Terrain Asset Quality Sub-phase A.0.A: ARM-packed map type for
+        // AstraWeave's ORM _mra.png runtime convention (audit §3.1).
+        let arm = client.polyhaven_map_names("arm");
+        assert!(arm.contains(&"arm"));
+        assert!(arm.contains(&"ARM"));
 
         let unknown = client.polyhaven_map_names("does_not_exist");
         assert!(unknown.is_empty());

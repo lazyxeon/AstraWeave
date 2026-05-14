@@ -1,6 +1,6 @@
 # Terrain Asset Quality Campaign
 
-**Status**: **Sub-phase A.1 BLOCKED 2026-05-14** (marker commit) pending Sub-phase A.0 fetcher capability extension session. Pre-execution surfaced fetcher capability gap (no ARM-packed map fetch in `tools/astraweave-assets` PolyHaven provider — fetcher delivers 5 separate maps instead of single `_arm` packed file; audit §3.1's "rename-only" premise falsified) + missing local ImageMagick tooling for channel-packing workaround. Andrew-gate routing 2026-05-14 chose "Pause + extend fetcher (recommended)"; A.0 session opens before A.1 acquisition can proceed. `default` material reclassified per Andrew-gate (iii) as dead-code; flagged for separate cleanup commit (out of this campaign's scope); reduces A.1 acquisition target from 10 to 9 materials. New §7.11 methodology lesson candidate surfaced (research-pass-recommendation falsification at pre-execution; deferred elevation to Sub-phase E).
+**Status**: **Sub-phase A.0 COMPLETE 2026-05-14** (this commit). Fetcher capability extended: `polyhaven_map_names` in `tools/astraweave-assets/src/polyhaven.rs` now includes `"arm" => vec!["arm", "ARM", "Arm"]` mapping; default `requested_maps` list in `polyhaven_provider.rs` includes "arm"; test fixture updated with ARM assertion. cargo check workspace + cargo test (124/124 astraweave-assets lib tests pass) clean. Audit §3.1 "rename-only" conversion premise RESTORED. Sub-phase A.1 UNBLOCKED (pending `default` cleanup parallel-commit + A.1 prompt re-draft for 9 materials).
 
 **Research-pass landed 2026-05-14 commit `b1223b49f`** (audit at `docs/audits/terrain_asset_quality_campaign_research_pass_2026-05-14.md`). Sub-phase decomposition + Andrew-gate decisions (a)-(f) routed.
 
@@ -494,8 +494,8 @@ This section must be updated in the same commit that completes each sub-phase pe
 ```text
 Terrain Asset Quality Campaign research-pass: COMPLETE 2026-05-14, this commit. Audit at docs/audits/terrain_asset_quality_campaign_research_pass_2026-05-14.md. Andrew-gate (a)+(b)+(c)+(d)+(e)+(f) pending for sub-phase routing.
 Sub-phase A.1 — Source acquisition: BLOCKED 2026-05-14, this commit (marker). Pre-execution surfaced fetcher capability gap (no ARM-packed map fetch in tools/astraweave-assets PolyHaven provider) + missing local ImageMagick tooling for post-fetch channel-packing. Andrew-gate routing 2026-05-14 chose "Pause + extend fetcher" path; A.0 fetcher extension session opens before A.1 acquisition can proceed. `default` material reclassified per Andrew-gate (iii): flag for separate cleanup (dead-code removal from MaterialLibrary; out of this campaign scope; reduces acquisition target from 10 to 9 materials).
-Sub-phase A.0 — Fetcher capability extension (NEW): NOT STARTED. Add "arm" map name to `tools/astraweave-assets/src/polyhaven.rs::polyhaven_map_names`; verify PolyHaven `_arm` packed files reachable; ~5-line change + tests. Restores audit §3.1's "rename-only" conversion premise.
-Sub-phase A.1 — Source acquisition (re-scoped to 9 materials post-A.0): NOT STARTED (gated on A.0 PASS).
+Sub-phase A.0 — Fetcher capability extension: COMPLETE 2026-05-14, this commit. Added "arm" map name to `tools/astraweave-assets/src/polyhaven.rs::polyhaven_map_names` (line ~341 match arm: `"arm" => vec!["arm", "ARM", "Arm"]`); added "arm" to default `requested_maps` in `polyhaven_provider.rs::resolve` AssetType::Texture branch (line ~62); added ARM assertion to `test_polyhaven_map_names_mappings` test. cargo check + cargo test (124 lib tests pass) clean. Restores audit §3.1's "rename-only" conversion premise. §7.11 methodology candidate empirically validated (deferred elevation to Sub-phase E).
+Sub-phase A.1 — Source acquisition (re-scoped to 9 materials post-A.0): UNBLOCKED 2026-05-14 (gated on `default` cleanup parallel-commit + A.1 prompt re-draft).
 Sub-phase A.2 — Bake (re-scoped: 21 materials baked; `default` excluded pending cleanup): NOT STARTED (gated on A.1 PASS).
 Sub-phase B — Engine/project asset organization: NOT STARTED (recommend skip via Andrew-gate (b) b-3).
 Sub-phase C — Tier 1 content quality upgrade (biome-grouped): NOT STARTED (gated on Sub-phase A PASS + Andrew-gate (a)).
@@ -700,6 +700,122 @@ This section records design decisions made during execution that deviate from th
 - Any biome `materials.toml` / `arrays.toml` — UNCHANGED.
 
 **Scope held**: marker-commit session produced only this campaign doc's Status header + §11 + §12 update. NO production code changes. NO asset file changes. NO modifications to predecessor commits. Working tree unrelated changes intentionally not staged.
+
+---
+
+### 2026-05-14, Sub-phase A.0 (fetcher capability extension), this commit
+
+**Sub-phase A.0.A landed. `astraweave-assets` PolyHaven provider extended to fetch ARM-packed map type. Audit §3.1 "rename-only" conversion premise RESTORED. Sub-phase A.1 acquisition UNBLOCKED (pending `default` cleanup parallel-commit + A.1 prompt re-draft for 9 materials).**
+
+**§7.11 methodology lesson candidate empirically validated**: research-pass-recommendation falsification at pre-execution. Audit §3.1's "rename-only" premise was tooling-behavior-dependent; A.1 pre-execution surfaced the gap (per `eab972aea` marker); A.0 closes it. The pattern: research-pass recommendations touching tooling behavior require pre-execution that invokes or characterizes the tooling, not just inspects output artifacts. Elevation deferred to Sub-phase E closeout per chronological-archeology discipline.
+
+**Pre-execution verification per §1.2 of A.0 prompt (6 sub-items mandatory)**:
+
+- **§1.2.1 `polyhaven_map_names` schema**: `fn polyhaven_map_names(&self, user_map_name: &str) -> Vec<&str>` at `polyhaven.rs:341`. Match-expression-based (NOT HashMap). 5 existing entries pre-A.0: `albedo` → [Diffuse/diff/diffuse/Color]; `normal` → [nor_gl/nor_dx/Normal]; `roughness` → [Rough/Roughness]; `metallic` → [Metal/Metallic/Metalness]; `ao` → [AO/ao/ambient_occlusion]; `height|displacement` → [Displacement/disp/Bump/Height].
+
+- **§1.2.2 Downstream consumers**: single call site at `polyhaven.rs:145` inside `resolve_texture()`. Iterates external `requested_maps: &[String]`; calls `polyhaven_map_names` per entry; tries each alternative name against PolyHaven API `files.maps[ph_name]` response. The `requested_maps` default list constructed at `polyhaven_provider.rs:56-62` in AssetType::Texture branch — must add "arm" there too for fetcher to actually request ARM by default.
+
+- **§1.2.3 ARM URL convention**: `rg 'arm|ARM'` against `tools/astraweave-assets` returned NO existing references — URL construction is fully mapping-driven (PolyHaven API metadata `files.maps[ph_name]` returns nested `{<res>: {<format>: {url, size, md5}}}` for whichever names match). Adding "arm" to mapping is structurally sufficient; no hardcoded ARM URL paths to add.
+
+- **§1.2.4 Test fixture coverage**: `test_polyhaven_map_names_mappings` at `polyhaven.rs:405` tests existing keys (`albedo`, `normal`, `does_not_exist` empty). Added ARM assertion in same test: verifies `arm` key returns Vec containing "arm" + "ARM". `test_resolve_texture_selects_fallback_resolution_and_urls` at line ~470 uses `["albedo", "normal"]` request list; doesn't need ARM update.
+
+- **§1.2.5 PolyHaven ARM availability**: Existing `assets/textures/` content includes `aerial_beach_01_arm_4k.jpg`, `aerial_rocks_01_arm_4k.jpg` — confirms PolyHaven CDN serves ARM-packed files for these sets. PolyHaven's `/files/<id>` API endpoint exposes a top-level "arm" key in the response per filename evidence + per inferred consistent naming convention with `_arm_*` URL paths. Live API verification deferred to A.1's first fetch invocation per single-concern session discipline + anti-drift temptation #1 ("Resist fetching A.1 sources during A.0").
+
+- **§1.2.6 Anti-drift discipline**: 15 named temptations held throughout — no opportunistic fetch, no schema refactor, no other-provider extension, no biome TOML modifications, no MaterialLibrary modifications, no `default` cleanup bundling, no frame alert investigation, no other-asset-crate modifications, no CLI flag additions, no documentation updates, no pre-baking, no schema reconciliation.
+
+**Code change applied (3 minimal edits across 2 files)**:
+
+1. **`tools/astraweave-assets/src/polyhaven.rs:341+`** — added "arm" match arm in `polyhaven_map_names`: `"arm" => vec!["arm", "ARM", "Arm"]`. Plus 3-line comment documenting ARM = AO+Roughness+Metallic packing per PolyHaven CDN; channel layout R=AO, G=Roughness, B=Metallic matches AstraWeave ORM convention per `pbr_terrain.wgsl:334-338` + audit §3.1.
+
+2. **`tools/astraweave-assets/src/polyhaven_provider.rs:56-62+`** — added `"arm".to_string()` to default `requested_maps` Vec in AssetType::Texture branch of `resolve()`. Plus comment documenting addition.
+
+3. **`tools/astraweave-assets/src/polyhaven.rs:411+`** — added ARM assertion to `test_polyhaven_map_names_mappings`: calls `polyhaven_map_names("arm")`; asserts result contains both `"arm"` and `"ARM"` aliases.
+
+Net change: +18/-0 lines across 2 files (production + test inline).
+
+**Verification outcomes**:
+
+- `cargo check -p astraweave-assets`: clean (31s incremental build).
+- `cargo check --workspace [exclusions]`: clean (only pre-existing nalgebra + astraweave-ai dead_code warnings; unrelated).
+- `cargo test -p astraweave-assets --lib polyhaven`: 10/10 polyhaven module tests pass including updated `test_polyhaven_map_names_mappings`.
+- `cargo test -p astraweave-assets --lib`: **124/124 lib tests pass** (full astraweave-assets test suite preserved; no regressions).
+- Live-network fetch verification: **DEFERRED to A.1's first fetch invocation** per single-concern discipline + anti-drift #1. A.0 verification rests on structural correctness (mapping addition correctly returns ARM aliases; test asserts contract; fetcher infrastructure is mapping-driven per §1.2.3 so addition is purely additive).
+
+**A.1 unblocking**:
+
+- A.1 acquisition can now fetch ARM-packed map directly via `cargo run -p astraweave-assets -- fetch --provider polyhaven`. Fetcher will pull `_arm_<res>.<ext>` for any PolyHaven set that exposes ARM in its API response.
+- Per-material recommendations preserved from `eab972aea`:
+  - cobblestone → `old_stone_path` (existing manifest entry).
+  - gravel → `gravel_concrete_03` (2K).
+  - ice → `ice_001` (2K).
+  - metal_rusted → `rust_coarse_01` (2K).
+  - moss → `moss_01` (2K).
+  - mountain_rock → REUSE existing `aerial_rocks_01` (4K → 2K downsample).
+  - mud → `mud_riverbed_01` (2K).
+  - snow → `snow_03` (2K).
+  - wood_planks → `wood_floor` (existing manifest entry maps to `wood_floor_deck`).
+- Acquisition target: **9 materials** (`default` excluded per Andrew-gate Surface 2 (iii) reclassification 2026-05-14).
+- A.1 workflow: extend `assets/asset_manifest.toml` with 9 new entries → `cargo run -p astraweave-assets -- fetch --provider polyhaven` → rename `<set>_arm_2k.png` → `<material>_mra.png` → deposit in `assets_src/materials/`. Audit §3.1 "rename-only" conversion now restored end-to-end.
+
+**Methodology lessons applied**:
+
+- §7.2 pre-execution actual-code verification: ✅ (6 sub-items mandatory; surfaced no scope expansion needs).
+- §7.3 symbol/signature pinning: ✅ (verified schema shape, call sites, URL construction).
+- §7.4 drift documentation: ✅ (this entry + commit body documents schema-vs-A.1-recommendation alignment now restored).
+- §7.5 semantic-invariant: code change preserves all existing map types; only adds ARM (additive).
+- §7.7 structural axiom: not directly applicable (single mapping extension; not boundary-spanning resource identity).
+- §7.8 audit-era misclassification: applied — audit §3.1's framing was tooling-behavior-dependent; A.0 restores premise without retro-revising audit.
+- §7.9 state-propagation pathway equivalence: applied — A.0 enables A.1's fetcher-driven pathway to produce equivalent end-state (ORM-packed `_mra.png`) to the audit-anticipated rename-only pathway. Cook pathway will then produce equivalent KTX2 to manual-edit pathway, closing the §7.9 gap at A.2.
+- §7.10 candidate (content-vs-structural-defect distinction): not the active lesson this commit; deferred.
+- §7.11 candidate (research-pass-recommendation falsification at pre-execution): empirically validated by A.0's existence + outcome. Pre-execution invoked the tooling characterization; surfaced the gap; A.0 closed it. Validates §7.11 elevation candidate; deferred to Sub-phase E closeout.
+
+**Discipline shift observation**: A.0 demonstrates Sub-phase 3's single-concern session discipline (§13.4) scales DOWN as well as up. Editor Multi-Tool Architecture Sub-phase 3 single-concern sessions were at instrument/closure/revert/fix granularity (substantial work per session). A.0 is single-concern at ~5-10-line-code-change granularity. The discipline absorbs both scales: each session does ONE thing well, regardless of size.
+
+**Forward chain post-A.0**:
+
+1. **`default` cleanup parallel commit** (out-of-campaign; can land before or after A.1):
+   - Modify `astraweave-render/src/material_library.rs` to remove `default` from MATERIALS array (id=12); reduce named count from 22 to 21; increase reserved count from 10 to 11.
+   - Modify `MATERIAL_NAMES` + `MATERIAL_DISPLAY_NAMES` constants similarly.
+   - Remove `assets/materials/default.png` + `_n.png` + `_mra.png`.
+   - Verify no biome TOML references default; verify UI gracefully handles 21-material library.
+2. **Sub-phase A.1 prompt re-drafted** (next session): 9 materials (per `eab972aea` recommendations); rename-only conversion workflow (audit §3.1 premise restored).
+3. **Sub-phase A.1 lands**: 9 materials acquired into `assets_src/materials/`; Andrew-gate per-material approval inline.
+4. **Sub-phase A.2 lands**: `aw_asset_cli cook` produces canonical KTX2 for 21 materials.
+5. **Sub-phase C biome batches → D → E** per campaign forward chain.
+
+**Files modified this commit**:
+- `tools/astraweave-assets/src/polyhaven.rs` (mapping + test).
+- `tools/astraweave-assets/src/polyhaven_provider.rs` (default requested_maps).
+- `docs/current/TERRAIN_ASSET_QUALITY_CAMPAIGN.md` (Status header + §11 + §12 entry).
+
+**Files NOT modified this commit**:
+- `assets_src/materials/` — UNCHANGED (A.1's scope).
+- `assets/materials/` — UNCHANGED (Sub-phase C's scope).
+- `aw_pipeline.toml` — UNCHANGED.
+- Any biome `materials.toml` / `arrays.toml` — UNCHANGED.
+- `astraweave-render/src/material_library.rs` — UNCHANGED (`default` cleanup is separate commit).
+- `tools/aw_asset_cli/` — UNCHANGED.
+- `astraweave-asset/` + `astraweave-asset-pipeline/` — UNCHANGED.
+- Any prior campaign chain commit — UNCHANGED.
+
+**Out of scope per A.0 prompt §0.1 + §1.2.6 anti-drift discipline (15 temptations held)**:
+- NO A.1 acquisition fetch (A.1's scope).
+- NO `default` cleanup (separate commit).
+- NO `aw_asset_cli cook` (A.2's scope).
+- NO Sub-phase C / D / E work.
+- NO MaterialLibrary or canonical pipeline modifications.
+- NO biome TOML modifications.
+- NO modifications to other asset crates.
+- NO `polyhaven_map_names` schema refactor.
+- NO other-provider (Kenney, itch.io, direct URL) extensions.
+- NO frame alert investigation.
+- NO CLI flag additions.
+- NO live-network fetch verification (deferred to A.1).
+- NO CLAUDE.md amendment elevation.
+- NO ARCHITECTURE_MAP.md updates.
+- NO Editor Multi-Tool Architecture Sub-phase 4+ work.
+
+**Scope held**: A.0.A session modified `tools/astraweave-assets/src/polyhaven.rs` + `polyhaven_provider.rs` (production code change scope ≤ 20 lines net) + this campaign doc (Status header + §11 + §12 entry). All anti-drift temptations held. Single-concern session pattern preserved.
 
 ---
 

@@ -52,13 +52,19 @@ impl AssetProvider for PolyHavenProvider {
                     .as_ref()
                     .context("Missing 'resolution' field for PolyHaven texture")?;
 
-                // Default maps if not specified
+                // Default maps if not specified.
+                // "arm" added 2026-05-14 (Terrain Asset Quality Sub-phase A.0.A):
+                // ARM-packed map (R=AO, G=Roughness, B=Metallic) matches
+                // AstraWeave's ORM _mra.png runtime convention per audit §3.1.
+                // Fetcher logs non-fatal warning if a particular asset does
+                // not expose ARM in its PolyHaven Files response.
                 let maps = vec![
                     "albedo".to_string(),
                     "normal".to_string(),
                     "roughness".to_string(),
                     "metallic".to_string(),
                     "ao".to_string(),
+                    "arm".to_string(),
                 ];
 
                 self.client.resolve_texture(id, res, &maps).await?
