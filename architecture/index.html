@@ -1,4 +1,27 @@
 <!DOCTYPE html>
+<!--
+  AstraWeave Workspace Architecture Map — v2.1 (2026-05-15)
+  v2.1: domain filter fix + edge gradient coloring.
+    - Filter UX inverted: empty/full set = show all (no filter);
+      partial selection = include-only set. Default state is empty.
+    - Edge default style is a source-domain → target-domain linear gradient
+      using Wong palette colors. Anomalous (red) and declared-unused (grey
+      dashed) edges retain solid styling. Blast-radius edges thicken without
+      losing gradient (preserves cross-domain visual signal).
+
+  v2.0 (2026-05-14) improvements over v1:
+    1. URL-hash state persistence (Share-this-view)
+    2. Blast-radius highlighting (1/2/3-hop dependents, capped)
+    3. Guided tour mode (8 steps, "First-time onboarding")
+    4. Side-panel progressive disclosure (<details> sections)
+    5a. Neighborhood focus mode (1-hop)
+    5b. Edge bundling — SKIPPED. No mature, lightweight, CDN-distributed
+        cytoscape edge-bundling extension exists; the available packages
+        (cytoscape-undirected-edge-bundling, weaverbird-*) are either
+        unmaintained, require a build step, or push the file past budget.
+        Improvement 5a substantially addresses the hairball complaint.
+    6. Mobile/tablet responsive layout (375/768/1024 breakpoints)
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -176,18 +199,37 @@
     cursor: pointer;
     font-size: 11px;
     user-select: none;
+    color: var(--text-1);
+    opacity: 0.6;                /* v2.1: default = NOT in include set */
+    transition: opacity 0.12s ease, border-color 0.12s ease, background 0.12s ease;
   }
-  .domain-chip.off {
-    opacity: 0.4;
+  .domain-chip.on {              /* v2.1: in include set */
+    opacity: 1;
+    color: var(--text-0);
+    border-color: var(--accent);
+    background: rgba(88,166,255,0.10);
   }
   .domain-chip:hover {
     background: var(--bg-0);
   }
+  .domain-chip.on:hover { background: rgba(88,166,255,0.18); }
+  .domain-chip:disabled {
+    cursor: not-allowed;
+    opacity: 0.25 !important;
+  }
+  .domain-chip:disabled:hover { background: var(--bg-2); }
   .domain-chip .dot {
     width: 10px;
     height: 10px;
     border-radius: 50%;
     display: inline-block;
+  }
+  /* Subtle hint that no filter is active */
+  #domain-filters .filter-hint {
+    color: var(--text-2);
+    font-size: 10px;
+    font-style: italic;
+    margin-left: 4px;
   }
   .btn {
     background: var(--bg-2);
@@ -445,6 +487,269 @@
     .side-panel { position: absolute; right: 0; top: 0; bottom: 0; z-index: 5; }
     .toolbar { font-size: 12px; }
   }
+
+  /* ============================================================
+     v2 additions
+     ============================================================ */
+
+  /* Improvement 4: progressive-disclosure <details> styling */
+  .panel-content details {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .panel-content details > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-0);
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-content details > summary::-webkit-details-marker { display: none; }
+  .panel-content details > summary::after {
+    content: '▸';
+    color: var(--text-2);
+    transition: transform 0.15s ease;
+    font-size: 10px;
+  }
+  .panel-content details[open] > summary::after { transform: rotate(90deg); }
+  .panel-content details > summary:hover { background: rgba(88,166,255,0.06); }
+  .panel-content details > summary .count {
+    color: var(--text-1);
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 11px;
+    font-weight: 400;
+  }
+  .panel-content details > .details-body {
+    padding: 4px 10px 10px 10px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+  }
+  /* Primary actions row in panel header */
+  .panel-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 10px 0;
+  }
+  .panel-actions .btn-sm {
+    background: var(--bg-2);
+    color: var(--text-0);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .panel-actions .btn-sm:hover { background: var(--bg-0); border-color: var(--accent); }
+  .panel-actions .btn-sm.on { background: rgba(88,166,255,0.18); border-color: var(--accent); color: var(--accent); }
+  .one-liner {
+    font-size: 12px;
+    color: var(--text-1);
+    margin: 4px 0 6px 0;
+    line-height: 1.45;
+  }
+  .meta-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+    margin: 4px 0;
+  }
+  .meta-grid .key { color: var(--text-2); }
+  .meta-grid .val { color: var(--text-0); text-align: left; }
+
+  /* Improvement 2: Blast-radius classes */
+  .cy-tooltip .blast-count { color: var(--warn); font-weight: 600; }
+  /* Cytoscape style hooks for .blast-direct / .blast-h2 / .blast-h3 / .blast-faded
+     are registered in the JS style sheet, not here. */
+
+  /* Improvement 1: Share button + toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--bg-1);
+    color: var(--text-0);
+    border: 1px solid var(--accent);
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+    z-index: 2000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .toast strong { color: var(--accent); }
+
+  /* Improvement 3: Tour overlay */
+  .tour-overlay {
+    background: linear-gradient(90deg, rgba(213,94,0,0.12), rgba(213,94,0,0.04));
+    border-bottom: 2px solid var(--warn);
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-0);
+    display: none;
+    flex-shrink: 0;
+  }
+  .tour-overlay.active { display: block; }
+  .tour-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .tour-title {
+    font-weight: 600;
+    color: var(--warn);
+    font-size: 14px;
+  }
+  .tour-progress {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    color: var(--text-1);
+    font-size: 11px;
+    background: var(--bg-2);
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .tour-narration {
+    color: var(--text-1);
+    font-size: 13px;
+    margin: 6px 0 8px 0;
+    max-width: 1100px;
+  }
+  .tour-narration strong { color: var(--text-0); }
+  .tour-narration code {
+    background: var(--code-bg);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 11px;
+    color: var(--accent);
+  }
+  .tour-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .tour-controls .btn { font-size: 12px; padding: 5px 12px; }
+  .tour-controls .btn.tour-exit { color: var(--text-1); }
+
+  /* Improvement 6: Mobile/tablet responsive (<= 768px = phone/portrait tablet) */
+  @media (max-width: 768px) {
+    body { overflow: auto; }
+    header { padding: 6px 10px; }
+    .header-row { gap: 6px; }
+    h1 { font-size: 14px; }
+    .header-meta { font-size: 11px; }
+    .header-meta .pill { margin-left: 3px; padding: 1px 6px; font-size: 10px; }
+    .htu-toggle { padding: 3px 8px; font-size: 11px; }
+
+    .toolbar {
+      padding: 6px 10px;
+      gap: 6px;
+      display: none;
+    }
+    .toolbar.mobile-open { display: flex; }
+    .tb-group {
+      border-right: none;
+      padding-right: 0;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+    .mobile-toolbar-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      background: var(--bg-2);
+      color: var(--text-0);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .main { flex-direction: column; }
+    #cy { min-height: 60vh; }
+    .side-panel {
+      position: fixed;
+      left: 0; right: 0; bottom: 0; top: auto;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      border-left: none;
+      border-top: 1px solid var(--accent);
+      max-height: 50vh;
+      transform: translateY(calc(100% - 36px));
+      transition: transform 0.22s ease;
+      z-index: 50;
+      box-shadow: 0 -6px 18px rgba(0,0,0,0.4);
+    }
+    .side-panel.mobile-expanded { transform: translateY(0); }
+    .side-panel.collapsed {
+      width: 100% !important;
+      min-width: 100% !important;
+      max-width: 100% !important;
+      padding: 8px;
+      transform: translateY(calc(100% - 36px));
+    }
+    .mobile-sheet-handle {
+      display: block;
+      width: 40px;
+      height: 4px;
+      background: var(--text-2);
+      border-radius: 2px;
+      margin: 6px auto 8px auto;
+      cursor: grab;
+    }
+    .panel-toggle { display: none; }
+
+    .tour-overlay { font-size: 12px; padding: 10px; }
+    .tour-narration { font-size: 12px; }
+    .banner { font-size: 12px; padding: 8px 10px; }
+
+    footer { font-size: 10px; padding: 8px 10px; }
+    .footer-grid { gap: 12px; }
+    .footer-grid > div { min-width: 100%; }
+  }
+
+  /* Tablet portrait (768-1024) — keep desktop layout but tighten */
+  @media (min-width: 769px) and (max-width: 1024px) {
+    .toolbar { font-size: 11px; gap: 8px; padding: 6px 10px; }
+    .tb-group { padding-right: 8px; gap: 4px; }
+    .side-panel { min-width: 280px; }
+  }
+  /* Desktop (>=769px): hide mobile-only chrome.
+     This rule MUST live in a media query, otherwise it would override the
+     mobile @media display:inline-flex due to cascade order. */
+  @media (min-width: 769px) {
+    .mobile-toolbar-toggle { display: none; }
+    .mobile-sheet-handle { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -453,7 +758,7 @@
     <div>
       <h1>AstraWeave Workspace Architecture Map</h1>
       <div class="header-meta">
-        <span>v0.7.0 — generated from ARCHITECTURE_MAP.md 2026-05-13</span>
+        <span>v2.1 — viz revision 2026-05-15 · data from ARCHITECTURE_MAP.md v0.7.0 (2026-05-13)</span>
         <span class="pill"><span id="node-count">—</span> nodes</span>
         <span class="pill"><span id="edge-count">—</span> edges</span>
         <span class="pill">13 traces</span>
@@ -464,17 +769,22 @@
     <button class="htu-toggle" id="htu-toggle" aria-expanded="false" aria-controls="htu-body">How to use ↓</button>
   </div>
   <div class="htu-body" id="htu-body" role="region" aria-label="How to use">
-    <strong>Click any node</strong> for crate detail (domain, status, trace link, incoming/outgoing edges, silent failures, open questions).
-    <strong>Click any edge</strong> for boundary detail (load-bearing types flowing across, risk level, anomaly notes).
-    <strong>Use Stories dropdown</strong> for narrative views — Dual-World Bridge, Editor↔Engine Boundary, Silent-Failure Map, Dormant Surface, AI Pipeline, Networking Coexistence, Aspirational Docs.
-    <strong>Use search/filters</strong> to narrow scope; domain chips toggle visibility.
-    <strong>Path-find</strong>: click <code>Pick A</code> then a node, then <code>Pick B</code> then another, then <code>Show path</code> to highlight the shortest dependency chain.
-    <strong>Visual encoding</strong>: node size = LoC band; fill color = domain; dashed border = dormant; <code>⚠</code> overlay = silent-failure locus; <code>📄</code> overlay = traced. Edge color: red = anomaly; dashed grey = declared-but-unused dep.
-    Hover tooltips show load-bearing types when documented.
+    <strong>First time here?</strong> Try <strong>Tour → First-time onboarding</strong> for a 10-minute guided walk-through (eight steps, narration + reconfigured graph at each step).
+    <br><br>
+    <strong>Click any node</strong> for crate detail. The side panel uses progressive disclosure: surface info visible, deeper sections (deps, integration types, open questions, silent failures) behind <code>▸</code> expanders.
+    <strong>Blast radius</strong> (toggle, default on): selecting a node highlights its dependents within 3 hops — orange = direct, faded = transitive. Honest dependency-graph highlighting, not behavioral simulation.
+    <strong>Focus mode</strong> (toggle, off by default): hides everything outside the selected node's 1-hop neighborhood. Use when the hairball is too dense.
+    <strong>Stories dropdown</strong> for narrative views (Dual-World Bridge, Editor↔Engine Boundary, Silent-Failure Map, Dormant Surface, AI Pipeline, Networking Coexistence, Aspirational Docs).
+    <strong>Path-find</strong>: <code>Pick A</code> → node → <code>Pick B</code> → node → <code>Show path</code> highlights the shortest directed dep chain.
+    <strong>Share ↗</strong> copies a URL that reproduces the exact current view (filters, selection, tour step, layout).
+    <strong>Domain chips</strong> (v2.1): click any chip to add that domain to the include set. Nothing checked = no filter (show all). Any subset checked = show only those domains. All checked = same as none. Chips lock during a story or tour — use Reset to clear.
+    <strong>Visual encoding</strong>: node size = LoC band; fill colour = domain (Wong colourblind-safe palette); dashed border = dormant; <code>⚠</code> = silent-failure locus; <code>📄</code> = traced. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid red; declared-but-unused edges remain dashed grey.
+    <strong>Keyboard</strong>: <code>Esc</code> to clear; <code>←</code> <code>→</code> to navigate tour steps.
+    On mobile, tap <code>☰ Controls</code> for the toolbar; the side panel becomes a bottom sheet.
   </div>
 </header>
 
-<div class="toolbar" role="toolbar" aria-label="Graph controls">
+<div class="toolbar" id="toolbar" role="toolbar" aria-label="Graph controls">
   <div class="tb-group">
     <span class="tb-label">Search</span>
     <input id="search" type="text" placeholder="filter by name…" aria-label="Search nodes by name"/>
@@ -510,19 +820,49 @@
     <select id="story-select" aria-label="Preset narrative views"></select>
   </div>
   <div class="tb-group">
+    <span class="tb-label">Tour</span>
+    <select id="tour-select" aria-label="Guided tour selector">
+      <option value="">— pick a tour —</option>
+    </select>
+  </div>
+  <div class="tb-group">
+    <button class="btn" id="focus-mode" aria-pressed="false"
+            title="Hide all nodes outside 1-hop neighborhood of selected node">Focus: off</button>
+    <button class="btn" id="blast-toggle" aria-pressed="true"
+            title="Highlight transitive dependents of selected node">Blast radius: on</button>
+  </div>
+  <div class="tb-group">
     <button class="btn" id="re-explode" title="Re-run the current layout from scratch">Re-explode</button>
     <button class="btn" id="reset-view">Reset view</button>
+    <button class="btn" id="share-view" title="Copy a URL that reproduces this view">Share ↗</button>
   </div>
   <div class="tb-group" style="border-right:none;">
     <span class="filter-counter" id="filter-counter" role="status" aria-live="polite">Showing 71 of 71</span>
   </div>
 </div>
+<button class="mobile-toolbar-toggle" id="mobile-toolbar-toggle"
+        aria-controls="toolbar" aria-expanded="false">☰ Controls</button>
+
+<div class="tour-overlay" id="tour-overlay" role="region" aria-live="polite">
+  <div class="tour-header">
+    <div class="tour-title" id="tour-title">—</div>
+    <div class="tour-progress" id="tour-progress">Step 0 of 0</div>
+  </div>
+  <div class="tour-narration" id="tour-narration">—</div>
+  <div class="tour-controls">
+    <button class="btn" id="tour-prev">← Previous</button>
+    <button class="btn primary" id="tour-next">Next →</button>
+    <button class="btn tour-exit" id="tour-exit">Exit tour</button>
+  </div>
+</div>
 
 <div class="banner" id="banner" role="status" aria-live="polite"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <div class="main">
   <div id="cy" role="application" aria-label="Workspace architecture graph"></div>
   <aside class="side-panel" id="side-panel" aria-label="Detail panel">
+    <div class="mobile-sheet-handle" id="mobile-sheet-handle" aria-label="Drag to expand panel"></div>
     <button class="panel-toggle" id="panel-toggle" aria-label="Toggle detail panel">Hide ›</button>
     <div class="panel-content" id="panel-content">
       <div class="empty-panel">Click any node or edge to inspect.</div>
@@ -538,6 +878,7 @@
       <ul>
         <li><a href="./ARCHITECTURE_MAP.md" target="_blank" rel="noopener">ARCHITECTURE_MAP.md v0.7.0 (2026-05-13)</a></li>
         <li>Authoritative workspace member list via <code>cargo metadata --no-deps</code> (129 members vs map's 143 claim — see reconciliation)</li>
+        <li>Visualization v2.1 — 2026-05-15. v2.1 refinements: domain filter UX fix (empty/full set = no filter, partial = include-only) · edges colored as source-domain → target-domain linear gradients. v2.0 (2026-05-14): URL-hash state · blast-radius · guided tour · progressive-disclosure panel · focus mode · mobile layout.</li>
       </ul>
     </div>
     <div>
@@ -663,8 +1004,17 @@ document.getElementById('htu-toggle').addEventListener('click', (e) => {
 // ============================================================
 // Domain filter chips
 // ============================================================
+// v2.1 filter fix: v2 mechanism was correct (chips toggled, nodes hidden), but
+// the model was inverted from typical filter UX — chips defaulted to ON, click
+// REMOVED a domain. User reported "the graph doesn't change," which was
+// actually "unchecking one chip yielded 'hide that domain' rather than the
+// expected 'show only this domain.'" v2.1 inverts the model:
+//   * empty enabledDomains set  →  no filter, show all
+//   * partial set               →  include-only, hide non-matching
+//   * full set                  →  no filter, show all (equivalent to empty)
+// Chips default to "off" (dim). Click toggles them "on" (highlighted accent).
 const domainFilters = document.getElementById('domain-filters');
-const enabledDomains = new Set(DOMAINS.map(d => d.id));
+const enabledDomains = new Set();   // v2.1: empty by default = no filter active
 const domLabelSpan = document.createElement('span');
 domLabelSpan.className = 'tb-label';
 domLabelSpan.textContent = 'Domains';
@@ -672,23 +1022,39 @@ domainFilters.appendChild(domLabelSpan);
 DOMAINS.forEach(d => {
   const chip = document.createElement('button');
   chip.className = 'domain-chip';
-  chip.setAttribute('aria-pressed', 'true');
+  chip.setAttribute('aria-pressed', 'false');
+  chip.setAttribute('data-domain', d.id);
   chip.innerHTML = `<span class="dot" style="background:${d.color}"></span>${d.label}`;
   chip.addEventListener('click', () => {
-    const isOn = !chip.classList.contains('off');
-    if (isOn) {
-      chip.classList.add('off');
-      chip.setAttribute('aria-pressed', 'false');
-      enabledDomains.delete(d.id);
-    } else {
-      chip.classList.remove('off');
-      chip.setAttribute('aria-pressed', 'true');
-      enabledDomains.add(d.id);
-    }
+    if (chip.disabled) return;
+    const nowOn = chip.classList.toggle('on');
+    chip.setAttribute('aria-pressed', nowOn ? 'true' : 'false');
+    if (nowOn) enabledDomains.add(d.id);
+    else enabledDomains.delete(d.id);
     applyFilters();
   });
   domainFilters.appendChild(chip);
 });
+// Small hint that appears only when filter is active
+const filterHint = document.createElement('span');
+filterHint.className = 'filter-hint';
+filterHint.id = 'filter-hint';
+filterHint.textContent = '';
+domainFilters.appendChild(filterHint);
+
+function isDomainFilterActive() {
+  // Active iff non-empty AND proper subset of all domains.
+  return enabledDomains.size > 0 && enabledDomains.size < DOMAINS.length;
+}
+function updateFilterHint() {
+  const hint = document.getElementById('filter-hint');
+  if (!hint) return;
+  if (isDomainFilterActive()) {
+    hint.textContent = `(showing ${enabledDomains.size} of ${DOMAINS.length})`;
+  } else {
+    hint.textContent = '';
+  }
+}
 
 // ============================================================
 // Story dropdown
@@ -768,8 +1134,18 @@ NODES.forEach(n => {
   });
 });
 
-// Edges
+// v2.1: pre-compute the per-edge gradient stops + arrow color and store on
+// edge data. Avoids per-render function calls in the Cytoscape style block,
+// which regressed initial-render time by ~2.5s in headless tests.
+const NODE_DOMAIN_BY_ID = new Map(NODES.map(n => [n.id, n.domain]));
+function buildEdgeGradient(srcDom, tgtDom) {
+  const sc = domainColor[srcDom] || '#6e7681';
+  const tc = domainColor[tgtDom] || '#6e7681';
+  return sc + ' ' + tc;
+}
 EDGES.forEach((e, i) => {
+  const srcDom = NODE_DOMAIN_BY_ID.get(e.source) || 'examples';
+  const tgtDom = NODE_DOMAIN_BY_ID.get(e.target) || 'examples';
   cyElements.push({
     data: {
       id: `e${i}`,
@@ -780,6 +1156,8 @@ EDGES.forEach((e, i) => {
       types: e.types,
       risk: e.risk,
       optional: e.optional,
+      gradStops: buildEdgeGradient(srcDom, tgtDom),
+      arrowColor: domainColor[tgtDom] || '#6e7681',
     },
     classes: `edge kind-${e.kind} risk-${e.risk}`,
   });
@@ -882,23 +1260,31 @@ const cy = cytoscape({
         'shape': 'round-rectangle',
       }
     },
-    // Edges
+    // v2.1: Edges default to a source-domain → target-domain linear gradient.
+    // Gradient stops + arrow color are precomputed onto edge data
+    // (`data(gradStops)` / `data(arrowColor)`) to avoid per-render function
+    // mappers that regressed initial-render time.
     {
       selector: 'edge',
       style: {
-        'curve-style': 'bezier',
+        'curve-style': 'bezier',   // gradients require bezier / straight / unbundled-bezier
         'width': 1.3,
-        'line-color': '#6e7681',
-        'line-opacity': 0.55,
+        'line-fill': 'linear-gradient',
+        'line-gradient-stop-colors': 'data(gradStops)',
+        'line-gradient-stop-positions': '0 100',
+        'line-opacity': 0.65,
         'target-arrow-shape': 'triangle',
-        'target-arrow-color': '#6e7681',
+        'target-arrow-color': 'data(arrowColor)',
         'arrow-scale': 0.85,
       }
     },
+    // Risk-flagged edges revert to solid color — the safety signal overrides
+    // the cross-domain visual signal.
     {
       selector: 'edge.risk-HIGH',
       style: {
         'width': 2.2,
+        'line-fill': 'solid',
         'line-color': '#f0883e',
         'target-arrow-color': '#f0883e',
         'line-opacity': 0.85,
@@ -908,6 +1294,7 @@ const cy = cytoscape({
       selector: 'edge.risk-CRITICAL',
       style: {
         'width': 2.8,
+        'line-fill': 'solid',
         'line-color': '#f85149',
         'target-arrow-color': '#f85149',
         'line-opacity': 0.9,
@@ -916,6 +1303,7 @@ const cy = cytoscape({
     {
       selector: 'edge.kind-anomalous',
       style: {
+        'line-fill': 'solid',
         'line-color': '#f85149',
         'target-arrow-color': '#f85149',
         'width': 2.5,
@@ -925,6 +1313,7 @@ const cy = cytoscape({
     {
       selector: 'edge.kind-declared-unused',
       style: {
+        'line-fill': 'solid',
         'line-style': 'dashed',
         'line-color': '#8b949e',
         'target-arrow-color': '#8b949e',
@@ -942,13 +1331,17 @@ const cy = cytoscape({
         'border-style': 'solid',
       }
     },
+    // v2.1: selected edge keeps its gradient — distinguish via thicker stroke
+    // + shadow glow only.
     {
       selector: 'edge:selected',
       style: {
-        'line-color': '#58a6ff',
-        'target-arrow-color': '#58a6ff',
-        'width': 3,
+        'width': 3.5,
         'line-opacity': 1.0,
+        'shadow-blur': 10,
+        'shadow-color': '#58a6ff',
+        'shadow-opacity': 0.7,
+        'z-index': 90,
       }
     },
     // Dimmed
@@ -1223,40 +1616,42 @@ function traceLink(trace, section) {
   return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(trace)}${section ? ' '+escapeHtml(section) : ''}</a>`;
 }
 
+// One-line summaries (Trace-level short descriptions per ARCHITECTURE_MAP §0)
+const ONE_LINERS = {
+  'astraweave-render':         'Engine renderer. 78K LoC, 71 WGSL shaders. Canonical 32-layer terrain pipeline. Editor depends on this since Fix-27.',
+  'astraweave-physics':        'Rapier3D wrapper. PhysicsWorld + CharacterController. SpatialHash module dormant (1,038 LoC) despite doc-comment.',
+  'astraweave-fluids':         'Dormant. 84.5K LoC. Only examples/fluids_demo consumes it. Five parallel solver/manager surfaces, no game-loop deps.',
+  'astraweave-terrain':        '30+ modules including climate field, Whittaker biome lookup, regional archetype variation. Reverse-dep on gameplay (BiomeType).',
+  'astraweave-ecs':            'Archetype substrate. Generational Entity {id, generation}. Deterministic single-threaded scheduler (ParallelSchedule removed 2026-04-18).',
+  'astraweave-core':           'Foundation types: WorldSnapshot, PlanIntent, ActionStep. Plus the LEGACY core::World (HashMap-per-component) bridged by build_app.',
+  'astraweave-math':           'SIMD batch ops on Vec3/Vec4/Mat4/Quat. 1.7-2.5× over scalar glam per Week 5-6 measurements.',
+  'astraweave-sdk':            'C ABI for embedding. GameAdapter trait. One in-tree consumer (examples/sdk_c_harness).',
+  'astraweave-ai':             'AIArbiter + orchestrators. AI-first commitment. Runtime LLM defaults to phi3:medium despite Qwen3 doc-comments.',
+  'astraweave-behavior':       'Canonical GOAP + BehaviorNode enum. WorldState is BTreeMap<u32, bool> with interned keys.',
+  'astraweave-llm':            'LLM client adapters (Phi3, Hermes2Pro, Qwen3). Hardening surface (~15K LoC) shelf-stocked but bypassed at runtime.',
+  'astraweave-memory':         'Dormant. ~11K LoC. Zero in-engine production consumers; only persona uses legacy persona::* types.',
+  'astraweave-coordination':   'Dormant. ~5.3K LoC. Zero workspace consumers. 3 commented-out pub mod declarations whose source files never existed.',
+  'astraweave-rag':            'Dormant composite. Held as field in 5 dormant LLM-enhanced consumer crates. Advertised HNSW is linear scan.',
+  'astraweave-dialogue':       'Mixed. Basic DialogueGraph/DialogueRunner production-wired; llm_dialogue.rs (60% of crate) dormant.',
+  'astraweave-net':            'Snapshot-based server. IVec2 grid. JSON over WebSocket. Disjoint from astraweave-net-ecs.',
+  'astraweave-net-ecs':        'Matchmaking ECS layer. Plugin layer is dormant. Wire format mismatch with standalone server.',
+  'astraweave-persistence-ecs':'Roundtrip works. auto_save_system body is comment-only TODO; replay_system never applies events.',
+  'astraweave-input':          'Pure facade over winit + gilrs. Declared-but-unused by gameplay/ui. Editor reinvents in 2,511-LoC panel.',
+  'astraweave-audio':          'rodio facade. 5 buses (master/music/ambient/voice/SFX). !Send+!Sync so cannot be ECS Resource.',
+  'astraweave-scene':          'Transform, Node, Scene + animation ECS components. compute_poses_stub is documented stub.',
+  'astraweave-nav':            'A* pathfinding, navmesh baking, dirty region tracking.',
+  'astraweave-gameplay':       '20+ modules: combat, crafting, dialogue, quests, items, stats, biome, harvesting, weaving.',
+  'aw_editor':                 '224K LoC visual editor. EditorApp god struct (123 fields). §7.7 trap surfaced at 4 layers; Real-Fix.D pending.',
+  'examples_collapsed':        '59 example crates collapsed into one node. Notable: hello_companion, unified_showcase, fluids_demo.',
+};
+
 function renderNodePanel(n) {
   const status = n.status || 'active';
   const statusLabel = status === 'active' ? 'ACTIVE'
                     : status === 'dormant' ? 'DORMANT'
                     : status === 'partial' ? 'PARTIAL'
                     : status.toUpperCase();
-  const traceSection = n.trace ? `
-    <div class="panel-section">
-      <h3>Trace</h3>
-      <div>${traceLink(n.trace)}</div>
-      <div class="meta-row" style="margin-top:6px;font-size:11px;">
-        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#5-active-file-map" target="_blank" rel="noopener">§5 File Map</a> ·
-        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#6-conflict-map" target="_blank" rel="noopener">§6 Conflicts</a> ·
-        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#7-decision-log" target="_blank" rel="noopener">§7 Decisions</a> ·
-        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#8-invariants" target="_blank" rel="noopener">§8 Invariants</a> ·
-        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#11-open-questions" target="_blank" rel="noopener">§11 Open Questions</a>
-      </div>
-    </div>` : `
-    <div class="panel-section">
-      <h3>Trace</h3>
-      <div class="empty-panel" style="text-align:left;padding:0;font-size:12px;">No dedicated trace. Run the trace-generation prompt before non-trivial new surface.</div>
-    </div>`;
-
-  const evidence = n.statusEvidence ? `
-    <div class="panel-section">
-      <h3>Evidence</h3>
-      <div style="font-size:12px;color:var(--text-1);">${escapeHtml(n.statusEvidence)}</div>
-    </div>` : '';
-
-  const aspirational = n.aspirationalDocs ? `
-    <div class="panel-section">
-      <h3>Aspirational Documentation Drift</h3>
-      <div style="font-size:12px;color:var(--text-1);">${escapeHtml(n.aspirationalDocs)}</div>
-    </div>` : '';
+  const oneLiner = ONE_LINERS[n.id] || (n.statusEvidence ? n.statusEvidence.split('.')[0] + '.' : '(no summary — see ARCHITECTURE_MAP.md)');
 
   const inEdges = incoming.get(n.id) || [];
   const outEdges = outgoing.get(n.id) || [];
@@ -1271,56 +1666,151 @@ function renderNodePanel(n) {
     return `<li><code class="inline">${arrow}${escapeHtml(peer)}</code> ${risk}${kindMark}</li>`;
   }
 
-  const silentBlock = n.silentFailures && n.silentFailures.length ? `
-    <div class="panel-section">
-      <h3>⚠ Silent-Failure Shapes (per §4.3)</h3>
-      <ul class="compact">
-        ${n.silentFailures.map(s => `<li>${escapeHtml(s)}</li>`).join('')}
-      </ul>
-    </div>` : '';
+  // Primary actions row
+  const traceBtn = n.trace
+    ? `<a class="btn-sm" href="${TRACE_BASE}${escapeHtml(n.trace)}" target="_blank" rel="noopener">Open trace ↗</a>`
+    : `<button class="btn-sm" disabled title="No dedicated trace exists">No trace ✕</button>`;
+  const focusActive = state.focusModeActive ? 'on' : '';
+  const blastActive = state.blastEnabled ? 'on' : '';
+  const actionsRow = `
+    <div class="panel-actions">
+      ${traceBtn}
+      <button class="btn-sm ${blastActive}" id="panel-blast"
+        title="Highlight transitive dependents up to 3 hops">${state.blastEnabled ? '◉' : '○'} Blast radius</button>
+      <button class="btn-sm ${focusActive}" id="panel-focus"
+        title="Hide nodes outside 1-hop neighborhood">${state.focusModeActive ? '◉' : '○'} Focus 1-hop</button>
+      <button class="btn-sm" id="panel-center"
+        title="Center and zoom on this node">⊕ Highlight in graph</button>
+    </div>`;
 
-  const qBlock = n.openQuestions && n.openQuestions.length ? `
-    <div class="panel-section">
-      <h3>Open Questions (from §14)</h3>
-      <ul class="compact">
-        ${n.openQuestions.map(q => `<li>${escapeHtml(q)}</li>`).join('')}
-      </ul>
-    </div>` : '';
+  // Blast radius counts (if any dependents exist)
+  let blastSummary = '';
+  if (inEdges.length > 0) {
+    const radius = computeBlastRadius(n.id);
+    const N = radius.direct.size;
+    const M = radius.hop2.size + radius.hop3.size;
+    blastSummary = `
+      <div class="panel-section" style="margin-bottom:10px;">
+        <h3>Affected crates if this changes</h3>
+        <div style="font-size:12px;color:var(--text-1);line-height:1.55;">
+          <strong style="color:var(--warn);">${N} direct</strong>${M > 0 ? `, <strong>${M} transitive</strong> (within 3 hops)` : ''}. ${N === 0 ? 'No crate currently depends on this.' : 'This is dependency-graph highlighting, not behavioral simulation.'}
+        </div>
+        ${N > 0 ? `<details style="margin-top:8px;"><summary>Direct dependents <span class="count">(${N})</span></summary>
+          <div class="details-body"><ul class="compact">
+            ${Array.from(radius.direct).sort().map(id => `<li><code class="inline">${escapeHtml(id)}</code></li>`).join('')}
+          </ul></div></details>` : ''}
+      </div>`;
+  }
 
-  const exampleBlock = n.isExample && n.exampleList ? `
-    <div class="panel-section">
-      <h3>Collapsed examples (${n.exampleList.length})</h3>
-      <div style="font-size:11px;color:var(--text-1);max-height:200px;overflow-y:auto;font-family:ui-monospace,monospace;">
-        ${n.exampleList.map(name => `<div>${escapeHtml(name)}</div>`).join('')}
+  // Trace section
+  const traceDeepLinks = n.trace ? `
+    <div class="details-body">
+      <div style="font-size:11px;line-height:1.7;">
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#5-active-file-map" target="_blank" rel="noopener">§5 File Map</a> ·
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#6-conflict-map" target="_blank" rel="noopener">§6 Conflicts</a> ·
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#7-decision-log" target="_blank" rel="noopener">§7 Decisions</a> ·
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#8-invariants" target="_blank" rel="noopener">§8 Invariants</a> ·
+        <a href="${TRACE_BASE}${escapeHtml(n.trace)}#11-open-questions" target="_blank" rel="noopener">§11 Open Questions</a>
       </div>
     </div>` : '';
 
+  const evidenceBody = n.statusEvidence ? `
+      <details><summary>Status evidence <span class="count">${escapeHtml(status)}</span></summary>
+        <div class="details-body" style="color:var(--text-1);">${escapeHtml(n.statusEvidence)}</div>
+      </details>` : '';
+
+  const aspirationalBody = n.aspirationalDocs ? `
+      <details><summary>📜 Aspirational documentation drift <span class="count">§7.1</span></summary>
+        <div class="details-body" style="color:var(--text-1);">${escapeHtml(n.aspirationalDocs)}</div>
+      </details>` : '';
+
+  const depsBody = `
+    <details>
+      <summary>Dependencies <span class="count">${inEdges.length} ↑ in · ${outEdges.length} ↓ out</span></summary>
+      <div class="details-body">
+        ${inEdges.length ? `<div style="margin:4px 0 8px 0;"><strong style="font-size:11px;color:var(--text-1);text-transform:uppercase;letter-spacing:0.5px;">Used by (${inEdges.length})</strong>
+          <ul class="compact" style="margin-top:4px;">${inEdges.map(e => edgeLine(e, true)).join('')}</ul></div>` : ''}
+        ${outEdges.length ? `<div><strong style="font-size:11px;color:var(--text-1);text-transform:uppercase;letter-spacing:0.5px;">Depends on (${outEdges.length})</strong>
+          <ul class="compact" style="margin-top:4px;">${outEdges.map(e => edgeLine(e, false)).join('')}</ul></div>` : ''}
+        ${!inEdges.length && !outEdges.length ? '<div style="font-size:12px;color:var(--text-2);font-style:italic;">No declared dependencies in either direction.</div>' : ''}
+      </div>
+    </details>`;
+
+  // Integration types — show if this crate is a source-of-shared-types per §6.1
+  const sharedTypeRows = [];
+  outEdges.forEach(e => { if (e.types && e.types.length && e.risk !== 'LOW') sharedTypeRows.push(e); });
+  inEdges.forEach(e => { if (e.types && e.types.length && e.risk !== 'LOW') sharedTypeRows.push(e); });
+  const intTypesBody = sharedTypeRows.length ? `
+    <details>
+      <summary>Integration types <span class="count">§6.1 · ${sharedTypeRows.length} seam${sharedTypeRows.length === 1 ? '' : 's'}</span></summary>
+      <div class="details-body">
+        <ul class="compact">${sharedTypeRows.map(e => {
+          const dir = e.source === n.id ? '→' : '←';
+          const peer = e.source === n.id ? e.target : e.source;
+          return `<li><code class="inline">${dir} ${escapeHtml(peer)}</code> <span class="risk-pill ${e.risk}">${e.risk}</span><br>
+            <span style="font-size:11px;color:var(--text-1);">${e.types.map(escapeHtml).join(', ')}</span></li>`;
+        }).join('')}</ul>
+      </div>
+    </details>` : '';
+
+  // Open questions — only if §14 names this crate
+  const qBody = n.openQuestions && n.openQuestions.length ? `
+    <details>
+      <summary>Open questions <span class="count">§14 · ${n.openQuestions.length}</span></summary>
+      <div class="details-body"><ul class="compact">${n.openQuestions.map(q => `<li>${escapeHtml(q)}</li>`).join('')}</ul></div>
+    </details>` : '';
+
+  // Silent failures — only if §4.3 names this crate
+  const silentBody = n.silentFailures && n.silentFailures.length ? `
+    <details>
+      <summary>⚠ Silent-failure shapes <span class="count">§4.3 · ${n.silentFailures.length}</span></summary>
+      <div class="details-body"><ul class="compact">${n.silentFailures.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul></div>
+    </details>` : '';
+
+  const exampleBody = n.isExample && n.exampleList ? `
+    <details>
+      <summary>Collapsed examples <span class="count">${n.exampleList.length} crates</span></summary>
+      <div class="details-body" style="max-height:240px;overflow-y:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--text-1);">
+        ${n.exampleList.map(name => `<div>${escapeHtml(name)}</div>`).join('')}
+      </div>
+    </details>` : '';
+
+  const traceBody = n.trace ? `
+    <details>
+      <summary>Trace deep-links <span class="count">${escapeHtml(n.trace)}</span></summary>
+      ${traceDeepLinks}
+    </details>` : '';
+
   panelContent.innerHTML = `
-    <div class="panel-section">
+    <div class="panel-section" style="margin-bottom:6px;">
       <h3>Crate</h3>
       <h2>${escapeHtml(n.label)}</h2>
-      <div class="meta-row"><span class="key">Domain</span>
-        <span class="val"><span class="badge-dot" style="background:${domainColor[n.domain]||'#888'}"></span>${escapeHtml(n.domainLabel)}</span></div>
-      <div class="meta-row"><span class="key">Status</span>
-        <span class="val"><span class="status-pill ${status}">${statusLabel}</span></span></div>
-      <div class="meta-row"><span class="key">LoC band</span><span class="val">${escapeHtml(n.locBand)}${n.locApprox ? ' (~'+n.locApprox.toLocaleString()+' lines)' : ''}</span></div>
-      <div class="meta-row"><span class="key">Kind</span><span class="val">${escapeHtml(n.kind || '-')}</span></div>
+      <div class="meta-grid">
+        <span class="key">Domain</span><span class="val"><span class="badge-dot" style="background:${domainColor[n.domain]||'#888'}"></span>${escapeHtml(n.domainLabel)}</span>
+        <span class="key">Status</span><span class="val"><span class="status-pill ${status}">${statusLabel}</span></span>
+        <span class="key">LoC band</span><span class="val">${escapeHtml(n.locBand)}${n.locApprox ? ' (~'+n.locApprox.toLocaleString()+')' : ''}</span>
+      </div>
+      <div class="one-liner">${escapeHtml(oneLiner)}</div>
     </div>
-    ${evidence}
-    ${aspirational}
-    ${traceSection}
-    ${silentBlock}
-    ${qBlock}
-    <div class="panel-section">
-      <h3>Outgoing dependencies (${outEdges.length})</h3>
-      <ul class="compact">${outEdges.map(e => edgeLine(e, false)).join('') || '<li style="color:var(--text-2);font-style:italic;">none</li>'}</ul>
-    </div>
-    <div class="panel-section">
-      <h3>Incoming dependents (${inEdges.length})</h3>
-      <ul class="compact">${inEdges.map(e => edgeLine(e, true)).join('') || '<li style="color:var(--text-2);font-style:italic;">none</li>'}</ul>
-    </div>
-    ${exampleBlock}
+    ${actionsRow}
+    ${blastSummary}
+    ${traceBody}
+    ${depsBody}
+    ${intTypesBody}
+    ${qBody}
+    ${silentBody}
+    ${evidenceBody}
+    ${aspirationalBody}
+    ${exampleBody}
   `;
+
+  // Wire up the panel's primary-action buttons
+  const panelBlast = document.getElementById('panel-blast');
+  const panelFocus = document.getElementById('panel-focus');
+  const panelCenter = document.getElementById('panel-center');
+  if (panelBlast) panelBlast.addEventListener('click', () => toggleBlast());
+  if (panelFocus) panelFocus.addEventListener('click', () => toggleFocus());
+  if (panelCenter) panelCenter.addEventListener('click', () => centerOnNode(n.id));
 }
 
 function renderEdgePanel(e) {
@@ -1471,6 +1961,9 @@ dormancyFilter.addEventListener('change', applyFilters);
 function applyFilters() {
   const q = searchInput.value.trim().toLowerCase();
   const dorm = dormancyFilter.value;
+  // v2.1 model: domain filter is only "active" when the user has picked a
+  // proper subset. Empty set or full set both mean "no filter applied."
+  const domainFilterActive = isDomainFilterActive();
   let visibleCount = 0;
   const totalCount = cy.nodes(':child').length;
   const visiblePerDomain = {};
@@ -1478,7 +1971,7 @@ function applyFilters() {
     const d = n.data();
     let visible = true;
     if (q && !d.label.toLowerCase().includes(q)) visible = false;
-    if (!enabledDomains.has(d.domain)) visible = false;
+    if (domainFilterActive && !enabledDomains.has(d.domain)) visible = false;
     if (dorm === 'active' && d.status !== 'active') visible = false;
     if (dorm === 'dormant' && d.status === 'active') visible = false;
     if (dorm === 'silent' && !d.hasSilent) visible = false;
@@ -1510,6 +2003,7 @@ function applyFilters() {
     ? `Showing ${visibleCount} of ${totalCount}  (filtered)`
     : `Showing ${visibleCount} of ${totalCount}`;
   counter.classList.toggle('filtered', filtered);
+  updateFilterHint();
 }
 
 // ============================================================
@@ -1564,6 +2058,13 @@ document.getElementById('show-path').addEventListener('click', () => {
 // ============================================================
 storySelect.addEventListener('change', (e) => applyStory(e.target.value));
 
+// v2.1: disable/enable domain chips during a curated view so the user can't
+// fight the story or tour with their own filter input. Re-enabled on
+// reset, on tour exit, or when returning to 'free' story.
+function setChipsEnabled(enabled) {
+  document.querySelectorAll('.domain-chip').forEach(c => c.disabled = !enabled);
+}
+
 function applyStory(id) {
   cy.elements().removeClass('dimmed highlighted path-edge path-node');
   const story = STORIES.find(s => s.id === id);
@@ -1572,8 +2073,13 @@ function applyStory(id) {
   if (id === 'free') {
     banner.classList.remove('active');
     banner.innerHTML = '';
+    // v2.1: re-enable chips when returning to free exploration (unless a tour
+    // is still active — the tour driver re-enables on exit).
+    if (typeof state === 'undefined' || !state.currentTour) setChipsEnabled(true);
     return;
   }
+  // v2.1: during a story preset, lock the filter chips.
+  setChipsEnabled(false);
   banner.classList.add('active');
   banner.innerHTML = `<strong>${escapeHtml(story.title)}</strong> — ${escapeHtml(story.banner)}`;
   if (story.dimRest) cy.elements().addClass('dimmed');
@@ -1620,12 +2126,14 @@ document.getElementById('reset-view').addEventListener('click', () => {
   searchInput.value = '';
   dormancyFilter.value = 'all';
   storySelect.value = 'free';
-  // Reset domain chips
+  // v2.1: Reset domain chips back to empty (no-filter) state. All chips
+  // become un-highlighted and re-enabled (in case a story disabled them).
+  enabledDomains.clear();
   DOMAINS.forEach((d, i) => {
     const chip = domainFilters.querySelectorAll('.domain-chip')[i];
-    chip.classList.remove('off');
-    chip.setAttribute('aria-pressed', 'true');
-    enabledDomains.add(d.id);
+    chip.classList.remove('on');
+    chip.setAttribute('aria-pressed', 'false');
+    chip.disabled = false;
   });
   // Reset counter
   applyFilters();
@@ -1648,6 +2156,616 @@ document.addEventListener('keydown', (e) => {
 cy.one('layoutstop', () => {
   cy.fit(undefined, 40);
 });
+
+// ============================================================
+// ===  v2 module: state, blast radius, focus, URL hash,
+// ===            guided tour, mobile interactions
+// ============================================================
+
+// Central state object — single source of truth for URL hash encoding.
+const state = {
+  selectedNodeId: null,
+  blastEnabled: true,        // on by default once a node is selected
+  focusModeActive: false,    // off by default
+  currentTour: null,         // { tourId, stepIndex }
+};
+
+// Look up the full node record from NODES by id (we passed reconstructed
+// objects to renderNodePanel originally; the unified setSelectedNode does
+// not need that).
+const NODE_BY_ID = new Map(NODES.map(n => [n.id, n]));
+
+// ----------------------------------------------------------------
+// Inject style rules for the v2 cytoscape classes that didn't exist
+// in v1. Done programmatically so we don't touch the cy() init block.
+// ----------------------------------------------------------------
+cy.style()
+  .selector('.blast-direct')
+    .style({ 'border-color': '#f0883e', 'border-width': 5, 'opacity': 1.0,
+             'background-blacken': -0.15 })
+  .selector('.blast-h2')
+    .style({ 'border-color': '#f0883e', 'border-width': 3, 'opacity': 0.75 })
+  .selector('.blast-h3')
+    .style({ 'border-color': '#f0883e', 'border-width': 2, 'opacity': 0.55 })
+  .selector('.blast-faded')
+    .style({ 'opacity': 0.20, 'text-opacity': 0.2 })
+  // v2.1: blast-edge thickens but retains the source→target domain gradient
+  // (preserves the cross-domain visual signal — see spec note option (b)).
+  .selector('edge.blast-edge')
+    .style({ 'opacity': 0.95, 'width': 3.6, 'z-index': 50 })
+  .selector('.focus-hidden')
+    .style({ 'opacity': 0.05, 'text-opacity': 0 })
+  .selector('.tour-highlight')
+    .style({ 'border-color': '#D55E00', 'border-width': 5 })
+  .update();
+
+// ----------------------------------------------------------------
+// Blast-radius computation (BFS over INCOMING edges — i.e. "who
+// would be affected if this node changes")
+// ----------------------------------------------------------------
+function computeBlastRadius(nodeId, maxHops = 3) {
+  const direct = new Set();
+  const hop2 = new Set();
+  const hop3 = new Set();
+  const seen = new Set([nodeId]);
+  let frontier = [nodeId];
+  for (let hop = 1; hop <= maxHops; hop++) {
+    const next = [];
+    frontier.forEach(id => {
+      const inEdges = incoming.get(id) || [];
+      inEdges.forEach(e => {
+        if (seen.has(e.source)) return;
+        seen.add(e.source);
+        next.push(e.source);
+        if (hop === 1) direct.add(e.source);
+        else if (hop === 2) hop2.add(e.source);
+        else if (hop === 3) hop3.add(e.source);
+      });
+    });
+    frontier = next;
+    if (!frontier.length) break;
+  }
+  return { direct, hop2, hop3, all: seen };
+}
+
+function applyBlastHighlight() {
+  // Clear previous
+  cy.elements().removeClass('blast-direct blast-h2 blast-h3 blast-faded blast-edge');
+  if (!state.selectedNodeId || !state.blastEnabled) return;
+  const r = computeBlastRadius(state.selectedNodeId);
+  // Fade the whole graph except: selected node, direct, hop2, hop3
+  const keep = new Set([state.selectedNodeId, ...r.direct, ...r.hop2, ...r.hop3]);
+  cy.nodes(':child').forEach(n => {
+    if (!keep.has(n.id())) n.addClass('blast-faded');
+  });
+  r.direct.forEach(id => cy.getElementById(id).addClass('blast-direct'));
+  r.hop2.forEach(id => cy.getElementById(id).addClass('blast-h2'));
+  r.hop3.forEach(id => cy.getElementById(id).addClass('blast-h3'));
+  // Edges connecting blast-radius nodes
+  cy.edges().forEach(e => {
+    if (keep.has(e.data('source')) && keep.has(e.data('target'))) {
+      e.addClass('blast-edge');
+    } else {
+      e.addClass('blast-faded');
+    }
+  });
+}
+
+// ----------------------------------------------------------------
+// Focus mode (1-hop neighborhood — both directions)
+// ----------------------------------------------------------------
+function applyFocusMode() {
+  cy.elements().removeClass('focus-hidden');
+  if (!state.focusModeActive || !state.selectedNodeId) return;
+  const neighbors = new Set([state.selectedNodeId]);
+  (outgoing.get(state.selectedNodeId) || []).forEach(e => neighbors.add(e.target));
+  (incoming.get(state.selectedNodeId) || []).forEach(e => neighbors.add(e.source));
+  cy.nodes(':child').forEach(n => {
+    if (!neighbors.has(n.id())) n.addClass('focus-hidden');
+  });
+  cy.edges().forEach(e => {
+    if (!neighbors.has(e.data('source')) || !neighbors.has(e.data('target'))) {
+      e.addClass('focus-hidden');
+    }
+  });
+}
+
+function clearHighlights() {
+  cy.elements().removeClass('blast-direct blast-h2 blast-h3 blast-faded blast-edge focus-hidden');
+}
+
+// ----------------------------------------------------------------
+// Unified selection entry point
+// ----------------------------------------------------------------
+function setSelectedNode(id, opts = {}) {
+  const skipHashUpdate = !!opts.skipHashUpdate;
+  if (!id) {
+    state.selectedNodeId = null;
+    clearHighlights();
+    cy.$(':selected').unselect();
+    panelContent.innerHTML = '<div class="empty-panel">Click any node or edge to inspect.</div>';
+    if (!skipHashUpdate) updateHash();
+    return;
+  }
+  const node = NODE_BY_ID.get(id);
+  if (!node) return;
+  state.selectedNodeId = id;
+  // Update Cytoscape selection visually
+  cy.$(':selected').unselect();
+  const cyNode = cy.getElementById(id);
+  if (cyNode.length) cyNode.select();
+  renderNodePanel(node);
+  // Apply visual modes
+  applyBlastHighlight();
+  applyFocusMode();
+  if (!skipHashUpdate) updateHash();
+}
+
+function toggleBlast() {
+  state.blastEnabled = !state.blastEnabled;
+  const btn = document.getElementById('blast-toggle');
+  btn.textContent = `Blast radius: ${state.blastEnabled ? 'on' : 'off'}`;
+  btn.setAttribute('aria-pressed', state.blastEnabled ? 'true' : 'false');
+  applyBlastHighlight();
+  if (state.selectedNodeId) renderNodePanel(NODE_BY_ID.get(state.selectedNodeId));
+  updateHash();
+}
+function toggleFocus() {
+  state.focusModeActive = !state.focusModeActive;
+  const btn = document.getElementById('focus-mode');
+  btn.textContent = `Focus: ${state.focusModeActive ? 'on' : 'off'}`;
+  btn.setAttribute('aria-pressed', state.focusModeActive ? 'true' : 'false');
+  applyFocusMode();
+  if (state.selectedNodeId) renderNodePanel(NODE_BY_ID.get(state.selectedNodeId));
+  updateHash();
+}
+function centerOnNode(id) {
+  const n = cy.getElementById(id);
+  if (!n.length) return;
+  cy.animate({ center: { eles: n }, zoom: 1.4 }, { duration: 350 });
+}
+
+// Wire toolbar toggles
+document.getElementById('blast-toggle').addEventListener('click', toggleBlast);
+document.getElementById('focus-mode').addEventListener('click', toggleFocus);
+
+// Override v1's cy.on('tap', 'node') to route through setSelectedNode.
+// We can't easily un-bind the v1 handler (it doesn't use a named function),
+// so we add a second handler that runs AFTER it and synchronises state.
+cy.on('tap', 'node', (evt) => {
+  const t = evt.target;
+  if (t.isParent()) return;
+  if (pickMode === 'A' || pickMode === 'B') return; // path-pick fall-through
+  setSelectedNode(t.id(), { skipHashUpdate: false });
+});
+// Background tap clears selection (and clears blast/focus side-effects)
+cy.on('tap', (evt) => {
+  if (evt.target === cy) {
+    if (state.selectedNodeId) setSelectedNode(null);
+  }
+});
+
+// ----------------------------------------------------------------
+// Improvement 1: URL-hash state persistence
+// ----------------------------------------------------------------
+function encodeState() {
+  const parts = [];
+  if (state.selectedNodeId) parts.push('selected=' + encodeURIComponent(state.selectedNodeId));
+  const story = storySelect.value;
+  if (story && story !== 'free') parts.push('story=' + encodeURIComponent(story));
+  // v2.1: domains encoded as the include-set, only when filter is active
+  // (non-empty proper subset). Empty and full sets are both "no filter."
+  if (isDomainFilterActive()) {
+    parts.push('domains=' + encodeURIComponent([...enabledDomains].join(',')));
+  }
+  if (dormancyFilter.value && dormancyFilter.value !== 'all') {
+    parts.push('dormancy=' + encodeURIComponent(dormancyFilter.value));
+  }
+  if (searchInput.value) parts.push('q=' + encodeURIComponent(searchInput.value));
+  const lay = document.getElementById('layout-select').value;
+  if (lay && lay !== 'fcose') parts.push('layout=' + encodeURIComponent(lay));
+  if (sidePanel.classList.contains('collapsed')) parts.push('panel=closed');
+  if (state.focusModeActive) parts.push('focus=1');
+  if (!state.blastEnabled) parts.push('blast=0');
+  if (pathA && pathB) parts.push('path=' + encodeURIComponent(pathA + '>>' + pathB));
+  if (state.currentTour) {
+    parts.push('tour=' + encodeURIComponent(state.currentTour.tourId + ':' + state.currentTour.stepIndex));
+  }
+  return parts.length ? '#' + parts.join('&') : '';
+}
+
+let hashUpdateScheduled = false;
+function updateHash() {
+  if (hashUpdateScheduled) return;
+  hashUpdateScheduled = true;
+  // Debounce: coalesce rapid state changes into one history entry.
+  requestAnimationFrame(() => {
+    hashUpdateScheduled = false;
+    const newHash = encodeState();
+    if (newHash !== window.location.hash) {
+      try {
+        history.replaceState(null, '', window.location.pathname +
+                             window.location.search + newHash);
+      } catch (_) {
+        window.location.hash = newHash;
+      }
+    }
+  });
+}
+
+function decodeHash() {
+  const raw = (window.location.hash || '').replace(/^#/, '');
+  if (!raw) return {};
+  const out = {};
+  raw.split('&').forEach(pair => {
+    const [k, v] = pair.split('=');
+    if (!k) return;
+    out[decodeURIComponent(k)] = v == null ? true : decodeURIComponent(v);
+  });
+  return out;
+}
+
+function restoreFromHash() {
+  const s = decodeHash();
+  if (!Object.keys(s).length) return;
+  // Domains — v2.1: payload is the include set; default = empty (no filter)
+  if (s.domains) {
+    const wanted = new Set(s.domains.split(','));
+    enabledDomains.clear();
+    DOMAINS.forEach((d, i) => {
+      const chip = domainFilters.querySelectorAll('.domain-chip')[i];
+      if (wanted.has(d.id)) {
+        enabledDomains.add(d.id);
+        chip.classList.add('on');
+        chip.setAttribute('aria-pressed', 'true');
+      } else {
+        chip.classList.remove('on');
+        chip.setAttribute('aria-pressed', 'false');
+      }
+    });
+  }
+  // Dormancy
+  if (s.dormancy) dormancyFilter.value = s.dormancy;
+  // Search
+  if (s.q) searchInput.value = s.q;
+  // Layout
+  if (s.layout) {
+    const sel = document.getElementById('layout-select');
+    if ([...sel.options].some(o => o.value === s.layout)) {
+      sel.value = s.layout;
+      runLayout(s.layout);
+    }
+  }
+  // Apply filters now that domain/dormancy/q are set
+  applyFilters();
+  // Story (override layout dimming)
+  if (s.story) {
+    storySelect.value = s.story;
+    applyStory(s.story);
+  }
+  // Focus + blast
+  if (s.focus === '1' || s.focus === true) {
+    state.focusModeActive = true;
+    const btn = document.getElementById('focus-mode');
+    btn.textContent = 'Focus: on';
+    btn.setAttribute('aria-pressed', 'true');
+  }
+  if (s.blast === '0') {
+    state.blastEnabled = false;
+    const btn = document.getElementById('blast-toggle');
+    btn.textContent = 'Blast radius: off';
+    btn.setAttribute('aria-pressed', 'false');
+  }
+  // Panel state
+  if (s.panel === 'closed') {
+    sidePanel.classList.add('collapsed');
+    document.getElementById('panel-toggle').textContent = '‹ Open';
+  }
+  // Selected node (must come after applyStory so it overrides dimming)
+  if (s.selected) {
+    setSelectedNode(s.selected, { skipHashUpdate: true });
+  }
+  // Path
+  if (s.path && s.path.includes('>>')) {
+    const [a, b] = s.path.split('>>');
+    pathA = a; pathB = b;
+    document.getElementById('path-a').textContent = a;
+    document.getElementById('path-b').textContent = b;
+    updatePathBtn();
+    document.getElementById('show-path').click();
+  }
+  // Tour (must be last — overrides other view state with tour's preset)
+  if (s.tour && s.tour.includes(':')) {
+    const [tourId, stepStr] = s.tour.split(':');
+    const stepIdx = parseInt(stepStr, 10);
+    if (TOURS.find(t => t.id === tourId) && !isNaN(stepIdx)) {
+      startTour(tourId, stepIdx);
+    }
+  }
+}
+
+// Hook the existing filter/story/layout/panel handlers to update the hash
+// after their state changes. We attach these as additional listeners so we
+// don't have to rewrite the v1 handlers.
+[searchInput, dormancyFilter, document.getElementById('layout-select'),
+ document.getElementById('story-select')].forEach(el => {
+  el.addEventListener('change', updateHash);
+  if (el.tagName === 'INPUT') el.addEventListener('input', updateHash);
+});
+// Domain chip clicks: the v1 listener mutates enabledDomains then calls
+// applyFilters(); we just listen on the parent and call updateHash() after.
+domainFilters.addEventListener('click', () => requestAnimationFrame(updateHash));
+document.getElementById('panel-toggle').addEventListener('click',
+  () => requestAnimationFrame(updateHash));
+
+// Share button
+function showToast(msg, durationMs = 2200) {
+  const t = document.getElementById('toast');
+  t.innerHTML = msg;
+  t.classList.add('visible');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => t.classList.remove('visible'), durationMs);
+}
+document.getElementById('share-view').addEventListener('click', () => {
+  updateHash();
+  setTimeout(() => {
+    const url = window.location.href;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(
+        () => showToast('<strong>Copied URL ✓</strong> — paste it to share this exact view'),
+        () => showToast(`<strong>Copy failed.</strong> URL: <code>${escapeHtml(url)}</code>`)
+      );
+    } else {
+      showToast(`<strong>URL:</strong> <code>${escapeHtml(url)}</code>`);
+    }
+  }, 50); // give updateHash's rAF a tick
+});
+
+// ----------------------------------------------------------------
+// Improvement 3: Guided tour
+// ----------------------------------------------------------------
+const TOURS = [
+  {
+    id: 'onboarding',
+    title: 'First-time onboarding',
+    duration: '~10 minutes',
+    steps: [
+      {
+        title: 'The eight domains',
+        preset: 'free',
+        customViz: (cy) => { /* free exploration, no filtering */ },
+        narration: `The workspace is organised into <strong>eight domain groupings</strong> visible as labelled compound boxes: Core, AI, Rendering, Physics &amp; World, Gameplay, Networking, Tools, and the collapsed Examples bundle. Each is colour-coded with a Wong colourblind-safe palette. Node size encodes LoC band; dashed borders mark dormant crates; <code>⚠</code> overlays mark silent-failure loci; <code>📄</code> overlays mark traced subsystems. Spend a moment scanning the layout — the relative position of clusters and the density of inter-cluster edges already tells you a lot.`,
+      },
+      {
+        title: 'The foundation — Core domain',
+        preset: null,
+        customViz: () => filterToDomains(['core']),
+        narration: `<code>astraweave-ecs</code>, <code>astraweave-math</code>, <code>astraweave-core</code>, and <code>astraweave-sdk</code> are the foundation layer that nearly everything else depends on. Two structural facts to internalise now: (1) the workspace carries <strong>two <code>World</code> types</strong> — the modern archetype substrate in <code>astraweave-ecs</code> and a legacy HashMap-per-component <code>World</code> still alive in <code>astraweave-core</code>, bridged by <code>build_app</code>. (2) <code>ParallelSchedule</code> was removed 2026-04-18; the scheduler is now deterministic single-threaded. See <code>ecs_math_core_sdk_foundation.md</code> §1, §6, §7.`,
+      },
+      {
+        title: 'The AI-first commitment',
+        preset: null,
+        customViz: () => filterToDomains(['ai']),
+        narration: `The AI pipeline is the engine's first-class citizen — validated at <strong>12,700+ agents @ 60 FPS</strong>. The canonical loop is <strong>Perception → Reasoning → Planning → Action</strong>: <code>build_ai_snapshots</code> → <code>WorldSnapshot</code> → <code>AIArbiter</code> → <code>Orchestrator.plan()</code> → <code>PlanIntent</code> → <code>tool_sandbox</code> → engine-side <code>validate_and_execute</code>. <code>ai_pipeline.md</code> documents eight subsystem traces under this domain — and most of those subsystems are <strong>dormant</strong>: Memory (~11K LoC), Coordination (~5.3K), RAG composite (~12.3K), Advanced GOAP (~16.7K), LLM Production Hardening (~15K). Two GOAP implementations coexist; the runtime LLM default is <code>phi3:medium</code> despite Qwen3 doc-comments.`,
+      },
+      {
+        title: 'The rendering surface',
+        preset: 'editor_engine_render',
+        narration: `<strong>Fix-27</strong> (2026-04-04) eliminated the editor's parallel FastPreview rendering pipeline — ~4,000 LoC deleted, <code>astraweave-render</code> is now a REQUIRED non-optional dep of <code>aw_editor</code>. The editor-engine boundary is the most critical integration seam in the workspace; the load-bearing surface is <code>Renderer::draw_into(view, depth_view, encoder)</code> (Real-Fix.A 2026-05-07). Real-Fix.B/C unified terrain mesh and texture flows. Real-Fix.D is pending. See <code>render_pipeline_material_system_shader_infrastructure.md</code> §6, §7 and ARCHITECTURE_MAP §6.5.`,
+      },
+      {
+        title: 'The dual-World bridge',
+        preset: 'dual_world_bridge',
+        narration: `Take a closer look at the transitional coexistence. <code>astraweave_ecs::World</code> (archetype substrate, generational <code>Entity{id, generation}</code>) lives alongside <code>astraweave_core::World</code> (HashMap-per-component, bare <code>u32</code> Entity). They are bridged inside an <code>App</code> by <code>astraweave_core::ecs_adapter::build_app</code>. Downstream consumers see either or both depending on which Resource they request. There is no retirement campaign for the legacy World; this is open question <strong>Q1</strong> in §14 of the architecture map.`,
+      },
+      {
+        title: "What's not running — dormant surface",
+        preset: 'dormant_surface',
+        narration: `Around <strong>200K LoC across the workspace is dormant</strong>: passes its own tests, has zero production consumers. This is the signature of breadth-first AI-augmented development, <em>not</em> a flaw — many of these subsystems are forward-design infrastructure waiting for production wiring. Largest single reservoir is <code>astraweave-fluids</code> (~84.5K, only <code>examples/fluids_demo</code> uses it). See §5 of the architecture map for the six-category inventory. Before adding any new subsystem, check this view first — there's a good chance the surface already exists.`,
+      },
+      {
+        title: 'Silent failures — where to look when something silently no-ops',
+        preset: 'silent_failures',
+        narration: `Twelve load-bearing silent-failure shapes survive across the workspace per §4.3: <code>let _ =</code> / <code>.ok()</code> on user-facing fallible operations, TODO-only function bodies, no-op stubs that look like real functions. If a feature "silently no-ops" the bug is overwhelmingly likely to be one of these. Click any highlighted node to see the file:line citations. <code>auto_save_system</code> body is a comment-only TODO. HMAC server verification always fails (16-byte sig vs 32-byte HMAC-SHA256) — failure is <code>warn!</code> only. <code>safe_llm_invoke</code> has zero workspace callers.`,
+      },
+      {
+        title: 'Where to go next',
+        preset: 'free',
+        customViz: () => filterToDomains(DOMAINS.map(d => d.id)),
+        narration: `You now have the workspace's load-bearing skeleton. Suggested next steps: <strong>(1)</strong> read <code>ARCHITECTURE_MAP.md</code> end-to-end, <strong>(2)</strong> pick a traced subsystem matching your interest and read its trace (the trace files under <code>docs/architecture/</code> are forensic references — file map, conflict map, decision log, invariants, open questions), <strong>(3)</strong> use the <strong>Blast radius</strong> toggle on any node before modifying it — the panel shows direct and transitive dependents within 3 hops. The <strong>Share</strong> button copies a URL that reproduces your current view, useful for debugging architectural questions with a colleague.`,
+      },
+    ],
+  },
+];
+
+function filterToDomains(domainIds) {
+  // v2.1: Helper for tour custom-viz. Sets the include-set to the given list
+  // and lights up the matching chips. When domainIds === all 8 domains, the
+  // applyFilters() call treats it as "no filter" (full set special case).
+  enabledDomains.clear();
+  domainIds.forEach(id => enabledDomains.add(id));
+  DOMAINS.forEach((d, i) => {
+    const chip = domainFilters.querySelectorAll('.domain-chip')[i];
+    if (enabledDomains.has(d.id)) {
+      chip.classList.add('on');
+      chip.setAttribute('aria-pressed', 'true');
+    } else {
+      chip.classList.remove('on');
+      chip.setAttribute('aria-pressed', 'false');
+    }
+  });
+  storySelect.value = 'free';
+  applyStory('free');
+  applyFilters();
+  // Fit to visible
+  setTimeout(() => {
+    const vis = cy.nodes(':child').filter(n => !n.hasClass('hidden'));
+    if (vis.length) cy.fit(vis, 80);
+  }, 100);
+}
+
+// Populate tour selector
+const tourSelect = document.getElementById('tour-select');
+TOURS.forEach(t => {
+  const opt = document.createElement('option');
+  opt.value = t.id;
+  opt.textContent = `${t.title} (${t.duration})`;
+  tourSelect.appendChild(opt);
+});
+
+function startTour(tourId, stepIdx = 0) {
+  const tour = TOURS.find(t => t.id === tourId);
+  if (!tour) return;
+  state.currentTour = { tourId, stepIndex: Math.max(0, Math.min(stepIdx, tour.steps.length - 1)) };
+  tourSelect.value = tourId;
+  setChipsEnabled(false);  // v2.1: lock filter chips while a tour is in progress
+  renderTourStep();
+  updateHash();
+}
+
+function renderTourStep() {
+  if (!state.currentTour) return;
+  const tour = TOURS.find(t => t.id === state.currentTour.tourId);
+  const step = tour.steps[state.currentTour.stepIndex];
+  if (!step) return;
+  // Show overlay, hide free banner
+  document.getElementById('tour-overlay').classList.add('active');
+  document.getElementById('banner').classList.remove('active');
+  document.getElementById('tour-title').textContent = step.title;
+  document.getElementById('tour-progress').textContent =
+    `Step ${state.currentTour.stepIndex + 1} of ${tour.steps.length}`;
+  document.getElementById('tour-narration').innerHTML = step.narration;
+  document.getElementById('tour-prev').disabled = state.currentTour.stepIndex === 0;
+  document.getElementById('tour-next').disabled =
+    state.currentTour.stepIndex >= tour.steps.length - 1;
+  // Apply step's visualization
+  clearHighlights();
+  if (step.preset) {
+    storySelect.value = step.preset;
+    applyStory(step.preset);
+  } else {
+    storySelect.value = 'free';
+    applyStory('free');
+  }
+  if (step.customViz) step.customViz(cy);
+}
+function tourNext() {
+  if (!state.currentTour) return;
+  const tour = TOURS.find(t => t.id === state.currentTour.tourId);
+  if (state.currentTour.stepIndex < tour.steps.length - 1) {
+    state.currentTour.stepIndex++;
+    renderTourStep();
+    updateHash();
+  }
+}
+function tourPrev() {
+  if (!state.currentTour) return;
+  if (state.currentTour.stepIndex > 0) {
+    state.currentTour.stepIndex--;
+    renderTourStep();
+    updateHash();
+  }
+}
+function tourExit() {
+  state.currentTour = null;
+  document.getElementById('tour-overlay').classList.remove('active');
+  tourSelect.value = '';
+  storySelect.value = 'free';
+  applyStory('free');
+  setChipsEnabled(true);   // v2.1: restore filter-chip interactivity
+  applyFilters();
+  cy.fit(undefined, 40);
+  updateHash();
+}
+
+tourSelect.addEventListener('change', (e) => {
+  if (e.target.value) startTour(e.target.value);
+});
+document.getElementById('tour-next').addEventListener('click', tourNext);
+document.getElementById('tour-prev').addEventListener('click', tourPrev);
+document.getElementById('tour-exit').addEventListener('click', tourExit);
+
+// Tour keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (!state.currentTour) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowRight') tourNext();
+  else if (e.key === 'ArrowLeft') tourPrev();
+});
+
+// ----------------------------------------------------------------
+// Improvement 6: Mobile interactions
+// ----------------------------------------------------------------
+// 6a. Hamburger toggles toolbar on mobile
+document.getElementById('mobile-toolbar-toggle').addEventListener('click', (e) => {
+  const tb = document.getElementById('toolbar');
+  const open = tb.classList.toggle('mobile-open');
+  e.target.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+
+// 6b. Bottom-sheet drag: clicking the handle expands/collapses the panel.
+const sheetHandle = document.getElementById('mobile-sheet-handle');
+if (sheetHandle) {
+  sheetHandle.addEventListener('click', () => {
+    sidePanel.classList.toggle('mobile-expanded');
+  });
+}
+
+// 6c. On mobile, selecting a node should expand the sheet so the user can
+//     actually read the panel.
+function expandPanelOnMobile() {
+  if (window.innerWidth <= 768) {
+    sidePanel.classList.add('mobile-expanded');
+  }
+}
+const origSetSelected = setSelectedNode;
+// (already wired; just expand sheet when a node is selected)
+cy.on('tap', 'node', (evt) => {
+  if (!evt.target.isParent() && pickMode == null) expandPanelOnMobile();
+});
+
+// ----------------------------------------------------------------
+// Reset view also clears v2 state
+// ----------------------------------------------------------------
+const v1ResetBtn = document.getElementById('reset-view');
+v1ResetBtn.addEventListener('click', () => {
+  state.selectedNodeId = null;
+  state.focusModeActive = false;
+  state.blastEnabled = true;
+  // Reset toggle button labels
+  const fb = document.getElementById('focus-mode');
+  fb.textContent = 'Focus: off';
+  fb.setAttribute('aria-pressed', 'false');
+  const bb = document.getElementById('blast-toggle');
+  bb.textContent = 'Blast radius: on';
+  bb.setAttribute('aria-pressed', 'true');
+  clearHighlights();
+  if (state.currentTour) tourExit();
+  panelContent.innerHTML = '<div class="empty-panel">Click any node or edge to inspect.</div>';
+  // Defer hash clear so v1 handler runs first
+  requestAnimationFrame(() => updateHash());
+});
+
+// ----------------------------------------------------------------
+// Restore state from URL hash on load (after fcose layout settles)
+// ----------------------------------------------------------------
+function restoreOnLoad() {
+  try { restoreFromHash(); } catch (e) { console.warn('hash restore failed:', e); }
+}
+// Wait for initial layout to settle before restoring (so cy.fit calls work)
+let restoreAttempts = 0;
+function tryRestore() {
+  if (restoreAttempts++ > 20) { restoreOnLoad(); return; }
+  if (cy.nodes(':child').length && currentLayoutName) {
+    restoreOnLoad();
+  } else {
+    setTimeout(tryRestore, 100);
+  }
+}
+setTimeout(tryRestore, 400);
+
+// Listen for browser back/forward navigation (hash changes)
+window.addEventListener('hashchange', restoreOnLoad);
 </script>
 
 </body>
