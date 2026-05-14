@@ -30,7 +30,7 @@
 **The world's first AI-native game engine with deterministic ECS architecture where AI agents are first‑class citizens.**  
 Built in Rust, designed for massive-scale intelligent worlds with production-grade performance.
 
-📚 [Documentation](docs/) • 📊 [Benchmarks](docs/masters/MASTER_BENCHMARK_REPORT.md) • 🗺️ [Roadmap](docs/masters/MASTER_ROADMAP.md)• 🧪 [Coverage](docs/masters/MASTER_COVERAGE_REPORT.md) • ⚡ [Interactive Dashboard](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/) •  🌐  [Github Pages](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/)  
+📚 [Documentation](docs/) • 📊 [Benchmarks](docs/masters/MASTER_BENCHMARK_REPORT.md) • 🗺️ [Roadmap](docs/masters/MASTER_ROADMAP.md)• 🧪 [Coverage](docs/masters/MASTER_COVERAGE_REPORT.md) • 🕸️ [Workspace Map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/) • ⚡ [Interactive Dashboard](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/) •  🌐  [Github Pages](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/)  
 
 
 
@@ -86,6 +86,7 @@ cargo run -p unified_showcase --release
 
 **Key Documentation**:
 - [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) — Crate relationships, editor viewport pipeline, data flow diagrams
+- 🕸️ [**Interactive Workspace Map**](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/) — Cytoscape.js-powered live visualization of the 71 production crates and 188 dependencies. Hover or click any node for crate detail (domain, status, LoC, trace link); click any edge for the load-bearing types flowing across the boundary. Toggle **blast-radius highlighting** to see what depends on a crate before you change it, or launch the **8-step guided tour** for a 10-minute architectural walk-through. Domain filter, focus mode, dependency-path finder, and shareable URL-hash state make it the fastest way to orient in the 850 K+ LoC workspace.
 - [Editor Behavioral Audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md) — 37-fix correctness audit with visual, data pipeline, and state machine verification
 - [Unified Pipeline Plan](docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md) — 7-phase architectural refactor eliminating the dual rendering pipeline
 
