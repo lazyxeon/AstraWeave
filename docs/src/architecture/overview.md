@@ -2,6 +2,33 @@
 
 AstraWeave represents a fundamental shift in game engine design: instead of treating AI as an afterthought, it places intelligent agents at the core of the architecture. This document explains the key architectural decisions and how they enable truly AI-native gameplay.
 
+<!--
+  Trace-campaign note added 2026-05-15.
+  Source: ARCHITECTURE_MAP.md v0.7.0 §0 (Trace Index) and workspace_map.html.
+  Surfaces the existence of the authoritative architecture documentation set so
+  readers know where the load-bearing detail lives.
+-->
+
+```admonish info title="Where the load-bearing architecture documentation lives"
+This page is a conceptual orientation. For evidence-grounded, version-controlled
+detail on how the engine actually works, the architecture trace campaign produces
+authoritative references:
+
+* **[Interactive workspace map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/)** — Cytoscape.js visualisation of 71 production
+  crates and 188 dependencies with blast-radius highlighting, an 8-step guided
+  tour, dependency-path finder, focus mode, and per-crate trace links.
+* **[`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md)** — 2,500-line consolidated synthesis covering crate dependency
+  graph, structural axioms, dormant-code inventory, integration seams, data-flow
+  paths, and 23 cross-cutting open questions.
+* **[13 per-subsystem traces](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/tree/main/docs/architecture)** under `docs/architecture/` — each a forensic reference with file map,
+  conflict map, decision log, invariants, and open questions. Trace docs are
+  treated as part of the production contract (per `CLAUDE.md`) — when subsystem
+  code changes, the trace updates in the same commit.
+
+The trace toolkit (5 prompt templates under `docs/architecture/_meta/`) makes the
+methodology re-runnable as the codebase evolves.
+```
+
 ## Core Philosophy: AI-First Design
 
 Traditional game engines follow this pattern:

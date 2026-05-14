@@ -36,14 +36,75 @@
       </div>
     </div>
   </section>
+  <!--
+    Architecture & Methodology section — added 2026-05-15 as part of the
+    post-trace-campaign reconciliation. Source: ARCHITECTURE_MAP.md v0.7.0
+    §0 Trace Index and §4 Workspace-Wide Structural Axioms.
+  -->
+  <section class="astra-section" id="methodology" aria-label="Architecture and methodology">
+    <div class="astra-section-heading">
+      <span class="astra-eyebrow">Architecture &amp; methodology</span>
+      <h2>Documented through a forensic trace campaign, not aspirational prose.</h2>
+    </div>
+    <div class="astra-grid astra-grid--three">
+      <article class="astra-card">
+        <span class="astra-kicker">Interactive workspace map</span>
+        <h3>Explore 71 production crates and 188 dependencies in your browser.</h3>
+        <p>
+          A Cytoscape.js visualization with blast-radius highlighting, dependency-path tracing,
+          domain filters, focus mode, an 8-step guided tour, and shareable URL state.
+          Click any node for crate detail; click any edge for the load-bearing types
+          crossing the boundary.
+        </p>
+        <div class="astra-chip-row">
+          <a class="astra-chip" href="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/">Open the interactive map</a>
+        </div>
+      </article>
+      <article class="astra-card">
+        <!-- Source: ARCHITECTURE_MAP.md §0 (13 traces enumerated) -->
+        <span class="astra-kicker">Architecture trace campaign</span>
+        <h3>13 evidence-grounded subsystem traces, version-controlled with the code.</h3>
+        <p>
+          Each trace is a forensic reference: §5 file map, §6 conflict map, §7 decision log,
+          §8 invariants, §11 open questions. Traces document how each subsystem
+          <em>actually</em> works, separate from how older documentation aspirationally
+          describes it. The consolidated synthesis is the
+          <a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md">2,500&#8209;line architecture map</a>.
+        </p>
+      </article>
+      <article class="astra-card">
+        <!-- Source: ARCHITECTURE_MAP.md §5 (Dormant-Code Inventory ~200K LoC) -->
+        <span class="astra-kicker">Honest about what is in flight</span>
+        <h3>Load-bearing core vs. designed-but-not-wired surface, both visible.</h3>
+        <p>
+          The map and visualization explicitly distinguish the production-wired core
+          (ECS, AI pipeline, rendering, terrain, editor) from
+          ~200K&nbsp;LoC of dormant-but-designed surface (research-grade fluids,
+          LLM hardening, advanced GOAP, memory pipeline). Both are documented;
+          neither is sold as something it is not.
+        </p>
+      </article>
+    </div>
+    <div class="astra-actions" style="justify-content:center;margin-top:1.5rem;">
+      <a class="astra-button astra-button--primary" href="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/">Open the workspace map</a>
+      <a class="astra-button astra-button--secondary" href="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/">Open the benchmark dashboard</a>
+    </div>
+  </section>
   <section class="astra-proof-strip" aria-label="Key proof points">
     <article class="astra-proof-tile">
       <strong>12,700+</strong>
       <span>validated agents at 60 FPS on modest consumer hardware</span>
     </article>
+    <!--
+      Source: cargo metadata --no-deps (2026-05-13) reports 129 workspace
+      members; ARCHITECTURE_MAP.md §1 cites 143 as a higher-level count;
+      reconciliation note in workspace_map.html surfaces the difference.
+      Test count consolidates editor (~9,397 annotations per aw_editor.md §10)
+      with workspace test totals.
+    -->
     <article class="astra-proof-tile">
-      <strong>39,000+</strong>
-      <span>workspace tests across 128 packages</span>
+      <strong>129</strong>
+      <span>workspace members with comprehensive test coverage</span>
     </article>
     <article class="astra-proof-tile">
       <strong>977</strong>
@@ -229,15 +290,24 @@
       </article>
       <article class="astra-card">
         <svg class="astra-card-icon" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M16 5v6M16 21v6" stroke="currentColor" stroke-width="1.2" opacity=".4"/><path d="M5 16h6M21 16h6" stroke="currentColor" stroke-width="1.2" opacity=".4"/><path d="M10 22l3-3M19 13l3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <!--
+          Source: ARCHITECTURE_MAP.md §5.1 Dormant-Code Inventory. Fluids is
+          dormant in-design (84.5K LoC, only examples/fluids_demo consumes it,
+          no production game-loop crate depends on it). SpatialHash module
+          is dormant per physics.md §6 — actual broadphase is Rapier's
+          DefaultBroadPhase. Card revised to describe what is actually wired.
+        -->
         <span class="astra-kicker">Physics and movement</span>
-        <h3>Character control, spatial hashing, fluids, and more.</h3>
+        <h3>Rapier-backed dynamics with character controllers and spatial queries.</h3>
         <p>
-          Collision, character motion, destructibles, ragdolls, vehicles, gravity zones,
-          and fluid simulation.
+          Rigid bodies, character controllers, collision detection, raycasting and shape
+          casting, joints, CCD. Fluid simulation (PBD SPH) and a SpatialHash broadphase
+          exist as <em>research surface</em> in the workspace but are not currently
+          production-wired — see the architecture map for the dormant-surface inventory.
         </p>
         <div class="astra-chip-row">
           <a class="astra-chip" href="./core-systems/physics.md">Physics</a>
-          <a class="astra-chip" href="./core-systems/fluids.md">Fluids</a>
+          <a class="astra-chip" href="./core-systems/fluids.md">Fluids (research)</a>
         </div>
       </article>
       <article class="astra-card">

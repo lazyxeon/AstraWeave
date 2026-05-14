@@ -2,6 +2,28 @@
 
 The AstraWeave physics system provides comprehensive 3D physics simulation through integration with [Rapier](https://rapier.rs/), a high-performance physics engine written in Rust.
 
+<!--
+  Reconciliation note added 2026-05-15 (trace campaign).
+  Source: ARCHITECTURE_MAP.md §7.2 doc-comment migration drift, physics.md §1, §6, §11.
+  The lib.rs:25-26 doc-comment advertises SpatialHash as the broadphase with
+  "99.96% pair reduction"; the actual broadphase is Rapier's DefaultBroadPhase.
+  SpatialHash (1,038 LoC) is dormant in production — test-file-only consumers,
+  zero benches. Tracked as Q19 in §14.
+-->
+
+```admonish warning title="Doc-comment drift: SpatialHash is not the broadphase"
+The `astraweave-physics` crate-level doc-comment (`lib.rs:25-26`) advertises a
+`SpatialHash` broadphase claiming "99.96% pair reduction vs brute-force." That
+module exists (1,038 LoC) but is **dormant in production** — the actual broadphase
+is Rapier's `DefaultBroadPhase` (`lib.rs:907`). `SpatialHash` is consumed only by
+test files (4 test files / 33 `#[test]` attributes; zero benches). Tracked as Q19
+in `ARCHITECTURE_MAP.md` §14. See [`physics.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/physics.md) §6 for the full trap analysis.
+
+Other documented stubs in the same crate: `process_destructible_hits` (no-op,
+zero callers), `add_water_aabb` (no-op stub with `{}` body), `add_destructible_box`
+ignores its `_health` / `_break_impulse` parameters.
+```
+
 ## Overview
 
 ```admonish info

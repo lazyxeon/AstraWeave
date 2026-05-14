@@ -1,314 +1,141 @@
-# Roadmap
-
-This document outlines the development roadmap for AstraWeave, including current status, planned features, and long-term vision.
-
-## Current Status
-
-**Version**: 0.1.0 (Alpha)
-
-AstraWeave is currently in active development. The core systems are functional but APIs may change before 1.0.
-
-### Stability Matrix
-
-| System | Status | API Stability |
-|--------|--------|---------------|
-| ECS | Stable | High |
-| Rendering | Beta | Medium |
-| Physics | Stable | High |
-| AI/LLM | Beta | Medium |
-| Audio | Stable | High |
-| Networking | Alpha | Low |
-| Editor | Alpha | Low |
-
-## Recently Completed Milestones
-
-| Milestone | Date | Tests | Highlights |
-|-----------|------|-------|------------|
-| **Blueprint Zone Editor** | Mar 2026 | 125+ | Polygon zone editor, Replica/Inspired placement, heightmap injection, 3D overlay |
-| **Blend Import Pipeline** | Feb 2026 | 97 | .blend scene decomposition, BiomePack bridge, texture processing, editor panel |
-| **Veilweaver Vertical Slice** | Feb 2026 | 320 | 5-phase game slice, dialogue, cinematics, boss HUD, determinism validation |
-| **Miri Memory Safety** | Feb 2026 | 977 | 4 crates validated, zero undefined behavior |
-| **Fluids System (A+)** | Jan 2026 | 4,907 | SPH/FLIP simulation, comprehensive test suite |
-| **AI-Orchestrated Terrain** | Dec 2025 | 2,536 | TerrainSolver, NavMesh rebaking, terrain persistence |
-| **Rendering Pipeline** | Dec 2025 | 806+ | PBR/IBL, CSM shadows, headless support, post-processing |
-
-## Near-Term (Q1-Q2 2026)
-
-### v0.2.0 - Polish Release
-
-Focus: Stability and developer experience.
-
-- [ ] **API Stabilization**
-  - Finalize core ECS APIs
-  - Stabilize component derive macros
-  - Lock down resource patterns
-
-- [ ] **Documentation**
-  - Complete API documentation
-  - Add more tutorials
-  - Video walkthroughs
-
-- [ ] **Tooling**
-  - Improved editor prototype
-  - Better debugging tools
-  - Asset pipeline improvements
-
-- [ ] **Performance**
-  - Rendering optimization
-  - AI tick budgeting improvements
-  - Memory usage reduction
-
-### v0.3.0 - AI Enhancement
-
-Focus: Advanced AI capabilities.
-
-- [ ] **LLM Improvements**
-  - Multi-provider support (OpenAI, Anthropic, local)
-  - Streaming responses
-  - Function calling standardization
-  - Context window management
-
-- [ ] **Behavior Systems**
-  - Visual behavior tree editor
-  - GOAP improvements
-  - Utility AI integration
-
-- [ ] **Memory Systems**
-  - Improved episodic memory
-  - Semantic search with embeddings
-  - Memory persistence
-
-- [ ] **AI Characters**
-  - Personality templates
-  - Dynamic relationship modeling
-  - Emotion simulation
-
-## Mid-Term (Q3-Q4 2026)
-
-### v0.4.0 - Content Creation
-
-Focus: Procedural content and world building.
-
-- [ ] **PCG Framework**
-  - Dungeon generation improvements
-  - Terrain generation enhancements
-  - AI-assisted content creation
-
-- [ ] **World Streaming**
-  - Large world support
-  - Seamless level streaming
-  - Background loading
-
-- [ ] **Quest System**
-  - Dynamic quest generation
-  - Branching narratives
-  - AI-driven story adaptation
-
-### v0.5.0 - Editor & Tools
-
-Focus: Complete development environment.
-
-- [ ] **Visual Editor**
-  - Scene editing
-  - Prefab system
-  - Play-in-editor
-
-- [ ] **Asset Pipeline**
-  - Automated texture processing
-  - Model optimization
-  - Audio processing
-
-- [ ] **Debugging**
-  - In-game console
-  - Entity inspector
-  - Performance profiler
-
-- [ ] **Scripting**
-  - Rhai scripting integration
-  - Hot-reload for scripts
-  - Visual scripting (prototype)
-
-## Long-Term (2027+)
-
-### v1.0.0 - Production Ready
-
-Focus: Stability for production games.
-
-- [ ] **API Freeze**
-  - Stable, documented APIs
-  - Semantic versioning
-  - Deprecation policy
-
-- [ ] **Platform Support**
-  - Windows, Linux, macOS (native)
-  - WebAssembly
-  - Console support (planned)
-
-- [ ] **Performance Guarantees**
-  - Documented performance characteristics
-  - Benchmark suite
-  - Regression testing
-
-- [ ] **Security**
-  - Security audit
-  - Sandboxed scripting
-  - Save file validation
-
-### Future Vision
-
-Features being considered for post-1.0:
-
-- **Console Ports**: PlayStation, Xbox, Nintendo Switch support
-- **VR/AR**: Virtual and augmented reality support
-- **Cloud Gaming**: Streaming and cloud save integration
-- **Multiplayer**: Advanced networking and matchmaking
-- **Marketplace**: Asset and plugin marketplace
-- **AI Cloud**: Optional cloud-based AI processing
-- **Mobile**: iOS and Android support
-
-## Feature Requests
-
-### How to Request Features
-
-1. **Check existing requests**: Search [GitHub Issues](https://github.com/astraweave/astraweave/issues)
-2. **Create a discussion**: Use [GitHub Discussions](https://github.com/astraweave/astraweave/discussions) for initial feedback
-3. **Submit formal request**: Create an issue with the `feature-request` label
-
-### Prioritization Criteria
-
-Features are prioritized based on:
-
-| Factor | Weight |
-|--------|--------|
-| Community interest | High |
-| Development effort | Medium |
-| Strategic alignment | High |
-| Maintainability | Medium |
-| Performance impact | Medium |
-
-### Most Requested Features
-
-Current top community requests:
-
-1. Visual scripting
-2. More platform support
-3. VR integration
-4. Advanced networking
-5. Asset marketplace
-
-## Deprecation Policy
-
-### Pre-1.0
-
-During alpha/beta:
-- APIs may change with each minor version
-- Breaking changes documented in changelog
-- Migration guides provided for significant changes
-
-### Post-1.0
-
-After 1.0 release:
-- Deprecated features marked with `#[deprecated]`
-- 2 minor versions before removal
-- Clear migration documentation
-
-## Release Schedule
-
-### Versioning
-
-We follow [Semantic Versioning](https://semver.org/):
-- **MAJOR**: Breaking changes
-- **MINOR**: New features, backward compatible
-- **PATCH**: Bug fixes
-
-### Release Cadence
-
-| Phase | Cadence |
-|-------|---------|
-| Alpha | As needed |
-| Beta | Monthly |
-| Stable | Quarterly |
-
-### Support Policy
-
-| Version | Support Duration |
-|---------|-----------------|
-| Current | Full support |
-| Previous minor | Security fixes |
-| Older | Community only |
-
-## Contributing to Roadmap
-
-### How to Help
-
-1. **Implement Features**: Check `help wanted` issues
-2. **Provide Feedback**: Test pre-release versions
-3. **Write Documentation**: Help document new features
-4. **Create Examples**: Build showcase projects
-
-### RFC Process
-
-For major changes:
-
-1. Create RFC in Discussions
-2. Gather community feedback
-3. Core team review
-4. Implementation (if approved)
-
-### Roadmap Updates
-
-This roadmap is updated:
-- After each major release
-- Quarterly for minor adjustments
-- As needed for significant changes
-
-## Milestones
-
-### Completed Milestones
-
-| Milestone | Date | Highlights |
-|-----------|------|------------|
-| Initial Release | 2025 Q4 | Core ECS, basic rendering |
-| AI Integration | 2025 Q4 | LLM support, behavior trees |
-
-### Upcoming Milestones
-
-| Milestone | Target | Goals |
-|-----------|--------|-------|
-| Beta Release | 2026 Q2 | Stable APIs, documentation |
-| Editor Preview | 2026 Q3 | Basic visual editor |
-| 1.0 Release | 2027 Q1 | Production ready |
-
-## Risk Factors
-
-### Technical Risks
-
-| Risk | Mitigation |
-|------|------------|
-| LLM API changes | Abstraction layer, multiple providers |
-| Performance challenges | Continuous benchmarking, optimization focus |
-| Platform compatibility | Early testing on all platforms |
-
-### Project Risks
-
-| Risk | Mitigation |
-|------|------------|
-| Scope creep | Clear prioritization, phased releases |
-| Maintainer burnout | Community building, shared ownership |
-| Funding | Exploring sustainability options |
-
-## Community Involvement
-
-The roadmap reflects community input:
-
-- **Surveys**: Periodic community surveys
-- **Voting**: Feature request voting on GitHub
-- **Discussions**: Open planning discussions
-- **Contributors**: Active contributors help shape direction
-
-## Related Documentation
-
-- [Contributing](../dev/contributing.md) - How to contribute
-- [Community](community.md) - Join the community
-- [FAQ](faq.md) - Frequently asked questions
-- [Best Practices](best-practices.md) - Current best practices
+<!--
+  Roadmap page — replaced 2026-05-15 as part of the post-trace-campaign
+  reconciliation.
+  Source: ARCHITECTURE_MAP.md v0.7.0 (overall synthesis), §5 (dormancy inventory),
+  §14 (23 cross-cutting open questions), CLAUDE.md (project mandate and methodology).
+  The pre-trace roadmap framed "Fluids System (A+)" as a completed milestone and
+  marked Audio as "Stable / High API stability" — both contradicted by trace evidence.
+  Replaced with an honest project-status page per the prompt's Addition 3.
+-->
+
+# Project Status
+
+```admonish info title="What this page is"
+This page reflects the engineering reality surfaced by the architecture trace
+campaign as of `ARCHITECTURE_MAP.md` v0.7.0 (2026-05-13). It supersedes earlier
+roadmap documents that framed designed-but-not-wired surface as shipping features.
+For navigation, the [interactive workspace map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/)
+visualises the same information.
+```
+
+## What this project is
+
+AstraWeave is an **active, solo-built, research-grade AI-native game engine** in
+development as the runtime for the **Veilweaver** game project. It is not a
+shipping engine product. Its distinguishing engineering practice is the
+*architecture trace campaign* — a 13-subsystem forensic documentation effort that
+produces evidence-grounded, version-controlled traces of how the engine actually
+works, separate from how older documentation aspirationally describes it.
+
+The engine is built through AI-augmented development under the
+**Genesis Code Protocol (GCP)**. The trace campaign is GCP applied at the
+documentation/audit meta-level — a counterweight to the AI-generated drift that
+otherwise accumulates in a 850K+ LoC workspace.
+
+## What's working today
+
+<!-- Source: ARCHITECTURE_MAP.md §3 (Public API Surface), §8 (Data Flow Paths) -->
+
+* **Deterministic ECS substrate** — `astraweave-ecs` archetype storage,
+  generational `Entity { id, generation }`, deterministic single-threaded
+  scheduler (8 stages, executed in fixed order per tick). `ParallelSchedule`
+  removed 2026-04-18; parallelism lives at the subsystem level (rayon, tokio,
+  GPU compute) per `docs/audits/parallel_schedule_removal_2026-04-18.md`.
+* **AI-first runtime loop** — `WorldSnapshot` → `AIArbiter` → `Orchestrator.plan()`
+  → `PlanIntent` → `tool_sandbox` → engine-side `validate_and_execute`. 12,700+
+  agents at 60 FPS validated. Canonical GOAP + Behavior Trees + LLM orchestrator
+  hybrid (`astraweave-ai`, `astraweave-behavior`, `astraweave-llm`).
+* **Rendering** — `astraweave-render` 78K LoC + 71 WGSL shaders. Disney BRDF +
+  multi-scatter PBR, 4-cascade CSM shadows, IBL cubemaps, clustered forward+,
+  Lumen GI and VXGI (both implemented), TAA, SSAO/GTAO, SSGI, SSR, volumetric
+  fog, god rays, atmosphere, particle system, impostor LOD3. Editor is fully
+  unified onto this pipeline post-Fix-27 (April 2026).
+* **Terrain** — `astraweave-terrain` with climate field, Whittaker biome lookup,
+  per-biome parameter blending, regional archetype variation, 32-layer material
+  pipeline driven by `MaterialLibrary` in `astraweave-render`.
+* **Visual editor** — `tools/aw_editor` 224K LoC, 41 panel types, 49 panel files,
+  ~9,397 test annotations. Editor depends on `astraweave-render` non-optionally
+  post-Fix-27.
+* **Physics** — `astraweave-physics` wrapping Rapier3D 0.22.
+  `PhysicsWorld` + `CharacterController`. `Send + Sync`.
+* **Foundation verification** — Miri (977 tests across `ecs`, `math`, `core`,
+  `sdk` with zero undefined behavior) + Kani proofs (71+ harnesses across
+  safety-critical crates).
+
+## What's in active development
+
+<!-- Source: ARCHITECTURE_MAP.md §12 (Active Work as of 2026-05-13) -->
+
+* **Veilweaver** — the game project this engine is built for. Vertical slice
+  shipped February 2026; full game development is the next 12-18 months of
+  primary effort.
+* **Editor Multi-Tool Architecture Campaign (Sub-phase 3)** — Mediator Brush
+  diagnostic, Round 8 closure. §7.7 wrapped-component resource identity trap
+  surfaced at four layers; Real-Fix.A/B/C landed, Real-Fix.D pending. See
+  [`aw_editor.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/aw_editor.md) §1.
+* **Editor Behavioral Correctness Audit remediation** — 37 fixes across 47
+  commits shipped; per-audit open items still pending Andrew-gate. See
+  [`docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md).
+* **Architecture trace campaign** — 13 of N subsystems traced. Treated as part
+  of the production contract by `CLAUDE.md`. Adding more traces as subsystems
+  cross the non-trivial-surface threshold.
+
+## What's in-design (research surface, not currently runtime-wired)
+
+<!-- Source: ARCHITECTURE_MAP.md §5.1 (In-design-but-tested) -->
+
+Per `ARCHITECTURE_MAP.md` §5.1, the workspace carries **~200K LoC** of
+*in-design-but-tested* surface — code that passes its own tests but has zero
+production callers. This is the signature of breadth-first AI-augmented
+development, not a flaw. Each item is documented honestly as awaiting a wiring
+decision:
+
+| Subsystem | LoC | Status note |
+|---|---|---|
+| `astraweave-fluids` | ~84.5K | Only `examples/fluids_demo` consumes it. Five parallel solver surfaces, no game-loop deps. Q12 in §14. |
+| `astraweave-memory` | ~11K | Zero in-engine production consumers. Q11 in §14. |
+| `astraweave-coordination` | ~5.3K | Zero workspace consumers; 3 commented-out `pub mod` declarations. |
+| Advanced GOAP (`astraweave-ai/src/goap/`) | ~16.7K | Feature `planner_advanced`; parallel to canonical GOAP. Q2 in §14. |
+| LLM Production Hardening | ~15K | Rate limiting / circuit breakers / A/B routing / retry / telemetry / ToolGuard / 4-tier fallback — runtime path bypasses entirely. Q4 in §14. |
+| RAG composite (`astraweave-rag` + `embeddings` + `context`) | ~12.3K | Held as field by 5 dormant consumer crates. HNSW advertised; actual is linear scan. |
+| Dialogue LLM layer | ~2.9K | 60% of `astraweave-dialogue`. Basic `DialogueGraph` is production-wired; LLM layer is not. |
+| `astraweave-net-ecs` ECS Plugin layer | medium | Working tests, no production consumer; declared-but-unused dep in `astraweave-stress-test`. |
+| `astraweave-persistence-ecs` Plugin layer | medium | `auto_save_system` body is comment-only TODO; `replay_system` advances tick but never applies events. Q18 in §14. |
+
+Plus dormant scaffolding (TODO-only bodies), orphan source files, declared-but-unused
+Cargo deps, dormant feature flags, and the aspirational documentation tree from
+commit `28bc94f21`. Full taxonomy in `ARCHITECTURE_MAP.md` §5.
+
+## What's not shipping yet
+
+The engine itself. There is **no v1.0 timeline**. The engine ships when Veilweaver
+ships, which is a 12–18 month horizon as of this update (2026-05-15). API
+stability guarantees do not exist; consumers should pin to a commit.
+
+## Open questions (cross-cutting)
+
+`ARCHITECTURE_MAP.md` §14 documents **23 cross-cutting open questions** surfaced by
+the trace campaign — decisional items that affect more than one subsystem and
+require explicit Andrew-gate decisions. Highlights:
+
+* **Q1** — Long-term plan for legacy `astraweave-core::World` (dual-World coexistence).
+* **Q2** — Two GOAP implementations: consolidation roadmap?
+* **Q3** — Runtime LLM model default (currently `phi3:medium` despite Qwen3 doc-comments).
+* **Q4** — Production-hardening surface bypassed by runtime `AIArbiter` path.
+* **Q5** — §7.7 wrapped-component resource identity trap, preventive instrumentation.
+* **Q11, Q12** — Memory pipeline and Fluids dormancy: production-wire, prune, or rebrand?
+* **Q17** — Standalone server HMAC vs. XOR `sign16` mismatch.
+* **Q20** — Editor god-struct refactor (`EditorApp` 123 fields).
+
+The list is exhaustive; the architecture map is the canonical reference.
+
+## Further reading
+
+* [Interactive workspace map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/)
+  — explore the engine.
+* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md)
+  — consolidated synthesis (2,500+ lines, version-controlled).
+* [13 per-subsystem traces](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/tree/main/docs/architecture)
+  under `docs/architecture/`.
+* [Benchmark dashboard](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/)
+  — performance measurements.

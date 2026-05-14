@@ -2,8 +2,56 @@
 
 AstraWeave's AI system is the core differentiator of the engine. Unlike traditional game engines where AI is an afterthought, AstraWeave treats AI agents as first-class citizens that interact with the game world through validated tools.
 
+<!--
+  Reconciliation note added 2026-05-15 (trace campaign).
+  Source: ARCHITECTURE_MAP.md §7.2 (doc-comment migration drift), ai_pipeline.md §6,
+  §11, §13.1-§13.8.
+  Multiple subsystems documented in older pages are dormant in-design; the runtime
+  LLM default is phi3:medium despite Qwen3 doc-comments; HNSW vector index is
+  actually a linear scan; LLM production-hardening surface (~15K LoC) is bypassed
+  by the runtime AIArbiter path.
+-->
+
 ```admonish info title="AI-Native Philosophy"
 In AstraWeave, AI agents cannot cheat. They must use the same validated game systems as players, ensuring fair and emergent gameplay.
+```
+
+```admonish warning title="Pipeline status: what is wired vs. what is in-design"
+The architecture trace campaign documented eight AI subsystems (per
+[`ai_pipeline.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ai_pipeline.md) §13). Wired in the runtime today:
+
+* **`astraweave-ai`** — `AIArbiter`, `Orchestrator` trait, `LlmExecutor`, `tool_sandbox`.
+  Validated at 12,700+ agents @ 60 FPS.
+* **`astraweave-behavior`** — canonical GOAP (`BTreeMap<u32, bool>` `WorldState`,
+  interned keys, LRU plan cache) and Behavior Trees.
+* **`astraweave-llm`** — Ollama client adapters. Runtime model default is
+  **`phi3:medium`** (`orchestrator.rs:488-490`), set via the `OLLAMA_MODEL` env var.
+  Three clients (Phi3, Hermes2Pro, Qwen3) coexist; Qwen3 is supported but is not
+  the runtime default despite doc-comment phrasing like "GOAP+Qwen3 Hybrid."
+
+Dormant in-design (passes tests, zero production callers — per
+[`ai_pipeline.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ai_pipeline.md) §13 and `ARCHITECTURE_MAP.md` §5.1):
+
+* **Memory pipeline (~11K LoC)** — zero in-engine production consumers; only the
+  legacy `persona::*` types are used.
+* **Coordination crate (~5.3K)** — zero workspace consumers; three commented-out
+  `pub mod` declarations point at source files that were never created.
+* **Advanced GOAP (~16.7K)** — feature `planner_advanced`, parallel to the
+  canonical GOAP in `astraweave-behavior` (Q2 in §14).
+* **LLM Production Hardening (~15K)** — rate limiting, circuit breakers, A/B
+  routing, retry, telemetry, ToolGuard, 4-tier fallback. The runtime `AIArbiter`
+  path bypasses this entire surface.
+* **RAG composite (~12.3K)** — `RagPipeline` held as field by five LLM-enhanced
+  consumer crates, all themselves dormant. The advertised HNSW vector index in
+  `astraweave-embeddings` is actually a linear scan over a DashMap.
+* **Dialogue LLM layer (~2.9K)** — `llm_dialogue.rs`; the basic
+  `DialogueGraph`/`DialogueRunner` path is production-wired, the LLM-enhanced layer
+  is not.
+* **NPC isolated subsystem (~1.7K)** — fully isolated AI subsystem with its own
+  parallel vocabulary; zero imports of canonical AI types.
+
+The interactive workspace map's *AI Pipeline Subsystem Layout* story preset
+highlights the active and dormant surfaces side by side.
 ```
 
 ## Architecture Overview
