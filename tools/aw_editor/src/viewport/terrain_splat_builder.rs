@@ -286,10 +286,11 @@ mod tests {
     }
 
     #[test]
-    fn all_22_named_layers_paint() {
-        // Real-Fix.D primary criterion: every named material ID 0..22 must
-        // produce a non-zero contribution in the splat output.
-        for layer_id in 0..22u32 {
+    fn all_named_layers_paint() {
+        // Real-Fix.D primary criterion: every named material ID must produce
+        // a non-zero contribution in the splat output.
+        // 2026-05-15 Real-Fix.D follow-up: `default` removed; named count 22 -> 21.
+        for layer_id in 0..21u32 {
             let v = vertex_with([layer_id as f32, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]);
             let maps = build_chunk_splat_maps(&[v], 1, 1).unwrap();
             let splat_idx = (layer_id / 4) as usize;

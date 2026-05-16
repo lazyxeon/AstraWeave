@@ -10,18 +10,23 @@
 //!
 //! # Library shape
 //!
-//! 22 named materials + 10 reserved slots = 32 total layers. The canonical
-//! [`MAX_TERRAIN_LAYERS`] = 32 capacity provides headroom: future content can
-//! occupy IDs 22..32 without reopening the §7.7 wrapped-component resource
-//! identity trap.
+//! 21 named materials + 11 reserved slots = 32 total layers (post-2026-05-15
+//! Real-Fix.D follow-up cleanup: `default` removed as biome-unreferenced; see
+//! revision history below). The canonical [`MAX_TERRAIN_LAYERS`] = 32 capacity
+//! provides headroom: future content can occupy IDs 21..32 without reopening
+//! the §7.7 wrapped-component resource identity trap.
 //!
 //! # Layer ID stability
 //!
 //! Layer IDs 0..7 preserve the historical biome→layer mapping from the
 //! pre-Real-Fix.D 8-layer splat pipeline (grass=0, sand=1, forest_floor=2,
-//! mountain_rock=3, snow=4, mud=5, wood_planks=6, stone=7). IDs 8..21 add the
+//! mountain_rock=3, snow=4, mud=5, wood_planks=6, stone=7). IDs 8..20 add the
 //! materials that were previously dropped by the splat builder cap (Round-8
-//! evidence). IDs 22..31 are reserved for future expansion.
+//! evidence; minus the biome-unreferenced `default` slot removed 2026-05-15
+//! in the Real-Fix.D follow-up cleanup — IDs 12..20 are gravel, ice,
+//! metal_rusted, moss, plaster, rock_lichen, roof_tile, tree_bark,
+//! tree_leaves, renumbered from former IDs 13..21). IDs 21..31 are reserved
+//! for future expansion.
 
 /// Maximum number of terrain material layers supported by the splat pipeline.
 ///
@@ -53,7 +58,7 @@ pub struct Material {
 /// Canonical terrain material library. Single source of truth for material
 /// identity at the UI/renderer boundary.
 ///
-/// 22 named materials (IDs 0..22) + 10 reserved slots (IDs 22..32). Reserved
+/// 21 named materials (IDs 0..21) + 11 reserved slots (IDs 21..32). Reserved
 /// slots produce empty texture array layers; UI hides them; splat builder
 /// accepts material IDs up to [`MAX_TERRAIN_LAYERS`] but reserved IDs render
 /// as the fallback (layer 0).
@@ -61,7 +66,12 @@ pub struct MaterialLibrary;
 
 impl MaterialLibrary {
     /// All canonical named materials, in canonical layer-ID order.
-    const MATERIALS: [Material; 22] = [
+    ///
+    /// 2026-05-15 Real-Fix.D follow-up: `default` (formerly id=12) removed as
+    /// biome-unreferenced. IDs 12..20 renumbered (gravel=12, ice=13,
+    /// metal_rusted=14, moss=15, plaster=16, rock_lichen=17, roof_tile=18,
+    /// tree_bark=19, tree_leaves=20). IDs 0..11 unchanged.
+    const MATERIALS: [Material; 21] = [
         Material {
             id: 0,
             name: "grass",
@@ -124,51 +134,46 @@ impl MaterialLibrary {
         },
         Material {
             id: 12,
-            name: "default",
-            display_name: "Default",
-        },
-        Material {
-            id: 13,
             name: "gravel",
             display_name: "Gravel",
         },
         Material {
-            id: 14,
+            id: 13,
             name: "ice",
             display_name: "Ice",
         },
         Material {
-            id: 15,
+            id: 14,
             name: "metal_rusted",
             display_name: "Metal Rusted",
         },
         Material {
-            id: 16,
+            id: 15,
             name: "moss",
             display_name: "Moss",
         },
         Material {
-            id: 17,
+            id: 16,
             name: "plaster",
             display_name: "Plaster",
         },
         Material {
-            id: 18,
+            id: 17,
             name: "rock_lichen",
             display_name: "Rock Lichen",
         },
         Material {
-            id: 19,
+            id: 18,
             name: "roof_tile",
             display_name: "Roof Tile",
         },
         Material {
-            id: 20,
+            id: 19,
             name: "tree_bark",
             display_name: "Tree Bark",
         },
         Material {
-            id: 21,
+            id: 20,
             name: "tree_leaves",
             display_name: "Tree Leaves",
         },
@@ -221,7 +226,7 @@ impl MaterialLibrary {
 /// `MATERIAL_NAMES: [&str; 22]` from the editor before Real-Fix.D.
 ///
 /// Prefer [`MaterialLibrary::name`] / [`MaterialLibrary::named`] for new code.
-pub const MATERIAL_NAMES: [&str; 22] = [
+pub const MATERIAL_NAMES: [&str; 21] = [
     "grass",
     "sand",
     "forest_floor",
@@ -234,7 +239,6 @@ pub const MATERIAL_NAMES: [&str; 22] = [
     "dirt",
     "cobblestone",
     "cloth",
-    "default",
     "gravel",
     "ice",
     "metal_rusted",
@@ -249,7 +253,7 @@ pub const MATERIAL_NAMES: [&str; 22] = [
 /// Backwards-compatible flat display-name slice.
 ///
 /// Prefer [`MaterialLibrary::display_name`] for new code.
-pub const MATERIAL_DISPLAY_NAMES: [&str; 22] = [
+pub const MATERIAL_DISPLAY_NAMES: [&str; 21] = [
     "Grass",
     "Sand",
     "Forest Floor",
@@ -262,7 +266,6 @@ pub const MATERIAL_DISPLAY_NAMES: [&str; 22] = [
     "Dirt",
     "Cobblestone",
     "Cloth",
-    "Default",
     "Gravel",
     "Ice",
     "Metal Rusted",
@@ -286,11 +289,14 @@ mod tests {
     }
 
     #[test]
-    fn library_has_22_named_materials() {
-        assert_eq!(MaterialLibrary::named_count(), 22);
-        assert_eq!(MaterialLibrary::named().len(), 22);
-        assert_eq!(MATERIAL_NAMES.len(), 22);
-        assert_eq!(MATERIAL_DISPLAY_NAMES.len(), 22);
+    fn library_has_21_named_materials() {
+        // 2026-05-15 Real-Fix.D follow-up: `default` removed (biome-unreferenced).
+        // Allocation shifted 22 named + 10 reserved -> 21 named + 11 reserved.
+        // 32-slot MAX_TERRAIN_LAYERS capacity invariant preserved.
+        assert_eq!(MaterialLibrary::named_count(), 21);
+        assert_eq!(MaterialLibrary::named().len(), 21);
+        assert_eq!(MATERIAL_NAMES.len(), 21);
+        assert_eq!(MATERIAL_DISPLAY_NAMES.len(), 21);
     }
 
     #[test]
@@ -310,7 +316,7 @@ mod tests {
 
     #[test]
     fn get_returns_named_for_valid_ids() {
-        for id in 0..22 {
+        for id in 0..21 {
             assert!(MaterialLibrary::get(id).is_some());
             assert!(MaterialLibrary::is_named(id));
         }
@@ -318,7 +324,7 @@ mod tests {
 
     #[test]
     fn get_returns_none_for_reserved_ids() {
-        for id in 22..32 {
+        for id in 21..32 {
             assert!(MaterialLibrary::get(id).is_none());
             assert!(!MaterialLibrary::is_named(id));
             assert!(MaterialLibrary::is_in_range(id));
@@ -337,15 +343,16 @@ mod tests {
     fn name_lookup_examples() {
         assert_eq!(MaterialLibrary::name(0), Some("grass"));
         assert_eq!(MaterialLibrary::name(8), Some("rock_slate"));
-        assert_eq!(MaterialLibrary::name(21), Some("tree_leaves"));
-        assert_eq!(MaterialLibrary::name(22), None);
+        // 2026-05-15: tree_leaves renumbered 21 -> 20 after `default` removal.
+        assert_eq!(MaterialLibrary::name(20), Some("tree_leaves"));
+        assert_eq!(MaterialLibrary::name(21), None);
     }
 
     #[test]
     fn display_name_lookup_examples() {
         assert_eq!(MaterialLibrary::display_name(0), Some("Grass"));
         assert_eq!(MaterialLibrary::display_name(8), Some("Rock Slate"));
-        assert_eq!(MaterialLibrary::display_name(21), Some("Tree Leaves"));
-        assert_eq!(MaterialLibrary::display_name(22), None);
+        assert_eq!(MaterialLibrary::display_name(20), Some("Tree Leaves"));
+        assert_eq!(MaterialLibrary::display_name(21), None);
     }
 }
