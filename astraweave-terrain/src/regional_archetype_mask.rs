@@ -344,7 +344,7 @@ impl RegionalArchetypeMask {
         // Forward pass (top-left → bottom-right). Standard 3×3 chamfer
         // distance with 1.0 / sqrt(2) ≈ 1.41421356 weights.
         const W_AXIS: f32 = 1.0;
-        const W_DIAG: f32 = 1.41421356;
+        const W_DIAG: f32 = std::f32::consts::SQRT_2;
         for z in 0..res {
             for x in 0..res {
                 let idx = (z * res + x) as usize;

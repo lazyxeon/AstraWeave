@@ -903,83 +903,92 @@ impl TerrainMaterialManager {
         color_format: wgpu::TextureFormat,
         depth_format: Option<wgpu::TextureFormat>,
     ) -> &wgpu::RenderPipeline {
-        if self.pipeline_formats == Some((color_format, depth_format)) {
-            return self
-                .pipeline
-                .as_ref()
-                .expect("pipeline populated when formats match");
-        }
+        // Reuse the cached pipeline when formats match; otherwise rebuild.
+        // We `take()` the Option first so the build branch can freely borrow
+        // `&self.*_bgl` without conflicting with a later `&mut self.pipeline`
+        // (works around NLL problem case 3 without any expect/unwrap).
+        let cached = self.pipeline.take();
+        let formats_match = self.pipeline_formats == Some((color_format, depth_format));
+        let pipeline = match cached {
+            Some(p) if formats_match => p,
+            _ => {
+                let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("terrain-splat-shader"),
+                    source: wgpu::ShaderSource::Wgsl(TERRAIN_SPLAT_SHADER.into()),
+                });
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("terrain-splat-shader"),
-            source: wgpu::ShaderSource::Wgsl(TERRAIN_SPLAT_SHADER.into()),
-        });
+                let pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("terrain-splat-pipeline-layout"),
+                        bind_group_layouts: &[
+                            &self.camera_bgl,
+                            &self.terrain_bgl,
+                            &self.splat_bgl,
+                        ],
+                        push_constant_ranges: &[],
+                    });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("terrain-splat-pipeline-layout"),
-            bind_group_layouts: &[&self.camera_bgl, &self.terrain_bgl, &self.splat_bgl],
-            push_constant_ranges: &[],
-        });
+                let depth_stencil = depth_format.map(|format| wgpu::DepthStencilState {
+                    format,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                });
 
-        let depth_stencil = depth_format.map(|format| wgpu::DepthStencilState {
-            format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("terrain-splat-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[TerrainSplatVertex::LAYOUT],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[
-                    Some(wgpu::ColorTargetState {
-                        format: color_format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("terrain-splat-pipeline"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: Some("vs_main"),
+                        buffers: &[TerrainSplatVertex::LAYOUT],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: Some("fs_main"),
+                        targets: &[
+                            Some(wgpu::ColorTargetState {
+                                format: color_format,
+                                blend: Some(wgpu::BlendState::REPLACE),
+                                write_mask: wgpu::ColorWrites::ALL,
+                            }),
+                            // @location(1) normal
+                            Some(wgpu::ColorTargetState {
+                                format: color_format,
+                                blend: Some(wgpu::BlendState::REPLACE),
+                                write_mask: wgpu::ColorWrites::ALL,
+                            }),
+                            // @location(2) orm
+                            Some(wgpu::ColorTargetState {
+                                format: color_format,
+                                blend: Some(wgpu::BlendState::REPLACE),
+                                write_mask: wgpu::ColorWrites::ALL,
+                            }),
+                        ],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
                     }),
-                    // @location(1) normal
-                    Some(wgpu::ColorTargetState {
-                        format: color_format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }),
-                    // @location(2) orm
-                    Some(wgpu::ColorTargetState {
-                        format: color_format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }),
-                ],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: Some(wgpu::Face::Back),
+                        unclipped_depth: false,
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        conservative: false,
+                    },
+                    depth_stencil,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview: None,
+                    cache: None,
+                })
+            }
+        };
 
-        self.pipeline = Some(pipeline);
         self.pipeline_formats = Some((color_format, depth_format));
-        self.pipeline.as_ref().expect("pipeline just populated")
+        // `Option::insert` stores and returns `&mut T`, reborrowed as `&T`.
+        self.pipeline.insert(pipeline)
     }
 
     /// Lazily build the Phase 1 forward-lit splat pipeline (Option D).
@@ -998,80 +1007,80 @@ impl TerrainMaterialManager {
         color_format: wgpu::TextureFormat,
         depth_format: Option<wgpu::TextureFormat>,
     ) -> &wgpu::RenderPipeline {
-        if self.forward_pipeline_formats == Some((color_format, depth_format))
-            && self.forward_pipeline.is_some()
-        {
-            return self
-                .forward_pipeline
-                .as_ref()
-                .expect("forward_pipeline populated when formats match");
-        }
+        // Reuse the cached pipeline when formats match; otherwise rebuild.
+        // `take()` first so the build branch can borrow `&self.*_bgl` without
+        // conflicting with the later `&mut self.forward_pipeline`.
+        let cached = self.forward_pipeline.take();
+        let formats_match = self.forward_pipeline_formats == Some((color_format, depth_format));
+        let pipeline = match cached {
+            Some(p) if formats_match => p,
+            _ => {
+                let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("terrain-forward-shader"),
+                    source: wgpu::ShaderSource::Wgsl(TERRAIN_FORWARD_SHADER.into()),
+                });
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("terrain-forward-shader"),
-            source: wgpu::ShaderSource::Wgsl(TERRAIN_FORWARD_SHADER.into()),
-        });
+                let pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("terrain-forward-pipeline-layout"),
+                        bind_group_layouts: &[
+                            &self.forward_camera_bgl,
+                            &self.forward_terrain_bgl,
+                            &self.forward_splat_bgl,
+                        ],
+                        push_constant_ranges: &[],
+                    });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("terrain-forward-pipeline-layout"),
-            bind_group_layouts: &[
-                &self.forward_camera_bgl,
-                &self.forward_terrain_bgl,
-                &self.forward_splat_bgl,
-            ],
-            push_constant_ranges: &[],
-        });
+                let depth_stencil = depth_format.map(|format| wgpu::DepthStencilState {
+                    format,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                });
 
-        let depth_stencil = depth_format.map(|format| wgpu::DepthStencilState {
-            format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        });
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("terrain-forward-pipeline"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: Some("vs_main"),
+                        buffers: &[TerrainSplatVertex::LAYOUT],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: Some("fs_main"),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: color_format,
+                            // REPLACE: terrain is opaque and writes over whatever
+                            // geometry has already been drawn to this pixel.
+                            // Depth test gates occlusion correctness.
+                            blend: Some(wgpu::BlendState::REPLACE),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: Some(wgpu::Face::Back),
+                        unclipped_depth: false,
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        conservative: false,
+                    },
+                    depth_stencil,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview: None,
+                    cache: None,
+                })
+            }
+        };
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("terrain-forward-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[TerrainSplatVertex::LAYOUT],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    // REPLACE: terrain is opaque and writes over whatever
-                    // geometry has already been drawn to this pixel.
-                    // Depth test gates occlusion correctness.
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-        self.forward_pipeline = Some(pipeline);
         self.forward_pipeline_formats = Some((color_format, depth_format));
-        self.forward_pipeline
-            .as_ref()
-            .expect("forward_pipeline just populated")
+        // `Option::insert` stores and returns `&mut T`, reborrowed as `&T`.
+        self.forward_pipeline.insert(pipeline)
     }
 
     /// Write the Phase 1 forward-path camera UBO (96 B, matches SHADER_SRC Camera).

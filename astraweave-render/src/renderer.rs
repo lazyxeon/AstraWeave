@@ -5808,28 +5808,28 @@ fn vs(input: VSIn) -> VSOut {
 
         // --- Post-processing: bloom compute pass (runs on HDR, before blit) ---
         let bloom_intensity = if self.post_chain.bloom_enabled {
-            // Lazily create the bloom pass on first use.
+            // Lazily create the bloom pass on first use, or take the existing
+            // pass out to satisfy the borrow checker (execute() needs
+            // &mut BloomPass while we also need &self.device, &self.queue).
+            //
+            // Combining create-or-take into a single step eliminates the
+            // Option round-trip and avoids any expect() on a freshly-set Some.
             let first_create = self.bloom_pass.is_none();
-            if first_create {
-                self.bloom_pass = Some(crate::bloom::BloomPass::new(
-                    &self.device,
-                    self.config.width,
-                    self.config.height,
-                ));
-                // Apply any pending bloom config that was set before the pass existed.
-                if let Some(cfg) = self.pending_bloom_config.take() {
-                    self.bloom_pass
-                        .as_mut()
-                        .expect("just created")
-                        .set_config(cfg);
+            let mut bloom = match self.bloom_pass.take() {
+                Some(b) => b,
+                None => {
+                    let mut b = crate::bloom::BloomPass::new(
+                        &self.device,
+                        self.config.width,
+                        self.config.height,
+                    );
+                    // Apply any pending bloom config that was set before the pass existed.
+                    if let Some(cfg) = self.pending_bloom_config.take() {
+                        b.set_config(cfg);
+                    }
+                    b
                 }
-            }
-            // Take the bloom pass out to satisfy the borrow checker — execute()
-            // needs &mut BloomPass while we also need &self.device, &self.queue, etc.
-            let mut bloom = self
-                .bloom_pass
-                .take()
-                .expect("bloom_pass was just ensured to be Some");
+            };
             let cfg = bloom.config().clone();
             bloom.execute(
                 &self.device,
@@ -6805,14 +6805,18 @@ fn vs(input: VSIn) -> VSOut {
             }));
         }
 
-        // SAFETY: ext_inst_buf is guaranteed Some — allocated just above if it was None or too small.
-        self.queue.write_buffer(
-            self.ext_inst_buf
-                .as_ref()
-                .expect("ext_inst_buf allocated above"),
-            0,
-            bytemuck::cast_slice(&raw),
-        );
+        // ext_inst_buf is guaranteed Some — allocated just above if it was None
+        // or too small. The `let-else` returns early on the (unreachable) None
+        // branch as a safe fallback: skipping the upload leaves the previous
+        // instance data intact rather than crashing the frame.
+        let Some(buf) = self.ext_inst_buf.as_ref() else {
+            log::warn!(
+                target: "render",
+                "ext_inst_buf unexpectedly None after realloc guard; skipping instance upload"
+            );
+            return;
+        };
+        self.queue.write_buffer(buf, 0, bytemuck::cast_slice(&raw));
         self.ext_inst_count = instances.len() as u32;
     }
 

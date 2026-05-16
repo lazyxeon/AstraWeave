@@ -631,12 +631,10 @@ impl RenderGraph {
             alias_groups,
             release_points,
         };
-        self.compiled = Some(compiled);
-
-        Ok(self
-            .compiled
-            .as_ref()
-            .expect("BUG: compiled graph missing after assignment"))
+        // `Option::insert` stores the value and returns `&mut T`, which
+        // reborrows as `&T` for the return. Avoids the assign-then-expect
+        // round-trip on `self.compiled`.
+        Ok(self.compiled.insert(compiled))
     }
 
     /// Get the compiled graph (if `compile()` was called).

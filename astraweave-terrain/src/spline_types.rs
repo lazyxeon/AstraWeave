@@ -178,6 +178,22 @@ impl Spline1D {
         Self { control_points: vec![(0.0, 1.0)] }
     }
 
+    /// Constant spline: single control point at `(0.0, value)`. Evaluates
+    /// to `value` for any input. Infallible counterpart to
+    /// `from_control_points(vec![(0.0, value)])` for use with
+    /// compile-time-known finite values — avoids the fallible call site
+    /// (which can only fail on NaN/infinite input, neither of which is
+    /// reachable from a literal `f32` constant).
+    ///
+    /// NaN/infinite `value` produces a degenerate spline; `evaluate`
+    /// returns the stored value directly (no arithmetic on `n == 1`),
+    /// so the only observable effect is that the constant is propagated
+    /// unchanged. Callers are responsible for validating non-literal
+    /// values upstream if NaN/inf is reachable.
+    pub fn constant(value: f32) -> Self {
+        Self { control_points: vec![(0.0, value)] }
+    }
+
     /// Evaluate the spline at `input` via piecewise-linear interpolation.
     /// Out-of-domain inputs clamp to the corresponding endpoint output.
     ///
@@ -458,11 +474,7 @@ fn d5fix_baseline_spline_set() -> BootstrapSplineSet {
     BootstrapSplineSet {
         mountains_amplitude: ParamSpline {
             climate_input: ClimateInputDim::Pv,
-            spline: Spline1D::from_control_points(vec![(
-                0.0,
-                D5FIX_BASELINE_MOUNTAINS_AMPLITUDE,
-            )])
-            .expect("single-point spline with finite values is valid"),
+            spline: Spline1D::constant(D5FIX_BASELINE_MOUNTAINS_AMPLITUDE),
         },
         // Phase 1.X-F.3.B: direct f64 storage; see BootstrapSplineSet
         // doc-comment for rationale (legacy NoiseConfig.mountains.scale: f64
@@ -470,19 +482,11 @@ fn d5fix_baseline_spline_set() -> BootstrapSplineSet {
         mountains_scale: D5FIX_BASELINE_MOUNTAINS_SCALE,
         continental_scale: ParamSpline {
             climate_input: ClimateInputDim::Continentalness,
-            spline: Spline1D::from_control_points(vec![(
-                0.0,
-                D5FIX_BASELINE_CONTINENTAL_SCALE,
-            )])
-            .expect("single-point spline with finite values is valid"),
+            spline: Spline1D::constant(D5FIX_BASELINE_CONTINENTAL_SCALE),
         },
         base_elevation_amplitude: ParamSpline {
             climate_input: ClimateInputDim::Pv,
-            spline: Spline1D::from_control_points(vec![(
-                0.0,
-                D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE,
-            )])
-            .expect("single-point spline with finite values is valid"),
+            spline: Spline1D::constant(D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE),
         },
     }
 }

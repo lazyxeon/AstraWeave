@@ -289,7 +289,14 @@ pub fn smooth_shared_vertices(chunks: &mut HashMap<ChunkId, TerrainChunk>) {
 
     // Assume all chunks have the same heightmap resolution (enforced by
     // WorldGenerator::generate_chunk[_with_climate]).
-    let dim = chunks.values().next().unwrap().heightmap().resolution();
+    // The `is_empty` guard above proves there is at least one entry, but
+    // use `let-else` to avoid a clippy::unwrap_used lint hit in production
+    // code: returning early on the (unreachable) `None` branch is a safe
+    // fallback that preserves the caller-visible no-op semantics.
+    let Some(first_chunk) = chunks.values().next() else {
+        return;
+    };
+    let dim = first_chunk.heightmap().resolution();
     if dim < 2 {
         return;
     }

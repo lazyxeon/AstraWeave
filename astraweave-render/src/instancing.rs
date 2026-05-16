@@ -149,15 +149,20 @@ impl InstanceBatch {
             }));
         }
 
-        // SAFETY: buffer is guaranteed Some — allocated in the `needs_realloc` branch above,
-        // or pre-existing with sufficient capacity.
-        queue.write_buffer(
-            self.buffer
-                .as_ref()
-                .expect("instance buffer allocated above"),
-            0,
-            bytemuck::cast_slice(&instance_data),
-        );
+        // `self.buffer` is guaranteed Some — allocated in the `needs_realloc`
+        // branch above, or pre-existing with sufficient capacity. The
+        // `let-else` returns early on the (unreachable) None branch as a safe
+        // fallback: skipping the upload leaves prior instance data intact
+        // rather than crashing the frame.
+        let Some(buf) = self.buffer.as_ref() else {
+            log::warn!(
+                target: "render",
+                "instance buffer for mesh {} unexpectedly None after realloc guard; skipping upload",
+                self.mesh_id
+            );
+            return;
+        };
+        queue.write_buffer(buf, 0, bytemuck::cast_slice(&instance_data));
     }
 
     /// Clear all instances (does not free GPU buffer immediately)

@@ -54,12 +54,15 @@ impl CachedBindGroup {
         current_gen: Generation,
         rebuild: impl FnOnce() -> wgpu::BindGroup,
     ) -> &wgpu::BindGroup {
-        if self.bind_group.is_none() || self.generation != current_gen {
-            self.bind_group = Some(rebuild());
+        if self.generation != current_gen {
+            // Generation changed — force a rebuild by clearing first so
+            // `get_or_insert_with` runs the closure.
+            self.bind_group = None;
             self.generation = current_gen;
         }
-        // SAFETY: we just ensured it's Some above.
-        self.bind_group.as_ref().expect("just assigned")
+        // Returns `&mut wgpu::BindGroup`, which reborrows as `&wgpu::BindGroup`.
+        // Avoids any `expect()` round-trip on a freshly-set Some.
+        self.bind_group.get_or_insert_with(rebuild)
     }
 
     /// Explicitly invalidate the cache, forcing a rebuild on next access.
