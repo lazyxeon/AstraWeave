@@ -63,13 +63,53 @@ id = "wood_floor_deck"
 resolution = "2k"
 format = "png"
 
+# =============================================================================
+# Terrain Asset Quality Sub-phase A.1 (2026-05-15) — 9-material source
+# acquisition for Tier 1 quality upgrade. ARM map fetched per A.0.A's
+# polyhaven_map_names extension (`6d26c3c15`). Post-fetch rename + relocate
+# to assets_src/materials/<slot>.png via one-off cargo example helper
+# (compiled + run + deleted from tree post-relocation; preserved in commit
+# history of this session for A.1.B reuse if needed).
+# =============================================================================
+
 [[assets]]
-handle = "cobblestone"
+handle = "gravel"
 provider = "polyhaven"
 type = "texture"
-id = "old_stone_path"
+id = "gravel_concrete_03"
 resolution = "2k"
 format = "png"
+
+[[assets]]
+handle = "metal_rusted"
+provider = "polyhaven"
+type = "texture"
+id = "rust_coarse_01"
+resolution = "2k"
+format = "png"
+
+[[assets]]
+handle = "moss"
+provider = "polyhaven"
+type = "texture"
+id = "moss_01"
+resolution = "2k"
+format = "png"
+
+[[assets]]
+handle = "snow"
+provider = "polyhaven"
+type = "texture"
+id = "snow_03"
+resolution = "2k"
+format = "png"
+
+# Pending Sub-phase A.1.B (3 materials; eab972aea-recommended IDs returned
+# HTTP 404 at live fetch 2026-05-15; user provides verified PolyHaven IDs in
+# follow-up):
+#   ice          (recommended ice_001 -> 404)
+#   mud          (recommended mud_riverbed_01 -> 404)
+#   cobblestone  (recommended old_stone_path -> 404)
 
 [[assets]]
 handle = "sky_day"
