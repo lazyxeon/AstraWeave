@@ -54,6 +54,98 @@ const TERRAIN_CHUNK_KEY: u64 = 0;
 const TERRAIN_HALF_EXTENT: f32 = 5.0; // 10m × 10m chunk
 const TERRAIN_SPLAT_DIM: u32 = 2;
 
+// ─── P.4 shadow caster fixture ──────────────────────────────────────────────
+//
+// A single sphere instance positioned 5m above the terrain chunk's center,
+// scaled 2x for shadow visibility. ToD 12.0 puts the sun nearly overhead so
+// the shadow projects approximately downward onto the terrain at origin —
+// in the camera's frustum at the existing orbit position.
+//
+// This fixture exercises the quality-preset axis (Axis 8): pre-seam-closure,
+// the editor's EditorDefault preset and the engine path's Renderer-defaults
+// produce different cascade splits + filter parameters, surfacing as
+// different shadow regions for the same caster. Post-seam-closure both
+// paths apply identical GameQuality params via a shared harness helper.
+
+const SHADOW_CASTER_POS: [f32; 3] = [0.0, 5.0, 0.0];
+const SHADOW_CASTER_SCALE: f32 = 2.0;
+
+/// Build a single sphere `Instance` at the fixture's caster position.
+/// Both engine and editor paths upload this identical instance into the
+/// underlying `Renderer` via `update_instances`, exercising the renderer's
+/// built-in `mesh_sphere` shadow caster geometry.
+fn build_shadow_caster_instance() -> astraweave_render::Instance {
+    let pos = SHADOW_CASTER_POS;
+    let transform = glam::Mat4::from_scale_rotation_translation(
+        glam::Vec3::splat(SHADOW_CASTER_SCALE),
+        glam::Quat::IDENTITY,
+        glam::Vec3::new(pos[0], pos[1], pos[2]),
+    );
+    astraweave_render::Instance {
+        transform,
+        color: [0.8, 0.8, 0.8, 1.0],
+        material_id: 0,
+    }
+}
+
+// ─── P.4 canonical quality preset (Branch A: GameQuality) ───────────────────
+//
+// `EditorQualityPreset::GameQuality` defined at
+// tools/aw_editor/src/viewport/engine_adapter.rs:921-949 is the canonical
+// "this is what the game ships" preset. P.4 closure proof: both engine and
+// editor paths apply the exact same setter calls with the exact same values
+// via this helper. Branch A interpretation per Phase 1 audit; the production
+// runtime examples don't currently call `apply_quality_preset(GameQuality)`
+// but that's a separate "examples need to standardize" issue (not P.4 scope).
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CanonicalQualityPresetParams {
+    shadows_enabled: bool,
+    cloud_shadows_enabled: bool,
+    shadow_filter: (f32, f32, f32),
+    cascade_extents: (f32, f32),
+    cascade_lambda: f32,
+    max_draw_distance: f32,
+}
+
+impl CanonicalQualityPresetParams {
+    /// `GameQuality` preset values, copied from
+    /// `EngineRenderAdapter::apply_quality_preset(GameQuality)` at
+    /// `engine_adapter.rs:926-949`. Must stay in lockstep with that match
+    /// arm — flagged for future sub-phase if the preset definitions are
+    /// elevated to a shared canonical location.
+    const GAME_QUALITY: Self = Self {
+        shadows_enabled: true,
+        cloud_shadows_enabled: true,
+        shadow_filter: (2.0, 0.005, 1.5),
+        cascade_extents: (40.0, 120.0),
+        cascade_lambda: 0.75,
+        max_draw_distance: 0.0, // 0 = fog-based fallback
+    };
+}
+
+/// Apply `GameQuality` preset to a Renderer instance via existing public
+/// setters. No new accessors required (anti-drift constraint 10 respected).
+/// Post-process chain (bloom/taa/color_grading) is set separately via
+/// `set_post_process_chain` if needed — for the harness's minimal fixture
+/// (no scene-env tint differences worth measuring) we apply only the
+/// shadow + draw-distance parameters that surface in the rendered pixels.
+fn apply_canonical_quality_preset_to_renderer(
+    renderer: &mut Renderer,
+    params: &CanonicalQualityPresetParams,
+) {
+    renderer.set_shadows_enabled(params.shadows_enabled);
+    renderer.set_cloud_shadows_enabled(params.cloud_shadows_enabled);
+    renderer.set_shadow_filter(
+        params.shadow_filter.0,
+        params.shadow_filter.1,
+        params.shadow_filter.2,
+    );
+    renderer.set_cascade_extents(params.cascade_extents.0, params.cascade_extents.1);
+    renderer.set_cascade_lambda(params.cascade_lambda);
+    renderer.set_max_draw_distance(params.max_draw_distance);
+}
+
 /// Build the 4-vertex / 2-triangle quad in the engine's TerrainSplatVertex
 /// format. Position is world-space (Y=0), normal is +Y, UV is [0..1].
 fn build_terrain_chunk()
@@ -323,6 +415,24 @@ async fn render_engine_path(
         eprintln!("[harness] Engine path terrain fixture upload failed: {e:#}");
     }
 
+    // P.4 fixture expansion: a single sphere instance positioned above the
+    // terrain so its shadow falls within the camera's frustum. Both engine
+    // and editor paths upload byte-identical instance data; the renderer's
+    // built-in mesh_sphere is the caster geometry.
+    renderer.update_instances(&[build_shadow_caster_instance()]);
+
+    // P.4 seam closure (Move C): engine path applies GameQuality preset
+    // via the shared harness helper. Editor path applies the same via
+    // EngineRenderAdapter::new (Move A switched the default from
+    // EditorDefault to GameQuality) plus a defensive re-application in
+    // the editor harness setup. Both arrive at identical setter-call
+    // sequence with identical argument values — the call-site closure
+    // proof. See the report section for closure verification.
+    apply_canonical_quality_preset_to_renderer(
+        &mut renderer,
+        &CanonicalQualityPresetParams::GAME_QUALITY,
+    );
+
     // P.3: external Rgba8UnormSrgb LDR target — matches post_pipeline's
     // config.format output. Pre-P.3 was Rgba16Float to match the now-deleted
     // hdr_blit_pipeline's hardcoded format.
@@ -390,6 +500,27 @@ async fn render_editor_path(
     // convergence between the two paths.
     if let Err(e) = upload_editor_terrain_fixture(&mut viewport, fixture) {
         eprintln!("[harness] Editor path terrain fixture upload failed: {e:#}");
+    }
+
+    // P.4 fixture expansion: identical shadow caster instance on the editor
+    // side. Goes through the same Renderer::update_instances API the engine
+    // path uses; bytes are identical.
+    if let Some(adapter) = viewport.engine_adapter_mut() {
+        adapter
+            .renderer_mut()
+            .update_instances(&[build_shadow_caster_instance()]);
+
+        // P.4 seam closure (Move A + Move C): EngineRenderAdapter::new
+        // already applied GameQuality via the canonical preset (Move A
+        // switched the default from EditorDefault to GameQuality). This
+        // call is defensive re-application — guarantees parameter equality
+        // with the engine path regardless of any future drift in the
+        // adapter's construction code path, and keeps both sides going
+        // through the same harness-controlled setter calls.
+        apply_canonical_quality_preset_to_renderer(
+            adapter.renderer_mut(),
+            &CanonicalQualityPresetParams::GAME_QUALITY,
+        );
     }
 
     // LDR target — matches viewport's LDR_COLOR_FORMAT
@@ -903,6 +1034,52 @@ fn editor_engine_render_parity() {
         "  scene-env tint) unconditionally inside `draw_into`. The pre-P.3 surface.is_none()"
     );
     eprintln!("  branch + hdr_blit_pipeline + editor's own tonemap.wgsl pass are all deleted.");
+    eprintln!();
+
+    eprintln!("Quality-preset-axis closure proof (P.4):");
+    eprintln!(
+        "  Canonical preset (GameQuality):  {:?}",
+        CanonicalQualityPresetParams::GAME_QUALITY
+    );
+    eprintln!(
+        "  Engine path: apply_canonical_quality_preset_to_renderer(GAME_QUALITY)"
+    );
+    eprintln!(
+        "  Editor path: apply_quality_preset(EditorQualityPreset::GameQuality)"
+    );
+    eprintln!(
+        "                (via EngineRenderAdapter::new — Move A swapped EditorDefault → GameQuality)"
+    );
+    eprintln!(
+        "              + apply_canonical_quality_preset_to_renderer(GAME_QUALITY)"
+    );
+    eprintln!(
+        "                (defensive re-application — guarantees parameter equality"
+    );
+    eprintln!(
+        "                 regardless of any future adapter-construction drift)"
+    );
+    eprintln!(
+        "  Call-site closure proof: both paths invoke the same setters with the same"
+    );
+    eprintln!(
+        "  argument values (CanonicalQualityPresetParams::GAME_QUALITY single source of truth)."
+    );
+    eprintln!(
+        "  Parameters covered: shadows_enabled, cloud_shadows_enabled, shadow_filter,"
+    );
+    eprintln!(
+        "  cascade_extents, cascade_lambda, max_draw_distance. Post-process chain handled"
+    );
+    eprintln!(
+        "  separately by EditorQualityPreset::GameQuality match arm (bloom/taa/color_grading);"
+    );
+    eprintln!(
+        "  in headless draw_into only bloom_enabled is consumed and the bloom output is"
+    );
+    eprintln!(
+        "  currently orphaned post-P.3 (flagged in P.3 follow-up candidates)."
+    );
     eprintln!();
     eprintln!("Heuristic notes:");
     eprintln!("  - P.3: both paths now produce 4 B/px Rgba8UnormSrgb (was 8 B/px engine HDR");

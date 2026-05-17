@@ -742,7 +742,20 @@ impl EngineRenderAdapter {
             #[cfg(feature = "terrain-splat-arrays")]
             pending_biome_pack: None,
         };
-        adapter.apply_quality_preset(EditorQualityPreset::EditorDefault);
+        // Editor-Engine Render Parity P.4 (quality preset seam closure):
+        // canonical viewport now uses GameQuality unconditionally — the
+        // preset named in `apply_quality_preset` as "this is what the game
+        // ships". EditorDefault remains a defined preset (selectable via
+        // explicit `apply_quality_preset` calls if the editor ever exposes
+        // a quality preset UI), but is no longer the default applied at
+        // construction. Pre-P.4 default was EditorDefault which set
+        // different cascade extents (40, 120 vs GameQuality 40, 120 — same
+        // here), cascade_lambda (0.75 — same), shadow_filter (1.5 vs 2.0
+        // radius_px), cloud_shadows (off vs on), and max_draw_distance
+        // (1200 vs 0 fog-based) — these parameter differences are the
+        // closure target. WYSIWYG OFF indicator for non-canonical preset
+        // selection is logged as post-P.7 follow-up per P.4 spec.
+        adapter.apply_quality_preset(EditorQualityPreset::GameQuality);
         Ok(adapter)
     }
 
