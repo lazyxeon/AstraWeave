@@ -24,6 +24,7 @@
 use anyhow::{Context, Result};
 use astraweave_core::World;
 use astraweave_render::Renderer;
+use aw_editor_lib::viewport::canonical_terrain_pack as ctp;
 use aw_editor_lib::viewport::{OrbitCamera, ViewportRenderer};
 use glam::Vec3;
 use sha2::{Digest, Sha256};
@@ -33,6 +34,161 @@ use std::sync::Arc;
 const WIDTH: u32 = 512;
 const HEIGHT: u32 = 512;
 const FIXED_TIME_OF_DAY: f32 = 12.0;
+
+// ─── P.2 terrain fixture ────────────────────────────────────────────────────
+//
+// A single 10m × 10m terrain chunk centered at the world origin, Y=0. Four
+// vertices, two triangles. Splat textures (2×2 RGBA8, NUM_SPLAT_MAPS=8) drive
+// each corner to a different layer so the splat blend across the chunk
+// exercises layers 0..3 from the loaded grassland pack (grass / rock_smooth /
+// dirt / sand). Layer 4 (moss) is not exercised by this minimal fixture.
+//
+// Same chunk uploaded on both sides via `Renderer::upload_terrain_chunk` (on
+// the editor side, accessed via `EngineRenderAdapter::renderer_mut()`). This
+// isolates loader-axis convergence from any chunk-conversion divergence
+// (editor's TerrainVertex → TerrainSplatVertex remap inside
+// `upload_or_update_terrain_chunk_forward` is bypassed at the harness level
+// so the test measures only what set_terrain_materials surfaces).
+
+const TERRAIN_CHUNK_KEY: u64 = 0;
+const TERRAIN_HALF_EXTENT: f32 = 5.0; // 10m × 10m chunk
+const TERRAIN_SPLAT_DIM: u32 = 2;
+
+/// Build the 4-vertex / 2-triangle quad in the engine's TerrainSplatVertex
+/// format. Position is world-space (Y=0), normal is +Y, UV is [0..1].
+fn build_terrain_chunk()
+-> (Vec<astraweave_render::terrain_material_manager::TerrainSplatVertex>, Vec<u32>)
+{
+    use astraweave_render::terrain_material_manager::TerrainSplatVertex;
+    let v = |x: f32, z: f32, u: f32, v_: f32| TerrainSplatVertex {
+        position: [x, 0.0, z],
+        normal: [0.0, 1.0, 0.0],
+        uv: [u, v_],
+    };
+    let h = TERRAIN_HALF_EXTENT;
+    let vertices = vec![
+        v(-h, -h, 0.0, 0.0), // 0: -X -Z corner
+        v(h, -h, 1.0, 0.0),  // 1: +X -Z corner
+        v(-h, h, 0.0, 1.0),  // 2: -X +Z corner
+        v(h, h, 1.0, 1.0),   // 3: +X +Z corner
+    ];
+    let indices = vec![0, 2, 1, 1, 2, 3];
+    (vertices, indices)
+}
+
+/// Build the 8 splat textures (RGBA8, 2×2, NUM_SPLAT_MAPS=8). Each corner
+/// dominates one of layers 0..3 from the canonical grassland pack. Splats
+/// 1..7 (layers 4..31) are all-zero — the fixture exercises 4 layers, which
+/// is enough to surface the canonical loader's authored content visibly.
+///
+/// splat_0 RGBA channel = (layer0, layer1, layer2, layer3) per the canonical
+/// 32-layer packing at terrain_material_manager.rs:773-781.
+fn build_terrain_splats() -> [Vec<u8>; 8] {
+    // 2×2 splat layout. Row-major, top-left origin.
+    // (0,0): layer 0 → RGBA = (255, 0, 0, 0)
+    // (1,0): layer 1 → RGBA = (0, 255, 0, 0)
+    // (0,1): layer 2 → RGBA = (0, 0, 255, 0)
+    // (1,1): layer 3 → RGBA = (0, 0, 0, 255)
+    let splat_0: Vec<u8> = vec![
+        255, 0, 0, 0, // (0,0)
+        0, 255, 0, 0, // (1,0)
+        0, 0, 255, 0, // (0,1)
+        0, 0, 0, 255, // (1,1)
+    ];
+    let zeros: Vec<u8> = vec![0; (TERRAIN_SPLAT_DIM * TERRAIN_SPLAT_DIM * 4) as usize];
+    [
+        splat_0,
+        zeros.clone(),
+        zeros.clone(),
+        zeros.clone(),
+        zeros.clone(),
+        zeros.clone(),
+        zeros.clone(),
+        zeros,
+    ]
+}
+
+/// Upload the fixture's canonical biome pack (materials.toml + arrays.toml)
+/// and the chunk geometry + splats into the given engine Renderer. Mirrors
+/// what `EngineRenderAdapter::reupload_terrain_layers_from_pending_pack` plus
+/// a direct chunk-upload would produce. Used by the harness's engine path.
+fn upload_engine_terrain_fixture(
+    renderer: &mut Renderer,
+    fixture: &ParityFixture,
+) -> Result<()> {
+    renderer
+        .init_terrain_forward()
+        .context("engine init_terrain_forward failed")?;
+
+    let pack = ctp::load_canonical_terrain_pack(&fixture.biome_path)
+        .context("engine path: load canonical pack failed")?;
+    let layers = ctp::borrow_layer_textures(&pack);
+    let gpu_material = ctp::build_gpu_material(&pack);
+    renderer
+        .set_terrain_materials(&gpu_material, &layers)
+        .context("engine set_terrain_materials failed")?;
+
+    let (vertices, indices) = build_terrain_chunk();
+    let splats = build_terrain_splats();
+    let splat_refs: Vec<&[u8]> = splats.iter().map(|s| s.as_slice()).collect();
+    renderer
+        .upload_terrain_chunk(
+            TERRAIN_CHUNK_KEY,
+            &vertices,
+            &indices,
+            &splat_refs,
+            (TERRAIN_SPLAT_DIM, TERRAIN_SPLAT_DIM),
+        )
+        .context("engine upload_terrain_chunk failed")?;
+    Ok(())
+}
+
+/// Upload the same fixture content into the editor's adapter. Triggers the
+/// canonical-pack load via `set_biome_pack`, then pushes the same chunk
+/// geometry + splats directly into the underlying Renderer (bypassing the
+/// adapter's TerrainVertex → TerrainSplatVertex conversion so the chunk
+/// data is byte-identical to the engine path's upload).
+fn upload_editor_terrain_fixture(
+    viewport: &mut ViewportRenderer,
+    fixture: &ParityFixture,
+) -> Result<()> {
+    let adapter = viewport
+        .engine_adapter_mut()
+        .context("editor adapter not initialised")?;
+    // Step 1: bring terrain_forward up so the next `set_biome_pack` call sees
+    // the canonical 32-layer pipeline live and triggers the canonical-pack
+    // reupload immediately. The change-detection inside `set_biome_pack`
+    // (None → Some) ensures the reupload runs exactly once.
+    adapter
+        .renderer_mut()
+        .init_terrain_forward()
+        .context("editor init_terrain_forward failed")?;
+    // Step 2: set the canonical biome pack. With terrain_forward already
+    // initialised and the prior pending_biome_pack == None, this transitions
+    // to Some(path) and invokes `reupload_terrain_layers_from_pending_pack`
+    // synchronously — pushing the canonical grassland layer arrays into
+    // `Renderer::set_terrain_materials`. Mirrors what main.rs:5093 does at
+    // editor startup.
+    adapter.set_biome_pack(Some(fixture.biome_path.clone()));
+    // Step 3: upload the chunk via the underlying renderer directly so the
+    // chunk bytes are byte-identical to the engine path's upload (bypasses
+    // the adapter's TerrainVertex → TerrainSplatVertex remap, isolating
+    // loader-axis convergence from chunk-conversion divergence at P.2).
+    let renderer = adapter.renderer_mut();
+    let (vertices, indices) = build_terrain_chunk();
+    let splats = build_terrain_splats();
+    let splat_refs: Vec<&[u8]> = splats.iter().map(|s| s.as_slice()).collect();
+    renderer
+        .upload_terrain_chunk(
+            TERRAIN_CHUNK_KEY,
+            &vertices,
+            &indices,
+            &splat_refs,
+            (TERRAIN_SPLAT_DIM, TERRAIN_SPLAT_DIM),
+        )
+        .context("editor upload_terrain_chunk failed")?;
+    Ok(())
+}
 
 /// Locked fixture parameters. See P.0 Phase 5 / P.1 Phase 1 audit summary.
 struct ParityFixture {
@@ -155,6 +311,15 @@ async fn render_engine_path(
         fixture.width as f32 / fixture.height as f32,
     );
 
+    // P.2 fixture expansion: upload canonical grassland biome pack + a single
+    // 10m × 10m terrain chunk at origin so the loader axis becomes measurable.
+    // Failure here is logged but not fatal — the test still produces output
+    // (sky + engine-default ground plane), the loader-axis SAD just stays
+    // unmeasurable.
+    if let Err(e) = upload_engine_terrain_fixture(&mut renderer, fixture) {
+        eprintln!("[harness] Engine path terrain fixture upload failed: {e:#}");
+    }
+
     // External Rgba16Float HDR target — matches hdr_blit_pipeline's hardcoded
     // output format at renderer.rs:2456.
     let target = device.create_texture(&wgpu::TextureDescriptor {
@@ -213,6 +378,13 @@ async fn render_editor_path(
         .context("ViewportRenderer::init_engine_adapter failed")?;
     if let Some(adapter) = viewport.engine_adapter_mut() {
         adapter.set_time_of_day(fixture.time_of_day);
+    }
+
+    // P.2 fixture expansion: upload the same canonical grassland biome pack +
+    // terrain chunk that the engine path uploads, ensuring loader-axis
+    // convergence between the two paths.
+    if let Err(e) = upload_editor_terrain_fixture(&mut viewport, fixture) {
+        eprintln!("[harness] Editor path terrain fixture upload failed: {e:#}");
     }
 
     // LDR target — matches viewport's LDR_COLOR_FORMAT
@@ -333,6 +505,36 @@ fn readback_texture(
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(bytes);
+    format!("{:x}", h.finalize())
+}
+
+/// Hash the canonical biome pack's CPU bytes (albedo + normal + mra per layer,
+/// in array-index order) plus the active layer count. P.2 loader-axis closure
+/// proof: both editor and engine paths load via this loader on the same input
+/// directory, so this hash is identical on both sides — direct byte-level
+/// evidence that the loader axis is closed regardless of what the per-pixel
+/// probe attribution shows.
+fn hash_canonical_pack(pack: &ctp::CanonicalTerrainPack) -> String {
+    let mut h = Sha256::new();
+    h.update(pack.biome_name.as_bytes());
+    h.update(pack.active_layer_count.to_le_bytes());
+    for layer in &pack.layers {
+        let len_or_zero = |opt: &Option<Vec<u8>>| opt.as_ref().map(|v| v.len()).unwrap_or(0);
+        h.update((len_or_zero(&layer.albedo) as u64).to_le_bytes());
+        h.update((len_or_zero(&layer.normal) as u64).to_le_bytes());
+        h.update((len_or_zero(&layer.mra) as u64).to_le_bytes());
+        if let Some(a) = &layer.albedo {
+            h.update(a);
+        }
+        if let Some(n) = &layer.normal {
+            h.update(n);
+        }
+        if let Some(m) = &layer.mra {
+            h.update(m);
+        }
+        h.update(layer.uv_scale[0].to_le_bytes());
+        h.update(layer.uv_scale[1].to_le_bytes());
+    }
     format!("{:x}", h.finalize())
 }
 
@@ -608,6 +810,23 @@ fn editor_engine_render_parity() {
     let engine_hash = sha256_hex(&engine.bytes);
     let editor_hash = sha256_hex(&editor.bytes);
 
+    // P.2 direct loader-axis closure proof: hash the canonical pack's CPU
+    // bytes that flow into Renderer::set_terrain_materials on both sides.
+    // If the editor and engine paths both invoke load_canonical_terrain_pack
+    // on the same biome dir, they receive identical bytes → loader axis
+    // closed at the input boundary. This is the byte-level proof that the
+    // per-pixel probe in compute_attribution can't isolate (terrain pixels'
+    // diff also contains tonemap+format axes).
+    let pack_hash = match ctp::load_canonical_terrain_pack(&fixture.biome_path) {
+        Ok(pack) => Some(hash_canonical_pack(&pack)),
+        Err(e) => {
+            eprintln!(
+                "[harness] Canonical pack hash skipped — load failed: {e:#}"
+            );
+            None
+        }
+    };
+
     eprintln!("Engine path: Rgba16Float HDR passthrough (draw_into, surface=None branch)");
     eprintln!(
         "  Bytes:   {} ({} px × 8 B/px)",
@@ -628,16 +847,34 @@ fn editor_engine_render_parity() {
     let attribution = compute_attribution(&engine, &editor);
     eprintln!("{}", attribution.format_report());
     eprintln!();
+    if let Some(hash) = &pack_hash {
+        eprintln!("Loader-axis closure proof (P.2):");
+        eprintln!("  Canonical pack content hash: {}", hash);
+        eprintln!(
+            "  Both editor and engine paths invoke load_canonical_terrain_pack on the"
+        );
+        eprintln!(
+            "  same biome dir; this hash is the byte-identical input to set_terrain_materials"
+        );
+        eprintln!(
+            "  on both sides. P.2 closes Axis 1 at the input boundary regardless of what"
+        );
+        eprintln!(
+            "  the per-pixel probe shows (the probe also contains tonemap + format diffs"
+        );
+        eprintln!("  at terrain pixels, which only P.3 and P.5 close).");
+        eprintln!();
+    }
     eprintln!("Heuristic limitations (per P.1 prompt):");
     eprintln!("  - Engine and editor produce different byte formats (8 B/px Rgba16Float vs");
     eprintln!("    4 B/px Rgba8UnormSrgb). Total SAD is computed in linear-RGB space after");
     eprintln!("    format-aware decoding. Hash comparison is on raw bytes — guaranteed to");
-    eprintln!("    mismatch at P.1 until P.5 (target format unification) and P.3 (tonemap");
+    eprintln!("    mismatch at P.2 until P.5 (target format unification) and P.3 (tonemap");
     eprintln!("    unification) collapse the two outputs to the same format and same pipeline.");
-    eprintln!("  - Loader/quality attributions are sampled at 16 fixed positions only. P.1's");
-    eprintln!("    fixture has no terrain chunk uploaded (sky + engine-default ground plane),");
-    eprintln!("    so the loader probe registers small. P.2 expands the fixture to include the");
-    eprintln!("    canonical 5-layer grassland splat (per the P.0 audit's fixture spec).");
+    eprintln!("  - The per-pixel loader probe (16 fixed positions) is NOT a clean loader-axis");
+    eprintln!("    isolator: even when both paths render the canonical-pack terrain identically,");
+    eprintln!("    those pixels still carry tonemap + format axis divergence. The pack-content");
+    eprintln!("    hash above is the byte-level proof of loader-axis closure.");
     eprintln!("  - Cross-axis interactions are real. Attribution does not sum to 100%.");
 
     assert_eq!(

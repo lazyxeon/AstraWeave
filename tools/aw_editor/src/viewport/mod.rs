@@ -64,6 +64,10 @@ pub mod terrain_splat_builder;
 pub mod terrain_splat;
 /// Phase 1 (Option D): flat-color placeholder biome textures for forward-lit splat rendering.
 pub mod terrain_biome_placeholder;
+/// P.2 (Editor-Engine Render Parity): canonical biome pack loader. Reads the
+/// same on-disk TOML+PNG schema MaterialManager parses; outputs CPU bytes for
+/// `Renderer::set_terrain_materials` (the editor's 32-layer terrain consumer).
+pub mod canonical_terrain_pack;
 mod widget;
 
 // Physics debug types are exported for external configuration

@@ -38,7 +38,7 @@ use super::gizmo_renderer::GizmoRendererWgpu;
 use super::grid_renderer::GridRenderer;
 use super::physics_renderer::PhysicsDebugRenderer;
 use super::types::{
-    find_assets_dir, GltfAnimationClip, GltfSkeleton, ScatterPlacement, SceneLight,
+    GltfAnimationClip, GltfSkeleton, ScatterPlacement, SceneLight,
     TerrainFogParams, TerrainLightingParams, TerrainVertex, WaterStyle,
 };
 use crate::gizmo::GizmoState;
@@ -1033,7 +1033,9 @@ impl ViewportRenderer {
             match result {
                 Ok(Ok(())) => {
                     tracing::info!("Engine adapter auto-initialized for terrain chunk upload");
-                    self.load_default_terrain_texture();
+                    // P.2: legacy default-terrain-texture upload removed; the
+                    // engine adapter's own first-init now loads either the
+                    // pending canonical biome pack or the synthetic fallback.
                 }
                 Ok(Err(e)) => {
                     tracing::error!("Failed to initialize engine adapter for terrain: {e}");
@@ -1075,8 +1077,9 @@ impl ViewportRenderer {
             match result {
                 Ok(Ok(())) => {
                     tracing::info!("Engine adapter auto-initialized for terrain rendering");
-                    // Load default grassland terrain texture
-                    self.load_default_terrain_texture();
+                    // P.2: legacy default-terrain-texture upload removed; the
+                    // engine adapter's own first-init now loads either the
+                    // pending canonical biome pack or the synthetic fallback.
                 }
                 Ok(Err(e)) => {
                     tracing::error!("Failed to initialize engine adapter for terrain: {e}");
@@ -1506,109 +1509,6 @@ impl ViewportRenderer {
     /// Set render mode directly
     pub fn set_render_mode(&mut self, mode: RenderMode) {
         self.render_mode = mode;
-    }
-
-    /// Load the default terrain surface maps with a robust fallback chain.
-    fn load_default_terrain_texture(&mut self) {
-        self.load_biome_terrain_texture("Grassland");
-    }
-
-    /// Load the primary terrain surface maps for a specific biome.
-    ///
-    /// The editor uses the first authored layer from the biome material pack so
-    /// terrain picks up matching albedo, normal, and MRA data instead of only a
-    /// flat color texture.
-    pub fn load_biome_terrain_texture(&mut self, biome: &str) {
-        #[derive(serde::Deserialize)]
-        struct TerrainMaterialDoc {
-            layer: Vec<TerrainMaterialLayer>,
-        }
-
-        #[derive(serde::Deserialize)]
-        struct TerrainMaterialLayer {
-            albedo: String,
-            normal: Option<String>,
-            mra: Option<String>,
-        }
-
-        let materials_root = find_assets_dir().join("materials");
-        let preferred_dir = match biome {
-            "Desert" => materials_root.join("desert"),
-            "Mountain" => materials_root.join("mountain"),
-            "Tundra" => materials_root.join("tundra"),
-            "Forest" | "BiomePack" => materials_root.join("forest"),
-            "Swamp" => materials_root.join("swamp"),
-            "Beach" => materials_root.join("beach"),
-            "River" => materials_root.join("river"),
-            _ => materials_root.join("grassland"),
-        };
-
-        let fallback_dir = materials_root.join("grassland");
-        let load_rgba = |path: &std::path::Path| -> Option<(u32, u32, Vec<u8>)> {
-            let image = image::open(path).ok()?.to_rgba8();
-            let (width, height) = image.dimensions();
-            Some((width, height, image.into_raw()))
-        };
-
-        for material_dir in [preferred_dir, fallback_dir] {
-            let manifest_path = material_dir.join("materials.toml");
-            let Ok(manifest_text) = std::fs::read_to_string(&manifest_path) else {
-                continue;
-            };
-            let Ok(manifest) = toml::from_str::<TerrainMaterialDoc>(&manifest_text) else {
-                tracing::warn!("Failed to parse terrain material manifest {manifest_path:?}");
-                continue;
-            };
-            let Some(layer) = manifest.layer.first() else {
-                continue;
-            };
-
-            let albedo_path = material_dir.join(&layer.albedo);
-            let Some(albedo) = load_rgba(&albedo_path) else {
-                tracing::warn!("Failed to load terrain albedo map {albedo_path:?}");
-                continue;
-            };
-
-            let normal = layer
-                .normal
-                .as_deref()
-                .and_then(|relative| load_rgba(&material_dir.join(relative)));
-            let metallic_roughness = layer
-                .mra
-                .as_deref()
-                .and_then(|relative| load_rgba(&material_dir.join(relative)));
-
-            if let Some(adapter) = &mut self.engine_adapter {
-                adapter.set_terrain_surface_maps(
-                    (albedo.0, albedo.1, &albedo.2),
-                    normal
-                        .as_ref()
-                        .map(|data| (data.0, data.1, data.2.as_slice())),
-                    metallic_roughness
-                        .as_ref()
-                        .map(|data| (data.0, data.1, data.2.as_slice())),
-                );
-                tracing::info!(
-                    "Loaded {biome} terrain surface maps from {material_dir} (albedo {albedo_width}x{albedo_height})",
-                    material_dir = material_dir.display(),
-                    albedo_width = albedo.0,
-                    albedo_height = albedo.1,
-                );
-            }
-            return;
-        }
-
-        tracing::warn!("No authored {biome} terrain material set found — using neutral fallback");
-        let white_data = vec![255u8; 4 * 4 * 4];
-        let normal_data = [128u8, 128u8, 255u8, 255u8].repeat(16);
-        let mra_data = [0u8, 220u8, 255u8, 255u8].repeat(16);
-        if let Some(adapter) = &mut self.engine_adapter {
-            adapter.set_terrain_surface_maps(
-                (4, 4, &white_data),
-                Some((4, 4, &normal_data)),
-                Some((4, 4, &mra_data)),
-            );
-        }
     }
 
     /// Initialize the engine renderer adapter (async, call once)

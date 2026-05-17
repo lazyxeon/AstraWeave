@@ -5080,19 +5080,21 @@ impl EditorApp {
                     }
 
                     if !loaded_from_pack {
-                        let biome_label = match biome_name {
-                            "desert" => "Desert",
-                            "mountain" => "Mountain",
-                            "tundra" => "Tundra",
-                            "forest" => "Forest",
-                            "swamp" => "Swamp",
-                            "beach" => "Beach",
-                            "river" => "River",
-                            _ => "Grassland",
-                        };
+                        // P.2 (Editor-Engine Render Parity): the legacy single-layer
+                        // load_biome_terrain_texture is replaced by canonical biome
+                        // pack loading via the engine adapter's set_biome_pack. The
+                        // 32-layer terrain pipeline then loads the authored
+                        // materials.toml + arrays.toml content the next time
+                        // upload_terrain_chunks runs (or immediately if the terrain
+                        // is already initialised).
+                        let biome_dir = aw_editor_lib::viewport::types::find_assets_dir()
+                            .join("materials")
+                            .join(biome_name);
                         if let Some(viewport) = &self.viewport {
                             if let Ok(mut renderer) = viewport.renderer().lock() {
-                                renderer.load_biome_terrain_texture(biome_label);
+                                if let Some(adapter) = renderer.engine_adapter_mut() {
+                                    adapter.set_biome_pack(Some(biome_dir));
+                                }
                             }
                         }
                     }

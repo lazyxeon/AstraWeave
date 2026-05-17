@@ -614,6 +614,17 @@ pub struct EngineRenderAdapter {
     /// `scatter_model_names` retirement pattern for PBR models.
     #[cfg(feature = "impostor-bake")]
     installed_impostor_keys: std::collections::HashSet<String>,
+
+    /// P.2 (Editor-Engine Render Parity): on-disk path to the active biome's
+    /// canonical pack (`assets/materials/<biome>/`). When `Some` and the
+    /// directory contains `materials.toml` + `arrays.toml`, the 32-layer
+    /// terrain init at `upload_terrain_chunks` loads authored content from
+    /// it via `canonical_terrain_pack`. When `None` or the load fails, the
+    /// init falls back to synthetic placeholders (`terrain_biome_placeholder`).
+    /// Set externally via `set_biome_pack` — main.rs wires it from the active
+    /// biome name; the parity harness sets it directly.
+    #[cfg(feature = "terrain-splat-arrays")]
+    pending_biome_pack: Option<std::path::PathBuf>,
 }
 
 impl EngineRenderAdapter {
@@ -716,6 +727,8 @@ impl EngineRenderAdapter {
             )),
             #[cfg(feature = "impostor-bake")]
             installed_impostor_keys: std::collections::HashSet::new(),
+            #[cfg(feature = "terrain-splat-arrays")]
+            pending_biome_pack: None,
         };
         adapter.apply_quality_preset(EditorQualityPreset::EditorDefault);
         Ok(adapter)
@@ -1242,6 +1255,101 @@ impl EngineRenderAdapter {
         tracing::debug!("Time of day set to: {:.1}h", time.current_time);
     }
 
+    /// P.2 (Editor-Engine Render Parity): set the on-disk biome pack the
+    /// next 32-layer terrain init should load. Pass `Some(<assets/materials/
+    /// <biome>>)` to opt into canonical loading; pass `None` to force the
+    /// synthetic placeholder fallback. Idempotent; the loaded content is
+    /// uploaded on the next `upload_terrain_chunks` first-init or on the
+    /// next call when terrain is already initialised.
+    ///
+    /// No-op when the `terrain-splat-arrays` feature is disabled.
+    #[cfg(feature = "terrain-splat-arrays")]
+    pub fn set_biome_pack(&mut self, path: Option<std::path::PathBuf>) {
+        let changed = self.pending_biome_pack != path;
+        self.pending_biome_pack = path;
+        if changed {
+            // If terrain_forward is already initialised, re-upload the layer
+            // arrays immediately so the swap takes effect without waiting for
+            // the next chunk upload. Logs at info on success, warn on failure.
+            if self.renderer.terrain_forward().is_some() {
+                self.reupload_terrain_layers_from_pending_pack();
+            }
+        }
+    }
+
+    /// No-op stub for builds without `terrain-splat-arrays`. Preserves the
+    /// API surface so callers don't need to feature-gate every call site.
+    #[cfg(not(feature = "terrain-splat-arrays"))]
+    pub fn set_biome_pack(&mut self, _path: Option<std::path::PathBuf>) {}
+
+    /// Read the active biome pack from disk (if any) and push the resulting
+    /// layer textures into `Renderer::set_terrain_materials`. On failure or
+    /// absent pack, falls back to the 8-biome synthetic placeholder set so
+    /// terrain doesn't render with whatever stale content was previously
+    /// uploaded. Called from `set_biome_pack` (when terrain_forward is
+    /// already live) and from `upload_terrain_chunks` (on first init).
+    #[cfg(feature = "terrain-splat-arrays")]
+    fn reupload_terrain_layers_from_pending_pack(&mut self) {
+        use super::canonical_terrain_pack as ctp;
+        use super::terrain_biome_placeholder as biome_ph;
+
+        // Probe canonical load.
+        let canonical = self.pending_biome_pack.as_ref().and_then(|path| {
+            match ctp::load_canonical_terrain_pack(path) {
+                Ok(pack) => {
+                    tracing::info!(
+                        target: "aw_editor::viewport::terrain_forward",
+                        "Canonical biome pack loaded from {}: biome='{}' layers={}",
+                        path.display(),
+                        pack.biome_name,
+                        pack.active_layer_count,
+                    );
+                    Some(pack)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "aw_editor::viewport::terrain_forward",
+                        "Canonical biome pack load failed at {}: {e:#} — \
+                         falling back to synthetic placeholders",
+                        path.display(),
+                    );
+                    None
+                }
+            }
+        });
+
+        let upload_result = if let Some(pack) = &canonical {
+            let layers = ctp::borrow_layer_textures(pack);
+            let gpu_material = ctp::build_gpu_material(pack);
+            self.renderer.set_terrain_materials(&gpu_material, &layers)
+        } else {
+            let albedos = biome_ph::generate_biome_placeholder_albedos();
+            let flat_normal = biome_ph::generate_flat_normal_map();
+            let neutral_orm = biome_ph::generate_neutral_orm_map();
+            let layers: Vec<astraweave_render::LayerTextures<'_>> = (0..8)
+                .map(|i| astraweave_render::LayerTextures {
+                    albedo: Some(&albedos[i]),
+                    normal: Some(&flat_normal),
+                    orm: Some(&neutral_orm),
+                    height: None,
+                })
+                .collect();
+            let mut gpu_material = astraweave_render::TerrainMaterialGpu::default();
+            gpu_material.active_layer_count = 8;
+            for (i, layer) in gpu_material.layers.iter_mut().enumerate() {
+                layer.texture_indices = [i as u32, i as u32, i as u32, i as u32];
+            }
+            self.renderer.set_terrain_materials(&gpu_material, &layers)
+        };
+        if let Err(e) = upload_result {
+            tracing::warn!(
+                target: "aw_editor::viewport::terrain_forward",
+                "set_terrain_materials failed during canonical/placeholder \
+                 upload: {e:#}"
+            );
+        }
+    }
+
     /// Get time scale (1.0 = real time, 60.0 = 1 real minute = 1 game hour)
     pub fn get_time_scale(&self) -> f32 {
         self.renderer.time_of_day().time_scale
@@ -1331,59 +1439,25 @@ impl EngineRenderAdapter {
         self.terrain_total_triangles = 0;
         self.terrain_total_indices = 0;
 
-        // Terrain Material System campaign — Phase 1.E.4.b.
-        // Lazy one-time init of the forward-lit splat path + upload of the
-        // 8 placeholder biome material texture sets. Subsequent calls skip
-        // this block because `renderer.terrain_forward()` is Some after
-        // the first successful init. Phase 3 replaces placeholders with
-        // real materials loaded from `assets/materials/{biome}/`.
+        // Terrain Material System campaign — Phase 1.E.4.b, revised by
+        // Editor-Engine Render Parity P.2 (2026-05-17): lazy one-time init
+        // of the forward-lit splat path, then upload of either the canonical
+        // biome pack (per `self.pending_biome_pack`) or the 8-biome synthetic
+        // placeholder set as fallback. Subsequent calls skip the init branch
+        // because `renderer.terrain_forward()` is Some after first success.
+        // Biome-swap reload happens via `set_biome_pack`, which calls
+        // `reupload_terrain_layers_from_pending_pack` directly when terrain
+        // is already initialised.
         #[cfg(feature = "terrain-splat-arrays")]
         if self.renderer.terrain_forward().is_none() {
-            use super::terrain_biome_placeholder as biome_ph;
-
             match self.renderer.init_terrain_forward() {
                 Ok(()) => {
-                    let albedos = biome_ph::generate_biome_placeholder_albedos();
-                    let flat_normal = biome_ph::generate_flat_normal_map();
-                    let neutral_orm = biome_ph::generate_neutral_orm_map();
-
-                    let layers: Vec<astraweave_render::LayerTextures<'_>> = (0..8)
-                        .map(|i| astraweave_render::LayerTextures {
-                            albedo: Some(&albedos[i]),
-                            normal: Some(&flat_normal),
-                            orm: Some(&neutral_orm),
-                            height: None,
-                        })
-                        .collect();
-
-                    let mut gpu_material = astraweave_render::TerrainMaterialGpu::default();
-                    // Each biome is one layer (one albedo texture). Set the
-                    // per-layer material factors so roughness/metallic come
-                    // from the neutral ORM map unchanged.
-                    gpu_material.active_layer_count = 8;
-                    // Point each layer at its own array slice (0..7) for
-                    // albedo/normal/orm. texture_indices = [a, n, o, h].
-                    for (i, layer) in gpu_material.layers.iter_mut().enumerate() {
-                        layer.texture_indices = [i as u32, i as u32, i as u32, i as u32];
-                    }
-
-                    if let Err(e) = self.renderer.set_terrain_materials(&gpu_material, &layers) {
-                        tracing::warn!(
-                            target: "aw_editor::viewport::terrain_forward",
-                            "Phase 1.E.4 set_terrain_materials failed: {e:#}"
-                        );
-                    } else {
-                        tracing::info!(
-                            target: "aw_editor::viewport::terrain_forward",
-                            "Phase 1 forward-lit terrain activated with 8 biome \
-                             placeholder materials (1024² albedo, 512² normal/ORM)"
-                        );
-                    }
+                    self.reupload_terrain_layers_from_pending_pack();
                 }
                 Err(e) => {
                     tracing::warn!(
                         target: "aw_editor::viewport::terrain_forward",
-                        "Phase 1.E.4 init_terrain_forward failed; legacy terrain path \
+                        "init_terrain_forward failed; legacy terrain path \
                          will remain active: {e:#}"
                     );
                 }
