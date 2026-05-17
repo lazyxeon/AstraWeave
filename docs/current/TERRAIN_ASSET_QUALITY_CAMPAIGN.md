@@ -1,6 +1,6 @@
 # Terrain Asset Quality Campaign
 
-**Status**: **Sub-phase A.0 COMPLETE 2026-05-14** (this commit). Fetcher capability extended: `polyhaven_map_names` in `tools/astraweave-assets/src/polyhaven.rs` now includes `"arm" => vec!["arm", "ARM", "Arm"]` mapping; default `requested_maps` list in `polyhaven_provider.rs` includes "arm"; test fixture updated with ARM assertion. cargo check workspace + cargo test (124/124 astraweave-assets lib tests pass) clean. Audit §3.1 "rename-only" conversion premise RESTORED. Sub-phase A.1 UNBLOCKED (pending `default` cleanup parallel-commit + A.1 prompt re-draft for 9 materials).
+**Status**: **Sub-phase A.3 COMPLETE 2026-05-16** (this commit). Validate-only sub-phase per Andrew-gate re-scope after Phase 1 audit revealed premise mismatch: grassland biome was ALREADY wired with 5 PNG-native layers; all 27 Tier 1 PNGs already deployed at runtime root. Validation evidence: `headless_integration` test passes against `assets/materials/grassland/` via the canonical `MaterialManager::load_pack_from_toml` path — confirms PNG decode + GPU texture array upload + bind group layout match end-to-end. **Tier 1 acquisition through-line COMPLETE**: A.0.A (fetcher) + A.1 (6 mats) + A.1.B (2 mats) + A.1.C (1 mat ambientCG) + A.2 (cook deferred) + A.3 (grassland validate). §7.11 codified at §13.5 with 5 empirical pillars (stale-slug / verified-slug / provider-fit / tool-maturity / scope-fit). Forward chain pending Andrew decision: re-evaluate per A.3 §12 entry "Forward chain decision".
 
 **Research-pass landed 2026-05-14 commit `b1223b49f`** (audit at `docs/audits/terrain_asset_quality_campaign_research_pass_2026-05-14.md`). Sub-phase decomposition + Andrew-gate decisions (a)-(f) routed.
 
@@ -495,12 +495,15 @@ This section must be updated in the same commit that completes each sub-phase pe
 Terrain Asset Quality Campaign research-pass: COMPLETE 2026-05-14, this commit. Audit at docs/audits/terrain_asset_quality_campaign_research_pass_2026-05-14.md. Andrew-gate (a)+(b)+(c)+(d)+(e)+(f) pending for sub-phase routing.
 Sub-phase A.1 — Source acquisition: BLOCKED 2026-05-14, this commit (marker). Pre-execution surfaced fetcher capability gap (no ARM-packed map fetch in tools/astraweave-assets PolyHaven provider) + missing local ImageMagick tooling for post-fetch channel-packing. Andrew-gate routing 2026-05-14 chose "Pause + extend fetcher" path; A.0 fetcher extension session opens before A.1 acquisition can proceed. `default` material reclassified per Andrew-gate (iii): flag for separate cleanup (dead-code removal from MaterialLibrary; out of this campaign scope; reduces acquisition target from 10 to 9 materials).
 Sub-phase A.0 — Fetcher capability extension: COMPLETE 2026-05-14, this commit. Added "arm" map name to `tools/astraweave-assets/src/polyhaven.rs::polyhaven_map_names` (line ~341 match arm: `"arm" => vec!["arm", "ARM", "Arm"]`); added "arm" to default `requested_maps` in `polyhaven_provider.rs::resolve` AssetType::Texture branch (line ~62); added ARM assertion to `test_polyhaven_map_names_mappings` test. cargo check + cargo test (124 lib tests pass) clean. Restores audit §3.1's "rename-only" conversion premise. §7.11 methodology candidate empirically validated (deferred elevation to Sub-phase E).
-Sub-phase A.1 — Source acquisition (re-scoped to 9 materials post-A.0): UNBLOCKED 2026-05-14 (gated on `default` cleanup parallel-commit + A.1 prompt re-draft).
-Sub-phase A.2 — Bake (re-scoped: 21 materials baked; `default` excluded pending cleanup): NOT STARTED (gated on A.1 PASS).
+Sub-phase A.1 — Source acquisition (re-scoped to 9 materials post-A.0): COMPLETE 2026-05-15 commit `f56a76124` (6 of 9; 3 deferred to A.1.B on stale-slug 404s). §11 not updated by that commit per anti-drift hold; recorded here at A.3 closeout.
+Sub-phase A.1.B — Verified-slug acquisition: COMPLETE 2026-05-15 commit `f5387f20e` (2 of 3; ice deferred to A.1.C on PolyHaven provider-fit gap).
+Sub-phase A.1.C — Ice from ambientCG: COMPLETE 2026-05-16 commit `76b15948d` (1 of 1; manual download + image-crate MRA pack; final Tier 1 material).
+Sub-phase A.2 — Bake: STOPPED at Phase 3 gate 2026-05-16 (no commit; session deliverable). Cook deferred indefinitely per scaffolding framing — toktx/basisu missing on dev env, bake-texture parallel path has placeholder BC encoder + DFD sRGB bug. Channel-order audit confirmed 9 of 9 sources are ARM-in-MRA-filename (ice consistent; no repack).
+Sub-phase A.3 — Grassland biome validate-only: COMPLETE 2026-05-16, this commit. Phase 1 audit revealed grassland already wired (5 layers PNG-native: grass/rock_smooth/dirt/sand/moss-via-rock_lichen); all 27 Tier 1 PNGs already deployed at runtime root. Re-scoped per Andrew-gate to validation-only. Headless integration test (`cargo test -p astraweave-render --features textures --test headless_integration`) passes — confirms canonical `load_pack_from_toml` path consumes existing grassland config without error. Splat-shader visual validation deferred (CLI agent cannot capture screenshots; manual visual validation Andrew runs locally post-commit).
 Sub-phase B — Engine/project asset organization: NOT STARTED (recommend skip via Andrew-gate (b) b-3).
-Sub-phase C — Tier 1 content quality upgrade (biome-grouped): NOT STARTED (gated on Sub-phase A PASS + Andrew-gate (a)).
-Sub-phase D — Performance verification + optimization: NOT STARTED (gated on Sub-phase C PASS).
-Sub-phase E — Closeout: NOT STARTED (gated on Sub-phase D PASS).
+Sub-phase C — Tier 1 content quality upgrade (biome-grouped): NOT STARTED — re-evaluated after A.3 per §12 entry. Forward chain may skip C entirely if existing biome configs already consume Tier 1 PNGs at acceptable visual quality.
+Sub-phase D — Performance verification + optimization: NOT STARTED (gated on Sub-phase C PASS or skip-C decision).
+Sub-phase E — Closeout: NOT STARTED (gated on Sub-phase D PASS; will codify §13.5 §7.11 5-pillar elevation alongside §13.3 §7.10).
 ```
 
 Format for completion updates: `<sub-phase>: COMPLETE <YYYY-MM-DD>, commit <hash>`.
@@ -817,6 +820,79 @@ Net change: +18/-0 lines across 2 files (production + test inline).
 
 **Scope held**: A.0.A session modified `tools/astraweave-assets/src/polyhaven.rs` + `polyhaven_provider.rs` (production code change scope ≤ 20 lines net) + this campaign doc (Status header + §11 + §12 entry). All anti-drift temptations held. Single-concern session pattern preserved.
 
+### 2026-05-16, Sub-phase A.3 (grassland biome validate-only), this commit
+
+**Andrew-gate re-scope at Phase 2: original A.3 premise falsified by Phase 1 audit.** Sub-phase entered as "wire up grassland to consume the 9 Tier 1 PNG source materials" per prompt. Pre-execution audit revealed all four premise components were already satisfied:
+
+1. **Grassland was already wired.** `assets/materials/grassland/materials.toml` declares 5 layers (grass / rock_smooth / dirt / sand / moss-via-rock_lichen) with PNG paths to `../<material>.png` runtime root. `arrays.toml` maps each layer to a u32 index. All paths resolve to git-tracked PNGs that also have corresponding `.ktx2` outputs from a prior cook pass.
+2. **All 27 Tier 1 PNGs were already deployed at runtime root.** `assets/materials/<material>.png|_n.png|_mra.png` for all 9 of gravel/metal_rusted/moss/snow/wood_planks/mountain_rock/mud/cobblestone/ice (27 files). All git-tracked. Deployment provenance is outside this session's commit chain — A.1/A.1.B/A.1.C only wrote to `assets_src/materials/`; the runtime root copies must have been added by separate automation or manual placement in an earlier commit.
+3. **The renderer is PNG-native via canonical loader.** Verified pre-A.3 at [`material_loader.rs:284-307`](../../astraweave-render/src/material_loader.rs) (extension dispatches PNG/JPG/TGA via `image` crate; KTX2 via basis_universal transcoder); [`material.rs:706-714`](../../astraweave-render/src/material.rs) (loader's own docs use `.png` paths); [`terrain_material.rs:265-344`](../../astraweave-render/src/terrain_material.rs) (default `TerrainMaterialConfig` hardcodes `.png` paths); [`renderer.rs:1548`](../../tools/aw_editor/src/viewport/renderer.rs) (editor's biome surface-map loader uses `image::open` directly); [`terrain_material_manager.rs:118-128`](../../astraweave-render/src/terrain_material_manager.rs) (`LayerTextures` consumes raw `Option<&[u8]>` RGBA8 slices).
+4. **`load_pack_from_toml` schema accepts the existing grassland config.** Verified at [`material.rs:410-555`](../../astraweave-render/src/material.rs) — required fields `key` + optional `albedo`/`normal`/`mra`/`tiling`/`triplanar_scale`; path resolution via `base_dir.join(p).normalize()`. Existing grassland config uses all permitted fields correctly.
+
+**Andrew-gate decision**: re-scope from "wire up" → "validate-only" with these adjustments:
+- Commit content = validation evidence + discovery doc (not assets / config / docs-only)
+- §7.11 fifth pillar codified (scope-fit validation)
+- 27 Tier 1 PNG runtime root deployment documented; disposition deferred
+- Harness path + cost surfaced before Phase 3 execution
+
+**Validation harness selected**: `cargo test -p astraweave-render --features textures --test headless_integration`. Cost: 32.5s rebuild + 1.4s test execution. Visual splat-shader rendering verification infeasible from CLI agent context (no screenshot capture). Visual confirmation deferred to Andrew running biome_showcase / unified_showcase / editor locally post-commit.
+
+**Validation evidence** (verbatim test output):
+
+```text
+running 1 test
+test headless_biome_pack_and_pipeline_compat ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.42s
+```
+
+The test loads `assets/materials/grassland/materials.toml` + `arrays.toml` via `MaterialManager::load_pack_from_toml` against a headless wgpu device, creates the canonical 5-binding material BGL (albedo array + sampler, normal array + sampler, mra array), and confirms no panics. PNG decode succeeded for all 5 layers' albedo / normal / mra triples. GPU texture array upload succeeded. Bind group layout match confirmed.
+
+**What this evidence does NOT cover**: the splat shader does not run in this harness. "Splat blending visibly working on GPU" per Andrew's adjustment can only be confirmed by running a windowed harness manually — biome_showcase / unified_showcase / editor with grassland scene loaded. Deferred to manual run.
+
+**§7.11 fifth pillar codified** (see §13.5 below for full elevation candidate): scope-fit validation as a distinct pre-execution concern. The A.1 → A.2 → A.3 chain solved a problem the codebase had already solved — Tier 1 PNGs were already deployed, grassland was already wired. Pre-execution validation must include "does this work need doing" alongside slug-correctness, provider-fit, and tool-maturity. Five empirical pillars now grounded.
+
+**27 Tier 1 PNG runtime root deployment — disposition deferred**: All 27 files at `assets/materials/<material>{,_n,_mra}.png` for 9 materials are git-tracked. They co-exist with `assets_src/materials/` copies (true source location for the campaign). Two-location duplication has cleanup implications:
+- **Option 1**: Treat runtime root as canonical for runtime-consumed materials; delete `assets_src/materials/` copies post-cook-tooling-fix (future sub-phase).
+- **Option 2**: Treat `assets_src/materials/` as canonical source; delete runtime root copies; rely entirely on `aw_asset_cli cook` pipeline (which is currently broken per A.2; would block).
+- **Option 3**: Accept dual location as load-bearing redundancy; document but don't fix.
+
+Decision deferred to Andrew. A.3 does NOT delete, move, or rename either copy.
+
+**Forward chain decision** (per Andrew adjustment "Forward chain after A.3 commits depends on validation outcome"):
+
+The validation outcome is **positive at the load-path level** (headless test passes), **unverified at the visual-rendering level** (deferred to manual run). Two branch points:
+
+- **If splat blending visibly works on existing grassland (Andrew confirms manually)**: Sub-phase C (per-biome content upgrade) is largely unnecessary — biomes are already consuming Tier 1 PNGs with acceptable visual quality. Forward chain jumps to Sub-phase D (performance verification) or directly to Phase 2 per-vertex material data work per `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md`.
+- **If splat blending is broken or aesthetically incoherent**: new sub-phase scoped to the specific defect; biome-rationalization audit may also be appropriate before per-biome work.
+
+**Methodology lessons applied** (from Editor Multi-Tool Architecture Sub-phase 3 §13):
+- §7.2 pre-execution actual-code verification: ✅ applied (Phase 1 audit caught premise falsification before any file modification).
+- §7.3 symbol/signature pinning: ✅ applied (re-grepped `load_pack_from_toml`, `grassland` references, harness candidates).
+- §7.4 drift-finding documentation: ✅ applied (this entry documents 4-component premise falsification + 27 PNG deployment finding).
+- §7.7 structural axiom: not directly invoked (no wrapped-component identity question).
+- **§7.11 candidate** (this campaign's fifth-pillar accumulation): scope-fit validation added; full elevation codified at §13.5.
+
+**Out of scope (17 named temptations); all 17 held**:
+- NO renderer source touched (no `astraweave-render/`, no `astraweave-terrain/`).
+- NO cook tool touched.
+- NO desert / forest / mountain / tundra / swamp / beach / river / terrain / polyhaven biome configs touched.
+- NO MaterialLibrary change.
+- NO `asset_manifest.toml` modifications.
+- NO symlink (n/a — no asset placement happened).
+- NO mid-execution KTX2 conversion.
+- NO invented `materials.toml` schema fields.
+- NO grassland layer count change (still 5).
+- NO aesthetic parameter retuning (no tiling / blend_sharpness / triplanar changes).
+- NO desert / forest / Tier 2 / Tier 3 work bundled.
+- NO `sky_night` fix.
+- NO unrelated test-file warning fixes (`coverage_booster_render.rs` E0432/E0603/E0061 errors observed but left alone).
+- NO runtime `assets/materials/` directory restructure.
+- NO README / external campaign doc updates.
+- Phase 1 audit was non-skippable (executed); Phase 2 gate was non-skippable (executed; Andrew approved validate-only re-scope).
+
+**Scope held**: A.3 session modified only this campaign doc (Status header + §11 + §12 entry + §13.5 codification). No production code change. No asset file change. No test-file change. No cook tool change. Single-concern session pattern preserved.
+
 ---
 
 ## §13 — Methodology Body of Practice (inheritance + this campaign's contributions)
@@ -874,6 +950,32 @@ This campaign's content-driven framing potentially contributes additional sub-le
 - **Performance baseline temporality**: pre-vs-post comparison requires baseline captured BEFORE content replacement; opportunistic post-hoc baseline is contaminated.
 
 These sub-lessons may consolidate into §7.10 at Sub-phase E or emerge as separate methodology candidates.
+
+### §13.5 New lesson candidate codified post-A.3 (deferred elevation per anti-drift discipline; Sub-phase E closeout consolidates)
+
+**§7.11 candidate — pre-execution validation must extend beyond input correctness to cover the full pipeline-stage maturity AND scope-fit.**
+
+Each Tier 1 acquisition sub-phase surfaced a distinct pre-execution validation gap that input-correctness checks alone would not catch. Five empirical pillars accumulated across A.1 → A.3:
+
+| Pillar | Sub-phase | Concrete failure | Pre-execution validation that would catch |
+|---|---|---|---|
+| **1. Stale-slug detection** | A.1 (`f56a76124`) | 3 of 8 code-read PolyHaven slug recommendations 404'd at live fetch (`ice_001`, `mud_riverbed_01`, `old_stone_path`). | Live-browse verification of each slug against the live provider catalog at acquisition time, not at recommendation time. |
+| **2. Live-verified-slug success** | A.1.B (`f5387f20e`) | 2 of 2 human-browse-verified slugs (`brown_mud_rocks_01`, `rocky_trail`) fetched cleanly first-try. | Confirms pillar 1's complement: live verification works as the safety net. |
+| **3. Provider-fit failure** | A.1.C (`76b15948d`) | PolyHaven's photoscan catalog has no suitable PBR ice texture (Andrew browse 2026-05-15). All 8 slugs in the catalog returned 404 or off-topic content for "ice". | Per-material provider-fit check before slug selection: does this provider's catalog cover this material class at all? Slug-correctness within an assumed-correct provider is insufficient. |
+| **4. Tool-maturity gap** | A.2 (no commit) | All 9 input PNGs verifiably correct (Phase 2 channel-order audit), but cook tool nonfunctional on dev env (no toktx/basisu) AND parallel `bake-texture` path produces broken output (placeholder BC encoder writes monochrome 4×4 blocks; DFD always marks sRGB regardless of `ColorSpace::Linear` per [texture_baker.rs:393](../../tools/aw_asset_cli/src/texture_baker.rs#L393)). | Per-pipeline-stage tool-maturity audit: each stage (fetch → relocate → cook → runtime consume) must be independently verified mature; an upstream-correct input cannot rescue a broken downstream stage. |
+| **5. Scope-fit validation** | A.3 (this commit) | A.1 → A.2 → A.3 chain wrote prompts and code to "wire up grassland to consume the 9 Tier 1 materials". Phase 1 audit revealed grassland was already wired (5 layers PNG-native) AND all 27 Tier 1 PNGs were already deployed at runtime root. The entire forward chain solved a problem the codebase had already solved. | Pre-execution "does this work need doing" check: read the current state of the artifact the work is supposed to produce, before authoring the work. The Editor Multi-Tool Architecture §7.2 pre-execution actual-code verification lesson generalizes to "verify the work's necessity, not just its design". |
+
+**Codified general rule** (candidate for §7.11 elevation at Sub-phase E closeout):
+
+> Pre-execution validation for any pipeline-touching work must verify (a) input correctness at the relevant boundary, (b) every downstream stage's tool-maturity independently, (c) provider-fit at the material/asset/data-class level (not just within an assumed-correct provider), and (d) scope-fit — does this work need doing given the current state of the target artifact. Any of (a)-(d) failing nullifies upstream correctness; all four are independently verifiable and must be checked independently. The lesson generalizes §7.2 (pre-execution actual-code verification) from "verify the design" to "verify the necessity, the design, and the pipeline maturity at each stage".
+
+**Implications for methodology**:
+- The "audit-before-execute" discipline established at A.2 is the operational embodiment of this candidate. Sub-phase prompts that mandate Phase 1 read-only audit + Phase 2 Andrew-gate before any execution are the pattern that catches all four failure modes.
+- This generalizes the Editor Multi-Tool Architecture campaign's §7.2 (pre-execution actual-code verification). §7.11 extends §7.2 from "verify the design contract" to "verify the entire pipeline's readiness and the work's necessity".
+- Scope-fit (pillar 5) is the highest-impact failure mode: solving a non-problem costs the entire sub-phase chain's effort. Provider-fit (pillar 3) and tool-maturity (pillar 4) are mid-impact (sub-phase blocked but recoverable). Stale-slug (pillar 1) is lowest-impact (one acquisition retry).
+- The pillar 5 detection mechanism (read current state of target artifact) is the cheapest pre-execution check of the five; it should always run first.
+
+§7.11 elevation deferred to Sub-phase E closeout per Sub-phase 3 chronological-archeology discipline. §13.3's §7.10 candidate and §13.5's §7.11 candidate consolidate together at E.
 
 ---
 
