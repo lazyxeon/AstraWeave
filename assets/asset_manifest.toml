@@ -127,9 +127,30 @@ id = "rocky_trail"
 resolution = "2k"
 format = "png"
 
-# Pending Sub-phase A.1.C (1 material; PolyHaven has no suitable PBR ice
-# texture per Andrew browse 2026-05-15; non-PolyHaven sourcing required):
-#   ice          (eab972aea recommended ice_001 -> 404; PolyHaven gap)
+# =============================================================================
+# Sub-phase A.1.C (2026-05-16) — ice acquired from ambientCG (Ice003, CC0,
+# 2K-PNG). PolyHaven gap fill: their photoscan catalog has no suitable PBR
+# ice. Manual download per A.1.C protocol; fetcher's `--provider polyhaven`
+# filter does not touch this entry (no ambientcg provider registered).
+# Per-channel AmbientOcclusion + Roughness maps composed into ice_mra.png
+# via one-off cargo example a1c_relocate.rs (compiled + run + deleted from
+# tree post-relocation; preserved in commit history of this session).
+# Metallic channel synthesized as solid 0 (ice is non-metallic). Tier 1
+# acquisition complete at 9 of 9. Scaffolding tier per Terrain Asset Quality
+# framing — slated for replacement when final art direction (KayKit
+# stylized pivot target) locks.
+# =============================================================================
+
+[[assets]]
+handle = "ice"
+provider = "ambientcg"
+type = "texture"
+id = "Ice003"
+resolution = "2k"
+format = "png"
+license = "CC0-1.0"
+author = "ambientCG"
+source_url = "https://ambientcg.com/view?id=Ice003"
 
 [[assets]]
 handle = "sky_day"
