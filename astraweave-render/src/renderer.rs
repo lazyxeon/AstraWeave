@@ -723,12 +723,10 @@ pub struct Renderer {
     material_buf: wgpu::Buffer,
     material_bg: wgpu::BindGroup,
     post_pipeline: wgpu::RenderPipeline,
-    /// Passthrough blit pipeline for editor mode (copies HDR without tonemapping).
-    /// Uses `Rgba16Float` target format so it's compatible with the editor's HDR buffer.
-    hdr_blit_pipeline: wgpu::RenderPipeline,
-    /// Bind group for the HDR blit pass (hdr_tex + sampler, independent of postfx).
-    hdr_blit_bind_group: wgpu::BindGroup,
-    hdr_blit_bgl: wgpu::BindGroupLayout,
+    // Editor-Engine Render Parity P.3: hdr_blit_pipeline / hdr_blit_bind_group /
+    // hdr_blit_bgl fields removed. Their sole consumer was `draw_into`'s
+    // surface.is_none() branch (deleted in same commit); the canonical
+    // post_pipeline now runs unconditionally.
     post_bind_group: wgpu::BindGroup,
     post_bgl: wgpu::BindGroupLayout,
     hdr_tex: wgpu::Texture,
@@ -2338,132 +2336,11 @@ impl Renderer {
             multiview: None,
         });
 
-        // HDR passthrough blit pipeline — used in editor mode (surface=None) to copy
-        // the internal HDR buffer to an Rgba16Float external target without tonemapping.
-        // When bloom is active, additively composites the bloom output into the HDR
-        // colour before writing.  When bloom is off, bloom_tex is a 1×1 black dummy
-        // and bloom_intensity is 0.0, so the shader path is a no-op passthrough.
-        let hdr_blit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("hdr blit shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(
-                r#"
-struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
-@vertex fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
-    var p = array<vec2<f32>, 3>(vec2(-1.0,-3.0), vec2(3.0,1.0), vec2(-1.0,1.0));
-    var out: VSOut;
-    out.pos = vec4<f32>(p[vid], 0.0, 1.0);
-    // Flip UV.y: wgpu NDC Y+ is top, but texture V=0 is top.
-    // Without the flip the blit renders the scene upside-down.
-    out.uv = vec2((p[vid].x + 1.0) * 0.5, (1.0 - p[vid].y) * 0.5);
-    return out;
-}
-@group(0) @binding(0) var hdr_tex: texture_2d<f32>;
-@group(0) @binding(1) var samp: sampler;
-@group(0) @binding(2) var bloom_tex: texture_2d<f32>;
-struct PostfxParams { bloom_intensity: f32, _pad1: f32, _pad2: f32, _pad3: f32, };
-@group(0) @binding(3) var<uniform> pfx: PostfxParams;
-@fragment fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
-    var color = textureSampleLevel(hdr_tex, samp, in.uv, 0.0);
-    let bloom = textureSampleLevel(bloom_tex, samp, in.uv, 0.0);
-    color = vec4(color.rgb + bloom.rgb * pfx.bloom_intensity, color.a);
-    return color;
-}
-"#,
-            )),
-        });
-        let hdr_blit_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("hdr blit bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-        let hdr_blit_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("hdr blit bg"),
-            layout: &hdr_blit_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&hdr_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&hdr_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&postfx_dummy_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: postfx_params_buf.as_entire_binding(),
-                },
-            ],
-        });
-        let hdr_blit_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("hdr blit layout"),
-            bind_group_layouts: &[&hdr_blit_bgl],
-            push_constant_ranges: &[],
-        });
-        let hdr_blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("hdr blit pipeline"),
-            layout: Some(&hdr_blit_layout),
-            vertex: wgpu::VertexState {
-                module: &hdr_blit_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &hdr_blit_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        // Editor-Engine Render Parity P.3: hdr_blit_pipeline construction
+        // removed. Was the passthrough HDR→HDR blit selected by
+        // `draw_into`'s `surface.is_none()` branch (deleted in same commit).
+        // Canonical post_pipeline now runs unconditionally for both windowed
+        // runtime and headless editor invocations.
 
         // Shadow map resources (2-layer array for CSM)
         let shadow_size: u32 = 2048;
@@ -3315,9 +3192,6 @@ fn vs(input: VSIn) -> VSOut {
             material_buf,
             material_bg,
             post_pipeline,
-            hdr_blit_pipeline,
-            hdr_blit_bind_group,
-            hdr_blit_bgl,
             post_bind_group,
             post_bgl,
             hdr_tex,
@@ -4032,34 +3906,10 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(ref mut bloom) = self.bloom_pass {
             bloom.resize(&self.device, new_w, new_h);
         }
-        // Recreate HDR blit bind group (references the new hdr_view + bloom view)
-        let bloom_view = self
-            .bloom_pass
-            .as_ref()
-            .and_then(|b| b.bloom_view())
-            .unwrap_or(&self.postfx_dummy_view);
-        self.hdr_blit_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("hdr blit bg"),
-            layout: &self.hdr_blit_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&self.hdr_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.hdr_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(bloom_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: self.postfx_params_buf.as_entire_binding(),
-                },
-            ],
-        });
+        // Editor-Engine Render Parity P.3: resize-time HDR blit bind group
+        // rebuild removed (only existed to keep hdr_blit_pipeline's view
+        // bindings current; pipeline deleted in same commit).
+
         // Update clustered params screen size
         #[repr(C)]
         #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -5841,34 +5691,17 @@ fn vs(input: VSIn) -> VSOut {
                 self.resource_generation,
             );
             let intensity = cfg.intensity;
-            // Rebuild the HDR blit bind group on first creation so it references
-            // the real bloom output texture instead of the dummy.
-            if first_create {
-                let bloom_view = bloom.bloom_view().unwrap_or(&self.postfx_dummy_view);
-                self.hdr_blit_bind_group =
-                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("hdr blit bg"),
-                        layout: &self.hdr_blit_bgl,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&self.hdr_view),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::Sampler(&self.hdr_sampler),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: wgpu::BindingResource::TextureView(bloom_view),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 3,
-                                resource: self.postfx_params_buf.as_entire_binding(),
-                            },
-                        ],
-                    });
-            }
+            // Editor-Engine Render Parity P.3: first-create HDR blit bind
+            // group rebuild removed (only existed so hdr_blit_pipeline could
+            // composite bloom; pipeline deleted in same commit). The
+            // canonical POST_SHADER does not currently composite bloom
+            // (windowed runtime path never did either; bloom was only
+            // visible through the now-deleted editor-mode passthrough).
+            // Re-integrating bloom into POST_SHADER is out of P.3 scope
+            // per anti-drift constraint 11. Bloom pass still runs and
+            // writes its output texture; that output is currently unused.
+            // Flagged as a follow-up in the commit body.
+            let _ = first_create;
             self.bloom_pass = Some(bloom);
             intensity
         } else {
@@ -5881,10 +5714,13 @@ fn vs(input: VSIn) -> VSOut {
             bytemuck::bytes_of(&[bloom_intensity, 0.0f32, 0.0, 0.0]),
         );
 
-        // Blit internal HDR → external view.
-        // Editor mode (surface=None): use passthrough blit (no tonemapping) —
-        // the editor has its own tonemap pass.
-        // Standalone mode: use the full post pipeline (ACES tonemap + tint).
+        // Editor-Engine Render Parity P.3: canonical post pipeline runs
+        // unconditionally. Prior surface.is_none() branch (selecting the
+        // passthrough hdr_blit_pipeline for editor mode) deleted — both
+        // windowed runtime and headless editor invocations now share the
+        // same ACES Narkowicz + exposure 1.35 + scene-env tint terminal
+        // stage. Caller's `view` format must match config.format
+        // (post_pipeline's hardcoded color target format at construction).
         {
             let post_ts = di_ts_post.and_then(|(b, e)| {
                 Some(wgpu::RenderPassTimestampWrites {
@@ -5907,18 +5743,10 @@ fn vs(input: VSIn) -> VSOut {
                 timestamp_writes: post_ts,
                 occlusion_query_set: None,
             });
-            if self.surface.is_none() {
-                // Editor: passthrough blit (HDR → HDR, no tonemap)
-                pp.set_pipeline(&self.hdr_blit_pipeline);
-                pp.set_bind_group(0, &self.hdr_blit_bind_group, &[]);
-                pp.draw(0..3, 0..1);
-            } else {
-                // Standalone: full post-processing (tonemap + tint)
-                pp.set_pipeline(&self.post_pipeline);
-                pp.set_bind_group(0, &self.post_bind_group, &[]);
-                pp.set_bind_group(1, &self.scene_env_bg, &[]);
-                pp.draw(0..3, 0..1);
-            }
+            pp.set_pipeline(&self.post_pipeline);
+            pp.set_bind_group(0, &self.post_bind_group, &[]);
+            pp.set_bind_group(1, &self.scene_env_bg, &[]);
+            pp.draw(0..3, 0..1);
         }
 
         // --- GPU profiler: resolve timestamp queries into readback buffer ---

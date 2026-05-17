@@ -634,9 +634,21 @@ impl EngineRenderAdapter {
         width: u32,
         height: u32,
     ) -> Result<Self> {
+        // Editor-Engine Render Parity P.3: config.format aligned to
+        // Rgba8UnormSrgb so the canonical post_pipeline (which writes
+        // config.format to its caller-supplied view) produces bytes
+        // compatible with the editor's LDR target format. Was
+        // Bgra8UnormSrgb pre-P.3 — that choice mirrored a typical D3D12
+        // swapchain default but never had to match the editor's external
+        // target because the surface=None branch ran the passthrough
+        // hdr_blit_pipeline (deleted in same commit) instead of
+        // post_pipeline. This alignment is *not* a target format choice
+        // (P.5 scope is the editor's LDR_COLOR_FORMAT constant + display
+        // target format harmonisation); it's a downstream consequence of
+        // post_pipeline now running unconditionally.
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
             width: width.max(1),
             height: height.max(1),
             present_mode: wgpu::PresentMode::AutoVsync,

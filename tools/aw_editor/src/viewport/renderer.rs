@@ -24,11 +24,11 @@
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tracing::{debug, info};
-use wgpu::util::DeviceExt;
 
-/// Color format used for the HDR scene render target.
-/// All scene sub-renderers create their pipelines against this format.
-const HDR_COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+// Editor-Engine Render Parity P.3: HDR_COLOR_FORMAT constant deleted along
+// with the HDR intermediate target. Engine's canonical post_pipeline writes
+// LDR directly to the editor's target view; overlay pipelines target the
+// same LDR format.
 
 /// Color format used for the final LDR output (egui display surface).
 const LDR_COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -83,26 +83,11 @@ pub struct ViewportRenderer {
     /// Enable engine rendering (PBR meshes) vs cube rendering
     render_mode: RenderMode,
 
-    /// HDR scene render target (Rgba16Float) — all scene passes render here
-    hdr_texture: Option<wgpu::Texture>,
-
-    /// HDR scene render target view
-    hdr_view: Option<wgpu::TextureView>,
-
-    /// Tonemap pipeline (HDR → LDR blit with ACES tonemapping)
-    tonemap_pipeline: Option<wgpu::RenderPipeline>,
-
-    /// Tonemap bind group layout
-    tonemap_bind_group_layout: Option<wgpu::BindGroupLayout>,
-
-    /// Tonemap bind group (references HDR texture + params uniform)
-    tonemap_bind_group: Option<wgpu::BindGroup>,
-
-    /// Tonemap params uniform buffer (mode selection)
-    tonemap_params_buffer: Option<wgpu::Buffer>,
-
-    /// Active tonemapper: 0=ACES, 1=PBR Neutral, 2=Reinhard
-    tonemap_mode: u32,
+    // Editor-Engine Render Parity P.3: HDR intermediate + editor tonemap
+    // fields removed. Engine's draw_into now runs canonical post_pipeline
+    // unconditionally and writes LDR directly to the caller's target;
+    // editor overlays (grid, physics debug, gizmo) render on top of that
+    // LDR target.
 
     /// Depth texture (shared across passes)
     depth_texture: Option<wgpu::Texture>,
@@ -157,7 +142,10 @@ impl ViewportRenderer {
         // Only create essential renderers at startup (grid, gizmos).
         // Physics debug renderer is deferred to first use.
         // Entity rendering is handled by the engine adapter (PBR path).
-        let grid_renderer = GridRenderer::with_color_format(&device, HDR_COLOR_FORMAT)
+        // Editor-Engine Render Parity P.3: overlay pipelines target LDR
+        // directly (engine's draw_into now writes LDR post-canonical-tonemap;
+        // overlays compose on top of that target in the same format).
+        let grid_renderer = GridRenderer::with_color_format(&device, LDR_COLOR_FORMAT)
             .context("Failed to create grid renderer")?;
         let gizmo_renderer = GizmoRendererWgpu::new((*device).clone(), (*queue).clone(), 10000)
             .context("Failed to create gizmo renderer")?;
@@ -173,13 +161,6 @@ impl ViewportRenderer {
             engine_adapter: None,
             engine_adapter_init_failed: false,
             render_mode: RenderMode::EnginePBR,
-            hdr_texture: None,
-            hdr_view: None,
-            tonemap_pipeline: None,
-            tonemap_bind_group_layout: None,
-            tonemap_bind_group: None,
-            tonemap_params_buffer: None,
-            tonemap_mode: 0, // Default: ACES
             depth_texture: None,
             depth_view: None,
             size: (0, 0),
@@ -220,7 +201,7 @@ impl ViewportRenderer {
                     (*self.device).clone(),
                     (*self.queue).clone(),
                     5000,
-                    HDR_COLOR_FORMAT,
+                    LDR_COLOR_FORMAT,
                 )
                 .context("Failed to create physics debug renderer (deferred)")?,
             );
@@ -238,7 +219,7 @@ impl ViewportRenderer {
                 (*self.device).clone(),
                 (*self.queue).clone(),
                 5000,
-                HDR_COLOR_FORMAT,
+                LDR_COLOR_FORMAT,
             ) {
                 Ok(r) => self.physics_renderer = Some(r),
                 Err(e) => tracing::warn!("Eager init physics renderer failed: {e:#}"),
@@ -266,9 +247,6 @@ impl ViewportRenderer {
             // Invalid size, clear render targets
             self.depth_texture = None;
             self.depth_view = None;
-            self.hdr_texture = None;
-            self.hdr_view = None;
-            self.tonemap_bind_group = None;
             self.size = (0, 0);
             return Ok(());
         }
@@ -297,28 +275,10 @@ impl ViewportRenderer {
         self.depth_view = Some(depth_view);
         self.size = (width, height);
 
-        // Create HDR scene render target (Rgba16Float)
-        let hdr_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Viewport HDR Scene Target"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: HDR_COLOR_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let hdr_view = hdr_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        // Create or recreate the tonemap pipeline and bind group
-        self.create_tonemap_resources(&hdr_view);
-
-        self.hdr_texture = Some(hdr_texture);
-        self.hdr_view = Some(hdr_view);
+        // Editor-Engine Render Parity P.3: HDR intermediate target +
+        // tonemap pipeline construction removed. Engine's draw_into now
+        // writes LDR (canonical post_pipeline output) directly to the
+        // caller-supplied target.
 
         // Cancel any in-flight depth readback before replacing the staging buffer
         self.depth_read_pending = false;
@@ -447,13 +407,15 @@ impl ViewportRenderer {
             .as_ref()
             .expect("cached_ldr_view must be Some after initialization block");
 
-        // All scene passes render to the HDR target (Rgba16Float).
-        // After scene rendering + post-processing, a tonemap blit converts
-        // HDR → LDR (Bgra8UnormSrgb) for the final display surface.
-        let scene_target_view = self
-            .hdr_view
-            .as_ref()
-            .context("HDR render target not initialized — call resize() first")?;
+        // Editor-Engine Render Parity P.3: scene_target_view is now the
+        // caller-supplied LDR target directly. The engine's draw_into runs
+        // canonical post_pipeline (ACES + scene-env tint), writing
+        // tonemapped LDR bytes straight into this target. Editor overlays
+        // (grid, physics debug) draw on top of those bytes in LDR space.
+        // Pre-P.3, scene_target_view was an HDR intermediate that the
+        // editor's deleted tonemap.wgsl pass would later blit to the LDR
+        // target — that intermediate is gone with the tonemap pass.
+        let scene_target_view = target_view;
 
         let depth_view = self
             .depth_view
@@ -575,30 +537,14 @@ impl ViewportRenderer {
             }
         }
 
-        // Pass 5.0: Blit HDR → LDR
-        // The engine's draw_into() writes tonemapped output to the HDR buffer.
-        // This pass copies it to the final LDR display surface (Bgra8UnormSrgb).
-        if let (Some(pipeline), Some(bind_group)) =
-            (&self.tonemap_pipeline, &self.tonemap_bind_group)
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("HDR to LDR Blit Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, bind_group, &[]);
-            pass.draw(0..3, 0..1);
-        }
+        // Editor-Engine Render Parity P.3: HDR→LDR tonemap blit pass
+        // removed. Engine's draw_into now writes LDR directly to
+        // target_view via the canonical post_pipeline (ACES Narkowicz +
+        // exposure 1.35 + scene-env tint); grid + physics debug overlays
+        // above wrote onto that same LDR target. Gizmos render last.
+        // P.6 will move overlays to a separate composition pass so the
+        // engine's bit-identical LDR output isn't mutated by overlays
+        // before hashing.
 
         // Pass 5.5: Gizmos (if entity selected and gizmo active)
         // Gizmos render AFTER post-processing onto the final LDR target for crisp overlays.
@@ -649,131 +595,12 @@ impl ViewportRenderer {
         Ok(())
     }
 
-    /// Create the tonemap pipeline and bind group for HDR → LDR blit.
-    /// Called from `resize()` whenever the HDR target is (re)created.
-    fn create_tonemap_resources(&mut self, hdr_view: &wgpu::TextureView) {
-        let device = &self.device;
-
-        // Bind group layout: HDR texture + sampler + tonemap params
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Tonemap Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        // Sampler (bilinear, clamp)
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Tonemap HDR Sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
-        // Tonemap params uniform buffer
-        let params_data: [u32; 4] = [self.tonemap_mode, 0, 0, 0];
-        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Tonemap Params Buffer"),
-            contents: bytemuck::cast_slice(&params_data),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        // Bind group
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Tonemap Bind Group"),
-            layout: &bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(hdr_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: params_buffer.as_entire_binding(),
-                },
-            ],
-        });
-        self.tonemap_params_buffer = Some(params_buffer);
-
-        // Pipeline (only create once — the layout doesn't change)
-        if self.tonemap_pipeline.is_none() {
-            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Tonemap Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shaders/tonemap.wgsl").into()),
-            });
-
-            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Tonemap Pipeline Layout"),
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            });
-
-            let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Tonemap Render Pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[],
-                    compilation_options: Default::default(),
-                },
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    ..Default::default()
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(),
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: LDR_COLOR_FORMAT,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                    compilation_options: Default::default(),
-                }),
-                multiview: None,
-                cache: None,
-            });
-
-            self.tonemap_pipeline = Some(pipeline);
-        }
-
-        self.tonemap_bind_group_layout = Some(bind_group_layout);
-        self.tonemap_bind_group = Some(bind_group);
-    }
+    // Editor-Engine Render Parity P.3: create_tonemap_resources function
+    // deleted along with the HDR→LDR blit pass it served. Canonical engine
+    // post_pipeline (ACES Narkowicz + exposure 1.35 + scene-env tint) is the
+    // single tonemap path; the multi-operator authoring feature (PBR
+    // Neutral, Reinhard, AgX) is deferred to a future Tonemap Operator
+    // Preview panel per P.0 Q3 decision (out of this campaign's scope).
 
     /// Create render texture
     ///
@@ -898,24 +725,11 @@ impl ViewportRenderer {
         &self.selected_entities
     }
 
-    /// Handle GPU device lost
-    ///
-    /// Clears all GPU-dependent resources and prepares for recovery.
-    /// Set the active tonemapper: 0=ACES, 1=PBR Neutral, 2=Reinhard
-    pub fn set_tonemap_mode(&mut self, mode: u32) {
-        self.tonemap_mode = mode.min(2);
-        // Update the GPU buffer if it exists
-        if let Some(buffer) = &self.tonemap_params_buffer {
-            let params_data: [u32; 4] = [self.tonemap_mode, 0, 0, 0];
-            self.queue
-                .write_buffer(buffer, 0, bytemuck::cast_slice(&params_data));
-        }
-    }
-
-    /// Get the current tonemapper mode: 0=ACES, 1=PBR Neutral, 2=Reinhard
-    pub fn tonemap_mode(&self) -> u32 {
-        self.tonemap_mode
-    }
+    // Editor-Engine Render Parity P.3: set_tonemap_mode / tonemap_mode
+    // accessor removed alongside the multi-operator authoring feature
+    // (PBR Neutral, Reinhard, AgX). Canonical engine post_pipeline (ACES
+    // Narkowicz) is the unconditional tonemap; a future Tonemap Operator
+    // Preview panel would live as a non-parity preview path.
 
     /// Set the editor quality preset (shadows + post-processing).
     pub fn set_quality_preset(&mut self, preset: super::engine_adapter::EditorQualityPreset) {
@@ -984,13 +798,9 @@ impl ViewportRenderer {
             .store(false, std::sync::atomic::Ordering::Release);
         self.cached_depth_value = None;
 
-        // Clear HDR / tonemap pipeline
-        self.hdr_texture = None;
-        self.hdr_view = None;
-        self.tonemap_pipeline = None;
-        self.tonemap_bind_group_layout = None;
-        self.tonemap_bind_group = None;
-        self.tonemap_params_buffer = None;
+        // Editor-Engine Render Parity P.3: HDR intermediate + editor
+        // tonemap pipeline fields removed; no per-device-lost cleanup
+        // needed beyond the cached LDR view below.
 
         // Clear cached LDR view
         self.cached_ldr_view = None;
