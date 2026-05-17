@@ -2080,6 +2080,7 @@ dependencies = [
  "env_logger",
  "glam",
  "gltf",
+ "half",
  "image",
  "log",
  "lz4_flex",

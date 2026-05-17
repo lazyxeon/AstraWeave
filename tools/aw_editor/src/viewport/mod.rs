@@ -73,6 +73,11 @@ pub use engine_adapter::EditorQualityPreset;
 pub use physics_renderer::{PhysicsDebugOptions, PhysicsDebugRenderer};
 #[allow(unused_imports)]
 pub use renderer::RenderMode;
+// Editor-Engine Render Parity (P.1): expose ViewportRenderer for the
+// integration test in tools/aw_editor/tests/render_parity_harness.rs.
+// Non-behavioral re-export; pairs with the existing RenderMode re-export.
+#[allow(unused_imports)]
+pub use renderer::ViewportRenderer;
 // Shared types — canonical exports
 #[allow(unused_imports)]
 pub use types::{
