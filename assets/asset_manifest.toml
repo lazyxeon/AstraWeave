@@ -104,12 +104,32 @@ id = "snow_03"
 resolution = "2k"
 format = "png"
 
-# Pending Sub-phase A.1.B (3 materials; eab972aea-recommended IDs returned
-# HTTP 404 at live fetch 2026-05-15; user provides verified PolyHaven IDs in
-# follow-up):
-#   ice          (recommended ice_001 -> 404)
-#   mud          (recommended mud_riverbed_01 -> 404)
-#   cobblestone  (recommended old_stone_path -> 404)
+# =============================================================================
+# Sub-phase A.1.B (2026-05-15) — verified-slug acquisition. Slugs
+# human-verified against live polyhaven.com browse; replaces eab972aea's
+# stale code-read recommendations (mud_riverbed_01 + old_stone_path both
+# returned 404 at A.1 live fetch).
+# =============================================================================
+
+[[assets]]
+handle = "mud"
+provider = "polyhaven"
+type = "texture"
+id = "brown_mud_rocks_01"
+resolution = "2k"
+format = "png"
+
+[[assets]]
+handle = "cobblestone"
+provider = "polyhaven"
+type = "texture"
+id = "rocky_trail"
+resolution = "2k"
+format = "png"
+
+# Pending Sub-phase A.1.C (1 material; PolyHaven has no suitable PBR ice
+# texture per Andrew browse 2026-05-15; non-PolyHaven sourcing required):
+#   ice          (eab972aea recommended ice_001 -> 404; PolyHaven gap)
 
 [[assets]]
 handle = "sky_day"
