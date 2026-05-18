@@ -315,6 +315,39 @@ impl ParityFixture {
     }
 }
 
+// ─── P.5 format-equality closure proof state ────────────────────────────────
+//
+// Captured from each Renderer instance via its existing public accessors
+// (`surface_format()`, `hdr_format()`, `depth_format()`). No new public API
+// added to astraweave-render (anti-drift constraint 14 respected). The closure
+// proof reports the values and asserts pairwise equality across rows where
+// both sides have a format value.
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct RendererFormats {
+    /// `config.format` — the canonical post_pipeline output format. P.3 made
+    /// this Rgba8UnormSrgb on both sides (the editor adapter's config.format
+    /// migrated as a downstream consequence of the surface.is_none() branch
+    /// deletion; engine harness path was already aligned).
+    surface_format: wgpu::TextureFormat,
+    /// Internal HDR intermediate format. Hardcoded at
+    /// `astraweave-render/src/renderer.rs:5788` to `Rgba16Float`. Same code
+    /// path on both sides, so necessarily equal — recorded for completeness.
+    hdr_format: wgpu::TextureFormat,
+    /// Depth attachment format. `Depth32Float` per renderer.rs:2357.
+    depth_format: wgpu::TextureFormat,
+}
+
+impl RendererFormats {
+    fn capture(renderer: &Renderer) -> Self {
+        Self {
+            surface_format: renderer.surface_format(),
+            hdr_format: renderer.hdr_format(),
+            depth_format: renderer.depth_format(),
+        }
+    }
+}
+
 /// Engine production path readback. P.3: now Rgba8UnormSrgb (4 B / px) —
 /// the canonical post_pipeline runs unconditionally and writes LDR after
 /// ACES tonemap + scene-env tint. Pre-P.3 was Rgba16Float HDR passthrough.
@@ -322,6 +355,9 @@ struct EngineFrame {
     bytes: Vec<u8>,
     width: u32,
     height: u32,
+    /// P.5: captured from the Renderer's public format accessors before
+    /// readback. Drives the format-equality closure proof in the report.
+    formats: RendererFormats,
 }
 
 /// Editor viewport path readback (Rgba8UnormSrgb LDR; 4 B / px). P.3:
@@ -332,6 +368,9 @@ struct EditorFrame {
     bytes: Vec<u8>,
     width: u32,
     height: u32,
+    /// P.5: captured from the editor adapter's inner Renderer's public
+    /// format accessors before readback. Mirrors `EngineFrame::formats`.
+    formats: RendererFormats,
 }
 
 async fn acquire_device() -> Result<(Arc<wgpu::Device>, Arc<wgpu::Queue>, wgpu::AdapterInfo)> {
@@ -471,12 +510,18 @@ async fn render_engine_path(
         .draw_into(&view, None, &mut enc2)
         .context("engine measurement draw_into failed")?;
 
+    // P.5 format capture (before readback consumes the renderer's encoder):
+    // record the engine path's Renderer formats for the format-equality
+    // closure proof. Reads via existing public accessors only.
+    let formats = RendererFormats::capture(&renderer);
+
     // P.3: 4 B/px Rgba8UnormSrgb (was 8 B/px Rgba16Float pre-P.3).
     let bytes = readback_texture(&device, &queue, &target, fixture.width, fixture.height, 4, enc2)?;
     Ok(EngineFrame {
         bytes,
         width: fixture.width,
         height: fixture.height,
+        formats,
     })
 }
 
@@ -556,6 +601,14 @@ async fn render_editor_path(
         .render(&target, &camera, &world, None, None, None, false, false, 0)
         .context("editor measurement render failed")?;
 
+    // P.5 format capture: read the editor-adapter's inner Renderer formats
+    // via the same public accessors used on the engine path. The closure
+    // proof asserts pairwise equality (engine.formats == editor.formats).
+    let formats = viewport
+        .engine_adapter()
+        .map(|adapter| RendererFormats::capture(adapter.renderer()))
+        .context("editor adapter not initialised at format-capture site")?;
+
     let enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("parity-editor readback encoder"),
     });
@@ -564,6 +617,7 @@ async fn render_editor_path(
         bytes,
         width: fixture.width,
         height: fixture.height,
+        formats,
     })
 }
 
@@ -1036,6 +1090,71 @@ fn editor_engine_render_parity() {
     eprintln!("  branch + hdr_blit_pipeline + editor's own tonemap.wgsl pass are all deleted.");
     eprintln!();
 
+    eprintln!("Target-format-axis closure proof (P.5):");
+    eprintln!(
+        "  Engine formats: surface={:?}, hdr={:?}, depth={:?}",
+        engine.formats.surface_format,
+        engine.formats.hdr_format,
+        engine.formats.depth_format
+    );
+    eprintln!(
+        "  Editor formats: surface={:?}, hdr={:?}, depth={:?}",
+        editor.formats.surface_format,
+        editor.formats.hdr_format,
+        editor.formats.depth_format
+    );
+    let format_table = [
+        (
+            "surface_format (post_pipeline target)",
+            engine.formats.surface_format,
+            editor.formats.surface_format,
+        ),
+        (
+            "hdr_format     (internal HDR target)",
+            engine.formats.hdr_format,
+            editor.formats.hdr_format,
+        ),
+        (
+            "depth_format   (Depth32Float)",
+            engine.formats.depth_format,
+            editor.formats.depth_format,
+        ),
+    ];
+    let mut all_equal = true;
+    for (label, e, d) in &format_table {
+        let equal = e == d;
+        if !equal {
+            all_equal = false;
+        }
+        eprintln!(
+            "  | {:<40} | {:?} | {:?} | {} |",
+            label,
+            e,
+            d,
+            if equal { "YES" } else { "NO " }
+        );
+    }
+    eprintln!(
+        "  Pairwise comparisons: {} / 3 equal ({})",
+        format_table.iter().filter(|(_, e, d)| e == d).count(),
+        if all_equal { "PASS" } else { "FAIL" }
+    );
+    eprintln!(
+        "  Closure proof: {}. P.5 formalises the structural closure that P.3's",
+        if all_equal {
+            "STRUCTURAL PASS"
+        } else {
+            "STRUCTURAL FAIL — escalate"
+        }
+    );
+    eprintln!(
+        "  surface.is_none() branch deletion incidentally produced (config.format"
+    );
+    eprintln!(
+        "  migrated to Rgba8UnormSrgb on both sides as a downstream consequence)."
+    );
+    eprintln!();
+
     eprintln!("Quality-preset-axis closure proof (P.4):");
     eprintln!(
         "  Canonical preset (GameQuality):  {:?}",
@@ -1092,6 +1211,17 @@ fn editor_engine_render_parity() {
     eprintln!("    remaining SAD is quality preset (Axis 8, P.4) and overlay composition");
     eprintln!("    (P.6).");
     eprintln!("  - Cross-axis interactions are real. Attribution does not sum to 100%.");
+
+    // P.5 format-equality assertion. Structural closure proof — fails the
+    // test if any pairwise format comparison shows divergence. Independent
+    // of the per-pixel hash assertion below; surfaces format drift even on
+    // fixtures where the rendered pixels happen to match.
+    assert!(
+        all_equal,
+        "Target-format-axis closure proof FAILED — engine and editor formats diverge: \
+         engine={:?}, editor={:?}",
+        engine.formats, editor.formats
+    );
 
     // The test is kept `#[ignore]`'d through the campaign per P.0 sequencing.
     // P.3 incidentally produces hash equality on the minimal fixture
