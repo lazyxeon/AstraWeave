@@ -32,7 +32,7 @@ pub struct Camera {
 impl Camera {
     pub fn view_matrix(&self) -> Mat4 {
         let dir = Self::dir(self.yaw, self.pitch);
-        Mat4::look_to_rh(self.position, dir, -Vec3::Y)
+        Mat4::look_to_rh(self.position, dir, Vec3::Y)
     }
 
     pub fn proj_matrix(&self) -> Mat4 {
