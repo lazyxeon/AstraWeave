@@ -1,25 +1,69 @@
-//! Editor-Engine Render Parity Harness (P.1 baseline, failure-first).
+//! Editor-Engine Render Parity Harness.
 //!
-//! Single-test integration harness for the Editor-Engine Render Parity campaign
-//! launched by P.0. Renders the agreed grassland fixture through the engine
-//! production path (`Renderer::new_from_device` + `draw_into` — the same pattern
-//! `EngineRenderAdapter::new` uses) and through the editor viewport path
-//! (`ViewportRenderer::render` with grid / physics-debug / gizmo disabled),
-//! then computes SHA-256 of each path's readback bytes and asserts equality.
+//! Guards the campaign-wide parity contract: the editor viewport and the
+//! engine production renderer produce byte-identical output for the same
+//! scene fixture, verified per-machine via SHA-256 of the engine LDR target.
+//! "What the user sees in the editor matches what ships from the same
+//! machine." This is the WYSIWYG fidelity contract the Editor-Engine Render
+//! Parity campaign (P.0 → P.7) achieved and that this harness enforces
+//! going forward.
 //!
-//! **Expected to FAIL at P.1.** The hash mismatch is the campaign's regression
-//! target. Each subsequent sub-phase (P.2 loader, P.3 tonemap, P.4 quality
-//! preset, P.5 target format, P.6 composition layer) closes one of the named
-//! seams from the P.0 audit and reduces the per-axis SAD. P.7 removes the
-//! `#[ignore]` attribute when hash equality is achieved.
+//! ## Five closure proofs that structurally guarantee parity
 //!
-//! Per-machine parity contract: this harness verifies editor and engine produce
-//! identical bytes on whatever GPU runs it. Cross-machine reproducibility is
-//! explicitly out of scope. `wgpu::AdapterInfo` is logged on every run so a
-//! future failure can be distinguished as either a real parity regression or
-//! a GPU/driver environment change.
+//! Each proof targets one P.0 audit axis with a measurement instrument
+//! matched to its seam type (the campaign's Pillar 5-refinement):
 //!
-//! Run: `cargo test -p aw_editor --test render_parity_harness -- --include-ignored --nocapture`
+//! - **P.2 loader (byte-level closure)** — both paths invoke
+//!   `canonical_terrain_pack::load_canonical_terrain_pack` on the same
+//!   biome dir, producing identical CPU bytes for `Renderer::
+//!   set_terrain_materials`. Closure proof hashes the pack content.
+//!
+//! - **P.3 tonemap (pipeline-structural closure)** — `Renderer::draw_into`
+//!   no longer branches on `surface.is_none()`; both paths invoke the
+//!   single canonical `post_pipeline` (ACES Narkowicz + exposure 1.35 +
+//!   scene-env tint) from one `POST_SHADER` source of truth.
+//!
+//! - **P.4 quality preset (parameter-equality closure)** — both paths
+//!   apply `CanonicalQualityPresetParams::GAME_QUALITY` to their renderer
+//!   via the shared `apply_canonical_quality_preset_to_renderer` helper.
+//!   Call-site assertion: same setters, same arguments, same shared
+//!   source of truth.
+//!
+//! - **P.5 target format (format-equality structural closure)** — engine
+//!   and editor `Renderer` instances expose pairwise-equal `surface_format`,
+//!   `hdr_format`, and `depth_format` via existing public accessors. The
+//!   3-row equality table asserts pass; no new `astraweave-render` API
+//!   was added.
+//!
+//! - **P.6 overlay composition (isolation-structural closure)** — editor
+//!   overlays draw into `EDITOR_OVERLAY_TARGET`, never mutating the
+//!   parity-contract `ENGINE_LDR_TARGET`. Closure proof runs the editor
+//!   path twice (overlays off, overlays on) and asserts the engine LDR
+//!   target bytes are byte-identical across both runs.
+//!
+//! ## Per-machine parity contract
+//!
+//! This harness verifies editor and engine produce identical bytes on
+//! whatever GPU runs it. Cross-machine reproducibility is explicitly out
+//! of scope. `wgpu::AdapterInfo` is logged on every run so a future
+//! failure can be distinguished as either a real parity regression or a
+//! GPU/driver environment change.
+//!
+//! ## Changes that touch rendering must keep this test passing
+//!
+//! Anything modifying `astraweave-render`, `aw_editor/src/viewport/`, the
+//! canonical loader (`canonical_terrain_pack.rs`), `MaterialManager`, the
+//! canonical post pipeline, the quality preset application, the target
+//! format selection, or the editor overlay composition layer must keep
+//! this test green. Failure indicates a parity-class regression — one of
+//! the five seams above has reopened. The relevant closure proof above
+//! identifies which seam broke; the campaign-outcome doc has full context.
+//!
+//! See `docs/audits/editor_engine_render_parity_outcome_2026-05.md` for
+//! the campaign's full record: the five seams' technical closure details,
+//! the post-P.7 cleanup queue, and the methodology pillars surfaced.
+//!
+//! Run: `cargo test -p aw_editor --test render_parity_harness -- --nocapture`
 
 use anyhow::{Context, Result};
 use astraweave_core::World;
@@ -1011,14 +1055,13 @@ fn compute_attribution(engine: &EngineFrame, editor: &EditorFrame) -> AxisAttrib
 // ─── Test ────────────────────────────────────────────────────────────────────
 
 #[test]
-#[ignore = "P.1 baseline — expected to FAIL until P.7 closes Editor-Engine Render Parity"]
 fn editor_engine_render_parity() {
     let fixture = ParityFixture::default_grassland();
     let (device, queue, adapter_info) =
         pollster::block_on(acquire_device()).expect("acquire wgpu device");
 
     eprintln!("============================================================");
-    eprintln!("Editor-Engine Render Parity Harness (P.1 baseline)");
+    eprintln!("Editor-Engine Render Parity Harness");
     eprintln!("============================================================");
     eprintln!(
         "Adapter: {} | device_type={:?} | backend={:?}",
@@ -1356,17 +1399,16 @@ fn editor_engine_render_parity() {
         editor_hash, editor_engine_ldr_overlays_on
     );
 
-    // The test is kept `#[ignore]`'d through the campaign per P.0 sequencing.
-    // P.3 incidentally produces hash equality on the minimal fixture
-    // (no shadow casters → quality preset (Axis 8) inert; no editor overlays
-    // drawn → composition (P.6) inert; loader + tonemap closed at P.2/P.3).
-    // P.4 expands the fixture to include shadow casters, which will likely
-    // re-engage divergence. P.6 introduces the composition layer separating
-    // the bit-identical engine output from editor overlays. The `#[ignore]`
-    // is removed at P.7 when the contract holds against the full final
-    // fixture set.
+    // Editor-engine byte-identity is the campaign-wide parity contract.
+    // A failure here indicates a parity-class regression: the editor's
+    // engine LDR target diverged from the engine production renderer's
+    // output for the same scene. One of the five closure proofs above
+    // narrows which seam reopened. See the campaign-outcome doc
+    // (docs/audits/editor_engine_render_parity_outcome_2026-05.md) for
+    // full context on each seam and what protects it.
     assert_eq!(
         engine_hash, editor_hash,
-        "Parity hash mismatch — campaign tracks per-seam closure across P.2..P.6"
+        "Parity regression — engine and editor outputs diverged. \
+         Investigate before merge: a closure-proof failure above narrows the seam."
     );
 }
