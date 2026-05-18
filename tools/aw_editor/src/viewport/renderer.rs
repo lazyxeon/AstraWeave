@@ -85,9 +85,36 @@ pub struct ViewportRenderer {
 
     // Editor-Engine Render Parity P.3: HDR intermediate + editor tonemap
     // fields removed. Engine's draw_into now runs canonical post_pipeline
-    // unconditionally and writes LDR directly to the caller's target;
-    // editor overlays (grid, physics debug, gizmo) render on top of that
-    // LDR target.
+    // unconditionally and writes LDR directly to the engine LDR target;
+    // editor overlays draw onto a separate overlay target; a composite
+    // blit merges them into the caller-supplied display target. The
+    // engine LDR target is the bit-identical-to-runtime hashable target
+    // (parity contract); overlays never mutate it.
+
+    /// P.6 internal engine LDR target. Receives `Renderer::draw_into`'s
+    /// canonical post_pipeline output. Bit-identical to what the runtime
+    /// produces from the same scene — this is the hashable target for
+    /// Editor-Engine Render Parity. Composited into the display target
+    /// by `composite_pipeline` but never mutated by editor overlays.
+    engine_ldr_texture: Option<wgpu::Texture>,
+    engine_ldr_view: Option<wgpu::TextureView>,
+
+    /// P.6 internal editor overlay target. Receives grid + physics debug
+    /// + gizmo + brush cursor + zone overlay + selection outline draws.
+    /// Cleared transparent at frame start; overlays draw with premultiplied
+    /// alpha (BlendState::ALPHA_BLENDING). Composited into the display
+    /// target by `composite_pipeline`.
+    editor_overlay_texture: Option<wgpu::Texture>,
+    editor_overlay_view: Option<wgpu::TextureView>,
+
+    /// P.6 composite pipeline: alpha-over composition of engine_ldr_texture
+    /// + editor_overlay_texture → caller-supplied display target.
+    /// Pipeline is built once in `new`; its bind group is rebuilt on
+    /// resize when target views change.
+    composite_pipeline: Option<wgpu::RenderPipeline>,
+    composite_bgl: Option<wgpu::BindGroupLayout>,
+    composite_sampler: Option<wgpu::Sampler>,
+    composite_bind_group: Option<wgpu::BindGroup>,
 
     /// Depth texture (shared across passes)
     depth_texture: Option<wgpu::Texture>,
@@ -161,6 +188,14 @@ impl ViewportRenderer {
             engine_adapter: None,
             engine_adapter_init_failed: false,
             render_mode: RenderMode::EnginePBR,
+            engine_ldr_texture: None,
+            engine_ldr_view: None,
+            editor_overlay_texture: None,
+            editor_overlay_view: None,
+            composite_pipeline: None,
+            composite_bgl: None,
+            composite_sampler: None,
+            composite_bind_group: None,
             depth_texture: None,
             depth_view: None,
             size: (0, 0),
@@ -227,6 +262,120 @@ impl ViewportRenderer {
         }
     }
 
+    /// Editor-Engine Render Parity P.6: build the composite pipeline + its
+    /// bind-group layout + sampler. Idempotent — called from `resize` on
+    /// every size change; the pipeline / layout / sampler are built once
+    /// and reused. The bind group itself is rebuilt by `resize` because
+    /// the engine LDR + overlay views change with size.
+    fn ensure_composite_pipeline(&mut self) -> Result<()> {
+        if self.composite_pipeline.is_some() {
+            return Ok(());
+        }
+
+        let shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("composite shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shaders/composite.wgsl").into()),
+            });
+
+        let bgl = self
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("composite bgl"),
+                entries: &[
+                    // 0: engine_texture (ENGINE_LDR_TARGET, read-only)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 1: overlay_texture (EDITOR_OVERLAY_TARGET, read-only)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 2: sampler (shared for both textures)
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let layout = self
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("composite layout"),
+                bind_group_layouts: &[&bgl],
+                push_constant_ranges: &[],
+            });
+
+        let pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("composite pipeline"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: Default::default(),
+                },
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: LDR_COLOR_FORMAT,
+                        blend: None, // composite writes opaque output
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                multiview: None,
+                cache: None,
+            });
+
+        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("composite sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest, // 1:1 blit; nearest avoids any filtering
+            min_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        self.composite_pipeline = Some(pipeline);
+        self.composite_bgl = Some(bgl);
+        self.composite_sampler = Some(sampler);
+        Ok(())
+    }
+
+    /// P.6 closure-proof accessor: the internal engine LDR target texture
+    /// (bit-identical to runtime canonical output; the parity contract
+    /// target). The parity harness reads bytes from this texture for the
+    /// overlay-isolation closure proof. Returns None before the first
+    /// `resize`. Internal aw_editor API — no astraweave-render API growth.
+    pub fn engine_ldr_texture(&self) -> Option<&wgpu::Texture> {
+        self.engine_ldr_texture.as_ref()
+    }
+
     /// Resize viewport (recreates depth buffer)
     ///
     /// Call this when viewport dimensions change.
@@ -247,6 +396,11 @@ impl ViewportRenderer {
             // Invalid size, clear render targets
             self.depth_texture = None;
             self.depth_view = None;
+            self.engine_ldr_texture = None;
+            self.engine_ldr_view = None;
+            self.editor_overlay_texture = None;
+            self.editor_overlay_view = None;
+            self.composite_bind_group = None;
             self.size = (0, 0);
             return Ok(());
         }
@@ -275,10 +429,85 @@ impl ViewportRenderer {
         self.depth_view = Some(depth_view);
         self.size = (width, height);
 
-        // Editor-Engine Render Parity P.3: HDR intermediate target +
-        // tonemap pipeline construction removed. Engine's draw_into now
-        // writes LDR (canonical post_pipeline output) directly to the
-        // caller-supplied target.
+        // Editor-Engine Render Parity P.6: internal engine LDR target +
+        // editor overlay target. Engine canonical post_pipeline output
+        // writes to `engine_ldr_texture`; overlays write to
+        // `editor_overlay_texture` cleared transparent; the composite blit
+        // (final pass in `render`) reads both and writes the alpha-over
+        // composition to the caller-supplied display target.
+        let engine_ldr_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Editor-Engine Parity: ENGINE_LDR_TARGET"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: LDR_COLOR_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+        });
+        let engine_ldr_view =
+            engine_ldr_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let editor_overlay_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Editor-Engine Parity: EDITOR_OVERLAY_TARGET"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: LDR_COLOR_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+        });
+        let editor_overlay_view =
+            editor_overlay_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Lazily build the composite pipeline + bind-group-layout on first
+        // resize (idempotent — kept once built). Bind group rebuilt every
+        // resize because the engine/overlay views change.
+        self.ensure_composite_pipeline()?;
+        let bgl = self
+            .composite_bgl
+            .as_ref()
+            .context("composite_bgl missing after ensure_composite_pipeline")?;
+        let sampler = self
+            .composite_sampler
+            .as_ref()
+            .context("composite_sampler missing after ensure_composite_pipeline")?;
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("composite bind group"),
+            layout: bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&engine_ldr_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&editor_overlay_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        });
+
+        self.engine_ldr_texture = Some(engine_ldr_texture);
+        self.engine_ldr_view = Some(engine_ldr_view);
+        self.editor_overlay_texture = Some(editor_overlay_texture);
+        self.editor_overlay_view = Some(editor_overlay_view);
+        self.composite_bind_group = Some(bind_group);
 
         // Cancel any in-flight depth readback before replacing the staging buffer
         self.depth_read_pending = false;
@@ -407,15 +636,26 @@ impl ViewportRenderer {
             .as_ref()
             .expect("cached_ldr_view must be Some after initialization block");
 
-        // Editor-Engine Render Parity P.3: scene_target_view is now the
-        // caller-supplied LDR target directly. The engine's draw_into runs
-        // canonical post_pipeline (ACES + scene-env tint), writing
-        // tonemapped LDR bytes straight into this target. Editor overlays
-        // (grid, physics debug) draw on top of those bytes in LDR space.
-        // Pre-P.3, scene_target_view was an HDR intermediate that the
-        // editor's deleted tonemap.wgsl pass would later blit to the LDR
-        // target — that intermediate is gone with the tonemap pass.
-        let scene_target_view = target_view;
+        // Editor-Engine Render Parity P.6: engine writes its canonical
+        // post_pipeline output to the internal ENGINE_LDR_TARGET
+        // (`engine_ldr_view`). Editor overlays write to the separate
+        // internal EDITOR_OVERLAY_TARGET (`editor_overlay_view`). A final
+        // composite blit reads both and writes the alpha-over result to
+        // the caller-supplied display target (`target_view`).
+        //
+        // This isolation is the campaign's parity contract: the engine
+        // target is byte-identical to what the runtime would produce from
+        // the same scene; overlays never mutate it. The closure proof
+        // (overlay_isolation) hashes ENGINE_LDR_TARGET in two harness
+        // runs (overlays-on vs overlays-off) and asserts they match.
+        let scene_target_view = self
+            .engine_ldr_view
+            .as_ref()
+            .context("ENGINE_LDR_TARGET not initialised — call resize() first")?;
+        let overlay_target_view = self
+            .editor_overlay_view
+            .as_ref()
+            .context("EDITOR_OVERLAY_TARGET not initialised — call resize() first")?;
 
         let depth_view = self
             .depth_view
@@ -494,13 +734,43 @@ impl ViewportRenderer {
             }
         } // end engine_render span
 
-        // Grid overlay (on top of engine scene)
+        // P.6: clear the editor overlay target to fully transparent at
+        // frame start. Overlays draw with premultiplied alpha into this
+        // target via wgpu::BlendState::ALPHA_BLENDING; the composite
+        // pass alpha-overs the result onto the engine canonical output.
+        {
+            let _clear_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Editor Overlay Clear"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: overlay_target_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+
+        // P.6: grid overlay writes to EDITOR_OVERLAY_TARGET (not the
+        // engine LDR target). Reads engine depth for occlusion-aware
+        // grid rendering (terrain occludes grid lines correctly); grid
+        // pipeline has depth-write disabled so it does not mutate the
+        // depth target that the engine populated.
         if show_grid {
             astraweave_profiling::span!("grid_render");
             self.grid_renderer
                 .render(
                     &mut encoder,
-                    scene_target_view,
+                    overlay_target_view,
                     depth_view,
                     camera,
                     &self.queue,
@@ -509,7 +779,8 @@ impl ViewportRenderer {
                 .context("Grid render failed")?;
         }
 
-        // Pass 4: Physics debug + component gizmos + brush cursor
+        // P.6: physics debug + component gizmos + brush cursor + zone
+        // overlay also write to EDITOR_OVERLAY_TARGET.
         {
             let phys_lines = physics_debug_lines.unwrap_or(&[]);
             let total_lines = self.component_gizmo_lines.len()
@@ -527,7 +798,7 @@ impl ViewportRenderer {
                     physics
                         .render(
                             &mut encoder,
-                            scene_target_view,
+                            overlay_target_view,
                             depth_view,
                             camera,
                             &combined_lines,
@@ -542,12 +813,16 @@ impl ViewportRenderer {
         // target_view via the canonical post_pipeline (ACES Narkowicz +
         // exposure 1.35 + scene-env tint); grid + physics debug overlays
         // above wrote onto that same LDR target. Gizmos render last.
-        // P.6 will move overlays to a separate composition pass so the
+        // P.6: overlays moved to a separate composition pass so the
         // engine's bit-identical LDR output isn't mutated by overlays
-        // before hashing.
+        // before hashing. Composite blit at the end of this function
+        // produces the display target.
 
-        // Pass 5.5: Gizmos (if entity selected and gizmo active)
-        // Gizmos render AFTER post-processing onto the final LDR target for crisp overlays.
+        // P.6: gizmos write to EDITOR_OVERLAY_TARGET (was target_view
+        // pre-P.6). Same depth attachment for occlusion. The gizmo
+        // pipeline's hardcoded Bgra8UnormSrgb format was changed to
+        // Rgba8UnormSrgb in this commit (gizmo_renderer.rs:133) so the
+        // pipeline matches the overlay target's LDR_COLOR_FORMAT.
         if let (Some(selected), Some(gizmo)) = (self.selected_entity(), gizmo_state) {
             if gizmo.mode != crate::gizmo::GizmoMode::Inactive {
                 // DEBUG: Log gizmo mode and constraint
@@ -566,7 +841,7 @@ impl ViewportRenderer {
                     self.gizmo_renderer
                         .render(
                             &mut encoder,
-                            &target_view,
+                            overlay_target_view,
                             depth_view,
                             camera,
                             gizmo,
@@ -578,6 +853,34 @@ impl ViewportRenderer {
                         .context("Gizmo render failed")?;
                 }
             }
+        }
+
+        // P.6: composite blit. Alpha-over compose ENGINE_LDR_TARGET +
+        // EDITOR_OVERLAY_TARGET into the caller-supplied display target
+        // (`target_view`). Engine target is read but never mutated;
+        // overlay target is read but never mutated. The display target
+        // is what the user sees; the engine target is what the parity
+        // contract protects (hashed by the closure proof).
+        if let (Some(pipeline), Some(bind_group)) =
+            (&self.composite_pipeline, &self.composite_bind_group)
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Composite Blit (engine + overlay → display)"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, bind_group, &[]);
+            pass.draw(0..3, 0..1);
         }
 
         // Submit all commands (recover gracefully if GPU device is lost)

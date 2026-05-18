@@ -130,7 +130,14 @@ impl GizmoRendererWgpu {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    // Editor-Engine Render Parity P.6: aligned to
+                    // Rgba8UnormSrgb so the gizmo pipeline targets the
+                    // editor overlay target's format (which matches
+                    // LDR_COLOR_FORMAT). Was Bgra8UnormSrgb pre-P.6 — a
+                    // legacy default unrelated to the editor's actual
+                    // target. ALPHA_BLENDING preset produces premultiplied
+                    // alpha output (see composite.wgsl docs).
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],

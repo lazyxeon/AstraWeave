@@ -360,12 +360,23 @@ struct EngineFrame {
     formats: RendererFormats,
 }
 
-/// Editor viewport path readback (Rgba8UnormSrgb LDR; 4 B / px). P.3:
-/// editor tonemap.wgsl pass deleted; this is now post-canonical-ACES bytes
-/// (same pipeline as engine path) with editor overlays composed on top
-/// (grid disabled at false in the harness, gizmos absent without selection).
+/// Editor viewport path readback. P.6: now carries two byte-buffers —
+/// the internal ENGINE_LDR_TARGET (the parity-contract target; hashed
+/// for the campaign closure proofs) and the caller-supplied display
+/// target (the composite of engine + overlay; what the user sees in
+/// the editor). The two are equal when no overlays draw (P.6's
+/// overlay-isolation contract verified by running editor path twice
+/// with show_grid=false then show_grid=true and comparing engine_ldr
+/// bytes across both runs).
 struct EditorFrame {
-    bytes: Vec<u8>,
+    /// Bytes from the internal ENGINE_LDR_TARGET texture — what the
+    /// canonical post_pipeline wrote. The hashable parity-contract
+    /// target. Independent of editor overlays.
+    engine_ldr_bytes: Vec<u8>,
+    /// Bytes from the caller-supplied display target — the composite
+    /// output (engine + overlay alpha-over). Differs from engine_ldr_bytes
+    /// when overlays drew. Diagnostic only; not part of the parity contract.
+    display_bytes: Vec<u8>,
     width: u32,
     height: u32,
     /// P.5: captured from the editor adapter's inner Renderer's public
@@ -529,6 +540,7 @@ async fn render_editor_path(
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     fixture: &ParityFixture,
+    show_grid: bool,
 ) -> Result<EditorFrame> {
     let mut viewport = ViewportRenderer::new(device.clone(), queue.clone())
         .context("ViewportRenderer::new failed")?;
@@ -568,12 +580,12 @@ async fn render_editor_path(
         );
     }
 
-    // LDR target — matches viewport's LDR_COLOR_FORMAT
-    // (tools/aw_editor/src/viewport/renderer.rs:34). The `view_formats` slice
-    // mirrors the editor's own create_render_texture (renderer.rs:807) so the
-    // tonemap blit's binding is layout-compatible across both formats.
+    // Display target (caller-supplied texture; the egui-bound viewport
+    // texture in the editor runtime; harness-allocated here). Post-P.6
+    // this is the composite output (engine LDR + editor overlay alpha-over)
+    // — what the user sees, NOT the parity-contract hashable target.
     let target = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("parity-editor-ldr-target"),
+        label: Some("parity-editor-display-target"),
         size: wgpu::Extent3d {
             width: fixture.width,
             height: fixture.height,
@@ -592,13 +604,15 @@ async fn render_editor_path(
     let camera = fixture.camera();
     let world = World::new();
 
-    // Two-frame settle: first call also lazily allocates HDR/depth targets,
-    // tonemap pipeline, and engine adapter state. The measurement is frame 2.
+    // Two-frame settle. The first frame triggers ViewportRenderer::resize
+    // (lazy allocation of depth + ENGINE_LDR_TARGET + EDITOR_OVERLAY_TARGET
+    // + composite pipeline) plus the engine adapter's first-frame state
+    // (clustered-lights cache, IBL bake, etc.). Measurement is frame 2.
     viewport
-        .render(&target, &camera, &world, None, None, None, false, false, 0)
+        .render(&target, &camera, &world, None, None, None, show_grid, false, 0)
         .context("editor warm-up render failed")?;
     viewport
-        .render(&target, &camera, &world, None, None, None, false, false, 0)
+        .render(&target, &camera, &world, None, None, None, show_grid, false, 0)
         .context("editor measurement render failed")?;
 
     // P.5 format capture: read the editor-adapter's inner Renderer formats
@@ -609,12 +623,43 @@ async fn render_editor_path(
         .map(|adapter| RendererFormats::capture(adapter.renderer()))
         .context("editor adapter not initialised at format-capture site")?;
 
-    let enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("parity-editor readback encoder"),
+    // P.6 closure-proof readback: capture bytes from the internal
+    // ENGINE_LDR_TARGET (the parity-contract target — bit-identical to
+    // what the runtime would produce; overlays never mutate it) AND
+    // from the display target (the composite — diagnostic only).
+    let engine_ldr_texture = viewport
+        .engine_ldr_texture()
+        .context("ENGINE_LDR_TARGET texture missing — was resize() called?")?;
+
+    let enc_engine = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("parity-editor engine_ldr readback encoder"),
     });
-    let bytes = readback_texture(&device, &queue, &target, fixture.width, fixture.height, 4, enc)?;
+    let engine_ldr_bytes = readback_texture(
+        &device,
+        &queue,
+        engine_ldr_texture,
+        fixture.width,
+        fixture.height,
+        4,
+        enc_engine,
+    )?;
+
+    let enc_display = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("parity-editor display readback encoder"),
+    });
+    let display_bytes = readback_texture(
+        &device,
+        &queue,
+        &target,
+        fixture.width,
+        fixture.height,
+        4,
+        enc_display,
+    )?;
+
     Ok(EditorFrame {
-        bytes,
+        engine_ldr_bytes,
+        display_bytes,
         width: fixture.width,
         height: fixture.height,
         formats,
@@ -910,7 +955,10 @@ fn compute_attribution(engine: &EngineFrame, editor: &EditorFrame) -> AxisAttrib
             // sRGB-8 to linear f32 for SAD computation in linear space.
             let idx = (y * w + x) * 4;
             let eng_lin = rgba8srgb_to_linear(&engine.bytes[idx..idx + 4]);
-            let edt_lin = rgba8srgb_to_linear(&editor.bytes[idx..idx + 4]);
+            // P.6: editor side uses engine_ldr_bytes (the parity-contract
+            // target). display_bytes carries the overlay composite which
+            // intentionally differs from engine bytes when overlays drew.
+            let edt_lin = rgba8srgb_to_linear(&editor.engine_ldr_bytes[idx..idx + 4]);
 
             let dr = (eng_lin[0] - edt_lin[0]).abs() as f64;
             let dg = (eng_lin[1] - edt_lin[1]).abs() as f64;
@@ -992,11 +1040,33 @@ fn editor_engine_render_parity() {
 
     let engine = pollster::block_on(render_engine_path(device.clone(), queue.clone(), &fixture))
         .expect("engine path render failed");
-    let editor = pollster::block_on(render_editor_path(device.clone(), queue.clone(), &fixture))
-        .expect("editor path render failed");
+
+    // P.6 editor path runs twice: once with overlays disabled (show_grid=false)
+    // and once with overlays enabled (show_grid=true). The closure proof
+    // asserts the editor's internal ENGINE_LDR_TARGET bytes are byte-identical
+    // across the two runs — overlays must not mutate the parity-contract
+    // target. The display target hashes are captured for diagnostic only;
+    // they intentionally differ when overlays drew.
+    let editor = pollster::block_on(render_editor_path(
+        device.clone(),
+        queue.clone(),
+        &fixture,
+        false, // overlays disabled — the canonical parity comparison
+    ))
+    .expect("editor path render (overlays disabled) failed");
+    let editor_overlays_on = pollster::block_on(render_editor_path(
+        device.clone(),
+        queue.clone(),
+        &fixture,
+        true, // overlays enabled — drives the overlay-isolation closure proof
+    ))
+    .expect("editor path render (overlays enabled) failed");
 
     let engine_hash = sha256_hex(&engine.bytes);
-    let editor_hash = sha256_hex(&editor.bytes);
+    let editor_hash = sha256_hex(&editor.engine_ldr_bytes);
+    let editor_engine_ldr_overlays_on = sha256_hex(&editor_overlays_on.engine_ldr_bytes);
+    let editor_display_overlays_off = sha256_hex(&editor.display_bytes);
+    let editor_display_overlays_on = sha256_hex(&editor_overlays_on.display_bytes);
 
     // P.2 direct loader-axis closure proof: hash the canonical pack's CPU
     // bytes that flow into Renderer::set_terrain_materials on both sides.
@@ -1052,13 +1122,29 @@ fn editor_engine_render_parity() {
     );
     eprintln!("  SHA-256: {}", engine_hash);
     eprintln!();
-    eprintln!("Editor path: Rgba8UnormSrgb LDR (ViewportRenderer::render — engine canonical post only)");
+    eprintln!("Editor path (overlays OFF): ENGINE_LDR_TARGET (the parity-contract target)");
     eprintln!(
         "  Bytes:   {} ({} px × 4 B/px)",
-        editor.bytes.len(),
+        editor.engine_ldr_bytes.len(),
         editor.width * editor.height
     );
     eprintln!("  SHA-256: {}", editor_hash);
+    eprintln!(
+        "  Display SHA-256 (composite output, no overlays drawn): {}",
+        editor_display_overlays_off
+    );
+    eprintln!();
+    eprintln!("Editor path (overlays ON): ENGINE_LDR_TARGET (parity contract target)");
+    eprintln!(
+        "  Bytes:   {} ({} px × 4 B/px)",
+        editor_overlays_on.engine_ldr_bytes.len(),
+        editor_overlays_on.width * editor_overlays_on.height
+    );
+    eprintln!("  SHA-256: {}", editor_engine_ldr_overlays_on);
+    eprintln!(
+        "  Display SHA-256 (composite output, with overlays):     {}",
+        editor_display_overlays_on
+    );
     eprintln!();
 
     let attribution = compute_attribution(&engine, &editor);
@@ -1155,6 +1241,42 @@ fn editor_engine_render_parity() {
     );
     eprintln!();
 
+    eprintln!("Overlay-isolation closure proof (P.6):");
+    eprintln!(
+        "  ENGINE_LDR_TARGET SHA-256 (overlays OFF): {}",
+        editor_hash
+    );
+    eprintln!(
+        "  ENGINE_LDR_TARGET SHA-256 (overlays ON):  {}",
+        editor_engine_ldr_overlays_on
+    );
+    let overlay_isolation_pass = editor_hash == editor_engine_ldr_overlays_on;
+    eprintln!(
+        "  Equality: {}",
+        if overlay_isolation_pass {
+            "PASS (overlays do not mutate the parity-contract target)"
+        } else {
+            "FAIL (overlays are mutating the engine LDR target — escalate)"
+        }
+    );
+    eprintln!(
+        "  Display SHA-256 (overlays OFF): {}",
+        editor_display_overlays_off
+    );
+    eprintln!(
+        "  Display SHA-256 (overlays ON):  {}",
+        editor_display_overlays_on
+    );
+    eprintln!(
+        "  Display targets {} (composite-output diagnostic, NOT part of contract).",
+        if editor_display_overlays_off == editor_display_overlays_on {
+            "MATCH"
+        } else {
+            "differ (overlays composited as expected)"
+        }
+    );
+    eprintln!();
+
     eprintln!("Quality-preset-axis closure proof (P.4):");
     eprintln!(
         "  Canonical preset (GameQuality):  {:?}",
@@ -1221,6 +1343,17 @@ fn editor_engine_render_parity() {
         "Target-format-axis closure proof FAILED — engine and editor formats diverge: \
          engine={:?}, editor={:?}",
         engine.formats, editor.formats
+    );
+
+    // P.6 overlay-isolation assertion. The campaign's most fundamental
+    // contract: the editor's engine LDR target is byte-identical whether
+    // overlays drew or not. Failing this means overlays mutated the
+    // parity-contract target — a real architectural regression.
+    assert_eq!(
+        editor_hash, editor_engine_ldr_overlays_on,
+        "Overlay-isolation closure proof FAILED — overlays mutated ENGINE_LDR_TARGET. \
+         Off-hash: {} | On-hash: {}",
+        editor_hash, editor_engine_ldr_overlays_on
     );
 
     // The test is kept `#[ignore]`'d through the campaign per P.0 sequencing.
