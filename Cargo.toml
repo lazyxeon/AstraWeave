@@ -45,6 +45,7 @@ members = [
   "astraweave-scene",
   "astraweave-terrain",
   "astraweave-math",
+  "astraweave-camera",
   "examples/physics_demo3d",
   "examples/navmesh_demo",
   "astraweave-gameplay",

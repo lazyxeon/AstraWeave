@@ -130,6 +130,8 @@ Boundary conversions: this is the consolidation contract; it does not exist yet 
 
 ## §3 — Non-canonical conventions in the codebase
 
+**Status as of C.2 commit (2026-05-18):** canonical types `Projection`, `RenderView`, and trait `CameraProducer` exist in `astraweave-camera` (added to workspace; one crate, no production consumer yet). The §2.9 convention (`RenderView` as the upload contract) now has a Rust-side referent — previously it was target-shape only. The migration table rows below remain scheduled for their target sub-phases (C.3–C.7) and are not updated as a result of C.2 — C.2 prepares the destination, not the migrations.
+
 This table enumerates every implementation found in C.0 Phase 1 that uses a non-canonical convention, with the specific axis violated and the target migration sub-phase. **This is the migration tracking list for C.3–C.7.** After C.9 closes, any implementation listed here that still exists in the codebase becomes a violation (the contract tests would then assert these specific files are convention-compliant or removed).
 
 The C.0 audit doc inventory numbers (#1–#31) are preserved for cross-reference.

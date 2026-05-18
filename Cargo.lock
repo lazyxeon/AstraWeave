@@ -699,6 +699,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "astraweave-camera"
+version = "0.1.0"
+dependencies = [
+ "approx 0.5.1",
+ "glam",
+ "serde",
+]
+
+[[package]]
 name = "astraweave-cinematics"
 version = "0.1.0"
 dependencies = [

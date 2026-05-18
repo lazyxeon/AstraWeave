@@ -1,0 +1,21 @@
+[package]
+name = "astraweave-camera"
+version = "0.1.0"
+edition = "2021"
+authors = ["AstraWeave Team"]
+description = "Canonical camera types (Projection, RenderView) and the CameraProducer trait. See docs/current/CAMERA_CONVENTIONS.md for the authoritative convention reference."
+license = "MIT"
+
+[dependencies]
+glam = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[lib]
+path = "src/lib.rs"
