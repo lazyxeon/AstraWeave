@@ -9,7 +9,7 @@
 
 use astraweave_render::asset_index::AssetIndex;
 use astraweave_render::biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
-use astraweave_render::camera::{Camera, CameraController, CameraMode};
+use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
 use astraweave_render::hdri_catalog::DayPeriod;
 use astraweave_render::instancing::{
     Instance, InstanceBatch, InstanceManager, InstancePatternBuilder, InstanceRaw,

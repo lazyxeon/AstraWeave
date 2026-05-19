@@ -1,6 +1,6 @@
 use anyhow::Result;
-use astraweave_render::camera::Camera;
-use astraweave_render::{CameraProducer, Renderer};
+use astraweave_camera::{CameraProducer, FreeFly as Camera};
+use astraweave_render::Renderer;
 use glam::Vec3;
 use std::sync::Arc;
 use winit::{

@@ -10,7 +10,8 @@ use winit::{
 };
 
 use astraweave_physics::PhysicsWorld;
-use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
+use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
+use astraweave_render::{Instance, Renderer};
 
 use astraweave_input::{BindingSet, InputContext, InputManager};
 use astraweave_ui::{draw_ui, Accessibility, MenuManager, UiData, UiFlags, UiLayer};

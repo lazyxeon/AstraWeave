@@ -17,4 +17,5 @@ serde_json.workspace = true
 
 astraweave-terrain = { path = "../../astraweave-terrain" }
 astraweave-render = { path = "../../astraweave-render" }
+astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-core = { path = "../../astraweave-core" }

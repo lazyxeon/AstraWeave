@@ -1,6 +1,7 @@
 use astraweave_core::{IVec2, Team, World};
 use astraweave_render::types::SkinnedVertex;
-use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
+use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
+use astraweave_render::{Instance, Renderer};
 use egui::{Context as EguiContext, Slider};
 use egui_wgpu::Renderer as EguiRenderer;
 use egui_winit::State as EguiWinitState;

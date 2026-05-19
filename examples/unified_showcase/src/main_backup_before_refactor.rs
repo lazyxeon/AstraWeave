@@ -14,7 +14,7 @@ use self::material::MaterialLibrary;
 use self::material_integration::MaterialIntegrator;
 use self::texture_manager::TextureManager;
 use anyhow::{Context, Result};
-use astraweave_render::camera::{Camera as RenderCamera, CameraController};
+use astraweave_camera::{CameraController, FreeFly as RenderCamera};
 use astraweave_render::MeshKey as RenderMeshKey;
 use astraweave_render::{IblManager, IblQuality, MeshHandle, MeshRegistry, SkyMode};
 use glam::{Mat3, Mat4, Vec2, Vec3};
@@ -3884,7 +3884,7 @@ async fn run() -> Result<()> {
                                     KeyCode::KeyT => {
                                         if pressed {
                                             // Teleport sphere a few meters in front of camera
-                                            let forward = astraweave_render::camera::Camera::dir(
+                                            let forward = astraweave_camera::FreeFly::dir(
                                                 camera.yaw,
                                                 camera.pitch,
                                             );
@@ -3897,7 +3897,7 @@ async fn run() -> Result<()> {
                                     KeyCode::KeyE => {
                                         if pressed {
                                             // Raycast forward and apply impulse to first hit dynamic body
-                                            let forward = astraweave_render::camera::Camera::dir(
+                                            let forward = astraweave_camera::FreeFly::dir(
                                                 camera.yaw,
                                                 camera.pitch,
                                             );

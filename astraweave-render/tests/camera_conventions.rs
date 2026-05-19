@@ -1,11 +1,13 @@
 //! Camera convention contract tests — C.1 (Unified Camera campaign).
 //!
-//! These tests assert that engine `astraweave_render::camera::Camera` (the
-//! production runtime camera) complies with every non-deferred convention
-//! documented in `docs/current/CAMERA_CONVENTIONS.md`. Failure of any test
-//! in this file means a convention violation — either the code drifted
-//! away from the documented convention, or the convention itself needs
-//! revision (an Andrew design call, not an autonomous test relaxation).
+//! These tests assert that the production runtime camera (post-C.3.C:
+//! `astraweave_camera::FreeFly`, formerly the shim-aliased
+//! `astraweave_render::camera::Camera`) complies with every non-deferred
+//! convention documented in `docs/current/CAMERA_CONVENTIONS.md`. Failure
+//! of any test in this file means a convention violation — either the code
+//! drifted away from the documented convention, or the convention itself
+//! needs revision (an Andrew design call, not an autonomous test
+//! relaxation).
 //!
 //! Run with:
 //!   cargo test --tests -p astraweave-render camera_conventions
@@ -13,7 +15,7 @@
 //! Section references in test names and docstrings cite
 //! `docs/current/CAMERA_CONVENTIONS.md` §X.
 
-use astraweave_render::camera::Camera;
+use astraweave_camera::FreeFly as Camera;
 use glam::{Mat4, Vec3, Vec4};
 
 /// Reference camera with known fields for matrix comparisons.

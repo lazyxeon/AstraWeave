@@ -19,6 +19,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 astraweave-core = { path = "../../astraweave-core" }
 astraweave-render = { path = "../../astraweave-render" }
+astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-asset = { path = "../../astraweave-asset", features = ["gltf"] }
 egui = { workspace = true }
 egui-winit = { workspace = true }

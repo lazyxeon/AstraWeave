@@ -171,7 +171,7 @@ impl ApplicationHandler for ShowcaseApp {
                             }
                             KeyCode::KeyT => {
                                 if pressed {
-                                    let forward = astraweave_render::camera::Camera::dir(
+                                    let forward = astraweave_camera::FreeFly::dir(
                                         self.camera.yaw,
                                         self.camera.pitch,
                                     );
@@ -181,7 +181,7 @@ impl ApplicationHandler for ShowcaseApp {
                             }
                             KeyCode::KeyE => {
                                 if pressed {
-                                    let forward = astraweave_render::camera::Camera::dir(
+                                    let forward = astraweave_camera::FreeFly::dir(
                                         self.camera.yaw,
                                         self.camera.pitch,
                                     );

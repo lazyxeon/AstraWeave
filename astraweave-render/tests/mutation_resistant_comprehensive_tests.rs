@@ -1290,7 +1290,7 @@ mod decal_mutations {
 // Module: camera (CameraController defaults, clamp boundaries)
 // ============================================================================
 mod camera_mutations {
-    use astraweave_render::camera::*;
+    use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
 
     #[test]
     fn camera_dir_at_zero_yaw_zero_pitch() {

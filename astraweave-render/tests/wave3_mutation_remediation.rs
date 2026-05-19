@@ -3,8 +3,9 @@
 //! Targets specific mutation survivors identified by cargo-mutants analysis.
 //! Pins exact values, boundary operators, and per-variant return semantics.
 
+use astraweave_camera::FreeFly as Camera;
 use astraweave_render::{
-    Camera, EasingFunction, FrustumPlanes, MaterialGpu, TimeOfDay, WeatherSystem, WeatherType,
+    EasingFunction, FrustumPlanes, MaterialGpu, TimeOfDay, WeatherSystem, WeatherType,
 };
 use glam::{vec3, Mat4, Vec3};
 

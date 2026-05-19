@@ -1539,7 +1539,7 @@ mod tests {
 
     #[test]
     fn test_camera_creation() {
-        use crate::camera::Camera;
+        use astraweave_camera::FreeFly as Camera;
         use glam::vec3;
 
         let camera = Camera {
@@ -1558,7 +1558,7 @@ mod tests {
 
     #[test]
     fn test_camera_update() {
-        use crate::camera::Camera;
+        use astraweave_camera::FreeFly as Camera;
         use glam::vec3;
 
         let mut camera = Camera {
@@ -2174,7 +2174,7 @@ mod tests {
     #[test]
     fn test_renderer_lifecycle_headless() {
         pollster::block_on(async {
-            use crate::camera::Camera;
+            use astraweave_camera::FreeFly as Camera;
             use crate::renderer::Renderer;
 
             // Initialize headless renderer

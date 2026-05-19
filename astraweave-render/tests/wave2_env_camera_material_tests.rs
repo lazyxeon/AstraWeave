@@ -9,8 +9,9 @@ use astraweave_render::material_extended::{
     MaterialGpuExtended, MATERIAL_FLAG_ANISOTROPY, MATERIAL_FLAG_CLEARCOAT, MATERIAL_FLAG_SHEEN,
     MATERIAL_FLAG_SUBSURFACE, MATERIAL_FLAG_TRANSMISSION,
 };
+use astraweave_camera::{CameraController, FreeFly as Camera};
 use astraweave_render::{
-    Camera, CameraController, ColorGradingConfig, DofConfig, MotionBlurConfig, SkyConfig,
+    ColorGradingConfig, DofConfig, MotionBlurConfig, SkyConfig,
     TaaConfig, TimeOfDay,
 };
 use glam::{vec3, Vec3};

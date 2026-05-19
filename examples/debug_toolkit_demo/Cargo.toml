@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 astraweave-core = { path = "../../astraweave-core" }
 astraweave-render = { path = "../../astraweave-render" }
+astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-author = { path = "../../astraweave-author" }
 aw_debug = { path = "../../tools/aw_debug" }
 eframe = { workspace = true, features = ["glow"] }

@@ -4,6 +4,7 @@
 //! featuring sky/weather, vegetation, structures, and environmental effects.
 
 use anyhow::Result;
+use astraweave_camera::{CameraController, FreeFly as Camera};
 use astraweave_render::*;
 use astraweave_terrain::*;
 use clap::Parser;

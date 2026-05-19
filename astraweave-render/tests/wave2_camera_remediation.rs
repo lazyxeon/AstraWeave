@@ -8,7 +8,7 @@
 //!   - CameraController scroll/orbit/toggle logic
 //!   - Speed modifiers (sprint/precision)
 
-use astraweave_render::camera::{Camera, CameraController, CameraMode};
+use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
 use glam::{Mat4, Vec2, Vec3};
 
 fn default_camera() -> Camera {

@@ -10,12 +10,12 @@
 //! - LOD: Quadric error metrics, mesh simplification
 //! - Environment: Time of day lighting, sun/moon positions
 
+use astraweave_camera::FreeFly as Camera;
 use astraweave_render::{
     culling::{FrustumPlanes, InstanceAABB},
     environment::TimeOfDay,
     lod_generator::LODConfig,
     vertex_compression::{CompressedVertex, HalfFloatEncoder, OctahedralEncoder, VertexCompressor},
-    Camera,
 };
 use glam::{Mat4, Vec2, Vec3, Vec4Swizzles};
 use std::f32::consts::PI;

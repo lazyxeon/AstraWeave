@@ -31,7 +31,6 @@
 //! | `advanced-post` | TAA, motion blur, DoF, color grading |
 //! | `ssao` | Screen-space ambient occlusion |
 
-pub mod camera;
 pub mod clustered;
 pub mod clustered_forward; // Complete clustered forward rendering
 pub mod clustered_megalights; // MegaLights: GPU-accelerated light culling (Phase 1)
@@ -136,14 +135,6 @@ pub mod nanite_render;
 #[cfg(feature = "nanite")]
 pub mod nanite_visibility; // NEW: GPU-driven culling and visibility
 
-pub use camera::{Camera, CameraController};
-// C.3.B.2: re-export the CameraProducer trait so callers using
-// `astraweave_render::Camera` (the shim alias for `FreeFly`) can invoke
-// `.to_render_view()` without depending on astraweave-camera directly. See
-// CAMERA_CONVENTIONS.md §2.9. This re-export is additive; the shim itself
-// is unchanged (anti-drift constraint 3 of C.3.B.2 keeps the shim file
-// closed for the campaign).
-pub use astraweave_camera::CameraProducer;
 pub use environment::{
     SkyConfig, SkyRenderer, TimeOfDay, WeatherParticles, WeatherSystem, WeatherType,
 };

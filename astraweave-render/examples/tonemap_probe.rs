@@ -52,8 +52,7 @@
 //! 512×512 Rgba16Float texture + readback buffer).
 
 use anyhow::{Context, Result};
-use astraweave_camera::CameraProducer;
-use astraweave_render::camera::Camera;
+use astraweave_camera::{CameraProducer, FreeFly as Camera};
 use astraweave_render::hdr_pipeline::{PostProcessChain, TonemapOperator};
 use astraweave_render::Renderer;
 use half::f16;

@@ -11,4 +11,5 @@ wgpu  = { workspace = true }
 glam  = { workspace = true }
 pollster = { workspace = true }
 astraweave-render = { path = "../../astraweave-render" }
+astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-nav = { path = "../../astraweave-nav" }

@@ -7,8 +7,7 @@ use glam::{vec3, Mat4};
 use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
-use crate::camera::Camera;
-use astraweave_camera::RenderView;
+use astraweave_camera::{FreeFly, RenderView};
 use crate::clustered::{bin_lights_cpu, ClusterDims, CpuLight, WGSL_CLUSTER_BIN};
 use crate::depth::Depth;
 use crate::types::SkinnedVertex;
@@ -3369,7 +3368,7 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     // --- Cinematics wiring ---
-    fn apply_camera_key(cam: &mut Camera, k: &awc::CameraKey) {
+    fn apply_camera_key(cam: &mut FreeFly, k: &awc::CameraKey) {
         let pos = glam::Vec3::new(k.pos.0, k.pos.1, k.pos.2);
         let look = glam::Vec3::new(k.look_at.0, k.look_at.1, k.look_at.2);
         let dir = (look - pos).normalize_or_zero();
@@ -3405,7 +3404,7 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     /// Step the sequencer and apply camera keys; returns emitted events (for audio/FX handling by caller)
-    pub fn tick_cinematics(&mut self, dt: f32, camera: &mut Camera) -> Vec<awc::SequencerEvent> {
+    pub fn tick_cinematics(&mut self, dt: f32, camera: &mut FreeFly) -> Vec<awc::SequencerEvent> {
         let mut out = Vec::new();
         if !self.cin_playing {
             return out;
@@ -3953,12 +3952,11 @@ fn vs(input: VSIn) -> VSOut {
     /// Canonical camera upload — consumes a [`RenderView`] and updates all
     /// internal caches (matrices, CSM cascades, light direction, camera UBO).
     ///
-    /// This is the canonical entry point per `CAMERA_CONVENTIONS.md` §2.9.
-    /// All future callers should use this method directly. The legacy
-    /// [`Renderer::update_camera`] and [`Renderer::update_camera_matrices`]
-    /// methods are preserved as `#[deprecated]` thin wrappers during the
-    /// Unified Camera campaign (deleted in C.3.C); both internally construct
-    /// a `RenderView` and delegate here.
+    /// This is the canonical (and only) camera-upload entry point per
+    /// `CAMERA_CONVENTIONS.md` §2.9. Pre-C.3.C, `Renderer::update_camera` and
+    /// `Renderer::update_camera_matrices` existed as `#[deprecated]` thin
+    /// wrappers; C.3.C deleted them as the closure of the renderer-side
+    /// consolidation chapter of the Unified Camera campaign.
     ///
     /// # Camera-relative rendering
     ///
@@ -4027,84 +4025,6 @@ fn vs(input: VSIn) -> VSOut {
         #[cfg(not(feature = "camera-relative"))]
         let cascade_view = *view;
         self.update_cascade_splits(&cascade_view, light_dir);
-    }
-
-    /// Legacy camera upload — **DEPRECATED**. Construct a [`RenderView`]
-    /// from your camera producer and call [`Self::update_view`] directly.
-    /// This wrapper exists for backward compatibility during the Unified
-    /// Camera campaign; it is removed in C.3.C.
-    ///
-    /// Per C.3.A Decision 5, this wrapper unifies camera-relative handling
-    /// at the producer call site: under the `camera-relative` feature, it
-    /// invokes [`Camera::to_render_view_camera_relative`]; otherwise
-    /// [`CameraProducer::to_render_view`]. Either way, [`Self::update_view`]
-    /// handles the camera_pos_pad zeroing under camera-relative.
-    #[deprecated(
-        note = "Use `update_view(&render_view)` instead. \
-                See CAMERA_CONVENTIONS.md §2.9."
-    )]
-    #[allow(clippy::too_many_arguments)]
-    pub fn update_camera_matrices(
-        &mut self,
-        view: glam::Mat4,
-        proj: glam::Mat4,
-        position: glam::Vec3,
-        znear: f32,
-        zfar: f32,
-        fovy: f32,
-        aspect: f32,
-    ) {
-        // Pre-C.3.A behavior: under camera-relative, strip the view matrix's
-        // translation column. Preserved here in the wrapper so the new
-        // `update_view` doesn't have to special-case caller intent.
-        #[cfg(feature = "camera-relative")]
-        let (view, position) = {
-            let _ = position;
-            let mut v = view;
-            v.w_axis = glam::Vec4::W;
-            (v, glam::Vec3::ZERO)
-        };
-
-        // Derive view_dir canonically from inverse_view (per RenderView
-        // doc): view_dir = -inverse_view.col(2).xyz. This replaces the
-        // pre-C.3.A lossy reconstruction at line 4001 of yaw/pitch via
-        // `atan2`/`asin` on view matrix rows, which had subtle gimbal
-        // sensitivity near pole orientations.
-        let inverse_view = view.inverse();
-        let view_dir = -inverse_view.col(2).truncate();
-        let view_proj = proj * view;
-        let inverse_view_proj = view_proj.inverse();
-
-        let render_view = RenderView {
-            view,
-            projection: proj,
-            view_proj,
-            inverse_view,
-            inverse_view_proj,
-            position,
-            view_dir,
-            fovy,
-            aspect,
-            znear,
-            zfar,
-        };
-        self.update_view(&render_view);
-    }
-
-    /// Legacy camera upload — **DEPRECATED**. See [`Self::update_camera_matrices`].
-    #[deprecated(
-        note = "Use `update_view(&camera.to_render_view())` instead. \
-                See CAMERA_CONVENTIONS.md §2.9."
-    )]
-    pub fn update_camera(&mut self, camera: &Camera) {
-        use astraweave_camera::CameraProducer;
-        // Under camera-relative, the producer emits a RenderView with view
-        // matrix translation stripped; otherwise world-relative.
-        #[cfg(feature = "camera-relative")]
-        let render_view = camera.to_render_view_camera_relative();
-        #[cfg(not(feature = "camera-relative"))]
-        let render_view = camera.to_render_view();
-        self.update_view(&render_view);
     }
 
     fn update_cascade_splits(&mut self, view: &RenderView, light_dir: glam::Vec3) {
@@ -7575,9 +7495,10 @@ mod tests {
         // signature from `&Camera` to `&RenderView` (per the cascade-splits
         // migration in Deliverable F) but did not update this test caller.
         // Build a RenderView directly so the test matches the post-C.3.A
-        // signature.
-        use astraweave_camera::CameraProducer;
-        let cam = crate::camera::Camera {
+        // signature. C.3.C dissolved the `Camera` alias — `FreeFly` is now
+        // the canonical name.
+        use astraweave_camera::{CameraProducer, FreeFly};
+        let cam = FreeFly {
             position: Vec3::ZERO,
             yaw: 0.0,
             pitch: 0.0,

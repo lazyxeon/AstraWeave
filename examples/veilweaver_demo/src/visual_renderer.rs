@@ -24,9 +24,8 @@ use winit::{
 
 use astraweave_ecs::App;
 use astraweave_llm::qwen3_ollama::Qwen3Ollama;
-use astraweave_render::{
-    Camera, CameraController, CameraProducer, Instance, Mesh, Renderer, Vertex, WaterRenderer,
-};
+use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
+use astraweave_render::{Instance, Mesh, Renderer, Vertex, WaterRenderer};
 
 use crate::telemetry_hud::{TelemetryHud, TelemetryMetrics};
 use crate::{Faction, GameState, Health, Position};

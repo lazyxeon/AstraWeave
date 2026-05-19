@@ -621,21 +621,6 @@ impl OrbitCamera {
         }
     }
 
-    pub fn to_engine_camera(&self) -> astraweave_render::camera::Camera {
-        // The engine's Camera::dir(yaw, pitch) computes a forward vector that
-        // points in the SAME direction as the orbit offset (away from focal point).
-        // The orbit camera needs to look TOWARD the focal point, so we reverse the
-        // direction by rotating yaw by π and negating pitch.
-        astraweave_render::camera::Camera {
-            position: self.position(),
-            yaw: self.yaw + std::f32::consts::PI,
-            pitch: -self.pitch,
-            fovy: self.fov.to_radians(),
-            aspect: self.aspect,
-            znear: self.near,
-            zfar: self.far,
-        }
-    }
 }
 
 /// Ray for picking (origin + direction)

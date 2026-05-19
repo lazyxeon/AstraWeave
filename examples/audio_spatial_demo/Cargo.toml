@@ -10,4 +10,5 @@ winit = { workspace = true }
 glam  = { workspace = true }
 pollster = { workspace = true }
 astraweave-render = { path = "../../astraweave-render" }
+astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-audio  = { path = "../../astraweave-audio" }

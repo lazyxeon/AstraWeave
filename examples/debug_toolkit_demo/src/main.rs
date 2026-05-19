@@ -1,5 +1,6 @@
 use astraweave_core::{ActionStep, IVec2, PlanIntent, Team, World};
-use astraweave_render::{Camera, CameraController, Renderer};
+use astraweave_camera::{CameraController, FreeFly as Camera};
+use astraweave_render::Renderer;
 use aw_debug::{watch_reload_signal, watch_scripts, ChromeTraceGuard, PerfHud};
 use std::{path::PathBuf, time::Instant};
 use winit::{

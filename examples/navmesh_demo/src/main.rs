@@ -1,5 +1,6 @@
 use astraweave_nav::{NavMesh, Triangle};
-use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
+use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
+use astraweave_render::{Instance, Renderer};
 use glam::{vec3, Vec2};
 use std::sync::Arc;
 use winit::{

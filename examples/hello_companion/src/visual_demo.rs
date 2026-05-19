@@ -23,9 +23,8 @@ use winit::{
 };
 
 // Use astraweave-render for full 3D rendering
-use astraweave_render::{
-    Camera, CameraController, CameraProducer, Instance, Mesh, Renderer, Vertex, WaterRenderer,
-};
+use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
+use astraweave_render::{Instance, Mesh, Renderer, Vertex, WaterRenderer};
 
 // Asset loading for GLB models
 use astraweave_asset::gltf_loader;

@@ -1,5 +1,6 @@
 use astraweave_audio::{AudioEngine, ListenerPose, MusicTrack};
-use astraweave_render::{Camera, CameraController, CameraProducer, Renderer};
+use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
+use astraweave_render::Renderer;
 use glam::{vec3, Vec2};
 use std::{sync::Arc, time::Instant};
 use winit::{

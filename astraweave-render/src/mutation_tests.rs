@@ -343,7 +343,7 @@ mod weather_system_tests {
 
 #[cfg(test)]
 mod camera_tests {
-    use crate::camera::{Camera, CameraController, CameraMode};
+    use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
     use glam::{Mat4, Vec2, Vec3};
 
     #[test]
@@ -1496,7 +1496,7 @@ mod behavioral_correctness_tests {
 
 #[cfg(test)]
 mod camera_behavioral_tests {
-    use crate::camera::Camera;
+    use astraweave_camera::FreeFly as Camera;
     use glam::Vec3;
 
     fn make_camera() -> Camera {
@@ -1793,7 +1793,7 @@ mod color_space_tests {
 
 #[cfg(test)]
 mod boundary_condition_tests {
-    use crate::camera::Camera;
+    use astraweave_camera::FreeFly as Camera;
     use crate::environment::{TimeOfDay, WeatherSystem};
     use glam::Vec3;
 
@@ -1984,7 +1984,7 @@ mod boundary_condition_tests {
 
 #[cfg(test)]
 mod comparison_operator_tests {
-    use crate::camera::Camera;
+    use astraweave_camera::FreeFly as Camera;
     use crate::environment::{TimeOfDay, WeatherType};
     use glam::Vec3;
 
@@ -2211,7 +2211,7 @@ mod boolean_return_path_tests {
 /// Tests that kill specific Camera::dir mutations, especially `sy * cp` → `sy / cp`.
 #[cfg(test)]
 mod camera_dir_targeted {
-    use crate::camera::Camera;
+    use astraweave_camera::FreeFly as Camera;
 
     #[test]
     fn dir_yaw60_pitch30_z_component_exact() {

@@ -24,6 +24,7 @@ astraweave-ai = { path = "../../astraweave-ai" }
 astraweave-director = { path = "../../astraweave-director" }
 astraweave-physics = { path = "../../astraweave-physics" }
 astraweave-render = { path = "../../astraweave-render", features = ["assets", "image"] }
+astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-audio = { path = "../../astraweave-audio" }
 astraweave-behavior = { path = "../../astraweave-behavior" }
 

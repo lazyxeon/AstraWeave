@@ -5,7 +5,7 @@
 //!          CameraController::update_camera smoothing, speed modifiers,
 //!          pitch clamping, mode-specific movement, orbit zoom.
 
-use astraweave_render::camera::{Camera, CameraController, CameraMode};
+use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
 use glam::{Mat4, Vec2, Vec3};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 

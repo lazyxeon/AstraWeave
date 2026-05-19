@@ -459,39 +459,14 @@ async fn acquire_device() -> Result<(Arc<wgpu::Device>, Arc<wgpu::Queue>, wgpu::
     Ok((Arc::new(device), Arc::new(queue), info))
 }
 
-/// Camera-upload path under test for the engine-side parity render.
-///
-/// C.3.A added the canonical `Renderer::update_view(&RenderView)` entry point
-/// alongside the legacy `update_camera_matrices(...)` API.
-///
-/// **Post-C.3.B.1 semantic**: the canonical-default test
-/// (`editor_engine_render_parity`) consumes [`Self::UpdateView`] — `update_view`
-/// is now load-bearing for the campaign-wide parity contract. The wrapper-
-/// preservation test (`update_camera_matrices_wrapper_preserves_behavior`)
-/// consumes [`Self::UpdateCameraMatrices`] — proving the deprecated wrapper
-/// still produces byte-identical output during the C.3.B.1 → C.3.B.2 → C.3.C
-/// transition window. Both tests deleted-or-simplified in C.3.C alongside the
-/// wrapper removal.
-#[derive(Copy, Clone, Debug)]
-enum CameraUploadPath {
-    /// The legacy `#[deprecated]` wrapper. Exercised by
-    /// `update_camera_matrices_wrapper_preserves_behavior` to verify the
-    /// wrapper continues to delegate correctly during the C.3.B transition.
-    /// Removed in C.3.C.
-    UpdateCameraMatrices,
-    /// C.3.A's canonical entry point. Consumed by the migrated
-    /// `editor_engine_render_parity` test (the campaign-wide parity contract
-    /// now flows through this path) and by C.3.B.1's editor-side adapter
-    /// migrations.
-    UpdateView,
-}
-
 async fn render_engine_path(
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     fixture: &ParityFixture,
-    upload_path: CameraUploadPath,
 ) -> Result<EngineFrame> {
+    // C.3.C: `CameraUploadPath` enum removed. `Renderer::update_view` is the
+    // only camera-upload path; the deprecated `update_camera_matrices` wrapper
+    // and the wrapper-preservation test were deleted alongside.
     // P.3: mirror EngineRenderAdapter::new with Rgba8UnormSrgb config.format
     // (changed from Bgra8UnormSrgb in same commit) so post_pipeline outputs
     // LDR sRGB bytes matching the harness's external target view. The
@@ -526,45 +501,27 @@ async fn render_engine_path(
     let fovy = 60_f32.to_radians();
     let aspect = fixture.width as f32 / fixture.height as f32;
 
-    match upload_path {
-        CameraUploadPath::UpdateCameraMatrices => {
-            // Legacy path — exercises C.3.A's deprecated wrapper. Wrapper
-            // constructs a RenderView internally (with view_dir derived from
-            // -inverse_view.col(2)) and delegates to update_view.
-            #[allow(deprecated)]
-            renderer.update_camera_matrices(
-                view_matrix,
-                projection_matrix,
-                position,
-                ENGINE_PATH_ZNEAR,
-                ENGINE_PATH_ZFAR,
-                fovy,
-                aspect,
-            );
-        }
-        CameraUploadPath::UpdateView => {
-            // C.3.A canonical path — build RenderView directly, call
-            // update_view. The byte-equivalence proof asserts this produces
-            // identical pixels to UpdateCameraMatrices.
-            let inverse_view = view_matrix.inverse();
-            let view_dir = -inverse_view.col(2).truncate();
-            let view_proj = projection_matrix * view_matrix;
-            let inverse_view_proj = view_proj.inverse();
-            let render_view = astraweave_camera::RenderView {
-                view: view_matrix,
-                projection: projection_matrix,
-                view_proj,
-                inverse_view,
-                inverse_view_proj,
-                position,
-                view_dir,
-                fovy,
-                aspect,
-                znear: ENGINE_PATH_ZNEAR,
-                zfar: ENGINE_PATH_ZFAR,
-            };
-            renderer.update_view(&render_view);
-        }
+    // C.3.C canonical (and only) path: build RenderView directly, call
+    // Renderer::update_view.
+    {
+        let inverse_view = view_matrix.inverse();
+        let view_dir = -inverse_view.col(2).truncate();
+        let view_proj = projection_matrix * view_matrix;
+        let inverse_view_proj = view_proj.inverse();
+        let render_view = astraweave_camera::RenderView {
+            view: view_matrix,
+            projection: projection_matrix,
+            view_proj,
+            inverse_view,
+            inverse_view_proj,
+            position,
+            view_dir,
+            fovy,
+            aspect,
+            znear: ENGINE_PATH_ZNEAR,
+            zfar: ENGINE_PATH_ZFAR,
+        };
+        renderer.update_view(&render_view);
     }
 
     // P.2 fixture expansion: upload canonical grassland biome pack + a single
@@ -1148,15 +1105,13 @@ fn editor_engine_render_parity() {
     eprintln!("Per-machine parity contract — hash comparison valid only on this adapter.");
     eprintln!();
 
-    // C.3.B.1 migration: canonical-default parity contract now flows through
-    // `Renderer::update_view(&RenderView)` directly. The deprecated wrapper
-    // (UpdateCameraMatrices) is exercised by the sibling
-    // `update_camera_matrices_wrapper_preserves_behavior` test below.
+    // C.3.C: `Renderer::update_view(&RenderView)` is the canonical (and only)
+    // camera-upload path. The deprecated `update_camera_matrices` wrapper and
+    // the sibling wrapper-preservation test were deleted in C.3.C.
     let engine = pollster::block_on(render_engine_path(
         device.clone(),
         queue.clone(),
         &fixture,
-        CameraUploadPath::UpdateView,
     ))
     .expect("engine path render failed");
 
@@ -1489,95 +1444,7 @@ fn editor_engine_render_parity() {
     );
 }
 
-// ─── C.3.B.1 wrapper-preservation closure proof ──────────────────────────────
-//
-// Unified Camera campaign sub-phase C.3.A added the canonical
-// `Renderer::update_view(&RenderView)` upload entry point alongside the legacy
-// `update_camera_matrices(...)` API (now `#[deprecated]`, removed in C.3.C).
-// Originally this test (named
-// `engine_path_update_view_byte_equivalent_to_update_camera_matrices`)
-// asserted that the new path produced byte-identical output to the old path —
-// the C.3.A byte-equivalence closure proof.
-//
-// **C.3.B.1 reframing**: the original `editor_engine_render_parity` test now
-// flows through `Renderer::update_view` directly (the canonical path is load-
-// bearing for the campaign-wide parity contract). This sibling test instead
-// exercises the deprecated `update_camera_matrices` wrapper. Its purpose
-// during the C.3.B.1 → C.3.B.2 → C.3.C transition window is to verify the
-// wrapper continues to produce byte-identical output to `update_view` — i.e.,
-// the wrapper correctly delegates and no side-effect drifts in. If this test
-// fails during C.3.B.2 or before C.3.C, something accidentally modified the
-// wrapper's delegation. Deleted in C.3.C alongside the wrapper itself.
-//
-// Both this test and `editor_engine_render_parity` run as part of `cargo test
-// -p aw_editor --test render_parity_harness`.
-
-#[test]
-fn update_camera_matrices_wrapper_preserves_behavior() {
-    let fixture = ParityFixture::default_grassland();
-    let (device, queue, adapter_info) =
-        pollster::block_on(acquire_device()).expect("acquire wgpu device");
-
-    eprintln!("============================================================");
-    eprintln!("C.3.B.1 Wrapper-Preservation Closure Proof");
-    eprintln!("============================================================");
-    eprintln!(
-        "Adapter: {} | device_type={:?} | backend={:?}",
-        adapter_info.name, adapter_info.device_type, adapter_info.backend
-    );
-    eprintln!(
-        "Verifying the deprecated Renderer::update_camera_matrices wrapper continues"
-    );
-    eprintln!(
-        "to produce byte-identical output to Renderer::update_view for the same"
-    );
-    eprintln!(
-        "camera state during the C.3.B.1 → C.3.B.2 → C.3.C transition window."
-    );
-    eprintln!();
-
-    let via_wrapper = pollster::block_on(render_engine_path(
-        device.clone(),
-        queue.clone(),
-        &fixture,
-        CameraUploadPath::UpdateCameraMatrices,
-    ))
-    .expect("engine path via update_camera_matrices (deprecated wrapper) failed");
-
-    let via_canonical = pollster::block_on(render_engine_path(
-        device.clone(),
-        queue.clone(),
-        &fixture,
-        CameraUploadPath::UpdateView,
-    ))
-    .expect("engine path via update_view (canonical) failed");
-
-    let wrapper_hash = sha256_hex(&via_wrapper.bytes);
-    let canonical_hash = sha256_hex(&via_canonical.bytes);
-
-    eprintln!("update_camera_matrices (wrapper)   SHA-256: {}", wrapper_hash);
-    eprintln!("update_view             (canonical) SHA-256: {}", canonical_hash);
-    eprintln!(
-        "Equality: {}",
-        if wrapper_hash == canonical_hash {
-            "PASS — wrapper preservation holds; safe to continue C.3.B caller migration"
-        } else {
-            "FAIL — wrapper has drifted from canonical; investigate before C.3.C"
-        }
-    );
-    eprintln!();
-
-    assert_eq!(
-        wrapper_hash, canonical_hash,
-        "C.3.B.1 wrapper-preservation closure FAILED — the deprecated \
-         Renderer::update_camera_matrices wrapper produced different output than \
-         Renderer::update_view for the same camera state. Either the wrapper \
-         drifted from canonical (a regression in astraweave-render/src/renderer.rs) \
-         or update_view's behavior changed in a way the wrapper no longer mirrors. \
-         C.3.B.2 caller migration and C.3.C deletion must not proceed until this \
-         passes.\n  \
-         update_camera_matrices (wrapper):   {}\n  \
-         update_view             (canonical): {}",
-        wrapper_hash, canonical_hash
-    );
-}
+// C.3.C closure: the `update_camera_matrices_wrapper_preserves_behavior` test
+// was deleted alongside the deprecated `update_camera_matrices` wrapper itself.
+// `editor_engine_render_parity` above is now the sole parity test and exercises
+// the canonical `Renderer::update_view` path directly.

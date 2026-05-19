@@ -14,12 +14,11 @@
 )]
 
 use astraweave_materials::{Graph, MaterialPackage, Node};
-use astraweave_camera::CameraProducer;
+use astraweave_camera::{CameraController, CameraMode, CameraProducer, FreeFly as Camera};
 use astraweave_render::{
     animation::{
         AnimationChannel, AnimationClip, ChannelData, Interpolation, Joint, Skeleton, Transform,
     },
-    camera::{Camera, CameraController, CameraMode},
     clustered_forward::{ClusterConfig, ClusteredForwardRenderer},
     clustered_megalights::MegaLightsRenderer,
     culling::{CullingPipeline, FrustumPlanes, InstanceAABB},
@@ -316,7 +315,7 @@ async fn test_render_systems_logic() {
 
 #[tokio::test]
 async fn test_renderer_full_pipeline() {
-    use astraweave_render::Camera;
+    use astraweave_camera::FreeFly as Camera;
     use astraweave_render::Renderer;
     use glam::vec3;
 
@@ -2250,7 +2249,7 @@ fn test_material_loader_edge_cases() {
 #[tokio::test]
 #[ignore = "GPU/wgpu test - not available in CI/mutation testing"]
 async fn test_renderer_extensive_methods() {
-    use astraweave_render::camera::Camera;
+    use astraweave_camera::FreeFly as Camera;
     use astraweave_render::effects::WeatherKind;
     use astraweave_render::renderer::Renderer;
     use astraweave_render::types::Instance;
@@ -4644,7 +4643,7 @@ async fn test_advanced_post_processing() {
 
 #[tokio::test]
 async fn test_camera_controller_comprehensive() {
-    use astraweave_render::camera::{Camera, CameraController};
+    use astraweave_camera::{CameraController, FreeFly as Camera};
     use glam::Vec2;
 
     // Create camera using public fields
@@ -5023,7 +5022,7 @@ async fn test_material_extended_coverage() {
 #[tokio::test]
 #[ignore = "GPU/wgpu test - not available in CI/mutation testing"]
 async fn test_renderer_more_methods() {
-    use astraweave_render::camera::Camera;
+    use astraweave_camera::FreeFly as Camera;
     use astraweave_render::Renderer;
     use glam::Vec3;
 
@@ -6729,7 +6728,7 @@ fn test_renderer_shadow_material_params_wave16() {
 /// Wave 16 Test 3: Renderer timeline/cinematics
 #[test]
 fn test_renderer_timeline_cinematics_wave16() {
-    use astraweave_render::camera::Camera;
+    use astraweave_camera::FreeFly as Camera;
     use glam::Vec3;
 
     if let Ok(mut renderer) =
@@ -6864,7 +6863,7 @@ fn test_renderer_weather_wave16() {
 /// Wave 16 Test 7: Renderer update_camera
 #[test]
 fn test_renderer_update_camera_wave16() {
-    use astraweave_render::camera::Camera;
+    use astraweave_camera::FreeFly as Camera;
     use glam::Vec3;
 
     if let Ok(mut renderer) =
@@ -7115,7 +7114,7 @@ fn test_renderer_additional_methods_wave18() {
     if let Ok(mut renderer) =
         pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
     {
-        use astraweave_render::camera::Camera;
+        use astraweave_camera::FreeFly as Camera;
         use glam::Vec3;
 
         // Test multiple camera updates

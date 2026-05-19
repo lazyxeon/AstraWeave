@@ -4,7 +4,8 @@ use astraweave_gameplay::*;
 use astraweave_nav::{NavMesh, Triangle};
 use astraweave_physics::PhysicsWorld;
 use astraweave_render::TerrainRenderer as RenderTerrainRenderer; // rename to avoid conflict
-use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
+use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
+use astraweave_render::{Instance, Renderer};
 use astraweave_terrain::{ChunkId, TerrainChunk, WorldConfig};
 use glam::{vec3, Vec2};
 use std::sync::Arc;

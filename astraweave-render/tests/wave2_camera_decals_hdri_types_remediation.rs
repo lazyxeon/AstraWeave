@@ -5,7 +5,7 @@
 //  Camera (155 mutants) — dir() trig math, view/proj matrices, controller
 // ═══════════════════════════════════════════════════════════════════════
 mod camera_tests {
-    use astraweave_render::camera::{Camera, CameraController, CameraMode};
+    use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
     use glam::{Mat4, Vec2, Vec3};
 
     fn make_camera() -> Camera {

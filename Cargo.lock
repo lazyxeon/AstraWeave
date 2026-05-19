@@ -1860,6 +1860,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-audio",
+ "astraweave-camera",
  "astraweave-render",
  "glam",
  "pollster",
@@ -2482,6 +2483,7 @@ name = "biome_showcase"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "astraweave-camera",
  "astraweave-core",
  "astraweave-render",
  "astraweave-terrain",
@@ -3549,6 +3551,7 @@ name = "cutscene_render_demo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-camera",
  "astraweave-gameplay",
  "astraweave-render",
  "glam",
@@ -3661,6 +3664,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-author",
+ "astraweave-camera",
  "astraweave-core",
  "astraweave-render",
  "aw_debug",
@@ -5622,6 +5626,7 @@ dependencies = [
  "astraweave-alloc",
  "astraweave-asset",
  "astraweave-behavior",
+ "astraweave-camera",
  "astraweave-core",
  "astraweave-dialogue",
  "astraweave-ecs",
@@ -7104,6 +7109,7 @@ name = "navmesh_demo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-camera",
  "astraweave-nav",
  "astraweave-render",
  "glam",
@@ -7308,6 +7314,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-audio",
+ "astraweave-camera",
  "astraweave-npc",
  "astraweave-physics",
  "astraweave-render",
@@ -8301,6 +8308,7 @@ name = "physics_demo3d"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-camera",
  "astraweave-physics",
  "astraweave-render",
  "glam",
@@ -9192,6 +9200,7 @@ name = "renderer_integration_test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-camera",
  "astraweave-core",
  "astraweave-render",
  "bytemuck",
@@ -11229,6 +11238,7 @@ name = "ui_controls_demo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-camera",
  "astraweave-gameplay",
  "astraweave-input",
  "astraweave-physics",
@@ -11503,6 +11513,7 @@ dependencies = [
  "astraweave-asset",
  "astraweave-audio",
  "astraweave-behavior",
+ "astraweave-camera",
  "astraweave-director",
  "astraweave-ecs",
  "astraweave-llm",
@@ -11587,6 +11598,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-asset",
+ "astraweave-camera",
  "astraweave-core",
  "astraweave-render",
  "egui",
@@ -11867,6 +11879,7 @@ name = "weaving_playground"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-camera",
  "astraweave-core",
  "astraweave-gameplay",
  "astraweave-nav",

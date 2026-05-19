@@ -14,4 +14,5 @@ env_logger = "0.11"
 log = "0.4"
 bytemuck = { workspace = true }
 astraweave-render = { path = "../../astraweave-render", features = ["postfx"] }
+astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-core = { path = "../../astraweave-core" }

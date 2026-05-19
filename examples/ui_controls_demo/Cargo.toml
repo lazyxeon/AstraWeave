@@ -15,6 +15,7 @@ egui-winit = { workspace = true }
 egui-wgpu = { workspace = true }
 
 astraweave-render   = { path = "../../astraweave-render" }
+astraweave-camera   = { path = "../../astraweave-camera" }
 astraweave-input    = { path = "../../astraweave-input" }
 astraweave-ui       = { path = "../../astraweave-ui" }
 astraweave-physics  = { path = "../../astraweave-physics" }
