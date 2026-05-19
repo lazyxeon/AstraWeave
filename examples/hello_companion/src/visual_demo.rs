@@ -24,7 +24,7 @@ use winit::{
 
 // Use astraweave-render for full 3D rendering
 use astraweave_render::{
-    Camera, CameraController, Instance, Mesh, Renderer, Vertex, WaterRenderer,
+    Camera, CameraController, CameraProducer, Instance, Mesh, Renderer, Vertex, WaterRenderer,
 };
 
 // Asset loading for GLB models
@@ -1223,7 +1223,7 @@ impl CompanionApp {
     fn update(&mut self, dt: f32) {
         // Update camera position and view matrix in renderer
         self.camera_controller.update_camera(&mut self.camera, dt);
-        self.renderer.update_camera(&self.camera);
+        self.renderer.update_view(&self.camera.to_render_view());
 
         // Update visible instances each frame (spheres in scene)
         self.renderer.update_instances(&self.demo_instances);
@@ -1380,7 +1380,7 @@ impl CompanionApp {
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         // Update camera and water in renderer
-        self.renderer.update_camera(&self.camera);
+        self.renderer.update_view(&self.camera.to_render_view());
         self.renderer.update_water(
             self.camera.vp(),
             self.camera.position,

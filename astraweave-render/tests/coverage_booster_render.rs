@@ -14,6 +14,7 @@
 )]
 
 use astraweave_materials::{Graph, MaterialPackage, Node};
+use astraweave_camera::CameraProducer;
 use astraweave_render::{
     animation::{
         AnimationChannel, AnimationClip, ChannelData, Interpolation, Joint, Skeleton, Transform,
@@ -431,7 +432,7 @@ async fn test_renderer_full_pipeline() {
         znear: 0.1,
         zfar: 100.0,
     };
-    renderer.update_camera(&camera);
+    renderer.update_view(&camera.to_render_view());
 
     // Setup some instances to render
     let instances = vec![
@@ -2294,7 +2295,7 @@ async fn test_renderer_extensive_methods() {
         znear: 0.1,
         zfar: 500.0,
     };
-    renderer.update_camera(&camera);
+    renderer.update_view(&camera.to_render_view());
 
     // Test cascade shadow settings
     renderer.set_cascade_splits(25.0, 75.0);
@@ -5082,7 +5083,7 @@ async fn test_renderer_more_methods() {
             znear: 0.1,
             zfar: 1000.0,
         };
-        renderer.update_camera(&cam);
+        renderer.update_view(&cam.to_render_view());
 
         // Test ibl_mut accessor
         let _ibl = renderer.ibl_mut();
@@ -6881,9 +6882,9 @@ fn test_renderer_update_camera_wave16() {
         };
 
         // Test update_camera
-        renderer.update_camera(&camera);
+        renderer.update_view(&camera.to_render_view());
 
-        println!("Renderer update_camera wave16 tested.");
+        println!("Renderer update_view wave16 tested.");
     }
 }
 
@@ -7128,7 +7129,7 @@ fn test_renderer_additional_methods_wave18() {
                 znear: 0.1,
                 zfar: 1000.0,
             };
-            renderer.update_camera(&camera);
+            renderer.update_view(&camera.to_render_view());
         }
 
         // Test resize multiple times

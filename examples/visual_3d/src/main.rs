@@ -1,6 +1,6 @@
 use astraweave_core::{IVec2, Team, World};
 use astraweave_render::types::SkinnedVertex;
-use astraweave_render::{Camera, CameraController, Instance, Renderer};
+use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
 use egui::{Context as EguiContext, Slider};
 use egui_wgpu::Renderer as EguiRenderer;
 use egui_winit::State as EguiWinitState;
@@ -166,7 +166,7 @@ impl App {
     fn update_scene(&mut self) {
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.update_instances(&world_to_instances(&self.world, self.grid_scale));
-            renderer.update_camera(&self.camera);
+            renderer.update_view(&self.camera.to_render_view());
             renderer.set_material_params(self.base_color, self.metallic, self.roughness);
         }
     }
@@ -229,7 +229,7 @@ impl App {
 
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.tick_environment(dt);
-            renderer.update_camera(&self.camera);
+            renderer.update_view(&self.camera.to_render_view());
             renderer.set_material_params(self.base_color, self.metallic, self.roughness);
 
             // Simply call render() - it handles the 3D scene

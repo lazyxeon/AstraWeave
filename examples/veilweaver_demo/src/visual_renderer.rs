@@ -25,7 +25,7 @@ use winit::{
 use astraweave_ecs::App;
 use astraweave_llm::qwen3_ollama::Qwen3Ollama;
 use astraweave_render::{
-    Camera, CameraController, Instance, Mesh, Renderer, Vertex, WaterRenderer,
+    Camera, CameraController, CameraProducer, Instance, Mesh, Renderer, Vertex, WaterRenderer,
 };
 
 use crate::telemetry_hud::{TelemetryHud, TelemetryMetrics};
@@ -824,7 +824,7 @@ impl VeilweaverApp {
         // Camera ALWAYS updates — even after simulation finishes —
         // so the player can keep flying around the scene.
         self.camera_controller.update_camera(&mut self.camera, dt);
-        self.renderer.update_camera(&self.camera);
+        self.renderer.update_view(&self.camera.to_render_view());
 
         // Water animation continues regardless of sim state
         let elapsed = self.start_time.elapsed().as_secs_f32();
@@ -857,7 +857,7 @@ impl VeilweaverApp {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        self.renderer.update_camera(&self.camera);
+        self.renderer.update_view(&self.camera.to_render_view());
 
         let elapsed = self.start_time.elapsed().as_secs_f32();
         self.renderer

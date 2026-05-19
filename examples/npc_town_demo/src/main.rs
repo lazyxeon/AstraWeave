@@ -16,7 +16,7 @@ use astraweave_npc::{
     llm::MockLlm, load_profile_from_toml_str, EngineCommandSink, NpcManager, NpcWorldView,
 };
 use astraweave_physics::PhysicsWorld;
-use astraweave_render::{Camera, CameraController, Instance, Renderer};
+use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
 
 struct App {
     window: Option<std::sync::Arc<Window>>,
@@ -226,7 +226,7 @@ impl ApplicationHandler for App {
                 let dt = (Instant::now() - self.last).as_secs_f32();
                 self.last = Instant::now();
                 self.cam_ctl.update_camera(&mut self.camera, dt);
-                renderer.update_camera(&self.camera);
+                renderer.update_view(&self.camera.to_render_view());
 
                 // Tick NPC manager with current views (simplified)
                 let views = std::iter::once((

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use astraweave_render::camera::Camera;
-use astraweave_render::Renderer;
+use astraweave_render::{CameraProducer, Renderer};
 use glam::Vec3;
 use std::sync::Arc;
 use winit::{
@@ -93,7 +93,7 @@ impl App {
         self.mouse_delta = (0.0, 0.0);
 
         // Update renderer camera
-        self.renderer.update_camera(&self.camera);
+        self.renderer.update_view(&self.camera.to_render_view());
 
         // Update environment (sky, weather)
         self.renderer.tick_environment(0.016); // Fixed dt for now

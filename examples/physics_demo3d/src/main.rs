@@ -1,5 +1,5 @@
 use astraweave_physics::{Layers, PhysicsWorld};
-use astraweave_render::{Camera, CameraController, Instance, Renderer};
+use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
 use glam::{vec3, Vec2, Vec3};
 use std::{sync::Arc, time::Instant};
 use winit::{
@@ -286,7 +286,7 @@ impl ApplicationHandler for PhysicsApp {
             }
         }
 
-        renderer.update_camera(&self.camera);
+        renderer.update_view(&self.camera.to_render_view());
         renderer.update_instances(&self.instances);
         if let Err(e) = renderer.render() {
             eprintln!("render error: {e:?}");

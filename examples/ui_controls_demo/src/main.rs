@@ -10,7 +10,7 @@ use winit::{
 };
 
 use astraweave_physics::PhysicsWorld;
-use astraweave_render::{Camera, CameraController, Instance, Renderer};
+use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
 
 use astraweave_input::{BindingSet, InputContext, InputManager};
 use astraweave_ui::{draw_ui, Accessibility, MenuManager, UiData, UiFlags, UiLayer};
@@ -235,7 +235,7 @@ impl ApplicationHandler for App {
                     self.input.poll_gamepads();
 
                     self.cam_ctl.update_camera(&mut self.camera, dt);
-                    renderer.update_camera(&self.camera);
+                    renderer.update_view(&self.camera.to_render_view());
 
                     // Build UI frame
                     ui.begin(window);

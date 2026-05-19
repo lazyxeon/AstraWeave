@@ -1,5 +1,5 @@
 use astraweave_nav::{NavMesh, Triangle};
-use astraweave_render::{Camera, CameraController, Instance, Renderer};
+use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
 use glam::{vec3, Vec2};
 use std::sync::Arc;
 use winit::{
@@ -113,7 +113,7 @@ impl ApplicationHandler for App {
 
             let mut renderer = pollster::block_on(Renderer::new(window.clone())).unwrap();
             renderer.update_instances(&self.instances);
-            renderer.update_camera(&self.camera);
+            renderer.update_view(&self.camera.to_render_view());
             self.renderer = Some(renderer);
         }
     }
@@ -165,7 +165,7 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if let Some(renderer) = self.renderer.as_mut() {
                     self.cam_ctl.update_camera(&mut self.camera, 1.0 / 60.0);
-                    renderer.update_camera(&self.camera);
+                    renderer.update_view(&self.camera.to_render_view());
                     if let Err(e) = renderer.render() {
                         eprintln!("{e:?}");
                     }

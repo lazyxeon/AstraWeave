@@ -4,7 +4,7 @@ use astraweave_gameplay::*;
 use astraweave_nav::{NavMesh, Triangle};
 use astraweave_physics::PhysicsWorld;
 use astraweave_render::TerrainRenderer as RenderTerrainRenderer; // rename to avoid conflict
-use astraweave_render::{Camera, CameraController, Instance, Renderer};
+use astraweave_render::{Camera, CameraController, CameraProducer, Instance, Renderer};
 use astraweave_terrain::{ChunkId, TerrainChunk, WorldConfig};
 use glam::{vec3, Vec2};
 use std::sync::Arc;
@@ -404,7 +404,7 @@ impl ApplicationHandler for WeavingApp {
             ));
         }
         renderer.update_instances(&self.instances);
-        renderer.update_camera(&self.camera);
+        renderer.update_view(&self.camera.to_render_view());
         let _ = renderer.render();
         window.request_redraw();
     }

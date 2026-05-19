@@ -1,5 +1,5 @@
 use astraweave_audio::{AudioEngine, ListenerPose, MusicTrack};
-use astraweave_render::{Camera, CameraController, Renderer};
+use astraweave_render::{Camera, CameraController, CameraProducer, Renderer};
 use glam::{vec3, Vec2};
 use std::{sync::Arc, time::Instant};
 use winit::{
@@ -174,7 +174,7 @@ impl ApplicationHandler for App {
                 let dt = (Instant::now() - self.last).as_secs_f32();
                 self.last = Instant::now();
                 self.cam_ctl.update_camera(&mut self.camera, dt);
-                renderer.update_camera(&self.camera);
+                renderer.update_view(&self.camera.to_render_view());
 
                 // update listener from camera (Y-up, forward from yaw/pitch)
                 let forward = glam::Quat::from_euler(

@@ -10,6 +10,7 @@
 
 #[cfg(test)]
 mod tests {
+    use astraweave_camera::CameraProducer;
     use glam::{vec3, Mat4, Vec3, Vec4Swizzles};
     use wgpu::util::DeviceExt;
 
@@ -2201,7 +2202,7 @@ mod tests {
                 znear: 0.1,
                 zfar: 100.0,
             };
-            renderer.update_camera(&camera);
+            renderer.update_view(&camera.to_render_view());
 
             // Test material update
             renderer.set_material_params([1.0, 0.0, 0.0, 1.0], 0.5, 0.1);

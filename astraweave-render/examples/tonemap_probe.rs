@@ -52,6 +52,7 @@
 //! 512×512 Rgba16Float texture + readback buffer).
 
 use anyhow::{Context, Result};
+use astraweave_camera::CameraProducer;
 use astraweave_render::camera::Camera;
 use astraweave_render::hdr_pipeline::{PostProcessChain, TonemapOperator};
 use astraweave_render::Renderer;
@@ -308,7 +309,7 @@ async fn probe(
         znear: 0.1,
         zfar: 100.0,
     };
-    renderer.update_camera(&camera);
+    renderer.update_view(&camera.to_render_view());
 
     // Create the external Rgba16Float view that the editor would create
     // (viewport/renderer.rs:773-804 constructs essentially this same

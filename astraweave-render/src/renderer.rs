@@ -7571,6 +7571,12 @@ mod tests {
 
     #[test]
     fn test_frustum_corners_ws() {
+        // C.3.B.2 regression fix: C.3.A migrated frustum_corners_ws's
+        // signature from `&Camera` to `&RenderView` (per the cascade-splits
+        // migration in Deliverable F) but did not update this test caller.
+        // Build a RenderView directly so the test matches the post-C.3.A
+        // signature.
+        use astraweave_camera::CameraProducer;
         let cam = crate::camera::Camera {
             position: Vec3::ZERO,
             yaw: 0.0,
@@ -7580,8 +7586,9 @@ mod tests {
             znear: 0.1,
             zfar: 100.0,
         };
+        let render_view = cam.to_render_view();
 
-        let corners = frustum_corners_ws(&cam, 1.0, 10.0);
+        let corners = frustum_corners_ws(&render_view, 1.0, 10.0);
         assert_eq!(corners.len(), 8);
 
         // Center of corners should be along the forward axis (X+)

@@ -1,5 +1,5 @@
 use astraweave_gameplay::cutscenes::*;
-use astraweave_render::{Camera, CameraController, Renderer};
+use astraweave_render::{Camera, CameraController, CameraProducer, Renderer};
 use glam::{vec3, Vec2};
 use std::sync::Arc;
 use std::time::Instant;
@@ -156,7 +156,7 @@ impl ApplicationHandler for CutsceneApp {
             self.ctl.update_camera(&mut self.camera, dt);
         }
 
-        renderer.update_camera(&self.camera);
+        renderer.update_view(&self.camera.to_render_view());
         if let Err(e) = renderer.render() {
             eprintln!("{e:?}");
         }
