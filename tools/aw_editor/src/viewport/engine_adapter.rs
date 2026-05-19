@@ -763,19 +763,42 @@ impl EngineRenderAdapter {
         self.initialized
     }
 
+    /// Update the renderer's camera state from the editor's OrbitCamera.
+    ///
+    /// C.3.B.1 migration: constructs a [`astraweave_camera::RenderView`]
+    /// directly from OrbitCamera's matrices via the canonical
+    /// [`astraweave_camera::Projection::perspective`] +
+    /// [`astraweave_camera::RenderView::new`] path, then calls
+    /// [`astraweave_render::Renderer::update_view`]. Pre-C.3.B.1, this
+    /// function called the now-`#[deprecated]` `update_camera_matrices`
+    /// wrapper, which itself constructed a RenderView and delegated. The
+    /// historical `to_engine_camera` bypass (which had yaw/pitch convention
+    /// divergence issues — see commit `df7649287`) is eliminated by going
+    /// OrbitCamera → matrices → RenderView directly, no FreeFly intermediate.
+    ///
+    /// Per `CAMERA_CONVENTIONS.md` §2.9, the renderer consumes RenderView
+    /// exclusively. C.4 will migrate OrbitCamera itself to implement
+    /// `CameraProducer`; at that point this function simplifies to
+    /// `self.renderer.update_view(&camera.to_render_view())`.
     pub fn update_camera(&mut self, camera: &OrbitCamera) {
-        // Pass the OrbitCamera's own view/proj matrices directly to the renderer.
-        // This avoids yaw/pitch conversion issues between the orbit camera and
-        // the engine camera's direction conventions.
-        self.renderer.update_camera_matrices(
-            camera.view_matrix(),
-            camera.projection_matrix(),
-            camera.position(),
-            camera.near,
-            camera.far,
+        let projection = astraweave_camera::Projection::perspective(
             camera.fov.to_radians(),
             camera.aspect,
+            camera.near,
+            camera.far,
         );
+        let view = camera.view_matrix();
+        // view_dir derived from view matrix per RenderView's canonical
+        // convention (see RenderView docstring): -inverse_view.col(2).xyz.
+        let inverse_view = view.inverse();
+        let view_dir = -inverse_view.col(2).truncate();
+        let render_view = astraweave_camera::RenderView::new(
+            view,
+            &projection,
+            camera.position(),
+            view_dir,
+        );
+        self.renderer.update_view(&render_view);
         self.camera_position = camera.position();
         let camera_yaw = camera.yaw();
         self.camera_yaw = camera_yaw;
@@ -3756,10 +3779,27 @@ impl EngineRenderAdapter {
     }
 
     /// Update water animation state each frame.
-    pub fn update_water(&mut self, camera: &OrbitCamera, time: f32) {
-        let engine_camera = camera.to_engine_camera();
-        let vp = engine_camera.vp();
-        let pos = camera.position();
+    ///
+    /// C.3.B.1 migration: signature now accepts `&RenderView` directly,
+    /// eliminating the dual-conversion path that previously routed through
+    /// `OrbitCamera::to_engine_camera().vp()` (the path C.0 audit §1.B #8 and
+    /// `docs/audits/water_system_architecture_2026-04-20.md` flagged as
+    /// reachable-but-divergent from the editor's main camera upload path).
+    /// With this signature, callers feed the same canonical `RenderView` that
+    /// `Renderer::update_view` consumed for the main pass.
+    ///
+    /// **Reachability note**: as of C.3.B.1, this function has zero call
+    /// sites in the inspected workspace (verified via grep against
+    /// `tools/`, `examples/`, `astraweave-*/`; matches the C.0 audit §1.B #8
+    /// finding and the water-system-architecture audit's note). It remains
+    /// reachable code in case future editor states or external integrations
+    /// wire it up. Migration to `&RenderView` keeps the function canonical-
+    /// compliant. If it remains unreached after the Unified Camera campaign
+    /// closes (C.9), deletion is queued as a standalone follow-up — not
+    /// Unified Camera campaign scope.
+    pub fn update_water(&mut self, view: &astraweave_camera::RenderView, time: f32) {
+        let vp = view.view_proj;
+        let pos = view.position;
         self.renderer.update_water(vp, pos, time);
     }
 }

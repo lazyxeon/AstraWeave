@@ -130,7 +130,15 @@ Boundary conversions: this is the consolidation contract; it does not exist yet 
 
 ## §3 — Non-canonical conventions in the codebase
 
-**Status as of C.2 commit (2026-05-18):** canonical types `Projection`, `RenderView`, and trait `CameraProducer` exist in `astraweave-camera` (added to workspace; one crate, no production consumer yet). The §2.9 convention (`RenderView` as the upload contract) now has a Rust-side referent — previously it was target-shape only. The migration table rows below remain scheduled for their target sub-phases (C.3–C.7) and are not updated as a result of C.2 — C.2 prepares the destination, not the migrations.
+**Status log:**
+
+- **C.2 closed (2026-05-18):** canonical types `Projection`, `RenderView`, and trait `CameraProducer` exist in `astraweave-camera`. The §2.9 convention has a Rust-side referent — previously target-shape only. C.2 prepared the destination; no production consumer.
+
+- **C.3.A closed (2026-05-18):** engine `Camera` → `astraweave_camera::FreeFly` (re-exported via `astraweave-render/src/camera.rs` shim as `Camera` for backward-compat). `Renderer::update_view(&RenderView)` canonical upload path exists alongside `#[deprecated]` wrappers `update_camera` / `update_camera_matrices`. `update_cascade_splits` + `frustum_corners_ws` consume `&RenderView` directly (lossy yaw/pitch reconstruction at renderer.rs:4001 eliminated). Parity harness verified byte-equivalence between old wrapper path and new canonical path via dual-test pattern.
+
+- **C.3.B.1 closed (2026-05-18):** all editor-side callers migrated to `Renderer::update_view` directly. Parity harness's canonical-default `editor_engine_render_parity` test now exercises `update_view`; sibling test renamed to `update_camera_matrices_wrapper_preserves_behavior` and reframed to verify the deprecated wrapper preserves behavior during the C.3.B.1 → C.3.B.2 → C.3.C transition window. `EngineRenderAdapter::update_camera` constructs `RenderView` directly via `Projection::perspective` + `RenderView::new` (no `to_engine_camera` intermediate). `EngineRenderAdapter::update_water` signature migrated to accept `&RenderView`; function body simplified. Reachability verified zero callers in inspected tree per C.0 §1.B #8 — deletion queued as standalone follow-up post-campaign. Deprecation warning count dropped from 11 → 10 (editor-side adapter site closed; 10 engine-side example sites remain for C.3.B.2). §3 migration table rows for "EngineRenderAdapter::update_water dual-conversion" fully closed. "Renderer dual upload paths" row partially closed (editor-side wrappers no longer have callers; engine-side wrappers still do).
+
+The migration table rows below remain scheduled for their target sub-phases. Individual row status updates happen as each row's target sub-phase fully closes; partial-closure status is captured in this log.
 
 This table enumerates every implementation found in C.0 Phase 1 that uses a non-canonical convention, with the specific axis violated and the target migration sub-phase. **This is the migration tracking list for C.3–C.7.** After C.9 closes, any implementation listed here that still exists in the codebase becomes a violation (the contract tests would then assert these specific files are convention-compliant or removed).
 

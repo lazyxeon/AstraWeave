@@ -462,18 +462,27 @@ async fn acquire_device() -> Result<(Arc<wgpu::Device>, Arc<wgpu::Queue>, wgpu::
 /// Camera-upload path under test for the engine-side parity render.
 ///
 /// C.3.A added the canonical `Renderer::update_view(&RenderView)` entry point
-/// alongside the legacy `update_camera_matrices(...)` API. The byte-
-/// equivalence closure proof (C.3.A's seam-type-matched proof) requires that
-/// both upload paths produce identical rendered output for the same camera
-/// state. `render_engine_path` accepts this enum so a single rendering
-/// function can be invoked through either path; the new
-/// `engine_path_update_view_byte_equivalent_to_update_camera_matrices` test
-/// runs both and asserts identical SHA-256.
+/// alongside the legacy `update_camera_matrices(...)` API.
+///
+/// **Post-C.3.B.1 semantic**: the canonical-default test
+/// (`editor_engine_render_parity`) consumes [`Self::UpdateView`] — `update_view`
+/// is now load-bearing for the campaign-wide parity contract. The wrapper-
+/// preservation test (`update_camera_matrices_wrapper_preserves_behavior`)
+/// consumes [`Self::UpdateCameraMatrices`] — proving the deprecated wrapper
+/// still produces byte-identical output during the C.3.B.1 → C.3.B.2 → C.3.C
+/// transition window. Both tests deleted-or-simplified in C.3.C alongside the
+/// wrapper removal.
 #[derive(Copy, Clone, Debug)]
 enum CameraUploadPath {
-    /// The legacy deprecated wrapper. Existing parity harness test path.
+    /// The legacy `#[deprecated]` wrapper. Exercised by
+    /// `update_camera_matrices_wrapper_preserves_behavior` to verify the
+    /// wrapper continues to delegate correctly during the C.3.B transition.
+    /// Removed in C.3.C.
     UpdateCameraMatrices,
-    /// C.3.A's canonical entry point. New parity harness test path.
+    /// C.3.A's canonical entry point. Consumed by the migrated
+    /// `editor_engine_render_parity` test (the campaign-wide parity contract
+    /// now flows through this path) and by C.3.B.1's editor-side adapter
+    /// migrations.
     UpdateView,
 }
 
@@ -1139,11 +1148,15 @@ fn editor_engine_render_parity() {
     eprintln!("Per-machine parity contract — hash comparison valid only on this adapter.");
     eprintln!();
 
+    // C.3.B.1 migration: canonical-default parity contract now flows through
+    // `Renderer::update_view(&RenderView)` directly. The deprecated wrapper
+    // (UpdateCameraMatrices) is exercised by the sibling
+    // `update_camera_matrices_wrapper_preserves_behavior` test below.
     let engine = pollster::block_on(render_engine_path(
         device.clone(),
         queue.clone(),
         &fixture,
-        CameraUploadPath::UpdateCameraMatrices,
+        CameraUploadPath::UpdateView,
     ))
     .expect("engine path render failed");
 
@@ -1476,87 +1489,95 @@ fn editor_engine_render_parity() {
     );
 }
 
-// ─── C.3.A byte-equivalence closure proof ────────────────────────────────────
+// ─── C.3.B.1 wrapper-preservation closure proof ──────────────────────────────
 //
 // Unified Camera campaign sub-phase C.3.A added the canonical
 // `Renderer::update_view(&RenderView)` upload entry point alongside the legacy
 // `update_camera_matrices(...)` API (now `#[deprecated]`, removed in C.3.C).
-// The seam-type-matched closure proof for this migration is byte-equivalence:
-// the new path must produce pixel-identical output to the old path for the
-// same camera state.
+// Originally this test (named
+// `engine_path_update_view_byte_equivalent_to_update_camera_matrices`)
+// asserted that the new path produced byte-identical output to the old path —
+// the C.3.A byte-equivalence closure proof.
 //
-// This test runs the parity fixture's engine-side render twice — once via
-// `update_camera_matrices`, once via `update_view` — and asserts identical
-// SHA-256. If they diverge, the consolidation in `update_view` has a
-// side-effect omission (or the deprecated wrapper has a subtle behavior
-// difference). Either is a finding that blocks C.3.B caller migration.
+// **C.3.B.1 reframing**: the original `editor_engine_render_parity` test now
+// flows through `Renderer::update_view` directly (the canonical path is load-
+// bearing for the campaign-wide parity contract). This sibling test instead
+// exercises the deprecated `update_camera_matrices` wrapper. Its purpose
+// during the C.3.B.1 → C.3.B.2 → C.3.C transition window is to verify the
+// wrapper continues to produce byte-identical output to `update_view` — i.e.,
+// the wrapper correctly delegates and no side-effect drifts in. If this test
+// fails during C.3.B.2 or before C.3.C, something accidentally modified the
+// wrapper's delegation. Deleted in C.3.C alongside the wrapper itself.
 //
-// This test does NOT replace the editor↔engine parity contract above; it
-// augments it. Both run as part of `cargo test -p aw_editor --test
-// render_parity_harness`.
+// Both this test and `editor_engine_render_parity` run as part of `cargo test
+// -p aw_editor --test render_parity_harness`.
 
 #[test]
-fn engine_path_update_view_byte_equivalent_to_update_camera_matrices() {
+fn update_camera_matrices_wrapper_preserves_behavior() {
     let fixture = ParityFixture::default_grassland();
     let (device, queue, adapter_info) =
         pollster::block_on(acquire_device()).expect("acquire wgpu device");
 
     eprintln!("============================================================");
-    eprintln!("C.3.A Byte-Equivalence Closure Proof");
+    eprintln!("C.3.B.1 Wrapper-Preservation Closure Proof");
     eprintln!("============================================================");
     eprintln!(
         "Adapter: {} | device_type={:?} | backend={:?}",
         adapter_info.name, adapter_info.device_type, adapter_info.backend
     );
     eprintln!(
-        "Verifying Renderer::update_view produces byte-identical output to"
+        "Verifying the deprecated Renderer::update_camera_matrices wrapper continues"
     );
     eprintln!(
-        "the deprecated Renderer::update_camera_matrices for the same camera state."
+        "to produce byte-identical output to Renderer::update_view for the same"
+    );
+    eprintln!(
+        "camera state during the C.3.B.1 → C.3.B.2 → C.3.C transition window."
     );
     eprintln!();
 
-    let via_legacy = pollster::block_on(render_engine_path(
+    let via_wrapper = pollster::block_on(render_engine_path(
         device.clone(),
         queue.clone(),
         &fixture,
         CameraUploadPath::UpdateCameraMatrices,
     ))
-    .expect("engine path via update_camera_matrices failed");
+    .expect("engine path via update_camera_matrices (deprecated wrapper) failed");
 
-    let via_update_view = pollster::block_on(render_engine_path(
+    let via_canonical = pollster::block_on(render_engine_path(
         device.clone(),
         queue.clone(),
         &fixture,
         CameraUploadPath::UpdateView,
     ))
-    .expect("engine path via update_view failed");
+    .expect("engine path via update_view (canonical) failed");
 
-    let legacy_hash = sha256_hex(&via_legacy.bytes);
-    let update_view_hash = sha256_hex(&via_update_view.bytes);
+    let wrapper_hash = sha256_hex(&via_wrapper.bytes);
+    let canonical_hash = sha256_hex(&via_canonical.bytes);
 
-    eprintln!("update_camera_matrices SHA-256: {}", legacy_hash);
-    eprintln!("update_view             SHA-256: {}", update_view_hash);
+    eprintln!("update_camera_matrices (wrapper)   SHA-256: {}", wrapper_hash);
+    eprintln!("update_view             (canonical) SHA-256: {}", canonical_hash);
     eprintln!(
         "Equality: {}",
-        if legacy_hash == update_view_hash {
-            "PASS — C.3.A byte-equivalence closure holds"
+        if wrapper_hash == canonical_hash {
+            "PASS — wrapper preservation holds; safe to continue C.3.B caller migration"
         } else {
-            "FAIL — investigate update_view side-effect omission or wrapper drift"
+            "FAIL — wrapper has drifted from canonical; investigate before C.3.C"
         }
     );
     eprintln!();
 
     assert_eq!(
-        legacy_hash, update_view_hash,
-        "C.3.A byte-equivalence closure FAILED — Renderer::update_view produced \
-         different output than Renderer::update_camera_matrices for the same camera \
-         state. Either update_view has a side-effect omission (its body is the union \
-         of update_camera/update_camera_matrices side effects per CAMERA_CONVENTIONS.md \
-         §2.9) or the deprecated wrapper drifted. C.3.B caller migration must not \
-         proceed until this passes.\n  \
-         update_camera_matrices: {}\n  \
-         update_view:             {}",
-        legacy_hash, update_view_hash
+        wrapper_hash, canonical_hash,
+        "C.3.B.1 wrapper-preservation closure FAILED — the deprecated \
+         Renderer::update_camera_matrices wrapper produced different output than \
+         Renderer::update_view for the same camera state. Either the wrapper \
+         drifted from canonical (a regression in astraweave-render/src/renderer.rs) \
+         or update_view's behavior changed in a way the wrapper no longer mirrors. \
+         C.3.B.2 caller migration and C.3.C deletion must not proceed until this \
+         passes.\n  \
+         update_camera_matrices (wrapper):   {}\n  \
+         update_view             (canonical): {}",
+        wrapper_hash, canonical_hash
     );
 }
