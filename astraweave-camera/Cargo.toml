@@ -9,6 +9,7 @@ license = "MIT"
 [dependencies]
 glam = { workspace = true }
 serde = { workspace = true, optional = true }
+winit = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }

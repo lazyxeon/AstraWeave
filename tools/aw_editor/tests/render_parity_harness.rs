@@ -459,10 +459,29 @@ async fn acquire_device() -> Result<(Arc<wgpu::Device>, Arc<wgpu::Queue>, wgpu::
     Ok((Arc::new(device), Arc::new(queue), info))
 }
 
+/// Camera-upload path under test for the engine-side parity render.
+///
+/// C.3.A added the canonical `Renderer::update_view(&RenderView)` entry point
+/// alongside the legacy `update_camera_matrices(...)` API. The byte-
+/// equivalence closure proof (C.3.A's seam-type-matched proof) requires that
+/// both upload paths produce identical rendered output for the same camera
+/// state. `render_engine_path` accepts this enum so a single rendering
+/// function can be invoked through either path; the new
+/// `engine_path_update_view_byte_equivalent_to_update_camera_matrices` test
+/// runs both and asserts identical SHA-256.
+#[derive(Copy, Clone, Debug)]
+enum CameraUploadPath {
+    /// The legacy deprecated wrapper. Existing parity harness test path.
+    UpdateCameraMatrices,
+    /// C.3.A's canonical entry point. New parity harness test path.
+    UpdateView,
+}
+
 async fn render_engine_path(
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     fixture: &ParityFixture,
+    upload_path: CameraUploadPath,
 ) -> Result<EngineFrame> {
     // P.3: mirror EngineRenderAdapter::new with Rgba8UnormSrgb config.format
     // (changed from Bgra8UnormSrgb in same commit) so post_pipeline outputs
@@ -490,15 +509,54 @@ async fn render_engine_path(
     renderer.time_of_day_mut().current_time = fixture.time_of_day;
 
     let camera = fixture.camera();
-    renderer.update_camera_matrices(
-        camera.view_matrix(),
-        camera.projection_matrix(),
-        camera.position(),
-        0.5,
-        5000.0,
-        60f32.to_radians(),
-        fixture.width as f32 / fixture.height as f32,
-    );
+    let view_matrix = camera.view_matrix();
+    let projection_matrix = camera.projection_matrix();
+    let position = camera.position();
+    const ENGINE_PATH_ZNEAR: f32 = 0.5;
+    const ENGINE_PATH_ZFAR: f32 = 5000.0;
+    let fovy = 60_f32.to_radians();
+    let aspect = fixture.width as f32 / fixture.height as f32;
+
+    match upload_path {
+        CameraUploadPath::UpdateCameraMatrices => {
+            // Legacy path — exercises C.3.A's deprecated wrapper. Wrapper
+            // constructs a RenderView internally (with view_dir derived from
+            // -inverse_view.col(2)) and delegates to update_view.
+            #[allow(deprecated)]
+            renderer.update_camera_matrices(
+                view_matrix,
+                projection_matrix,
+                position,
+                ENGINE_PATH_ZNEAR,
+                ENGINE_PATH_ZFAR,
+                fovy,
+                aspect,
+            );
+        }
+        CameraUploadPath::UpdateView => {
+            // C.3.A canonical path — build RenderView directly, call
+            // update_view. The byte-equivalence proof asserts this produces
+            // identical pixels to UpdateCameraMatrices.
+            let inverse_view = view_matrix.inverse();
+            let view_dir = -inverse_view.col(2).truncate();
+            let view_proj = projection_matrix * view_matrix;
+            let inverse_view_proj = view_proj.inverse();
+            let render_view = astraweave_camera::RenderView {
+                view: view_matrix,
+                projection: projection_matrix,
+                view_proj,
+                inverse_view,
+                inverse_view_proj,
+                position,
+                view_dir,
+                fovy,
+                aspect,
+                znear: ENGINE_PATH_ZNEAR,
+                zfar: ENGINE_PATH_ZFAR,
+            };
+            renderer.update_view(&render_view);
+        }
+    }
 
     // P.2 fixture expansion: upload canonical grassland biome pack + a single
     // 10m × 10m terrain chunk at origin so the loader axis becomes measurable.
@@ -1081,8 +1139,13 @@ fn editor_engine_render_parity() {
     eprintln!("Per-machine parity contract — hash comparison valid only on this adapter.");
     eprintln!();
 
-    let engine = pollster::block_on(render_engine_path(device.clone(), queue.clone(), &fixture))
-        .expect("engine path render failed");
+    let engine = pollster::block_on(render_engine_path(
+        device.clone(),
+        queue.clone(),
+        &fixture,
+        CameraUploadPath::UpdateCameraMatrices,
+    ))
+    .expect("engine path render failed");
 
     // P.6 editor path runs twice: once with overlays disabled (show_grid=false)
     // and once with overlays enabled (show_grid=true). The closure proof
@@ -1410,5 +1473,90 @@ fn editor_engine_render_parity() {
         engine_hash, editor_hash,
         "Parity regression — engine and editor outputs diverged. \
          Investigate before merge: a closure-proof failure above narrows the seam."
+    );
+}
+
+// ─── C.3.A byte-equivalence closure proof ────────────────────────────────────
+//
+// Unified Camera campaign sub-phase C.3.A added the canonical
+// `Renderer::update_view(&RenderView)` upload entry point alongside the legacy
+// `update_camera_matrices(...)` API (now `#[deprecated]`, removed in C.3.C).
+// The seam-type-matched closure proof for this migration is byte-equivalence:
+// the new path must produce pixel-identical output to the old path for the
+// same camera state.
+//
+// This test runs the parity fixture's engine-side render twice — once via
+// `update_camera_matrices`, once via `update_view` — and asserts identical
+// SHA-256. If they diverge, the consolidation in `update_view` has a
+// side-effect omission (or the deprecated wrapper has a subtle behavior
+// difference). Either is a finding that blocks C.3.B caller migration.
+//
+// This test does NOT replace the editor↔engine parity contract above; it
+// augments it. Both run as part of `cargo test -p aw_editor --test
+// render_parity_harness`.
+
+#[test]
+fn engine_path_update_view_byte_equivalent_to_update_camera_matrices() {
+    let fixture = ParityFixture::default_grassland();
+    let (device, queue, adapter_info) =
+        pollster::block_on(acquire_device()).expect("acquire wgpu device");
+
+    eprintln!("============================================================");
+    eprintln!("C.3.A Byte-Equivalence Closure Proof");
+    eprintln!("============================================================");
+    eprintln!(
+        "Adapter: {} | device_type={:?} | backend={:?}",
+        adapter_info.name, adapter_info.device_type, adapter_info.backend
+    );
+    eprintln!(
+        "Verifying Renderer::update_view produces byte-identical output to"
+    );
+    eprintln!(
+        "the deprecated Renderer::update_camera_matrices for the same camera state."
+    );
+    eprintln!();
+
+    let via_legacy = pollster::block_on(render_engine_path(
+        device.clone(),
+        queue.clone(),
+        &fixture,
+        CameraUploadPath::UpdateCameraMatrices,
+    ))
+    .expect("engine path via update_camera_matrices failed");
+
+    let via_update_view = pollster::block_on(render_engine_path(
+        device.clone(),
+        queue.clone(),
+        &fixture,
+        CameraUploadPath::UpdateView,
+    ))
+    .expect("engine path via update_view failed");
+
+    let legacy_hash = sha256_hex(&via_legacy.bytes);
+    let update_view_hash = sha256_hex(&via_update_view.bytes);
+
+    eprintln!("update_camera_matrices SHA-256: {}", legacy_hash);
+    eprintln!("update_view             SHA-256: {}", update_view_hash);
+    eprintln!(
+        "Equality: {}",
+        if legacy_hash == update_view_hash {
+            "PASS — C.3.A byte-equivalence closure holds"
+        } else {
+            "FAIL — investigate update_view side-effect omission or wrapper drift"
+        }
+    );
+    eprintln!();
+
+    assert_eq!(
+        legacy_hash, update_view_hash,
+        "C.3.A byte-equivalence closure FAILED — Renderer::update_view produced \
+         different output than Renderer::update_camera_matrices for the same camera \
+         state. Either update_view has a side-effect omission (its body is the union \
+         of update_camera/update_camera_matrices side effects per CAMERA_CONVENTIONS.md \
+         §2.9) or the deprecated wrapper drifted. C.3.B caller migration must not \
+         proceed until this passes.\n  \
+         update_camera_matrices: {}\n  \
+         update_view:             {}",
+        legacy_hash, update_view_hash
     );
 }

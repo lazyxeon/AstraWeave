@@ -705,6 +705,7 @@ dependencies = [
  "approx 0.5.1",
  "glam",
  "serde",
+ "winit",
 ]
 
 [[package]]
@@ -1317,6 +1318,7 @@ dependencies = [
  "approx 0.5.1",
  "astraweave-alloc",
  "astraweave-asset",
+ "astraweave-camera",
  "astraweave-cinematics",
  "astraweave-core",
  "astraweave-materials",
@@ -2065,6 +2067,7 @@ dependencies = [
  "astraweave-author",
  "astraweave-behavior",
  "astraweave-blend",
+ "astraweave-camera",
  "astraweave-core",
  "astraweave-dialogue",
  "astraweave-ecs",

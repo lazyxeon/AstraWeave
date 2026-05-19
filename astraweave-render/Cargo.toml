@@ -42,6 +42,7 @@ winit = { workspace = true }
 image = { version = "0.25", optional = true }
 bytemuck = { workspace = true }
 astraweave-core = { path = "../astraweave-core" }
+astraweave-camera = { path = "../astraweave-camera" }
 astraweave-materials = { path = "../astraweave-materials" }
 astraweave-cinematics = { path = "../astraweave-cinematics" }
 astraweave-terrain = { path = "../astraweave-terrain" }

@@ -8,6 +8,7 @@ use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
 use crate::camera::Camera;
+use astraweave_camera::RenderView;
 use crate::clustered::{bin_lights_cpu, ClusterDims, CpuLight, WGSL_CLUSTER_BIN};
 use crate::depth::Depth;
 use crate::types::SkinnedVertex;
@@ -3949,12 +3950,99 @@ fn vs(input: VSIn) -> VSOut {
         self.camera_world_pos
     }
 
-    /// Update camera from pre-computed view and projection matrices.
-    /// Use this when the caller already has correct matrices (e.g., editor orbit camera).
+    /// Canonical camera upload — consumes a [`RenderView`] and updates all
+    /// internal caches (matrices, CSM cascades, light direction, camera UBO).
     ///
-    /// When the `camera-relative` feature is active, the view matrix is
-    /// automatically adjusted to remove translation, and `camera_pos` in the
-    /// GPU UBO is set to zero.  Call [`set_camera_world_position`] first.
+    /// This is the canonical entry point per `CAMERA_CONVENTIONS.md` §2.9.
+    /// All future callers should use this method directly. The legacy
+    /// [`Renderer::update_camera`] and [`Renderer::update_camera_matrices`]
+    /// methods are preserved as `#[deprecated]` thin wrappers during the
+    /// Unified Camera campaign (deleted in C.3.C); both internally construct
+    /// a `RenderView` and delegate here.
+    ///
+    /// # Camera-relative rendering
+    ///
+    /// Under the `camera-relative` feature, the SHADER expects
+    /// `camera_pos_pad` to be ZERO (the view matrix carries no translation;
+    /// geometry is offset by `camera_world_pos` before GPU upload). This
+    /// method enforces that contract regardless of what `view.position`
+    /// reports — callers should populate `view.position` with the *world*
+    /// position (for diagnostic/fog reconstruction) and rely on this method
+    /// to zero out the shader-facing position under the feature gate. See
+    /// [`FreeFly::to_render_view_camera_relative`](astraweave_camera::FreeFly::to_render_view_camera_relative).
+    ///
+    /// Similarly, the cascade-split computation receives a `RenderView` with
+    /// position overridden to ZERO under camera-relative so frustum corners
+    /// are computed around the rendered-coordinate origin, matching the
+    /// pre-C.3.A `update_camera` behavior.
+    ///
+    /// # Light override
+    ///
+    /// Per C.3.A's consolidation decision (historical-accident verdict on
+    /// the `update_camera` vs `update_camera_matrices` asymmetry), all
+    /// callers now honor `self.light_override` unconditionally: when `Some`,
+    /// override.dir and override.intensity flow into `light_dir_pad`; when
+    /// `None`, fall back to `self.sky.time_of_day().get_light_direction()`
+    /// with intensity 1.0. Pre-C.3.A, `update_camera` ignored the override
+    /// and wrote 0.0 to `light_dir_pad[3]`; `update_camera_matrices` honored
+    /// it. Andrew approved the consolidation 2026-05-18; `light_dir_pad[3]`
+    /// remains shader-inert (the WGSL `Camera` struct names it `_pad`).
+    pub fn update_view(&mut self, view: &RenderView) {
+        self.cached_view = view.view;
+        self.cached_proj = view.projection;
+        self.camera_ubo.view_proj = view.view_proj.to_cols_array_2d();
+
+        // Use the editor's light override if set, otherwise fall back to TimeOfDay.
+        let (light_dir, sun_intensity) = if let Some((dir, intensity)) = self.light_override {
+            (glam::Vec3::from(dir), intensity)
+        } else {
+            (self.sky.time_of_day().get_light_direction(), 1.0)
+        };
+        self.camera_ubo.light_dir_pad = [light_dir.x, light_dir.y, light_dir.z, sun_intensity];
+
+        // Under camera-relative, the shader sees camera at origin (matches
+        // legacy `update_camera`/`update_camera_matrices` behavior). The
+        // RenderView's `position` field is preserved on the type for
+        // world-space reconstruction (fog distance, etc.) but is NOT what
+        // the shader sees in this mode.
+        #[cfg(feature = "camera-relative")]
+        let shader_pos = glam::Vec3::ZERO;
+        #[cfg(not(feature = "camera-relative"))]
+        let shader_pos = view.position;
+        self.camera_ubo.camera_pos_pad = [shader_pos.x, shader_pos.y, shader_pos.z, 0.0];
+
+        self.queue
+            .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&self.camera_ubo));
+
+        // Cascade splits — consumes `RenderView` directly per C.3.A
+        // Decision 4. Under camera-relative, override position to ZERO so
+        // frustum corners are computed around the rendered-coord origin
+        // (matches the pre-C.3.A `cr_cam` construction).
+        #[cfg(feature = "camera-relative")]
+        let cascade_view = {
+            let mut v = *view;
+            v.position = glam::Vec3::ZERO;
+            v
+        };
+        #[cfg(not(feature = "camera-relative"))]
+        let cascade_view = *view;
+        self.update_cascade_splits(&cascade_view, light_dir);
+    }
+
+    /// Legacy camera upload — **DEPRECATED**. Construct a [`RenderView`]
+    /// from your camera producer and call [`Self::update_view`] directly.
+    /// This wrapper exists for backward compatibility during the Unified
+    /// Camera campaign; it is removed in C.3.C.
+    ///
+    /// Per C.3.A Decision 5, this wrapper unifies camera-relative handling
+    /// at the producer call site: under the `camera-relative` feature, it
+    /// invokes [`Camera::to_render_view_camera_relative`]; otherwise
+    /// [`CameraProducer::to_render_view`]. Either way, [`Self::update_view`]
+    /// handles the camera_pos_pad zeroing under camera-relative.
+    #[deprecated(
+        note = "Use `update_view(&render_view)` instead. \
+                See CAMERA_CONVENTIONS.md §2.9."
+    )]
     #[allow(clippy::too_many_arguments)]
     pub fn update_camera_matrices(
         &mut self,
@@ -3966,85 +4054,71 @@ fn vs(input: VSIn) -> VSOut {
         fovy: f32,
         aspect: f32,
     ) {
-        // When camera-relative, strip the translation from the view matrix so
-        // that the camera sits at the world origin on the GPU.  All geometry is
-        // offset by `camera_world_pos` during instance upload instead.
+        // Pre-C.3.A behavior: under camera-relative, strip the view matrix's
+        // translation column. Preserved here in the wrapper so the new
+        // `update_view` doesn't have to special-case caller intent.
         #[cfg(feature = "camera-relative")]
         let (view, position) = {
-            let _ = position; // suppress unused-variable warning for the parameter
+            let _ = position;
             let mut v = view;
-            v.w_axis = glam::Vec4::W; // zero out translation column
+            v.w_axis = glam::Vec4::W;
             (v, glam::Vec3::ZERO)
         };
 
-        self.cached_view = view;
-        self.cached_proj = proj;
-        let vp = proj * view;
-        self.camera_ubo.view_proj = vp.to_cols_array_2d();
+        // Derive view_dir canonically from inverse_view (per RenderView
+        // doc): view_dir = -inverse_view.col(2).xyz. This replaces the
+        // pre-C.3.A lossy reconstruction at line 4001 of yaw/pitch via
+        // `atan2`/`asin` on view matrix rows, which had subtle gimbal
+        // sensitivity near pole orientations.
+        let inverse_view = view.inverse();
+        let view_dir = -inverse_view.col(2).truncate();
+        let view_proj = proj * view;
+        let inverse_view_proj = view_proj.inverse();
 
-        // Use the editor's light override if set, otherwise fall back to TimeOfDay.
-        let (light_dir, sun_intensity) = if let Some((dir, intensity)) = self.light_override {
-            (glam::Vec3::from(dir), intensity)
-        } else {
-            (self.sky.time_of_day().get_light_direction(), 1.0)
-        };
-        self.camera_ubo.light_dir_pad = [light_dir.x, light_dir.y, light_dir.z, sun_intensity];
-
-        self.camera_ubo.camera_pos_pad = [position.x, position.y, position.z, 0.0];
-        self.queue
-            .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&self.camera_ubo));
-
-        // Build a temporary Camera for cascade computation
-        // Extract forward direction from the view matrix (negative Z row)
-        let fwd = -glam::Vec3::new(view.x_axis.z, view.y_axis.z, view.z_axis.z);
-        let (yaw, pitch) = (fwd.z.atan2(fwd.x), fwd.y.asin());
-        let tmp_cam = Camera {
+        let render_view = RenderView {
+            view,
+            projection: proj,
+            view_proj,
+            inverse_view,
+            inverse_view_proj,
             position,
-            yaw,
-            pitch,
+            view_dir,
             fovy,
             aspect,
             znear,
             zfar,
         };
-        self.update_cascade_splits(&tmp_cam, light_dir);
+        self.update_view(&render_view);
     }
 
+    /// Legacy camera upload — **DEPRECATED**. See [`Self::update_camera_matrices`].
+    #[deprecated(
+        note = "Use `update_view(&camera.to_render_view())` instead. \
+                See CAMERA_CONVENTIONS.md §2.9."
+    )]
     pub fn update_camera(&mut self, camera: &Camera) {
-        // When camera-relative, use rotation-only view (camera at origin).
+        use astraweave_camera::CameraProducer;
+        // Under camera-relative, the producer emits a RenderView with view
+        // matrix translation stripped; otherwise world-relative.
         #[cfg(feature = "camera-relative")]
-        let (view, cam_pos) = { (camera.view_matrix_camera_relative(), glam::Vec3::ZERO) };
+        let render_view = camera.to_render_view_camera_relative();
         #[cfg(not(feature = "camera-relative"))]
-        let (view, cam_pos) = (camera.view_matrix(), camera.position);
-
-        self.cached_view = view;
-        self.cached_proj = camera.proj_matrix();
-        self.camera_ubo.view_proj = (camera.proj_matrix() * view).to_cols_array_2d();
-        let light_dir = self.sky.time_of_day().get_light_direction();
-        self.camera_ubo.light_dir_pad = [light_dir.x, light_dir.y, light_dir.z, 0.0];
-        self.camera_ubo.camera_pos_pad = [cam_pos.x, cam_pos.y, cam_pos.z, 0.0];
-        self.queue
-            .write_buffer(&self.camera_buf, 0, bytemuck::bytes_of(&self.camera_ubo));
-
-        // Cascade computation uses camera-relative position (ZERO when active).
-        #[cfg(feature = "camera-relative")]
-        {
-            let cr_cam = Camera {
-                position: glam::Vec3::ZERO,
-                ..*camera
-            };
-            self.update_cascade_splits(&cr_cam, light_dir);
-        }
-        #[cfg(not(feature = "camera-relative"))]
-        self.update_cascade_splits(camera, light_dir);
+        let render_view = camera.to_render_view();
+        self.update_view(&render_view);
     }
 
-    fn update_cascade_splits(&mut self, camera: &Camera, light_dir: glam::Vec3) {
+    fn update_cascade_splits(&mut self, view: &RenderView, light_dir: glam::Vec3) {
+        // C.3.A migration: signature changed from `&Camera` to `&RenderView`
+        // per CAMERA_CONVENTIONS.md §2.9. The pre-C.3.A lossy yaw/pitch
+        // reconstruction at the original line 4001 (in update_camera_matrices)
+        // is eliminated — callers pass RenderView directly with view_dir
+        // already canonical (from inverse_view.col(2) or producer state).
+        //
         // Shadow distance: cap at a reasonable range regardless of the camera's
         // far plane (which can be 50 km for skybox visibility).  Shadows beyond
         // ~500 units are imperceptible and waste shadow-map resolution.
-        let n = camera.znear.max(0.5);
-        let shadow_far = 500.0_f32.min(camera.zfar);
+        let n = view.znear.max(0.5);
+        let shadow_far = 500.0_f32.min(view.zfar);
 
         // PSSM practical split (lambda blends log vs linear).
         // With n=0.5, shadow_far=500, lambda=0.75:
@@ -4059,8 +4133,8 @@ fn vs(input: VSIn) -> VSOut {
         self.split0 = split;
         self.split1 = shadow_far;
 
-        let frustum0 = frustum_corners_ws(camera, n, self.split0);
-        let frustum1 = frustum_corners_ws(camera, self.split0, shadow_far);
+        let frustum0 = frustum_corners_ws(view, n, self.split0);
+        let frustum1 = frustum_corners_ws(view, self.split0, shadow_far);
         let up = glam::Vec3::Y;
         let center0 = frustum_center(&frustum0);
         let center1 = frustum_center(&frustum1);
@@ -7418,16 +7492,21 @@ fn inside_frustum_sphere(center: glam::Vec3, radius: f32, planes: &[(glam::Vec3,
 }
 
 // --- CSM utilities ---
-fn frustum_corners_ws(cam: &crate::camera::Camera, near: f32, far: f32) -> [glam::Vec3; 8] {
-    let dir = crate::camera::Camera::dir(cam.yaw, cam.pitch);
+fn frustum_corners_ws(view: &RenderView, near: f32, far: f32) -> [glam::Vec3; 8] {
+    // C.3.A migration: signature changed from `&Camera` to `&RenderView` per
+    // CAMERA_CONVENTIONS.md §2.9. The view direction comes directly from
+    // RenderView.view_dir (canonical per §2.8) — no need to reconstruct via
+    // Camera::dir(yaw, pitch). The other fields (fovy, aspect, position)
+    // map 1:1 from RenderView.
+    let dir = view.view_dir;
     let right = dir.cross(glam::Vec3::Y).normalize();
     let up = glam::Vec3::Y;
-    let h_near = (cam.fovy * 0.5).tan() * near;
-    let w_near = h_near * cam.aspect.max(0.01);
-    let h_far = (cam.fovy * 0.5).tan() * far;
-    let w_far = h_far * cam.aspect.max(0.01);
-    let c_near = cam.position + dir * near;
-    let c_far = cam.position + dir * far;
+    let h_near = (view.fovy * 0.5).tan() * near;
+    let w_near = h_near * view.aspect.max(0.01);
+    let h_far = (view.fovy * 0.5).tan() * far;
+    let w_far = h_far * view.aspect.max(0.01);
+    let c_near = view.position + dir * near;
+    let c_far = view.position + dir * far;
     [
         c_near + up * h_near - right * w_near, // near TL
         c_near + up * h_near + right * w_near, // near TR

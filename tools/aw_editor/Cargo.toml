@@ -101,6 +101,9 @@ tempfile = "3"
 # Editor-Engine Render Parity harness (tests/render_parity_harness.rs) decodes
 # Rgba16Float bytes for linear-space SAD attribution.
 half = "2"
+# C.3.A byte-equivalence closure proof — the parity harness's new test
+# constructs a RenderView directly and exercises Renderer::update_view.
+astraweave-camera = { path = "../../astraweave-camera" }
 
 [[bench]]
 name = "gizmo_benchmarks"
