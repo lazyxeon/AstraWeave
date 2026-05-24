@@ -91,7 +91,7 @@ jobs:
         if: always()
       
       - name: Store benchmark results for tracking
-        uses: benchmark-action/github-action-benchmark@v1.20.7
+        uses: benchmark-action/github-action-benchmark@v1.22.1
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           name: AstraWeave Performance Benchmarks
@@ -109,7 +109,7 @@ jobs:
           gh-repository: ${{ github.repository }}
           
       - name: Comment benchmark results on PR
-        uses: benchmark-action/github-action-benchmark@v1.20.7
+        uses: benchmark-action/github-action-benchmark@v1.22.1
         if: github.event_name == 'pull_request' && hashFiles('benchmark_results/benchmarks.json') != ''
         with:
           name: AstraWeave Performance Benchmarks
