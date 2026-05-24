@@ -74,7 +74,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-fe2d4e6f.js";
+            window.path_to_searchindex_js = "searchindex-d4137082.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-3cd98da5.js"></script>
@@ -5516,6 +5516,26 @@ fn main() -&gt; Result&lt;()&gt; {
         }
     });
 }</code></pre>
+<h4 id="producer-locations-where-each-camera-type-lives"><a class="header" href="#producer-locations-where-each-camera-type-lives">Producer locations: where each camera type lives</a></h4>
+<p>AstraWeave has two production camera producers — <code>FreeFly</code> for engine-runtime
+use cases and <code>OrbitCamera</code> for the editor — and each lives in the crate that
+owns its primary use case:</p>
+<ul>
+<li><strong><code>FreeFly</code></strong> is defined in <code>astraweave-camera</code> and used by every example
+crate, the cinematics renderer path, and any application embedding the
+engine. The example above uses <code>FreeFly</code> because the typical rendering-loop
+consumer is a runtime application.</li>
+<li><strong><code>OrbitCamera</code></strong> is defined in <code>tools/aw_editor/src/viewport/camera.rs</code>
+and used exclusively by the editor’s viewport. It implements
+<code>CameraProducer</code> (added in Unified Camera sub-phase C.4), so the upload
+contract is identical: <code>renderer.update_view(&amp;camera.to_render_view())</code>.
+Its surface adds editor-specific affordances — picking, frustum extraction,
+bookmark restore — that the runtime engine doesn’t need.</li>
+</ul>
+<p>The renderer consumes <code>RenderView</code> exclusively (per
+<code>CAMERA_CONVENTIONS.md</code> §2.9); it doesn’t know which producer created the
+view. New engine-runtime producers (Follow, Cinematic, Debug) belong in
+<code>astraweave-camera</code>; new editor-only producers belong in <code>tools/aw_editor/</code>.</p>
 <h3 id="dynamic-material-updates"><a class="header" href="#dynamic-material-updates">Dynamic Material Updates</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -21406,6 +21426,28 @@ migration convenience, not a recommended pattern for new code. See
 <code>docs/current/CAMERA_CONVENTIONS.md</code> in the repository for the canonical
 convention reference (yaw=0 forward direction, FOV semantics, near/far
 handling, aspect-ratio guards, coordinate handedness).</p>
+<p><strong>Two-camera architecture.</strong> AstraWeave has two production camera producers,
+each living in the crate that owns its primary use case:</p>
+<ul>
+<li><strong><code>FreeFly</code></strong> — engine-runtime camera, in <code>astraweave-camera</code>. Used by
+every example crate, the cinematics renderer path, and any application
+embedding the engine. Free-look mouse + WASD navigation pattern.</li>
+<li><strong><code>OrbitCamera</code></strong> — editor camera, in <code>tools/aw_editor/src/viewport/camera.rs</code>.
+Implements <code>CameraProducer</code> (added in Unified Camera sub-phase C.4).
+Used exclusively by the editor’s viewport. Spherical orbit around a
+focal point, with picking, frustum extraction, smooth zoom animation,
+and screen-space queries built in.</li>
+</ul>
+<p>Both producers converge at the <code>CameraProducer::to_render_view()</code> contract;
+the renderer consumes <code>RenderView</code> exclusively and doesn’t know which
+producer created it. OrbitCamera lives in the editor crate (rather than
+in <code>astraweave-camera</code>) because its surface is editor-specific (~15
+methods for interactive picking, deserialization sanitize, bookmark
+restore); the <code>CameraProducer</code> trait is the abstraction that lets
+producers live with their concerns. New engine-runtime producers
+(Follow, Cinematic, Debug per the SOTA roadmap) belong in
+<code>astraweave-camera</code> alongside <code>FreeFly</code>; new editor-only producers
+belong in <code>tools/aw_editor/</code>.</p>
 <hr>
 <h3 id="astraweave-math"><a class="header" href="#astraweave-math">astraweave-math</a></h3>
 <p>Mathematics library optimized for game development with SIMD acceleration.</p>

@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fe2d4e6f.js";
+            window.path_to_searchindex_js = "../searchindex-d4137082.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -672,6 +672,26 @@ fn main() -&gt; Result&lt;()&gt; {
         }
     });
 }</code></pre>
+<h4 id="producer-locations-where-each-camera-type-lives"><a class="header" href="#producer-locations-where-each-camera-type-lives">Producer locations: where each camera type lives</a></h4>
+<p>AstraWeave has two production camera producers — <code>FreeFly</code> for engine-runtime
+use cases and <code>OrbitCamera</code> for the editor — and each lives in the crate that
+owns its primary use case:</p>
+<ul>
+<li><strong><code>FreeFly</code></strong> is defined in <code>astraweave-camera</code> and used by every example
+crate, the cinematics renderer path, and any application embedding the
+engine. The example above uses <code>FreeFly</code> because the typical rendering-loop
+consumer is a runtime application.</li>
+<li><strong><code>OrbitCamera</code></strong> is defined in <code>tools/aw_editor/src/viewport/camera.rs</code>
+and used exclusively by the editor’s viewport. It implements
+<code>CameraProducer</code> (added in Unified Camera sub-phase C.4), so the upload
+contract is identical: <code>renderer.update_view(&amp;camera.to_render_view())</code>.
+Its surface adds editor-specific affordances — picking, frustum extraction,
+bookmark restore — that the runtime engine doesn’t need.</li>
+</ul>
+<p>The renderer consumes <code>RenderView</code> exclusively (per
+<code>CAMERA_CONVENTIONS.md</code> §2.9); it doesn’t know which producer created the
+view. New engine-runtime producers (Follow, Cinematic, Debug) belong in
+<code>astraweave-camera</code>; new editor-only producers belong in <code>tools/aw_editor/</code>.</p>
 <h3 id="dynamic-material-updates"><a class="header" href="#dynamic-material-updates">Dynamic Material Updates</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
