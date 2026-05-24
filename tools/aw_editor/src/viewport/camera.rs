@@ -29,6 +29,7 @@
 //! camera.frame_entity(Vec3::new(5.0, 0.0, 5.0), 2.0);
 //! ```
 
+use astraweave_camera::{CameraProducer, Projection, RenderView};
 use glam::{Mat4, Vec3};
 use serde::{Deserialize, Serialize};
 
@@ -506,22 +507,51 @@ impl OrbitCamera {
     ///
     /// # Returns
     ///
-    /// Ray with origin at near plane and direction towards far plane.
-    /// Suitable for ray-casting against scene geometry.
+    /// Ray with origin at near plane and direction toward far plane, both in
+    /// world space. Suitable for ray-casting against scene geometry.
+    ///
+    /// # Coordinate-space discipline
+    ///
+    /// **Precision-stable inversion**: this function inverts the
+    /// camera-relative view-projection ([`Self::view_projection_matrix_relative`])
+    /// rather than the absolute one ([`Self::view_projection_matrix`]). The
+    /// camera-relative matrix carries translations near zero (the spherical
+    /// offset from the focal point), so its inverse is precision-stable
+    /// regardless of camera world position. The absolute matrix's translation
+    /// column grows with `|position()|`, and its inversion loses precision at
+    /// large camera world positions (the C.0 §3.2 audit finding).
+    ///
+    /// **World-space output**: the unprojected camera-relative points are
+    /// translated by `position()` to produce the world-space ray origin.
+    /// Ray direction is invariant under translation, so it's computed in
+    /// camera-relative space and used as-is. This matches the discipline
+    /// of [`Self::unproject_depth_to_world`], which inverts the same
+    /// camera-relative VP and adds `position()` to produce a world-space
+    /// point. Both picking paths now agree at any camera world position.
+    ///
+    /// Pre-C.4 (Unified Camera campaign), this function used the absolute
+    /// VP and diverged from `unproject_depth_to_world` at large camera
+    /// world positions — see `CAMERA_CONVENTIONS.md` §3 migration row
+    /// "Editor `OrbitCamera::ray_from_screen` vs `unproject_depth_to_world`
+    /// VP mismatch" (closed in C.4).
     pub fn ray_from_screen(&self, screen_pos: egui::Pos2, viewport_size: egui::Vec2) -> Ray {
         // Convert screen pos to NDC [-1, 1]
         let ndc_x = (screen_pos.x / viewport_size.x) * 2.0 - 1.0;
         let ndc_y = 1.0 - (screen_pos.y / viewport_size.y) * 2.0; // Flip Y
 
-        // Unproject to world space
-        let inv_vp = self.view_projection_matrix().inverse();
-        // wgpu uses [0, 1] depth range (near=0, far=1), not OpenGL's [-1, 1]
-        let near_point = inv_vp.project_point3(Vec3::new(ndc_x, ndc_y, 0.0));
-        let far_point = inv_vp.project_point3(Vec3::new(ndc_x, ndc_y, 1.0));
+        // Invert the precision-stable camera-relative VP. wgpu uses [0, 1]
+        // depth (near=0, far=1).
+        let inv_vp_rel = self.view_projection_matrix_relative().inverse();
+        let near_point_rel = inv_vp_rel.project_point3(Vec3::new(ndc_x, ndc_y, 0.0));
+        let far_point_rel = inv_vp_rel.project_point3(Vec3::new(ndc_x, ndc_y, 1.0));
 
+        // Translate the origin to world space. Direction is invariant under
+        // translation, so we compute it in camera-relative space and use it
+        // as-is — no redundant translation.
+        let position = self.position();
         Ray {
-            origin: near_point,
-            direction: (far_point - near_point).normalize(),
+            origin: near_point_rel + position,
+            direction: (far_point_rel - near_point_rel).normalize(),
         }
     }
 
@@ -621,6 +651,70 @@ impl OrbitCamera {
         }
     }
 
+    /// Camera-relative `RenderView` from OrbitCamera state.
+    ///
+    /// Builds the view matrix with camera position pre-subtracted (eye at
+    /// origin in view-construction space); consuming pipelines transform
+    /// world geometry by `-self.position()` before applying this matrix.
+    /// Used by the editor's main render path to mitigate large-world
+    /// float precision artifacts.
+    ///
+    /// Per `CAMERA_CONVENTIONS.md` §2.9, this is **not** on the
+    /// [`CameraProducer`] trait — it's an opt-in concrete capability that
+    /// mirrors [`astraweave_camera::FreeFly::to_render_view_camera_relative`].
+    /// Trait callers (cinematics blenders, generic camera managers) get the
+    /// world-relative view from [`CameraProducer::to_render_view`]; the
+    /// editor's render adapter calls this method directly on the concrete
+    /// `OrbitCamera`.
+    ///
+    /// The returned `RenderView::position` is the original world position
+    /// (consumers reconstruct world-space positions via this field for fog
+    /// distance, picking, etc.); only the matrices are camera-relative.
+    pub fn to_render_view_camera_relative(&self) -> RenderView {
+        let projection = Projection::perspective(
+            self.fov.to_radians(),
+            self.aspect,
+            self.near,
+            self.far,
+        );
+        let view = self.view_matrix_relative();
+        let position = self.position();
+        let view_dir = (self.focal_point - position).normalize();
+        RenderView::new(view, &projection, position, view_dir)
+    }
+}
+
+impl CameraProducer for OrbitCamera {
+    /// World-relative `RenderView` from OrbitCamera state.
+    ///
+    /// Per `CAMERA_CONVENTIONS.md` §2.9, this is the canonical trait
+    /// implementation: world-space view matrix, no camera-relative
+    /// translation. For camera-relative rendering (used by the editor's
+    /// main render path to mitigate float precision at large camera world
+    /// positions), call [`OrbitCamera::to_render_view_camera_relative`]
+    /// instead — that's a concrete-type capability, not a trait obligation.
+    ///
+    /// FOV conversion: [`OrbitCamera::fov`] stores degrees per the editor's
+    /// historical convention; converted to radians at the `Projection`
+    /// boundary per `CAMERA_CONVENTIONS.md` §2.1. The field-rename to
+    /// `fovy: radians` is deferred to sub-phase C.4.B.
+    ///
+    /// The `view_dir` is derived from `focal_point - position()` (the
+    /// orbit camera looks from `position()` toward `focal_point`), matching
+    /// the semantic of `view_matrix()` which uses `look_at_rh(position(),
+    /// focal_point, Vec3::Y)`.
+    fn to_render_view(&self) -> RenderView {
+        let projection = Projection::perspective(
+            self.fov.to_radians(),
+            self.aspect,
+            self.near,
+            self.far,
+        );
+        let view = self.view_matrix();
+        let position = self.position();
+        let view_dir = (self.focal_point - position).normalize();
+        RenderView::new(view, &projection, position, view_dir)
+    }
 }
 
 /// Ray for picking (origin + direction)

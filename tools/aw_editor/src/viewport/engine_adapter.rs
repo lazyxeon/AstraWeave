@@ -765,40 +765,34 @@ impl EngineRenderAdapter {
 
     /// Update the renderer's camera state from the editor's OrbitCamera.
     ///
-    /// C.3.B.1 migration: constructs a [`astraweave_camera::RenderView`]
-    /// directly from OrbitCamera's matrices via the canonical
-    /// [`astraweave_camera::Projection::perspective`] +
-    /// [`astraweave_camera::RenderView::new`] path, then calls
-    /// [`astraweave_render::Renderer::update_view`]. Pre-C.3.B.1, this
-    /// function called the now-`#[deprecated]` `update_camera_matrices`
-    /// wrapper, which itself constructed a RenderView and delegated. The
-    /// historical `to_engine_camera` bypass (which had yaw/pitch convention
-    /// divergence issues — see commit `df7649287`) is eliminated by going
-    /// OrbitCamera → matrices → RenderView directly, no FreeFly intermediate.
+    /// Post-C.4, this is a single-line delegation through the canonical
+    /// [`astraweave_camera::CameraProducer`] contract. `OrbitCamera`
+    /// implements `CameraProducer` per `CAMERA_CONVENTIONS.md` §2.9; the
+    /// trait method produces a [`astraweave_camera::RenderView`] that the
+    /// renderer consumes via [`astraweave_render::Renderer::update_view`].
     ///
-    /// Per `CAMERA_CONVENTIONS.md` §2.9, the renderer consumes RenderView
-    /// exclusively. C.4 will migrate OrbitCamera itself to implement
-    /// `CameraProducer`; at that point this function simplifies to
-    /// `self.renderer.update_view(&camera.to_render_view())`.
+    /// **Variant selection**: this adapter uses
+    /// [`OrbitCamera::to_render_view`] (the world-relative trait method)
+    /// because the editor's main render path renders in world space — the
+    /// `camera-relative` feature on `astraweave-render` is not enabled in
+    /// the editor's default feature set, and `Renderer::update_view` stores
+    /// the provided `view_proj` directly in the camera UBO without
+    /// per-pipeline transformation. Picking against the depth buffer and
+    /// ray casting therefore both operate in world space; the
+    /// camera-relative variant of `RenderView` exists on `OrbitCamera`
+    /// ([`OrbitCamera::to_render_view_camera_relative`]) for symmetry with
+    /// [`astraweave_camera::FreeFly`] and for future camera-relative
+    /// pipelines, but is not the path the editor's main render uses today.
+    ///
+    /// Pre-C.4, this function constructed the `RenderView` inline (built
+    /// `Projection::perspective` + computed `view_dir` from
+    /// `inverse_view.col(2)`); pre-C.3.B.1, it called the now-deleted
+    /// `update_camera_matrices` wrapper, which itself delegated via the
+    /// `to_engine_camera` FreeFly intermediate (deleted in C.3.C). The
+    /// canonical contract eliminates both intermediates.
     pub fn update_camera(&mut self, camera: &OrbitCamera) {
-        let projection = astraweave_camera::Projection::perspective(
-            camera.fov.to_radians(),
-            camera.aspect,
-            camera.near,
-            camera.far,
-        );
-        let view = camera.view_matrix();
-        // view_dir derived from view matrix per RenderView's canonical
-        // convention (see RenderView docstring): -inverse_view.col(2).xyz.
-        let inverse_view = view.inverse();
-        let view_dir = -inverse_view.col(2).truncate();
-        let render_view = astraweave_camera::RenderView::new(
-            view,
-            &projection,
-            camera.position(),
-            view_dir,
-        );
-        self.renderer.update_view(&render_view);
+        use astraweave_camera::CameraProducer;
+        self.renderer.update_view(&camera.to_render_view());
         self.camera_position = camera.position();
         let camera_yaw = camera.yaw();
         self.camera_yaw = camera_yaw;

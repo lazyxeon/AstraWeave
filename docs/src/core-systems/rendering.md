@@ -490,6 +490,28 @@ fn main() -> Result<()> {
 }
 ```
 
+#### Producer locations: where each camera type lives
+
+AstraWeave has two production camera producers — `FreeFly` for engine-runtime
+use cases and `OrbitCamera` for the editor — and each lives in the crate that
+owns its primary use case:
+
+- **`FreeFly`** is defined in `astraweave-camera` and used by every example
+  crate, the cinematics renderer path, and any application embedding the
+  engine. The example above uses `FreeFly` because the typical rendering-loop
+  consumer is a runtime application.
+- **`OrbitCamera`** is defined in `tools/aw_editor/src/viewport/camera.rs`
+  and used exclusively by the editor's viewport. It implements
+  `CameraProducer` (added in Unified Camera sub-phase C.4), so the upload
+  contract is identical: `renderer.update_view(&camera.to_render_view())`.
+  Its surface adds editor-specific affordances — picking, frustum extraction,
+  bookmark restore — that the runtime engine doesn't need.
+
+The renderer consumes `RenderView` exclusively (per
+`CAMERA_CONVENTIONS.md` §2.9); it doesn't know which producer created the
+view. New engine-runtime producers (Follow, Cinematic, Debug) belong in
+`astraweave-camera`; new editor-only producers belong in `tools/aw_editor/`.
+
 ### Dynamic Material Updates
 
 ```rust

@@ -142,6 +142,47 @@ with keyboard, mouse, and scroll input:
 - `set_orbit_target()` — focus on a world point
 - `update_camera(&mut FreeFly, dt)` — apply pending input deltas to the camera state (note: this is the controller's input-application method, distinct from the renderer's `update_view` upload entry point)
 
+### Two-camera architecture
+
+AstraWeave has two production camera producers, each living in the crate
+that owns its primary use case:
+
+- **`FreeFly`** — engine-runtime camera. Lives in `astraweave-camera`.
+  Implements `CameraProducer`. Used by every example crate, the cinematics
+  renderer path, and any application embedding the engine. Free-look
+  mouse + WASD navigation pattern; companion `CameraController` handles
+  input.
+- **`OrbitCamera`** — editor camera. Lives in
+  `tools/aw_editor/src/viewport/camera.rs`. Implements `CameraProducer`
+  (added in sub-phase C.4). Used exclusively by the editor's viewport.
+  Spherical orbit around a focal point, with picking, frustum extraction,
+  and screen-space queries built in. Has an editor-specific UI surface
+  (smooth zoom animation, bookmark restore, sanitize-on-deserialize) that
+  the runtime engine doesn't need.
+
+Both producers converge at the `CameraProducer::to_render_view()`
+contract. The renderer consumes `RenderView` exclusively (per
+`CAMERA_CONVENTIONS.md` §2.9); it doesn't know which producer created
+the view, and the canonical upload contract above is identical for both.
+
+**Why two locations?** OrbitCamera's surface is editor-specific (~15
+methods for interactive picking, frustum extraction, sanitize for
+deserialization, smooth zoom/focal-point animation, view-bookmark
+restore) versus FreeFly's runtime-camera surface (~6 methods for
+view/projection/direction). Moving OrbitCamera to `astraweave-camera`
+would either pull editor concerns into the producer crate or split
+OrbitCamera across crates. Keeping it in the editor crate preserves
+crate-boundary purity; the `CameraProducer` trait is the abstraction
+that lets producers live anywhere.
+
+**For new editor-only producers** (e.g., a debug-camera mode confined
+to editing workflows), the pattern is the same: implement
+`CameraProducer` in the editor crate; the trait flows from
+`astraweave-camera`; the implementation stays with its concerns.
+
+**For new engine-runtime producers** (Follow, Cinematic, Debug per the
+SOTA roadmap): add them to `astraweave-camera` alongside `FreeFly`.
+
 ## Material System
 
 Materials are defined in TOML and compiled to GPU D2 array textures:

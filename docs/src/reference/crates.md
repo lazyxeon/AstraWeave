@@ -171,6 +171,29 @@ migration convenience, not a recommended pattern for new code. See
 convention reference (yaw=0 forward direction, FOV semantics, near/far
 handling, aspect-ratio guards, coordinate handedness).
 
+**Two-camera architecture.** AstraWeave has two production camera producers,
+each living in the crate that owns its primary use case:
+
+- **`FreeFly`** — engine-runtime camera, in `astraweave-camera`. Used by
+  every example crate, the cinematics renderer path, and any application
+  embedding the engine. Free-look mouse + WASD navigation pattern.
+- **`OrbitCamera`** — editor camera, in `tools/aw_editor/src/viewport/camera.rs`.
+  Implements `CameraProducer` (added in Unified Camera sub-phase C.4).
+  Used exclusively by the editor's viewport. Spherical orbit around a
+  focal point, with picking, frustum extraction, smooth zoom animation,
+  and screen-space queries built in.
+
+Both producers converge at the `CameraProducer::to_render_view()` contract;
+the renderer consumes `RenderView` exclusively and doesn't know which
+producer created it. OrbitCamera lives in the editor crate (rather than
+in `astraweave-camera`) because its surface is editor-specific (~15
+methods for interactive picking, deserialization sanitize, bookmark
+restore); the `CameraProducer` trait is the abstraction that lets
+producers live with their concerns. New engine-runtime producers
+(Follow, Cinematic, Debug per the SOTA roadmap) belong in
+`astraweave-camera` alongside `FreeFly`; new editor-only producers
+belong in `tools/aw_editor/`.
+
 ---
 
 ### astraweave-math
