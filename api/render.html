@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f46bb8b6.js";
+            window.path_to_searchindex_js = "../searchindex-fe2d4e6f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -451,26 +451,39 @@ post_fx.process(&amp;mut render_context, &amp;scene_texture);
 </ul>
 <hr>
 <h2 id="camera"><a class="header" href="#camera">Camera</a></h2>
-<h3 id="camera3d"><a class="header" href="#camera3d">Camera3D</a></h3>
-<p>3D camera with multiple projection modes.</p>
+<p>Camera types live in the <a href="./camera.html"><code>astraweave-camera</code></a> crate as of the
+Unified Camera campaign’s C.3.A sub-phase. The renderer consumes the
+canonical <code>RenderView</code> upload contract exclusively via
+<code>Renderer::update_view</code>; the historical <code>Renderer::update_camera(&amp;Camera)</code>
+and <code>Renderer::update_camera_matrices(...)</code> APIs were removed in C.3.C.</p>
+<h3 id="canonical-upload-pattern"><a class="header" href="#canonical-upload-pattern">Canonical upload pattern</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_render::camera::{Camera3D, Projection};
+</span>use astraweave_camera::{CameraProducer, FreeFly};
 
-let camera = Camera3D {
-    position: Vec3::new(0.0, 5.0, -10.0),
-    target: Vec3::ZERO,
-    up: Vec3::Y,
-    projection: Projection::Perspective {
-        fov: 60.0_f32.to_radians(),
-        aspect: 16.0 / 9.0,
-        near: 0.1,
-        far: 1000.0,
-    },
+let camera = FreeFly {
+    position: Vec3::new(0.0, 5.0, 10.0),
+    yaw: 0.0,
+    pitch: 0.0,
+    fovy: 60_f32.to_radians(),
+    aspect: 16.0 / 9.0,
+    znear: 0.1,
+    zfar: 1000.0,
 };
 
-let view_proj = camera.view_projection_matrix();
+// Upload to the renderer via the canonical RenderView contract.
+renderer.update_view(&amp;camera.to_render_view());
 <span class="boring">}</span></code></pre>
+<p>For camera-relative rendering (used by certain shadow/atmospheric paths to
+mitigate large-world float precision), use the concrete-only sibling method:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>renderer.update_view(&amp;camera.to_render_view_camera_relative());
+<span class="boring">}</span></code></pre>
+<p>For new camera implementations (orbit, follow, cinematic), implement the
+<code>CameraProducer</code> trait from <code>astraweave-camera</code>. See the crate’s documentation
+for the trait surface, and <code>docs/current/CAMERA_CONVENTIONS.md</code> for the
+canonical convention reference.</p>
 <hr>
 <h2 id="debug-rendering"><a class="header" href="#debug-rendering">Debug Rendering</a></h2>
 <h3 id="debugdraw"><a class="header" href="#debugdraw">DebugDraw</a></h3>

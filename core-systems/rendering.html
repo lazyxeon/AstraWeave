@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f46bb8b6.js";
+            window.path_to_searchindex_js = "../searchindex-fe2d4e6f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -637,29 +637,34 @@ render_objects(&amp;visible_objects);
 <span class="boring">}</span></code></pre>
 <h2 id="code-examples"><a class="header" href="#code-examples">Code Examples</a></h2>
 <h3 id="complete-rendering-loop"><a class="header" href="#complete-rendering-loop">Complete Rendering Loop</a></h3>
-<pre class="playground"><code class="language-rust">use astraweave_render::{RenderContext, Camera, Scene};
+<pre class="playground"><code class="language-rust">use astraweave_camera::{CameraProducer, FreeFly};
+use astraweave_render::Renderer;
 use winit::event_loop::EventLoop;
 
 fn main() -&gt; Result&lt;()&gt; {
     let event_loop = EventLoop::new();
     let window = Window::new(&amp;event_loop)?;
-    
-    let mut render_ctx = RenderContext::new(&amp;window, Default::default()).await?;
-    let mut scene = Scene::new();
-    let mut camera = Camera::perspective(60.0, 16.0 / 9.0, 0.1, 1000.0);
-    
+
+    let mut renderer = Renderer::new(&amp;window).await?;
+    let mut camera = FreeFly {
+        position: Vec3::new(0.0, 5.0, 10.0),
+        yaw: 0.0,
+        pitch: 0.0,
+        fovy: 60_f32.to_radians(),
+        aspect: 16.0 / 9.0,
+        znear: 0.1,
+        zfar: 1000.0,
+    };
+
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::RedrawRequested(_) =&gt; {
-                // Update camera
-                camera.update(&amp;input_state);
-                
-                // Begin frame
-                let mut frame = render_ctx.begin_frame().unwrap();
-                
-                // Render scene
-                frame.render_scene(&amp;scene, &amp;camera);
-                
+                // Update renderer's camera state via the canonical upload path.
+                renderer.update_view(&amp;camera.to_render_view());
+
+                // Render the frame
+                renderer.render().unwrap();
+
                 // Present
                 frame.present();
             }

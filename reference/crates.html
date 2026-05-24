@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f46bb8b6.js";
+            window.path_to_searchindex_js = "../searchindex-fe2d4e6f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -237,6 +237,7 @@
     end
     
     subgraph Rendering["Rendering Layer"]
+        CAMERA[astraweave-camera]
         RENDER[astraweave-render]
         MATERIALS[astraweave-materials]
         ASSET[astraweave-asset]
@@ -319,6 +320,70 @@ fn movement_system(mut query: Query&lt;(&amp;mut Position, &amp;Velocity)&gt;) {
 <li><code>tracing</code> - Add performance tracing instrumentation</li>
 <li><code>serde</code> - Serialization support for components</li>
 </ul>
+<hr>
+<h3 id="astraweave-camera"><a class="header" href="#astraweave-camera">astraweave-camera</a></h3>
+<p>Canonical camera types and the <code>CameraProducer</code> trait that all camera
+implementations consume. Defines <code>RenderView</code> (the upload contract the renderer
+consumes), <code>Projection</code> (perspective projection with both matrix and original
+parameters preserved), and <code>FreeFly</code> (the engine’s free-fly producer, moved
+here from <code>astraweave-render</code> during the Unified Camera campaign’s C.3.A
+sub-phase). The renderer consumes <code>RenderView</code> exclusively — see <code>Renderer::update_view</code>.</p>
+<pre><code class="language-toml">[dependencies]
+astraweave-camera = "0.1"
+</code></pre>
+<p><strong>Key Types:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>FreeFly</code></td><td>Engine free-fly camera producer (position, yaw, pitch, fovy, aspect, znear, zfar)</td></tr>
+<tr><td><code>Projection</code></td><td>Perspective projection: derived <code>matrix</code> plus original <code>fovy</code>, <code>aspect</code>, <code>znear</code>, <code>zfar</code></td></tr>
+<tr><td><code>RenderView</code></td><td>Canonical upload contract: view + projection + inverses + position + view direction</td></tr>
+<tr><td><code>CameraProducer</code></td><td>Trait every camera implementation provides: <code>fn to_render_view(&amp;self) -&gt; RenderView</code></td></tr>
+<tr><td><code>CameraController</code></td><td>Input handler for orbit / free-fly modes (keyboard, mouse, scroll)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Example:</strong></p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_camera::{CameraProducer, FreeFly, Projection, RenderView};
+
+let camera = FreeFly {
+    position: Vec3::new(0.0, 5.0, 10.0),
+    yaw: 0.0,
+    pitch: 0.0,
+    fovy: 60_f32.to_radians(),
+    aspect: 16.0 / 9.0,
+    znear: 0.1,
+    zfar: 1000.0,
+};
+let render_view: RenderView = camera.to_render_view();
+renderer.update_view(&amp;render_view);
+<span class="boring">}</span></code></pre>
+<p><strong>Features:</strong></p>
+<ul>
+<li><code>serde</code> - Enables <code>Serialize</code>/<code>Deserialize</code> derives on <code>Projection</code> and <code>RenderView</code> (off by default)</li>
+</ul>
+<p><strong>The <code>FreeFly as Camera</code> alias pattern in caller code.</strong> Caller code
+throughout the workspace currently imports <code>FreeFly</code> via a local alias:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use astraweave_camera::FreeFly as Camera;
+<span class="boring">}</span></code></pre>
+<p>This is a deliberate artifact of the Unified Camera campaign (sub-phase C.3.C,
+commit <code>326d607c1</code>). The canonical name is <code>FreeFly</code>; historically the type
+was named <code>Camera</code> and lived in <code>astraweave-render</code>. The campaign renamed the
+type to its proper home crate but preserved the historical name as a per-file
+alias in caller code to keep migration diffs small. The alias appears in
+roughly 30 caller files across engine examples and internal tests.</p>
+<p><strong>For new code, prefer <code>FreeFly</code> directly without the alias.</strong> The alias is a
+migration convenience, not a recommended pattern for new code. See
+<code>docs/current/CAMERA_CONVENTIONS.md</code> in the repository for the canonical
+convention reference (yaw=0 forward direction, FOV semantics, near/far
+handling, aspect-ratio guards, coordinate handedness).</p>
 <hr>
 <h3 id="astraweave-math"><a class="header" href="#astraweave-math">astraweave-math</a></h3>
 <p>Mathematics library optimized for game development with SIMD acceleration.</p>
