@@ -159,7 +159,7 @@ jobs:
 
       # FIX: separate steps; don't mix 'run' and 'uses' in the same step
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Cache cleanup (if requested)
         if: github.event.inputs.cache_action == 'clean'

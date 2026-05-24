@@ -84,7 +84,7 @@ jobs:
         run: echo "Windows dependencies managed via vcpkg"
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
@@ -151,7 +151,7 @@ jobs:
           brew install pkg-config cmake
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
@@ -259,7 +259,7 @@ jobs:
         run: echo "Windows dependencies managed via vcpkg"
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
@@ -399,7 +399,7 @@ jobs:
             libasound2-dev libpulse-dev libudev-dev
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2

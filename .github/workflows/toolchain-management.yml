@@ -97,7 +97,7 @@ jobs:
         run: brew install pkg-config cmake
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Configure sccache
         run: |
@@ -219,7 +219,7 @@ jobs:
             libasound2-dev libudev-dev time
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Configure sccache
         run: |
