@@ -4819,7 +4819,13 @@ impl EditorApp {
                 } => {
                     if let Some(viewport) = &mut self.viewport {
                         let mut cam = viewport.camera().clone();
-                        cam.fov = fov;
+                        // `fov` is emitted in degrees per the panel UI's
+                        // convention (the slider widget reads/writes
+                        // degrees); `set_fov` is the post-C.4.B boundary
+                        // that converts to canonical radians at write
+                        // time (Decision 1: API boundary in degrees,
+                        // internal storage in radians).
+                        cam.set_fov(fov);
                         cam.near = near;
                         cam.far = far;
                         viewport.set_camera(cam);

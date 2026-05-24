@@ -44,10 +44,32 @@ use serde::{Deserialize, Serialize};
 /// - **Pitch**: Rotation around X axis (vertical), in radians, constrained to [-π/2, π/2]
 /// - **Distance**: Radius from focal point, constrained to [min_distance, max_distance]
 ///
+/// # Field of view
+///
+/// `fovy` stores the **vertical field of view in radians** per
+/// `CAMERA_CONVENTIONS.md` §2.1 (canonical convention; matches engine
+/// `FreeFly` and the `RenderView` upload contract). The editor's user-
+/// facing API ([`set_fov`], [`fov_degrees`]) keeps degrees as the UI
+/// boundary unit (humans think in degrees; the FOV slider is degree-
+/// scaled) — conversion happens at the boundary methods, not at consumer
+/// sites. This boundary discipline is the same pattern Decision 1 of
+/// sub-phase C.4.B locked in.
+///
+/// # Serialization backward-compat
+///
+/// On deserialization, [`OrbitCamera`] accepts both `fov` (legacy
+/// degrees, pre-C.4.B) and `fovy` (canonical radians, post-C.4.B) field
+/// names via the [`OrbitCameraSerde`] shadow type and
+/// [`From<OrbitCameraSerde>`] implementation. Legacy `fov` values are
+/// converted to radians at deserialization. Serialization always emits
+/// `fovy`; legacy files are migrated forward on the first save after
+/// upgrade.
+///
 /// # Performance
 ///
 /// Camera updates are O(1) and typically take <0.1ms per frame.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "OrbitCameraSerde")]
 pub struct OrbitCamera {
     /// Focal point (what camera orbits around)
     focal_point: Vec3,
@@ -61,8 +83,13 @@ pub struct OrbitCamera {
     /// Pitch angle (rotation around X axis, radians)
     pitch: f32,
 
-    /// Field of view (degrees)
-    pub(crate) fov: f32,
+    /// Vertical field of view (**radians** per `CAMERA_CONVENTIONS.md` §2.1).
+    /// Renamed from pre-C.4.B `fov: f32` (which stored degrees) in
+    /// sub-phase C.4.B; the serde shadow type [`OrbitCameraSerde`]
+    /// accepts both names on deserialization for backward compatibility
+    /// with saved `.editor_preferences.json` files. UI/external API
+    /// keeps degrees as the boundary unit ([`set_fov`], [`fov_degrees`]).
+    pub(crate) fovy: f32,
 
     /// Aspect ratio (width / height)
     pub(crate) aspect: f32,
@@ -98,6 +125,127 @@ pub struct OrbitCamera {
     yaw_target: f32,
 }
 
+/// Deserialization shadow type for [`OrbitCamera`] handling the C.4.B
+/// field rename (`fov: degrees` → `fovy: radians`) with backward
+/// compatibility for pre-C.4.B saved files.
+///
+/// Both `fov` (legacy) and `fovy` (canonical) are accepted via
+/// `Option<f32>` fields; [`From<OrbitCameraSerde>`] resolves which value
+/// to use:
+///
+/// 1. If `fovy` is present, use it directly (canonical radians).
+/// 2. Else if `fov` is present, treat as legacy degrees and convert via
+///    `.to_radians()`.
+/// 3. Else fall back to the default (60° converted to radians).
+///
+/// Serialization is unaffected — `OrbitCamera` derives `Serialize`
+/// directly and emits only `fovy`. The shadow type is deserialization-
+/// only.
+#[derive(Deserialize)]
+struct OrbitCameraSerde {
+    #[serde(default)]
+    focal_point: Vec3,
+    #[serde(default = "default_distance")]
+    distance: f32,
+    #[serde(default = "default_yaw")]
+    yaw: f32,
+    #[serde(default = "default_pitch")]
+    pitch: f32,
+    /// Legacy pre-C.4.B field name. If present, interpreted as degrees
+    /// and converted to radians.
+    #[serde(default)]
+    fov: Option<f32>,
+    /// Canonical post-C.4.B field name. Stores radians.
+    #[serde(default)]
+    fovy: Option<f32>,
+    #[serde(default = "default_aspect")]
+    aspect: f32,
+    #[serde(default = "default_near")]
+    near: f32,
+    #[serde(default = "default_far")]
+    far: f32,
+    #[serde(default = "default_min_distance")]
+    min_distance: f32,
+    #[serde(default = "default_max_distance")]
+    max_distance: f32,
+    #[serde(default = "default_min_pitch")]
+    min_pitch: f32,
+    #[serde(default = "default_max_pitch")]
+    max_pitch: f32,
+    #[serde(default = "default_distance")]
+    zoom_target: f32,
+    #[serde(default)]
+    focal_point_target: Vec3,
+    #[serde(default = "default_pitch")]
+    pitch_target: f32,
+    #[serde(default = "default_yaw")]
+    yaw_target: f32,
+}
+
+// Default helpers for `OrbitCameraSerde` — mirror the values in
+// `OrbitCamera::default`. Centralizing them as named functions lets the
+// serde derives reference them without repetition.
+fn default_distance() -> f32 {
+    25.0
+}
+fn default_yaw() -> f32 {
+    std::f32::consts::PI / 4.0
+}
+fn default_pitch() -> f32 {
+    std::f32::consts::PI / 6.0
+}
+fn default_aspect() -> f32 {
+    16.0 / 9.0
+}
+fn default_near() -> f32 {
+    0.5
+}
+fn default_far() -> f32 {
+    5000.0
+}
+fn default_min_distance() -> f32 {
+    0.02
+}
+fn default_max_distance() -> f32 {
+    20000.0
+}
+fn default_min_pitch() -> f32 {
+    -std::f32::consts::PI / 2.0 + 0.01
+}
+fn default_max_pitch() -> f32 {
+    std::f32::consts::PI / 2.0 - 0.01
+}
+
+impl From<OrbitCameraSerde> for OrbitCamera {
+    fn from(s: OrbitCameraSerde) -> Self {
+        // Resolve the FOV: prefer canonical `fovy` (radians); fall back
+        // to legacy `fov` (degrees) with conversion; else default 60°.
+        let fovy = match (s.fovy, s.fov) {
+            (Some(fovy_rad), _) => fovy_rad,
+            (None, Some(fov_deg)) => fov_deg.to_radians(),
+            (None, None) => 60_f32.to_radians(),
+        };
+        Self {
+            focal_point: s.focal_point,
+            distance: s.distance,
+            yaw: s.yaw,
+            pitch: s.pitch,
+            fovy,
+            aspect: s.aspect,
+            near: s.near,
+            far: s.far,
+            min_distance: s.min_distance,
+            max_distance: s.max_distance,
+            min_pitch: s.min_pitch,
+            max_pitch: s.max_pitch,
+            zoom_target: s.zoom_target,
+            focal_point_target: s.focal_point_target,
+            pitch_target: s.pitch_target,
+            yaw_target: s.yaw_target,
+        }
+    }
+}
+
 impl Default for OrbitCamera {
     fn default() -> Self {
         Self {
@@ -105,7 +253,10 @@ impl Default for OrbitCamera {
             distance: 25.0,                  // Start further back to see more entities
             yaw: std::f32::consts::PI / 4.0, // 45° angle (diagonal view)
             pitch: std::f32::consts::PI / 6.0, // 30° pitch (shallower, see more horizon/sky)
-            fov: 60.0,
+            // 60° vertical FOV in radians (post-C.4.B canonical units per
+            // CAMERA_CONVENTIONS.md §2.1; pre-C.4.B was `fov: 60.0` storing
+            // degrees with conversion at projection time).
+            fovy: 60_f32.to_radians(),
             aspect: 16.0 / 9.0,
             near: 0.5,
             far: 5000.0,
@@ -430,6 +581,38 @@ impl OrbitCamera {
         self.pitch = pitch.clamp(-89.0_f32.to_radians(), 89.0_f32.to_radians());
     }
 
+    /// Set the vertical field of view, taking **degrees** per the
+    /// editor's UI convention.
+    ///
+    /// Decision 1 of sub-phase C.4.B locked the API boundary as
+    /// degrees-taking (humans think in degrees; the FOV slider widget is
+    /// degree-scaled). Internally, the value is converted to radians and
+    /// stored in [`OrbitCamera::fovy`] per `CAMERA_CONVENTIONS.md` §2.1.
+    /// Input is clamped to `[10°, 170°]` to prevent degenerate projections.
+    pub fn set_fov(&mut self, degrees: f32) {
+        self.fovy = degrees.clamp(10.0, 170.0).to_radians();
+    }
+
+    /// Get the vertical field of view in **degrees** (the editor's UI
+    /// boundary unit).
+    ///
+    /// Internally [`OrbitCamera::fovy`] stores radians per
+    /// `CAMERA_CONVENTIONS.md` §2.1; this method converts at the read
+    /// boundary so the UI slider widget reads degrees directly.
+    pub fn fov_degrees(&self) -> f32 {
+        self.fovy.to_degrees()
+    }
+
+    /// Get the vertical field of view in **radians** (the canonical
+    /// internal unit per `CAMERA_CONVENTIONS.md` §2.1).
+    ///
+    /// Use this when interacting with the canonical pipeline (e.g.,
+    /// passing to `Mat4::perspective_rh` or `Projection::perspective`).
+    /// For UI surfaces, prefer [`fov_degrees`].
+    pub fn fovy(&self) -> f32 {
+        self.fovy
+    }
+
     /// Get camera forward vector (normalized)
     pub fn forward(&self) -> Vec3 {
         (self.focal_point - self.position()).normalize()
@@ -454,9 +637,11 @@ impl OrbitCamera {
 
     /// Get projection matrix (camera → clip space)
     ///
-    /// Perspective projection with vertical FOV.
+    /// Perspective projection with vertical FOV. `self.fovy` already
+    /// stores radians per the post-C.4.B canonical convention; no
+    /// conversion needed at the boundary.
     pub fn projection_matrix(&self) -> Mat4 {
-        Mat4::perspective_rh(self.fov.to_radians(), self.aspect, self.near, self.far)
+        Mat4::perspective_rh(self.fovy, self.aspect, self.near, self.far)
     }
 
     /// Get combined view-projection matrix
@@ -632,9 +817,14 @@ impl OrbitCamera {
             self.focal_point = Vec3::ZERO;
         }
 
-        // Validate FOV
-        if self.fov.is_nan() || self.fov < 10.0 || self.fov > 170.0 {
-            self.fov = defaults.fov;
+        // Validate FOV. Clamp to [10°, 170°] expressed in radians per
+        // the post-C.4.B canonical units. The degree-based range matches
+        // the editor's UI slider boundary (humans think in degrees);
+        // internal storage is the radian equivalent.
+        let min_fovy = 10_f32.to_radians();
+        let max_fovy = 170_f32.to_radians();
+        if self.fovy.is_nan() || self.fovy < min_fovy || self.fovy > max_fovy {
+            self.fovy = defaults.fovy;
         }
 
         // Validate aspect
@@ -672,7 +862,7 @@ impl OrbitCamera {
     /// distance, picking, etc.); only the matrices are camera-relative.
     pub fn to_render_view_camera_relative(&self) -> RenderView {
         let projection = Projection::perspective(
-            self.fov.to_radians(),
+            self.fovy,
             self.aspect,
             self.near,
             self.far,
@@ -694,10 +884,10 @@ impl CameraProducer for OrbitCamera {
     /// positions), call [`OrbitCamera::to_render_view_camera_relative`]
     /// instead — that's a concrete-type capability, not a trait obligation.
     ///
-    /// FOV conversion: [`OrbitCamera::fov`] stores degrees per the editor's
-    /// historical convention; converted to radians at the `Projection`
-    /// boundary per `CAMERA_CONVENTIONS.md` §2.1. The field-rename to
-    /// `fovy: radians` is deferred to sub-phase C.4.B.
+    /// Post-C.4.B, [`OrbitCamera::fovy`] stores radians directly per
+    /// `CAMERA_CONVENTIONS.md` §2.1 (canonical convention); the producer
+    /// boundary no longer converts. UI/external API surfaces ([`set_fov`],
+    /// [`fov_degrees`]) keep degrees as the user-facing unit.
     ///
     /// The `view_dir` is derived from `focal_point - position()` (the
     /// orbit camera looks from `position()` toward `focal_point`), matching
@@ -705,7 +895,7 @@ impl CameraProducer for OrbitCamera {
     /// focal_point, Vec3::Y)`.
     fn to_render_view(&self) -> RenderView {
         let projection = Projection::perspective(
-            self.fov.to_radians(),
+            self.fovy,
             self.aspect,
             self.near,
             self.far,
