@@ -75,7 +75,11 @@ struct Camera {
     position: Vec3,
     yaw: f32,
     pitch: f32,
-    fov: f32,
+    /// Vertical field of view in **radians**. Renamed from `fov` to `fovy`
+    /// in Unified Camera campaign sub-phase C.6.C per C.5 audit L.5.8;
+    /// the post-C.4.B field-name discipline (`fovy` for radians) now
+    /// applies to this example's bespoke camera too.
+    fovy: f32,
     near: f32,
     far: f32,
 }
@@ -86,7 +90,7 @@ impl Camera {
             position: Vec3::new(0.0, 5.0, 10.0),
             yaw: -90.0_f32.to_radians(),
             pitch: -20.0_f32.to_radians(),
-            fov: 60.0_f32.to_radians(),
+            fovy: 60.0_f32.to_radians(),
             near: 0.1,
             far: 100.0,
         }
@@ -110,7 +114,7 @@ impl Camera {
     }
 
     fn proj_matrix(&self, aspect: f32) -> Mat4 {
-        Mat4::perspective_rh(self.fov, aspect, self.near, self.far)
+        Mat4::perspective_rh(self.fovy, aspect, self.near, self.far)
     }
 }
 
@@ -595,7 +599,13 @@ impl App {
         self.mouse_delta = (0.0, 0.0);
 
         // Update camera uniform
-        let aspect = self.size.width as f32 / self.size.height as f32;
+        // C.6.C: `.max(0.01)` aspect guard per CAMERA_CONVENTIONS.md §2.3,
+        // matching the canonical pipeline's discipline at
+        // `astraweave-camera/src/freefly.rs:48`. Prevents NaN propagation
+        // if aspect somehow reaches zero (resize handler already guards
+        // `width > 0 && height > 0` at the boundary but this is
+        // defense-in-depth).
+        let aspect = (self.size.width as f32 / self.size.height as f32).max(0.01);
         let view = self.camera.view_matrix();
         let proj = self.camera.proj_matrix(aspect);
         let view_proj = proj * view;

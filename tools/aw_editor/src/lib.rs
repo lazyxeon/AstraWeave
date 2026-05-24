@@ -97,7 +97,10 @@ pub mod gizmo {
     pub use rendering::{GizmoRenderParams, GizmoRenderer};
     pub use rotate::RotateGizmo;
     pub use scale::ScaleGizmo;
-    pub use scene_viewport::{CameraController, SceneViewport, Transform};
+    // C.6.A: `CameraController` and `SceneViewport` deleted (dormant per
+    // C.5 audit L.5.1). `Transform` retained — actively used by
+    // `transform_panel`, `scene_state`, and mutation tests.
+    pub use scene_viewport::Transform;
     pub use snapping::SnappingConfig;
     pub use state::{AxisConstraint, GizmoMode, GizmoState, TransformSnapshot};
     pub use translate::TranslateGizmo;

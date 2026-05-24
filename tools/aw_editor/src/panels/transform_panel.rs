@@ -2,7 +2,7 @@
 
 use super::Panel;
 use crate::gizmo::{
-    scene_viewport::{CameraController, Transform},
+    scene_viewport::Transform,
     state::{AxisConstraint, GizmoMode, GizmoState, TransformSnapshot},
 };
 use egui::{Color32, RichText, Ui};
@@ -47,8 +47,10 @@ pub struct TransformPanel {
     /// Transform snapshot for undo
     snapshot: Option<TransformSnapshot>,
 
-    /// Camera controller for viewport
-    camera: CameraController,
+    // C.6.A (Unified Camera campaign): the dormant `camera: CameraController`
+    // field was removed alongside the gizmo `CameraController` type
+    // deletion. The field was declared and initialized but never read
+    // anywhere in the panel (C.5 audit L.5.1).
 
     /// Local space mode
     local_space: bool,
@@ -87,7 +89,6 @@ impl Default for TransformPanel {
             gizmo: GizmoState::new(),
             selected_transform: None,
             snapshot: None,
-            camera: CameraController::default(),
             local_space: false,
             snap_enabled: false,
             numeric_buffer: String::new(),

@@ -92,6 +92,45 @@ impl FreeFly {
         let view_dir = Self::dir(self.yaw, self.pitch);
         RenderView::new(view, &projection, self.position, view_dir)
     }
+
+    /// Clamp invalid configurations to valid ones.
+    ///
+    /// Callers invoke explicitly when they may have received pathological
+    /// input (e.g., deserialization from an untrusted source; user-modified
+    /// scene state; programmatically-generated camera fixtures).
+    /// `sanitize()` does **not** run automatically at projection time —
+    /// that path is hot and pathological inputs are rare. Callers who
+    /// want defensive validation invoke this method.
+    ///
+    /// Specifically, `sanitize()` ensures:
+    ///
+    /// - `self.fovy` is in `[10°, 170°].to_radians()` (sensible range;
+    ///   matches `astraweave_cinematics::CameraKey::is_typical_fov`'s
+    ///   validation thresholds, though that method clamps to `30..=120°`
+    ///   — this is a more permissive bound to avoid surprising callers
+    ///   whose authored cameras sit slightly outside the cinematics
+    ///   range).
+    /// - `self.znear` is `> 0.0001` (tiny but non-zero; prevents
+    ///   division-by-zero in `Mat4::perspective_rh` while preserving
+    ///   the geometric meaning of "near plane").
+    /// - `self.zfar` is `> self.znear + 0.001` (prevents degenerate
+    ///   projection when zfar == znear, where the perspective matrix
+    ///   collapses).
+    /// - `self.aspect` is `>= 0.01` (matches the existing aspect guard
+    ///   at [`Self::proj_matrix`] which calls `self.aspect.max(0.01)`;
+    ///   `sanitize()` updates the field itself so subsequent reads
+    ///   observe the clamped value).
+    ///
+    /// Added in Unified Camera campaign sub-phase C.6.F per C.5 audit
+    /// finding L.5.16 (missing FOV/near-far validation).
+    pub fn sanitize(&mut self) {
+        let fovy_min = 10_f32.to_radians();
+        let fovy_max = 170_f32.to_radians();
+        self.fovy = self.fovy.clamp(fovy_min, fovy_max);
+        self.znear = self.znear.max(0.0001);
+        self.zfar = self.zfar.max(self.znear + 0.001);
+        self.aspect = self.aspect.max(0.01);
+    }
 }
 
 impl CameraProducer for FreeFly {
@@ -629,5 +668,103 @@ mod tests {
 
         // And the view matrix's translation column must be ZERO (camera at origin).
         assert!(rv.view.w_axis.truncate().length() < 1e-4);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // sanitize() contract tests (C.6.F per C.5 audit L.5.16)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Fixture: a default valid FreeFly state for sanitize() tests.
+    /// Mirrors the existing in-file test pattern (literal struct expression
+    /// rather than a Default impl, which FreeFly intentionally does not
+    /// provide).
+    fn valid_fixture() -> FreeFly {
+        FreeFly {
+            position: Vec3::ZERO,
+            yaw: 0.0,
+            pitch: 0.0,
+            fovy: 60_f32.to_radians(),
+            aspect: 16.0 / 9.0,
+            znear: 0.1,
+            zfar: 1000.0,
+        }
+    }
+
+    #[test]
+    fn sanitize_clamps_fovy_below_minimum() {
+        let mut cam = valid_fixture();
+        cam.fovy = 5_f32.to_radians(); // below 10° minimum
+        cam.sanitize();
+        let expected = 10_f32.to_radians();
+        assert!(
+            (cam.fovy - expected).abs() < 1e-6,
+            "fovy should clamp to 10° minimum; got {} radians, expected {}",
+            cam.fovy,
+            expected,
+        );
+    }
+
+    #[test]
+    fn sanitize_clamps_fovy_above_maximum() {
+        let mut cam = valid_fixture();
+        cam.fovy = 200_f32.to_radians(); // above 170° maximum
+        cam.sanitize();
+        let expected = 170_f32.to_radians();
+        assert!(
+            (cam.fovy - expected).abs() < 1e-6,
+            "fovy should clamp to 170° maximum; got {} radians, expected {}",
+            cam.fovy,
+            expected,
+        );
+    }
+
+    #[test]
+    fn sanitize_clamps_znear_to_positive() {
+        let mut cam = valid_fixture();
+        cam.znear = -1.0; // negative
+        cam.sanitize();
+        assert!(
+            cam.znear > 0.0,
+            "znear should clamp to positive; got {}",
+            cam.znear
+        );
+    }
+
+    #[test]
+    fn sanitize_ensures_zfar_greater_than_znear() {
+        let mut cam = valid_fixture();
+        cam.znear = 10.0;
+        cam.zfar = 5.0; // less than znear (pathological)
+        cam.sanitize();
+        assert!(
+            cam.zfar > cam.znear,
+            "zfar should exceed znear; got znear={} zfar={}",
+            cam.znear,
+            cam.zfar,
+        );
+    }
+
+    #[test]
+    fn sanitize_clamps_aspect_to_minimum() {
+        let mut cam = valid_fixture();
+        cam.aspect = 0.0; // pathological
+        cam.sanitize();
+        assert!(
+            cam.aspect >= 0.01,
+            "aspect should clamp to 0.01 minimum; got {}",
+            cam.aspect,
+        );
+    }
+
+    #[test]
+    fn sanitize_is_idempotent_on_valid_state() {
+        let mut cam = valid_fixture();
+        let before = (cam.fovy, cam.znear, cam.zfar, cam.aspect);
+        cam.sanitize();
+        let after = (cam.fovy, cam.znear, cam.zfar, cam.aspect);
+        assert_eq!(
+            before, after,
+            "sanitize on already-valid state should be a no-op"
+        );
     }
 }

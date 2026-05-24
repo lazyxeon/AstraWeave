@@ -1,3 +1,36 @@
+//! # Unified Showcase — Flagship Experimental Sandbox
+//!
+//! This example operates outside the canonical engine rendering pipeline
+//! (`astraweave-render::Renderer`) and outside the canonical camera
+//! conventions (`docs/current/CAMERA_CONVENTIONS.md`). It is a flagship
+//! sandbox for experimental rendering work, intentionally bespoke for
+//! that purpose.
+//!
+//! Known convention deviations (formalized in Unified Camera campaign
+//! sub-phase C.6.B per the C.5 audit's L.5.5/L.5.6/L.5.7 findings):
+//!
+//! - **`-Z forward` at yaw=0, pitch=0**: the example's camera uses the
+//!   Bevy/glTF convention (`Quat::y(yaw) * Quat::x(pitch) * Vec3::NEG_Z`)
+//!   rather than the canonical `+X forward` from §2.8. The matrices it
+//!   produces never reach `astraweave-render::Renderer`; they flow into
+//!   the example's bespoke `CameraUniforms` struct. Migration to engine
+//!   conventions would entail wholesale rewrite of the bespoke render
+//!   pipeline; out of campaign scope.
+//! - **Aspect ratio not guarded at projection time**: the resize handler
+//!   already guards `width > 0 && height > 0` at the boundary, so the
+//!   projection site receives non-zero dimensions in practice. The
+//!   `.max(0.01)` defense-in-depth (used by the canonical pipeline per
+//!   §2.3) is intentionally absent here.
+//! - **FOV stored as degrees** in the `fov_degrees` field (added C.6.B
+//!   for discoverability; previously hardcoded as `45.0_f32.to_radians()`
+//!   at the projection site). Conversion to radians happens at the
+//!   projection-construction boundary.
+//!
+//! The sandbox status was formalized in Unified Camera campaign
+//! sub-phase C.6.B per the planning round's locked decision: targeted
+//! fixes (pitch clamp, FOV field for discoverability) plus formalization
+//! of the convention boundary, without migrating to engine conventions.
+
 use glam::{Mat4, Quat, Vec3};
 use std::io::Write;
 use std::sync::Arc;
@@ -148,6 +181,12 @@ struct ShowcaseApp {
     camera_pos: Vec3,
     camera_yaw: f32,
     camera_pitch: f32,
+    /// Vertical field of view in **degrees** (UI/external convention; the
+    /// projection site converts to radians at construction). Added in
+    /// Unified Camera campaign sub-phase C.6.B for discoverability; pre-
+    /// C.6.B the FOV was hardcoded as `45.0_f32.to_radians()` at the
+    /// projection site with no field, panel, or UI control.
+    fov_degrees: f32,
 
     #[allow(dead_code)]
     light_buffer: wgpu::Buffer,
@@ -1011,6 +1050,9 @@ impl ShowcaseApp {
             camera_pos: Vec3::new(0.0, 25.0, 60.0), // Elevated spawn point
             camera_yaw: 0.0,                        // Reset yaw
             camera_pitch: -0.1,                     // Look slightly down
+            fov_degrees: 45.0,                      // C.6.B: matches the
+            // pre-C.6.B hardcoded `45.0_f32.to_radians()` at the projection
+            // site. Unit equivalence preserved post-rename.
             light_buffer,
             light_bind_group,
             shadow_bind_group,
@@ -2166,7 +2208,7 @@ impl ShowcaseApp {
         );
         // println!("Camera Pos: {:?}, Yaw: {}, Pitch: {}", self.camera_pos, self.camera_yaw, self.camera_pitch);
         let proj = Mat4::perspective_rh(
-            45.0_f32.to_radians(),
+            self.fov_degrees.to_radians(), // C.6.B: replaces pre-rename hardcoded 45.0_f32.to_radians()
             self.config.width as f32 / self.config.height as f32,
             0.1,
             2000.0,
@@ -2382,6 +2424,14 @@ impl ShowcaseApp {
             let sensitivity = 0.005;
             self.camera_yaw += (delta.0 as f32) * sensitivity;
             self.camera_pitch += (delta.1 as f32) * sensitivity;
+            // Clamp pitch to prevent camera flip-over at extreme mouse
+            // deltas. C.6.B per Unified Camera campaign (C.5 audit L.5.5
+            // — the only confirmed pitch-clamp finding from C.0). Symmetric
+            // ±85° in radians; quaternion-based rotation (line ~2163)
+            // doesn't produce a degenerate matrix at the singularity, but
+            // the disorientation effect is the practical UX bug.
+            let pitch_bound = 85_f32.to_radians();
+            self.camera_pitch = self.camera_pitch.clamp(-pitch_bound, pitch_bound);
         }
     }
 

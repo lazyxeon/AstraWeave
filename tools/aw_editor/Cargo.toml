@@ -109,11 +109,6 @@ half = "2"
 # but kept for explicit dependency declaration discipline.
 
 [[bench]]
-name = "gizmo_benchmarks"
-harness = false
-path = "benches/gizmo_benchmarks_simple.rs"
-
-[[bench]]
 name = "editor_performance"
 harness = false
 path = "benches/editor_performance.rs"

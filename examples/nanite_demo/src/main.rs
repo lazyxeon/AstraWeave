@@ -20,117 +20,20 @@ use astraweave_render::nanite_visibility::GpuMeshlet;
 use astraweave_render::nanite_render::NaniteRenderContext;
 use astraweave_asset::nanite_preprocess::{generate_lod_hierarchy, MeshletHierarchy};
 
-struct DemoState {
-    camera_pos: Vec3,
-    camera_yaw: f32,
-    camera_pitch: f32,
-    camera_speed: f32,
-    mouse_sensitivity: f32,
-    last_mouse_pos: Option<(f32, f32)>,
-}
-
-impl DemoState {
-    fn new() -> Self {
-        Self {
-            camera_pos: Vec3::new(0.0, 50.0, 100.0),
-            camera_yaw: 0.0,
-            camera_pitch: -0.3,
-            camera_speed: 10.0,
-            mouse_sensitivity: 0.002,
-            last_mouse_pos: None,
-        }
-    }
-
-    fn get_view_matrix(&self) -> Mat4 {
-        let forward = Vec3::new(
-            self.camera_yaw.cos() * self.camera_pitch.cos(),
-            self.camera_pitch.sin(),
-            self.camera_yaw.sin() * self.camera_pitch.cos(),
-        );
-        let target = self.camera_pos + forward;
-        Mat4::look_at_rh(self.camera_pos, target, Vec3::Y)
-    }
-
-    fn handle_input(&mut self, event: &WindowEvent, delta_time: f32) -> bool {
-        match event {
-            WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        state,
-                        virtual_keycode: Some(keycode),
-                        ..
-                    },
-                ..
-            } => {
-                let amount = if *state == ElementState::Pressed {
-                    self.camera_speed * delta_time
-                } else {
-                    0.0
-                };
-
-                let forward = Vec3::new(
-                    self.camera_yaw.cos(),
-                    0.0,
-                    self.camera_yaw.sin(),
-                ).normalize();
-                let right = Vec3::new(
-                    (self.camera_yaw + std::f32::consts::FRAC_PI_2).cos(),
-                    0.0,
-                    (self.camera_yaw + std::f32::consts::FRAC_PI_2).sin(),
-                ).normalize();
-
-                match keycode {
-                    VirtualKeyCode::W => {
-                        self.camera_pos += forward * amount;
-                        true
-                    }
-                    VirtualKeyCode::S => {
-                        self.camera_pos -= forward * amount;
-                        true
-                    }
-                    VirtualKeyCode::A => {
-                        self.camera_pos -= right * amount;
-                        true
-                    }
-                    VirtualKeyCode::D => {
-                        self.camera_pos += right * amount;
-                        true
-                    }
-                    VirtualKeyCode::Space => {
-                        self.camera_pos.y += amount;
-                        true
-                    }
-                    VirtualKeyCode::LShift => {
-                        self.camera_pos.y -= amount;
-                        true
-                    }
-                    _ => false,
-                }
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                let current_pos = (position.x as f32, position.y as f32);
-                
-                if let Some(last_pos) = self.last_mouse_pos {
-                    let delta_x = current_pos.0 - last_pos.0;
-                    let delta_y = current_pos.1 - last_pos.1;
-                    
-                    self.camera_yaw += delta_x * self.mouse_sensitivity;
-                    self.camera_pitch -= delta_y * self.mouse_sensitivity;
-                    
-                    // Clamp pitch
-                    self.camera_pitch = self.camera_pitch.clamp(
-                        -std::f32::consts::FRAC_PI_2 + 0.1,
-                        std::f32::consts::FRAC_PI_2 - 0.1,
-                    );
-                }
-                
-                self.last_mouse_pos = Some(current_pos);
-                true
-            }
-            _ => false,
-        }
-    }
-}
+// C.6.E (Unified Camera campaign): the pre-C.6.E `DemoState` struct held
+// camera state fields (`camera_pos`, `camera_yaw`, `camera_pitch`,
+// `camera_speed`, `mouse_sensitivity`, `last_mouse_pos`) along with a
+// `get_view_matrix()` method and a `handle_input()` method covering
+// WASD/Space/Shift movement, mouse-orbit, and pitch clamping (±π/2 ± 0.1).
+// Per C.5 audit L.5.14, none of that state was used: this example's
+// `Event::RedrawRequested` handler is a stub that prints meshlet
+// statistics without invoking any rendering pipeline. The camera state
+// was structurally present but functionally dormant; `get_view_matrix()`
+// had zero callers.
+//
+// `DemoState` is removed entirely. The example continues to demonstrate
+// meshlet hierarchy generation (which is its actual purpose); the event
+// loop is simplified to handle window close + escape key only.
 
 /// Generate a procedural high-detail sphere mesh
 fn generate_sphere_mesh(radius: f32, subdivisions: u32) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<[f32; 4]>, Vec<[f32; 2]>, Vec<u32>) {
@@ -235,8 +138,8 @@ async fn main() -> Result<()> {
     println!("  Mouse - Look around");
     println!("  ESC - Exit");
 
-    let mut state = DemoState::new();
-    let mut last_frame_time = std::time::Instant::now();
+    // C.6.E: removed `DemoState::new()` instantiation and per-frame timing
+    // (no rendering happens, no state to advance).
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -246,32 +149,32 @@ async fn main() -> Result<()> {
                 ref event,
                 window_id,
             } if window_id == window.id() => {
-                match event {
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
-                                ..
-                            },
-                        ..
-                    } => *control_flow = ControlFlow::Exit,
-                    _ => {
-                        let now = std::time::Instant::now();
-                        let delta_time = (now - last_frame_time).as_secs_f32();
-                        last_frame_time = now;
-                        
-                        state.handle_input(event, delta_time);
-                    }
+                if let WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                        },
+                    ..
+                } = event
+                {
+                    *control_flow = ControlFlow::Exit;
                 }
+                // C.6.E: removed `state.handle_input(event, delta_time)`
+                // call — `DemoState` and its camera-input handling were
+                // deleted (no rendering, no use).
             }
             Event::MainEventsCleared => {
                 window.request_redraw();
             }
             Event::RedrawRequested(_) => {
-                // In a full implementation, this would render the scene
-                // For now, we just demonstrate the meshlet generation
+                // The example demonstrates meshlet hierarchy generation
+                // (see the prologue logs above); rendering is intentionally
+                // not implemented. Camera state was removed in Unified
+                // Camera campaign sub-phase C.6.E since it was structurally
+                // present but never used.
             }
             _ => {}
         }

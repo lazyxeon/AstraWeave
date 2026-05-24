@@ -28,6 +28,12 @@ struct Camera {
     target: Vec3,
     up: Vec3,
     aspect: f32,
+    /// Vertical field of view in **radians** post-C.6.D
+    /// (Unified Camera campaign). Pre-C.6.D the field stored degrees with
+    /// `.to_radians()` conversion at the projection site (mismatched with
+    /// the name; per C.5 audit L.5.11). The semantic conversion is
+    /// equivalent — same downstream matrix — but the field-name and unit
+    /// now agree per CAMERA_CONVENTIONS.md §2.1.
     fovy: f32,
     znear: f32,
     zfar: f32,
@@ -36,7 +42,10 @@ struct Camera {
 impl Camera {
     fn build_view_projection_matrix(&self) -> Mat4 {
         let view = self.build_view_matrix();
-        let proj = Mat4::perspective_rh(self.fovy.to_radians(), self.aspect, self.znear, self.zfar);
+        // C.6.D: `self.fovy` now stores radians directly (no boundary
+        // conversion). Identical result vs pre-C.6.D `self.fovy.to_radians()`
+        // when paired with the constructor's unit conversion.
+        let proj = Mat4::perspective_rh(self.fovy, self.aspect, self.znear, self.zfar);
         proj * view
     }
 
@@ -341,8 +350,10 @@ impl State {
             eye: Vec3::new(8.0, 6.0, 8.0),
             target: Vec3::new(3.2, 3.2, 3.2),
             up: Vec3::Y,
-            aspect: size.width as f32 / size.height as f32,
-            fovy: 45.0,
+            // C.6.D: `.max(0.01)` aspect guard per CAMERA_CONVENTIONS.md §2.3.
+            aspect: (size.width as f32 / size.height as f32).max(0.01),
+            // C.6.D: fovy stores radians directly (was degrees pre-C.6.D).
+            fovy: 45_f32.to_radians(),
             znear: 0.1,
             zfar: 100.0,
         };
@@ -457,7 +468,10 @@ impl State {
             self.fluid_renderer
                 .resize(&self.device, new_size.width, new_size.height);
 
-            self.camera.aspect = new_size.width as f32 / new_size.height as f32;
+            // C.6.D: `.max(0.01)` aspect guard at resize per
+            // CAMERA_CONVENTIONS.md §2.3.
+            self.camera.aspect =
+                (new_size.width as f32 / new_size.height as f32).max(0.01);
         }
     }
 

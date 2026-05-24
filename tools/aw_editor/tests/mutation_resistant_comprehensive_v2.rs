@@ -28,8 +28,7 @@ use aw_editor_lib::clipboard::{
 };
 use aw_editor_lib::distribution::{format_bytes, DistributionConfig, DistributionFormat};
 use aw_editor_lib::gizmo::{
-    AxisConstraint, CameraController, GizmoHandle, GizmoPicker, Ray, ScaleGizmo, SnappingConfig,
-    TranslateGizmo,
+    AxisConstraint, GizmoHandle, GizmoPicker, Ray, ScaleGizmo, SnappingConfig, TranslateGizmo,
 };
 use aw_editor_lib::runtime::RuntimeIssue;
 use aw_editor_lib::scene_serialization::SceneValidationIssue;
@@ -2363,161 +2362,9 @@ mod translate_gizmo_tests {
 // =============================================================================
 // CAMERA CONTROLLER — DEFAULTS AND VIEWS
 // =============================================================================
-
-mod camera_controller_tests {
-    use super::*;
-
-    #[test]
-    fn default_position() {
-        let cam = CameraController::default();
-        assert!((cam.position - Vec3::new(5.0, 5.0, 5.0)).length() < 0.001);
-    }
-
-    #[test]
-    fn default_target_is_origin() {
-        let cam = CameraController::default();
-        assert!((cam.target - Vec3::ZERO).length() < 0.001);
-    }
-
-    #[test]
-    fn default_up_is_y() {
-        let cam = CameraController::default();
-        assert!((cam.up - Vec3::Y).length() < 0.001);
-    }
-
-    #[test]
-    fn default_fov_is_45_degrees() {
-        let cam = CameraController::default();
-        assert!((cam.fov - std::f32::consts::FRAC_PI_4).abs() < 0.001);
-    }
-
-    #[test]
-    fn default_aspect_is_16_9() {
-        let cam = CameraController::default();
-        assert!((cam.aspect - 16.0 / 9.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn default_near_is_0_1() {
-        let cam = CameraController::default();
-        assert!((cam.near - 0.1).abs() < 0.001);
-    }
-
-    #[test]
-    fn default_far_is_1000() {
-        let cam = CameraController::default();
-        assert!((cam.far - 1000.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn distance_from_default() {
-        let cam = CameraController::default();
-        // sqrt(5^2 + 5^2 + 5^2) = sqrt(75) ≈ 8.66
-        let d = cam.distance();
-        assert!((d - 75.0_f32.sqrt()).abs() < 0.01);
-    }
-
-    #[test]
-    fn zoom_in_reduces_distance() {
-        let mut cam = CameraController::default();
-        let d_before = cam.distance();
-        cam.zoom(1.0, 0.1);
-        let d_after = cam.distance();
-        assert!(d_after < d_before);
-    }
-
-    #[test]
-    fn zoom_out_increases_distance() {
-        let mut cam = CameraController::default();
-        let d_before = cam.distance();
-        cam.zoom(-1.0, 0.1);
-        let d_after = cam.distance();
-        assert!(d_after > d_before);
-    }
-
-    #[test]
-    fn zoom_clamps_minimum_distance() {
-        let mut cam = CameraController::default();
-        // Zoom in extremely far
-        cam.zoom(100000.0, 100.0);
-        // Distance should be clamped to >= 0.1
-        assert!(cam.distance() >= 0.099);
-    }
-
-    #[test]
-    fn set_view_front_z_positive() {
-        let mut cam = CameraController::default();
-        cam.set_view_front();
-        // Position should be at (0, 0, distance) from target
-        assert!((cam.position.x - cam.target.x).abs() < 0.001);
-        assert!((cam.position.y - cam.target.y).abs() < 0.001);
-        assert!(cam.position.z > cam.target.z);
-    }
-
-    #[test]
-    fn set_view_right_x_positive() {
-        let mut cam = CameraController::default();
-        cam.set_view_right();
-        assert!(cam.position.x > cam.target.x);
-        assert!((cam.position.y - cam.target.y).abs() < 0.001);
-        assert!((cam.position.z - cam.target.z).abs() < 0.001);
-    }
-
-    #[test]
-    fn set_view_top_y_positive() {
-        let mut cam = CameraController::default();
-        cam.set_view_top();
-        assert!(cam.position.y > cam.target.y);
-        assert!((cam.position.x - cam.target.x).abs() < 0.001);
-        assert!((cam.position.z - cam.target.z).abs() < 0.001);
-    }
-
-    #[test]
-    fn focus_on_preserves_distance() {
-        let mut cam = CameraController::default();
-        let d_before = cam.distance();
-        cam.focus_on(Vec3::new(10.0, 0.0, 0.0));
-        let d_after = cam.distance();
-        assert!((d_before - d_after).abs() < 0.01);
-    }
-
-    #[test]
-    fn focus_on_changes_target() {
-        let mut cam = CameraController::default();
-        let new_target = Vec3::new(10.0, 5.0, -3.0);
-        cam.focus_on(new_target);
-        assert!((cam.target - new_target).length() < 0.001);
-    }
-
-    #[test]
-    fn view_projection_is_projection_times_view() {
-        let cam = CameraController::default();
-        let vp = cam.view_projection_matrix();
-        let expected = cam.projection_matrix() * cam.view_matrix();
-        // Compare first element as a sanity check
-        let diff = (vp.col(0) - expected.col(0)).length();
-        assert!(diff < 0.001);
-    }
-
-    #[test]
-    fn inverse_view_projection_roundtrips() {
-        let cam = CameraController::default();
-        let vp = cam.view_projection_matrix();
-        let ivp = cam.inverse_view_projection_matrix();
-        let identity = vp * ivp;
-        // Should be approximately identity
-        assert!((identity.col(0).x - 1.0).abs() < 0.01);
-        assert!((identity.col(1).y - 1.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn pan_preserves_offset_direction() {
-        let mut cam = CameraController::default();
-        let offset_before = cam.position - cam.target;
-        cam.pan(Vec2::new(1.0, 0.0), 0.1);
-        let offset_after = cam.position - cam.target;
-        // Direction should be approximately the same since pan moves both position and target
-        let dot = offset_before.normalize().dot(offset_after.normalize());
-        assert!(dot > 0.99, "dot={}", dot);
-    }
-}
+//
+// C.6.A (Unified Camera campaign): the `camera_controller_tests` module
+// (~150 lines) was deleted alongside the gizmo `CameraController` type
+// itself. The type was dormant in production (declared by
+// `TransformPanel.camera` but never read) per C.5 audit L.5.1; the tests
+// measured the dormant type's behavior. Removed together for coherence.
