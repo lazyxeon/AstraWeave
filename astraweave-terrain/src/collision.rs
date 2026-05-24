@@ -123,7 +123,7 @@ pub fn collision_mesh_from_heightmap(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::heightmap::{Heightmap, HeightmapConfig};
+    use crate::heightmap::Heightmap;
     use crate::meshing::{ChunkMesh, MeshVertex};
     use crate::voxel_data::ChunkCoord;
     use crate::{BiomeType, ChunkId};

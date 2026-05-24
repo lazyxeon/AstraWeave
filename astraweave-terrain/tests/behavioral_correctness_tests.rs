@@ -10,7 +10,7 @@
 //! - Biome classification: Scoring logic, condition matching, slope suitability
 //! - Voxel data: Chunk coordinates, density thresholds
 
-use astraweave_terrain::noise_gen::{NoiseLayer, NoiseType};
+use astraweave_terrain::noise_gen::{DomainWarpConfig, NoiseLayer, NoiseType};
 use astraweave_terrain::{
     BiomeConfig, BiomeType, Heightmap, HeightmapConfig, NoiseConfig, TerrainNoise,
 };
@@ -25,6 +25,7 @@ fn disabled_noise_layer() -> NoiseLayer {
         persistence: 0.5,
         lacunarity: 2.0,
         noise_type: NoiseType::Perlin,
+        domain_warp: DomainWarpConfig::default(),
     }
 }
 
@@ -449,6 +450,7 @@ fn test_noise_layer_disable() {
             persistence: 0.5,
             lacunarity: 2.0,
             noise_type: NoiseType::Perlin,
+            domain_warp: DomainWarpConfig::default(),
         },
         mountains: NoiseLayer {
             enabled: false,
@@ -458,6 +460,7 @@ fn test_noise_layer_disable() {
             persistence: 0.4,
             lacunarity: 2.2,
             noise_type: NoiseType::RidgedNoise,
+            domain_warp: DomainWarpConfig::default(),
         },
         detail: NoiseLayer {
             enabled: false,
@@ -467,9 +470,11 @@ fn test_noise_layer_disable() {
             persistence: 0.6,
             lacunarity: 2.0,
             noise_type: NoiseType::Billow,
+            domain_warp: DomainWarpConfig::default(),
         },
         erosion_enabled: false,
         erosion_strength: 0.0,
+        ..NoiseConfig::default()
     };
 
     // Config with all layers enabled
@@ -507,11 +512,13 @@ fn test_noise_amplitude_scaling() {
             persistence: 0.5,
             lacunarity: 2.0,
             noise_type: NoiseType::Perlin,
+            domain_warp: DomainWarpConfig::default(),
         },
         mountains: disabled_noise_layer(),
         detail: disabled_noise_layer(),
         erosion_enabled: false,
         erosion_strength: 0.0,
+        ..NoiseConfig::default()
     };
 
     let config_high_amp = NoiseConfig {
@@ -523,11 +530,13 @@ fn test_noise_amplitude_scaling() {
             persistence: 0.5,
             lacunarity: 2.0,
             noise_type: NoiseType::Perlin,
+            domain_warp: DomainWarpConfig::default(),
         },
         mountains: disabled_noise_layer(),
         detail: disabled_noise_layer(),
         erosion_enabled: false,
         erosion_strength: 0.0,
+        ..NoiseConfig::default()
     };
 
     let seed = 42;
@@ -917,11 +926,13 @@ fn test_noise_type_variety() {
             persistence: 0.5,
             lacunarity: 2.0,
             noise_type: NoiseType::Perlin,
+            domain_warp: DomainWarpConfig::default(),
         },
         mountains: disabled_noise_layer(),
         detail: disabled_noise_layer(),
         erosion_enabled: false,
         erosion_strength: 0.0,
+        ..NoiseConfig::default()
     };
 
     let ridged_config = NoiseConfig {

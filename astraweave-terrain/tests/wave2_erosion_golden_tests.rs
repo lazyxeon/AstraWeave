@@ -73,6 +73,7 @@ fn assert_close(actual: f32, expected: f32, tol: f32, label: &str) {
 }
 
 /// For checking that a value does NOT match a particular golden (catches mutations)
+#[allow(dead_code)]
 fn assert_not_close(actual: f32, bad_value: f32, tol: f32, label: &str) {
     let diff = (actual - bad_value).abs();
     assert!(

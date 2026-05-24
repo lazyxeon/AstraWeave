@@ -1053,7 +1053,7 @@ mod tests {
     #[test]
     fn test_multi_zone_priority() {
         // Two zones with different priorities overlapping at the same heightmap cells
-        let source = SourceHeightmap {
+        let _source = SourceHeightmap {
             data: vec![5.0; 4],
             resolution: 2,
             world_min: [0.0, 0.0],

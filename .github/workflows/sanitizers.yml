@@ -93,8 +93,11 @@ jobs:
     needs: [source-integrity]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Only run on PRs and pushes (not nightly schedule)
-    if: github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.force_full_suite)
+    # Run on all triggers except when force_full_suite is requested via workflow_dispatch
+    # (force_full_suite defers to asan-full which covers a superset of these crates).
+    # Previously excluded schedule runs; removed that exclusion so critical crates
+    # always receive a fast sanity check on every nightly run in addition to asan-full.
+    if: "!(github.event_name == 'workflow_dispatch' && inputs.force_full_suite)"
     env:
       # Disable leak detection here — the dedicated LSan job handles it.
       # abort_on_error=0 lets the test harness report per-test results.
