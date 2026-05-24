@@ -21,6 +21,7 @@ graph TB
     end
     
     subgraph Rendering["Rendering Layer"]
+        CAMERA[astraweave-camera]
         RENDER[astraweave-render]
         MATERIALS[astraweave-materials]
         ASSET[astraweave-asset]
@@ -102,6 +103,73 @@ fn movement_system(mut query: Query<(&mut Position, &Velocity)>) {
 - `parallel` - Enable parallel system execution (default)
 - `tracing` - Add performance tracing instrumentation
 - `serde` - Serialization support for components
+
+---
+
+### astraweave-camera
+
+Canonical camera types and the `CameraProducer` trait that all camera
+implementations consume. Defines `RenderView` (the upload contract the renderer
+consumes), `Projection` (perspective projection with both matrix and original
+parameters preserved), and `FreeFly` (the engine's free-fly producer, moved
+here from `astraweave-render` during the Unified Camera campaign's C.3.A
+sub-phase). The renderer consumes `RenderView` exclusively — see `Renderer::update_view`.
+
+```toml
+[dependencies]
+astraweave-camera = "0.1"
+```
+
+**Key Types:**
+
+| Type | Description |
+|------|-------------|
+| `FreeFly` | Engine free-fly camera producer (position, yaw, pitch, fovy, aspect, znear, zfar) |
+| `Projection` | Perspective projection: derived `matrix` plus original `fovy`, `aspect`, `znear`, `zfar` |
+| `RenderView` | Canonical upload contract: view + projection + inverses + position + view direction |
+| `CameraProducer` | Trait every camera implementation provides: `fn to_render_view(&self) -> RenderView` |
+| `CameraController` | Input handler for orbit / free-fly modes (keyboard, mouse, scroll) |
+
+**Example:**
+
+```rust
+use astraweave_camera::{CameraProducer, FreeFly, Projection, RenderView};
+
+let camera = FreeFly {
+    position: Vec3::new(0.0, 5.0, 10.0),
+    yaw: 0.0,
+    pitch: 0.0,
+    fovy: 60_f32.to_radians(),
+    aspect: 16.0 / 9.0,
+    znear: 0.1,
+    zfar: 1000.0,
+};
+let render_view: RenderView = camera.to_render_view();
+renderer.update_view(&render_view);
+```
+
+**Features:**
+- `serde` - Enables `Serialize`/`Deserialize` derives on `Projection` and `RenderView` (off by default)
+
+**The `FreeFly as Camera` alias pattern in caller code.** Caller code
+throughout the workspace currently imports `FreeFly` via a local alias:
+
+```rust
+use astraweave_camera::FreeFly as Camera;
+```
+
+This is a deliberate artifact of the Unified Camera campaign (sub-phase C.3.C,
+commit `326d607c1`). The canonical name is `FreeFly`; historically the type
+was named `Camera` and lived in `astraweave-render`. The campaign renamed the
+type to its proper home crate but preserved the historical name as a per-file
+alias in caller code to keep migration diffs small. The alias appears in
+roughly 30 caller files across engine examples and internal tests.
+
+**For new code, prefer `FreeFly` directly without the alias.** The alias is a
+migration convenience, not a recommended pattern for new code. See
+`docs/current/CAMERA_CONVENTIONS.md` in the repository for the canonical
+convention reference (yaw=0 forward direction, FOV semantics, near/far
+handling, aspect-ratio guards, coordinate handedness).
 
 ---
 

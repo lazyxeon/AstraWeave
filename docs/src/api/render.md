@@ -273,27 +273,42 @@ post_fx.process(&mut render_context, &scene_texture);
 
 ## Camera
 
-### Camera3D
+Camera types live in the [`astraweave-camera`](./camera.md) crate as of the
+Unified Camera campaign's C.3.A sub-phase. The renderer consumes the
+canonical `RenderView` upload contract exclusively via
+`Renderer::update_view`; the historical `Renderer::update_camera(&Camera)`
+and `Renderer::update_camera_matrices(...)` APIs were removed in C.3.C.
 
-3D camera with multiple projection modes.
+### Canonical upload pattern
 
 ```rust
-use astraweave_render::camera::{Camera3D, Projection};
+use astraweave_camera::{CameraProducer, FreeFly};
 
-let camera = Camera3D {
-    position: Vec3::new(0.0, 5.0, -10.0),
-    target: Vec3::ZERO,
-    up: Vec3::Y,
-    projection: Projection::Perspective {
-        fov: 60.0_f32.to_radians(),
-        aspect: 16.0 / 9.0,
-        near: 0.1,
-        far: 1000.0,
-    },
+let camera = FreeFly {
+    position: Vec3::new(0.0, 5.0, 10.0),
+    yaw: 0.0,
+    pitch: 0.0,
+    fovy: 60_f32.to_radians(),
+    aspect: 16.0 / 9.0,
+    znear: 0.1,
+    zfar: 1000.0,
 };
 
-let view_proj = camera.view_projection_matrix();
+// Upload to the renderer via the canonical RenderView contract.
+renderer.update_view(&camera.to_render_view());
 ```
+
+For camera-relative rendering (used by certain shadow/atmospheric paths to
+mitigate large-world float precision), use the concrete-only sibling method:
+
+```rust
+renderer.update_view(&camera.to_render_view_camera_relative());
+```
+
+For new camera implementations (orbit, follow, cinematic), implement the
+`CameraProducer` trait from `astraweave-camera`. See the crate's documentation
+for the trait surface, and `docs/current/CAMERA_CONVENTIONS.md` for the
+canonical convention reference.
 
 ---
 

@@ -14,6 +14,7 @@ AstraWeave consists of **128 workspace packages** (69 non-example + 59 examples)
 | **astraweave-ecs** | Archetype-based ECS with deterministic stages | 330+ | 90.57% |
 | **astraweave-core** | Shared types: WorldSnapshot, PlanIntent, ToolRegistry | 505+ | 89.73% |
 | **astraweave-math** | SIMD-accelerated vector/matrix/quaternion ops | 109 | 72.13% |
+| **astraweave-camera** | Canonical camera types: `FreeFly` producer, `RenderView` upload contract, `CameraProducer` trait | 19 | — |
 | **astraweave-physics** | Rapier3D wrapper: rigid bodies, spatial hash, ragdoll, cloth | 1,244+ | 34.38% |
 | **astraweave-render** | wgpu 25.0.2 renderer: PBR, shadows, post-FX, animation | 806 | 48.04% |
 | **astraweave-scene** | Scene graph, transforms, world partitioning, streaming | 210 | 55.42% |

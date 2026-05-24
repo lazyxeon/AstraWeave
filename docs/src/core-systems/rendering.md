@@ -453,29 +453,34 @@ render_objects(&visible_objects);
 ### Complete Rendering Loop
 
 ```rust
-use astraweave_render::{RenderContext, Camera, Scene};
+use astraweave_camera::{CameraProducer, FreeFly};
+use astraweave_render::Renderer;
 use winit::event_loop::EventLoop;
 
 fn main() -> Result<()> {
     let event_loop = EventLoop::new();
     let window = Window::new(&event_loop)?;
-    
-    let mut render_ctx = RenderContext::new(&window, Default::default()).await?;
-    let mut scene = Scene::new();
-    let mut camera = Camera::perspective(60.0, 16.0 / 9.0, 0.1, 1000.0);
-    
+
+    let mut renderer = Renderer::new(&window).await?;
+    let mut camera = FreeFly {
+        position: Vec3::new(0.0, 5.0, 10.0),
+        yaw: 0.0,
+        pitch: 0.0,
+        fovy: 60_f32.to_radians(),
+        aspect: 16.0 / 9.0,
+        znear: 0.1,
+        zfar: 1000.0,
+    };
+
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::RedrawRequested(_) => {
-                // Update camera
-                camera.update(&input_state);
-                
-                // Begin frame
-                let mut frame = render_ctx.begin_frame().unwrap();
-                
-                // Render scene
-                frame.render_scene(&scene, &camera);
-                
+                // Update renderer's camera state via the canonical upload path.
+                renderer.update_view(&camera.to_render_view());
+
+                // Render the frame
+                renderer.render().unwrap();
+
                 // Present
                 frame.present();
             }
