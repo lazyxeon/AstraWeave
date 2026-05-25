@@ -2344,6 +2344,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_gameplay/cutscenes/enum.CutsceneTickEvent.html</loc>
+    <lastmod>2026-05-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/astraweave_gameplay/types/struct.WeaveConsequence.html</loc>
     <lastmod>2026-05-25</lastmod>
     <changefreq>weekly</changefreq>

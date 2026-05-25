@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["Cue"],"struct":["CutsceneState","Timeline"]};
+window.SIDEBAR_ITEMS = {"enum":["Cue","CutsceneTickEvent"],"struct":["CutsceneState","Timeline"]};
