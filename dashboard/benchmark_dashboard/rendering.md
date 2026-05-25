@@ -46,25 +46,142 @@ AstraWeave's renderer is built on **wgpu 25.0.2**, providing cross-platform GPU 
 
 ## Camera System
 
+Camera types live in the `astraweave-camera` crate (separate from `astraweave-render`).
+The canonical types are `FreeFly` (the engine's free-fly producer), `RenderView`
+(the upload contract the renderer consumes), `Projection` (perspective projection
+with the original parameters preserved), and the `CameraProducer` trait.
+
+### Canonical upload contract
+
+Every camera in AstraWeave produces a `RenderView` which the renderer consumes
+via a single entry point:
+
 ```rust
-pub struct Camera {
+renderer.update_view(&camera.to_render_view());
+```
+
+This is the only camera-upload path on `Renderer`. (The historical
+`Renderer::update_camera(&Camera)` and `Renderer::update_camera_matrices(...)`
+APIs were removed by the Unified Camera campaign, sub-phase C.3.C.)
+
+### `FreeFly` producer
+
+```rust
+pub struct FreeFly {
     pub position: Vec3,
     pub yaw: f32,
     pub pitch: f32,
-    pub fovy: f32,
+    pub fovy: f32,    // radians per CAMERA_CONVENTIONS.md §2.1
     pub aspect: f32,
     pub znear: f32,
     pub zfar: f32,
 }
 ```
 
-Methods: `view_matrix()`, `proj_matrix()`, `vp()`, `dir(yaw, pitch) -> Vec3`.
+Methods: `view_matrix()`, `proj_matrix()`, `vp()`, `dir(yaw, pitch) -> Vec3`,
+`view_matrix_camera_relative()`, `to_render_view()`,
+`to_render_view_camera_relative()`. The last two are the producer-side bridges
+that `CameraProducer::to_render_view` and the concrete camera-relative path
+provide.
 
-`CameraController` supports orbit and fly modes with keyboard, mouse, and scroll input:
+### Adding a new camera
+
+Implement `CameraProducer`:
+
+```rust
+use astraweave_camera::{CameraProducer, RenderView, Projection};
+
+impl CameraProducer for MyCamera {
+    fn to_render_view(&self) -> RenderView {
+        let projection = Projection::perspective(
+            self.fovy, self.aspect, self.znear, self.zfar,
+        );
+        let view = self.compute_view_matrix();
+        let view_dir = self.compute_view_direction();
+        RenderView::new(view, &projection, self.position, view_dir)
+    }
+}
+```
+
+See `CAMERA_CONVENTIONS.md` in the repository's `docs/current/` directory for
+the canonical convention reference (yaw=0 forward direction, FOV semantics,
+near/far handling, aspect-ratio guards, coordinate handedness).
+
+### The `FreeFly as Camera` alias pattern
+
+Caller code throughout the workspace currently imports `FreeFly` via a local
+alias:
+
+```rust
+use astraweave_camera::FreeFly as Camera;
+```
+
+This is a deliberate artifact of the Unified Camera campaign (C.3.C). The
+canonical name is `FreeFly`; historically the type was named `Camera`. The
+campaign renamed the type to its proper home crate but preserved the
+historical name as a per-file alias to keep migration diffs small. The alias
+appears in roughly 30 caller files (engine examples plus internal tests).
+
+**When writing new code, prefer `FreeFly` directly without the alias:**
+
+```rust
+use astraweave_camera::FreeFly;
+
+let camera: FreeFly = FreeFly { /* ... */ };
+```
+
+The alias is a migration convenience, not a recommended pattern for new code.
+
+### `CameraController`
+
+`CameraController` (also in `astraweave-camera`) supports orbit and fly modes
+with keyboard, mouse, and scroll input:
+
 - `process_keyboard()`, `process_mouse_delta()`, `process_scroll()`
 - `toggle_mode()` — switch between FPS and orbit
 - `set_orbit_target()` — focus on a world point
-- `update_camera()` — apply all pending inputs
+- `update_camera(&mut FreeFly, dt)` — apply pending input deltas to the camera state (note: this is the controller's input-application method, distinct from the renderer's `update_view` upload entry point)
+
+### Two-camera architecture
+
+AstraWeave has two production camera producers, each living in the crate
+that owns its primary use case:
+
+- **`FreeFly`** — engine-runtime camera. Lives in `astraweave-camera`.
+  Implements `CameraProducer`. Used by every example crate, the cinematics
+  renderer path, and any application embedding the engine. Free-look
+  mouse + WASD navigation pattern; companion `CameraController` handles
+  input.
+- **`OrbitCamera`** — editor camera. Lives in
+  `tools/aw_editor/src/viewport/camera.rs`. Implements `CameraProducer`
+  (added in sub-phase C.4). Used exclusively by the editor's viewport.
+  Spherical orbit around a focal point, with picking, frustum extraction,
+  and screen-space queries built in. Has an editor-specific UI surface
+  (smooth zoom animation, bookmark restore, sanitize-on-deserialize) that
+  the runtime engine doesn't need.
+
+Both producers converge at the `CameraProducer::to_render_view()`
+contract. The renderer consumes `RenderView` exclusively (per
+`CAMERA_CONVENTIONS.md` §2.9); it doesn't know which producer created
+the view, and the canonical upload contract above is identical for both.
+
+**Why two locations?** OrbitCamera's surface is editor-specific (~15
+methods for interactive picking, frustum extraction, sanitize for
+deserialization, smooth zoom/focal-point animation, view-bookmark
+restore) versus FreeFly's runtime-camera surface (~6 methods for
+view/projection/direction). Moving OrbitCamera to `astraweave-camera`
+would either pull editor concerns into the producer crate or split
+OrbitCamera across crates. Keeping it in the editor crate preserves
+crate-boundary purity; the `CameraProducer` trait is the abstraction
+that lets producers live anywhere.
+
+**For new editor-only producers** (e.g., a debug-camera mode confined
+to editing workflows), the pattern is the same: implement
+`CameraProducer` in the editor crate; the trait flows from
+`astraweave-camera`; the implementation stays with its concerns.
+
+**For new engine-runtime producers** (Follow, Cinematic, Debug per the
+SOTA roadmap): add them to `astraweave-camera` alongside `FreeFly`.
 
 ## Material System
 
