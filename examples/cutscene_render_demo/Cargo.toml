@@ -13,3 +13,9 @@ pollster = { workspace = true }
 astraweave-render = { path = "../../astraweave-render" }
 astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-gameplay = { path = "../../astraweave-gameplay" }
+# C.7.B (Unified Camera campaign): added to construct an `awc::Timeline`
+# programmatically. The demo is the first production caller of
+# `Renderer::tick_cinematics`, closing L.7.1. Second of two new
+# dependency edges in the cinematics consolidation chapter (first was
+# `astraweave-gameplay → astraweave-cinematics` in C.7.A).
+astraweave-cinematics = { path = "../../astraweave-cinematics" }

@@ -1,4 +1,5 @@
 use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
+use astraweave_cinematics as awc;
 use astraweave_gameplay::cutscenes::*;
 use astraweave_render::Renderer;
 use glam::{vec3, Vec2, Vec3};
@@ -17,9 +18,26 @@ struct CutsceneApp {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     camera: Camera,
+    /// Retained for interactive camera control outside cinematic playback.
+    /// During cinematic playback (C.7.B post-rewrite), `Renderer::tick_cinematics`
+    /// is the sole camera driver; this controller is not invoked. The
+    /// `process_keyboard`/`process_mouse_*` event handlers still feed it
+    /// for future post-cinematic interactive phases.
     ctl: CameraController,
-    tl: Timeline,
+    /// Gameplay timeline (post-C.7.B: contains only `Cue::Title` and
+    /// `Cue::Wait` cues). Camera cues moved to the renderer's
+    /// `awc::Timeline` loaded at startup. Total duration matches the
+    /// camera timeline (see the construction site for the
+    /// duration-matching constraint).
+    gameplay_timeline: Timeline,
+    /// Tracks the gameplay timeline's state machine (Title events). The
+    /// camera timeline is owned internally by the renderer
+    /// (`cin_tl`/`cin_seq`).
     cs: CutsceneState,
+    /// Buffered timeline + initial state for deferred renderer-side load.
+    /// `resumed()` constructs the renderer; the awc::Timeline can only
+    /// be loaded once the renderer exists, so it is staged here.
+    pending_awc_timeline: Option<awc::Timeline>,
     t: f32,
     last: Instant,
 }
@@ -37,14 +55,21 @@ impl CutsceneApp {
         };
         let ctl = CameraController::new(10.0, 0.005);
 
-        // C.7.A (Unified Camera campaign): `Cue::CameraTo` migrated from
-        // yaw/pitch to look_at storage. Helper computes the equivalent
-        // look_at from the original yaw/pitch values via the canonical
-        // spherical-to-cartesian forward direction
-        // (`forward = Vec3::new(yaw.cos() * pitch.cos(), pitch.sin(),
-        //  yaw.sin() * pitch.cos())`), matching `FreeFly::dir`'s convention
-        // at `astraweave-camera/src/freefly.rs:55-62`. The visual framing
-        // of each cue is preserved exactly: `look_at = pos + forward`.
+        // C.7.B (Unified Camera campaign): the demo's camera state is
+        // now driven by `Renderer::tick_cinematics` consuming an
+        // `awc::Timeline` (the canonical cinematics path). The C.7.A
+        // bridge — inline `apply_camera_key`-equivalent conversion at
+        // the demo site — retires; the demo becomes the campaign's
+        // first production caller of `tick_cinematics`, closing L.7.1.
+        //
+        // The two parallel state machines (camera via awc::Timeline,
+        // Title via gameplay Timeline) run on matched-duration timelines
+        // synchronized at construction time. Total duration: 6.0s,
+        // matching pre-C.7.B behavior (1.5s Title + 0.5s Wait + 2.0s
+        // first CameraTo + 2.0s second CameraTo = 6.0s).
+        //
+        // Helper for spherical-to-cartesian forward direction (canonical
+        // per `FreeFly::dir` at `astraweave-camera/src/freefly.rs:55-62`).
         let forward = |yaw: f32, pitch: f32| -> Vec3 {
             Vec3::new(
                 yaw.cos() * pitch.cos(),
@@ -54,25 +79,45 @@ impl CutsceneApp {
         };
         let pos1 = vec3(0.0, 6.0, 12.0);
         let pos2 = vec3(2.0, 4.0, 8.0);
-        let tl = Timeline {
+        let look_at1 = pos1 + forward(-1.57, -0.35);
+        let look_at2 = pos2 + forward(-1.40, -0.45);
+
+        // awc::Timeline (camera state machine). Keyframes emit on
+        // sequencer-step boundaries: at t=2.0 the camera snaps to pos1;
+        // at t=4.0 it snaps to pos2. Matches pre-C.7.B's snap-on-cue-
+        // start behavior (the pre-C.7.B CameraTo cue emitted its
+        // destination every tick; apply_camera_key snapped on the first
+        // tick and stayed).
+        let mut awc_timeline = awc::Timeline::new("cutscene_demo", 6.0);
+        awc_timeline.add_camera_track(vec![
+            awc::CameraKey::new(
+                awc::Time(2.0),
+                (pos1.x, pos1.y, pos1.z),
+                (look_at1.x, look_at1.y, look_at1.z),
+                60.0,
+            ),
+            awc::CameraKey::new(
+                awc::Time(4.0),
+                (pos2.x, pos2.y, pos2.z),
+                (look_at2.x, look_at2.y, look_at2.z),
+                60.0,
+            ),
+        ]);
+
+        // Gameplay Timeline (Title state machine). Contains only
+        // `Cue::Title` and `Cue::Wait` cues post-C.7.B; the camera cues
+        // moved to `awc_timeline` above. The `Cue::Wait { time: 4.5 }`
+        // padding matches the awc::Timeline's remaining duration after
+        // the Title cue completes (1.5s + 4.5s = 6.0s total), keeping
+        // the two parallel state machines synchronized. If the
+        // awc::Timeline's duration changes, this padding must match.
+        let gameplay_timeline = Timeline {
             cues: vec![
                 Cue::Title {
                     text: "Veilweaver".into(),
                     time: 1.5,
                 },
-                Cue::Wait { time: 0.5 },
-                Cue::CameraTo {
-                    pos: pos1,
-                    look_at: pos1 + forward(-1.57, -0.35),
-                    fov_deg: 60.0,
-                    time: 2.0,
-                },
-                Cue::CameraTo {
-                    pos: pos2,
-                    look_at: pos2 + forward(-1.40, -0.45),
-                    fov_deg: 60.0,
-                    time: 2.0,
-                },
+                Cue::Wait { time: 4.5 },
             ],
         };
         let cs = CutsceneState::new();
@@ -82,8 +127,9 @@ impl CutsceneApp {
             renderer: None,
             camera,
             ctl,
-            tl,
+            gameplay_timeline,
             cs,
+            pending_awc_timeline: Some(awc_timeline),
             t: 0.0,
             last: Instant::now(),
         }
@@ -98,7 +144,17 @@ impl ApplicationHandler for CutsceneApp {
                 .with_inner_size(PhysicalSize::new(1280, 720));
             let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
             self.window = Some(window.clone());
-            let renderer = pollster::block_on(Renderer::new(window.clone())).unwrap();
+            let mut renderer = pollster::block_on(Renderer::new(window.clone())).unwrap();
+
+            // C.7.B: load + play the awc::Timeline staged in `new()`.
+            // The programmatic `Renderer::load_timeline` API was added in
+            // the same sub-phase as a counterpart to `load_timeline_json`
+            // (the demo doesn't need disk serialization to bootstrap).
+            if let Some(awc_timeline) = self.pending_awc_timeline.take() {
+                renderer.load_timeline(awc_timeline);
+                renderer.play_timeline();
+            }
+
             self.renderer = Some(renderer);
             self.last = Instant::now();
         }
@@ -165,30 +221,39 @@ impl ApplicationHandler for CutsceneApp {
         self.last = Instant::now();
         self.t += dt;
 
-        // C.7.A bridge: inlines `apply_camera_key`-equivalent conversion
-        // locally so the demo continues to function between C.7.A (this
-        // sub-phase) and C.7.B. C.7.B will replace this match block with
-        // `Renderer::tick_cinematics(dt, &mut self.camera)`, making the
-        // demo the first production caller of the canonical cinematics
-        // path. Until then, the bridge keeps the demo's runtime behavior
-        // equivalent to its pre-C.7.A state: a `CameraTo` cue moves the
-        // camera; other cues fall through to the free-fly controller.
-        match self.cs.tick(dt, &self.tl) {
-            CutsceneTickEvent::Camera(key) => {
-                // Mirrors `astraweave_render::Renderer::apply_camera_key`
-                // (`astraweave-render/src/renderer.rs:3371-3381`).
-                let pos = vec3(key.pos.0, key.pos.1, key.pos.2);
-                let look = vec3(key.look_at.0, key.look_at.1, key.look_at.2);
-                let dir = (look - pos).normalize_or_zero();
-                self.camera.position = pos;
-                self.camera.yaw = dir.z.atan2(dir.x);
-                self.camera.pitch = dir.y.clamp(-1.0, 1.0).asin();
-                self.camera.fovy = key.fov_deg.to_radians();
+        // C.7.B canonical cinematics path: camera state driven by the
+        // renderer's `tick_cinematics` consuming the awc::Timeline
+        // loaded in `resumed()`. The demo is the first production
+        // caller of `tick_cinematics`, closing L.7.1 (the audit finding
+        // that the canonical path had zero production callers). The
+        // C.7.A bridge — inline `apply_camera_key`-equivalent conversion
+        // at the demo site — retired with this rewrite.
+        let _cinematics_events = renderer.tick_cinematics(dt, &mut self.camera);
+
+        // Gameplay state machine: Title events polled from the parallel
+        // gameplay Timeline. Post-C.7.B the gameplay Timeline contains
+        // only `Cue::Title` and `Cue::Wait` cues; camera cues moved to
+        // the awc::Timeline. The `unreachable!()` arm is the structural-
+        // correctness guard: if a future edit accidentally adds a
+        // `Cue::CameraTo` to the gameplay Timeline, it fires at runtime
+        // surfacing the divergence (better than silent dual-write).
+        match self.cs.tick(dt, &self.gameplay_timeline) {
+            CutsceneTickEvent::Title(_text) => {
+                // Title display is silent in this demo (pre-C.7.B the
+                // Title fell through to the controller fallback;
+                // post-C.7.B no UI text rendering is wired). Consuming
+                // the event keeps the gameplay state machine advancing;
+                // wiring the display surface is out of campaign scope.
             }
-            CutsceneTickEvent::Title(_)
-            | CutsceneTickEvent::Continue
-            | CutsceneTickEvent::Done => {
-                self.ctl.update_camera(&mut self.camera, dt);
+            CutsceneTickEvent::Camera(_) => {
+                unreachable!(
+                    "Gameplay Timeline should contain only Title/Wait cues post-C.7.B; \
+                     camera cues live in the awc::Timeline loaded into the renderer."
+                );
+            }
+            CutsceneTickEvent::Continue | CutsceneTickEvent::Done => {
+                // No-op: camera is driven by `tick_cinematics`; no
+                // controller fallback needed during cinematic playback.
             }
         }
 

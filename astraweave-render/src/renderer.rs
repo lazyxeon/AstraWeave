@@ -3387,6 +3387,27 @@ fn vs(input: VSIn) -> VSOut {
         Ok(())
     }
 
+    /// Load a programmatically-constructed timeline.
+    ///
+    /// Distinct from [`Self::load_timeline_json`], which deserializes a
+    /// timeline from a JSON string; this variant takes an in-memory
+    /// [`awc::Timeline`] directly. Added in Unified Camera campaign
+    /// sub-phase C.7.B to support
+    /// `examples/cutscene_render_demo`'s programmatic timeline
+    /// construction (it builds the timeline in code at startup; no disk
+    /// serialization is needed). Future cinematics work that constructs
+    /// timelines programmatically (test fixtures, runtime-generated
+    /// cinematics) uses this method.
+    ///
+    /// Mirrors [`Self::load_timeline_json`]'s post-deserialize behavior:
+    /// stores the timeline, resets the sequencer to `t = 0`. Playback
+    /// state is unchanged; call [`Self::play_timeline`] separately to
+    /// start emission of camera/audio/FX events.
+    pub fn load_timeline(&mut self, tl: awc::Timeline) {
+        self.cin_tl = Some(tl);
+        self.cin_seq.seek(awc::Time(0.0));
+    }
+
     pub fn save_timeline_json(&self) -> Option<String> {
         self.cin_tl
             .as_ref()
