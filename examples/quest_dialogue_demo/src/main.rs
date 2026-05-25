@@ -36,6 +36,20 @@ fn main() -> anyhow::Result<()> {
     println!("Quest completed? {}", log.is_done("q_tutorial"));
 
     // Tiny cutscene
+    // C.7.A (Unified Camera campaign): `Cue::CameraTo` migrated from
+    // yaw/pitch storage to look_at storage; `CutsceneState::tick`
+    // returns the structured `CutsceneTickEvent` enum instead of the
+    // pre-C.7.A triple-Optional tuple. Equivalent visual framing
+    // preserved via the canonical spherical-to-cartesian forward
+    // direction (matches `FreeFly::dir` convention).
+    let forward = |yaw: f32, pitch: f32| -> glam::Vec3 {
+        glam::Vec3::new(
+            yaw.cos() * pitch.cos(),
+            pitch.sin(),
+            yaw.sin() * pitch.cos(),
+        )
+    };
+    let cue_pos = glam::vec3(2.0, 3.0, 6.0);
     let tl = Timeline {
         cues: vec![
             Cue::Title {
@@ -44,9 +58,9 @@ fn main() -> anyhow::Result<()> {
             },
             Cue::Wait { time: 0.5 },
             Cue::CameraTo {
-                pos: glam::vec3(2.0, 3.0, 6.0),
-                yaw: -1.57,
-                pitch: -0.4,
+                pos: cue_pos,
+                look_at: cue_pos + forward(-1.57, -0.4),
+                fov_deg: 60.0,
                 time: 2.0,
             },
         ],
@@ -54,18 +68,18 @@ fn main() -> anyhow::Result<()> {
     let mut cs = CutsceneState::new();
     let mut t = 0.0;
     while t < 4.0 {
-        let (cam, title, done) = cs.tick(0.5, &tl);
-        if let Some(txt) = title {
-            println!("[Cutscene Title] {}", txt);
-        }
-        if let Some((pos, yaw, pitch)) = cam {
-            println!(
-                "[Cutscene Camera] to {:?} yaw={:.2} pitch={:.2}",
-                pos, yaw, pitch
-            );
-        }
-        if done {
-            break;
+        match cs.tick(0.5, &tl) {
+            CutsceneTickEvent::Title(txt) => {
+                println!("[Cutscene Title] {}", txt);
+            }
+            CutsceneTickEvent::Camera(key) => {
+                println!(
+                    "[Cutscene Camera] to {:?} look_at={:?} fov={:.1}°",
+                    key.pos, key.look_at, key.fov_deg
+                );
+            }
+            CutsceneTickEvent::Continue => {}
+            CutsceneTickEvent::Done => break,
         }
         t += 0.5;
     }

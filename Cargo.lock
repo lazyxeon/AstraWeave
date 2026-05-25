@@ -887,6 +887,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-asset",
+ "astraweave-cinematics",
  "astraweave-core",
  "astraweave-ecs",
  "astraweave-input",

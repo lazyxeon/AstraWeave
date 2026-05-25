@@ -1,7 +1,7 @@
-use astraweave_gameplay::cutscenes::*;
 use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
+use astraweave_gameplay::cutscenes::*;
 use astraweave_render::Renderer;
-use glam::{vec3, Vec2};
+use glam::{vec3, Vec2, Vec3};
 use std::sync::Arc;
 use std::time::Instant;
 use winit::{
@@ -37,6 +37,23 @@ impl CutsceneApp {
         };
         let ctl = CameraController::new(10.0, 0.005);
 
+        // C.7.A (Unified Camera campaign): `Cue::CameraTo` migrated from
+        // yaw/pitch to look_at storage. Helper computes the equivalent
+        // look_at from the original yaw/pitch values via the canonical
+        // spherical-to-cartesian forward direction
+        // (`forward = Vec3::new(yaw.cos() * pitch.cos(), pitch.sin(),
+        //  yaw.sin() * pitch.cos())`), matching `FreeFly::dir`'s convention
+        // at `astraweave-camera/src/freefly.rs:55-62`. The visual framing
+        // of each cue is preserved exactly: `look_at = pos + forward`.
+        let forward = |yaw: f32, pitch: f32| -> Vec3 {
+            Vec3::new(
+                yaw.cos() * pitch.cos(),
+                pitch.sin(),
+                yaw.sin() * pitch.cos(),
+            )
+        };
+        let pos1 = vec3(0.0, 6.0, 12.0);
+        let pos2 = vec3(2.0, 4.0, 8.0);
         let tl = Timeline {
             cues: vec![
                 Cue::Title {
@@ -45,15 +62,15 @@ impl CutsceneApp {
                 },
                 Cue::Wait { time: 0.5 },
                 Cue::CameraTo {
-                    pos: vec3(0.0, 6.0, 12.0),
-                    yaw: -1.57,
-                    pitch: -0.35,
+                    pos: pos1,
+                    look_at: pos1 + forward(-1.57, -0.35),
+                    fov_deg: 60.0,
                     time: 2.0,
                 },
                 Cue::CameraTo {
-                    pos: vec3(2.0, 4.0, 8.0),
-                    yaw: -1.40,
-                    pitch: -0.45,
+                    pos: pos2,
+                    look_at: pos2 + forward(-1.40, -0.45),
+                    fov_deg: 60.0,
                     time: 2.0,
                 },
             ],
@@ -148,13 +165,31 @@ impl ApplicationHandler for CutsceneApp {
         self.last = Instant::now();
         self.t += dt;
 
-        let (cam, _title, _done) = self.cs.tick(dt, &self.tl);
-        if let Some((pos, yaw, pitch)) = cam {
-            self.camera.position = pos;
-            self.camera.yaw = yaw;
-            self.camera.pitch = pitch;
-        } else {
-            self.ctl.update_camera(&mut self.camera, dt);
+        // C.7.A bridge: inlines `apply_camera_key`-equivalent conversion
+        // locally so the demo continues to function between C.7.A (this
+        // sub-phase) and C.7.B. C.7.B will replace this match block with
+        // `Renderer::tick_cinematics(dt, &mut self.camera)`, making the
+        // demo the first production caller of the canonical cinematics
+        // path. Until then, the bridge keeps the demo's runtime behavior
+        // equivalent to its pre-C.7.A state: a `CameraTo` cue moves the
+        // camera; other cues fall through to the free-fly controller.
+        match self.cs.tick(dt, &self.tl) {
+            CutsceneTickEvent::Camera(key) => {
+                // Mirrors `astraweave_render::Renderer::apply_camera_key`
+                // (`astraweave-render/src/renderer.rs:3371-3381`).
+                let pos = vec3(key.pos.0, key.pos.1, key.pos.2);
+                let look = vec3(key.look_at.0, key.look_at.1, key.look_at.2);
+                let dir = (look - pos).normalize_or_zero();
+                self.camera.position = pos;
+                self.camera.yaw = dir.z.atan2(dir.x);
+                self.camera.pitch = dir.y.clamp(-1.0, 1.0).asin();
+                self.camera.fovy = key.fov_deg.to_radians();
+            }
+            CutsceneTickEvent::Title(_)
+            | CutsceneTickEvent::Continue
+            | CutsceneTickEvent::Done => {
+                self.ctl.update_camera(&mut self.camera, dt);
+            }
         }
 
         renderer.update_view(&self.camera.to_render_view());

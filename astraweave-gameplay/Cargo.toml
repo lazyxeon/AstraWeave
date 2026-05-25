@@ -20,6 +20,12 @@ astraweave-nav = { path = "../astraweave-nav" }
 astraweave-ecs = { workspace = true }
 astraweave-input = { path = "../astraweave-input" }
 astraweave-scene = { path = "../astraweave-scene" }
+# C.7.A (Unified Camera campaign): added to flow Cue::CameraTo data through
+# the canonical `astraweave_cinematics::CameraKey` boundary inside
+# `CutsceneState::tick`. First of two new dependency edges in the
+# cinematics consolidation chapter; no circular risk (astraweave-cinematics
+# has zero astraweave-* deps per C.7.0 audit §2.A).
+astraweave-cinematics = { path = "../astraweave-cinematics" }
 tracing = { workspace = true }
 
 [dev-dependencies]
