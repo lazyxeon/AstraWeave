@@ -262,14 +262,9 @@ mod camera_key_tests {
         assert!((key.fov_rad() - std::f32::consts::FRAC_PI_2).abs() < 0.001);
     }
 
-    #[test]
-    fn test_camera_key_is_typical_fov() {
-        assert!(CameraKey::at_origin(60.0).is_typical_fov());
-        assert!(CameraKey::at_origin(30.0).is_typical_fov());
-        assert!(CameraKey::at_origin(120.0).is_typical_fov());
-        assert!(!CameraKey::at_origin(20.0).is_typical_fov());
-        assert!(!CameraKey::at_origin(150.0).is_typical_fov());
-    }
+    // C.7.D: `test_camera_key_is_typical_fov` removed alongside the
+    // `is_typical_fov` method (zero production callers; replaced by
+    // `sanitize()` at the wider [10°, 170°] canonical range).
 
     #[test]
     fn test_camera_key_lerp() {

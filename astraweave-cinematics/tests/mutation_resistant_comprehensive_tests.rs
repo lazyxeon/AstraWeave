@@ -628,16 +628,11 @@ mod camera_key_tests {
         assert!((k.fov_rad() - std::f32::consts::FRAC_PI_3).abs() < 0.001);
     }
 
-    #[test]
-    fn is_typical_fov_boundaries() {
-        assert!(CameraKey::at_origin(30.0).is_typical_fov()); // lower bound inclusive
-        assert!(CameraKey::at_origin(120.0).is_typical_fov()); // upper bound inclusive
-        assert!(CameraKey::at_origin(75.0).is_typical_fov()); // middle
-        assert!(!CameraKey::at_origin(29.9).is_typical_fov()); // just below
-        assert!(!CameraKey::at_origin(120.1).is_typical_fov()); // just above
-        assert!(!CameraKey::at_origin(0.0).is_typical_fov());
-        assert!(!CameraKey::at_origin(180.0).is_typical_fov());
-    }
+    // C.7.D: `is_typical_fov_boundaries` removed alongside the
+    // `is_typical_fov` method itself (zero production callers; replaced
+    // by `sanitize()` at the wider [10°, 170°] canonical range).
+    // sanitize boundary tests live in the inline test module in
+    // `astraweave-cinematics/src/lib.rs`.
 
     // --- Lerp: verify all fields interpolated ---
 
@@ -1689,7 +1684,17 @@ mod edge_case_tests {
         let k = CameraKey::at_origin(0.0);
         assert_eq!(k.fov_deg, 0.0);
         assert_eq!(k.fov_rad(), 0.0);
-        assert!(!k.is_typical_fov());
+        // C.7.D: `is_typical_fov` removed; pre-C.7.D this asserted
+        // `!k.is_typical_fov()` (0° < 30° tighter range). Post-C.7.D the
+        // canonical-range check is `sanitize()` which clamps 0° → 10°
+        // (still below the tighter typical range; behavioral assertion
+        // preserved by checking the clamp would activate).
+        let mut k_sanitized = k.clone();
+        k_sanitized.sanitize();
+        assert!(
+            k_sanitized.fov_deg >= 10.0,
+            "sanitize should clamp fov_deg=0 to minimum"
+        );
     }
 
     #[test]

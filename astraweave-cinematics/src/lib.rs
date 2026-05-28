@@ -282,9 +282,48 @@ impl CameraKey {
         self.fov_deg.to_radians()
     }
 
-    /// Returns true if the FOV is a typical range (30-120 degrees).
-    pub fn is_typical_fov(&self) -> bool {
-        (30.0..=120.0).contains(&self.fov_deg)
+    /// Clamp invalid configurations to valid ones.
+    ///
+    /// Mirrors [`astraweave_camera::FreeFly::sanitize`] (Unified Camera
+    /// campaign sub-phase C.6.F) at the cinematics-keyframe layer.
+    /// Callers invoke explicitly when they may have received pathological
+    /// input (deserialized timelines, programmatically-generated keyframes,
+    /// untrusted scene data). Additionally,
+    /// `astraweave_render::Renderer::apply_camera_key` invokes this
+    /// defensively before applying a key (Unified Camera C.7.D), so the
+    /// production cinematics path is hardened without requiring every
+    /// caller to remember to sanitize.
+    ///
+    /// Specifically, `sanitize()` ensures:
+    ///
+    /// - `self.fov_deg` is in `[10.0, 170.0]` degrees. Matches FreeFly's
+    ///   `[10°, 170°]` range from C.6.F (the canonical convention range
+    ///   per `CAMERA_CONVENTIONS.md` §2.1's typical FOV expectations).
+    ///   Pre-C.7.D this crate had `is_typical_fov` returning a bool for
+    ///   the tighter `30°..=120°` range but it was documentation-only
+    ///   (zero callers); `sanitize()` replaces it with the wider
+    ///   canonical range to harmonize with FreeFly.
+    /// - `self.look_at != self.pos`: if they are exactly equal
+    ///   (degenerate look-direction with no defined direction), `look_at`
+    ///   is set to `pos + (1.0, 0.0, 0.0)` (canonical +X forward per
+    ///   `CAMERA_CONVENTIONS.md` §2.8). Resolves the silent-degenerate-
+    ///   acceptance bug (C.5 audit finding L.5.17) deterministically
+    ///   rather than relying on
+    ///   `astraweave_render::Renderer::apply_camera_key`'s implicit
+    ///   `normalize_or_zero` → `atan2(0,0) = 0` fallback. Exact equality
+    ///   only — near-degenerate cases (look_at ≈ pos but not exactly
+    ///   equal) are out of scope per the C.7.D planning round's locked
+    ///   decision.
+    ///
+    /// Pos and t are never modified.
+    ///
+    /// Added in Unified Camera campaign sub-phase C.7.D per C.5 audit
+    /// finding L.5.17.
+    pub fn sanitize(&mut self) {
+        self.fov_deg = self.fov_deg.clamp(10.0, 170.0);
+        if self.look_at == self.pos {
+            self.look_at = (self.pos.0 + 1.0, self.pos.1, self.pos.2);
+        }
     }
 
     /// Linearly interpolates between two camera keys.
@@ -1366,16 +1405,76 @@ mod tests {
         assert!((rad - std::f32::consts::FRAC_PI_2).abs() < 0.0001);
     }
 
+    // C.7.D: `test_camera_key_is_typical_fov` removed alongside the
+    // `is_typical_fov` method (zero production callers; replaced by
+    // `sanitize()` at the wider [10°, 170°] canonical range per Q6 of
+    // the C.7.D planning round). The new `sanitize_*` tests below cover
+    // the post-C.7.D behavior; they mirror C.6.F's six FreeFly sanitize
+    // tests adapted for CameraKey's specifics (tuple storage, no aspect
+    // field, exact-equal degenerate look_at check).
+
     #[test]
-    fn test_camera_key_is_typical_fov() {
-        let typical = CameraKey::new(Time(0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 60.0);
-        assert!(typical.is_typical_fov());
+    fn sanitize_clamps_fov_deg_below_minimum() {
+        let mut key = CameraKey::new(Time(0.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 5.0);
+        key.sanitize();
+        assert_eq!(key.fov_deg, 10.0, "fov_deg should clamp to 10° minimum");
+    }
 
-        let wide = CameraKey::new(Time(0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 150.0);
-        assert!(!wide.is_typical_fov());
+    #[test]
+    fn sanitize_clamps_fov_deg_above_maximum() {
+        let mut key = CameraKey::new(Time(0.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 200.0);
+        key.sanitize();
+        assert_eq!(key.fov_deg, 170.0, "fov_deg should clamp to 170° maximum");
+    }
 
-        let narrow = CameraKey::new(Time(0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 10.0);
-        assert!(!narrow.is_typical_fov());
+    #[test]
+    fn sanitize_resolves_degenerate_look_at_to_plus_x() {
+        // look_at == pos is degenerate (undefined direction). sanitize sets
+        // look_at = pos + (1, 0, 0) (canonical +X forward per §2.8).
+        let mut key = CameraKey::new(Time(0.0), (5.0, 3.0, 2.0), (5.0, 3.0, 2.0), 60.0);
+        key.sanitize();
+        assert_eq!(
+            key.look_at,
+            (6.0, 3.0, 2.0),
+            "degenerate look_at should resolve to pos + (1, 0, 0)"
+        );
+    }
+
+    #[test]
+    fn sanitize_preserves_valid_look_at() {
+        // Non-degenerate look_at is preserved unchanged.
+        let mut key = CameraKey::new(Time(0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 10.0), 60.0);
+        key.sanitize();
+        assert_eq!(
+            key.look_at,
+            (0.0, 0.0, 10.0),
+            "valid look_at should be preserved"
+        );
+    }
+
+    #[test]
+    fn sanitize_is_idempotent_on_valid_key() {
+        let mut key = CameraKey::new(Time(0.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 60.0);
+        let before = key.clone();
+        key.sanitize();
+        assert_eq!(
+            key, before,
+            "sanitize on already-valid key should be a no-op"
+        );
+    }
+
+    #[test]
+    fn sanitize_preserves_pos_and_time() {
+        // sanitize affects fov_deg and (conditionally) look_at; pos and t
+        // are never modified, even when sanitize triggers (here both
+        // out-of-range fov_deg AND degenerate look_at trigger).
+        let mut key = CameraKey::new(Time(1.5), (3.0, 4.0, 5.0), (3.0, 4.0, 5.0), 200.0);
+        key.sanitize();
+        assert_eq!(key.pos, (3.0, 4.0, 5.0), "pos should be preserved");
+        assert_eq!(key.t, Time(1.5), "t should be preserved");
+        // (look_at and fov_deg are modified per the degenerate + clamp cases)
+        assert_eq!(key.look_at, (4.0, 4.0, 5.0));
+        assert_eq!(key.fov_deg, 170.0);
     }
 
     #[test]

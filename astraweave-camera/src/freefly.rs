@@ -105,10 +105,11 @@ impl FreeFly {
     /// Specifically, `sanitize()` ensures:
     ///
     /// - `self.fovy` is in `[10°, 170°].to_radians()` (sensible range;
-    ///   matches `astraweave_cinematics::CameraKey::is_typical_fov`'s
-    ///   validation thresholds, though that method clamps to `30..=120°`
-    ///   — this is a more permissive bound to avoid surprising callers
-    ///   whose authored cameras sit slightly outside the cinematics
+    ///   matches `astraweave_cinematics::CameraKey::sanitize`'s
+    ///   `[10°, 170°]` clamp range. Pre-C.7.D the cinematics layer
+    ///   had a separate `is_typical_fov` query returning a bool for the
+    ///   tighter `30°..=120°` range, but it had zero callers; C.7.D
+    ///   removed it and harmonized both layers to this wider canonical
     ///   range).
     /// - `self.znear` is `> 0.0001` (tiny but non-zero; prevents
     ///   division-by-zero in `Mat4::perspective_rh` while preserving

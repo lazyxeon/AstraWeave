@@ -3369,6 +3369,21 @@ fn vs(input: VSIn) -> VSOut {
 
     // --- Cinematics wiring ---
     fn apply_camera_key(cam: &mut FreeFly, k: &awc::CameraKey) {
+        // C.7.D (Unified Camera campaign): defensive sanitize before
+        // applying. Hardens the production cinematics path
+        // (cutscene_render_demo via tick_cinematics, wired C.7.B) against
+        // degenerate keys — out-of-range fov_deg gets clamped to
+        // [10°, 170°] and look_at == pos gets resolved to pos + (1,0,0)
+        // (canonical +X forward). Per C.5 audit finding L.5.17.
+        //
+        // Clone-and-sanitize pattern: the parameter is &CameraKey
+        // (shared ref owned by the timeline); sanitize needs &mut. The
+        // local clone leaves the caller's key unchanged while hardening
+        // the applied values. CameraKey derives Clone (verified C.7.D
+        // Phase 1A); the struct is small (tuples + f32 + Time).
+        let mut k = k.clone();
+        k.sanitize();
+
         let pos = glam::Vec3::new(k.pos.0, k.pos.1, k.pos.2);
         let look = glam::Vec3::new(k.look_at.0, k.look_at.1, k.look_at.2);
         let dir = (look - pos).normalize_or_zero();
