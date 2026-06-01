@@ -8,6 +8,7 @@
 //! - VFX trigger system
 //! - Sequencer playback controls
 
+use astraweave_cinematics::{CameraKey, Time};
 use egui::{Color32, RichText, Ui, Vec2};
 use tracing::info;
 
@@ -213,26 +214,28 @@ impl PlaybackSpeed {
     }
 }
 
-/// Camera keyframe
-#[derive(Debug, Clone)]
-pub struct CameraKeyframe {
-    pub time: f32,
-    pub position: (f32, f32, f32),
-    pub look_at: (f32, f32, f32),
-    pub fov: f32,
-    pub roll: f32,
-}
+// C.7.C (Unified Camera campaign): the editor's parallel `CameraKeyframe`
+// type retired. `CinematicsPanel` now operates on canonical
+// `astraweave_cinematics::CameraKey` directly (field mapping: time→t,
+// position→pos, look_at→look_at, fov→fov_deg). The `roll` field dropped
+// entirely — C.7.0 §3's empirical investigation found it UI-state-only
+// dormant (slider write + label read + lerp, all within this panel; no
+// view-matrix conversion, no renderer flow, no serialization). The
+// editor's keyframe data has no persistence path (verified C.7.C Phase 1B:
+// no Serialize/Deserialize on CameraKeyframe or ClipData), so the
+// `CameraKeyframe → CameraKey` transition is a clean break with no
+// backward-compat shim. The default keyframe values that
+// `CameraKeyframe::default()` provided (pos (0,5,-10), look_at (0,0,0),
+// fov 60) are now constructed explicitly via
+// `CameraKey::new(Time(t), (0.0, 5.0, -10.0), (0.0, 0.0, 0.0), 60.0)` at
+// the former-default call sites.
 
-impl Default for CameraKeyframe {
-    fn default() -> Self {
-        Self {
-            time: 0.0,
-            position: (0.0, 5.0, -10.0),
-            look_at: (0.0, 0.0, 0.0),
-            fov: 60.0,
-            roll: 0.0,
-        }
-    }
+/// The editor's default camera keyframe values, preserved from the
+/// retired `CameraKeyframe::default()` (C.7.C). Canonical `CameraKey`
+/// intentionally has no `Default` impl (it's data with no universally-
+/// correct default), so the editor constructs its UI default here.
+fn default_camera_key(time: f32) -> CameraKey {
+    CameraKey::new(Time(time), (0.0, 5.0, -10.0), (0.0, 0.0, 0.0), 60.0)
 }
 
 /// Track entry
@@ -277,7 +280,7 @@ pub struct TrackClip {
 #[non_exhaustive]
 pub enum ClipData {
     Camera {
-        keyframes: Vec<CameraKeyframe>,
+        keyframes: Vec<CameraKey>,
     },
     Animation {
         target_id: u32,
@@ -486,7 +489,7 @@ pub struct CinematicsPanel {
 
     // Camera editing
     camera_interpolation: CameraInterpolation,
-    camera_keyframes: Vec<CameraKeyframe>,
+    camera_keyframes: Vec<CameraKey>,
     preview_camera: bool,
 
     // Editing state
@@ -598,21 +601,19 @@ impl CinematicsPanel {
         });
 
         // Add sample keyframes
-        self.camera_keyframes.push(CameraKeyframe {
-            time: 0.0,
-            position: (0.0, 5.0, -15.0),
-            look_at: (0.0, 0.0, 0.0),
-            fov: 60.0,
-            roll: 0.0,
-        });
+        self.camera_keyframes.push(CameraKey::new(
+            Time(0.0),
+            (0.0, 5.0, -15.0),
+            (0.0, 0.0, 0.0),
+            60.0,
+        ));
 
-        self.camera_keyframes.push(CameraKeyframe {
-            time: 5.0,
-            position: (10.0, 8.0, -10.0),
-            look_at: (0.0, 2.0, 0.0),
-            fov: 50.0,
-            roll: 0.0,
-        });
+        self.camera_keyframes.push(CameraKey::new(
+            Time(5.0),
+            (10.0, 8.0, -10.0),
+            (0.0, 2.0, 0.0),
+            50.0,
+        ));
     }
 
     fn next_id(&mut self) -> u32 {
@@ -953,13 +954,11 @@ impl CinematicsPanel {
                 ui.label(RichText::new("Keyframes").strong());
                 if ui.button("+ Add Keyframe").clicked() {
                     info!(target: "aw_editor::panels::cinematics_panel", time = self.current_time, "Camera keyframe added");
-                    self.camera_keyframes.push(CameraKeyframe {
-                        time: self.current_time,
-                        ..Default::default()
-                    });
+                    self.camera_keyframes
+                        .push(default_camera_key(self.current_time));
                     self.camera_keyframes.sort_by(|a, b| {
-                        a.time
-                            .partial_cmp(&b.time)
+                        a.t.0
+                            .partial_cmp(&b.t.0)
                             .unwrap_or(std::cmp::Ordering::Equal)
                     });
                 }
@@ -975,16 +974,16 @@ impl CinematicsPanel {
 
                         ui.horizontal(|ui| {
                             if ui
-                                .selectable_label(is_selected, format!("🔑 {:.2}s", keyframe.time))
+                                .selectable_label(is_selected, format!("🔑 {:.2}s", keyframe.t.0))
                                 .clicked()
                             {
                                 self.selected_keyframe = Some(idx);
-                                self.current_time = keyframe.time;
+                                self.current_time = keyframe.t.0;
                             }
 
                             ui.label(format!(
                                 "Pos: ({:.1}, {:.1}, {:.1})",
-                                keyframe.position.0, keyframe.position.1, keyframe.position.2
+                                keyframe.pos.0, keyframe.pos.1, keyframe.pos.2
                             ));
 
                             if ui.small_button("[Del]").clicked() {
@@ -1012,8 +1011,10 @@ impl CinematicsPanel {
 
                     ui.horizontal(|ui| {
                         ui.label("Time:");
+                        // CameraKey.t is a `Time(pub f32)` newtype; bind the
+                        // DragValue to the inner f32 via `.t.0` (C.7.C).
                         ui.add(
-                            egui::DragValue::new(&mut keyframe.time)
+                            egui::DragValue::new(&mut keyframe.t.0)
                                 .speed(0.01)
                                 .range(0.0..=self.settings.duration)
                                 .suffix("s"),
@@ -1023,17 +1024,17 @@ impl CinematicsPanel {
                     ui.horizontal(|ui| {
                         ui.label("Position:");
                         ui.add(
-                            egui::DragValue::new(&mut keyframe.position.0)
+                            egui::DragValue::new(&mut keyframe.pos.0)
                                 .speed(0.1)
                                 .prefix("X: "),
                         );
                         ui.add(
-                            egui::DragValue::new(&mut keyframe.position.1)
+                            egui::DragValue::new(&mut keyframe.pos.1)
                                 .speed(0.1)
                                 .prefix("Y: "),
                         );
                         ui.add(
-                            egui::DragValue::new(&mut keyframe.position.2)
+                            egui::DragValue::new(&mut keyframe.pos.2)
                                 .speed(0.1)
                                 .prefix("Z: "),
                         );
@@ -1060,13 +1061,12 @@ impl CinematicsPanel {
 
                     ui.horizontal(|ui| {
                         ui.label("FOV:");
-                        ui.add(egui::Slider::new(&mut keyframe.fov, 10.0..=120.0).suffix("°"));
+                        ui.add(egui::Slider::new(&mut keyframe.fov_deg, 10.0..=120.0).suffix("°"));
                     });
 
-                    ui.horizontal(|ui| {
-                        ui.label("Roll:");
-                        ui.add(egui::Slider::new(&mut keyframe.roll, -180.0..=180.0).suffix("°"));
-                    });
+                    // C.7.C: Roll slider removed. `CameraKeyframe.roll` was
+                    // UI-state-only dormant (C.7.0 §3); canonical
+                    // `CameraKey` has no roll field.
                 });
             }
         }
@@ -1269,7 +1269,7 @@ impl CinematicsPanel {
         ui.group(|ui| {
             ui.label(RichText::new("Current Camera State").strong());
 
-            if let Some(keyframe) = self.get_interpolated_camera() {
+            if let Some(keyframe) = self.current_interpolated_key() {
                 egui::Grid::new("camera_preview_grid")
                     .num_columns(2)
                     .spacing([10.0, 4.0])
@@ -1277,7 +1277,7 @@ impl CinematicsPanel {
                         ui.label("Position:");
                         ui.label(format!(
                             "({:.2}, {:.2}, {:.2})",
-                            keyframe.position.0, keyframe.position.1, keyframe.position.2
+                            keyframe.pos.0, keyframe.pos.1, keyframe.pos.2
                         ));
                         ui.end_row();
 
@@ -1289,12 +1289,11 @@ impl CinematicsPanel {
                         ui.end_row();
 
                         ui.label("FOV:");
-                        ui.label(format!("{:.1}°", keyframe.fov));
+                        ui.label(format!("{:.1}°", keyframe.fov_deg));
                         ui.end_row();
 
-                        ui.label("Roll:");
-                        ui.label(format!("{:.1}°", keyframe.roll));
-                        ui.end_row();
+                        // C.7.C: Roll preview label removed (roll field
+                        // dropped from the canonical CameraKey).
                     });
             } else {
                 ui.label("No keyframes to interpolate");
@@ -1376,7 +1375,16 @@ impl CinematicsPanel {
         });
     }
 
-    fn get_interpolated_camera(&self) -> Option<CameraKeyframe> {
+    /// Interpolated canonical [`CameraKey`] at the current playback time.
+    ///
+    /// C.7.C: replaces the retired `get_interpolated_camera() ->
+    /// Option<CameraKeyframe>`. Returns the canonical `CameraKey` (not the
+    /// removed parallel type), and delegates the actual field-by-field
+    /// interpolation to [`CameraKey::lerp`] rather than hand-rolling it.
+    /// This thin helper retains only the adjacent-keyframe-finding logic
+    /// (locating the two keyframes bracketing `current_time`); the lerp
+    /// itself is the canonical method's responsibility.
+    fn current_interpolated_key(&self) -> Option<CameraKey> {
         if self.camera_keyframes.is_empty() {
             return None;
         }
@@ -1385,37 +1393,31 @@ impl CinematicsPanel {
             return Some(self.camera_keyframes[0].clone());
         }
 
-        // Find surrounding keyframes
-        let mut before: Option<&CameraKeyframe> = None;
-        let mut after: Option<&CameraKeyframe> = None;
+        // Find surrounding keyframes (compare on the Time newtype's inner f32).
+        let mut before: Option<&CameraKey> = None;
+        let mut after: Option<&CameraKey> = None;
 
         for kf in &self.camera_keyframes {
-            if kf.time <= self.current_time {
+            if kf.t.0 <= self.current_time {
                 before = Some(kf);
             }
-            if kf.time >= self.current_time && after.is_none() {
+            if kf.t.0 >= self.current_time && after.is_none() {
                 after = Some(kf);
             }
         }
 
         match (before, after) {
-            (Some(b), Some(a)) if b.time != a.time => {
-                let t = (self.current_time - b.time) / (a.time - b.time);
-                Some(CameraKeyframe {
-                    time: self.current_time,
-                    position: (
-                        b.position.0 + (a.position.0 - b.position.0) * t,
-                        b.position.1 + (a.position.1 - b.position.1) * t,
-                        b.position.2 + (a.position.2 - b.position.2) * t,
-                    ),
-                    look_at: (
-                        b.look_at.0 + (a.look_at.0 - b.look_at.0) * t,
-                        b.look_at.1 + (a.look_at.1 - b.look_at.1) * t,
-                        b.look_at.2 + (a.look_at.2 - b.look_at.2) * t,
-                    ),
-                    fov: b.fov + (a.fov - b.fov) * t,
-                    roll: b.roll + (a.roll - b.roll) * t,
-                })
+            (Some(b), Some(a)) if b.t.0 != a.t.0 => {
+                let t = (self.current_time - b.t.0) / (a.t.0 - b.t.0);
+                // Delegate the per-field interpolation to the canonical
+                // CameraKey::lerp (which interpolates t, pos, look_at,
+                // fov_deg). The returned key's `t` is the lerped timestamp;
+                // for preview-display purposes this matches the old
+                // behavior closely enough (the old method set time =
+                // current_time exactly; lerp sets t = lerp(b.t, a.t, t)
+                // which equals current_time when the factor is derived
+                // from current_time as above).
+                Some(b.lerp(a, t))
             }
             (Some(kf), _) | (_, Some(kf)) => Some(kf.clone()),
             _ => None,
@@ -1473,11 +1475,11 @@ impl CinematicsPanel {
         id
     }
 
-    pub fn add_camera_keyframe(&mut self, keyframe: CameraKeyframe) {
+    pub fn add_camera_keyframe(&mut self, keyframe: CameraKey) {
         self.camera_keyframes.push(keyframe);
         self.camera_keyframes.sort_by(|a, b| {
-            a.time
-                .partial_cmp(&b.time)
+            a.t.0
+                .partial_cmp(&b.t.0)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
     }
@@ -1590,10 +1592,7 @@ mod tests {
         let mut panel = CinematicsPanel::new();
         let initial_count = panel.keyframe_count();
 
-        panel.add_camera_keyframe(CameraKeyframe {
-            time: 15.0,
-            ..Default::default()
-        });
+        panel.add_camera_keyframe(default_camera_key(15.0));
 
         assert_eq!(panel.keyframe_count(), initial_count + 1);
     }
@@ -1985,7 +1984,7 @@ mod tests {
     #[test]
     fn test_clip_data_camera_variant() {
         let clip = ClipData::Camera {
-            keyframes: vec![CameraKeyframe::default()],
+            keyframes: vec![default_camera_key(0.0)],
         };
         assert_eq!(clip.name(), "Camera");
         if let ClipData::Camera { keyframes } = clip {

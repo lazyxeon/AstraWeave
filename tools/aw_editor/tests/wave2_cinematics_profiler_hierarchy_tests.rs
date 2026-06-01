@@ -6,8 +6,8 @@
 //! - hierarchy_panel.rs (768L, 17 inline = 2.2/100L)
 
 use aw_editor_lib::panels::cinematics_panel::{
-    CameraInterpolation, CameraKeyframe, CinematicsPanel, CinematicsTab, ClipData, PlaybackSpeed,
-    PlaybackState, TimelineSettings, TrackEntry, TrackType,
+    CameraInterpolation, CinematicsPanel, CinematicsTab, ClipData, PlaybackSpeed, PlaybackState,
+    TimelineSettings, TrackEntry, TrackType,
 };
 use aw_editor_lib::panels::hierarchy_panel::{HierarchyAction, HierarchyPanel};
 use aw_editor_lib::panels::profiler_panel::{
@@ -173,19 +173,15 @@ fn playback_speed_format_matches_display() {
 // CAMERA KEYFRAME DEFAULTS
 // ============================================================================
 
-#[test]
-fn camera_keyframe_defaults() {
-    let k = CameraKeyframe::default();
-    assert!((k.time).abs() < 0.001);
-    assert!((k.position.0).abs() < 0.001);
-    assert!((k.position.1 - 5.0).abs() < 0.001);
-    assert!((k.position.2 - (-10.0)).abs() < 0.001);
-    assert!((k.look_at.0).abs() < 0.001);
-    assert!((k.look_at.1).abs() < 0.001);
-    assert!((k.look_at.2).abs() < 0.001);
-    assert!((k.fov - 60.0).abs() < 0.001);
-    assert!((k.roll).abs() < 0.001);
-}
+// C.7.C (Unified Camera campaign): `camera_keyframe_defaults` removed.
+// The editor's parallel `CameraKeyframe` type retired; `CinematicsPanel`
+// now operates on canonical `astraweave_cinematics::CameraKey` directly.
+// The editor's UI-default keyframe values (pos (0,5,-10), look_at (0,0,0),
+// fov 60) are constructed via the private `default_camera_key` helper in
+// cinematics_panel.rs; the canonical CameraKey has no `Default` impl and
+// no `roll` field (roll was UI-state-only dormant per C.7.0 §3, dropped
+// in C.7.C). Coverage for CameraKey's own behavior (incl. sanitize) lives
+// in astraweave-cinematics' test suite.
 
 // ============================================================================
 // TRACK ENTRY DEFAULTS

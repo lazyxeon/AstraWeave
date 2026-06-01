@@ -2070,6 +2070,7 @@ dependencies = [
  "astraweave-behavior",
  "astraweave-blend",
  "astraweave-camera",
+ "astraweave-cinematics",
  "astraweave-core",
  "astraweave-dialogue",
  "astraweave-ecs",

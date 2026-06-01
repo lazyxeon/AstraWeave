@@ -72,6 +72,12 @@ astraweave-profiling = { path = "../../astraweave-profiling" }
 astraweave-alloc = { workspace = true, optional = true }
 astraweave-render = { path = "../../astraweave-render", features = ["gltf-assets", "textures"] }
 astraweave-camera = { path = "../../astraweave-camera" }
+# C.7.C (Unified Camera campaign): added so the editor's CinematicsPanel
+# operates on canonical `astraweave_cinematics::CameraKey` directly, retiring
+# the parallel `CameraKeyframe` type. Third and final new dependency edge in
+# the cinematics consolidation chapter (gameplay C.7.A, demo C.7.B, editor
+# C.7.C). No circular risk (astraweave-cinematics has zero astraweave-* deps).
+astraweave-cinematics = { path = "../../astraweave-cinematics" }
 astraweave-author = { path = "../../astraweave-author" }
 astraweave-asset = { path = "../../astraweave-asset", features = ["blend"] }
 astraweave-blend = { path = "../../crates/astraweave-blend" }
