@@ -502,8 +502,9 @@ Sub-phase A.2 — Bake: STOPPED at Phase 3 gate 2026-05-16 (no commit; session d
 Sub-phase A.3 — Grassland biome validate-only: COMPLETE 2026-05-16, this commit. Phase 1 audit revealed grassland already wired (5 layers PNG-native: grass/rock_smooth/dirt/sand/moss-via-rock_lichen); all 27 Tier 1 PNGs already deployed at runtime root. Re-scoped per Andrew-gate to validation-only. Headless integration test (`cargo test -p astraweave-render --features textures --test headless_integration`) passes — confirms canonical `load_pack_from_toml` path consumes existing grassland config without error. Splat-shader visual validation deferred (CLI agent cannot capture screenshots; manual visual validation Andrew runs locally post-commit).
 Sub-phase B — Engine/project asset organization: NOT STARTED (recommend skip via Andrew-gate (b) b-3).
 Sub-phase C — Tier 1 content quality upgrade (biome-grouped): NOT STARTED — re-evaluated after A.3 per §12 entry. Forward chain may skip C entirely if existing biome configs already consume Tier 1 PNGs at acceptable visual quality.
-Sub-phase D — Performance verification + optimization: NOT STARTED (gated on Sub-phase C PASS or skip-C decision).
-Sub-phase E — Closeout: NOT STARTED (gated on Sub-phase D PASS; will codify §13.5 §7.11 5-pillar elevation alongside §13.3 §7.10).
+Sub-phase D-core — Absolute texture-footprint baseline: COMPLETE 2026-06-02, this commit. Reframed from §6.2's dissolved placeholder→replaced delta (C demand-driven; real PBR already deployed; no clean placeholder baseline). Analytical (no code): runtime terrain textures upload uncompressed RGBA8 at a hardcoded 1024² (`material_loader.rs:523-524` `build_arrays`), so footprint is exact from format+mip math. Verdict vs budget = ACCEPTABLE-with-optimization-candidate. See §12 D-core entry. D.2 (post-C comparison) retired with C; D.3 (optimization) deferred = "fix the broken BC7/KTX2 cook path" (4× VRAM overspend vs §2.7 budget model), conditional separate session.
+Sub-phase D editor frame-perf (145.5ms / ViewportRenderer-drop): ROUTED OUT of TAQ per §6.3 escape clause — editor-runtime perf, asset-content-independent (observed with real PBR already deployed). Separate editor-perf work.
+Sub-phase E — Closeout: NOT STARTED (gated on Sub-phase D-core verdict acceptance + optional optimization-session decision; will codify §13.5 §7.11 5-pillar elevation alongside §13.3 §7.10).
 ```
 
 Format for completion updates: `<sub-phase>: COMPLETE <YYYY-MM-DD>, commit <hash>`.
@@ -892,6 +893,44 @@ The validation outcome is **positive at the load-path level** (headless test pas
 - Phase 1 audit was non-skippable (executed); Phase 2 gate was non-skippable (executed; Andrew approved validate-only re-scope).
 
 **Scope held**: A.3 session modified only this campaign doc (Status header + §11 + §12 entry + §13.5 codification). No production code change. No asset file change. No test-file change. No cook tool change. Single-concern session pattern preserved.
+
+---
+
+### 2026-06-02, Sub-phase D-core (absolute texture-footprint baseline), this commit
+
+**Reframe basis.** D-as-§6.2 was a placeholder→replaced perf *delta* (D.1 placeholder baseline → D.2 post-Sub-phase-C comparison). The D-scope fork (2026-06-02) established both endpoints no longer exist: Sub-phase C is demand-driven (gate-scope reconciliation), the real PBR Tier 1 set is already deployed and consumed (A.3), and no clean placeholder baseline is recoverable (`assets/materials/placeholder_backup/` is a heterogeneous partial archive of a different material set, not a swap-in). The delta is dissolved. D-core measures the **absolute GPU texture-memory footprint of the deployed real-PBR set**, verdicted against a stated budget. Analytical-only (no code, no harness): the upload model makes the math exact.
+
+**Upload model (load-bearing for exactness).** `MaterialManager::build_arrays` ([`material_loader.rs:510-536`](../../astraweave-render/src/material_loader.rs)) **hardcodes `width=1024, height=1024`** and resizes every layer (Lanczos3) to 1024² regardless of source PNG dimensions. Three D2Array textures per pack — albedo `Rgba8UnormSrgb`, normal `Rgba8Unorm`, mra `Rgba8Unorm` (all 4 bytes/px). Full mip chain: `mip_level_count_for(1024) = 11` (multiplier Σ(1/4)^i ≈ 1.3333). Cook-to-BC path remains broken (A.2) → runtime is uncompressed RGBA8.
+
+**Footprint (exact, per actual deployed dimensions):**
+- Per layer-slot (1024² RGBA8 + 11 mips): **5.333 MiB**. Per material (albedo+normal+mra): **16.0 MiB**.
+- Standard 5-layer biome pack (3 arrays × 5 layers): **80.0 MiB**.
+- All 10 packs resident (worst case): **~800 MiB**.
+- Residency is one active biome pack at a time on the terrain forward path (`terrain_material_manager` singular `material_cache`, "current biome pack") → **realistic terrain-material VRAM = 80 MiB**.
+- Tier 1 consumption (6 of 9 materials, across 5 biomes): beach[gravel]; mountain[mountain_rock,snow,gravel]; river[mud,gravel,moss]; swamp[mud,moss]; tundra[snow,ice,gravel,mountain_rock]. Each Tier 1 material, as a pack layer, costs the uniform 16.0 MiB (3 maps) — no different from any other layer, because all are normalized to 1024².
+
+**Budget stated (doc-derived + engine-derived):**
+- **§2.7 (doc):** target 2048² **BC7/BC5-compressed** ≈ 12 MB/material × 32 slots = **~384 MB peak**; 1024² fallback "~96 MB total". The budget model assumes compression.
+- **Engine (`gpu_memory.rs` `CategoryBudget` defaults):** Textures **soft 256 MB / hard 512 MB** (total budget 2 GB default).
+
+**Verdict against the stated budget: ACCEPTABLE (realistic residency) + OPTIMIZATION-CANDIDATE (format), NOT blocking.**
+- One active biome pack at 80 MiB is **31% of the 256 MB soft texture budget** and **21% of §2.7's 384 MB peak** → acceptable at typical residency.
+- BUT the deployment is uncompressed RGBA8 = **4× the VRAM-per-material §2.7's own budget assumed** (16 MiB vs 4 MiB compressed). The single highest-value terrain-texture optimization is **fixing the broken BC7/KTX2 cook path** (A.2) → 80 MiB → ~20 MiB per pack. Deferred to a conditional separate session per §6.2 D.3 (D-core verdicts only; it does not optimize).
+- Forward-looking risk (not current): if multi-biome blending ever holds many packs resident, N×80 MiB scales toward the 512 MB hard budget (~6 packs ≈ 480 MiB). Single-pack forward path makes this non-blocking today.
+
+**Claim bounds (explicit):**
+- IS: texture-memory footprint of the deployed Tier 1 set, verdicted against a stated budget.
+- NOT frame-time: the editor 145.5ms / `Dropping ViewportRenderer GPU resources` alert is **editor-runtime perf routed OUT of TAQ** per §6.3 (observed with real PBR already deployed → asset-content-independent).
+- NOT a placeholder delta (dissolved).
+- Does NOT touch the 27-PNG runtime-vs-source divergence (its own session; D-core measures the runtime set the loader consumes).
+
+**Incidental findings surfaced (flagged, NOT fixed this session — single-concern discipline):**
+1. **Source-disk resolution inconsistency is GPU-invisible.** Source PNGs span 1024²/2048²/4096² (cloth/plaster/rock_lichen/tree_bark/tree_leaves albedo+normal are 4096²); ALL are downsampled to 1024² on upload. The inconsistency costs repo size + load-time decode (decoding 4096² to discard ~93%), **not VRAM**. This *falsifies the D-scope-fork's "inconsistent VRAM" hypothesis* and routes the concern to the 27-PNG cleanup session (disk hygiene), not GPU optimization.
+2. **3 of 9 Tier 1 materials unreferenced by any biome pack** (cobblestone, metal_rusted, wood_planks) → zero terrain VRAM; UI-only per §5.2 C.9.
+3. **`polyhaven` pack references 10 missing files** (`aerial_rocks_albedo/normal`, `cobblestone_albedo/normal`, `metal_plate_*`, `plastered_wall_*`, `wood_floor_*` — `_albedo`/`_normal` naming, none found anywhere in `assets/materials/`). The pack would fail/fallback on load — a silent-failure/missing-asset finding. Routes to a separate decision (polyhaven is a showcase pack, not a real biome, not Tier 1).
+4. **Engine self-reported material memory is a stub.** `MaterialManager` hardcodes `gpu_memory_bytes: 1024*1024*10` (10 MiB placeholder, [`material.rs:841`](../../astraweave-render/src/material.rs)) — any in-engine "material memory" readout is fake, which is why analytical measurement was required.
+
+**Scope held**: D-core modified only this campaign doc (§11 status + this §12 entry). No production code change. No asset change. No test change. No optimization performed (verdicts only). 27-PNG divergence untouched; editor frame-alert untouched; Sub-phase C untouched; splat-coherence untouched. Single-concern session preserved.
 
 ---
 
