@@ -934,6 +934,50 @@ The validation outcome is **positive at the load-path level** (headless test pas
 
 ---
 
+### 2026-06-02, Asset-hygiene cleanup-queue findings (durable records), this commit
+
+Two asset-hygiene items surfaced during the TAQ resumption, both **out of TAQ execution scope** (separately owned), recorded here as durable ground truth so their eventual cleanup sessions start from established facts rather than re-deriving them. **These are records, not fixes** — nothing is moved, deleted, re-encoded, or repaired this session. The E-closeout cleanup-queue hand-off references this entry.
+
+#### Cleanup-queue Finding 1 — 27-PNG runtime-vs-source divergence
+
+**What.** The 9 Tier 1 materials exist as PNG triples in two locations: `assets_src/materials/` (source/archival — where A.1/A.1.B/A.1.C acquisition wrote) and the runtime root `assets/materials/` (load-bearing — the loader reads here via each biome `materials.toml` → `../<material>.png`). A.3 surfaced the dual location; the D-scope-establishment session (2026-06-02) characterized the divergence.
+
+**The divergence.** All 9 runtime-root albedo PNGs differ by md5 from their `assets_src/` copies — a *processed deployment with inconsistent processing* of undocumented provenance (A.3: "added by separate automation or manual placement"). Two illustrative cases: **cobblestone** — runtime 1024², source 2048² (downscaled); **snow** — both 2048², different md5 (same-resolution re-encode). md5 pairs recorded at characterization time (albedo `.png`; `_n`/`_mra` not individually hashed — cleanup re-confirms all 27 at execution):
+
+| material | runtime-root md5 | assets_src md5 |
+|---|---|---|
+| cobblestone | `849c5903e38dcb126eb936d2a37b47bd` | `b30275e28ce5cdcea7b2e027b662e446` |
+| gravel | `5c8261525a97b080b93aac2c9456ab94` | `7fb2eac0bfa2d9321a3417ff49d870f2` |
+| ice | `9d8d23c1aa994efb1aefece3f5bdabb1` | `b81e6d720f3c5aa7cf270f5193471778` |
+| metal_rusted | `9cdeaf02cb7f1a9f3ffb0a671e4d51a8` | `ccfbc8f04be9a57c4bf4f57e13392ef2` |
+| moss | `6b8706ed83bb5da844aa58922a8495d7` | `b768786e5303fb811853e6d1e7d1ba57` |
+| mountain_rock | `a1d56f6a3f5fc31f8e163e60c90912f0` | `9d5d99885cc7e62e0545bc6443f11de6` |
+| mud | `31b863ae1910ab1b9b1cd241f41bcbd7` | `a92d0aa18135c85cd6578663e94b9a94` |
+| snow | `e12ad20163e9e29ba73ffda6d776e875` | `5b2d39f81eb73a39d277c6f3dcd58500` |
+| wood_planks | `612fed3ed6109c02e84cb0a77b78e3f7` | `42ff36d36dc360935990b1139e787adf` |
+
+**GPU-invisible (D-core qualifier — load-bearing for priority).** The divergence costs **disk size + load-time decode, NOT VRAM.** `material_loader.rs` `build_arrays` hardcodes a 1024² array dimension and Lanczos3-resizes every layer on upload (`material_loader.rs:523-524`), so the runtime resolution spread (and the wider source spread of 1024²/2048²/4096²) is invisible to the GPU — all normalize to 1024². **This reframes the cleanup as disk/decode hygiene, not a perf optimization** (D-core baseline, commit `5881b777f`).
+
+**Open questions the cleanup inherits** (NOT decided here): which set is canonical (runtime-root the loader reads, or `assets_src/` the acquisition wrote)? document or normalize the deployment processing? regenerate the runtime set deterministically from source (and at what target resolution, given GPU only uses 1024²)? prune the redundant set?
+
+**Scope ownership.** Out of TAQ execution scope — disk/asset hygiene, separately owned.
+
+#### Cleanup-queue Finding 2 — `polyhaven` pack references 10 missing files (silent-fallback)
+
+**What.** The `polyhaven` material pack's `materials.toml` references 10 texture files not present on disk (verified absent anywhere under `assets/materials/`, D-core session): `aerial_rocks_albedo.png`, `aerial_rocks_normal.png`, `cobblestone_albedo.png`, `cobblestone_normal.png`, `metal_plate_albedo.png`, `metal_plate_normal.png`, `plastered_wall_albedo.png`, `plastered_wall_normal.png`, `wood_floor_albedo.png`, `wood_floor_normal.png` (5 materials × albedo+normal; polyhaven uses `_albedo`/`_normal` naming and declares no mra map).
+
+**Failure mode (precise).** Missing files do **not** fail the load. `build_arrays` hits `load_rgba(p)` → `Err`, logs `log::warn!("[materials] WARN missing/bad albedo for {}/{}: … → substituting neutral")`, increments `stats.*_substituted`, and continues (`material_loader.rs:785-788`). The pack **reports success** with neutral-substituted layers — so a consumer not watching `log::warn` output sees the pack "work" while it renders flat neutral placeholders for the 10 missing maps. Classic warn-logged silent fallback (no error propagated, no surfaced failure) per the CLAUDE.md silent-failure taxonomy.
+
+**Context.** `polyhaven` is a *showcase pack, not a real biome* (the 8 live `BiomeType` biomes have their own packs). It is not a live-biome blocker, but it is a broken showcase asset misrepresenting its own completeness. Note §10 already flags polyhaven's *schema structure* as preserved-as-is; this finding is the distinct *missing-content* defect.
+
+**Open questions the cleanup inherits** (NOT decided here): acquire the 10 missing files, prune the dangling references, or retire the showcase pack entirely?
+
+**Scope ownership.** Out of TAQ execution scope — showcase-asset hygiene / silent-failure surfacing, separately owned.
+
+**Scope held**: this session modified only this campaign doc (this §12 entry). No code, no asset files moved/deleted/re-encoded, no repairs. Neither finding acted on or decided. Single-concern session preserved.
+
+---
+
 ## §13 — Methodology Body of Practice (inheritance + this campaign's contributions)
 
 ### §13.1 Inheritance from Editor Multi-Tool Architecture Sub-phase 3
