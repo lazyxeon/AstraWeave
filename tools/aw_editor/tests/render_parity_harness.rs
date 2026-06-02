@@ -66,11 +66,13 @@
 //! Run: `cargo test -p aw_editor --test render_parity_harness -- --nocapture`
 
 use anyhow::{Context, Result};
+use astraweave_camera::{CameraProducer, FreeFly, Projection, RenderView};
+use astraweave_cinematics as awc;
 use astraweave_core::World;
 use astraweave_render::Renderer;
 use aw_editor_lib::viewport::canonical_terrain_pack as ctp;
 use aw_editor_lib::viewport::{OrbitCamera, ViewportRenderer};
-use glam::Vec3;
+use glam::{DMat4, DVec3, Mat4, Vec3};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1448,3 +1450,1341 @@ fn editor_engine_render_parity() {
 // was deleted alongside the deprecated `update_camera_matrices` wrapper itself.
 // `editor_engine_render_parity` above is now the sole parity test and exercises
 // the canonical `Renderer::update_view` path directly.
+
+// ════════════════════════════════════════════════════════════════════════════
+// ─── C.8: Camera parity fixture families ─────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Unified Camera campaign sub-phase C.8. RenderView/matrix-level fixtures that
+// DERIVE every baseline from camera math (glam Mat4::look_to_rh / look_at_rh /
+// perspective_rh per CAMERA_CONVENTIONS §2.5/§2.6, and FreeFly's dir(yaw,pitch)
+// spherical formula) — NOT from running the producer and trusting a SHA of its
+// GPU output. This matches the RenderView-level style of
+// `orbit_camera_producer.rs` / `picking_consistency.rs`, NOT the GPU SHA style
+// of `editor_engine_render_parity` above (which is intentionally kept intact).
+//
+// Four families:
+//   1. extreme_pitch        — near-/at-singularity pitch; honest finite behavior
+//   2. non_square_aspect    — ultrawide / portrait / floor-discipline projection
+//   3. large_world_positions — world- vs camera-relative precision divergence
+//   4. cinematics_driven    — full CameraKey -> tick_cinematics -> RenderView path
+//
+// Families 1-3 are GPU-free and pass unconditionally. Family 4 is GPU-gated
+// (apply_camera_key is private; tick_cinematics — its only public reach — is a
+// Renderer method needing a wgpu device); those fixtures skip gracefully when
+// no adapter is available, mirroring `editor_engine_render_parity`.
+
+// ─── C.8 shared matrix oracles (independent re-derivation of glam look_to_rh) ─
+//
+// These re-implement glam's look_to_rh basis from first principles so a fixture
+// baseline is computed by a DIFFERENT code path than the producer's call into
+// glam. glam-0.30.x look_to_rh: f = forward.normalize(); s = f.cross(up)
+// .normalize(); u = s.cross(f); columns (s.*, u.*, -f.*, 0); col3 =
+// (-eye.dot(s), -eye.dot(u), eye.dot(f), 1). (look_at_rh(eye, center, up) ==
+// look_to_rh(eye, center - eye, up), so a target-based baseline is the same
+// basis with forward = center - eye.)
+
+/// f64-free re-derivation of `FreeFly::dir(yaw, pitch)` (the spherical forward
+/// formula at freefly.rs:55). Used by the extreme_pitch family as the
+/// independent direction oracle.
+fn freefly_dir_oracle(yaw: f32, pitch: f32) -> Vec3 {
+    let cy = yaw.cos();
+    let sy = yaw.sin();
+    let cp = pitch.cos();
+    let sp = pitch.sin();
+    Vec3::new(cy * cp, sp, sy * cp).normalize()
+}
+
+/// Independent re-derivation of `Mat4::look_to_rh(eye, forward, up)` from the
+/// raw basis arithmetic — a different code path than glam's intrinsic. Used to
+/// cross-check the producer's view matrix.
+fn manual_look_to_rh_oracle(eye: Vec3, forward: Vec3, up: Vec3) -> Mat4 {
+    let f = forward.normalize();
+    let s = f.cross(up).normalize();
+    let u = s.cross(f);
+    // glam column-major: col0=(s.x,u.x,-f.x,0), col1=(s.y,u.y,-f.y,0),
+    // col2=(s.z,u.z,-f.z,0), col3=(-eye·s, -eye·u, eye·f, 1).
+    Mat4::from_cols_array(&[
+        s.x,
+        u.x,
+        -f.x,
+        0.0,
+        s.y,
+        u.y,
+        -f.y,
+        0.0,
+        s.z,
+        u.z,
+        -f.z,
+        0.0,
+        -eye.dot(s),
+        -eye.dot(u),
+        eye.dot(f),
+        1.0,
+    ])
+}
+
+/// Max abs difference across all 16 entries of two f32 matrices.
+fn mat4_max_abs_diff(a: Mat4, b: Mat4) -> f32 {
+    let aa = a.to_cols_array();
+    let bb = b.to_cols_array();
+    let mut m = 0.0f32;
+    for i in 0..16 {
+        m = m.max((aa[i] - bb[i]).abs());
+    }
+    m
+}
+
+/// True if no entry of the matrix is NaN (also catches inf via the is_nan
+/// chain only when an op produced NaN — combined with finite checks where the
+/// fixture needs them).
+fn mat4_is_nan_free(m: Mat4) -> bool {
+    m.to_cols_array().iter().all(|v| !v.is_nan())
+}
+
+// ─── C.8 family 1: extreme_pitch ─────────────────────────────────────────────
+//
+// Near-vertical and exactly-vertical pitch. FreeFly's dir(yaw, ±pi/2) carries a
+// float residue (cos(pi/2) ~= -4.37e-8) that keeps forward non-parallel to up,
+// so look_to_rh stays FINITE even at the exact singularity — the producer's
+// honest documented behavior. OrbitCamera at its Default max_pitch
+// (pi/2 - 0.01) is well off vertical and well-conditioned.
+
+#[test]
+fn extreme_pitch_freefly_just_inside_minus_clamp() {
+    // pitch = -1.54 rad — the exact -clamp; 1.76 deg shy of -pi/2.
+    let yaw = 1.2_f32;
+    let pitch = -1.54_f32;
+    let cam = FreeFly {
+        position: Vec3::new(-8.0, 14.0, -20.0),
+        yaw,
+        pitch,
+        fovy: 75_f32.to_radians(),
+        aspect: 1.0,
+        znear: 0.05,
+        zfar: 800.0,
+    };
+    let rv: RenderView = cam.to_render_view();
+
+    let dir = freefly_dir_oracle(yaw, pitch);
+    let baseline_view = manual_look_to_rh_oracle(cam.position, dir, Vec3::Y);
+
+    let diff = mat4_max_abs_diff(rv.view, baseline_view);
+    assert!(
+        diff < 1e-5,
+        "FreeFly.to_render_view().view at pitch=-1.54 must match independently-derived \
+         look_to_rh basis; max|diff| = {diff:e} (eps 1e-5)"
+    );
+    assert!(
+        mat4_is_nan_free(rv.view) && mat4_is_nan_free(rv.view_proj),
+        "view/view_proj must be NaN-free at pitch=-1.54"
+    );
+    assert!(
+        (rv.view_dir - dir).length() < 1e-6,
+        "RenderView.view_dir must equal FreeFly::dir(yaw,pitch); got {:?}, expected {:?}",
+        rv.view_dir,
+        dir
+    );
+    assert!(
+        dir.y < -0.999,
+        "sanity: dir.y ~= sin(-1.54) ~= -0.9995 (near-vertical-down regime); got {}",
+        dir.y
+    );
+}
+
+#[test]
+fn extreme_pitch_freefly_exactly_plus_minus_half_pi_stays_finite() {
+    // EXACT singularity. FreeFly's dir(yaw, ±pi/2) carries a float residue
+    // (cos(pi/2) ~= -4.37e-8), so forward.xz != 0 and forward is NOT parallel
+    // to Vec3::Y. look_to_rh therefore stays FINITE — this is the producer's
+    // honest, documented behavior, not a degeneracy. (OrbitCamera's target-
+    // based look_at_rh DOES NaN at exact +pi/2; see the orbit fixture.)
+    let half_pi = std::f32::consts::FRAC_PI_2;
+    let yaw = 0.3_f32;
+    let eye = Vec3::new(3.0, 5.0, -2.0);
+
+    for (pitch, expected_dir_y, label) in [
+        (half_pi, 1.0_f32, "+pi/2"),
+        (-half_pi, -1.0_f32, "-pi/2"),
+    ] {
+        let cam = FreeFly {
+            position: eye,
+            yaw,
+            pitch,
+            fovy: 60_f32.to_radians(),
+            aspect: 1.5,
+            znear: 0.1,
+            zfar: 500.0,
+        };
+        let rv: RenderView = cam.to_render_view();
+
+        // Documented behavior: finite, non-NaN at the exact singularity.
+        assert!(
+            mat4_is_nan_free(rv.view) && mat4_is_nan_free(rv.view_proj),
+            "FreeFly at pitch={label} must stay FINITE (spherical residue keeps \
+             forward non-parallel to up); view/view_proj contained NaN"
+        );
+
+        // Independent baseline from the same residue-bearing direction.
+        let dir = freefly_dir_oracle(yaw, pitch);
+        let baseline_view = manual_look_to_rh_oracle(eye, dir, Vec3::Y);
+        let diff = mat4_max_abs_diff(rv.view, baseline_view);
+        assert!(
+            diff < 1e-5,
+            "FreeFly.view at pitch={label} must match independently-derived \
+             look_to_rh basis; max|diff| = {diff:e} (eps 1e-5)"
+        );
+
+        // view_dir is essentially vertical, but NOT exactly (0,±1,0):
+        // the xz residue is what saves look_to_rh from degenerating.
+        assert!(
+            (rv.view_dir.y - expected_dir_y).abs() < 1e-5,
+            "view_dir.y at pitch={label} must be ~{expected_dir_y}; got {}",
+            rv.view_dir.y
+        );
+        assert!(
+            rv.view_dir.x.abs() < 1e-6 && rv.view_dir.z.abs() < 1e-6,
+            "view_dir.xz residue at pitch={label} must be the tiny non-zero value \
+             (~4e-8) that keeps look_to_rh finite; got x={}, z={}",
+            rv.view_dir.x,
+            rv.view_dir.z
+        );
+        assert_eq!(
+            rv.view_dir, dir,
+            "view_dir must be exactly FreeFly::dir(yaw,pitch) at pitch={label}"
+        );
+    }
+}
+
+#[test]
+fn extreme_pitch_orbit_camera_at_max_pitch_well_defined() {
+    // pitch = pi/2 - 0.01 ~= 1.5607963 — OrbitCamera's Default max_pitch
+    // (the gimbal-lock guard). 0.573 deg shy of +pi/2; OrbitCamera::new does
+    // NOT clamp, so the field holds exactly this value.
+    let max_pitch = std::f32::consts::FRAC_PI_2 - 0.01;
+    let focal = Vec3::new(5.0, 1.0, -2.0);
+    let distance = 25.0_f32;
+    let yaw = 0.7_f32;
+    let cam = OrbitCamera::new(focal, distance, yaw, max_pitch);
+
+    let rv = cam.to_render_view();
+
+    // Independent position() re-derivation (spherical-to-cartesian).
+    let px = distance * yaw.cos() * max_pitch.cos();
+    let py = distance * max_pitch.sin();
+    let pz = distance * yaw.sin() * max_pitch.cos();
+    let expected_pos = focal + Vec3::new(px, py, pz);
+    assert!(
+        (cam.position() - expected_pos).length() < 1e-4,
+        "sanity: OrbitCamera::position() must equal the spherical formula; got {:?}, expected {:?}",
+        cam.position(),
+        expected_pos
+    );
+    assert_eq!(
+        rv.position,
+        cam.position(),
+        "RenderView.position must equal OrbitCamera::position()"
+    );
+
+    // Independent baseline: target-based look_at == look_to with forward = focal - eye.
+    let forward = focal - cam.position();
+    let baseline_view = manual_look_to_rh_oracle(cam.position(), forward, Vec3::Y);
+    let diff = mat4_max_abs_diff(rv.view, baseline_view);
+    assert!(
+        diff < 1e-5,
+        "OrbitCamera.to_render_view().view at max_pitch must match independently-derived \
+         look_at_rh basis; max|diff| = {diff:e} (eps 1e-5)"
+    );
+    assert!(
+        mat4_is_nan_free(rv.view) && mat4_is_nan_free(rv.view_proj),
+        "view/view_proj must be NaN-free at max_pitch (0.573 deg off vertical, well-conditioned)"
+    );
+}
+
+// ─── C.8 family 2: non_square_aspect ─────────────────────────────────────────
+//
+// Ultrawide / portrait / degenerate-narrow aspect. col(1).y = cot(fovy/2) is
+// the aspect-INVARIANT vertical-FOV term; col(0).x = col(1).y/aspect widens or
+// narrows horizontally. The floor-discipline closure: Projection::perspective
+// floors aspect at .max(0.01) in the MATRIX but stores the RAW pre-floor value
+// in the FIELD; OrbitCamera::projection_matrix() (raw, no floor) diverges from
+// to_render_view() (floored) below the floor.
+
+/// Matrix epsilon for derived projection comparisons (C.8 non-square-aspect
+/// family). Matches the orbit_camera_producer / picking_consistency style.
+const ASPECT_MATRIX_EPS: f32 = 1e-5;
+
+/// Aspect floor applied by `Projection::perspective` / `FreeFly::proj_matrix`
+/// (`.max(0.01)`) per CAMERA_CONVENTIONS §2.3.
+const ASPECT_FLOOR: f32 = 0.01;
+
+/// Compare two Mat4 entry-by-entry within `eps`. glam Mat4 has no exact-eq
+/// we should rely on for derived values, so compare the 16 entries directly.
+fn assert_mat4_close(actual: Mat4, expected: Mat4, eps: f32, ctx: &str) {
+    let a = actual.to_cols_array();
+    let e = expected.to_cols_array();
+    for i in 0..16 {
+        let col = i / 4;
+        let row = i % 4;
+        assert!(
+            (a[i] - e[i]).abs() < eps,
+            "{ctx}: matrix mismatch at col={col} row={row}: actual={} expected={} (|d|={})",
+            a[i],
+            e[i],
+            (a[i] - e[i]).abs()
+        );
+    }
+}
+
+/// Build the ultrawide 21:9 FreeFly fixture. No Default impl on FreeFly —
+/// literal struct expression per the canonical in-crate test style.
+fn freefly_ultrawide_21_9() -> FreeFly {
+    FreeFly {
+        position: Vec3::new(3.0, 4.0, 5.0),
+        yaw: 0.6,
+        pitch: 0.2,
+        fovy: 60_f32.to_radians(),
+        aspect: 21.0 / 9.0, // 2.3333335 — unambiguously ultrawide
+        znear: 0.5,
+        zfar: 5000.0,
+    }
+}
+
+#[test]
+fn non_square_aspect_ultrawide_21_9_freefly_projection_matches_derived_baseline() {
+    let cam = freefly_ultrawide_21_9();
+    let rv = cam.to_render_view();
+
+    // Method A: direct Mat4::perspective_rh re-construction (aspect > 0.01,
+    // so the .max(0.01) floor is inactive and floored == raw).
+    let expected_proj = Mat4::perspective_rh(cam.fovy, cam.aspect, cam.znear, cam.zfar);
+    assert_mat4_close(
+        rv.projection,
+        expected_proj,
+        ASPECT_MATRIX_EPS,
+        "ultrawide 21:9 RenderView.projection vs direct perspective_rh",
+    );
+
+    // Method B: closed-form perspective_rh entries, derived WITHOUT calling
+    // perspective_rh. f = cot(fovy/2); col(1).y is aspect-INVARIANT (vertical
+    // FOV held constant); col(0).x = f/aspect (horizontal widens with aspect).
+    let f = 1.0_f32 / (cam.fovy * 0.5).tan(); // sqrt(3) = 1.7320508 for 60deg
+    assert!(
+        (rv.projection.col(1).y - f).abs() < ASPECT_MATRIX_EPS,
+        "col(1).y (vertical-FOV invariant) must equal cot(fovy/2)={f}; got {} — \
+         fovy is being treated as HORIZONTAL if this widens with aspect",
+        rv.projection.col(1).y,
+    );
+    let expected_m00 = f / cam.aspect; // 1.7320508 / 2.3333335 = 0.7423075
+    assert!(
+        (rv.projection.col(0).x - expected_m00).abs() < ASPECT_MATRIX_EPS,
+        "col(0).x must equal cot(fovy/2)/aspect={expected_m00} (horizontal widens \
+         with ultrawide aspect); got {}",
+        rv.projection.col(0).x,
+    );
+
+    // RenderView.aspect mirrors the raw input (>= 0.01, so raw == floored).
+    assert!(
+        (rv.aspect - cam.aspect).abs() < 1e-6,
+        "RenderView.aspect must equal the raw 21:9 input {}; got {}",
+        cam.aspect,
+        rv.aspect,
+    );
+    // RenderView.fovy is the vertical-FOV invariant: unchanged by aspect.
+    assert!(
+        (rv.fovy - cam.fovy).abs() < 1e-6,
+        "RenderView.fovy must be unchanged by ultrawide aspect (vertical FOV is \
+         the invariant); got {} expected {}",
+        rv.fovy,
+        cam.fovy,
+    );
+}
+
+fn freefly_portrait_9_16() -> FreeFly {
+    FreeFly {
+        position: Vec3::new(-2.0, 1.5, 7.0),
+        yaw: -0.9,
+        pitch: -0.15,
+        fovy: 50_f32.to_radians(),
+        aspect: 9.0 / 16.0, // 0.5625 — portrait, taller-than-wide
+        znear: 0.1,
+        zfar: 2000.0,
+    }
+}
+
+#[test]
+fn non_square_aspect_portrait_9_16_freefly_projection_matches_derived_baseline() {
+    let cam = freefly_portrait_9_16();
+    let rv = cam.to_render_view();
+
+    // Method A: direct re-construction (aspect 0.5625 >= 0.01, no floor).
+    let expected_proj = Mat4::perspective_rh(cam.fovy, cam.aspect, cam.znear, cam.zfar);
+    assert_mat4_close(
+        rv.projection,
+        expected_proj,
+        ASPECT_MATRIX_EPS,
+        "portrait 9:16 RenderView.projection vs direct perspective_rh",
+    );
+
+    // Method B: closed-form, no perspective_rh call.
+    let f = 1.0_f32 / (cam.fovy * 0.5).tan(); // 2.1445069 for 50deg
+    assert!(
+        (rv.projection.col(1).y - f).abs() < ASPECT_MATRIX_EPS,
+        "col(1).y (vertical-FOV invariant) must equal cot(fovy/2)={f} on the \
+         portrait side too; got {}",
+        rv.projection.col(1).y,
+    );
+    let expected_m00 = f / cam.aspect; // 2.1445069 / 0.5625 = 3.8124567
+    assert!(
+        (rv.projection.col(0).x - expected_m00).abs() < ASPECT_MATRIX_EPS,
+        "col(0).x must equal cot(fovy/2)/aspect={expected_m00}; got {}",
+        rv.projection.col(0).x,
+    );
+    // On the sub-1.0 aspect side, horizontal FOV is NARROWER: m00 must exceed
+    // m11. A skeptic verifies: aspect < 1 => f/aspect > f.
+    assert!(
+        rv.projection.col(0).x > rv.projection.col(1).y,
+        "portrait aspect < 1 must give col(0).x > col(1).y (narrower horizontal \
+         FOV); got m00={} m11={}",
+        rv.projection.col(0).x,
+        rv.projection.col(1).y,
+    );
+
+    assert!(
+        (rv.aspect - cam.aspect).abs() < 1e-6,
+        "RenderView.aspect must equal the raw 9:16 input {}; got {}",
+        cam.aspect,
+        rv.aspect,
+    );
+    assert!(
+        (rv.fovy - cam.fovy).abs() < 1e-6,
+        "RenderView.fovy must be unchanged by portrait aspect; got {} expected {}",
+        rv.fovy,
+        cam.fovy,
+    );
+}
+
+const DEGENERATE_RAW_ASPECT: f32 = 0.001;
+
+fn freefly_degenerate_narrow() -> FreeFly {
+    FreeFly {
+        position: Vec3::new(0.0, 2.0, 10.0),
+        yaw: 0.3,
+        pitch: 0.1,
+        fovy: 60_f32.to_radians(),
+        aspect: DEGENERATE_RAW_ASPECT, // 0.001 — below the 0.01 floor
+        znear: 0.5,
+        zfar: 5000.0,
+    }
+}
+
+#[test]
+fn non_square_aspect_degenerate_narrow_freefly_floor_discipline() {
+    let cam = freefly_degenerate_narrow();
+    let rv = cam.to_render_view();
+
+    // (1) Matrix uses the FLOORED aspect (0.001.max(0.01) = 0.01).
+    let expected_floored =
+        Mat4::perspective_rh(cam.fovy, cam.aspect.max(ASPECT_FLOOR), cam.znear, cam.zfar);
+    assert_mat4_close(
+        rv.projection,
+        expected_floored,
+        ASPECT_MATRIX_EPS,
+        "degenerate-narrow RenderView.projection must use FLOORED aspect 0.01",
+    );
+
+    // (1b) Negative control: the matrix must NOT be the un-floored 0.001 one.
+    // col(0).x for unfloored = f/0.001 = 1732.05 vs floored f/0.01 = 173.2 —
+    // a 10x discriminator no rounding could mask.
+    let expected_unfloored = Mat4::perspective_rh(cam.fovy, cam.aspect, cam.znear, cam.zfar);
+    assert!(
+        (rv.projection.col(0).x - expected_unfloored.col(0).x).abs() > 1.0,
+        "RenderView.projection must NOT use the un-floored 0.001 aspect; \
+         floored col(0).x={} unfloored col(0).x={} — if these are equal, the \
+         .max(0.01) floor is not being applied",
+        rv.projection.col(0).x,
+        expected_unfloored.col(0).x,
+    );
+
+    // (1c) Closed-form discriminator, no perspective_rh call: floored m00 = f/0.01.
+    let f = 1.0_f32 / (cam.fovy * 0.5).tan(); // 1.7320508 for 60deg
+    let expected_m00_floored = f / ASPECT_FLOOR; // 173.20508
+    // m00 is ~173; use a relative tolerance for the large magnitude.
+    let m00_tol = (expected_m00_floored.abs() * 1e-4).max(1e-3);
+    assert!(
+        (rv.projection.col(0).x - expected_m00_floored).abs() < m00_tol,
+        "floored col(0).x must equal cot(fovy/2)/0.01={expected_m00_floored}; got {} \
+         (tol {m00_tol})",
+        rv.projection.col(0).x,
+    );
+    // col(1).y is still the aspect-invariant vertical-FOV term.
+    assert!(
+        (rv.projection.col(1).y - f).abs() < ASPECT_MATRIX_EPS,
+        "col(1).y must remain cot(fovy/2)={f} even at degenerate aspect; got {}",
+        rv.projection.col(1).y,
+    );
+
+    // (2) Field stores the RAW pre-floor aspect 0.001 (Projection::perspective
+    // stores the input before .max(0.01)). This is the other half of the
+    // floor-discipline closure: matrix floored, field raw.
+    assert!(
+        (rv.aspect - DEGENERATE_RAW_ASPECT).abs() < 1e-6,
+        "RenderView.aspect must store the RAW pre-floor input 0.001, NOT the \
+         floored 0.01; got {}",
+        rv.aspect,
+    );
+    // Defensive: the raw field must be distinguishable from the floor value.
+    assert!(
+        (rv.aspect - ASPECT_FLOOR).abs() > 1e-4,
+        "RenderView.aspect ({}) must differ from the floor 0.01 — it is pre-floor",
+        rv.aspect,
+    );
+    // fovy still unchanged.
+    assert!(
+        (rv.fovy - cam.fovy).abs() < 1e-6,
+        "RenderView.fovy must be unchanged at degenerate aspect; got {} expected {}",
+        rv.fovy,
+        cam.fovy,
+    );
+}
+
+/// Above the floor, OrbitCamera::projection_matrix() (raw aspect) and
+/// to_render_view().projection (Projection-floored aspect) must AGREE,
+/// because raw == raw.max(0.01) when aspect >= 0.01.
+#[test]
+fn non_square_aspect_orbit_paths_agree_above_floor() {
+    let mut cam = OrbitCamera::new(
+        Vec3::ZERO,
+        25.0,
+        std::f32::consts::FRAC_PI_4,
+        std::f32::consts::FRAC_PI_6,
+    );
+    cam.set_fov(60.0);
+    // Ultrawide 21:9 ~= 2.333, comfortably above the 0.01 floor.
+    cam.set_aspect(2333.0, 1000.0);
+    let raw_aspect = 2333.0_f32 / 1000.0;
+
+    let proj_path = cam.projection_matrix(); // RAW aspect (camera.rs:644)
+    let rv = cam.to_render_view(); // Projection-floored (camera.rs:897)
+
+    // raw == floored above the floor, so the two paths coincide.
+    assert_mat4_close(
+        proj_path,
+        rv.projection,
+        ASPECT_MATRIX_EPS,
+        "above-floor ultrawide: projection_matrix() must equal to_render_view().projection",
+    );
+    // And both match the derived baseline at the raw aspect.
+    let f = 1.0_f32 / (cam.fovy() * 0.5).tan();
+    let expected_m00 = f / raw_aspect; // f/2.333
+    assert!(
+        (rv.projection.col(0).x - expected_m00).abs() < ASPECT_MATRIX_EPS,
+        "above-floor col(0).x must equal cot(fovy/2)/aspect={expected_m00}; got {}",
+        rv.projection.col(0).x,
+    );
+    assert!(
+        (rv.aspect - raw_aspect).abs() < 1e-4,
+        "RenderView.aspect must equal the raw ultrawide input {raw_aspect}; got {}",
+        rv.aspect,
+    );
+}
+
+/// Below the floor, the two OrbitCamera projection paths DIVERGE by design:
+/// projection_matrix() uses RAW 0.001 (camera.rs:644, no floor) while
+/// to_render_view() routes through Projection::perspective which floors to
+/// 0.01 (camera.rs:897). This is EXPECTED-DIVERGENCE, not a parity bug —
+/// asserting byte-equivalence here would assert a falsehood (constraint 4).
+#[test]
+fn non_square_aspect_orbit_paths_diverge_below_floor_by_design() {
+    let mut cam = OrbitCamera::new(
+        Vec3::ZERO,
+        25.0,
+        std::f32::consts::FRAC_PI_4,
+        std::f32::consts::FRAC_PI_6,
+    );
+    cam.set_fov(60.0);
+    // Degenerate-narrow aspect = 1/1000 = 0.001, an order of magnitude below
+    // the 0.01 floor.
+    cam.set_aspect(1.0, 1000.0);
+    let raw_aspect = 1.0_f32 / 1000.0; // 0.001
+    let floored_aspect = raw_aspect.max(ASPECT_FLOOR); // 0.01
+
+    let proj_path = cam.projection_matrix(); // RAW 0.001
+    let rv = cam.to_render_view(); // FLOORED 0.01
+    let f = 1.0_f32 / (cam.fovy() * 0.5).tan(); // 1.7320508
+
+    // projection_matrix() uses the RAW aspect (no floor): col(0).x = f/0.001.
+    let raw_m00 = f / raw_aspect; // 1732.05
+    let raw_tol = (raw_m00.abs() * 1e-4).max(1e-3);
+    assert!(
+        (proj_path.col(0).x - raw_m00).abs() < raw_tol,
+        "OrbitCamera::projection_matrix() must use the RAW unfloored aspect \
+         0.001 (camera.rs:644): col(0).x expected {raw_m00}; got {} (tol {raw_tol})",
+        proj_path.col(0).x,
+    );
+
+    // to_render_view().projection uses the FLOORED aspect 0.01: col(0).x = f/0.01.
+    let floored_m00 = f / floored_aspect; // 173.20
+    let floored_tol = (floored_m00.abs() * 1e-4).max(1e-3);
+    assert!(
+        (rv.projection.col(0).x - floored_m00).abs() < floored_tol,
+        "OrbitCamera::to_render_view().projection must use the FLOORED aspect \
+         0.01 (Projection::perspective, camera.rs:897): col(0).x expected {floored_m00}; \
+         got {} (tol {floored_tol})",
+        rv.projection.col(0).x,
+    );
+
+    // EXPECTED-DIVERGENCE: the two paths' col(0).x differ by ~10x. This is the
+    // seam — assert it as a positive expectation, NEVER byte-equivalence.
+    assert!(
+        proj_path.col(0).x > rv.projection.col(0).x * 5.0,
+        "below-floor seam: projection_matrix() col(0).x ({}) must be ~10x \
+         to_render_view() col(0).x ({}) — the raw-vs-floored aspect divergence",
+        proj_path.col(0).x,
+        rv.projection.col(0).x,
+    );
+
+    // The two paths AGREE on the aspect-invariant vertical-FOV term col(1).y
+    // (only the [0][0] entry depends on aspect): rotation/vertical untouched.
+    assert!(
+        (proj_path.col(1).y - rv.projection.col(1).y).abs() < ASPECT_MATRIX_EPS,
+        "the two paths must AGREE on col(1).y (vertical-FOV invariant); \
+         projection_matrix()={} to_render_view()={}",
+        proj_path.col(1).y,
+        rv.projection.col(1).y,
+    );
+
+    // RenderView.aspect still reports the RAW pre-floor 0.001.
+    assert!(
+        (rv.aspect - raw_aspect).abs() < 1e-6,
+        "RenderView.aspect must store the RAW pre-floor 0.001 even though the \
+         matrix floored to 0.01; got {}",
+        rv.aspect,
+    );
+}
+
+// ─── C.8 family 3: large_world_positions ─────────────────────────────────────
+//
+// At 1e5..5e6 world units, the world-relative and camera-relative RenderView
+// variants DIVERGE by design (precision mitigation). Each variant is checked
+// against its OWN derived baseline; the two variants are asserted to differ in
+// translation (and, for OrbitCamera, rotation), never byte-equal (constraint
+// 4). f64 references provide an independent precision oracle.
+
+/// Max abs difference between the upper-left 3x3 rotation blocks of two
+/// view matrices (columns 0..2, rows x/y/z).
+fn max_rotation_diff(a: Mat4, b: Mat4) -> f32 {
+    let mut m = 0.0f32;
+    for c in 0..3 {
+        let ca = a.col(c);
+        let cb = b.col(c);
+        m = m.max((ca.x - cb.x).abs());
+        m = m.max((ca.y - cb.y).abs());
+        m = m.max((ca.z - cb.z).abs());
+    }
+    m
+}
+
+/// Worst per-entry `error / tolerance` ratio of an f32 view matrix against an
+/// f64 reference matrix. Tolerance is relative (`|ref| * 5e-6`) for large-
+/// magnitude entries (the translation column at large world positions) with an
+/// absolute floor (`1e-5`) for the O(1) rotation block. A return `< 1.0` means
+/// every entry is within tolerance. The f64 reference makes this a genuine
+/// cross-domain check, NOT an f32 re-call of the same glam intrinsic (which
+/// would be tautological against an f32 producer that calls the same intrinsic).
+fn mat4_worst_rel_ratio_vs_f64(a: Mat4, b: DMat4) -> f64 {
+    let aa = a.to_cols_array();
+    let bb = b.to_cols_array();
+    let mut worst = 0.0f64;
+    for i in 0..16 {
+        let d = (aa[i] as f64 - bb[i]).abs();
+        let tol = (bb[i].abs() * 5e-6).max(1e-5);
+        worst = worst.max(d / tol);
+    }
+    worst
+}
+
+/// Build the large-world FreeFly fixture for the 1e5 structural case.
+fn freefly_large_1e5() -> FreeFly {
+    FreeFly {
+        position: Vec3::new(1.0e5, 3.0e4, -2.0e5),
+        yaw: 1.1,
+        pitch: -0.3,
+        fovy: 60_f32.to_radians(),
+        aspect: 16.0 / 9.0,
+        znear: 0.1,
+        zfar: 1.0e6,
+    }
+}
+
+#[test]
+fn large_world_positions_freefly_1e5_structural() {
+    let cam = freefly_large_1e5();
+
+    // Producer outputs (system under test).
+    let world_rv = cam.to_render_view();
+    let rel_rv = cam.to_render_view_camera_relative();
+
+    // (1) Each variant matches an INDEPENDENT f64-reference baseline. The
+    //     reference is built in the f64 domain (freefly_dir_f64 +
+    //     DMat4::look_to_rh) — a DIFFERENT precision domain than the f32
+    //     producer — so this is a genuine cross-check, NOT an f32 re-call of
+    //     the same look_to_rh (which would be tautological). Mirrors the
+    //     f64-oracle discipline of the 1e6/5e6 sibling fixtures. Rotation
+    //     entries (O(1), eye-independent) must match tightly; the world
+    //     translation column (|pos| ~ 2.25e5) matches only to f32-relative
+    //     precision — the relative tolerance both confirms the value is correct
+    //     and documents the f32 precision floor the camera-relative variant
+    //     exists to avoid (the C.4 hazard, exercised in full by the siblings).
+    let dir_f64 = freefly_dir_f64(cam.yaw as f64, cam.pitch as f64);
+    let ref_world_view = DMat4::look_to_rh(cam.position.as_dvec3(), dir_f64, DVec3::Y);
+    let ref_rel_view = DMat4::look_to_rh(DVec3::ZERO, dir_f64, DVec3::Y);
+
+    let world_ratio = mat4_worst_rel_ratio_vs_f64(world_rv.view, ref_world_view);
+    assert!(
+        world_ratio < 1.0,
+        "world-relative producer view must match the INDEPENDENT f64 look_to_rh reference \
+         (rotation tight, translation to f32-relative precision at |pos|~2.25e5); \
+         worst err/tol ratio = {world_ratio} (must be <1.0)"
+    );
+    let rel_ratio = mat4_worst_rel_ratio_vs_f64(rel_rv.view, ref_rel_view);
+    assert!(
+        rel_ratio < 1.0,
+        "camera-relative producer view must match the INDEPENDENT f64 look_to_rh reference \
+         (whole matrix O(1), eye at origin); worst err/tol ratio = {rel_ratio} (must be <1.0)"
+    );
+
+    // (2) Rotation 3x3 byte-IDENTICAL between variants (shared dir formula).
+    let rot_diff = max_rotation_diff(world_rv.view, rel_rv.view);
+    assert!(
+        rot_diff == 0.0,
+        "FreeFly world/camera-relative rotation 3x3 must be byte-identical (both use dir(yaw,pitch)); got max diff {}",
+        rot_diff
+    );
+
+    // (3) Translation columns DIVERGE by design (NOT byte-equal).
+    let world_t = world_rv.view.w_axis.truncate().length();
+    let rel_t = rel_rv.view.w_axis.truncate().length();
+    assert!(
+        rel_t < 1e-3,
+        "camera-relative view translation column must be ~0 (eye at origin); got |t| = {}",
+        rel_t
+    );
+    assert!(
+        world_t > 1.0e5,
+        "world-relative view translation column must carry |position|-magnitude entries; got |t| = {} (expected >1e5)",
+        world_t
+    );
+
+    // (4) RenderView.position equals the world position in BOTH variants.
+    assert_eq!(
+        world_rv.position, cam.position,
+        "world-relative RenderView.position must equal the world position"
+    );
+    assert_eq!(
+        rel_rv.position, cam.position,
+        "camera-relative RenderView.position must STILL report the world position (only matrices are camera-relative)"
+    );
+}
+
+/// f64 mirror of FreeFly::dir(yaw,pitch) for the high-precision reference.
+fn freefly_dir_f64(yaw: f64, pitch: f64) -> DVec3 {
+    let cy = yaw.cos();
+    let sy = yaw.sin();
+    let cp = pitch.cos();
+    let sp = pitch.sin();
+    DVec3::new(cy * cp, sp, sy * cp).normalize()
+}
+
+/// NDC (clip.xyz / clip.w) of a world point through an f32 view-proj.
+fn ndc_f32(vp: Mat4, p: Vec3) -> Vec3 {
+    let c = vp.mul_vec4(p.extend(1.0));
+    Vec3::new(c.x / c.w, c.y / c.w, c.z / c.w)
+}
+
+/// NDC of a world point through an f64 view-proj (the reference path).
+fn ndc_f64(vp: DMat4, p: DVec3) -> DVec3 {
+    let c = vp.mul_vec4(p.extend(1.0));
+    DVec3::new(c.x / c.w, c.y / c.w, c.z / c.w)
+}
+
+/// L2 distance between an f32 NDC and an f64 reference NDC.
+fn ndc_err(a: Vec3, r: DVec3) -> f64 {
+    ((a.x as f64 - r.x).powi(2) + (a.y as f64 - r.y).powi(2) + (a.z as f64 - r.z).powi(2)).sqrt()
+}
+
+#[test]
+fn large_world_positions_freefly_1e6_world_path_precision_loss() {
+    let cam = FreeFly {
+        position: Vec3::new(1.0e6, 5.0e5, 1.0e6),
+        yaw: 0.6,
+        pitch: 0.15,
+        fovy: 60_f32.to_radians(),
+        aspect: 16.0 / 9.0,
+        znear: 0.1,
+        zfar: 1.0e7,
+    };
+
+    // Producer outputs (system under test): the two VP variants.
+    let world_rv = cam.to_render_view();
+    let rel_rv = cam.to_render_view_camera_relative();
+
+    // A world point ~40-50 units in front of the camera, inside the frustum.
+    let dir = FreeFly::dir(cam.yaw, cam.pitch);
+    let offset = dir * 40.0 + Vec3::new(13.0, -7.0, 5.0);
+    let p = cam.position + offset;
+
+    // f32 world path: project absolute P through the absolute VP.
+    let ndc_world = ndc_f32(world_rv.view_proj, p);
+    // f32 camera-relative path: production CPU offsets geometry by -position,
+    // then projects through the near-zero-translation VP.
+    let ndc_rel = ndc_f32(rel_rv.view_proj, p - cam.position);
+
+    // f64 high-precision reference (DIFFERENT numeric path).
+    let yaw_d = cam.yaw as f64;
+    let pitch_d = cam.pitch as f64;
+    let proj_d = DMat4::perspective_rh(
+        cam.fovy as f64,
+        (cam.aspect.max(0.01)) as f64,
+        cam.znear as f64,
+        cam.zfar as f64,
+    );
+    let view_world_d =
+        DMat4::look_to_rh(cam.position.as_dvec3(), freefly_dir_f64(yaw_d, pitch_d), DVec3::Y);
+    let vp_world_d = proj_d * view_world_d;
+    let p_d = cam.position.as_dvec3()
+        + (freefly_dir_f64(yaw_d, pitch_d) * 40.0 + DVec3::new(13.0, -7.0, 5.0));
+    let ndc_ref = ndc_f64(vp_world_d, p_d);
+
+    let err_world = ndc_err(ndc_world, ndc_ref);
+    let err_rel = ndc_err(ndc_rel, ndc_ref);
+
+    // (a) Camera-relative path is precise (small absolute error vs f64).
+    assert!(
+        err_rel < 5.0e-3,
+        "camera-relative NDC must stay precise vs f64 reference at |pos|~1.5e6; err_rel = {} (expected <5e-3)",
+        err_rel
+    );
+    // (b) World path is the precision-LOSER (strictly larger error).
+    assert!(
+        err_world > err_rel * 1.5,
+        "world-relative NDC must be measurably LESS precise than camera-relative at large |pos| (the C.4 hazard); err_world = {}, err_rel = {} (ratio {:.2}, expected >1.5)",
+        err_world,
+        err_rel,
+        err_world / err_rel
+    );
+    // And the divergence must be a *real* (non-trivial) error, not float noise
+    // that happens to satisfy the ratio.
+    assert!(
+        err_world > 1.0e-4,
+        "world-relative NDC error must be non-trivial at |pos|~1.5e6 (precision loss is real); err_world = {}",
+        err_world
+    );
+}
+
+#[test]
+fn large_world_positions_orbit_far_focal_5e6_precision_loss() {
+    let focal = Vec3::new(5.0e6, 0.0, 5.0e6);
+    let distance = 25.0_f32;
+    let yaw = std::f32::consts::FRAC_PI_4;
+    let pitch = std::f32::consts::FRAC_PI_6;
+    let cam = OrbitCamera::new(focal, distance, yaw, pitch);
+
+    // Producer outputs (system under test).
+    let world_rv = cam.to_render_view();
+    let rel_rv = cam.to_render_view_camera_relative();
+    let position = cam.position();
+
+    // Structural: translation columns diverge by design.
+    let world_t = world_rv.view.w_axis.truncate().length();
+    let rel_t = rel_rv.view.w_axis.truncate().length();
+    assert!(
+        rel_t < 1e-3,
+        "OrbitCamera camera-relative view translation must be ~0; got |t| = {}",
+        rel_t
+    );
+    assert!(
+        world_t > 1.0e6,
+        "OrbitCamera world-relative view translation must carry |position|-magnitude entries; got |t| = {} (expected >1e6)",
+        world_t
+    );
+    // Position preserved in BOTH variants.
+    assert_eq!(world_rv.position, position);
+    assert_eq!(rel_rv.position, position);
+
+    // Offset probe point near the camera (focal point itself is NOT used:
+    // at lower magnitudes its divergence ordering is unreliable).
+    let p = focal + Vec3::new(3.0, 2.0, -4.0);
+    let ndc_world = ndc_f32(world_rv.view_proj, p);
+    let ndc_rel = ndc_f32(rel_rv.view_proj, p - position);
+
+    // f64 high-precision reference.
+    let yaw_d = yaw as f64;
+    let pitch_d = pitch as f64;
+    let d = distance as f64;
+    let eye_d = DVec3::new(
+        d * yaw_d.cos() * pitch_d.cos(),
+        d * pitch_d.sin(),
+        d * yaw_d.sin() * pitch_d.cos(),
+    );
+    let focal_d = DVec3::new(5.0e6, 0.0, 5.0e6);
+    let pos_d = focal_d + eye_d;
+    let proj_d = DMat4::perspective_rh(
+        cam.fovy() as f64,
+        (16.0_f32 / 9.0).max(0.01) as f64,
+        0.5,
+        5000.0,
+    );
+    let vp_world_d = proj_d * DMat4::look_at_rh(pos_d, focal_d, DVec3::Y);
+    let p_d = focal_d + DVec3::new(3.0, 2.0, -4.0);
+    let ndc_ref = ndc_f64(vp_world_d, p_d);
+
+    let err_world = ndc_err(ndc_world, ndc_ref);
+    let err_rel = ndc_err(ndc_rel, ndc_ref);
+
+    assert!(
+        err_rel < 2.0e-2,
+        "OrbitCamera camera-relative NDC must stay precise vs f64 at focal~7e6; err_rel = {} (expected <2e-2)",
+        err_rel
+    );
+    assert!(
+        err_world > err_rel * 1.5,
+        "OrbitCamera world-relative NDC must be measurably LESS precise than camera-relative at large focal point; err_world = {}, err_rel = {} (ratio {:.2}, expected >1.5)",
+        err_world,
+        err_rel,
+        err_world / err_rel
+    );
+}
+
+/// Max abs diff between an f32 view matrix's 3x3 rotation block and an f64
+/// reference view matrix's 3x3 rotation block (columns 0..2, rows x/y/z).
+fn rotation_diff_vs_f64(a: Mat4, b: DMat4) -> f64 {
+    let mut m = 0.0f64;
+    for c in 0..3 {
+        let ca = a.col(c);
+        let cb = b.col(c);
+        m = m.max((ca.x as f64 - cb.x).abs());
+        m = m.max((ca.y as f64 - cb.y).abs());
+        m = m.max((ca.z as f64 - cb.z).abs());
+    }
+    m
+}
+
+#[test]
+fn large_world_positions_orbit_5e6_camera_relative_rotation_matches_f64() {
+    let focal = Vec3::new(5.0e6, 0.0, 5.0e6);
+    let distance = 25.0_f32;
+    let yaw = std::f32::consts::FRAC_PI_4;
+    let pitch = std::f32::consts::FRAC_PI_6;
+    let cam = OrbitCamera::new(focal, distance, yaw, pitch);
+
+    let world_rv = cam.to_render_view();
+    let rel_rv = cam.to_render_view_camera_relative();
+
+    // f64 reference view matrices.
+    let yaw_d = yaw as f64;
+    let pitch_d = pitch as f64;
+    let d = distance as f64;
+    let eye_d = DVec3::new(
+        d * yaw_d.cos() * pitch_d.cos(),
+        d * pitch_d.sin(),
+        d * yaw_d.sin() * pitch_d.cos(),
+    );
+    let focal_d = DVec3::new(5.0e6, 0.0, 5.0e6);
+    let pos_d = focal_d + eye_d;
+    let view_world_d = DMat4::look_at_rh(pos_d, focal_d, DVec3::Y);
+    let view_rel_d = DMat4::look_at_rh(DVec3::ZERO, -eye_d, DVec3::Y);
+
+    // Camera-relative rotation MATCHES the f64 truth (clean small operands).
+    let rel_rot_err = rotation_diff_vs_f64(rel_rv.view, view_rel_d);
+    assert!(
+        rel_rot_err < 1e-5,
+        "OrbitCamera camera-relative rotation must match the f64 reference (no large-operand cancellation); max diff {} (expected <1e-5)",
+        rel_rot_err
+    );
+
+    // World rotation DRIFTS measurably (catastrophic cancellation in
+    // (focal - position)). This is the precision loss the camera-relative
+    // path exists to avoid.
+    let world_rot_err = rotation_diff_vs_f64(world_rv.view, view_world_d);
+    assert!(
+        world_rot_err > 1e-4,
+        "OrbitCamera world-relative rotation must drift from the f64 reference at focal~7e6 (the precision hazard); max diff {} (expected >1e-4)",
+        world_rot_err
+    );
+
+    // The two variants' rotations therefore DIFFER (never byte-equal for
+    // OrbitCamera at large positions — unlike FreeFly).
+    let inter_variant = max_rotation_diff(world_rv.view, rel_rv.view);
+    assert!(
+        inter_variant > 1e-4,
+        "OrbitCamera world vs camera-relative rotation blocks must differ at large focal point (NOT byte-equal); max diff {}",
+        inter_variant
+    );
+}
+
+// ─── C.8 family 4: cinematics_driven ─────────────────────────────────────────
+//
+// The cinematics path (CameraKey -> tick_cinematics -> apply_camera_key ->
+// FreeFly -> RenderView) is the newest camera surface. These fixtures verify
+// that driving the FULL production path produces the same RenderView as the
+// geometric intent: a camera AT pos LOOKING AT look_at. The baseline is the
+// TARGET-BASED Mat4::look_at_rh(pos, look_at, Y) — derived independently of
+// apply_camera_key's atan2/asin/dir round-trip (glam look_at_rh consumes
+// center-eye directly; the producer round-trips it through yaw/pitch). The two
+// derivations are provably equal away from the dir.y=±1 pitch singularity, so
+// the match is a genuine cross-check.
+//
+// REQUIRES GPU: apply_camera_key is private; the only public reach is
+// Renderer::tick_cinematics, a method on a live Renderer. When no wgpu adapter
+// is available, these fixtures skip gracefully (eprintln + early return),
+// exactly like the existing editor_engine_render_parity GPU test would.
+
+/// Build a headless Renderer for cinematics fixtures, reusing the harness's
+/// `acquire_device()` plumbing and the engine-path SurfaceConfiguration.
+fn cinematics_renderer() -> Result<Renderer> {
+    let (device, queue, _info) =
+        pollster::block_on(acquire_device()).context("acquire wgpu device for cinematics fixture")?;
+    let config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        width: WIDTH,
+        height: HEIGHT,
+        present_mode: wgpu::PresentMode::AutoVsync,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
+    };
+    let renderer = pollster::block_on(Renderer::new_from_device(
+        (*device).clone(),
+        (*queue).clone(),
+        None,
+        config,
+    ))
+    .context("Renderer::new_from_device for cinematics fixture")?;
+    Ok(renderer)
+}
+
+/// A FreeFly whose projection parameters (aspect/znear/zfar) persist through a
+/// `tick_cinematics` apply (apply_camera_key sets only position/yaw/pitch/fovy).
+/// position/yaw/pitch/fovy here are placeholders the tick will overwrite.
+fn cinematics_freefly(aspect: f32, znear: f32, zfar: f32) -> FreeFly {
+    FreeFly {
+        position: Vec3::ZERO,
+        yaw: 0.0,
+        pitch: 0.0,
+        fovy: 30_f32.to_radians(),
+        aspect,
+        znear,
+        zfar,
+    }
+}
+
+/// Drive ONE CameraKey through the production cinematics path and return the
+/// resulting world-relative RenderView. The key is placed at t=0.5 in a
+/// duration>=1.0 timeline; a single tick of dt=1.0 emits it (0.0 < 0.5 <= 1.0).
+fn drive_one_camera_key(
+    renderer: &mut Renderer,
+    freefly: &mut FreeFly,
+    key: awc::CameraKey,
+) -> Result<RenderView> {
+    let mut tl = awc::Timeline::new("cin_fixture", 2.0);
+    tl.add_camera_track(vec![key]);
+    renderer.load_timeline(tl);
+    renderer.play_timeline();
+    let events = renderer.tick_cinematics(1.0, freefly);
+    // Sanity: exactly the one camera key emitted (path actually ran).
+    let cam_events = events.iter().filter(|e| e.is_camera_key()).count();
+    anyhow::ensure!(
+        cam_events == 1,
+        "cinematics path must emit exactly one CameraKey event; got {} (events={})",
+        cam_events,
+        events.len(),
+    );
+    Ok(freefly.to_render_view())
+}
+
+/// Independent baseline RenderView from the TARGET-BASED look_at_rh form plus
+/// canonical Projection::perspective. `pos` / `look_at` must already be the
+/// SANITIZED values (the caller bakes in CameraKey::sanitize's effect).
+fn cinematics_baseline_render_view(
+    pos: Vec3,
+    look_at: Vec3,
+    fov_deg_sanitized: f32,
+    aspect: f32,
+    znear: f32,
+    zfar: f32,
+) -> RenderView {
+    let view = Mat4::look_at_rh(pos, look_at, Vec3::Y);
+    let projection = Projection::perspective(fov_deg_sanitized.to_radians(), aspect, znear, zfar);
+    let view_dir = (look_at - pos).normalize();
+    RenderView::new(view, &projection, pos, view_dir)
+}
+
+/// Column-wise Mat4 approx-equality, matching orbit_camera_producer.rs style.
+fn assert_mat4_approx(actual: Mat4, expected: Mat4, eps: f32, what: &str) {
+    let a = actual.to_cols_array();
+    let e = expected.to_cols_array();
+    for i in 0..16 {
+        let d = (a[i] - e[i]).abs();
+        // Relative tolerance for large-magnitude entries (translation columns
+        // of view_proj/inverse can be large); absolute floor for the O(1)
+        // rotation entries.
+        let tol = (e[i].abs() * 1e-4).max(eps);
+        assert!(
+            d < tol,
+            "{}: matrix entry {} diverged: actual={} expected={} |d|={} tol={}",
+            what,
+            i,
+            a[i],
+            e[i],
+            d,
+            tol,
+        );
+    }
+}
+
+/// Compare two RenderViews field-by-field (matrices column-wise, scalars by eps).
+fn assert_render_view_approx(actual: &RenderView, expected: &RenderView, what: &str) {
+    assert_mat4_approx(actual.view, expected.view, 1e-4, &format!("{what}.view"));
+    assert_mat4_approx(
+        actual.projection,
+        expected.projection,
+        1e-4,
+        &format!("{what}.projection"),
+    );
+    assert_mat4_approx(
+        actual.view_proj,
+        expected.view_proj,
+        1e-3,
+        &format!("{what}.view_proj"),
+    );
+    assert_mat4_approx(
+        actual.inverse_view,
+        expected.inverse_view,
+        1e-4,
+        &format!("{what}.inverse_view"),
+    );
+    assert!(
+        (actual.position - expected.position).length() < 1e-4,
+        "{}.position diverged: actual={:?} expected={:?}",
+        what,
+        actual.position,
+        expected.position,
+    );
+    assert!(
+        (actual.view_dir - expected.view_dir).length() < 1e-5,
+        "{}.view_dir diverged: actual={:?} expected={:?}",
+        what,
+        actual.view_dir,
+        expected.view_dir,
+    );
+    assert!(
+        (actual.fovy - expected.fovy).abs() < 1e-6,
+        "{}.fovy diverged: actual={} expected={}",
+        what,
+        actual.fovy,
+        expected.fovy,
+    );
+    assert!(
+        (actual.aspect - expected.aspect).abs() < 1e-6,
+        "{}.aspect diverged: actual={} expected={}",
+        what,
+        actual.aspect,
+        expected.aspect,
+    );
+    assert!(
+        (actual.znear - expected.znear).abs() < 1e-6,
+        "{}.znear diverged: actual={} expected={}",
+        what,
+        actual.znear,
+        expected.znear,
+    );
+    assert!(
+        (actual.zfar - expected.zfar).abs() < 1e-3,
+        "{}.zfar diverged: actual={} expected={}",
+        what,
+        actual.zfar,
+        expected.zfar,
+    );
+}
+
+#[test]
+fn cinematics_normal_keyframe_matches_look_at_rh_baseline() {
+    let mut renderer = match cinematics_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[harness] cinematics fixture skipped (no GPU): {e:#}");
+            return;
+        }
+    };
+    let (aspect, znear, zfar) = (16.0_f32 / 9.0, 0.5_f32, 5000.0_f32);
+    let mut freefly = cinematics_freefly(aspect, znear, zfar);
+
+    let pos = (3.0_f32, 4.0_f32, 5.0_f32);
+    let look_at = (0.0_f32, 0.0_f32, 0.0_f32);
+    let fov_deg = 60.0_f32; // in range -> sanitize is a no-op here
+    let key = awc::CameraKey::new(awc::Time::from_secs(0.5), pos, look_at, fov_deg);
+
+    let actual =
+        drive_one_camera_key(&mut renderer, &mut freefly, key).expect("cinematics path drive failed");
+
+    // Independent baseline: target-based look_at_rh (NOT via yaw/pitch).
+    let expected = cinematics_baseline_render_view(
+        Vec3::new(pos.0, pos.1, pos.2),
+        Vec3::new(look_at.0, look_at.1, look_at.2),
+        fov_deg, // already sanitized (in range)
+        aspect,
+        znear,
+        zfar,
+    );
+    assert_render_view_approx(&actual, &expected, "cinematics_normal");
+
+    // Explicit fovy / position spot-checks (the geometric-intent contract).
+    assert!(
+        (actual.fovy - 60_f32.to_radians()).abs() < 1e-6,
+        "RenderView.fovy must equal 60deg in radians; got {}",
+        actual.fovy,
+    );
+    assert!(
+        (actual.position - Vec3::new(3.0, 4.0, 5.0)).length() < 1e-4,
+        "RenderView.position must equal the keyframe pos; got {:?}",
+        actual.position,
+    );
+}
+
+#[test]
+fn cinematics_fov_out_of_range_clamped_to_170() {
+    let mut renderer = match cinematics_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[harness] cinematics fixture skipped (no GPU): {e:#}");
+            return;
+        }
+    };
+    let (aspect, znear, zfar) = (16.0_f32 / 9.0, 0.5_f32, 5000.0_f32);
+    let mut freefly = cinematics_freefly(aspect, znear, zfar);
+
+    let pos = (2.0_f32, 1.0_f32, -4.0_f32);
+    let look_at = (0.0_f32, 0.0_f32, 0.0_f32);
+    let fov_deg_in = 200.0_f32; // above 170 max -> sanitize clamps to 170
+    let key = awc::CameraKey::new(awc::Time::from_secs(0.5), pos, look_at, fov_deg_in);
+
+    let actual =
+        drive_one_camera_key(&mut renderer, &mut freefly, key).expect("cinematics path drive failed");
+
+    let fov_deg_sanitized = 170.0_f32; // CameraKey::sanitize: clamp(10,170)
+    let expected = cinematics_baseline_render_view(
+        Vec3::new(pos.0, pos.1, pos.2),
+        Vec3::new(look_at.0, look_at.1, look_at.2),
+        fov_deg_sanitized,
+        aspect,
+        znear,
+        zfar,
+    );
+    assert_render_view_approx(&actual, &expected, "cinematics_fov_clamp");
+
+    // The headline contract: out-of-range fov was clamped to 170deg, NOT 200deg.
+    assert!(
+        (actual.fovy - 170_f32.to_radians()).abs() < 1e-6,
+        "out-of-range fov_deg=200 must clamp to 170deg in radians (~{}); got {} (200deg would be {})",
+        170_f32.to_radians(),
+        actual.fovy,
+        200_f32.to_radians(),
+    );
+}
+
+#[test]
+fn cinematics_degenerate_look_at_resolves_to_plus_x() {
+    let mut renderer = match cinematics_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[harness] cinematics fixture skipped (no GPU): {e:#}");
+            return;
+        }
+    };
+    let (aspect, znear, zfar) = (4.0_f32 / 3.0, 0.5_f32, 5000.0_f32);
+    let mut freefly = cinematics_freefly(aspect, znear, zfar);
+
+    let pos = (7.0_f32, -2.0_f32, 3.0_f32);
+    let look_at = pos; // DEGENERATE: look_at == pos exactly
+    let fov_deg = 60.0_f32;
+    let key = awc::CameraKey::new(awc::Time::from_secs(0.5), pos, look_at, fov_deg);
+
+    let actual =
+        drive_one_camera_key(&mut renderer, &mut freefly, key).expect("cinematics path drive failed");
+
+    // sanitize resolves look_at -> pos + (1,0,0) (canonical +X forward).
+    let look_at_sanitized = (pos.0 + 1.0, pos.1, pos.2);
+    let expected = cinematics_baseline_render_view(
+        Vec3::new(pos.0, pos.1, pos.2),
+        Vec3::new(look_at_sanitized.0, look_at_sanitized.1, look_at_sanitized.2),
+        fov_deg,
+        aspect,
+        znear,
+        zfar,
+    );
+    assert_render_view_approx(&actual, &expected, "cinematics_degenerate");
+
+    // The headline contract: degenerate look_at resolved to +X forward.
+    assert!(
+        (actual.view_dir - Vec3::X).length() < 1e-5,
+        "degenerate look_at==pos must resolve to +X forward per sanitize; got {:?}",
+        actual.view_dir,
+    );
+}
+
+#[test]
+fn cinematics_lerped_keyframe_drives_interpolated_pose() {
+    let mut renderer = match cinematics_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[harness] cinematics fixture skipped (no GPU): {e:#}");
+            return;
+        }
+    };
+    let (aspect, znear, zfar) = (16.0_f32 / 9.0, 0.5_f32, 5000.0_f32);
+    let mut freefly = cinematics_freefly(aspect, znear, zfar);
+
+    let a = awc::CameraKey::new(awc::Time::from_secs(0.0), (0.0, 0.0, 10.0), (0.0, 0.0, 0.0), 50.0);
+    let b = awc::CameraKey::new(awc::Time::from_secs(1.0), (10.0, 0.0, 0.0), (0.0, 5.0, 0.0), 90.0);
+    let mid = a.lerp(&b, 0.5);
+
+    // Independently verify the lerp produced the hand-computed triple before
+    // we trust it as the baseline source (linear s + (o-s)*t per lib.rs).
+    assert!(
+        (mid.pos.0 - 5.0).abs() < 1e-5 && (mid.pos.1 - 0.0).abs() < 1e-5 && (mid.pos.2 - 5.0).abs() < 1e-5,
+        "lerp pos must be (5,0,5); got {:?}",
+        mid.pos
+    );
+    assert!(
+        (mid.look_at.0 - 0.0).abs() < 1e-5
+            && (mid.look_at.1 - 2.5).abs() < 1e-5
+            && (mid.look_at.2 - 0.0).abs() < 1e-5,
+        "lerp look_at must be (0,2.5,0); got {:?}",
+        mid.look_at
+    );
+    assert!((mid.fov_deg - 70.0).abs() < 1e-4, "lerp fov_deg must be 70; got {}", mid.fov_deg);
+    assert!((mid.t.0 - 0.5).abs() < 1e-5, "lerp t must be 0.5s; got {}", mid.t.0);
+
+    // Drive the lerped key through the production path.
+    let actual = drive_one_camera_key(&mut renderer, &mut freefly, mid.clone())
+        .expect("cinematics path drive failed");
+
+    // Independent baseline from the hand-computed lerped triple.
+    let expected = cinematics_baseline_render_view(
+        Vec3::new(5.0, 0.0, 5.0),
+        Vec3::new(0.0, 2.5, 0.0),
+        70.0, // fov in range -> sanitize no-op
+        aspect,
+        znear,
+        zfar,
+    );
+    assert_render_view_approx(&actual, &expected, "cinematics_lerp");
+
+    assert!(
+        (actual.fovy - 70_f32.to_radians()).abs() < 1e-6,
+        "interpolated fov must reach fovy=70deg in radians; got {}",
+        actual.fovy,
+    );
+}
