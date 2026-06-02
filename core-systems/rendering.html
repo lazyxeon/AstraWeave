@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4137082.js";
+            window.path_to_searchindex_js = "../searchindex-5870b45e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -692,6 +692,44 @@ bookmark restore — that the runtime engine doesn’t need.</li>
 <code>CAMERA_CONVENTIONS.md</code> §2.9); it doesn’t know which producer created the
 view. New engine-runtime producers (Follow, Cinematic, Debug) belong in
 <code>astraweave-camera</code>; new editor-only producers belong in <code>tools/aw_editor/</code>.</p>
+<h4 id="cinematics-camera-consolidation"><a class="header" href="#cinematics-camera-consolidation">Cinematics camera consolidation</a></h4>
+<p>Cinematics camera state consolidated to a single canonical type during
+the Unified Camera campaign’s C.7 chapter: <code>astraweave_cinematics::CameraKey</code>,
+which carries a keyframe’s timestamp (<code>t</code>), world position (<code>pos</code>),
+look-at target (<code>look_at</code>), and field of view (<code>fov_deg</code>, degrees). It
+provides <code>lerp</code> (interpolation between adjacent keyframes) and <code>sanitize</code>
+(boundary hardening: clamps <code>fov_deg</code> to [10°, 170°]; resolves a
+degenerate <code>look_at == pos</code> to canonical +X forward). The cinematics
+crate has no <code>glam</code> dependency by design — <code>pos</code>/<code>look_at</code> are
+<code>(f32, f32, f32)</code> tuples — keeping it a self-contained data-layer crate
+any crate can depend on without circular-dependency risk.</p>
+<p>Cinematics camera state reaches the renderer via
+<code>Renderer::tick_cinematics(dt, &amp;mut camera)</code>, which advances a loaded
+<code>Timeline</code> through its <code>Sequencer</code>, dispatches <code>CameraKey</code> events to
+<code>apply_camera_key</code> (which sanitizes defensively, then converts each key
+into a <code>FreeFly</code> camera — <code>fov_deg</code> becomes <code>fovy</code> in radians at this
+producer boundary), and the <code>FreeFly</code> produces a <code>RenderView</code> through the
+canonical <code>CameraProducer</code> contract. So cinematics flows through the same
+canonical path every camera uses — <code>CameraKey → FreeFly → RenderView → Renderer::update_view</code> — with no bespoke cinematics renderer API (per
+<code>CAMERA_CONVENTIONS.md</code> §2.9).</p>
+<p>Before C.7, three parallel cinematics camera systems coexisted with no
+conversion functions between them. The chapter consolidated them
+per-system: gameplay cutscenes (<code>Cue::CameraTo</code>) evolved their fields to
+look_at + fov_deg and now emit canonical <code>CameraKey</code> events via the
+<code>CutsceneTickEvent</code> enum (C.7.A); <code>examples/cutscene_render_demo</code> rewrote
+its tick loop onto <code>tick_cinematics</code>, becoming the first production caller
+(C.7.B); the canonical key was hardened with <code>sanitize</code> at the
+<code>apply_camera_key</code> boundary (C.7.D); and the editor’s parallel
+<code>CameraKeyframe</code> type was retired entirely into <code>CameraKey</code> (C.7.C), with
+its UI-state-only <code>roll</code> feature dropped.</p>
+<p>One cinematics-camera surface remains outside the consolidation as a
+<strong>deliberate deferral</strong>: the dev-only “Simple Cinematics” panel in
+<code>astraweave-ui</code>. It already uses the canonical <code>CameraKey</code> type (it
+loads/saves <code>Timeline</code> JSON and steps a <code>Sequencer</code>), but has no renderer
+connection — it’s a timeline-inspection debugging tool, not a viewport-wired
+authoring surface. It’s not a parallel <em>type</em> (it uses canonical types); its
+remaining work is tool-integration, a different concern from camera
+consolidation. Deferred to post-campaign cleanup.</p>
 <h3 id="dynamic-material-updates"><a class="header" href="#dynamic-material-updates">Dynamic Material Updates</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {

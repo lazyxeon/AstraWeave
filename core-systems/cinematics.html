@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4137082.js";
+            window.path_to_searchindex_js = "../searchindex-5870b45e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -219,6 +219,28 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="cinematics-system"><a class="header" href="#cinematics-system">Cinematics System</a></h1>
+<blockquote>
+<p><strong>⚠️ This chapter is outdated and pending a full rewrite (Unified Camera campaign C.7.F / post-campaign cleanup).</strong></p>
+<p>This chapter predates the C.7 cinematics consolidation and documents an
+outdated camera model. Specifically, it describes <code>CameraKey</code> with a
+rotation-based orientation (<code>rot</code> / Euler angles) and field/syntax that
+do not match the current <code>astraweave-cinematics</code> API. The canonical
+<code>CameraKey</code> uses a <strong>look-at target</strong> model:
+<code>CameraKey { t: Time, pos: (f32, f32, f32), look_at: (f32, f32, f32), fov_deg: f32 }</code>.</p>
+<p>Several APIs referenced below (track-construction helpers, camera setter
+methods) may also not exist in the current crate.</p>
+<p><strong>For accurate, current documentation of the cinematics camera, see:</strong></p>
+<ul>
+<li><a href="./rendering.html">The Camera System section in the rendering chapter</a></li>
+<li><code>docs/current/CAMERA_CONVENTIONS.md</code> (canonical camera conventions)</li>
+</ul>
+<p>A full rewrite of this chapter — re-authoring its worked examples against
+the canonical look-at model and verifying every documented API symbol
+against the actual crate surface — is tracked as C.7.F in the
+post-campaign cleanup queue. Until then, treat this chapter’s specifics
+as unreliable.</p>
+</blockquote>
+<hr>
 <blockquote>
 <p><strong>Status</strong>: Production Ready<br><strong>Crate</strong>: <code>astraweave-cinematics</code><br><strong>Coverage</strong>: ~85%</p>
 </blockquote>

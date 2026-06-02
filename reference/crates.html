@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4137082.js";
+            window.path_to_searchindex_js = "../searchindex-5870b45e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -406,6 +406,55 @@ producers live with their concerns. New engine-runtime producers
 (Follow, Cinematic, Debug per the SOTA roadmap) belong in
 <code>astraweave-camera</code> alongside <code>FreeFly</code>; new editor-only producers
 belong in <code>tools/aw_editor/</code>.</p>
+<hr>
+<h3 id="astraweave-cinematics"><a class="header" href="#astraweave-cinematics">astraweave-cinematics</a></h3>
+<p>Timeline-based sequencer for cutscenes and scripted events, with
+camera, animation, audio, and FX tracks. The canonical cinematics
+camera keyframe is <code>CameraKey</code> — the single type all cinematics camera
+state consolidated to during the Unified Camera campaign’s C.7 chapter.
+The crate has <strong>no <code>astraweave-*</code> dependencies</strong> (its <code>pos</code>/<code>look_at</code>
+are plain <code>(f32, f32, f32)</code> tuples, not <code>glam</code> types), so any crate can
+depend on it without circular-dependency risk — the property that let
+<code>astraweave-gameplay</code>, <code>tools/aw_editor</code>, and <code>examples/cutscene_render_demo</code>
+all adopt it during C.7.</p>
+<pre><code class="language-toml">[dependencies]
+astraweave-cinematics = "0.1"
+</code></pre>
+<p><strong>Key Types:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Time</code></td><td>Newtype over <code>f32</code> seconds (<code>Time(pub f32)</code>)</td></tr>
+<tr><td><code>CameraKey</code></td><td>Canonical camera keyframe: <code>{ t: Time, pos, look_at, fov_deg }</code> — look-at target model, FOV in degrees. Provides <code>lerp</code> and <code>sanitize</code></td></tr>
+<tr><td><code>Track</code></td><td>Track variant: <code>Camera { keyframes }</code>, <code>Animation</code>, <code>Audio</code>, <code>Fx</code></td></tr>
+<tr><td><code>Timeline</code></td><td>Named collection of tracks with a duration</td></tr>
+<tr><td><code>Sequencer</code></td><td>Playback engine: <code>seek</code> / <code>step(dt)</code> emitting events</td></tr>
+<tr><td><code>SequencerEvent</code></td><td>Events emitted during playback (<code>CameraKey</code>, anim, audio, FX)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>The cinematics camera upload path.</strong> Cinematics camera state reaches
+the renderer through <code>Renderer::tick_cinematics(dt, &amp;mut camera)</code>, which
+steps a loaded <code>Timeline</code> and dispatches <code>CameraKey</code> events to
+<code>apply_camera_key</code>. That function sanitizes defensively (clamping
+<code>fov_deg</code>, resolving degenerate <code>look_at == pos</code>) and converts each key
+into a <code>FreeFly</code> producer — <code>fov_deg</code> becomes <code>fovy</code> in radians at this
+boundary. <code>FreeFly</code> then produces a <code>RenderView</code> via the canonical
+<code>CameraProducer</code> contract, consumed by <code>Renderer::update_view</code>. There is
+no bespoke cinematics renderer API (per <code>CAMERA_CONVENTIONS.md</code> §2.9).
+See the <a href="../core-systems/rendering.html">Rendering chapter’s Camera System section</a>
+for the full consolidation arc.</p>
+<blockquote>
+<p><strong>Note:</strong> the <code>docs/src/core-systems/cinematics.md</code> chapter is a
+separate, older walkthrough that predates the C.7 consolidation and
+documents an outdated rotation-based <code>CameraKey</code>. It carries a banner
+to that effect and is pending a full rewrite (C.7.F). Treat this
+reference entry and the rendering chapter as canonical until that
+rewrite lands.</p>
+</blockquote>
 <hr>
 <h3 id="astraweave-math"><a class="header" href="#astraweave-math">astraweave-math</a></h3>
 <p>Mathematics library optimized for game development with SIMD acceleration.</p>
