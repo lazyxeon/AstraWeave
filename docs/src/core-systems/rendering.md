@@ -512,6 +512,50 @@ The renderer consumes `RenderView` exclusively (per
 view. New engine-runtime producers (Follow, Cinematic, Debug) belong in
 `astraweave-camera`; new editor-only producers belong in `tools/aw_editor/`.
 
+#### Cinematics camera consolidation
+
+Cinematics camera state consolidated to a single canonical type during
+the Unified Camera campaign's C.7 chapter: `astraweave_cinematics::CameraKey`,
+which carries a keyframe's timestamp (`t`), world position (`pos`),
+look-at target (`look_at`), and field of view (`fov_deg`, degrees). It
+provides `lerp` (interpolation between adjacent keyframes) and `sanitize`
+(boundary hardening: clamps `fov_deg` to [10°, 170°]; resolves a
+degenerate `look_at == pos` to canonical +X forward). The cinematics
+crate has no `glam` dependency by design — `pos`/`look_at` are
+`(f32, f32, f32)` tuples — keeping it a self-contained data-layer crate
+any crate can depend on without circular-dependency risk.
+
+Cinematics camera state reaches the renderer via
+`Renderer::tick_cinematics(dt, &mut camera)`, which advances a loaded
+`Timeline` through its `Sequencer`, dispatches `CameraKey` events to
+`apply_camera_key` (which sanitizes defensively, then converts each key
+into a `FreeFly` camera — `fov_deg` becomes `fovy` in radians at this
+producer boundary), and the `FreeFly` produces a `RenderView` through the
+canonical `CameraProducer` contract. So cinematics flows through the same
+canonical path every camera uses — `CameraKey → FreeFly → RenderView →
+Renderer::update_view` — with no bespoke cinematics renderer API (per
+`CAMERA_CONVENTIONS.md` §2.9).
+
+Before C.7, three parallel cinematics camera systems coexisted with no
+conversion functions between them. The chapter consolidated them
+per-system: gameplay cutscenes (`Cue::CameraTo`) evolved their fields to
+look_at + fov_deg and now emit canonical `CameraKey` events via the
+`CutsceneTickEvent` enum (C.7.A); `examples/cutscene_render_demo` rewrote
+its tick loop onto `tick_cinematics`, becoming the first production caller
+(C.7.B); the canonical key was hardened with `sanitize` at the
+`apply_camera_key` boundary (C.7.D); and the editor's parallel
+`CameraKeyframe` type was retired entirely into `CameraKey` (C.7.C), with
+its UI-state-only `roll` feature dropped.
+
+One cinematics-camera surface remains outside the consolidation as a
+**deliberate deferral**: the dev-only "Simple Cinematics" panel in
+`astraweave-ui`. It already uses the canonical `CameraKey` type (it
+loads/saves `Timeline` JSON and steps a `Sequencer`), but has no renderer
+connection — it's a timeline-inspection debugging tool, not a viewport-wired
+authoring surface. It's not a parallel *type* (it uses canonical types); its
+remaining work is tool-integration, a different concern from camera
+consolidation. Deferred to post-campaign cleanup.
+
 ### Dynamic Material Updates
 
 ```rust

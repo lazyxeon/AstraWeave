@@ -1,5 +1,29 @@
 # Cinematics System
 
+> **⚠️ This chapter is outdated and pending a full rewrite (Unified Camera campaign C.7.F / post-campaign cleanup).**
+>
+> This chapter predates the C.7 cinematics consolidation and documents an
+> outdated camera model. Specifically, it describes `CameraKey` with a
+> rotation-based orientation (`rot` / Euler angles) and field/syntax that
+> do not match the current `astraweave-cinematics` API. The canonical
+> `CameraKey` uses a **look-at target** model:
+> `CameraKey { t: Time, pos: (f32, f32, f32), look_at: (f32, f32, f32), fov_deg: f32 }`.
+>
+> Several APIs referenced below (track-construction helpers, camera setter
+> methods) may also not exist in the current crate.
+>
+> **For accurate, current documentation of the cinematics camera, see:**
+> - [The Camera System section in the rendering chapter](./rendering.md)
+> - `docs/current/CAMERA_CONVENTIONS.md` (canonical camera conventions)
+>
+> A full rewrite of this chapter — re-authoring its worked examples against
+> the canonical look-at model and verifying every documented API symbol
+> against the actual crate surface — is tracked as C.7.F in the
+> post-campaign cleanup queue. Until then, treat this chapter's specifics
+> as unreliable.
+
+---
+
 > **Status**: Production Ready  
 > **Crate**: `astraweave-cinematics`  
 > **Coverage**: ~85%

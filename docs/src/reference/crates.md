@@ -196,6 +196,55 @@ belong in `tools/aw_editor/`.
 
 ---
 
+### astraweave-cinematics
+
+Timeline-based sequencer for cutscenes and scripted events, with
+camera, animation, audio, and FX tracks. The canonical cinematics
+camera keyframe is `CameraKey` — the single type all cinematics camera
+state consolidated to during the Unified Camera campaign's C.7 chapter.
+The crate has **no `astraweave-*` dependencies** (its `pos`/`look_at`
+are plain `(f32, f32, f32)` tuples, not `glam` types), so any crate can
+depend on it without circular-dependency risk — the property that let
+`astraweave-gameplay`, `tools/aw_editor`, and `examples/cutscene_render_demo`
+all adopt it during C.7.
+
+```toml
+[dependencies]
+astraweave-cinematics = "0.1"
+```
+
+**Key Types:**
+
+| Type | Description |
+|------|-------------|
+| `Time` | Newtype over `f32` seconds (`Time(pub f32)`) |
+| `CameraKey` | Canonical camera keyframe: `{ t: Time, pos, look_at, fov_deg }` — look-at target model, FOV in degrees. Provides `lerp` and `sanitize` |
+| `Track` | Track variant: `Camera { keyframes }`, `Animation`, `Audio`, `Fx` |
+| `Timeline` | Named collection of tracks with a duration |
+| `Sequencer` | Playback engine: `seek` / `step(dt)` emitting events |
+| `SequencerEvent` | Events emitted during playback (`CameraKey`, anim, audio, FX) |
+
+**The cinematics camera upload path.** Cinematics camera state reaches
+the renderer through `Renderer::tick_cinematics(dt, &mut camera)`, which
+steps a loaded `Timeline` and dispatches `CameraKey` events to
+`apply_camera_key`. That function sanitizes defensively (clamping
+`fov_deg`, resolving degenerate `look_at == pos`) and converts each key
+into a `FreeFly` producer — `fov_deg` becomes `fovy` in radians at this
+boundary. `FreeFly` then produces a `RenderView` via the canonical
+`CameraProducer` contract, consumed by `Renderer::update_view`. There is
+no bespoke cinematics renderer API (per `CAMERA_CONVENTIONS.md` §2.9).
+See the [Rendering chapter's Camera System section](../core-systems/rendering.md)
+for the full consolidation arc.
+
+> **Note:** the `docs/src/core-systems/cinematics.md` chapter is a
+> separate, older walkthrough that predates the C.7 consolidation and
+> documents an outdated rotation-based `CameraKey`. It carries a banner
+> to that effect and is pending a full rewrite (C.7.F). Treat this
+> reference entry and the rendering chapter as canonical until that
+> rewrite lands.
+
+---
+
 ### astraweave-math
 
 Mathematics library optimized for game development with SIMD acceleration.

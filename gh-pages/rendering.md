@@ -183,6 +183,79 @@ to editing workflows), the pattern is the same: implement
 **For new engine-runtime producers** (Follow, Cinematic, Debug per the
 SOTA roadmap): add them to `astraweave-camera` alongside `FreeFly`.
 
+### Cinematics camera consolidation
+
+AstraWeave's cinematics camera state consolidated to a single canonical
+type during the Unified Camera campaign's C.7 chapter: `CameraKey`
+(in `astraweave-cinematics`).
+
+**The canonical type.** `astraweave_cinematics::CameraKey` carries a
+keyframe's timestamp (`t`), world position (`pos`), look-at target
+(`look_at`), and field of view (`fov_deg`, degrees). It implements
+`lerp` for interpolation between adjacent keyframes and `sanitize` for
+boundary hardening (clamps `fov_deg` to [10°, 170°]; resolves a
+degenerate `look_at == pos` to canonical +X forward). The cinematics
+crate has no `glam` dependency by design — `pos` and `look_at` are
+`(f32, f32, f32)` tuples — which keeps it a self-contained data-layer
+crate that any other crate can depend on without circular-dependency
+risk.
+
+**The upload path.** Cinematics camera state reaches the renderer via
+`Renderer::tick_cinematics(dt, &mut camera)`, which advances a loaded
+`Timeline` through its `Sequencer`, dispatches `CameraKey` events to
+`apply_camera_key` (which sanitizes defensively, then converts each key
+into the engine's `FreeFly` camera — `fov_deg` becomes `fovy` in radians
+at this producer boundary). `FreeFly` then produces a `RenderView`
+through the canonical `CameraProducer` contract described above. So
+cinematics flows into the same canonical upload path every camera uses:
+`CameraKey → FreeFly → RenderView → Renderer::update_view`. There is no
+bespoke cinematics renderer API (per `CAMERA_CONVENTIONS.md` §2.9).
+
+**The consolidation arc.** Before C.7, three parallel cinematics camera
+systems coexisted with no conversion functions between them. The chapter
+consolidated them per-system, with the strategy fitting each system's
+role:
+
+- **Gameplay cutscenes** (`astraweave_gameplay::cutscenes::Cue::CameraTo`):
+  evolved their fields from yaw/pitch to look_at + fov_deg (C.7.A), so
+  `CutsceneState::tick` now emits canonical `CameraKey` events via the
+  `CutsceneTickEvent` enum. The gameplay layer gained an
+  `astraweave-cinematics` dependency.
+- **The cutscene demo** (`examples/cutscene_render_demo`): rewrote its
+  tick loop to use `Renderer::tick_cinematics` (C.7.B), becoming the
+  first production caller of the canonical cinematics path.
+- **The canonical key**: hardened with `sanitize` at the
+  `apply_camera_key` boundary (C.7.D), so the production path is
+  defensive against degenerate keys.
+- **The editor's keyframe type** (`CameraKeyframe`): retired entirely
+  into `CameraKey` (C.7.C). The editor's `CinematicsPanel` now holds
+  `Vec<CameraKey>` and operates on the canonical type directly. The
+  editor's roll feature dropped (it was UI-state-only with no runtime
+  effect).
+
+### Known remaining parallel surface (deferred)
+
+One cinematics-camera surface remains outside the canonical
+consolidation as of the C.7 chapter's close: the dev-only "Simple
+Cinematics" panel in `astraweave-ui` (`astraweave-ui/src/panels.rs`).
+
+This panel already uses the canonical `CameraKey` type (it loads/saves
+`Timeline` JSON and steps a `Sequencer`, displaying events as UI
+labels), but it has no renderer connection — it's a developer debugging
+tool for inspecting timeline data, not a content-authoring surface
+wired to a viewport.
+
+It's deferred to post-campaign cleanup rather than consolidated in C.7
+because (a) it already uses canonical types, so it's not a parallel
+*type* — it's a parallel *tool*; (b) wiring it to a renderer preview
+would be a feature addition, not a consolidation; (c) the campaign's
+scope was camera-system consolidation, and this panel's remaining work
+is tool-integration, a different concern. This is a deliberate deferral,
+not an oversight. The panel's future consolidation (if pursued) would
+wire its `Sequencer` output to a preview viewport via
+`Renderer::tick_cinematics` — the same path `cutscene_render_demo` now
+uses.
+
 ## Material System
 
 Materials are defined in TOML and compiled to GPU D2 array textures:
