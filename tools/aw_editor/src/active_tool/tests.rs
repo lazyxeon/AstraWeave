@@ -630,3 +630,122 @@ fn active_tool_returning_passthrough_is_still_invoked() {
          (distinct from the no-active-tool short-circuit which never calls a handler)"
     );
 }
+
+// -----------------------------------------------------------------------------
+// SP4.B fixture: cross-tool lifecycle ORDER recorder
+// -----------------------------------------------------------------------------
+
+/// Fixture that appends a label to a SHARED ordering log on each lifecycle
+/// call, so a test can assert the *relative order* of lifecycle invocations
+/// across two different tools — which `MockActiveTool`'s per-tool counters
+/// cannot capture. Co-located with its sole consumer
+/// ([`set_active_transition_deactivates_prev_before_activating_next`]) in SP4.B.
+struct OrderRecordingTool {
+    uuid: Uuid,
+    label: String,
+    log: Rc<RefCell<Vec<String>>>,
+}
+
+impl OrderRecordingTool {
+    fn new(uuid: Uuid, label: &str, log: Rc<RefCell<Vec<String>>>) -> Self {
+        Self {
+            uuid,
+            label: label.to_string(),
+            log,
+        }
+    }
+}
+
+impl ActiveTool for OrderRecordingTool {
+    fn uuid(&self) -> Uuid {
+        self.uuid
+    }
+
+    fn name(&self) -> &str {
+        &self.label
+    }
+
+    fn activate(&mut self, _context: &mut ToolContext) {
+        self.log.borrow_mut().push(format!("{}:activate", self.label));
+    }
+
+    fn deactivate(&mut self, _context: &mut ToolContext) {
+        self.log
+            .borrow_mut()
+            .push(format!("{}:deactivate", self.label));
+    }
+}
+
+/// SP4.B / Pattern A: `set_active_tool` must call the previous tool's
+/// `deactivate` STRICTLY BEFORE the new tool's `activate`. Scenario 10 above
+/// verifies the call *counts* (A.deactivate==1, B.activate==1); this verifies
+/// the *order*, which is the contract a tool relies on to tear down its state
+/// (e.g., release an in-progress brush stroke) before its successor builds its
+/// own. A future refactor that reorders the transition (activate-then-deactivate)
+/// would pass Scenario 10's count assertions but break this ordering tripwire.
+#[test]
+fn set_active_transition_deactivates_prev_before_activating_next() {
+    let mut dispatcher = Dispatcher::new();
+    let uuid_a = Uuid::new_v4();
+    let uuid_b = Uuid::new_v4();
+    let log = Rc::new(RefCell::new(Vec::new()));
+    dispatcher.register_tool(Box::new(OrderRecordingTool::new(uuid_a, "A", Rc::clone(&log))));
+    dispatcher.register_tool(Box::new(OrderRecordingTool::new(uuid_b, "B", Rc::clone(&log))));
+
+    let mut context = ToolContext::for_test();
+    dispatcher.set_active_tool(Some(uuid_a), &mut context);
+    dispatcher.set_active_tool(Some(uuid_b), &mut context);
+
+    assert_eq!(
+        *log.borrow(),
+        vec![
+            "A:activate".to_string(),
+            "A:deactivate".to_string(),
+            "B:activate".to_string(),
+        ],
+        "set_active_tool(A) activates A; set_active_tool(B) must deactivate A \
+         BEFORE activating B (deactivate-then-activate transition order per \
+         campaign doc §2.8 mutex arbitration)"
+    );
+}
+
+/// SP4.B / Pattern A: `EventDisposition` `#[non_exhaustive]` forward-compatibility
+/// TRIPWIRE (resolves campaign doc §2.3 + research audit §8.1.2).
+///
+/// `EventDisposition` is `#[non_exhaustive]` so a future variant (the documented
+/// `ConsumedSelective`, per Andrew Q4) lands without breaking *external-crate*
+/// consumers — the attribute forces those to carry a wildcard arm. This test is
+/// the IN-CRATE counterweight: it matches the enum EXHAUSTIVELY with NO wildcard.
+/// `#[non_exhaustive]` does not require a wildcard for same-crate matches, so the
+/// match below compiles today — but the moment a variant is added to the enum,
+/// this test fails to compile ("non-exhaustive patterns: ... not covered"),
+/// forcing a conscious decision about how the dispatcher + ViewportWidget route
+/// the new disposition rather than letting a swallowing `_ =>` arm silently
+/// mis-handle it. That is the §2.3 contract: external consumers keep compiling;
+/// internal routing is forced to be revisited.
+///
+/// DO NOT add a `_ =>` arm to the match in `blocks_downstream` — the compile
+/// error on a newly added variant IS the regression signal.
+#[test]
+fn event_disposition_forward_compat_tripwire() {
+    // The two variants the dispatcher routes today are distinct.
+    assert_ne!(EventDisposition::Consumed, EventDisposition::PassThrough);
+
+    /// Mirrors the routing decision a consumer makes: does this disposition
+    /// block downstream (camera/default) handling? Exhaustive, wildcard-free.
+    fn blocks_downstream(d: EventDisposition) -> bool {
+        match d {
+            EventDisposition::Consumed => true,
+            EventDisposition::PassThrough => false,
+        }
+    }
+
+    assert!(
+        blocks_downstream(EventDisposition::Consumed),
+        "Consumed must block downstream camera/default handling"
+    );
+    assert!(
+        !blocks_downstream(EventDisposition::PassThrough),
+        "PassThrough must let downstream camera/default handling proceed"
+    );
+}
