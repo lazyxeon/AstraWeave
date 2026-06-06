@@ -242,6 +242,15 @@ struct EditorApp {
     undo_stack: command::UndoStack,
     /// Side-channel for terrain brush undo/redo actions
     terrain_undo_queue: command::TerrainUndoQueue,
+    /// Sub-phase 5: side-channel for RegionalArchetypePanel paint actions
+    /// (dispatcher emit-only tool → drained here, applied to the canonical
+    /// dock_tab_viewer panel).
+    regional_archetype_paint_queue: command::RegionalArchetypePaintQueue,
+    /// Sub-phase 5: side-channel for RegionalArchetype paint undo/redo.
+    regional_archetype_undo_queue: command::RegionalArchetypeUndoQueue,
+    /// Sub-phase 5: pre-stroke mask id snapshot captured at StrokeBegin, used to
+    /// build the RegionalArchetypePaintCommand at StrokeEnd.
+    regional_archetype_stroke_pre_ids: Option<Vec<u8>>,
     // Phase 2.2: Scene Save/Load
     current_scene_path: Option<PathBuf>,
     // Phase 3.4: Copy/Paste/Duplicate
@@ -493,6 +502,9 @@ impl Default for EditorApp {
             // Phase 2.1: Undo/Redo system
             undo_stack: command::UndoStack::new(100), // Store last 100 commands
             terrain_undo_queue: command::new_terrain_undo_queue(),
+            regional_archetype_paint_queue: command::new_regional_archetype_paint_queue(),
+            regional_archetype_undo_queue: command::new_regional_archetype_undo_queue(),
+            regional_archetype_stroke_pre_ids: None,
             // Phase 2.2: Scene Save/Load
             current_scene_path: None,
             // Phase 3.4: Copy/Paste/Duplicate
@@ -2636,6 +2648,19 @@ impl EditorApp {
     fn new(cc: &eframe::CreationContext) -> Result<Self> {
         let mut app = Self::default();
 
+        // Sub-phase 5 (Editor Multi-Tool Architecture): register the
+        // RegionalArchetypePanel paint tool as the second dispatcher tool
+        // (alongside TerrainPanel registered in Default). The registered
+        // instance is emit-only (β1): its ActiveTool handlers push paint actions
+        // to regional_archetype_paint_queue; the per-frame drain in update()
+        // applies them to the canonical dock_tab_viewer panel + builds undo
+        // commands. Done here (not in Default) so it can clone the queue field.
+        app.dispatcher.register_tool(Box::new(
+            crate::panels::regional_archetype_panel::RegionalArchetypePanel::new_dispatch_tool(
+                app.regional_archetype_paint_queue.clone(),
+            ),
+        ));
+
         // Windows: set the window class cursor to IDC_ARROW.
         //
         // winit registers the window class with hCursor=0 (null) so that
@@ -3960,6 +3985,71 @@ impl EditorApp {
                                 viewport.update_terrain_chunk_vertices(*chunk_index, &gpu_verts);
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Sub-phase 5: drain RegionalArchetype paint actions emitted by the
+        // dispatcher's emit-only RAP tool (populated by dispatch_cached_events).
+        // Apply each stroke to the CANONICAL dock_tab_viewer panel; at stroke
+        // end, build a RegionalArchetypePaintCommand for undo/redo (mechanism
+        // (b): the dispatcher never touches mask state; main.rs owns the apply).
+        {
+            let paint_actions: Vec<command::RegionalArchetypePaintAction> = {
+                if let Ok(mut q) = self.regional_archetype_paint_queue.lock() {
+                    std::mem::take(&mut *q)
+                } else {
+                    Vec::new()
+                }
+            };
+            for action in paint_actions {
+                match action {
+                    command::RegionalArchetypePaintAction::StrokeBegin => {
+                        self.regional_archetype_stroke_pre_ids = Some(
+                            self.dock_tab_viewer.regional_archetype_snapshot_mask_ids(),
+                        );
+                    }
+                    command::RegionalArchetypePaintAction::Paint { world_x, world_z } => {
+                        self.dock_tab_viewer
+                            .regional_archetype_queue_paint_op(world_x, world_z);
+                    }
+                    command::RegionalArchetypePaintAction::StrokeEnd => {
+                        let post_ids =
+                            self.dock_tab_viewer.regional_archetype_flush_and_snapshot();
+                        if let Some(pre_ids) = self.regional_archetype_stroke_pre_ids.take() {
+                            if pre_ids != post_ids {
+                                let cmd = command::RegionalArchetypePaintCommand::new(
+                                    pre_ids,
+                                    post_ids,
+                                    self.regional_archetype_undo_queue.clone(),
+                                );
+                                self.undo_stack.push_executed(cmd);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sub-phase 5: drain the RegionalArchetype undo side-channel (populated
+        // by RegionalArchetypePaintCommand on undo/redo) and restore the
+        // canonical panel mask's ids + recompute falloff. The mask is
+        // panel-owned data (not rendered to the viewport in SP5), so no GPU
+        // upload is needed (mask rendering is F.5-overlay-and-gate scope).
+        {
+            let undo_actions: Vec<command::RegionalArchetypeUndoAction> = {
+                if let Ok(mut q) = self.regional_archetype_undo_queue.lock() {
+                    std::mem::take(&mut *q)
+                } else {
+                    Vec::new()
+                }
+            };
+            for action in undo_actions {
+                match action {
+                    command::RegionalArchetypeUndoAction::ApplyMaskIds(ids) => {
+                        self.dock_tab_viewer
+                            .apply_regional_archetype_mask_ids(&ids);
                     }
                 }
             }

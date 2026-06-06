@@ -1743,6 +1743,112 @@ impl EditorCommand for TerrainBrushCommand {
     }
 }
 
+// ─── Regional Archetype Paint (Editor Multi-Tool Architecture Sub-phase 5) ──
+
+/// Side-channel action emitted by the dispatcher-owned RegionalArchetypePanel
+/// tool (the emit-only registered instance) and drained by main.rs, which
+/// applies the stroke to the CANONICAL `dock_tab_viewer` panel instance.
+///
+/// Mirrors the `TerrainUndoQueue` side-channel idiom: the dispatcher-registered
+/// tool never touches mask state directly (§2.11 mechanism (b); β1 emit-only
+/// design). This avoids the dual-ownership trap — the registered tool and the
+/// UI-rendered panel are distinct instances, so the registered tool only emits.
+#[derive(Debug, Clone, Copy)]
+pub enum RegionalArchetypePaintAction {
+    /// Pointer pressed: begin a paint stroke. main.rs snapshots the pre-stroke
+    /// mask ids for undo.
+    StrokeBegin,
+    /// Paint dab at world-XZ (Y=0 plane projection). main.rs forwards to the
+    /// canonical panel's `queue_paint_op`.
+    Paint { world_x: f32, world_z: f32 },
+    /// Pointer released: end the stroke. main.rs flushes queued ops to the owned
+    /// mask + pushes a [`RegionalArchetypePaintCommand`] for undo/redo.
+    StrokeEnd,
+}
+
+/// Side-channel for forward paint actions (dispatcher tool → main.rs drain).
+pub type RegionalArchetypePaintQueue =
+    std::sync::Arc<std::sync::Mutex<Vec<RegionalArchetypePaintAction>>>;
+
+/// Construct an empty paint-action side-channel.
+pub fn new_regional_archetype_paint_queue() -> RegionalArchetypePaintQueue {
+    std::sync::Arc::new(std::sync::Mutex::new(Vec::new()))
+}
+
+/// Side-channel action emitted by [`RegionalArchetypePaintCommand`] on
+/// undo/redo, drained by main.rs which restores the canonical panel mask's
+/// `ids` (then recomputes falloff). Mirrors `TerrainUndoAction`.
+#[derive(Debug, Clone)]
+pub enum RegionalArchetypeUndoAction {
+    /// Replace the canonical mask's archetype id buffer wholesale, then
+    /// recompute falloff (full-snapshot strategy per the Andrew planning round).
+    ApplyMaskIds(Vec<u8>),
+}
+
+/// Side-channel for undo/redo mask restoration (command → main.rs drain).
+pub type RegionalArchetypeUndoQueue =
+    std::sync::Arc<std::sync::Mutex<Vec<RegionalArchetypeUndoAction>>>;
+
+/// Construct an empty undo side-channel.
+pub fn new_regional_archetype_undo_queue() -> RegionalArchetypeUndoQueue {
+    std::sync::Arc::new(std::sync::Mutex::new(Vec::new()))
+}
+
+/// Undo/redo command for a single Regional Archetype paint stroke.
+///
+/// Per §2.11 mechanism (b): the command holds full pre/post snapshots of the
+/// mask's archetype id buffer (composite granularity — one stroke = one undo
+/// entry) plus an undo side-channel. `execute` (redo) pushes the post-stroke
+/// ids; `undo` pushes the pre-stroke ids. main.rs drains the queue and applies
+/// to the canonical panel mask + recomputes falloff. Like `TerrainBrushCommand`,
+/// this command ignores the ECS `World` — the mask is panel-owned.
+#[derive(Debug)]
+pub struct RegionalArchetypePaintCommand {
+    pre_ids: Vec<u8>,
+    post_ids: Vec<u8>,
+    undo_queue: RegionalArchetypeUndoQueue,
+    description: String,
+}
+
+impl RegionalArchetypePaintCommand {
+    pub fn new(
+        pre_ids: Vec<u8>,
+        post_ids: Vec<u8>,
+        undo_queue: RegionalArchetypeUndoQueue,
+    ) -> Box<dyn EditorCommand> {
+        Box::new(Self {
+            pre_ids,
+            post_ids,
+            undo_queue,
+            description: "Paint Archetype".to_string(),
+        })
+    }
+}
+
+impl EditorCommand for RegionalArchetypePaintCommand {
+    fn execute(&mut self, _world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
+        // Redo: restore post-stroke ids.
+        if let Ok(mut queue) = self.undo_queue.lock() {
+            queue.push(RegionalArchetypeUndoAction::ApplyMaskIds(
+                self.post_ids.clone(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, _world: &mut World, _entities: Option<&mut EntityManager>) -> Result<()> {
+        // Undo: restore pre-stroke ids.
+        if let Ok(mut queue) = self.undo_queue.lock() {
+            queue.push(RegionalArchetypeUndoAction::ApplyMaskIds(self.pre_ids.clone()));
+        }
+        Ok(())
+    }
+
+    fn describe(&self) -> String {
+        self.description.clone()
+    }
+}
+
 // ─── Component Data Commands (EntityManager-only operations) ────────────────
 
 /// Add a named component to an entity's component map.

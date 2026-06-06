@@ -1452,6 +1452,53 @@ impl EditorTabViewer {
         self.terrain_panel.apply_height_snapshot(snapshot);
     }
 
+    // ── Sub-phase 5: Regional Archetype paint accessors (canonical instance) ──
+    // The dispatcher-registered RAP tool is emit-only; main.rs drains its
+    // paint-action side-channel and applies the stroke to the CANONICAL panel
+    // instance via these accessors (β1 design; resolves the dual-ownership trap).
+
+    /// Forward a drained paint dab to the canonical panel's queue (uses the
+    /// panel's current UI-edited brush/archetype/mode).
+    pub fn regional_archetype_queue_paint_op(&mut self, world_x: f32, world_z: f32) {
+        self.regional_archetype_panel
+            .queue_paint_op(world_x, world_z);
+    }
+
+    /// Ensure the canonical mask exists and return a snapshot of its archetype
+    /// id buffer (pre-stroke capture for undo).
+    pub fn regional_archetype_snapshot_mask_ids(&mut self) -> Vec<u8> {
+        self.regional_archetype_panel.ensure_mask();
+        self.regional_archetype_panel
+            .mask
+            .as_ref()
+            .map(|m| m.ids.clone())
+            .unwrap_or_default()
+    }
+
+    /// Flush queued paint ops to the canonical owned mask (stroke end) and
+    /// return the post-stroke id snapshot.
+    pub fn regional_archetype_flush_and_snapshot(&mut self) -> Vec<u8> {
+        self.regional_archetype_panel
+            .apply_pending_paint_ops_to_owned();
+        self.regional_archetype_panel
+            .mask
+            .as_ref()
+            .map(|m| m.ids.clone())
+            .unwrap_or_default()
+    }
+
+    /// Restore the canonical mask's id buffer wholesale (undo/redo side-channel)
+    /// and recompute falloff. No-op if the snapshot length doesn't match.
+    pub fn apply_regional_archetype_mask_ids(&mut self, ids: &[u8]) {
+        self.regional_archetype_panel.ensure_mask();
+        if let Some(mask) = self.regional_archetype_panel.mask.as_mut() {
+            if mask.ids.len() == ids.len() {
+                mask.ids.copy_from_slice(ids);
+                mask.recompute_falloff();
+            }
+        }
+    }
+
     /// Returns (fog_enabled, fog_density, fog_start, fog_end, weather_preset, particle_count_override) for the current world settings.
     pub fn fog_weather_params(&self) -> (bool, f32, f32, f32, u32, Option<u32>) {
         sky_colors::fog_weather_params(
@@ -7757,6 +7804,16 @@ impl TabViewer for EditorTabViewer {
                 // scope per Q1 deferral).
                 self.regional_archetype_panel.apply_pending_paint_ops_to_owned();
                 self.regional_archetype_panel.show(ui);
+                // Sub-phase 5: drain RAP's SetActiveTool emissions into the
+                // shared pending channel (reused per the Andrew planning round),
+                // mirroring TerrainPanel's TerrainAction::SetActiveTool capture.
+                for action in self.regional_archetype_panel.pending_actions.drain(..) {
+                    match action {
+                        crate::panels::regional_archetype_panel::RegionalArchetypeAction::SetActiveTool { uuid } => {
+                            self.pending_set_active_tool.push(uuid);
+                        }
+                    }
+                }
             }
         }
     }

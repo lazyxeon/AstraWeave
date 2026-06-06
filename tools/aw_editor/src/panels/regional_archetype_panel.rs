@@ -17,8 +17,16 @@ use std::path::{Path, PathBuf};
 use astraweave_terrain::regional_archetype_mask::{MaskIoError, RegionalArchetypeMask};
 use astraweave_terrain::world_archetypes::WorldArchetypeId;
 use egui::Ui;
+use uuid::{uuid, Uuid};
 
 use super::Panel;
+use crate::active_tool::{ActiveTool, EventDisposition, MouseEvent, ToolContext};
+use crate::command::{RegionalArchetypePaintAction, RegionalArchetypePaintQueue};
+
+/// Sub-phase 5 (Editor Multi-Tool Architecture): stable dispatcher identity for
+/// the Regional Archetype paint tool. First-party tools use documented UUID
+/// constants per campaign doc §2.5 / Q5 (mirrors `TERRAIN_PANEL_UUID`).
+pub const REGIONAL_ARCHETYPE_PANEL_UUID: Uuid = uuid!("b7d2e9a4-3c8f-4e1a-9d6b-2f5c8a1e7b3d");
 
 /// Phase 1.X-F.5-paint.A: paint mode for the panel's archetype palette.
 /// Paint = write the selected archetype's mask ID; Erase = write 0
@@ -27,6 +35,15 @@ use super::Panel;
 pub enum PaintMode {
     Paint,
     Erase,
+}
+
+/// Sub-phase 5: action emitted by the panel UI for the editor to drain.
+/// Currently only `SetActiveTool` (the paint-tool activation toggle), mirroring
+/// `TerrainAction::SetActiveTool`. Captured by tab_viewer and forwarded to
+/// `dispatcher.set_active_tool` in main.rs via the shared pending channel.
+#[derive(Debug, Clone, Copy)]
+pub enum RegionalArchetypeAction {
+    SetActiveTool { uuid: Option<Uuid> },
 }
 
 /// Phase 1.X-F.5-paint.A: queued paint operation. Operations accumulate
@@ -92,6 +109,21 @@ pub struct RegionalArchetypePanel {
     /// (e.g. "Saved to <path>"; "Load failed: <error>"). Cleared on next
     /// successful operation.
     pub last_io_status: Option<String>,
+    /// Sub-phase 5: whether the paint tool is active (captures the viewport
+    /// pointer via the dispatcher). Toggled in the brush section UI; emits
+    /// `RegionalArchetypeAction::SetActiveTool` on change. Mirrors
+    /// `TerrainPanel::brush_enabled`.
+    pub paint_tool_active: bool,
+    /// Sub-phase 5: actions emitted this frame for tab_viewer to drain
+    /// (currently `SetActiveTool`). Mirrors `TerrainPanel::pending_actions`.
+    pub pending_actions: Vec<RegionalArchetypeAction>,
+    /// Sub-phase 5: paint-action side-channel. `Some` ONLY on the
+    /// dispatcher-registered emit-only instance (constructed via
+    /// [`Self::new_dispatch_tool`]); `None` on the canonical UI-rendered
+    /// instance. When `Some`, the `ActiveTool` event handlers push paint actions
+    /// here instead of mutating any mask — the registered instance owns no mask
+    /// (β1 emit-only design; avoids the dual-ownership trap).
+    pub paint_dispatch_queue: Option<RegionalArchetypePaintQueue>,
 }
 
 impl Default for RegionalArchetypePanel {
@@ -106,6 +138,9 @@ impl Default for RegionalArchetypePanel {
             mask: None,
             current_mask_base_path: None,
             last_io_status: None,
+            paint_tool_active: false,
+            pending_actions: Vec::new(),
+            paint_dispatch_queue: None,
         }
     }
 }
@@ -126,6 +161,17 @@ impl RegionalArchetypePanel {
 
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Sub-phase 5: construct the dispatcher-registered emit-only instance.
+    /// Carries the paint-action side-channel; owns no mask. Its `ActiveTool`
+    /// event handlers push paint actions to `queue`; main.rs drains the queue
+    /// and applies the stroke to the canonical (UI-rendered) panel instance.
+    pub fn new_dispatch_tool(queue: RegionalArchetypePaintQueue) -> Self {
+        Self {
+            paint_dispatch_queue: Some(queue),
+            ..Self::default()
+        }
     }
 
     /// Phase 1.X-F.5-paint.B: queue a paint operation at world coordinates
@@ -474,10 +520,141 @@ impl Panel for RegionalArchetypePanel {
     }
 }
 
+// =============================================================================
+// Sub-phase 5: ActiveTool implementation (Editor Multi-Tool Architecture).
+//
+// The dispatcher-registered instance is emit-only (β1; Andrew planning round):
+// `paint_dispatch_queue` is `Some`, and the event handlers push paint actions
+// to the side-channel rather than mutating any mask. main.rs drains the queue
+// and applies the stroke to the CANONICAL dock_tab_viewer panel instance, then
+// builds a `RegionalArchetypePaintCommand` for undo/redo. World coordinates come
+// from `ToolContext::world_xz_at_y0()` (the Y=0 ray-plane projection, wired live
+// by Sub-phase 5 part A in viewport/widget.rs). Events the tool acts on are
+// `Consumed` so the viewport does NOT route them to camera pan — this fixes the
+// original F.5-paint Andrew-gate REGRESS (click+drag panned the camera).
+//
+// `paint_active` is reused as the stroke-in-progress flag on this emit-only
+// instance (it is the pointer-capture flag per the struct doc). The instance's
+// own `mask` field is never touched here.
+// =============================================================================
+
+impl ActiveTool for RegionalArchetypePanel {
+    fn uuid(&self) -> Uuid {
+        REGIONAL_ARCHETYPE_PANEL_UUID
+    }
+
+    fn name(&self) -> &str {
+        "Regional Archetype Paint"
+    }
+
+    /// Reset stroke state on (re)activation. The UI toggle already set
+    /// `paint_tool_active` + emitted SetActiveTool; no mask work here.
+    fn activate(&mut self, _context: &mut ToolContext) {
+        self.paint_active = false;
+    }
+
+    /// If a stroke was in progress when the tool was deactivated (e.g. user
+    /// switched tools mid-drag), close it so main.rs commits the partial stroke
+    /// for undo.
+    fn deactivate(&mut self, _context: &mut ToolContext) {
+        if self.paint_active {
+            if let Some(q) = &self.paint_dispatch_queue {
+                if let Ok(mut queue) = q.lock() {
+                    queue.push(RegionalArchetypePaintAction::StrokeEnd);
+                }
+            }
+        }
+        self.paint_active = false;
+    }
+
+    fn on_left_mouse_button_down(
+        &mut self,
+        _event: &MouseEvent,
+        context: &mut ToolContext,
+    ) -> EventDisposition {
+        if let Some(q) = &self.paint_dispatch_queue {
+            self.paint_active = true;
+            if let Ok(mut queue) = q.lock() {
+                queue.push(RegionalArchetypePaintAction::StrokeBegin);
+                // Paint a dab at the press location so a single click paints.
+                if let Some((world_x, world_z)) = context.world_xz_at_y0() {
+                    queue.push(RegionalArchetypePaintAction::Paint { world_x, world_z });
+                }
+            }
+        }
+        // Consume so the viewport does not pan the camera while painting.
+        EventDisposition::Consumed
+    }
+
+    fn on_mouse_move(
+        &mut self,
+        _event: &MouseEvent,
+        context: &mut ToolContext,
+    ) -> EventDisposition {
+        if !self.paint_active {
+            return EventDisposition::PassThrough;
+        }
+        if let Some(q) = &self.paint_dispatch_queue {
+            if let Some((world_x, world_z)) = context.world_xz_at_y0() {
+                if let Ok(mut queue) = q.lock() {
+                    queue.push(RegionalArchetypePaintAction::Paint { world_x, world_z });
+                }
+            }
+        }
+        EventDisposition::Consumed
+    }
+
+    fn on_left_mouse_button_up(
+        &mut self,
+        _event: &MouseEvent,
+        _context: &mut ToolContext,
+    ) -> EventDisposition {
+        if self.paint_active {
+            if let Some(q) = &self.paint_dispatch_queue {
+                if let Ok(mut queue) = q.lock() {
+                    queue.push(RegionalArchetypePaintAction::StrokeEnd);
+                }
+            }
+        }
+        self.paint_active = false;
+        EventDisposition::Consumed
+    }
+}
+
 impl RegionalArchetypePanel {
     /// Brush size + falloff distance sliders.
     fn show_brush_section(&mut self, ui: &mut Ui) {
         ui.heading("Brush");
+        // Sub-phase 5: paint-tool activation toggle. Mirrors TerrainPanel's
+        // brush_enabled toggle — flips active state + emits SetActiveTool so the
+        // dispatcher routes viewport pointer events to this tool (so click+drag
+        // paints instead of panning the camera).
+        let toggle_label = if self.paint_tool_active {
+            "🔴 Paint Active"
+        } else {
+            "⚪ Paint Inactive"
+        };
+        if ui
+            .selectable_label(self.paint_tool_active, toggle_label)
+            .clicked()
+        {
+            self.paint_tool_active = !self.paint_tool_active;
+            let new_active = if self.paint_tool_active {
+                Some(REGIONAL_ARCHETYPE_PANEL_UUID)
+            } else {
+                None
+            };
+            self.pending_actions
+                .push(RegionalArchetypeAction::SetActiveTool { uuid: new_active });
+        }
+        if self.paint_tool_active {
+            ui.label(
+                egui::RichText::new("Left-click + drag in the viewport to paint")
+                    .small()
+                    .italics()
+                    .color(egui::Color32::from_rgb(200, 140, 140)),
+            );
+        }
         ui.add(
             egui::Slider::new(
                 &mut self.brush_size_pixels,
@@ -736,10 +913,13 @@ mod tests {
     }
 
     /// Panel implements the `Panel` trait with name "Regional Archetypes".
+    /// Sub-phase 5 note: `RegionalArchetypePanel` now also implements
+    /// `ActiveTool` (which has its own `name()` → "Regional Archetype Paint"),
+    /// so disambiguate to the `Panel` trait method here.
     #[test]
     fn panel_trait_name() {
         let p = RegionalArchetypePanel::default();
-        assert_eq!(p.name(), "Regional Archetypes");
+        assert_eq!(Panel::name(&p), "Regional Archetypes");
     }
 
     /// Constants match `RegionalArchetypeMask` defaults so paint UX
