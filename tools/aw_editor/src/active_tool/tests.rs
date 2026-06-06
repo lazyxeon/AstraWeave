@@ -510,3 +510,123 @@ fn registered_uuids_yields_all_registered() {
     assert!(registered.contains(&uuid_c));
     assert_eq!(dispatcher.tool_count(), 3);
 }
+
+// =============================================================================
+// Sub-phase 4 — Pattern A regression infrastructure for the dispatcher class
+//
+// "Pattern A" convention (per the F.5-paint.F-fix precedent at
+// tools/aw_editor/src/panel_type.rs:761 + tools/aw_editor/src/tab_viewer/mod.rs:8157):
+// a regression test that asserts a STRUCTURAL / WIRING contract — not just a
+// unit behavior — so a future copy-paste or omission regression is caught at
+// `cargo test` time rather than slipping through to an Andrew-gate. Each test
+// carries a banner naming the failure mode it guards against.
+//
+// Sub-phase 2 Core.C landed the 15 dispatcher unit tests above. The SP2
+// deviation log deferred "Pattern A regression infrastructure beyond the
+// minimal MockActiveTool fixture" to Sub-phase 4. SP4 closes the coverage gaps
+// against campaign doc §6.2: strict deactivate→activate transition ORDER,
+// update/set_active no-op when nothing is active, empty/negative registry
+// invariants, an active-tool-passes-through disambiguation, and the
+// EventDisposition `#[non_exhaustive]` forward-compatibility tripwire (§2.3).
+//
+// Sub-commit shape note (§5/§6.6): the ORDER and forward-compat tests + the
+// OrderRecordingTool fixture land in SP4.B (the fixture is co-located with its
+// sole consumer so SP4.A stays warning-free under `cargo check`). The mechanics
+// gap-fills below — which reuse the existing MockActiveTool fixture — land in
+// SP4.A.
+// =============================================================================
+
+/// SP4.A / Pattern A: `update_active_tool` is a clean no-op when no tool is
+/// active — no panic, and a registered-but-inactive tool's `update` is NOT
+/// called. Scenario 8 covers the active-tool path; this guards the empty path
+/// that a per-frame editor loop hits every frame before any tool is selected.
+#[test]
+fn update_active_tool_with_no_active_tool_is_noop() {
+    let mut dispatcher = Dispatcher::new();
+    let uuid = Uuid::new_v4();
+    let (tool, state) = MockActiveTool::new(uuid, "idle", EventDisposition::PassThrough);
+    dispatcher.register_tool(Box::new(tool));
+
+    let mut context = ToolContext::for_test();
+    // No set_active_tool call → active_tool == None.
+    dispatcher.update_active_tool(&mut context); // must not panic
+    dispatcher.update_active_tool(&mut context);
+
+    assert_eq!(dispatcher.active_tool_uuid(), None);
+    assert_eq!(
+        state.borrow().update_count,
+        0,
+        "a registered-but-inactive tool's update() must not be called when there \
+         is no active tool"
+    );
+}
+
+/// SP4.A / Pattern A: `set_active_tool(None)` is a clean no-op when nothing is
+/// active — no spurious `deactivate` on a registered-but-never-activated tool,
+/// no panic. Guards the editor-init path where a tool is registered but no tool
+/// is selected yet.
+#[test]
+fn set_active_none_with_no_active_tool_is_noop() {
+    let mut dispatcher = Dispatcher::new();
+    let uuid = Uuid::new_v4();
+    let (tool, state) = MockActiveTool::new(uuid, "idle", EventDisposition::PassThrough);
+    dispatcher.register_tool(Box::new(tool));
+
+    let mut context = ToolContext::for_test();
+    dispatcher.set_active_tool(None, &mut context); // nothing active; must not panic
+
+    assert_eq!(dispatcher.active_tool_uuid(), None);
+    assert_eq!(state.borrow().activate_count, 0);
+    assert_eq!(
+        state.borrow().deactivate_count,
+        0,
+        "a tool that was never activated must not receive deactivate()"
+    );
+}
+
+/// SP4.A / Pattern A: registry invariants on the empty / negative paths —
+/// `is_registered` is false for an unknown UUID, an empty dispatcher reports
+/// zero tools and no active tool and an empty `registered_uuids` iterator, and
+/// `Dispatcher::default()` matches `Dispatcher::new()`. Guards against a
+/// future change that initializes the dispatcher in a non-empty or
+/// already-active state.
+#[test]
+fn empty_and_negative_registry_invariants() {
+    let dispatcher = Dispatcher::new();
+    assert_eq!(dispatcher.tool_count(), 0);
+    assert_eq!(dispatcher.active_tool_uuid(), None);
+    assert!(!dispatcher.is_registered(Uuid::new_v4()));
+    assert_eq!(dispatcher.registered_uuids().count(), 0);
+
+    let default_dispatcher = Dispatcher::default();
+    assert_eq!(default_dispatcher.tool_count(), 0);
+    assert_eq!(default_dispatcher.active_tool_uuid(), None);
+}
+
+/// SP4.A / Pattern A: an ACTIVE tool returning `PassThrough` is still invoked —
+/// its handler runs (counter increments) and *chooses* to pass the event
+/// through. This disambiguates a tool-chose-PassThrough from the no-active-tool
+/// short-circuit (Scenario 6), which never reaches a handler. Both paths return
+/// `PassThrough`; only this one runs the tool. Guards a future regression where
+/// a PassThrough-returning tool is short-circuited before its handler runs.
+#[test]
+fn active_tool_returning_passthrough_is_still_invoked() {
+    let mut dispatcher = Dispatcher::new();
+    let uuid = Uuid::new_v4();
+    let (tool, state) = MockActiveTool::new(uuid, "passer", EventDisposition::PassThrough);
+    dispatcher.register_tool(Box::new(tool));
+
+    let mut context = ToolContext::for_test();
+    dispatcher.set_active_tool(Some(uuid), &mut context);
+    let event = build_mouse_event();
+    let disposition =
+        dispatcher.dispatch_mouse_event(&event, MouseEventKind::LeftButtonDown, &mut context);
+
+    assert_eq!(disposition, EventDisposition::PassThrough);
+    assert_eq!(
+        state.borrow().left_button_down_count,
+        1,
+        "the active tool's handler must run even when it returns PassThrough \
+         (distinct from the no-active-tool short-circuit which never calls a handler)"
+    );
+}
