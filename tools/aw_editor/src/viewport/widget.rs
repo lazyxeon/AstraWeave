@@ -455,12 +455,33 @@ impl ViewportWidget {
         // dispatcher path is wired-but-inert), leaving these as None matches the
         // dispatcher-path's no-op semantics.
         //
-        // Future Sub-phase 5 / Mediator Removal session may pre-compute here if
-        // RegionalArchetypePanel benefits from depth-accurate projection (per
-        // F.5-paint.B's screen_to_world_xz_y0 pattern uses Y=0 ray-plane
-        // intersection, NOT depth-buffer; so RegionalArchetype may not need it).
+        // Sub-phase 5 part A: the depth-buffer projection stays deferred — RAP
+        // paint uses the Y=0 plane, and TerrainPanel reads depth via its
+        // still-live mediator path (not the dispatcher). Wire the Y=0 ray-plane
+        // projection LIVE so the ToolContext built in `dispatch_cached_events`
+        // carries real world-XZ for the active paint tool (was hardwired `None`,
+        // so paint received nothing). Uses the camera's authoritative
+        // `ray_from_screen` projection intersected with the world Y=0 plane —
+        // the same projection `RegionalArchetypePanel::screen_to_world_xz_y0`
+        // represents, read by tools via `ToolContext::world_xz_at_y0()`.
         self.cached_world_xz_at_pointer = None;
-        self.cached_world_xz_at_y0 = None;
+        self.cached_world_xz_at_y0 = self.cached_pointer_pos.and_then(|abs| {
+            let local = egui::Pos2 {
+                x: abs.x - response.rect.min.x,
+                y: abs.y - response.rect.min.y,
+            };
+            let ray = self.camera.ray_from_screen(local, viewport_size);
+            // Y=0 plane intersection: require the ray to point downward.
+            if ray.direction.y.abs() < 1e-6 || ray.direction.y >= 0.0 {
+                return None;
+            }
+            let t = -ray.origin.y / ray.direction.y;
+            if t <= 0.0 {
+                return None;
+            }
+            let hit = ray.origin + ray.direction * t;
+            Some((hit.x, hit.z))
+        });
 
         // Cache discrete events from response.
         let pointer_pos = self.cached_pointer_pos.unwrap_or(egui::Pos2::ZERO);
