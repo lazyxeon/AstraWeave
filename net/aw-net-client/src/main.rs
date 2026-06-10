@@ -110,7 +110,21 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
 
-        // read any server messages
+        // Read any server messages.
+        //
+        // DESIGN NOTE — server->client packets are NOT signature-verified, by
+        // design (asymmetric trust). This trio is an authoritative-server model:
+        // the server defines game truth, and the client has no independent
+        // ground truth to validate server state against. Client->server input IS
+        // verified (the server must reject forged inputs from an attacker without
+        // the key), but the reverse direction is deliberately unsigned because a
+        // *shared symmetric* key gives no coherent server->client authentication
+        // anyway — every client in a room holds the same key, so a symmetric MAC
+        // cannot prove "this came from the server" rather than "from a peer".
+        // Meaningful S2C authentication would require asymmetric server keys or
+        // per-session key exchange — both out of scope (handshake / key-exchange
+        // is fenced for this trio). Recorded as a known limitation in
+        // docs/audits/net_trio_signature_remediation_findings_2026-06.md.
         while let Ok(Some(msg)) = tokio::time::timeout(Duration::from_millis(1), ws.next()).await {
             match msg {
                 Ok(Message::Binary(b)) => {
