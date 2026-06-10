@@ -404,7 +404,7 @@ fn bench_signing_key(c: &mut Criterion) {
     group.bench_function("signing_key_dev_default", |b| {
         b.iter(|| {
             let key = SigningKey::dev_default();
-            assert_eq!(key.0.len(), 32, "Signing key should be 32 bytes");
+            assert_eq!(key.as_bytes().len(), 32, "Signing key should be 32 bytes");
             black_box(key)
         })
     });
@@ -414,7 +414,7 @@ fn bench_signing_key(c: &mut Criterion) {
     group.bench_function("signing_key_from_hex", |b| {
         b.iter(|| {
             let key = SigningKey::from_hex(black_box(hex_str)).expect("valid 64-char hex key");
-            assert_eq!(key.0.len(), 32);
+            assert_eq!(key.as_bytes().len(), 32);
             black_box(key)
         })
     });
@@ -424,7 +424,7 @@ fn bench_signing_key(c: &mut Criterion) {
     group.bench_function("clone_signing_key", |b| {
         b.iter(|| {
             let cloned = black_box(&key).clone();
-            assert_eq!(cloned.0.len(), 32);
+            assert_eq!(cloned.as_bytes().len(), 32);
             black_box(cloned)
         })
     });

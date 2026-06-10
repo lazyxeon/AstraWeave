@@ -525,6 +525,67 @@ fn hmac_sha256_rfc4231_test_case_2() {
     );
 }
 
+/// RFC 4231 §4.4 Test Case 3: key = 20 bytes of 0xaa, data = 50 bytes of 0xdd.
+/// Vector verified against https://www.rfc-editor.org/rfc/rfc4231 §4.4.
+#[test]
+fn hmac_sha256_rfc4231_test_case_3() {
+    let key = [0xaau8; 20];
+    let data = [0xddu8; 50];
+    let tag = hmac_sha256(&key, &data);
+    assert_eq!(
+        hex::encode(tag),
+        "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe"
+    );
+}
+
+/// RFC 4231 §4.5 Test Case 4: key = 0x0102…0x19 (25 bytes), data = 50 bytes of
+/// 0xcd. Vector verified against https://www.rfc-editor.org/rfc/rfc4231 §4.5.
+#[test]
+fn hmac_sha256_rfc4231_test_case_4() {
+    let key: [u8; 25] = [
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19,
+    ];
+    let data = [0xcdu8; 50];
+    let tag = hmac_sha256(&key, &data);
+    assert_eq!(
+        hex::encode(tag),
+        "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b"
+    );
+}
+
+/// RFC 4231 §4.7 Test Case 6: key = 131 bytes of 0xaa (larger than block size),
+/// data = "Test Using Larger Than Block-Size Key - Hash Key First".
+/// Vector verified against https://www.rfc-editor.org/rfc/rfc4231 §4.7.
+#[test]
+fn hmac_sha256_rfc4231_test_case_6() {
+    let key = [0xaau8; 131];
+    let tag = hmac_sha256(
+        &key,
+        b"Test Using Larger Than Block-Size Key - Hash Key First",
+    );
+    assert_eq!(
+        hex::encode(tag),
+        "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54"
+    );
+}
+
+/// RFC 4231 §4.8 Test Case 7: key = 131 bytes of 0xaa (larger than block size),
+/// data = larger-than-block-size message. Vector verified against
+/// https://www.rfc-editor.org/rfc/rfc4231 §4.8.
+#[test]
+fn hmac_sha256_rfc4231_test_case_7() {
+    let key = [0xaau8; 131];
+    let tag = hmac_sha256(
+        &key,
+        b"This is a test using a larger than block-size key and a larger than block-size data. The key needs to be hashed before being used by the HMAC algorithm.",
+    );
+    assert_eq!(
+        hex::encode(tag),
+        "9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2"
+    );
+}
+
 #[test]
 fn sign_verify_roundtrip_succeeds() {
     let key = SigningKey::dev_default();
@@ -561,7 +622,7 @@ fn verify_fails_on_tampered_tag() {
 #[test]
 fn verify_fails_on_wrong_key() {
     let key = SigningKey::dev_default();
-    let other = SigningKey([0x5au8; 32]);
+    let other = SigningKey::from_bytes([0x5au8; 32]);
     let payload = input_frame_sig_payload(42, 16667, &[1, 2, 3, 4]);
     let tag = sign(&key, &payload);
     assert!(
@@ -572,11 +633,11 @@ fn verify_fails_on_wrong_key() {
 
 #[test]
 fn signing_key_from_hex_valid_roundtrip() {
-    let original = SigningKey([0xa7u8; 32]);
-    let hex_str = hex::encode(original.0);
+    let original = SigningKey::from_bytes([0xa7u8; 32]);
+    let hex_str = hex::encode(original.as_bytes());
     assert_eq!(hex_str.len(), 64);
     let parsed = SigningKey::from_hex(&hex_str).unwrap();
-    assert_eq!(parsed.0, original.0);
+    assert_eq!(parsed.as_bytes(), original.as_bytes());
 }
 
 #[test]
@@ -597,10 +658,10 @@ fn signing_key_from_hex_rejects_non_hex_chars() {
 
 #[test]
 fn signing_key_debug_is_redacted() {
-    let key = SigningKey([0xabu8; 32]);
+    let key = SigningKey::from_bytes([0xabu8; 32]);
     let dbg = format!("{key:?}");
     assert!(dbg.contains("redacted"), "Debug must say redacted: {dbg}");
-    let key_hex = hex::encode(key.0); // "abab...ab"
+    let key_hex = hex::encode(key.as_bytes()); // "abab...ab"
     assert!(
         !dbg.to_lowercase().contains(&key_hex),
         "Debug must not leak key hex"
@@ -615,8 +676,12 @@ fn signing_key_debug_is_redacted() {
 fn signing_key_dev_default_deterministic_32_bytes() {
     let k1 = SigningKey::dev_default();
     let k2 = SigningKey::dev_default();
-    assert_eq!(k1.0, k2.0, "dev_default must be deterministic");
-    assert_eq!(k1.0.len(), 32);
+    assert_eq!(
+        k1.as_bytes(),
+        k2.as_bytes(),
+        "dev_default must be deterministic"
+    );
+    assert_eq!(k1.as_bytes().len(), 32);
 }
 
 #[test]

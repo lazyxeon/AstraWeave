@@ -18,8 +18,14 @@ type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 /// never transmitted on the wire.
 ///
 /// `Debug` is intentionally redacted — key material must never be printable.
+///
+/// The 32-byte field is private: the only paths to the raw bytes are the
+/// explicit constructor [`SigningKey::from_bytes`] and the explicit accessor
+/// [`SigningKey::as_bytes`]. Keeping the field private prevents callers from
+/// reaching the bytes via a tuple-`.0` access and printing them, which would
+/// defeat the redacted `Debug` impl below.
 #[derive(Clone)]
-pub struct SigningKey(pub [u8; 32]);
+pub struct SigningKey([u8; 32]);
 
 impl std::fmt::Debug for SigningKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -28,7 +34,37 @@ impl std::fmt::Debug for SigningKey {
 }
 
 impl SigningKey {
+    /// Construct a signing key from raw bytes.
+    ///
+    /// This is the explicit, audited byte constructor. Prefer
+    /// [`Self::from_hex`] for operator-supplied configuration; use this only
+    /// where 32 bytes of key material already exist in memory.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        SigningKey(bytes)
+    }
+
+    /// Borrow the raw 32-byte key material.
+    ///
+    /// This is the single audited path to the key bytes (HMAC keying needs
+    /// them). **Callers must never log, format, print, or otherwise emit the
+    /// returned bytes** — doing so leaks the secret and defeats the redacted
+    /// [`Debug`](std::fmt::Debug) impl. Every call site of this method is a
+    /// place to scrutinise for accidental disclosure.
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
     /// Parse a signing key from exactly 64 hexadecimal characters (32 bytes).
+    ///
+    /// **Timing note (accepted boundary):** the hex parse uses
+    /// [`hex::decode`], which is not constant-time. This is acceptable because
+    /// the key material is operator-supplied, out-of-band configuration parsed
+    /// exactly once at process startup (from the `AW_SHARED_KEY` environment
+    /// variable or the `--shared-key-hex` argument), never from
+    /// attacker-reachable input. There is no chosen-input timing oracle here,
+    /// so `hex::decode`'s non-constant-time behaviour is an accepted boundary
+    /// rather than a vulnerability; a hand-rolled constant-time hex decoder
+    /// would add fragile crypto-adjacent code for negligible benefit.
     pub fn from_hex(s: &str) -> Result<Self, WireError> {
         if s.len() != 64 {
             return Err(WireError::InvalidSigningKey(format!(
