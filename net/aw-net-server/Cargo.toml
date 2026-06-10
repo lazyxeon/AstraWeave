@@ -30,3 +30,15 @@ aw-net-proto = { path = "../aw-net-proto" }
 
 [dev-dependencies]
 tempfile = "3"
+# TLS test-client plumbing for the family5 wss:// signature-path tests. Versions
+# mirror the normal deps EXACTLY (tokio-rustls 0.25 / rustls 0.22) so there is no
+# second rustls in the graph. rcgen generates an ephemeral self-signed cert at
+# test time (the committed net/certs/dev/*.pem are placeholders, so the server's
+# cert loader rejects them); its `ring` backend matches the server's rustls
+# crypto provider. The wss:// client uses a permissive cert verifier (see the
+# test), so the generated cert's SAN/CN is irrelevant — these tests validate the
+# HMAC SIGNATURE path over TLS, not TLS certificate validation. (rustls-pemfile
+# is NOT needed as a dev-dep: rcgen emits PEM and only the server parses it.)
+tokio-rustls = "0.25"
+rustls = "0.22"
+rcgen = "0.14"
