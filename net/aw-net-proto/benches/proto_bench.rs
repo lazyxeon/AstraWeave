@@ -3,8 +3,8 @@
 //! Comprehensive benchmarks for the aw-net-proto crate covering:
 //! - Message encoding/decoding (PostcardLz4 and Bincode)
 //! - Compression performance and ratios
-//! - Signature generation and verification
-//! - Session key generation
+//! - HMAC-SHA256 signature generation and verification
+//! - Signing key construction
 //!
 //! Run with: `cargo bench -p aw-net-proto`
 
@@ -12,8 +12,8 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use serde::{Deserialize, Serialize};
 
 use aw_net_proto::{
-    decode_msg, encode_msg, new_room_id, sign16, ClientToServer, Codec, ServerToClient, SessionKey,
-    PROTOCOL_VERSION,
+    decode_msg, encode_msg, input_frame_sig_payload, new_room_id, sign, verify, ClientToServer,
+    Codec, ServerToClient, SigningKey, PROTOCOL_VERSION, SIG_LEN,
 };
 
 // ============================================================================
@@ -68,11 +68,13 @@ fn create_join_room_msg(room_id: &str, display_name: &str) -> ClientToServer {
 
 /// Create an InputFrame message with variable payload size
 fn create_input_frame_msg(seq: u32, payload_size: usize) -> ClientToServer {
+    let key = SigningKey::dev_default();
+    let tick_ms = 33u64;
     let input_blob = vec![0u8; payload_size];
-    let sig = sign16(&input_blob, &[0u8; 8]);
+    let sig = sign(&key, &input_frame_sig_payload(seq, tick_ms, &input_blob));
     ClientToServer::InputFrame {
         seq,
-        tick_ms: 33,
+        tick_ms,
         input_blob,
         sig,
     }
@@ -96,7 +98,6 @@ fn create_hello_ack_msg() -> ServerToClient {
 fn create_match_result_msg() -> ServerToClient {
     ServerToClient::MatchResult {
         room_id: "ABCD1234".to_string(),
-        session_key_hint: [1, 2, 3, 4, 5, 6, 7, 8],
     }
 }
 
@@ -105,7 +106,6 @@ fn create_join_accepted_msg() -> ServerToClient {
     ServerToClient::JoinAccepted {
         room_id: "ABCD1234".to_string(),
         player_id: "player_001".to_string(),
-        session_key_hint: [1, 2, 3, 4, 5, 6, 7, 8],
         tick_hz: 60,
     }
 }
@@ -352,35 +352,40 @@ fn bench_compression_ratio(c: &mut Criterion) {
 fn bench_signature(c: &mut Criterion) {
     let mut group = c.benchmark_group("proto_signature");
 
-    // Sign16 with varying input sizes
+    let key = SigningKey::dev_default();
+
+    // HMAC-SHA256 sign with varying input sizes
     for input_size in [32, 128, 512, 1024, 4096] {
-        let input = vec![0x42u8; input_size];
-        let session_hint = [1u8, 2, 3, 4, 5, 6, 7, 8];
+        let input_blob = vec![0x42u8; input_size];
+        let payload = input_frame_sig_payload(1, 33, &input_blob);
 
         group.throughput(Throughput::Bytes(input_size as u64));
         group.bench_with_input(
-            BenchmarkId::new("sign16", input_size),
-            &(input.clone(), session_hint),
-            |b, (input, hint)| {
+            BenchmarkId::new("hmac_sha256_sign", input_size),
+            &payload,
+            |b, payload| {
                 b.iter(|| {
-                    let sig = sign16(black_box(input), black_box(hint));
-                    assert_eq!(sig.len(), 16, "Signature should be 16 bytes");
+                    let sig = sign(black_box(&key), black_box(payload));
+                    assert_eq!(sig.len(), SIG_LEN, "Signature should be 32 bytes");
                     black_box(sig)
                 })
             },
         );
     }
 
-    // Verify signature (sign and compare)
-    let input = vec![0x42u8; 128];
-    let session_hint = [1u8, 2, 3, 4, 5, 6, 7, 8];
-    let expected_sig = sign16(&input, &session_hint);
+    // Constant-time verification
+    let input_blob = vec![0x42u8; 128];
+    let payload = input_frame_sig_payload(1, 33, &input_blob);
+    let expected_sig = sign(&key, &payload);
 
-    group.bench_function("verify_signature", |b| {
+    group.bench_function("hmac_sha256_verify", |b| {
         b.iter(|| {
-            let computed = sign16(black_box(&input), black_box(&session_hint));
-            let valid = computed == expected_sig;
-            assert!(valid, "Signature should match");
+            let valid = verify(
+                black_box(&key),
+                black_box(&payload),
+                black_box(&expected_sig),
+            );
+            assert!(valid, "Signature should verify");
             black_box(valid)
         })
     });
@@ -389,24 +394,34 @@ fn bench_signature(c: &mut Criterion) {
 }
 
 // ============================================================================
-// SESSION KEY BENCHMARKS
+// SIGNING KEY BENCHMARKS
 // ============================================================================
 
-fn bench_session_key(c: &mut Criterion) {
-    let mut group = c.benchmark_group("proto_session_key");
+fn bench_signing_key(c: &mut Criterion) {
+    let mut group = c.benchmark_group("proto_signing_key");
 
-    // Generate random session key
-    group.bench_function("generate_session_key", |b| {
+    // Construct the development default key
+    group.bench_function("signing_key_dev_default", |b| {
         b.iter(|| {
-            let key = SessionKey::random();
-            assert_eq!(key.0.len(), 32, "Session key should be 32 bytes");
+            let key = SigningKey::dev_default();
+            assert_eq!(key.0.len(), 32, "Signing key should be 32 bytes");
             black_box(key)
         })
     });
 
-    // Clone session key
-    let key = SessionKey::random();
-    group.bench_function("clone_session_key", |b| {
+    // Parse a signing key from hex
+    let hex_str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    group.bench_function("signing_key_from_hex", |b| {
+        b.iter(|| {
+            let key = SigningKey::from_hex(black_box(hex_str)).expect("valid 64-char hex key");
+            assert_eq!(key.0.len(), 32);
+            black_box(key)
+        })
+    });
+
+    // Clone signing key
+    let key = SigningKey::dev_default();
+    group.bench_function("clone_signing_key", |b| {
         b.iter(|| {
             let cloned = black_box(&key).clone();
             assert_eq!(cloned.0.len(), 32);
@@ -525,7 +540,7 @@ criterion_group!(
     bench_roundtrip,
     bench_compression_ratio,
     bench_signature,
-    bench_session_key,
+    bench_signing_key,
     bench_room_id,
     bench_server_messages,
 );

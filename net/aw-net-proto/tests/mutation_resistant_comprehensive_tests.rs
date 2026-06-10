@@ -12,54 +12,6 @@ fn protocol_version_is_one() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SessionKey
-// ═══════════════════════════════════════════════════════════════════════════
-
-#[test]
-fn session_key_random_is_32_bytes() {
-    let key = SessionKey::random();
-    assert_eq!(key.0.len(), 32);
-}
-
-#[test]
-fn session_key_random_not_all_zeros() {
-    let key = SessionKey::random();
-    assert!(
-        key.0.iter().any(|&b| b != 0),
-        "random key should not be all zeros"
-    );
-}
-
-#[test]
-fn session_key_two_randoms_differ() {
-    let k1 = SessionKey::random();
-    let k2 = SessionKey::random();
-    assert_ne!(k1.0, k2.0, "two random keys should differ");
-}
-
-#[test]
-fn session_key_clone() {
-    let k1 = SessionKey::random();
-    let k2 = k1.clone();
-    assert_eq!(k1.0, k2.0);
-}
-
-#[test]
-fn session_key_debug() {
-    let key = SessionKey::random();
-    let dbg = format!("{key:?}");
-    assert!(dbg.contains("SessionKey"));
-}
-
-#[test]
-fn session_key_json_roundtrip() {
-    let key = SessionKey::random();
-    let json = serde_json::to_string(&key).unwrap();
-    let back: SessionKey = serde_json::from_str(&json).unwrap();
-    assert_eq!(key.0, back.0);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // ClientToServer variants
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -116,7 +68,7 @@ fn client_join_room_fields() {
 
 #[test]
 fn client_input_frame_fields() {
-    let sig = [1u8; 16];
+    let sig = [1u8; 32];
     let msg = ClientToServer::InputFrame {
         seq: 42,
         tick_ms: 16667,
@@ -133,7 +85,7 @@ fn client_input_frame_fields() {
         assert_eq!(seq, 42);
         assert_eq!(tick_ms, 16667);
         assert_eq!(input_blob, vec![1, 2, 3]);
-        assert_eq!(s, [1u8; 16]);
+        assert_eq!(s, [1u8; 32]);
     } else {
         panic!("expected InputFrame");
     }
@@ -188,7 +140,7 @@ fn client_to_server_json_roundtrip_input_frame() {
         seq: 10,
         tick_ms: 5000,
         input_blob: vec![4, 5, 6],
-        sig: [7u8; 16],
+        sig: [7u8; 32],
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ClientToServer = serde_json::from_str(&json).unwrap();
@@ -202,7 +154,7 @@ fn client_to_server_json_roundtrip_input_frame() {
         assert_eq!(seq, 10);
         assert_eq!(tick_ms, 5000);
         assert_eq!(input_blob, vec![4, 5, 6]);
-        assert_eq!(sig, [7u8; 16]);
+        assert_eq!(sig, [7u8; 32]);
     } else {
         panic!("wrong variant");
     }
@@ -226,15 +178,9 @@ fn server_hello_ack_protocol() {
 fn server_match_result_fields() {
     let msg = ServerToClient::MatchResult {
         room_id: "ROOM42".into(),
-        session_key_hint: [9u8; 8],
     };
-    if let ServerToClient::MatchResult {
-        room_id,
-        session_key_hint,
-    } = msg
-    {
+    if let ServerToClient::MatchResult { room_id } = msg {
         assert_eq!(room_id, "ROOM42");
-        assert_eq!(session_key_hint, [9u8; 8]);
     } else {
         panic!("expected MatchResult");
     }
@@ -245,19 +191,16 @@ fn server_join_accepted_fields() {
     let msg = ServerToClient::JoinAccepted {
         room_id: "R1".into(),
         player_id: "P1".into(),
-        session_key_hint: [0u8; 8],
         tick_hz: 60,
     };
     if let ServerToClient::JoinAccepted {
         room_id,
         player_id,
-        session_key_hint,
         tick_hz,
     } = msg
     {
         assert_eq!(room_id, "R1");
         assert_eq!(player_id, "P1");
-        assert_eq!(session_key_hint, [0u8; 8]);
         assert_eq!(tick_hz, 60);
     } else {
         panic!("expected JoinAccepted");
@@ -371,7 +314,6 @@ fn server_to_client_json_roundtrip() {
     let msg = ServerToClient::JoinAccepted {
         room_id: "R".into(),
         player_id: "P".into(),
-        session_key_hint: [1, 2, 3, 4, 5, 6, 7, 8],
         tick_hz: 30,
     };
     let json = serde_json::to_string(&msg).unwrap();
@@ -557,52 +499,169 @@ fn postcard_lz4_more_compact_for_large_payload() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// sign16 function
+// HMAC-SHA256 canonical signing surface
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// RFC 4231 §4.2 Test Case 1: key = 20 bytes of 0x0b, data = "Hi There".
+/// Vector verified against https://www.rfc-editor.org/rfc/rfc4231 §4.2.
 #[test]
-fn sign16_returns_16_bytes() {
-    let sig = sign16(b"hello", &[1, 2, 3, 4, 5, 6, 7, 8]);
-    assert_eq!(sig.len(), 16);
-}
-
-#[test]
-fn sign16_deterministic() {
-    let key = [1u8; 8];
-    let s1 = sign16(b"data", &key);
-    let s2 = sign16(b"data", &key);
-    assert_eq!(s1, s2, "same input+key must produce same signature");
-}
-
-#[test]
-fn sign16_different_data_different_sig() {
-    let key = [1u8; 8];
-    let s1 = sign16(b"data1", &key);
-    let s2 = sign16(b"data2", &key);
-    assert_ne!(s1, s2);
-}
-
-#[test]
-fn sign16_different_key_different_sig() {
-    let s1 = sign16(b"data", &[1u8; 8]);
-    let s2 = sign16(b"data", &[2u8; 8]);
-    assert_ne!(s1, s2);
-}
-
-#[test]
-fn sign16_empty_input() {
-    let sig = sign16(b"", &[0u8; 8]);
-    assert_eq!(sig.len(), 16);
-    // Empty input should still produce a valid signature
-}
-
-#[test]
-fn sign16_not_all_zeros() {
-    let sig = sign16(b"test data for signing", &[5u8; 8]);
-    assert!(
-        sig.iter().any(|&b| b != 0),
-        "signature should not be all zeros"
+fn hmac_sha256_rfc4231_test_case_1() {
+    let key = [0x0bu8; 20];
+    let tag = hmac_sha256(&key, b"Hi There");
+    assert_eq!(
+        hex::encode(tag),
+        "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
     );
+}
+
+/// RFC 4231 §4.3 Test Case 2: key = "Jefe", data = "what do ya want for
+/// nothing?". Vector verified against https://www.rfc-editor.org/rfc/rfc4231 §4.3.
+#[test]
+fn hmac_sha256_rfc4231_test_case_2() {
+    let tag = hmac_sha256(b"Jefe", b"what do ya want for nothing?");
+    assert_eq!(
+        hex::encode(tag),
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+    );
+}
+
+#[test]
+fn sign_verify_roundtrip_succeeds() {
+    let key = SigningKey::dev_default();
+    let payload = input_frame_sig_payload(42, 16667, &[1, 2, 3, 4]);
+    let tag = sign(&key, &payload);
+    assert_eq!(tag.len(), SIG_LEN);
+    assert!(verify(&key, &payload, &tag), "fresh signature must verify");
+}
+
+#[test]
+fn verify_fails_on_tampered_payload() {
+    let key = SigningKey::dev_default();
+    let mut payload = input_frame_sig_payload(42, 16667, &[1, 2, 3, 4]);
+    let tag = sign(&key, &payload);
+    payload[0] ^= 0x01; // flip one bit
+    assert!(
+        !verify(&key, &payload, &tag),
+        "tampered payload must not verify"
+    );
+}
+
+#[test]
+fn verify_fails_on_tampered_tag() {
+    let key = SigningKey::dev_default();
+    let payload = input_frame_sig_payload(42, 16667, &[1, 2, 3, 4]);
+    let mut tag = sign(&key, &payload);
+    tag[0] ^= 0x01; // flip one bit in the tag
+    assert!(
+        !verify(&key, &payload, &tag),
+        "tampered tag must not verify"
+    );
+}
+
+#[test]
+fn verify_fails_on_wrong_key() {
+    let key = SigningKey::dev_default();
+    let other = SigningKey([0x5au8; 32]);
+    let payload = input_frame_sig_payload(42, 16667, &[1, 2, 3, 4]);
+    let tag = sign(&key, &payload);
+    assert!(
+        !verify(&other, &payload, &tag),
+        "signature must not verify under a different key"
+    );
+}
+
+#[test]
+fn signing_key_from_hex_valid_roundtrip() {
+    let original = SigningKey([0xa7u8; 32]);
+    let hex_str = hex::encode(original.0);
+    assert_eq!(hex_str.len(), 64);
+    let parsed = SigningKey::from_hex(&hex_str).unwrap();
+    assert_eq!(parsed.0, original.0);
+}
+
+#[test]
+fn signing_key_from_hex_rejects_wrong_length() {
+    let short = "a".repeat(63);
+    let long = "a".repeat(65);
+    assert!(SigningKey::from_hex(&short).is_err(), "63 chars must fail");
+    assert!(SigningKey::from_hex(&long).is_err(), "65 chars must fail");
+    assert!(SigningKey::from_hex("").is_err(), "empty must fail");
+}
+
+#[test]
+fn signing_key_from_hex_rejects_non_hex_chars() {
+    let mut s = "a".repeat(64);
+    s.replace_range(10..11, "g"); // 'g' is not a hex digit, length stays 64
+    assert!(SigningKey::from_hex(&s).is_err(), "non-hex chars must fail");
+}
+
+#[test]
+fn signing_key_debug_is_redacted() {
+    let key = SigningKey([0xabu8; 32]);
+    let dbg = format!("{key:?}");
+    assert!(dbg.contains("redacted"), "Debug must say redacted: {dbg}");
+    let key_hex = hex::encode(key.0); // "abab...ab"
+    assert!(
+        !dbg.to_lowercase().contains(&key_hex),
+        "Debug must not leak key hex"
+    );
+    assert!(
+        !dbg.contains("171") && !dbg.contains("0xab") && !dbg.contains("ab, ab"),
+        "Debug must not leak raw key bytes: {dbg}"
+    );
+}
+
+#[test]
+fn signing_key_dev_default_deterministic_32_bytes() {
+    let k1 = SigningKey::dev_default();
+    let k2 = SigningKey::dev_default();
+    assert_eq!(k1.0, k2.0, "dev_default must be deterministic");
+    assert_eq!(k1.0.len(), 32);
+}
+
+#[test]
+fn input_frame_sig_payload_layout_pin() {
+    let blob = [0xDEu8, 0xAD, 0xBE, 0xEF, 0x99];
+    let payload = input_frame_sig_payload(0x01020304, 0x1112131415161718, &blob);
+    assert_eq!(
+        payload.len(),
+        12 + blob.len(),
+        "4 (seq) + 8 (tick_ms) + blob"
+    );
+    assert_eq!(&payload[0..4], &0x01020304u32.to_le_bytes(), "seq LE first");
+    assert_eq!(
+        &payload[4..12],
+        &0x1112131415161718u64.to_le_bytes(),
+        "tick_ms LE next"
+    );
+    assert_eq!(&payload[12..], &blob, "blob is the tail");
+}
+
+#[test]
+fn input_frame_sig_payload_differs_per_field() {
+    let base = input_frame_sig_payload(1, 2, &[3]);
+    assert_ne!(base, input_frame_sig_payload(9, 2, &[3]), "seq must matter");
+    assert_ne!(
+        base,
+        input_frame_sig_payload(1, 9, &[3]),
+        "tick_ms must matter"
+    );
+    assert_ne!(
+        base,
+        input_frame_sig_payload(1, 2, &[9]),
+        "blob must matter"
+    );
+}
+
+#[test]
+fn input_frame_sig_payload_no_field_boundary_ambiguity() {
+    // Fixed-width prefix means (seq=1, blob=[2]) and (seq=2, blob=[1]) can
+    // never alias to the same MAC'd bytes.
+    let key = SigningKey::dev_default();
+    let p1 = input_frame_sig_payload(1, 0, &[2]);
+    let p2 = input_frame_sig_payload(2, 0, &[1]);
+    assert_ne!(p1, p2, "payloads must differ");
+    assert_ne!(sign(&key, &p1), sign(&key, &p2), "signatures must differ");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -642,7 +701,7 @@ fn client_input_frame_large_blob() {
         seq: u32::MAX,
         tick_ms: u64::MAX,
         input_blob: blob.clone(),
-        sig: [0xFF; 16],
+        sig: [0xFF; 32],
     };
     let bytes = encode_msg(Codec::PostcardLz4, &msg);
     let back: ClientToServer = decode_msg(Codec::PostcardLz4, &bytes).unwrap();
@@ -656,7 +715,7 @@ fn client_input_frame_large_blob() {
         assert_eq!(seq, u32::MAX);
         assert_eq!(tick_ms, u64::MAX);
         assert_eq!(input_blob.len(), 10000);
-        assert_eq!(sig, [0xFF; 16]);
+        assert_eq!(sig, [0xFF; 32]);
     }
 }
 
@@ -702,7 +761,7 @@ fn roundtrip_all_client_variants() {
             seq: 0,
             tick_ms: 0,
             input_blob: vec![],
-            sig: [0; 16],
+            sig: [0; 32],
         },
         ClientToServer::Ping { nano: 0 },
         ClientToServer::Ack {
@@ -722,12 +781,10 @@ fn roundtrip_all_server_variants() {
         ServerToClient::HelloAck { protocol: 1 },
         ServerToClient::MatchResult {
             room_id: "r".into(),
-            session_key_hint: [0; 8],
         },
         ServerToClient::JoinAccepted {
             room_id: "r".into(),
             player_id: "p".into(),
-            session_key_hint: [0; 8],
             tick_hz: 60,
         },
         ServerToClient::Snapshot {
