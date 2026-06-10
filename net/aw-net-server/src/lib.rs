@@ -451,22 +451,49 @@ async fn handle_socket_tls(
         }
     };
 
-    // allocate player into room
-    {
+    // allocate player into room. The room can be missing here for two
+    // reasons: (a) a hostile/buggy `JoinRoom` carried a room id that never
+    // existed, or (b) a FindOrCreate race — the matched room's last player
+    // disconnected and cleanup dropped the room between releasing and
+    // re-taking the lock. Neither may panic the connection task: report a
+    // best-effort ProtocolError and end the connection cleanly. No state is
+    // leaked — the player is only inserted when the room exists.
+    // MUST stay semantically identical to the non-TLS path in handle_socket.
+    let room_exists = {
         let mut rooms = app.rooms.lock();
-        let room = rooms.get_mut(&rid).expect("room exists");
-        room.players.insert(
-            player_id.clone(),
-            Player {
-                id: player_id.clone(),
-                display: "player".into(),
-                last_input_seq: 0,
-                last_seen: tokio::time::Instant::now(),
-                tokens: 30.0,
-                last_refill: tokio::time::Instant::now(),
+        match rooms.get_mut(&rid) {
+            Some(room) => {
+                room.players.insert(
+                    player_id.clone(),
+                    Player {
+                        id: player_id.clone(),
+                        display: "player".into(),
+                        last_input_seq: 0,
+                        last_seen: tokio::time::Instant::now(),
+                        tokens: 30.0,
+                        last_refill: tokio::time::Instant::now(),
+                    },
+                );
+                tick_hz = room.tick_hz;
+                true
+            }
+            None => false,
+        }
+    };
+    if !room_exists {
+        warn!("join refused: room {rid} does not exist");
+        if let Err(e) = send_tls(
+            &app,
+            &mut ws,
+            &ServerToClient::ProtocolError {
+                msg: format!("room {rid} does not exist"),
             },
-        );
-        tick_hz = room.tick_hz;
+        )
+        .await
+        {
+            warn!("failed to send ProtocolError for missing room {rid}: {e}");
+        }
+        return Ok(());
     }
 
     send_tls(
@@ -529,11 +556,25 @@ async fn handle_socket_tls(
                 }
             }
 
-            // Send authoritative snapshot periodically
+            // Send authoritative snapshot periodically. Failures (snapshot
+            // build or send to a vanished client) must NOT `?`-return out of
+            // the handler — that would skip the shared cleanup block below
+            // and permanently leak the player entry (ghost player; the room
+            // would never empty). warn + break so cleanup always runs.
             _ = tokio::time::sleep(tick_dt) => {
-                let (snap, sid) = build_snapshot(&app, &rid)?;
-                _last_snap = sid;
-                send_tls(&app, &mut ws, &snap).await?;
+                match build_snapshot(&app, &rid) {
+                    Ok((snap, sid)) => {
+                        _last_snap = sid;
+                        if let Err(e) = send_tls(&app, &mut ws, &snap).await {
+                            warn!("snapshot send failed for pid={player_id}: {e}; closing");
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("snapshot build failed for room {rid}: {e}; closing");
+                        break;
+                    }
+                }
             }
         }
     }
@@ -642,22 +683,49 @@ async fn handle_socket(
         }
     };
 
-    // allocate player into room
-    {
+    // allocate player into room. The room can be missing here for two
+    // reasons: (a) a hostile/buggy `JoinRoom` carried a room id that never
+    // existed, or (b) a FindOrCreate race — the matched room's last player
+    // disconnected and cleanup dropped the room between releasing and
+    // re-taking the lock. Neither may panic the connection task: report a
+    // best-effort ProtocolError and end the connection cleanly. No state is
+    // leaked — the player is only inserted when the room exists.
+    // MUST stay semantically identical to the TLS path in handle_socket_tls.
+    let room_exists = {
         let mut rooms = app.rooms.lock();
-        let room = rooms.get_mut(&rid).expect("room exists");
-        room.players.insert(
-            player_id.clone(),
-            Player {
-                id: player_id.clone(),
-                display: "player".into(),
-                last_input_seq: 0,
-                last_seen: tokio::time::Instant::now(),
-                tokens: 30.0,
-                last_refill: tokio::time::Instant::now(),
+        match rooms.get_mut(&rid) {
+            Some(room) => {
+                room.players.insert(
+                    player_id.clone(),
+                    Player {
+                        id: player_id.clone(),
+                        display: "player".into(),
+                        last_input_seq: 0,
+                        last_seen: tokio::time::Instant::now(),
+                        tokens: 30.0,
+                        last_refill: tokio::time::Instant::now(),
+                    },
+                );
+                tick_hz = room.tick_hz;
+                true
+            }
+            None => false,
+        }
+    };
+    if !room_exists {
+        warn!("join refused: room {rid} does not exist");
+        if let Err(e) = send(
+            &app,
+            &mut ws,
+            &ServerToClient::ProtocolError {
+                msg: format!("room {rid} does not exist"),
             },
-        );
-        tick_hz = room.tick_hz;
+        )
+        .await
+        {
+            warn!("failed to send ProtocolError for missing room {rid}: {e}");
+        }
+        return Ok(());
     }
 
     send(
@@ -720,11 +788,25 @@ async fn handle_socket(
                 }
             }
 
-            // Send authoritative snapshot periodically
+            // Send authoritative snapshot periodically. Failures (snapshot
+            // build or send to a vanished client) must NOT `?`-return out of
+            // the handler — that would skip the shared cleanup block below
+            // and permanently leak the player entry (ghost player; the room
+            // would never empty). warn + break so cleanup always runs.
             _ = tokio::time::sleep(tick_dt) => {
-                let (snap, sid) = build_snapshot(&app, &rid)?;
-                _last_snap = sid;
-                send(&app, &mut ws, &snap).await?;
+                match build_snapshot(&app, &rid) {
+                    Ok((snap, sid)) => {
+                        _last_snap = sid;
+                        if let Err(e) = send(&app, &mut ws, &snap).await {
+                            warn!("snapshot send failed for pid={player_id}: {e}; closing");
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("snapshot build failed for room {rid}: {e}; closing");
+                        break;
+                    }
+                }
             }
         }
     }
