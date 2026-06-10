@@ -289,8 +289,7 @@ async fn wrong_key_binary_is_kicked_and_process_exits() {
 /// `WouldBlock` proves zero connection attempts reached the socket.
 #[tokio::test(flavor = "multi_thread")]
 async fn malformed_shared_key_fails_fast_without_connecting() {
-    let sentinel =
-        std::net::TcpListener::bind("127.0.0.1:0").expect("bind sentinel TCP listener");
+    let sentinel = std::net::TcpListener::bind("127.0.0.1:0").expect("bind sentinel TCP listener");
     sentinel
         .set_nonblocking(true)
         .expect("set sentinel listener non-blocking");
