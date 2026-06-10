@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-05-13 | **Version**: 0.7.0 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-06-10 | **Version**: 0.7.1 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.7.1 update (2026-06-10)**: Net-Trio-Remediation reconciliation — the standalone-trio HMAC-vs-XOR signature mismatch is RESOLVED (canonical HMAC-SHA256 signing enforced end-to-end, kick-by-default). Updated the net_ecs subsystem row (§0), the known-issues silent-failure row (§4.3), the documentation-hazards row (§7.2), the §8.8 network data-flow diagram, and §14 open-question 17. See `net_ecs.md` §6/§7 and `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
 > **0.7.0 update**: Reconciled against the 13 per-subsystem architecture traces under `docs/architecture/`. Every traced subsystem now linked at section level. Workspace-wide structural axioms (§7.7 wrapped-component resource identity, Fix-27 dual-pipeline lesson, silent-failure policy, "wired beats tested" taxonomy) crystallised into their own section. Dormant-code taxonomy and documentation-hazard inventory consolidated from per-trace evidence. **0.6.0 update (2026-05-07)**: Full cartography audit — impostor infrastructure catalogued, astraweave-alloc added, workspace count verified at 143 members, viewport module inventory updated, Regional Archetype Variation campaign status integrated.
 > **0.5.0 update (2026-04-04)**: Reflects Fix 27 Unified Pipeline Campaign — EntityRenderer deleted, astraweave-render is now non-optional in aw_editor.
 
@@ -16,7 +17,7 @@
 | Physics | [`physics.md`](physics.md) | Active core (`PhysicsWorld` + `CharacterController` + Rapier broadphase) with feature-gated and dormant subsystems; `SpatialHash` module dormant despite doc-comment advertising |
 | Persistence (aw-save + persistence-ecs) | [`persistence_ecs.md`](persistence_ecs.md) | `aw-save` production-grade; `astraweave-persistence-ecs` has working roundtrip but `auto_save_system` and replay event apply are TODO stubs; declared by stress-test but unused |
 | Net (snapshot-based server) | [`net.md`](net.md) | Active; 2D grid `IVec2` model; JSON over WebSocket; coexists with `astraweave-net-ecs` (different model entirely) |
-| Net-ECS + standalone matchmaking | [`net_ecs.md`](net_ecs.md) | Standalone server/client production-style; ECS Plugin layer **dormant** (zero production consumers despite declared dep); HMAC vs XOR sig mismatch in production code |
+| Net-ECS + standalone matchmaking | [`net_ecs.md`](net_ecs.md) | Standalone server/client production-style; ECS Plugin layer **dormant** (zero production consumers despite declared dep); the former HMAC-vs-XOR sig mismatch is **RESOLVED** — HMAC-SHA256 signing now enforced end-to-end, kick-by-default (Net-Trio-Remediation; `net_ecs.md` §6/§7) |
 | Input | [`input.md`](input.md) | Pure facade over winit + gilrs; declared by `astraweave-gameplay` and `astraweave-ui` but neither imports the crate; editor reinvents the entire input domain in a 2,511-LoC panel that doesn't drain its action queue |
 | Fluids | [`fluids.md`](fluids.md) | **Dormant for runtime engine.** 84.5K LoC; only `examples/fluids_demo` consumes it; five parallel solver/manager surfaces (`FluidSystem` / `UnifiedSolver` / `ResearchFluidSystem` / `PCISPHSystem` / `WaterEffectsManager`) |
 | ECS substrate + Math/Core/SDK | [`ecs_math_core_sdk_foundation.md`](ecs_math_core_sdk_foundation.md) | Active foundation; **two `World` types** and **two `Entity` types** coexist (legacy `core::World` bridged into ECS via `build_app`); `ParallelSchedule` removed 2026-04-18 |
@@ -341,7 +342,7 @@ These are not properties of any one subsystem — they're cross-cutting rules th
 | `process_destructible_hits` no-op stub | `astraweave-physics/src/lib.rs:1587` | `physics.md` §6 |
 | `add_water_aabb` no-op stub (function body `{}`) | `astraweave-physics/src/lib.rs:1449` | `physics.md` §6 |
 | `compute_poses_stub` checks components but doesn't write poses | `astraweave-scene/src/lib.rs:941` | `animation.md` §6 |
-| HMAC server verification always fails (16-byte sig vs 32-byte HMAC-SHA256 OutputSize), failure only `warn!` | `net/aw-net-server/src/main.rs:703-709, 831-837` | `net_ecs.md` §6 |
+| ~~HMAC server verification always fails (16-byte sig vs 32-byte HMAC-SHA256 OutputSize), failure only `warn!`~~ **RESOLVED** (`561b20957`+`79424389e`+`066cd6cfd`; refute `eb9977b88`) — client+server unified on canonical HMAC-SHA256 (`aw-net-proto`), server verifies FIRST and kicks by default; `sign16`/`SessionKey`/`session_key_hint` deleted | `net/aw-net-server/src/lib.rs` (`on_client_msg{,_tls}`), `net/aw-net-proto/src/lib.rs` | `net_ecs.md` §6/§7; `docs/audits/net_trio_signature_remediation_findings_2026-06.md` |
 | `deserialize_ecs_world` on empty blob returns `Ok(())` silently | `astraweave-persistence-ecs/src/lib.rs:447-450` | `persistence_ecs.md` §6 |
 | `load_bindings` collapses every error mode to `None` | `astraweave-input/src/save.rs:16-19` | `input.md` §6 |
 | `safe_llm_invoke` has zero workspace callers (4096-char limit unreachable) | `astraweave-llm/src/llm_adapter.rs` (file labeled "stub") | `ai_pipeline.md` §6, §13.7 |
@@ -509,7 +510,7 @@ Treat `docs/src/` content as **historical/aspirational** unless cross-validated 
 | Claim | Doc location | Reality | Source trace |
 |---|---|---|---|
 | AI runtime model is Qwen3 | `astraweave-ai/src/ai_arbiter.rs:1` doc-comment ("GOAP+Qwen3 Hybrid Control System"); CLAUDE.md ("GOAP+Qwen3 Hybrid") | `astraweave-ai/src/orchestrator.rs:488-490` defaults `OLLAMA_MODEL` to `"phi3:medium"` (`unwrap_or_else(|_| "phi3:medium".to_string())`). Three Ollama clients (Phi3, Hermes2Pro, Qwen3) coexist. Set `OLLAMA_MODEL=qwen3:8b` to get documented behavior. | `ai_pipeline.md` §6, §11 |
-| Networking uses HMAC signatures with XOR `sign16` as MVP | `net/README.md` | Standalone server runs HMAC-SHA256 verification; standalone client still computes `sign16` (XOR). **Every signature verification fails** for two independent reasons (length mismatch + algorithm mismatch). Server only `warn!`s; does not kick. | `net_ecs.md` §6 |
+| ~~Networking uses HMAC signatures with XOR `sign16` as MVP~~ **RESOLVED** | `net/README.md` (updated W.4) | Client and server are now unified on canonical HMAC-SHA256 signing (`aw-net-proto`); the client signs and the server verifies (constant-time) over `input_frame_sig_payload`, kicking by default on failure. `sign16` deleted. Net-Trio-Remediation `561b20957`+`79424389e`+`066cd6cfd`. | `net_ecs.md` §6/§7 |
 | HNSW vector index for embeddings | `astraweave-embeddings/src/lib.rs:9` advertises HNSW with `hnsw_rs` dependency declared, feature default-on | Actual `VectorStore::search` is a **linear scan over a DashMap**. | CLAUDE.md, `ai_pipeline.md` §13.8 |
 | `SpatialHash` is the physics broadphase | `astraweave-physics/src/lib.rs:25-26` doc-comment advertises "99.96% pair reduction" | Actual broadphase is Rapier's `DefaultBroadPhase`. `SpatialHash` (1,038 LoC) is dormant. | `physics.md` §1, §6 |
 | Audio crate is "4-bus mixer (master, music, SFX, voice)" | `astraweave-audio/src/lib.rs:8` docstring | Actual `AudioEngine` has **5** buses (ambient added separately). Doc string drifted; engine grew the 5th bus in commit `745c100a8` alongside biome materials. | `audio.md` §6 |
@@ -666,9 +667,9 @@ ECS World (Vec3 positions)
   → server_snapshot_system OR standalone server build_snapshot
   → ClientToServer/ServerToClient enums via Codec::PostcardLz4 (standalone) or Codec::Bincode (ECS Plugin)
   → WebSocket over TLS (wss://) [standalone] or plain TCP (ws://) [ECS Plugin]
-  → Matchmaking: room cap 4, tick_hz 30 (hardcoded), session_key 32 bytes, session_hint 8 bytes
-  → InputFrame { seq, tick_ms, input_blob, sig: [u8; 16] }
-    → Client signs with sign16 (XOR); Server verifies with HMAC-SHA256 (always fails — warn! only)
+  → Matchmaking: room cap 4, tick_hz 30 (hardcoded); shared 32-byte SigningKey (AW_SHARED_KEY / --shared-key-hex / dev_default)
+  → InputFrame { seq, tick_ms, input_blob, sig: [u8; 32] }
+    → Client signs HMAC-SHA256 over input_frame_sig_payload; Server verifies FIRST (constant-time), kicks by default (Close 1008) per SignatureFailurePolicy
   → Token-bucket rate limit: 8 tokens/sec refill, 60-bucket capacity, 1 cost/msg
 ```
 
@@ -929,7 +930,7 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 
 16. **Co-existence of two networking subsystems (`astraweave-net` vs `astraweave-net-ecs`+standalone trio).** Disjoint data models (`IVec2` vs `Vec3`), disjoint wire formats (JSON vs PostcardLz4/Bincode), disjoint integration patterns. Are these intended to coexist long-term? `net.md` §11.
 
-17. **Standalone server signature mismatch.** Client signs with `sign16` (XOR); server verifies with HMAC-SHA256 (always fails for two independent reasons — length + algorithm). Failure is `warn!` only. `net_ecs.md` §6.
+17. **Standalone server signature mismatch — RESOLVED** (Net-Trio-Remediation `561b20957`+`79424389e`+`066cd6cfd`; refute `eb9977b88`). Client and server now sign/verify canonical HMAC-SHA256 (`aw-net-proto`) over `input_frame_sig_payload`; server verifies FIRST and kicks by default (`SignatureFailurePolicy::Kick`). `sign16`/`SessionKey`/`session_key_hint` deleted; `InputFrame.sig` is `[u8; 32]`; 104-test regression net. Deliberate residual boundaries (out of scope, not defects): no replay protection; server→client unsigned. `net_ecs.md` §6/§7/§11; `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
 
 18. **`astraweave-persistence-ecs` Plugin layer disposition.** `auto_save_system` body is comment-only TODO; `replay_system` doesn't apply events; `CPersistenceManager::save_game` hardcodes inventory; `calculate_world_hash` covers only 4 of 10 components; `SerializedWorld.world_tick` always 0. No production consumer. `persistence_ecs.md` §11.
 
@@ -946,6 +947,16 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.7.1 (2026-06-10)
+Net-Trio-Remediation reconciliation pass (doc-only). The standalone matchmaking trio's signature defect — client signed with the XOR `sign16` (16-byte tag) while the server verified HMAC-SHA256 (32-byte tag), so every verification failed and the server only `warn!`ed — is now FIXED and ENFORCED in code. Reconciled five surfaces here against the landed change:
+- §0 Trace Index: net_ecs row now notes the mismatch is RESOLVED (HMAC-SHA256 enforced, kick-by-default).
+- §4.3 Silent-Failure inventory: the "HMAC server verification always fails / `warn!`-only" row marked RESOLVED with the commit ledger; retargeted from `aw-net-server/src/main.rs` to `src/lib.rs` (`on_client_msg{,_tls}`) + `aw-net-proto/src/lib.rs`.
+- §7.2 Doc-comment drift: the "XOR `sign16` as MVP" README row marked RESOLVED (README updated in W.4).
+- §8.8 Network data-flow diagram: replaced the `sign16`/`[u8;16]`/"always fails — warn! only" lines with the enforced HMAC flow (`[u8; 32]` sig, `input_frame_sig_payload`, verify-FIRST, kick-by-default); removed `session_key`/`session_hint` from the matchmaking line.
+- §14 open-question 17: marked RESOLVED with the commit ledger; recorded the deliberate residual boundaries (no replay protection; S2C unsigned).
+- The two-coexisting-networking-subsystems open question (§14 #16) is left intact — that is the Dormant Surface Disposition's scope, not this workflow's.
+- **Commit ledger**: `561b20957` (W.1 canonical HMAC; stub deleted), `79424389e` (W.2.a client adopts), `066cd6cfd` (W.2.b server verifies + policy + lib/bin split), `9a3fc94e3` (W.2.b-fix1), `7029d7d7f`/`a2b494942`/`0e702738e`/`68a9a1936` (W.3.1-3.4 test families), `420a6f61b` (W.5.1), `2955cd14c` (W.5.2), `eb9977b88` (W.5.3 refute). Authoritative input: `net_ecs.md` v1.3 (2026-06-10); audit `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
 
 ### v0.7.0 (2026-05-13)
 Reconciliation pass against the 13 per-subsystem architecture traces under `docs/architecture/`:

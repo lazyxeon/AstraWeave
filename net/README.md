@@ -4,7 +4,7 @@
 
 The enhanced networking layer consists of three crates that provide production-ready multiplayer capabilities:
 
-- **`aw-net-proto`**: Versioned wire protocol with compression and tamper-evident signatures
+- **`aw-net-proto`**: Versioned wire protocol with compression and the canonical HMAC-SHA256 signing surface (`SigningKey`, `sign`/`verify`, `input_frame_sig_payload`)
 - **`aw-net-server`**: Authoritative server with matchmaking, persistence, and anti-cheat
 - **`aw-net-client`**: Client prediction, reconciliation, and demo implementation
 
@@ -38,7 +38,7 @@ AW_WS_URL=ws://your-server.com:8788 AW_REGION=eu-central cargo run -p aw-net-cli
 
 - **Versioned Protocol**: Protocol version 1 with future compatibility
 - **Compression**: LZ4 compression on postcard-serialized messages  
-- **Security**: Tamper-evident signatures on input frames
+- **Security**: Enforced HMAC-SHA256 signatures on input frames (server verifies first, kicks by default)
 - **Reliability**: WebSocket with binary frames for cross-platform NAT traversal
 
 ### Server Features
@@ -47,7 +47,7 @@ AW_WS_URL=ws://your-server.com:8788 AW_REGION=eu-central cargo run -p aw-net-cli
 - **Matchmaking**: Region-aware room finding and creation (up to 4 players per room)
 - **Persistence**: Sled database for room and player state
 - **Rate Limiting**: Token bucket system to prevent spam/abuse
-- **Anti-cheat**: Input signature validation and rate monitoring
+- **Anti-cheat**: Enforced HMAC-SHA256 input signature verification (kick-by-default) and rate monitoring
 
 ### Client Features
 
@@ -67,7 +67,7 @@ ClientToServer::InputFrame {
     seq: u32,                // Input sequence number
     tick_ms: u64,           // Client timestamp  
     input_blob: Vec<u8>,    // Serialized game input (e.g., movement, actions)
-    sig: [u8; 16],          // Tamper-evident signature
+    sig: [u8; 32],          // HMAC-SHA256 tag over input_frame_sig_payload(seq, tick_ms, input_blob)
 }
 
 // Server sends authoritative snapshots
@@ -139,21 +139,27 @@ Use a load balancer or DNS routing to direct clients to the nearest region.
 
 ## Security Considerations
 
-### Current Implementation (MVP)
+### Current Implementation
 
-- **Input Validation**: Lightweight XOR-based signatures for tamper detection
-- **Rate Limiting**: Token bucket prevents input spam
-- **Session Keys**: Per-room session keys for basic integrity
+- **Input Authentication (implemented & enforced)**: Every `InputFrame` is signed with **HMAC-SHA256** over the canonical `input_frame_sig_payload(seq, tick_ms, input_blob)` byte range, keyed by a shared 32-byte symmetric `SigningKey`. The client signs; the server **verifies first** (before any per-player state mutation, constant-time) and, by default, **kicks** an unauthenticated client via a WebSocket Close frame (policy violation, code 1008). Configure the key via `AW_SHARED_KEY` (64 hex chars) on the client and `--shared-key-hex` on the server (both fall back to a published development key if unset — **not for production**). Configure the failure response via `--sig-failure-policy kick|warn` (`kick` is the default; `warn` logs and processes anyway, for debugging).
+- **TLS/WSS**: Secure WebSocket by default (`wss://`); `--disable-tls` is rejected in release builds.
+- **Rate Limiting**: Token bucket prevents input spam.
+
+#### Known limitations (deliberate boundaries)
+
+- **No replay protection**: HMAC proves a frame is authentic, not *fresh* — a captured valid frame can be replayed. Nonces / sequence-number freshness are future session-security work.
+- **Server→client messages are not signature-verified**: this is an authoritative-server, asymmetric-trust model; a shared *symmetric* key cannot meaningfully authenticate server→client traffic anyway (every client in a room holds the same key). Meaningful S2C auth needs asymmetric server keys or per-session key exchange (a handshake — out of scope).
+- **Dev certs**: the bundled self-signed cert is for local development only; generate real certs via `net/certs/dev/generate_dev_cert.sh` (and provision proper CA-signed certs for deployment).
 
 ### Production Hardening
 
-For production deployment, consider upgrading:
+For production deployment, consider:
 
-1. **HMAC Signatures**: Replace XOR signatures with proper HMAC-SHA256
-2. **TLS/WSS**: Use secure WebSocket connections (wss://)
-3. **Authentication**: Add player authentication and session management
-4. **Advanced Anti-cheat**: Server-side physics validation, statistical analysis
-5. **Monitoring**: Add metrics, logging, and alerting
+1. **Distribute a real shared key** out-of-band (never ship with the development key); rotate it as appropriate.
+2. **Authentication**: Add player authentication and session management.
+3. **Replay / freshness protection** and **server→client authentication** (asymmetric or per-session keys) if your threat model requires them.
+4. **Advanced Anti-cheat**: Server-side physics validation, statistical analysis.
+5. **Monitoring**: Add metrics, logging, and alerting.
 
 ## Performance
 
