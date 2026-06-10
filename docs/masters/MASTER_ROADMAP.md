@@ -1,7 +1,7 @@
 # AstraWeave: Master Strategic Roadmap
 
-**Version**: 1.49  
-**Last Updated**: March 25, 2026  
+**Version**: 1.51  
+**Last Updated**: June 10, 2026  
 **Status**: Authoritative Source  
 **Validation**: ✅ PASS — [Full Report](../current/ENGINE_VALIDATION_2026_01_13.md)
 
@@ -25,7 +25,7 @@
 
 AstraWeave is the **world's first AI-native game engine** where AI agents are first-class citizens, not bolted-on features. The entire codebase is developed iteratively by AI Agents (GitHub Copilot/Antigravity) with zero human-written code.
 
-### Current State (March 25, 2026)
+### Current State (June 10, 2026)
 
 | Metric | Value |
 |--------|-------|
@@ -34,8 +34,8 @@ AstraWeave is the **world's first AI-native game engine** where AI agents are fi
 | **Compilation** | **17/17 core crates** (0 errors, 0 warnings) |
 | **Miri Validation** | ✅ **977 tests, 0 UB** |
 | **Kani Verification** | ✅ **69 proof harnesses, all passing** |
-| Workspace Packages | **128** (57 core + 71 examples/tools) |
-| Total Tests | **~27,000+** (measured) / **~35,000** `#[test]` markers |
+| Workspace Packages | **130** (59 core + 71 examples/tools; `cargo metadata --no-deps`, 2026-06-10 — adds `astraweave-alloc` and `astraweave-camera`) |
+| Total Tests | **~27,000+** (measured) / **~39,973** `#[test]`/`#[tokio::test]` markers (live count 2026-06-10) |
 | Integration Tests | **~9,081** |
 | Test Coverage (Overall) | **59.3%** weighted (LLVM source-based, v5.0 methodology) |
 | High-Coverage Crates (≥85%) | **14 of 28** measured (50%) |
@@ -43,9 +43,16 @@ AstraWeave is the **world's first AI-native game engine** where AI agents are fi
 | Agent Capacity | 12,700+ @ 60 FPS |
 | **Determinism** | **100% validated** |
 | **Memory Safety** | ✅ **Miri-verified** |
-| **Mutation Testing** | Wave 1: 767 manual + Wave 2: 1,261+ automated |
+| **Mutation Testing** | Wave 1: 767 manual + Wave 2: 1,261 automated + Wave 3: 489 targeted + Wave 4: 411 fluids |
 
 **Recent Achievements**:
+- (Jun 9–10, 2026): **Net-Trio-Remediation W.1–W.5** — canonical HMAC-SHA256 sign/verify in `aw-net-proto` (XOR `sign16` stub deleted), server verify-first with `SignatureFailurePolicy::Kick` default, TLS-path coverage; trio 53 → 104 tests — [Findings](../audits/net_trio_signature_remediation_findings_2026-06.md)
+- (Jun 6, 2026): **Editor Multi-Tool Sub-phase 4 COMPLETE** (dispatcher Pattern A regression net) + Sub-phase 5.A/5.B landed (RegionalArchetypePanel ActiveTool); SP5.C closeout pending — [Campaign](../current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md)
+- (Jun 2, 2026): **Terrain Asset Quality campaign closed** — texture VRAM baselined at 80 MiB/active pack (31% of 256 MB soft budget); BC7/KTX2 cook path flagged broken (runtime uploads uncompressed RGBA8) — [Outcome](../audits/terrain_asset_quality_outcome_2026-06.md)
+- (Jun 1, 2026): **Unified Camera C.0–C.9 closed** — new `astraweave-camera` crate; 8 divergent camera codepaths consolidated into one `RenderView` upload contract; 3 parallel cinematics keyframe systems retired — [Outcome](../audits/unified_camera_outcome_2026-06.md)
+- (May 17, 2026): **Editor-Engine Render Parity P.1–P.7 closed** — bit-identical (SHA-256) editor↔engine WYSIWYG parity, five seams structurally protected, public regression harness — [Outcome](../audits/editor_engine_render_parity_outcome_2026-05.md)
+- (May 14, 2026): **Editor Multi-Tool Sub-phase 3 closed** — Mediator Brush Architecture complete (Real-Fix.A–E + cleanup chain); 8/8 brush modes operational; erosion chunk seams eliminated
+- (Apr 17, 2026): **mimalloc allocator merge** — `astraweave-alloc` crate (`fast-alloc` feature); `ai.goap.plan` −52%, profiling_demo FPS +43% — [Experiment](../audits/mimalloc_experiment_2026-04-17.md)
 - (Mar 25, 2026): Blueprint Zone Editor & Blend Scene Integration — 9 phases, polygon zone editor, Replica/Inspired placement, heightmap injection, 125+ tests — [Details](../current/ARCHITECTURE_REFERENCE.md#blueprint-zone-system)
 - (Feb 25, 2026): Master Coverage Report v5.0 — full re-measurement of 28 crates via `cargo llvm-cov` — [Details](../current/MASTER_COVERAGE_REPORT.md)
 - (Feb 2026): Wave 2 automated mutation testing — astraweave-prompts 100% kill rate (792 mutants)
@@ -561,9 +568,27 @@ Mar 25 ── v1.49: Blueprint Zone Editor (9 phases, 125+ tests)
 
 ---
 
-**Next Review Date**: 2026-04-25 (monthly cadence)  
+**Next Review Date**: 2026-07-10 (monthly cadence)  
 **Revision History Format Version**: 2.0.0 (IEEE/ACM-compliant)  
 **Last Restructured**: 2026-04-05
+
+### v1.51 (2026-06-10) — Engine Health Audit + Six-Campaign Reconciliation
+
+**Scope**: Full engine-health-status audit and roadmap reconciliation; records all campaigns completed since v1.50 (the header had remained at v1.49/2026-03-25 despite the v1.50 entry below — an internal inconsistency now corrected).
+
+**Key Changes**:
+- **Net-Trio-Remediation W.1–W.5** (Jun 9–10): HMAC-SHA256 input signing canonical and enforced end-to-end; XOR `sign16` deleted; `SignatureFailurePolicy::Kick` default; trio 53 → 104 tests
+- **Editor Multi-Tool Architecture**: Sub-phase 3 closed (May 14, Real-Fix.A–E + cleanup chain), Sub-phase 4 closed (Jun 6); Sub-phase 5 in flight (5.A/5.B landed Jun 6)
+- **Unified Camera C.0–C.9 closed** (Jun 1): new `astraweave-camera` crate; one `RenderView` upload contract; net LoC reduction
+- **Editor-Engine Render Parity P.1–P.7 closed** (May 17): bit-identical WYSIWYG parity harness, five seams protected
+- **Terrain Asset Quality closed** (Jun 2): VRAM baseline 80 MiB/active pack; BC7/KTX2 cook path flagged broken
+- **mimalloc merge recorded** (Apr 17): `astraweave-alloc`, `fast-alloc` default-on in profiling_demo/hello_companion/editor
+- **Counts reconciled**: workspace packages 128 → 130; test markers ~39,973 (live count); mutation waves 3+4 added to summary
+- **Build health**: `cargo check --workspace` 0 errors; all former known-build-issue crates compile clean (live audit 2026-06-10)
+
+**Documents**: [PROJECT_STATUS](../current/PROJECT_STATUS.md) | [Architecture Map v0.7.2](../architecture/ARCHITECTURE_MAP.md) | [Coverage Report v5.3.0](../current/MASTER_COVERAGE_REPORT.md) | campaign outcome docs under `docs/audits/`
+
+---
 
 ### v1.50 (2026-04-05) — Editor Behavioral Correctness Audit + Unified Pipeline
 

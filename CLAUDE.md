@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AstraWeave is a **scientific proof of concept**: a production-grade AI-native game engine built **iteratively by AI with zero human-written code**. It uses a deterministic ECS architecture where AI agents are first-class citizens. The workspace contains 128 crates (49 production + examples + tools). Rust toolchain is pinned at 1.89.0.
+AstraWeave is a **scientific proof of concept**: a production-grade AI-native game engine built **iteratively by AI with zero human-written code**. It uses a deterministic ECS architecture where AI agents are first-class citizens. The workspace contains 130 crates (~51 production + examples + tools; `cargo metadata --no-deps`, verified 2026-06-10). Rust toolchain is pinned at 1.89.0.
 
 ### Mandate
 
@@ -104,7 +104,7 @@ The traces are the workspace's forensic counterweight to documentation drift —
 
 **DO:**
 - Build incrementally (`-p` flag for single crates)
-- Use cargo aliases (`check-all`, `build-core`, `test-all`, `clippy-all`)
+- Use the editor cargo aliases (`editor`, `editor-release`, `editor-dev`); for workspace-wide operations use the explicit commands below (no `check-all`-style aliases are defined in `.cargo/config.toml`)
 - Use `--release` for examples
 - Run `cargo check -p <crate>` after every modification
 
@@ -126,11 +126,11 @@ cargo test -p <crate>               # Run tests for a crate
 cargo fmt --all                     # Format all code
 cargo clippy -p <crate> --all-features -- -D warnings  # Lint a crate
 
-# Workspace-wide aliases
-cargo check-all                     # Workspace check
-cargo build-core                    # Core components
-cargo test-all                      # Working crate tests
-cargo clippy-all                    # Full linting
+# Workspace-wide commands (no aliases defined — use the explicit forms)
+cargo check --workspace             # Workspace check (130/130 members, 0 errors as of 2026-06-10)
+cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai  # Core components
+cargo test --workspace              # Workspace tests (long-running)
+cargo clippy --workspace --all-features -- -D warnings  # Full linting
 
 # Editor
 cargo editor                        # Run editor (release-fast profile)
@@ -306,7 +306,7 @@ The ECS scheduler is **deterministic single-threaded** per tick. Systems within 
 - **Physics/World**: `physics`, `nav`, `terrain`, `fluids`, `scene` — Rapier3D, navmesh, procedural terrain
 - **Gameplay**: `gameplay`, `quests`, `weaving`, `cinematics`, `pcg` — combat, crafting, quest systems
 - **Networking**: `net`, `net-ecs`, `persistence-ecs` — snapshot networking, delta compression
-- **Tools**: `tools/aw_editor` (3,892+ tests, unified engine pipeline), `tools/aw_asset_cli`, `tools/aw_build`
+- **Tools**: `tools/aw_editor` (9,425 test annotations, unified engine pipeline), `tools/aw_asset_cli`, `tools/aw_build`
 
 All crate names are prefixed with `astraweave-`.
 
@@ -354,9 +354,9 @@ Any new or modified `unsafe` code **MUST** pass both verification pipelines:
 
 ### Known Build Issues
 
-- **Graphics examples**: `ui_controls_demo`, `debug_overlay` won't compile (egui/winit version drift)
-- **Rhai crates**: `astraweave-author`, `rhai_authoring` have Sync trait errors
-- **LLM crates**: `astraweave-llm`, `llm_toolcall` excluded from standard builds
+**All previously-listed build breakages are resolved** (live `cargo check` audit, 2026-06-10): `ui_controls_demo`, `debug_overlay` (former egui/winit drift), `astraweave-author`, `rhai_authoring` (former Rhai `Sync` trait errors), and `astraweave-llm` all compile clean, and `cargo check --workspace` passes 130/130 members with 0 errors. The root `Cargo.toml` `[workspace.metadata.ci-excludes]` problematic list is empty.
+
+- **Residual warnings (deferred)**: 1 `dead_code` warning in `astraweave-ai`; 1 unused import in `tools/aw_editor/src/gizmo/mod.rs:32`; `nalgebra v0.26.2` future-incompat note from the dependency graph
 - **`.unwrap()` in test code only**: All `.unwrap()` calls are inside `#[cfg(test)]` modules — justified for test assertions. Zero production-path unwraps in engine runtime crates.
 
 ### Documentation Hazards
@@ -372,7 +372,7 @@ Treat `docs/src/` content as **historical/aspirational** unless cross-validated 
 **Doc-comment migration drift.** Doc-comments and CLAUDE.md frequently describe target state ahead of runtime wiring. Confirmed examples:
 
 - **AI runtime model**: doc-comments and CLAUDE.md describe Qwen3-based hybrid; `astraweave-ai/src/orchestrator.rs:488-490` defaults `OLLAMA_MODEL` to `"phi3:medium"`. Set `OLLAMA_MODEL=qwen3:8b` to get the documented behavior, or update the default if Qwen3 is the canonical choice.
-- **Networking signature**: `net/README.md` describes XOR `sign16` as MVP and HMAC-SHA256 as production upgrade. Standalone server runs HMAC verification; standalone client still computes `sign16`. Every signature verification fails — server warns but does not kick.
+- **Networking signature (RESOLVED 2026-06-10, Net-Trio-Remediation W.1–W.5)**: the former mismatch (client computed XOR `sign16`, server verified HMAC-SHA256, so every verification failed and the server only warned) is fixed end-to-end — `aw-net-proto` exposes the canonical HMAC-SHA256 surface (`SigningKey`, `sign`/`verify`, `input_frame_sig_payload`), the `sign16` stub is deleted, the client signs via that surface, and the server verifies FIRST with `SignatureFailurePolicy::Kick` by default (WebSocket Close 1008). `net/README.md` was rewritten to match. Deliberate boundaries, not defects: no replay/freshness protection; server→client messages unsigned (asymmetric-trust design). See `docs/architecture/net_ecs.md` rev 1.3 and `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
 - **HNSW vector index**: `astraweave-embeddings/src/lib.rs:9` advertises HNSW with `hnsw_rs` dependency declared and feature default-on; actual `VectorStore::search` is a linear scan over a DashMap.
 - **SpatialHash broadphase**: `astraweave-physics/src/lib.rs:25-26` doc-comment advertises `SpatialHash` as broadphase ("99.96% pair reduction"); actual broadphase is Rapier's `DefaultBroadPhase`. The in-crate `SpatialHash` (1,038 LoC) is dormant.
 - **Multiple "stub" surfaces**: `astraweave-llm/src/llm_adapter.rs::safe_llm_invoke` has zero workspace callers (the `MAX_PROMPT_LENGTH = 4096` invariant is unreachable code); `astraweave-persistence-ecs::auto_save_system` is a comment-only TODO; `compute_poses_stub` in scene; `process_destructible_hits` no-op stub in physics.
@@ -427,7 +427,7 @@ Read these when you need deeper context. **Do not ask the user for information t
 | `docs/architecture/<system>.md` | **Per-subsystem architecture traces** — forensic reference for traced subsystems (terrain, render, physics, persistence, net, net-ecs, input, fluids, ECS foundation, audio, animation, AI pipeline, aw_editor). Read the relevant trace before modifying a traced subsystem; update it in the same commit when you do. Toolkit at `docs/architecture/_meta/`. |
 | `docs/architecture/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams, editor viewport pipeline (unified post-Fix-27), data flow paths, unsafe code inventory. |
 | `docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` | 37-fix behavioral correctness audit: visual math, data pipeline, undo system, silent failures, integration seams. Completed 2026-04-05. |
-| `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` | 8-round diagnostic narrowing that elevated the §7.7 wrapped-component resource identity trap to structural axiom. Real-Fix.A/B/C landed, .D pending. |
+| `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` | 8-round diagnostic narrowing that elevated the §7.7 wrapped-component resource identity trap to structural axiom. Sub-phases 3 (incl. Real-Fix.A–E) and 4 complete; Sub-phase 5 in flight (5.A/5.B landed 2026-06-06). |
 | `docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md` | 7-phase campaign plan that eliminated the dual FastPreview/EnginePBR rendering pipeline. |
 | `docs/current/PROJECT_STATUS.md` | Current state, active work, recently completed milestones |
 | `docs/current/ARCHITECTURE_REFERENCE.md` | Full API patterns (7 arbiter patterns, testing, benchmarking), performance data, formal verification details |

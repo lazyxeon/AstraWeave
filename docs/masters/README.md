@@ -11,9 +11,9 @@
 
 | Report | Description | Update Threshold |
 |--------|-------------|------------------|
-| **[MASTER_ROADMAP.md](MASTER_ROADMAP.md)** | Strategic roadmap and priorities | Work >4 hours or phase completion |
-| **[MASTER_BENCHMARK_REPORT.md](MASTER_BENCHMARK_REPORT.md)** | Performance benchmarks | Changes ±10% or new benchmark |
-| **[MASTER_COVERAGE_REPORT.md](MASTER_COVERAGE_REPORT.md)** | Test coverage metrics | Changes ±5% per-crate or ±2% overall |
+| **[MASTER_ROADMAP.md](MASTER_ROADMAP.md)** | Strategic roadmap and priorities (canonical here; stub at `docs/current/`) | Work >4 hours or phase completion |
+| **[MASTER_BENCHMARK_REPORT.md](MASTER_BENCHMARK_REPORT.md)** | Performance benchmarks (canonical here; stub at `docs/current/`) | Changes ±10% or new benchmark |
+| **[MASTER_COVERAGE_REPORT.md](../current/MASTER_COVERAGE_REPORT.md)** | Test coverage metrics (canonical at `docs/current/`; stub here) | Changes ±5% per-crate or ±2% overall |
 
 ---
 

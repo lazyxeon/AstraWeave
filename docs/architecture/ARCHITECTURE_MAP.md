@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-06-10 | **Version**: 0.7.1 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-06-10 | **Version**: 0.7.2 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.7.2 update (2026-06-10)**: Engine-health-audit reconciliation — workspace member count corrected 143 → **130** (root Cargo.toml members verified identical to `cargo metadata --no-deps`); `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) added to §1/§2.1 and to `astraweave-render`'s dep row; examples count corrected to 59; §0 editor/render trace rows updated for Multi-Tool Sub-phase 3/4 closeouts (SP5 in flight) and Render Parity P.1–P.7 closure.
 > **0.7.1 update (2026-06-10)**: Net-Trio-Remediation reconciliation — the standalone-trio HMAC-vs-XOR signature mismatch is RESOLVED (canonical HMAC-SHA256 signing enforced end-to-end, kick-by-default). Updated the net_ecs subsystem row (§0), the known-issues silent-failure row (§4.3), the documentation-hazards row (§7.2), the §8.8 network data-flow diagram, and §14 open-question 17. See `net_ecs.md` §6/§7 and `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
 > **0.7.0 update**: Reconciled against the 13 per-subsystem architecture traces under `docs/architecture/`. Every traced subsystem now linked at section level. Workspace-wide structural axioms (§7.7 wrapped-component resource identity, Fix-27 dual-pipeline lesson, silent-failure policy, "wired beats tested" taxonomy) crystallised into their own section. Dormant-code taxonomy and documentation-hazard inventory consolidated from per-trace evidence. **0.6.0 update (2026-05-07)**: Full cartography audit — impostor infrastructure catalogued, astraweave-alloc added, workspace count verified at 143 members, viewport module inventory updated, Regional Archetype Variation campaign status integrated.
 > **0.5.0 update (2026-04-04)**: Reflects Fix 27 Unified Pipeline Campaign — EntityRenderer deleted, astraweave-render is now non-optional in aw_editor.
@@ -13,7 +14,7 @@
 | Subsystem | Trace | Status (per trace) |
 |---|---|---|
 | Terrain Material System | [`terrain_materials.md`](terrain_materials.md) | Canonical 32-layer pipeline active; legacy 8-layer `texture_splatting` test-only; simple `terrain.rs` path transitional (1 caller) |
-| Render Pipeline + Material System + Shader Infrastructure | [`render_pipeline_material_system_shader_infrastructure.md`](render_pipeline_material_system_shader_infrastructure.md) | Active workzone — Editor Multi-Tool Architecture Sub-phase 3 in flight; 123 source files + 71 WGSL shaders + editor viewport |
+| Render Pipeline + Material System + Shader Infrastructure | [`render_pipeline_material_system_shader_infrastructure.md`](render_pipeline_material_system_shader_infrastructure.md) | Active workzone — Multi-Tool Sub-phases 3/4 closed (2026-05-14 / 2026-06-06), SP5 in flight; Editor-Engine Render Parity P.1–P.7 closed 2026-05-17 (bit-identical parity harness); 123 source files + 71 WGSL shaders + editor viewport |
 | Physics | [`physics.md`](physics.md) | Active core (`PhysicsWorld` + `CharacterController` + Rapier broadphase) with feature-gated and dormant subsystems; `SpatialHash` module dormant despite doc-comment advertising |
 | Persistence (aw-save + persistence-ecs) | [`persistence_ecs.md`](persistence_ecs.md) | `aw-save` production-grade; `astraweave-persistence-ecs` has working roundtrip but `auto_save_system` and replay event apply are TODO stubs; declared by stress-test but unused |
 | Net (snapshot-based server) | [`net.md`](net.md) | Active; 2D grid `IVec2` model; JSON over WebSocket; coexists with `astraweave-net-ecs` (different model entirely) |
@@ -24,7 +25,7 @@
 | Audio | [`audio.md`](audio.md) | Active rodio facade; **5 buses** (not 4 per stale lib.rs docstring); not an ECS Resource (rodio chain is `!Send`); 10+ editor panel knobs are no-op forward-design |
 | Animation System | [`animation.md`](animation.md) | Phase 2 Task 5 complete; **four parallel type families** (`render::Skeleton`/`asset::Skeleton`/`scene::CSkeleton`/`editor::GltfSkeleton`) — no shared types, no `From` impls; `MAX_JOINTS = 256` hard-coded in two places; CubicSpline falls back to Linear/Slerp |
 | AI Pipeline (8 subsystem traces) | [`ai_pipeline.md`](ai_pipeline.md) | Active foundation — engine's first-class citizen. 12,700+ agents @ 60 FPS validated. **Two GOAP implementations**, **runtime LLM default still phi3:medium despite Qwen3 doc-comments**, hardening surface (~15K LoC) shelf-stocked but not in line, Memory/Coordination/RAG subsystems dormant |
-| aw_editor (Visual Editor) | [`aw_editor.md`](aw_editor.md) | Mid-campaign on multiple fronts. 216 `.rs` files / 224,584 LoC; god-struct `EditorApp` (123 fields); §7.7 wrapped-component trap surfaced at 4 layers; Real-Fix.A/B/C landed, .D pending |
+| aw_editor (Visual Editor) | [`aw_editor.md`](aw_editor.md) | Mid-campaign. 216 `.rs` files / 224,584+ LoC; god-struct `EditorApp` (123 fields); §7.7 wrapped-component trap surfaced at 4 layers; Multi-Tool Sub-phases 3 (incl. Real-Fix.A–E) and 4 COMPLETE, Sub-phase 5 in flight (5.A/5.B landed 2026-06-06; 5.C closeout + Mediator Removal + SP6 pending) |
 
 The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, `TRACE_PROMPT_TEMPLATE.md`, `TRACE_VERIFICATION_PROMPT_TEMPLATE.md`, `DEEP_TRACE_INVESTIGATION_TEMPLATE.md`, `SUBSYSTEM_TRACE_EXPANSION_PROMPT_TEMPLATE.md`).
 
@@ -32,9 +33,9 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 
 ## 1. Workspace Overview
 
-- **Total workspace members**: 143 (listed in root Cargo.toml)
-- **Production crates**: ~51 (core engine infrastructure)
-- **Examples**: ~45
+- **Total workspace members**: 130 (root Cargo.toml members list, verified identical to `cargo metadata --no-deps` 2026-06-10; the prior 143 figure was a stale over-count)
+- **Production crates**: ~51 (core engine infrastructure, incl. `astraweave-camera` added 2026-05-18)
+- **Examples**: 59
 - **Tools**: 12 (`aw_editor`, `aw_asset_cli`, `astraweave-assets`, `aw_debug`, `aw_build`, `aw_texture_gen`, `aw_headless`, `ollama_probe`, `asset_signing`, `aw_release`, `aw_demo_builder`, `aw_save_cli`)
 - **Crates/** subdirectory**: 5 (`astraweave-blend`, `astraweave-alloc`, `astraweave-persistence-player`, `astract`, `astract/astract-macro`)
 - **Networking sub-crates**: 3 (`aw-net-proto`, `aw-net-server`, `aw-net-client`)
@@ -85,7 +86,8 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 |-------|---------------|
 | `astraweave-materials` | _(none)_ |
 | `astraweave-cinematics` | _(none)_ |
-| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **aw_asset_cli** (tool — unusual direction, verified 2026-05-13 still present at Cargo.toml:60) |
+| `astraweave-camera` | _(none — glam/winit/optional serde only; canonical `Projection`/`RenderView`/`CameraProducer` types, created Unified Camera C.2 `52b9e711c` 2026-05-18)_ |
+| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:45), **aw_asset_cli** (tool — unusual direction, verified 2026-05-13 still present at Cargo.toml:60) |
 | `astraweave-asset` | blend |
 | `astraweave-asset-pipeline` | _(none)_ |
 | `astraweave-blend` | _(in crates/)_ |
@@ -436,7 +438,7 @@ Covered in detail in §7 (Documentation Hazards) below. Origin: commit `28bc94f2
 | `BehaviorNode` | astraweave-behavior | core, ai, editor | MEDIUM — `#[non_exhaustive]`; adding a variant requires touching every dispatch site per Integration Completeness #2 | `ai_pipeline.md` §6 |
 | `BiomeType` | astraweave-gameplay | terrain, render, scatter | HIGH — terrain reverse-dep flows backwards through this type | `terrain_materials.md` §4 |
 | `Transform` / `Node` | astraweave-scene | render, editor, physics | HIGH — `Transform` is also one of three coexisting Transform types in the animation type families (render/asset/scene) | `animation.md` §6 |
-| `NavMesh` | astraweave-nav | ai, gameplay, terrain | MEDIUM |
+| `NavMesh` | astraweave-nav | ai, gameplay, terrain | MEDIUM | `physics.md` §4 |
 | `PhysicsWorld` | astraweave-physics | gameplay, npc, editor, scripting | MEDIUM — `Send + Sync` (verified 2026-05-12 — auto-derived); production consumers take `&mut PhysicsWorld` directly via `World::get_resource_mut` | `physics.md` §8 (Invariant 18) |
 | `AudioEngine` | astraweave-audio | editor (via bridge), demos, NPC | MEDIUM — **`!Send + !Sync`** (rodio/cpal `OutputStream` chain); cannot be ECS Resource; consumers must hold directly | `audio.md` §7 |
 | `Skeleton`/`Joint`/`Transform`/`AnimationClip`/`AnimationChannel`/`Interpolation`/`ChannelData` (four parallel families) | render / asset / scene-CSkeleton / editor-Gltf* | each crate independently | HIGH — no `From`/`Into` impls between any pair; conversions are ad-hoc at call sites | `animation.md` §6 |
@@ -509,7 +511,7 @@ Treat `docs/src/` content as **historical/aspirational** unless cross-validated 
 
 | Claim | Doc location | Reality | Source trace |
 |---|---|---|---|
-| AI runtime model is Qwen3 | `astraweave-ai/src/ai_arbiter.rs:1` doc-comment ("GOAP+Qwen3 Hybrid Control System"); CLAUDE.md ("GOAP+Qwen3 Hybrid") | `astraweave-ai/src/orchestrator.rs:488-490` defaults `OLLAMA_MODEL` to `"phi3:medium"` (`unwrap_or_else(|_| "phi3:medium".to_string())`). Three Ollama clients (Phi3, Hermes2Pro, Qwen3) coexist. Set `OLLAMA_MODEL=qwen3:8b` to get documented behavior. | `ai_pipeline.md` §6, §11 |
+| AI runtime model is Qwen3 | `astraweave-ai/src/ai_arbiter.rs:1` doc-comment ("GOAP+Qwen3 Hybrid Control System"); CLAUDE.md ("GOAP+Qwen3 Hybrid") | `astraweave-ai/src/orchestrator.rs:488-490` defaults `OLLAMA_MODEL` to `"phi3:medium"` (`unwrap_or_else(\|_\| "phi3:medium".to_string())`). Three Ollama clients (Phi3, Hermes2Pro, Qwen3) coexist. Set `OLLAMA_MODEL=qwen3:8b` to get documented behavior. | `ai_pipeline.md` §6, §11 |
 | ~~Networking uses HMAC signatures with XOR `sign16` as MVP~~ **RESOLVED** | `net/README.md` (updated W.4) | Client and server are now unified on canonical HMAC-SHA256 signing (`aw-net-proto`); the client signs and the server verifies (constant-time) over `input_frame_sig_payload`, kicking by default on failure. `sign16` deleted. Net-Trio-Remediation `561b20957`+`79424389e`+`066cd6cfd`. | `net_ecs.md` §6/§7 |
 | HNSW vector index for embeddings | `astraweave-embeddings/src/lib.rs:9` advertises HNSW with `hnsw_rs` dependency declared, feature default-on | Actual `VectorStore::search` is a **linear scan over a DashMap**. | CLAUDE.md, `ai_pipeline.md` §13.8 |
 | `SpatialHash` is the physics broadphase | `astraweave-physics/src/lib.rs:25-26` doc-comment advertises "99.96% pair reduction" | Actual broadphase is Rapier's `DefaultBroadPhase`. `SpatialHash` (1,038 LoC) is dormant. | `physics.md` §1, §6 |
@@ -652,6 +654,7 @@ The `aw-save` layer (file format) is production-grade. The `astraweave-persisten
 Two coexisting subsystems with **disjoint data models, wire formats, and integration patterns**. Neither imports the other.
 
 **`astraweave-net` (snapshot-based)**:
+
 ```
 World (grid-based, IVec2 positions)
   → build_snapshot(world, tick, seq) → Snapshot
@@ -662,6 +665,7 @@ World (grid-based, IVec2 positions)
 ```
 
 **`astraweave-net-ecs` + standalone trio (`aw-net-{proto,client,server}`)**:
+
 ```
 ECS World (Vec3 positions)
   → server_snapshot_system OR standalone server build_snapshot
@@ -719,7 +723,7 @@ User input (mouse, keyboard, gamepad via winit → eframe)
 | `tools/aw_editor/src/viewport/terrain_biome_placeholder.rs` | Biome placeholder rendering | ~small |
 | `tools/aw_editor/src/viewport/impostor_registry.rs` | Content-hashed impostor atlas cache | ~340 |
 | `tools/aw_editor/src/viewport/impostor_wiring.rs` | Scatter-to-bake bridge helpers | ~280 |
-| `tools/aw_editor/src/viewport/shaders/tonemap.wgsl` | HDR→LDR blit: ACES (mode=0), PBR Neutral/Khronos (mode=1), Reinhard (mode=2) | ~small |
+| ~~`tools/aw_editor/src/viewport/shaders/tonemap.wgsl`~~ | **DELETED 2026-05-17** (Render Parity P.3, `e09703538`) — editor now tonemaps through the engine's shared ACES `post_pipeline`; multi-operator authoring (PBR Neutral/Reinhard UI) removed per P.0 Q3 | — |
 | `tools/aw_editor/src/viewport/shaders/grid.wgsl` | Floor grid with axes, anti-aliased lines | ~small |
 | `tools/aw_editor/src/viewport/shaders/gizmo.wgsl` | Transform handle geometry | ~small |
 
@@ -815,7 +819,7 @@ Frame Start
 
 ### Editor Tests
 
-`aw_editor`: **~9,397 `#[test]` annotations** total (~4,089 inline + ~5,308 in `tests/`; verified 2026-05-12 per `aw_editor.md` §10) — the CLAUDE.md figure of "3,892+ tests" is older and predates the Wave 2 mutation-resistant integration test campaign. 66 files in `tools/aw_editor/tests/` including 46+ `wave2_*` suites and 16 `mutation_resistant_*.rs` per-subsystem files.
+`aw_editor`: **9,425 `#[test]` annotations** total (4,103 inline + 5,322 in `tests/`; live count 2026-06-10, superseding the ~9,397 of 2026-05-12 per `aw_editor.md` §10). 66 files in `tools/aw_editor/tests/` including 46+ `wave2_*` suites and 16 `mutation_resistant_*.rs` per-subsystem files.
 
 ### Fuzz Targets (off-CI)
 
@@ -947,6 +951,13 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.7.2 (2026-06-10)
+Engine-health-audit reconciliation pass (doc-only), driven by the 2026-06-10 full workspace audit:
+- §1: total workspace members corrected **143 → 130** — the root Cargo.toml `[workspace].members` list contains 130 entries (128 unique paths; `astraweave-npc` and `astraweave-security` are each listed twice) and `cargo metadata --no-deps` resolves exactly 130 packages (the two extras are auto-included path-dependency packages). Examples count corrected to **59**.
+- §2.1: added `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) to the Rendering & Assets table; appended `camera` to `astraweave-render`'s workspace-deps row (non-optional, astraweave-render/Cargo.toml:45). Other production consumers: `tools/aw_editor` + 13 examples.
+- §0: render-pipeline trace row updated (Multi-Tool SP3/SP4 closed, SP5 in flight; Render Parity P.1–P.7 closed 2026-05-17); aw_editor trace row updated (Real-Fix.A–E all landed; SP3/SP4 complete; SP5 in flight per commits `85786bf70`/`3cdb23239`).
+- Companion edits in the same pass: README engine-health section rewritten against this map + the live audit; `workspace_map.html` counts re-reconciled; MASTER_COVERAGE_REPORT bumped v5.3.0; MASTER_ROADMAP bumped v1.51; PROJECT_STATUS refreshed; CLAUDE.md known-build-issues + networking-hazard rows corrected.
 
 ### v0.7.1 (2026-06-10)
 Net-Trio-Remediation reconciliation pass (doc-only). The standalone matchmaking trio's signature defect — client signed with the XOR `sign16` (16-byte tag) while the server verified HMAC-SHA256 (32-byte tag), so every verification failed and the server only `warn!`ed — is now FIXED and ENFORCED in code. Reconciled five surfaces here against the landed change:

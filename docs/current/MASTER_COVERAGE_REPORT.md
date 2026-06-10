@@ -1,6 +1,6 @@
 # AstraWeave Master Test Coverage Report
 
-> **Version**: 5.2.0 | **Date**: 2026-03-01 | **Grade**: B+ | **Tool**: `cargo llvm-cov` (LLVM source-based)
+> **Version**: 5.3.0 | **Date**: 2026-06-10 | **Grade**: B+ | **Tool**: `cargo llvm-cov` (LLVM source-based)
 
 ---
 
@@ -8,8 +8,8 @@
 
 | Metric | Value |
 |--------|-------|
-| **Workspace Crates** | 128 total (29 measured for coverage) |
-| **Total Tests** | ~21,900 (measured crates) / ~39,000+ (workspace) |
+| **Workspace Crates** | 130 total (29 measured for coverage; `astraweave-alloc` and `astraweave-camera` added since v5.2.0, both unmeasured) |
+| **Total Tests** | ~21,900 (measured crates) / ~39,000+ (workspace; live re-count 2026-06-10: 39,973 markers incl. `#[tokio::test]`) |
 | **Primary Tool** | `cargo llvm-cov` (LLVM source-based instrumentation) |
 | **Overall Line Coverage** | 59.3% weighted (measured crates, last run 2026-02-25) |
 | **High-Coverage Crates (≥85%)** | 14 of 28 (50%) |
@@ -25,7 +25,7 @@
 | **P1 — Important Systems** | 5 | 80% | **58.9%** | Below target |
 | **P2 — Support** | 6 | 75% | **73.9%** | Approaching target |
 
-> **Note**: Line coverage percentages were last measured via `cargo llvm-cov` on 2026-02-25. Test counts have been re-audited against current source on 2026-02-27 via `#[test]` marker scanning. Coverage percentages have not been re-measured and may differ from current state due to tests added between Feb 25–27.
+> **Note**: Line coverage percentages were last measured via `cargo llvm-cov` on 2026-02-25 — a **~3.5-month measurement gap** as of this revision (2026-06-10). Test counts were re-audited against current source on 2026-02-27 via `#[test]` marker scanning and spot-re-counted 2026-06-10 (39,973 markers workspace-wide). Coverage percentages have not been re-measured; tests added since Feb 2026 (notably the Net-Trio-Remediation 104-test regression net, the Multi-Tool Sub-phase 4 dispatcher tests, and the Unified Camera contract/parity tests) are not reflected in the percentages.
 
 ### Context: Why Coverage Numbers Changed Since v4.2
 
@@ -540,7 +540,8 @@ cargo mutants --package astraweave-prompts --test-tool nextest --in-place --time
 
 | Version | Date | Type | Summary | Impact |
 |:-------:|:----:|:----:|:--------|:------:|
-| **5.2.0** | 2026-03-01 | **Update** | Added Wave 4 fluids mutation testing (411 mutants, 100% adjusted kill rate). Updated cumulative mutation totals (2,928 mutants, 91.7% raw). Created `FLUIDS_MUTATION_TESTING_REPORT.md`. | Significant |
+| **5.3.0** | 2026-06-10 | **Update** | Engine-health-audit reconciliation: workspace crate count 128 → 130 (`astraweave-alloc` 2026-04-17, `astraweave-camera` 2026-05-18 — both unmeasured); recorded post-v5.2.0 test growth (Net-Trio-Remediation 104 trio tests: proto 59 / server 41 / client 4; Multi-Tool SP4 dispatcher tests 15 → 21; Unified Camera 25 crate tests + 8 contract tests + parity fixtures); live marker re-count 39,973. Coverage percentages NOT re-measured (still 2026-02-25) — gap caveat added. | Incremental |
+| 5.2.0 | 2026-03-01 | Update | Added Wave 4 fluids mutation testing (411 mutants, 100% adjusted kill rate). Updated cumulative mutation totals (2,928 mutants, 91.7% raw). Created `FLUIDS_MUTATION_TESTING_REPORT.md`. | Significant |
 | 5.1.0 | 2026-02-27 | Audit | Full audit: corrected test counts via `#[test]` marker scanning (39,000+ workspace total). Added Wave 3 mutation testing results (463 mutants, 95.5% kill rate). Fixed "4 crates at ≥98%" → 3. Corrected fluids integration test count (4,907→2,509). Added detailed unmeasured crate inventory with verified test counts. Updated methodology comparison table. | Significant |
 | 5.0.0 | 2026-02-25 | Major audit | Full re-measurement of 28 crates via `cargo llvm-cov`. Corrected stale coverage data. Reformatted to match benchmark report structure. Added hardware, methodology, and limitations sections. Grade recalibrated to B+. All numbers reproducible. | Critical |
 | 4.2.0 | 2026-02-24 | Update | Wave 2 mutation testing: prompts 100% kill (792 mutants), render 97% non-GPU | Significant |

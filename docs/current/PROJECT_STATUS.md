@@ -1,6 +1,6 @@
 # AstraWeave Project Status
 
-> **Last Updated**: April 17, 2026  
+> **Last Updated**: June 10, 2026  
 > **Read by**: Copilot agent when it needs current project context  
 > **Do not inline this into copilot-instructions.md** — point to it instead
 
@@ -8,7 +8,18 @@
 
 ## Active Work
 
-### Phase 8.8: Physics Robustness Upgrade — IN PROGRESS (Jan 29, 2026)
+### Editor Multi-Tool Architecture Campaign — Sub-phase 5 IN PROGRESS (Jun 6, 2026)
+- **Sub-phase 3** (Mediator Brush Architecture) COMPLETE 2026-05-14 (`b220442a7`); **Sub-phase 4** (dispatcher Pattern A regression infrastructure) COMPLETE 2026-06-06 (`d5c350f60`)
+- **Sub-phase 5** (RegionalArchetypePanel ActiveTool): 5.A dispatcher Y=0 projection path (`85786bf70`) and 5.B panel ActiveTool + registration + paint command/undo (`3cdb23239`) landed 2026-06-06
+- **Remaining**: Sub-phase 5.C Andrew-gated closeout, Mediator Removal session, Sub-phase 6 campaign closeout
+- **Plan**: `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` (note: its §11 Sub-phase 5 entry predates the 5.A/5.B commits — git evidence is authoritative)
+
+### Campaign Hand-offs (open follow-up queues)
+- **Terrain Asset Quality** (closed 2026-06-02): cleanup queue + pause stack in `docs/audits/terrain_asset_quality_outcome_2026-06.md` §5/§7 — notably the broken BC7/KTX2 cook path (placeholder encoder, DFD sRGB bug; runtime uploads uncompressed RGBA8) and the polyhaven showcase pack's 10 missing files behind a warn-logged fallback
+- **Unified Camera** (closed 2026-06-01): cleanup queue in `docs/audits/unified_camera_outcome_2026-06.md` §5
+- **Net-Trio-Remediation** (closed 2026-06-10): deliberate boundaries deferred to future session-security work — no replay/nonce protection; server→client unsigned (asymmetric-trust design)
+
+### Phase 8.8: Physics Robustness Upgrade — PAUSED (no commits since Feb 2026)
 - **Objective**: Bring all physics subsystems to fluids-level quality
 - **Baseline**: Fluids system A+ grade with 2,404 tests (benchmark caliber)
 - **Current**: ~500 physics tests → 657+ target (157 new tests planned)
@@ -29,6 +40,7 @@
 - Gravity: +10 tests (inverse-square law, orbital mechanics)
 
 **Current Subsystem Grades**:
+
 | Subsystem | Grade | Tests | Key Gap |
 |-----------|-------|-------|---------|
 | Fluids | A+ | 2,404 | Benchmark (complete) |
@@ -47,6 +59,7 @@
 - **Mission**: Transform from "production-ready infrastructure" to "ship a game on it"
 - **Started**: October 14, 2025
 - **Current Gap**: 60-70% complete for shipping full games
+- **Note (Jun 2026)**: the priority-track day counters below have been dormant since early 2026 — May–June work went to the editor/camera/parity/net campaigns listed under Recently Completed
 
 **Priority Tracks**:
 1. **In-Game UI Framework** (5 weeks) — 72% complete (18/25 days, 3,573 LOC)
@@ -64,6 +77,48 @@
 ---
 
 ## Recently Completed
+
+### Net-Trio-Remediation W.1–W.5 ✅ (June 9–10, 2026)
+- **Defect fixed**: the long-standing HMAC-vs-XOR `sign16` mismatch in the standalone matchmaking trio (`aw-net-{proto,client,server}`) — previously every signature verification failed and the server only warned
+- **W.1**: canonical HMAC-SHA256 surface in `aw-net-proto` (`SigningKey` with private key bytes, constant-time `verify` via `Mac::verify_slice`, `input_frame_sig_payload`, `SIG_LEN=32`); XOR `sign16` stub + `SessionKey` deleted
+- **W.2**: client signs via the canonical surface (`AW_SHARED_KEY`, fail-fast); server verifies FIRST (before any state mutation) on both TLS and plain handlers with `SignatureFailurePolicy { Kick (default), Warn }` — Kick issues WebSocket Close 1008 through the real disconnect/cleanup path
+- **W.3/W.5**: 5 test families (authenticated round-trip, tampered/malformed reject-and-survive, wrong-key policy, disconnect paths, TLS signature path) + RFC 4231 KATs — trio went 53 → 104 tests, all green
+- **Deliberate boundaries (not defects)**: no replay/nonce protection; server→client unsigned (asymmetric-trust design)
+- **Docs**: `docs/audits/net_trio_signature_remediation_findings_2026-06.md`; `net/README.md` rewritten; `net_ecs.md` rev 1.3; ARCHITECTURE_MAP bumped v0.7.1
+- Commits `561b20957` → `017ada12c`
+
+### Editor Multi-Tool Sub-phase 4 ✅ + Sub-phase 5.A/5.B (June 6, 2026)
+- **SP4 COMPLETE** (`d5c350f60`): Pattern A regression net for the dispatcher class — active_tool unit tests 15 → 21 (registration/dup-overwrite, deactivate-before-activate ORDER, dispatch routing, mutex enforcement, `EventDisposition` forward-compat tripwire)
+- **SP5.A** (`85786bf70`): dispatcher Y=0 projection path lived in `viewport/widget.rs`; **SP5.B** (`3cdb23239`): `RegionalArchetypePanel` ActiveTool + dispatcher registration + paint command/undo
+- SP5.C Andrew-gated closeout pending (campaign still open)
+
+### Terrain Asset Quality Campaign ✅ (May 14 – June 2, 2026)
+- **Verdict**: ACCEPTABLE at residency (80 MiB/active 5-layer pack = 31% of the 256 MB soft texture budget) + OPTIMIZATION-CANDIDATE on format
+- 9 Tier-1 PBR material PNG triples acquired (PolyHaven + ambientCG; provider extended with ARM-map fetch); founding "replace 22 placeholders" premise falsified at A.3 — real PBR was already deployed
+- **Durable findings**: BC7/KTX2 cook path broken (no toktx/basisu, placeholder encoder writes monochrome blocks, DFD sRGB bug) so runtime uploads uncompressed 1024² RGBA8; 27-PNG runtime-vs-source divergence; polyhaven showcase pack references 10 missing files behind a warn-logged fallback
+- **Docs**: `docs/audits/terrain_asset_quality_outcome_2026-06.md` (closeout `61332f75c`)
+
+### Unified Camera Campaign C.0–C.9 ✅ (May 18 – June 1, 2026)
+- Consolidated 8 divergent camera codepaths (3 competing yaw conventions, dual renderer upload paths, 3 parallel cinematics keyframe systems)
+- **New crate `astraweave-camera`** (`52b9e711c`): canonical `Projection`/`RenderView`/`CameraProducer` types; `Renderer::update_view` is the sole upload entry point; dual `update_camera`/`update_camera_matrices` paths deleted (50 files)
+- OrbitCamera `fov`(deg) → `fovy`(rad) rename with serde back-compat; editor `CameraKeyframe` retired into cinematics `CameraKey`; gizmo `CameraController` + `SceneViewport` deleted (net −1,549 LoC in C.6)
+- `FreeFly::sanitize()`/`CameraKey::sanitize()` hardening; `docs/current/CAMERA_CONVENTIONS.md` + 8 contract tests + parity-harness matrix fixtures (C.8)
+- **Docs**: `docs/audits/unified_camera_outcome_2026-06.md` (closeout `017f65da7`)
+
+### Editor-Engine Render Parity P.1–P.7 ✅ (May 17, 2026)
+- Bit-identical per-machine parity (SHA-256 of LDR bytes) between editor viewport and standalone `Renderer::draw_into` — the WYSIWYG contract, publicly enforced by `tools/aw_editor/tests/render_parity_harness.rs`
+- Five seams closed: shared loader, shared tonemap (editor `tonemap.wgsl` + `hdr_blit_pipeline` deleted, ~550 LoC; shared ACES `post_pipeline` is the single terminal stage), shared `GameQuality` preset, target-format equality, overlay isolation (`ENGINE_LDR_TARGET` + `EDITOR_OVERLAY_TARGET` + `composite.wgsl`)
+- Editor's multi-operator tonemap authoring (PBR Neutral / AgX UI surface) intentionally removed per P.0 Q3 decision — engine operators are ACES (default), AgX, Reinhard
+- **Docs**: `docs/audits/editor_engine_render_parity_outcome_2026-05.md` (closeout `6dc95ae9b`)
+
+### Editor Multi-Tool Sub-phase 3 + Cleanup Chain ✅ (May 4–14, 2026)
+- Mediator Brush Architecture complete: Real-Fix.A/B/C/D/E + Cleanup-A/B/D resolved four §7.7 wrapped-component resource-identity instances; 8/8 brush modes operational; erosion chunk seams eliminated (M-D5/M-D9/M-SK continuity fixes)
+- Legacy cluster render path deleted; canonical MaterialLibrary now 21 named + 11 reserved (32-slot capacity preserved, `24b1b2150`)
+- **Docs**: `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` (closeout `b220442a7`)
+
+### ARCHITECTURE_MAP v0.7.0 Reconciliation + Interactive Workspace Map ✅ (May 13, 2026)
+- ARCHITECTURE_MAP.md reconciled against the 13 pre-existing subsystem traces and bumped to v0.7.0 (`a0b254042`); interactive `docs/architecture/workspace_map.html` visualization deployed (`ee8e3f579`, `44e769c4b`)
+- Map has since reached v0.7.2 (Net-Trio reconciliation 2026-06-10 + member-count/camera reconciliation)
 
 ### Allocation Measurement + mimalloc Merge ✅ (April 17, 2026)
 - **Audit**: `docs/audits/allocation_audit_2026-04-17.md` — static survey confirmed no external allocator, arena, pool, or GPU sub-allocator crate anywhere; hot allocation sites catalogued with file:line citations.
@@ -202,8 +257,10 @@ See `docs/current/MASTER_BENCHMARK_REPORT.md` for full data. Key numbers:
 
 ## Validation Status
 
+- `cargo check --workspace`: 130/130 members compile, 0 errors (verified 2026-06-10) — former known-build-issue crates (astraweave-author, rhai_authoring, ui_controls_demo, debug_overlay, astraweave-llm) all pass
 - `hello_companion` demonstrates all 6 AI modes (Phase 6+7)
 - `cargo test -p astraweave-ecs` — comprehensive unit tests
+- Net trio: 104/104 tests green (proto 59, server 41, client 4); camera: 25/25; cinematics: 341/341 (2026-06-10)
 - CI validates SDK ABI, cinematics, and core crates
 - **Miri**: 977 tests, 0 UB across 4 crates (ecs, math, core, sdk)
 - **Determinism**: Bit-identical replay proven
@@ -211,4 +268,4 @@ See `docs/current/MASTER_BENCHMARK_REPORT.md` for full data. Key numbers:
 
 ---
 
-**Version**: 0.9.1 | **Rust**: 1.89.0 | **License**: MIT
+**Version**: 0.10.1 | **Rust**: 1.89.0 | **License**: MIT

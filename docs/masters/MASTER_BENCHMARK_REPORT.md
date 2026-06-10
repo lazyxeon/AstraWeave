@@ -1,6 +1,6 @@
 # AstraWeave Master Benchmark Report
 
-> **Version**: 5.56 | **Date**: 2026-02-28 | **Grade**: A+ | **Framework**: Criterion.rs (statistical)
+> **Version**: 5.57 | **Date**: 2026-06-10 | **Grade**: A+ | **Framework**: Criterion.rs (statistical)
 
 ---
 
@@ -16,6 +16,22 @@
 | **Agent Capacity** | 12,700+ @ 60 FPS (18.8x over initial target) |
 | **Validation Throughput** | 6.48M checks/sec |
 | **Determinism** | 100% bit-identical across runs |
+
+### mimalloc / fast-alloc Allocator Merge (v5.57)
+
+Paired baseline-vs-mimalloc measurement (3 independent runs per cell, 2026-04-17; merged same day — recorded here per the >10%-change update rule, which this entry back-fills):
+
+| Benchmark | Baseline | mimalloc | Delta |
+|-----------|----------|----------|-------|
+| `ai.goap.plan/actions_16` | 767.7 µs | 371.7 µs | **−51.6%** |
+| `profiling_demo` avg FPS (1,000 entities / 1,000 frames) | 956.03 | 1,368.60 | **+43.2%** |
+| `physics.step` | — | — | −5.2% (within noise) |
+| `render.bin_lights_cpu` | — | — | −3.6% (within noise) |
+
+- `ecs.schedule.run/systems_16` −23.1% (2.73 → 2.10 µs) is **HISTORICAL**: measured on the `astraweave-ecs` `alloc_measure` harness deleted 2026-04-18 with `ParallelSchedule` — not reproducible on current code.
+- **Three** extant `alloc_measure` Criterion benches registered: `astraweave-ai`, `astraweave-physics`, `astraweave-render` (added 2026-04-17; the fourth, ecs, was deleted with ParallelSchedule).
+- `fast-alloc` (via the `astraweave-alloc` crate) is **default-on** in `examples/profiling_demo`, `examples/hello_companion`, and `tools/aw_editor`; library crates keep it opt-in. Opt-out verified: 855 FPS `--no-default-features` vs 1,458 FPS default.
+- Allocs/bytes/reallocs per frame identical across allocators (sanity check passed). Sources: `docs/audits/mimalloc_experiment_2026-04-17.md`, `docs/audits/allocation_measurement_plan_2026-04-17.md`.
 
 ### Qwen3-8B LLM Latency Breakthrough (v5.56)
 
@@ -802,6 +818,7 @@ Frame time optimization: **-12.6%** (3.09 ms to 2.70 ms, +47 FPS to 370 FPS).
 
 | Version | Date | Type | Summary | Impact |
 |:-------:|:----:|:----:|:--------|:------:|
+| 5.57 | 2026-06-10 | Update | mimalloc/fast-alloc merge recorded (back-fill of 2026-04-17 results): ai.goap.plan −52%, profiling_demo FPS +43%; 3 alloc_measure benches registered; ecs harness figure marked historical (deleted with ParallelSchedule) | Significant |
 | 5.56 | 2026-02-28 | Major | Qwen3-8B LLM latency: 4 rounds, 3.60× faster than Hermes, TTFC 160ms | Significant |
 | 5.55 | 2026-01-13 | Audit | Engine validation: 5,372 tests, RAG deadlock fixed | Critical |
 | 5.54 | 2026-01-13 | Audit | Production audit: 99 bench files, Grade A- (91/100) | Significant |
@@ -818,7 +835,7 @@ Frame time optimization: **-12.6%** (3.09 ms to 2.70 ms, +47 FPS to 370 FPS).
 | 2.0 | 2025-10-30 | Major | Tier 1 complete: All priority crates | Significant |
 | 1.0 | 2025-10-21 | Major | Initial release: 33+ files consolidated | Significant |
 
-**55 total versions** (2025-10-21 to 2026-02-28). Benchmark count: 155 (v1.0) to 2,830+ (v5.56), +1,725% growth.
+**56 total versions** (2025-10-21 to 2026-06-10). Benchmark count: 155 (v1.0) to 2,830+ (v5.56), +1,725% growth.
 
 <details>
 <summary>Critical Version Details</summary>
@@ -833,4 +850,4 @@ Frame time optimization: **-12.6%** (3.09 ms to 2.70 ms, +47 FPS to 370 FPS).
 
 ---
 
-**Next Review**: 2026-03-28 (monthly cadence)
+**Next Review**: 2026-07-10 (monthly cadence)
