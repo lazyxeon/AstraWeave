@@ -74,7 +74,13 @@
       "Bash(git commit -m ':*)",
       "Bash(find docs/audits -type f)",
       "Bash(ls docs/audits/)",
-      "Bash(cargo bench *)"
+      "Bash(cargo bench *)",
+      "Bash(cargo tree *)",
+      "PowerShell(cargo check *)",
+      "PowerShell(cargo test *)",
+      "PowerShell(cargo tree *)",
+      "WebFetch(domain:www.rfc-editor.org)",
+      "PowerShell(cargo clippy *)"
     ]
   }
 }
