@@ -17,3 +17,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 anyhow = "1"
 aw-net-proto = { path = "../aw-net-proto" }
+
+[dev-dependencies]
+aw-net-server = { path = "../aw-net-server" }
+tempfile = "3"

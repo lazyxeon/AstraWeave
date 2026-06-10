@@ -27,3 +27,6 @@ tokio-rustls = "0.25"
 rustls = "0.22"
 rustls-pemfile = "2.0"
 aw-net-proto = { path = "../aw-net-proto" }
+
+[dev-dependencies]
+tempfile = "3"
