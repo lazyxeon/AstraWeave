@@ -2,12 +2,22 @@ struct SdfConfig {
     resolution: u32,
     world_size: f32,
     triangle_count: u32,
-    padding: f32,
+    // Number of valid entries in dynamic_objects. The buffer is fixed-size
+    // (128 entries), so iterating arrayLength() would also visit zeroed
+    // entries — whose zero inverse-transform makes sd_box(0,0) = 0, seeding
+    // EVERY voxel as "inside an object" (F.1 finding).
+    object_count: u32,
 };
 
 struct JfaParams {
     step_size: u32,
-    padding: vec3<u32>,
+    // Three scalar pads (NOT vec3<u32>: vec3 has 16-byte alignment in the
+    // uniform address space, which would inflate this struct to 32 bytes and
+    // mismatch the 16-byte host-side `JfaParams` buffer — F.1 found exactly
+    // that mismatch making every FluidSystem::step dispatch fail validation).
+    pad0: u32,
+    pad1: u32,
+    pad2: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: SdfConfig;
@@ -46,8 +56,9 @@ fn init(@builtin(global_invocation_id) id: vec3<u32>) {
     var min_dist = 1e6;
     var nearest_point = vec3<f32>(1e6);
 
-    // Voxelize dynamic objects into the seed
-    for (var i = 0u; i < arrayLength(&dynamic_objects); i++) {
+    // Voxelize dynamic objects into the seed (only the valid prefix of the
+    // fixed-size buffer — see SdfConfig.object_count).
+    for (var i = 0u; i < config.object_count; i++) {
         let obj = dynamic_objects[i];
         let local_p = (obj.inv_transform * vec4<f32>(world_pos, 1.0)).xyz;
         

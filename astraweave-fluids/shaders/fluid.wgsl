@@ -52,9 +52,13 @@ struct SecondaryParticle {
 @group(0) @binding(3) var<storage, read_write> secondary_counter: atomic<u32>;
 @group(0) @binding(4) var<storage, read_write> density_error: atomic<u32>;
 
-// Group 1: Particles (Ping-Pong)
+// Group 1: Particles
+// All kernels mutate the single particle buffer in place; dispatch boundaries
+// act as barriers between pipeline stages.
 @group(1) @binding(0) var<storage, read_write> particles: array<Particle>;
-@group(1) @binding(1) var<storage, read_write> particles_dst: array<Particle>; // Reserved for full state copy if needed
+// 1 = active, 0 = despawned. Inactive particles are skipped by every kernel
+// and are never inserted into the neighbor grid.
+@group(1) @binding(1) var<storage, read> particle_flags: array<u32>;
 
 // Group 2: Secondary Buffers
 @group(2) @binding(0) var<storage, read_write> secondary_particles: array<SecondaryParticle>;
@@ -120,6 +124,7 @@ fn kernel_grad_w(r: f32, diff: vec3<f32>, h: f32) -> vec3<f32> {
 fn predict(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let id = global_id.x;
     if (id >= params.particle_count) { return; }
+    if (particle_flags[id] == 0u) { return; }
 
     let pos = particles[id].position.xyz;
     var vel = particles[id].velocity.xyz;
@@ -151,7 +156,13 @@ fn clear_grid(@builtin(global_invocation_id) global_id: vec3<u32>) {
 fn build_grid(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let id = global_id.x;
     if (id >= params.particle_count) { return; }
-    
+    // Inactive particles are never inserted into the grid, so they are
+    // invisible to all neighbor searches.
+    if (particle_flags[id] == 0u) {
+        next_pointers[id] = -1;
+        return;
+    }
+
     let pos = particles[id].predicted_position.xyz;
     let cell_idx = get_cell_index(pos);
     
@@ -167,6 +178,7 @@ fn build_grid(@builtin(global_invocation_id) global_id: vec3<u32>) {
 fn compute_lambda(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let id = global_id.x;
     if (id >= params.particle_count) { return; }
+    if (particle_flags[id] == 0u) { return; }
 
     let pos = particles[id].predicted_position.xyz;
     let h = params.smoothing_radius;
@@ -233,6 +245,7 @@ fn sd_box(p: vec3<f32>, b: vec3<f32>) -> f32 {
 fn compute_delta_pos(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let id = global_id.x;
     if (id >= params.particle_count) { return; }
+    if (particle_flags[id] == 0u) { return; }
 
     let pos = particles[id].predicted_position.xyz;
     let lambda_i = particles[id].lambda;
@@ -312,6 +325,7 @@ fn compute_delta_pos(@builtin(global_invocation_id) global_id: vec3<u32>) {
 fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let id = global_id.x;
     if (id >= params.particle_count) { return; }
+    if (particle_flags[id] == 0u) { return; }
 
     let old_pos = particles[id].position.xyz;
     var pred_pos = particles[id].predicted_position.xyz;
@@ -435,6 +449,7 @@ fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
 fn mix_dye(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let id = global_id.x;
     if (id >= params.particle_count) { return; }
+    if (particle_flags[id] == 0u) { return; }
 
     let pos = particles[id].predicted_position.xyz;
     let temp = particles[id].temperature;
