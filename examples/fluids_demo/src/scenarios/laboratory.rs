@@ -31,7 +31,6 @@ impl FluidScenario for LaboratoryScenario {
         // Reset system for dam break
         system.smoothing_radius = 0.5;
         system.target_density = 10.0;
-        system.pressure_multiplier = 200.0;
         system.viscosity = 40.0;
         system.surface_tension = 0.1;
         system.gravity = -9.81;

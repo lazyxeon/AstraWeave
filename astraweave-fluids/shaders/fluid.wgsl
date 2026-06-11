@@ -21,7 +21,11 @@ struct DynamicObject {
 struct SimParams {
     smoothing_radius: f32,
     target_density: f32,
-    pressure_multiplier: f32,
+    // NOTE: `viscosity` does NOT control the XSPH viscosity blend (which is
+    // hardcoded at 0.01 in `integrate`) — it scales the vorticity-confinement
+    // gain. A former `pressure_multiplier` field was removed in F.1: it was
+    // never read by any kernel (PBF has no pressure stiffness; incompressi-
+    // bility comes from the lambda constraint projection).
     viscosity: f32,
     surface_tension: f32,
     gravity: f32,
@@ -35,6 +39,7 @@ struct SimParams {
     _pad0: f32,
     _pad1: f32,
     _pad2: f32,
+    _pad3: f32,
 };
 
 struct SecondaryParticle {

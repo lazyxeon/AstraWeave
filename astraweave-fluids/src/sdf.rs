@@ -294,6 +294,18 @@ impl SdfSystem {
     }
 
     pub fn generate(&self, encoder: &mut wgpu::CommandEncoder, queue: &wgpu::Queue) {
+        self.generate_timed(encoder, queue, None);
+    }
+
+    /// `generate` with optional GPU timestamp bracketing: the init pass
+    /// records `begin_slot` at its start, the finalize pass records
+    /// `end_slot` at its end (the rare B→A blit is excluded from the span).
+    pub fn generate_timed(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        queue: &wgpu::Queue,
+        timing: Option<(&wgpu::QuerySet, u32, u32)>,
+    ) {
         // Shader workgroup size is (8, 8, 4): z needs twice the workgroup
         // count of x/y. (Pre-F.1 this dispatched res/8 in z too, leaving the
         // upper half of the volume — world z > 0 — permanently unwritten.)
@@ -304,7 +316,11 @@ impl SdfSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("SDF Init"),
-                ..Default::default()
+                timestamp_writes: timing.map(|(qs, begin, _)| wgpu::ComputePassTimestampWrites {
+                    query_set: qs,
+                    beginning_of_pass_write_index: Some(begin),
+                    end_of_pass_write_index: None,
+                }),
             });
             cpass.set_pipeline(&self.init_pipeline);
             cpass.set_bind_group(0, &self.config_bind_group, &[]);
@@ -364,7 +380,11 @@ impl SdfSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("SDF Finalize"),
-                ..Default::default()
+                timestamp_writes: timing.map(|(qs, _, end)| wgpu::ComputePassTimestampWrites {
+                    query_set: qs,
+                    beginning_of_pass_write_index: None,
+                    end_of_pass_write_index: Some(end),
+                }),
             });
             cpass.set_pipeline(&self.finalize_pipeline);
             cpass.set_bind_group(0, &self.config_bind_group, &[]);

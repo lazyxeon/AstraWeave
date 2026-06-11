@@ -20,6 +20,10 @@ experimental = []
 name = "fluids_adversarial"
 harness = false
 
+[[bench]]
+name = "fluid_baselines"
+harness = false
+
 [dependencies]
 wgpu = { workspace = true }
 glam = { workspace = true }

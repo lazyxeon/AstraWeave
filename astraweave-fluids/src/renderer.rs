@@ -51,10 +51,6 @@ impl FluidRenderer {
         height: u32,
         surface_format: wgpu::TextureFormat,
     ) -> Self {
-        println!(
-            "DEBUG: SmoothParams size: {}",
-            std::mem::size_of::<SmoothParams>()
-        );
         // --- Shaders ---
         let depth_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("SSFR Depth Shader"),
@@ -84,7 +80,6 @@ impl FluidRenderer {
             padding: [0.0; 5],
         }];
         let params_bytes: &[u8] = bytemuck::cast_slice(params_data);
-        println!("DEBUG: params_bytes len: {}", params_bytes.len());
 
         let smooth_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("SSFR Smooth Params"),
@@ -97,10 +92,6 @@ impl FluidRenderer {
             slice[..params_bytes.len()].copy_from_slice(params_bytes);
         }
         smooth_params_buffer.unmap();
-        println!(
-            "DEBUG: smooth_params_buffer size: {}",
-            smooth_params_buffer.size()
-        );
 
         // --- Textures ---
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -489,10 +480,6 @@ impl FluidRenderer {
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
-        println!(
-            "DEBUG: resize smooth_params_buffer size: {}",
-            self.smooth_params_buffer.size()
-        );
         self.width = width;
         self.height = height;
 
@@ -635,10 +622,6 @@ impl FluidRenderer {
 
         // 2. Smooth Pass (Compute)
         {
-            println!(
-                "DEBUG: render smooth_params_buffer size: {}",
-                self.smooth_params_buffer.size()
-            );
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("SSFR Smooth Pass"),
                 ..Default::default()

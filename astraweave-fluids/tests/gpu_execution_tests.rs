@@ -12,6 +12,18 @@
 
 use astraweave_fluids::{FluidSystem, Particle};
 
+/// Serializes the GPU tests: running five simultaneous wgpu devices on one
+/// adapter distorts frame timing enough to shift the (timing-coupled)
+/// adaptive iteration count and occasionally trip the settling envelope.
+/// One device at a time gives stable envelopes (observed: mean speed² 20-27
+/// serialized vs a >100 outlier under 5-way contention).
+static GPU_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn gpu_serial() -> std::sync::MutexGuard<'static, ()> {
+    // A panicked test poisons the lock; the poison itself is irrelevant.
+    GPU_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 const DT: f32 = 1.0 / 60.0;
 const PARTICLE_COUNT: u32 = 4096;
 
@@ -158,6 +170,7 @@ fn mean_y(particles: &[Particle], active: impl Fn(usize) -> bool) -> f32 {
 /// `FluidSystem::new` had never been called by any test before F.1.
 #[test]
 fn gpu_smoke_construct_and_step() {
+    let _gpu = gpu_serial();
     let Some((device, queue)) = try_create_test_device("gpu_smoke_construct_and_step") else {
         return;
     };
@@ -180,6 +193,7 @@ fn gpu_smoke_construct_and_step() {
 /// remains inside the shader's world box and every float is finite.
 #[test]
 fn gpu_containment_invariant_120_frames() {
+    let _gpu = gpu_serial();
     let Some((device, queue)) = try_create_test_device("gpu_containment_invariant_120_frames")
     else {
         return;
@@ -227,6 +241,7 @@ fn gpu_containment_invariant_120_frames() {
 /// they catch blow-up/collapse classes, not solver-accuracy drift.
 #[test]
 fn gpu_settling_envelope_300_frames() {
+    let _gpu = gpu_serial();
     let Some((device, queue)) = try_create_test_device("gpu_settling_envelope_300_frames") else {
         return;
     };
@@ -276,6 +291,7 @@ fn gpu_settling_envelope_300_frames() {
 /// move the parked position).
 #[test]
 fn gpu_despawn_removes_particles_from_simulation() {
+    let _gpu = gpu_serial();
     let Some((device, queue)) =
         try_create_test_device("gpu_despawn_removes_particles_from_simulation")
     else {
@@ -330,6 +346,7 @@ fn gpu_despawn_removes_particles_from_simulation() {
 /// decrease monotonically across three consecutive single-step readbacks.
 #[test]
 fn gpu_visible_state_advances_every_frame() {
+    let _gpu = gpu_serial();
     let Some((device, queue)) = try_create_test_device("gpu_visible_state_advances_every_frame")
     else {
         return;

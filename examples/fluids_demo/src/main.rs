@@ -107,17 +107,13 @@ struct State {
     show_debug_panel: bool,
 
     // Mouse interaction
+    // (F.1 removed dead UI state: right-drag force, target_particle_count
+    // quality buttons, and show_foam were settable but never read by any
+    // update path — audit findings, Integration Completeness #3.)
     mouse_pos: [f32; 2],
     last_mouse_pos: [f32; 2],
     mouse_left_pressed: bool,
-    mouse_right_pressed: bool,
     spawn_burst_size: u32,
-    drag_force_strength: f32,
-
-    // Performance controls
-    target_particle_count: u32,
-    quality_preset: u32, // 0=Low, 1=Medium, 2=High, 3=Ultra
-    show_foam: bool,
 }
 
 impl State {
@@ -289,7 +285,6 @@ impl State {
         // The fluid system parameters are public fields, so we can set them directly
         fluid_system.smoothing_radius = 0.5;
         fluid_system.target_density = 1.0;
-        fluid_system.pressure_multiplier = 100.0;
         fluid_system.viscosity = 0.01;
         fluid_system.gravity = -9.81;
         fluid_system.cell_size = 1.2;
@@ -427,14 +422,7 @@ impl State {
             mouse_pos: [0.0, 0.0],
             last_mouse_pos: [0.0, 0.0],
             mouse_left_pressed: false,
-            mouse_right_pressed: false,
             spawn_burst_size: 50,
-            drag_force_strength: 10.0,
-
-            // Performance controls
-            target_particle_count: 20000,
-            quality_preset: 2, // High
-            show_foam: true,
         }
     }
 
@@ -470,8 +458,7 @@ impl State {
 
             // C.6.D: `.max(0.01)` aspect guard at resize per
             // CAMERA_CONVENTIONS.md §2.3.
-            self.camera.aspect =
-                (new_size.width as f32 / new_size.height as f32).max(0.01);
+            self.camera.aspect = (new_size.width as f32 / new_size.height as f32).max(0.01);
         }
     }
 
@@ -551,9 +538,10 @@ impl State {
                     camera_pos,
                 );
                 self.last_frame_time_ms = step_start.elapsed().as_secs_f32() * 1000.0;
-
-                // Auto-adjust quality preset based on controller tier
-                self.quality_preset = result.quality_tier as u32;
+                // (Auto-tune quality tier is surfaced via the controller
+                // status label; the former quality_preset mirror field was
+                // dead UI state, removed in F.1.)
+                let _ = result.quality_tier;
             } else {
                 // Traditional direct stepping
                 self.fluid_system
@@ -728,7 +716,13 @@ impl State {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label("Viscosity:");
+                            // Honest label (F.1): this parameter scales the
+                            // vorticity-confinement gain in the shader; the
+                            // XSPH viscosity blend is hardcoded at 0.01.
+                            ui.label("Vorticity (\"viscosity\"):").on_hover_text(
+                                "Scales vorticity confinement. The XSPH viscosity \
+                                     blend itself is hardcoded in fluid.wgsl.",
+                            );
                             ui.add(egui::Slider::new(
                                 &mut self.fluid_system.viscosity,
                                 0.0..=100.0,
@@ -768,51 +762,10 @@ impl State {
                             ui.add(egui::Slider::new(&mut self.spawn_burst_size, 10..=200));
                         });
 
-                        ui.horizontal(|ui| {
-                            ui.label("Drag Force:");
-                            ui.add(egui::Slider::new(&mut self.drag_force_strength, 1.0..=50.0));
-                        });
-
-                        ui.checkbox(&mut self.show_foam, "Show Foam");
-
-                        ui.add_space(8.0);
-
-                        // Quality Presets
-                        ui.heading("🎨 Quality");
-                        ui.separator();
-
-                        ui.horizontal(|ui| {
-                            if ui
-                                .selectable_label(self.quality_preset == 0, "Low")
-                                .clicked()
-                            {
-                                self.quality_preset = 0;
-                                self.target_particle_count = 5000;
-                            }
-                            if ui
-                                .selectable_label(self.quality_preset == 1, "Med")
-                                .clicked()
-                            {
-                                self.quality_preset = 1;
-                                self.target_particle_count = 10000;
-                            }
-                            if ui
-                                .selectable_label(self.quality_preset == 2, "High")
-                                .clicked()
-                            {
-                                self.quality_preset = 2;
-                                self.target_particle_count = 20000;
-                            }
-                            if ui
-                                .selectable_label(self.quality_preset == 3, "Ultra")
-                                .clicked()
-                            {
-                                self.quality_preset = 3;
-                                self.target_particle_count = 50000;
-                            }
-                        });
-
-                        ui.label(format!("Target Particles: {}", self.target_particle_count));
+                        // (F.1 removed the "Drag Force" slider, "Show Foam"
+                        // checkbox, and the quality-preset buttons: none of
+                        // them were read by any update path — the buttons set
+                        // target_particle_count which was never applied.)
 
                         ui.add_space(8.0);
 
@@ -851,7 +804,6 @@ impl State {
                         ui.small("Q/E - Zoom in/out");
                         ui.small("SPACE - Switch scenario");
                         ui.small("Left Click - Spawn particles");
-                        ui.small("Right Drag - Apply force");
                         ui.small("F1 - Toggle this panel");
                         ui.small("F2 - Toggle optimization overlay");
                         ui.small("ESC - Exit");
@@ -1160,9 +1112,6 @@ impl ApplicationHandler for App {
                                     state.spawn_particles_at_cursor();
                                 }
                                 state.mouse_left_pressed = pressed;
-                            }
-                            winit::event::MouseButton::Right => {
-                                state.mouse_right_pressed = button_state == ElementState::Pressed;
                             }
                             _ => {}
                         }

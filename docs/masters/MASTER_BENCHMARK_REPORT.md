@@ -1,6 +1,6 @@
 # AstraWeave Master Benchmark Report
 
-> **Version**: 5.57 | **Date**: 2026-06-10 | **Grade**: A+ | **Framework**: Criterion.rs (statistical)
+> **Version**: 5.58 | **Date**: 2026-06-11 | **Grade**: A+ | **Framework**: Criterion.rs (statistical)
 
 ---
 
@@ -17,7 +17,38 @@
 | **Validation Throughput** | 6.48M checks/sec |
 | **Determinism** | 100% bit-identical across runs |
 
-### mimalloc / fast-alloc Allocator Merge (v5.57)
+### First Fluids Baselines Ever Recorded (v5.58, Fluids-Integration F.1)
+
+**Machine context** (treat as min-spec-class per campaign gate Q7): Intel Core i5-10300H @ 2.50 GHz (4C/8T), NVIDIA GTX 1660 Ti Max-Q, 31.8 GB RAM, Windows 11, Rust 1.89.0, wgpu 25.0.2. Bench: `astraweave-fluids/benches/fluid_baselines.rs` (new in F.1 — measures **production** code, unlike `fluids_adversarial` which predominantly benchmarks bench-local mocks). Captured 2026-06-11 on branch `campaign/fluids-f1`, post WI-1/2/3 repairs (prior to F.1, `FluidSystem::step` could not execute at all — five blocking SDF/bind-group defects).
+
+**`FluidSystem::step` wall time** (encode + submit + wait, demo-canonical params, adaptive iterations at ceiling 8):
+
+| Particles | Wall time (criterion median) |
+|---|---|
+| 10,000 | 5.62 ms |
+| 20,000 | 8.19 ms |
+| 50,000 | 20.72 ms |
+
+**Per-pass GPU timings** (timestamp queries, median of 60 frames, ms):
+
+| Particles | sdf | predict | clear_grid | build_grid | pbd_iterations (×8) | integrate | mix_dye | GPU total |
+|---|---|---|---|---|---|---|---|---|
+| 10,000 | 0.886 | 0.011 | 0.010 | 0.009 | 3.315 | 0.440 | 0.216 | 4.889 |
+| 20,000 | 0.910 | 0.018 | 0.010 | 0.013 | 4.946 | 0.798 | 0.350 | 7.046 |
+| 50,000 | 0.968 | 0.037 | 0.011 | 0.022 | 14.521 | 2.443 | 1.081 | 19.082 |
+
+**`WaterVolumeGrid::simulate`** (CPU, half-full basin, dense iteration):
+
+| Grid | Time/tick (criterion median) |
+|---|---|
+| 32³ | 0.551 ms |
+| 64³ | 13.83 ms |
+| 128³ | 206.1 ms |
+
+**Decision-grade findings** (feed into F.2+/owner budget ratification):
+1. **PBD iterations dominate** (68–76% of GPU time at the adaptive ceiling), refuting the F.0 inference that per-frame SDF regeneration might dominate. The SDF regen is nonetheless a flat ~0.9 ms/frame regardless of particle count — at the proposed 2 ms GPU budget it alone consumes ~45%; **SDF caching when no colliders moved remains the leading optimization candidate** (deliberately NOT implemented in F.1).
+2. **The F.0-proposed 2 ms GPU fluids budget is not achievable at 8 iterations on this hardware class**: even 10k particles costs ~4.9 ms GPU. Iteration count is the lever (2–8 adaptive range; cost is ~linear in iterations). The fluids roadmap's "50–100k @ 60 FPS (PBD tier)" claim is refuted on min-spec-class hardware: 50k costs ~19 ms GPU alone.
+3. **Voxel-grid sparsity is mandatory for F.3** beyond small volumes: dense iteration scales ~O(cells) with a harsh constant (64³ already costs 13.8 ms/tick — 14× the proposed 1 ms CPU budget; 32³ fits at 0.55 ms). The unimplemented `active_cells` sparse path is the F.3 gating work item.
 
 Paired baseline-vs-mimalloc measurement (3 independent runs per cell, 2026-04-17; merged same day — recorded here per the >10%-change update rule, which this entry back-fills):
 

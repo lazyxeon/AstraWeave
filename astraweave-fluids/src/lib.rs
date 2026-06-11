@@ -241,7 +241,11 @@ pub struct DynamicObject {
 pub struct SimParams {
     pub smoothing_radius: f32,
     pub target_density: f32,
-    pub pressure_multiplier: f32,
+    /// Scales the vorticity-confinement gain in `integrate` — NOT the XSPH
+    /// viscosity blend, which is hardcoded at 0.01 in the shader. (A former
+    /// `pressure_multiplier` field was removed in F.1: no kernel ever read
+    /// it; PBF incompressibility comes from the lambda constraint, not a
+    /// pressure stiffness.)
     pub viscosity: f32,
     pub surface_tension: f32,
     pub gravity: f32,
@@ -255,6 +259,7 @@ pub struct SimParams {
     pub _pad0: f32,
     pub _pad1: f32,
     pub _pad2: f32,
+    pub _pad3: f32,
 }
 
 pub struct FluidSystem {
@@ -301,7 +306,6 @@ pub struct FluidSystem {
     // Sim constants
     pub smoothing_radius: f32,
     pub target_density: f32,
-    pub pressure_multiplier: f32,
     pub viscosity: f32,
     pub surface_tension: f32,
     pub gravity: f32,
@@ -324,6 +328,9 @@ pub struct FluidSystem {
     density_error_staging_buffers: [wgpu::Buffer; 2],
     staging_state: [StagingState; 2],
     staging_map_result: [std::sync::Arc<std::sync::atomic::AtomicU8>; 2],
+
+    /// Optional GPU pass-timing instrumentation (see `enable_gpu_timing`).
+    gpu_timing: Option<GpuStepTiming>,
 
     // Dynamic Particle Management
     particle_flags: wgpu::Buffer, // 0=inactive, 1=active for each particle
@@ -381,6 +388,31 @@ const MAP_ERR: u8 = 2;
 /// the neighbor grid); parking them far below the world keeps them out of
 /// any naive instanced render of the full buffer.
 const DESPAWN_PARK_Y: f32 = -10_000.0;
+
+/// Named GPU timing spans recorded by `FluidSystem::step` when
+/// `enable_gpu_timing` has been called (WI-6 instrumentation).
+///
+/// `pbd_iterations` covers the whole lambda/delta-pos loop (all iterations);
+/// `sdf` covers the SDF init→JFA→finalize chain (excluding the rare B→A
+/// blit). Two query slots (begin/end) per span.
+pub const GPU_TIMING_SPANS: [&str; 7] = [
+    "sdf",
+    "predict",
+    "clear_grid",
+    "build_grid",
+    "pbd_iterations",
+    "integrate",
+    "mix_dye",
+];
+
+/// GPU pass-timing state (timestamp query set + readback buffers).
+struct GpuStepTiming {
+    query_set: wgpu::QuerySet,
+    resolve_buffer: wgpu::Buffer,
+    staging_buffer: wgpu::Buffer,
+    /// Nanoseconds per timestamp tick (`Queue::get_timestamp_period`).
+    period_ns: f32,
+}
 
 /// Statistics from optimization systems
 #[derive(Clone, Debug, Default)]
@@ -463,7 +495,6 @@ impl FluidSystem {
             dt: 0.016,
             smoothing_radius: 1.0,
             target_density: 12.0,
-            pressure_multiplier: 300.0,
             viscosity: 10.0,
             surface_tension: 0.02,
             particle_count,
@@ -476,6 +507,7 @@ impl FluidSystem {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
 
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -825,7 +857,6 @@ impl FluidSystem {
             frame_index: 0,
             smoothing_radius: 1.0,
             target_density: 12.0,
-            pressure_multiplier: 300.0,
             viscosity: 10.0,
             surface_tension: 0.02,
             gravity: -9.8,
@@ -847,6 +878,7 @@ impl FluidSystem {
                 std::sync::Arc::new(std::sync::atomic::AtomicU8::new(MAP_PENDING)),
                 std::sync::Arc::new(std::sync::atomic::AtomicU8::new(MAP_PENDING)),
             ],
+            gpu_timing: None,
             mix_dye_pipeline,
             particle_flags,
             active_count: particle_count,
@@ -864,6 +896,103 @@ impl FluidSystem {
             batch_spawner: BatchSpawner::new(1024),
             optimization_stats: OptimizationStats::default(),
         }
+    }
+
+    /// Enable per-pass GPU timestamp instrumentation (WI-6).
+    ///
+    /// Returns `false` (and stays disabled) if the device was not created
+    /// with `wgpu::Features::TIMESTAMP_QUERY`. Once enabled, every `step()`
+    /// records begin/end timestamps for the spans in [`GPU_TIMING_SPANS`]
+    /// and resolves them into a staging buffer; read them with
+    /// [`Self::read_gpu_timings`].
+    pub fn enable_gpu_timing(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
+        if !device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+            return false;
+        }
+        let slot_count = (GPU_TIMING_SPANS.len() * 2) as u32;
+        let query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
+            label: Some("Fluid Step Timing"),
+            ty: wgpu::QueryType::Timestamp,
+            count: slot_count,
+        });
+        let size = (slot_count as u64) * 8;
+        let resolve_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Fluid Timing Resolve"),
+            size,
+            usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Fluid Timing Staging"),
+            size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.gpu_timing = Some(GpuStepTiming {
+            query_set,
+            resolve_buffer,
+            staging_buffer,
+            period_ns: queue.get_timestamp_period(),
+        });
+        true
+    }
+
+    /// Read back the most recent step's per-pass GPU timings in milliseconds.
+    ///
+    /// **Blocking** (`device.poll(Wait)`): intended for benches, tests, and
+    /// diagnostics overlays — not the per-frame hot path. Call after the
+    /// `step()` encoder has been submitted. Returns `None` if timing was
+    /// never enabled or the mapping fails.
+    pub fn read_gpu_timings(&self, device: &wgpu::Device) -> Option<Vec<(&'static str, f32)>> {
+        let timing = self.gpu_timing.as_ref()?;
+        let slice = timing.staging_buffer.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |res| {
+            let _ = tx.send(res);
+        });
+        let _ = device.poll(wgpu::MaintainBase::Wait);
+        rx.recv().ok()?.ok()?;
+        let timestamps: Vec<u64> = {
+            let data = slice.get_mapped_range();
+            bytemuck::cast_slice(&data).to_vec()
+        };
+        timing.staging_buffer.unmap();
+
+        let mut out = Vec::with_capacity(GPU_TIMING_SPANS.len());
+        for (i, name) in GPU_TIMING_SPANS.iter().enumerate() {
+            let begin = timestamps[i * 2];
+            let end = timestamps[i * 2 + 1];
+            let ms = if end > begin {
+                (end - begin) as f32 * timing.period_ns / 1.0e6
+            } else {
+                0.0
+            };
+            out.push((*name, ms));
+        }
+        Some(out)
+    }
+
+    /// Build `timestamp_writes` for span `i` of [`GPU_TIMING_SPANS`].
+    /// `begin`/`end` select which edge(s) this pass records (a multi-pass
+    /// span puts `begin` on its first pass and `end` on its last).
+    fn span_writes(
+        &self,
+        i: usize,
+        begin: bool,
+        end: bool,
+    ) -> Option<wgpu::ComputePassTimestampWrites<'_>> {
+        // wgpu rejects timestamp_writes with neither edge set (the interior
+        // passes of a multi-pass span request no writes at all).
+        if !begin && !end {
+            return None;
+        }
+        self.gpu_timing
+            .as_ref()
+            .map(|t| wgpu::ComputePassTimestampWrites {
+                query_set: &t.query_set,
+                beginning_of_pass_write_index: begin.then_some((i * 2) as u32),
+                end_of_pass_write_index: end.then_some((i * 2 + 1) as u32),
+            })
     }
 
     /// Upload dynamic collider objects. The objects buffer holds at most 128
@@ -1096,7 +1225,6 @@ impl FluidSystem {
         let params = SimParams {
             smoothing_radius: self.smoothing_radius,
             target_density: self.target_density,
-            pressure_multiplier: self.pressure_multiplier,
             viscosity: self.viscosity,
             surface_tension: self.surface_tension,
             gravity: self.gravity,
@@ -1110,11 +1238,16 @@ impl FluidSystem {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
         queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&params));
 
-        // 1. Generate SDF
-        self.sdf_system.generate(encoder, queue);
+        // 1. Generate SDF (timing span 0 brackets init -> finalize)
+        self.sdf_system.generate_timed(
+            encoder,
+            queue,
+            self.gpu_timing.as_ref().map(|t| (&t.query_set, 0u32, 1u32)),
+        );
 
         let particle_workgroups = self.particle_count.div_ceil(64);
 
@@ -1157,7 +1290,7 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::Predict"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(1, true, true),
             });
             cpass.set_pipeline(&self.predict_pipeline);
             cpass.set_bind_group(0, global_bg, &[]);
@@ -1170,7 +1303,7 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::ClearGrid"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(2, true, true),
             });
             cpass.set_pipeline(&self.clear_grid_pipeline);
             cpass.set_bind_group(0, global_bg, &[]);
@@ -1188,7 +1321,7 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::BuildGrid"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(3, true, true),
             });
             cpass.set_pipeline(&self.build_grid_pipeline);
             cpass.set_bind_group(0, global_bg, &[]);
@@ -1198,12 +1331,13 @@ impl FluidSystem {
             cpass.dispatch_workgroups(particle_workgroups, 1, 1);
         }
 
-        // 3. PBD Iterations
-        for _ in 0..self.iterations {
+        // 3. PBD Iterations (timing span 4 brackets the whole loop:
+        //    begin on the first lambda pass, end on the last delta pass)
+        for iter in 0..self.iterations {
             {
                 let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("Fluid::Lambda"),
-                    ..Default::default()
+                    timestamp_writes: self.span_writes(4, iter == 0, false),
                 });
                 cpass.set_pipeline(&self.lambda_pipeline);
                 cpass.set_bind_group(0, global_bg, &[]);
@@ -1215,7 +1349,7 @@ impl FluidSystem {
             {
                 let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("Fluid::DeltaPos"),
-                    ..Default::default()
+                    timestamp_writes: self.span_writes(4, false, iter + 1 == self.iterations),
                 });
                 cpass.set_pipeline(&self.delta_pos_pipeline);
                 cpass.set_bind_group(0, global_bg, &[]);
@@ -1230,7 +1364,7 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::Integrate"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(5, true, true),
             });
             cpass.set_pipeline(&self.integrate_pipeline);
             cpass.set_bind_group(0, global_bg, &[]);
@@ -1244,7 +1378,7 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::Dye&Whitewater"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(6, true, true),
             });
             cpass.set_bind_group(0, global_bg, &[]);
             cpass.set_bind_group(1, particles_bg, &[]);
@@ -1255,6 +1389,20 @@ impl FluidSystem {
             cpass.set_pipeline(&self.mix_dye_pipeline);
             cpass.dispatch_workgroups(particle_workgroups, 1, 1);
         }
+        // Resolve GPU timing queries (if enabled) into the timing staging
+        // buffer; harvested by the blocking `read_gpu_timings`.
+        if let Some(t) = &self.gpu_timing {
+            let slots = (GPU_TIMING_SPANS.len() * 2) as u32;
+            encoder.resolve_query_set(&t.query_set, 0..slots, &t.resolve_buffer, 0);
+            encoder.copy_buffer_to_buffer(
+                &t.resolve_buffer,
+                0,
+                &t.staging_buffer,
+                0,
+                slots as u64 * 8,
+            );
+        }
+
         // 6. Record the density-error copy for later (post-submit) readback.
         // We never map a buffer whose copy has not been submitted; the map is
         // requested by `pump_density_error_readback` at the start of a later
@@ -2555,7 +2703,6 @@ mod tests {
         let _params = SimParams {
             smoothing_radius: 1.0,
             target_density: 1.0,
-            pressure_multiplier: 1.0,
             viscosity: 1.0,
             surface_tension: 1.0,
             gravity: -9.81,
@@ -2569,6 +2716,7 @@ mod tests {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
     }
 
@@ -2583,7 +2731,6 @@ mod tests {
         let params = SimParams {
             smoothing_radius: 1.0,
             target_density: 1.0,
-            pressure_multiplier: 1.0,
             viscosity: 1.0,
             surface_tension: 1.0,
             gravity: -9.81,
@@ -2597,6 +2744,7 @@ mod tests {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
         assert_eq!(params.grid_width, 64);
     }
@@ -2642,7 +2790,6 @@ mod tests {
         let params = SimParams {
             smoothing_radius: 1.0,
             target_density: 10.0,
-            pressure_multiplier: 250.0,
             viscosity: 50.0,
             surface_tension: 0.1,
             gravity: -9.8,
@@ -2656,6 +2803,7 @@ mod tests {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
 
         let bytes: &[u8] = bytemuck::bytes_of(&params);
@@ -2985,7 +3133,6 @@ mod tests {
         let params_60fps = SimParams {
             smoothing_radius: 1.0,
             target_density: 1.0,
-            pressure_multiplier: 1.0,
             viscosity: 1.0,
             surface_tension: 1.0,
             gravity: -9.81,
@@ -2999,6 +3146,7 @@ mod tests {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
 
         // dt for 60 FPS should be approximately 0.0167
