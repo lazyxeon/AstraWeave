@@ -61,10 +61,7 @@ pub mod foam;
 pub mod god_rays;
 pub mod gpu_volume;
 pub mod lod;
-pub mod multi_phase;
 pub mod optimization;
-pub mod particle_shifting;
-pub mod pcisph_system;
 pub mod profiling;
 pub mod renderer;
 pub mod research;
@@ -72,18 +69,35 @@ pub mod sdf;
 pub mod serialization;
 pub mod simd_ops;
 pub mod terrain_integration;
-pub mod turbulence;
 pub mod underwater;
 pub mod underwater_particles;
-pub mod unified_solver;
 pub mod validation;
 pub mod viscosity;
-pub mod viscosity_gpu;
 pub mod volume_grid;
-pub mod warm_start;
 pub mod water_effects;
 pub mod water_reflections;
 pub mod waterfall;
+
+// ---------------------------------------------------------------------------
+// Experimental modules (feature = "experimental")
+//
+// Dormant-real solver inventory gated in Fluids-Integration F.1 per the
+// campaign owner's consolidation decision (gate Q3): these modules compile
+// and carry passing unit tests, but no production code path executes them.
+// `UnifiedSolver` (whose `step()` was a no-op) was DELETED rather than gated.
+// ---------------------------------------------------------------------------
+#[cfg(feature = "experimental")]
+pub mod multi_phase;
+#[cfg(feature = "experimental")]
+pub mod particle_shifting;
+#[cfg(feature = "experimental")]
+pub mod pcisph_system;
+#[cfg(feature = "experimental")]
+pub mod turbulence;
+#[cfg(feature = "experimental")]
+pub mod viscosity_gpu;
+#[cfg(feature = "experimental")]
+pub mod warm_start;
 
 pub use building::{
     FlowDirection, WaterBuildingManager, WaterBuildingStats, WaterDispenser,
@@ -182,10 +196,6 @@ pub use underwater::{DepthZoneManager, UnderwaterConfig, UnderwaterState, Underw
 pub use underwater_particles::{
     BubbleStream, GpuUnderwaterParticle, UnderwaterParticle, UnderwaterParticleConfig,
     UnderwaterParticleSystem, UnderwaterParticleType,
-};
-pub use unified_solver::{
-    FluidPhaseConfig, FluidType, QualityPreset, SolverStats, SolverType, UnifiedSolver,
-    UnifiedSolverConfig, ViscositySolverType,
 };
 pub use volume_grid::{
     CellFlags, MaterialType, WaterCell, WaterGridStats, WaterSimConfig, WaterVolumeGrid,

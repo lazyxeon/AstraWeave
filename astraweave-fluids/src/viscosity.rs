@@ -499,8 +499,12 @@ impl TemperatureModel {
 
 /// CPU reference implementation of viscosity solver
 ///
-/// This is used for testing and validation. The GPU implementation
-/// is in `viscosity_morris.wgsl` and `viscosity_implicit.wgsl`.
+/// This is used for testing and validation. There is currently NO GPU
+/// implementation of this module's solvers: earlier doc revisions referenced
+/// `viscosity_morris.wgsl` (an orphan shader with no `include_str!` consumer,
+/// deleted in F.1) and `viscosity_implicit.wgsl` (which never existed). The
+/// experimental `PcisphSystem` has its own Morris viscosity kernel inside
+/// `shaders/research/pcisph.wgsl`.
 pub struct ViscositySolverCpu {
     config: ViscosityConfig,
     /// Intermediate velocity buffer for implicit solver
