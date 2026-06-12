@@ -316,9 +316,13 @@ impl OceanRenderer {
             cache: None,
         });
 
-        // Generate ocean tiles (17 tiles in a grid pattern)
+        // Generate ocean tiles (5x5 grid).
+        // F.1.4 (H-2): tile_size was 50 (total extent ±125, truncated even
+        // earlier by the old zfar=100). 160 gives ±400 of water; the shader's
+        // horizon fog (ocean.wgsl fs_main) blends the far water into the sky
+        // haze well before the mesh edge, so no hard edge is visible.
         let mut tiles = Vec::new();
-        let tile_size = 50.0;
+        let tile_size = 160.0;
         let subdivisions = 100;
 
         for x in -2..=2 {

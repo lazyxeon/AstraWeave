@@ -1,6 +1,6 @@
 # F.1 Execution Report — FluidSystem Correctness Repair, Solver Consolidation, First Real Baselines
 
-**Document version**: 1.3
+**Document version**: 1.4
 **Execution date**: 2026-06-11
 **Branch**: `campaign/fluids-f1` (base: `8e1505dd8`)
 **Commit range** (actual hashes, in order):
@@ -357,6 +357,66 @@ v1.2 closed H-3 (click-spawn) on a CPU log line — `Spawned 50/50 … free pool
 
 ---
 
+## F.1.4 Hotfix Addendum (Chain Closure) — Spawn Placement, Ocean Horizon, Flatness Diagnosis (2026-06-12)
+
+### H-1 — Spawn at the cursor, period ✅
+
+The F.1.3 +10 lift and 30-unit distance cap — visibility workarounds — are **removed**, per the owner's rejection. Bursts now spawn centered at the cursor ray's y=5 intersection (≈ pool surface), clamped to the sim domain; the sky-aimed 25-units-along-ray fallback remains so clicks above the horizon still respond. **The accepted consequence is documented in code and here**: until F.4's per-particle color, a burst into existing dense fluid reads only as displacement motion — that is the honest behavior, and no placement offset will be reintroduced to fake visibility.
+
+**Evidence**: verification runs with a temporary red crosshair overlay at the click position (code marked `F.1.4-TEMP-CROSSHAIR`, removed after verification per the brief) — both click locations showed the burst at the crosshair: floor-area click at (11.6, 5.0, 6.9) and into-the-fluid-mass click at (3.7, 5.0, 1.5), at 1100×700 and 800×600. The shipped capture pairs (`f0381/f0440`, `f0481/f0540`) are the crosshair-free reruns of the identical deterministic clicks; the spawn-log world coordinates corroborate.
+
+### H-2 — Ocean reaches the horizon ✅
+
+**Diagnosis: (c) both limits.** The camera far plane (100 — the same constant behind F.1.2's skybox finding) clipped the ocean mid-screen first; the mesh itself only reached ±125. **Coherent fix**: `zfar 100 → 1500` with a code comment binding the dependent constants to it; skybox sphere radius re-sized **relative to the new far plane** (50 → 1200, with the F.1.2 history preserved in the comment and an explicit "keep inside the camera far plane" warning); ocean tiles 50 → 160 units (extent ±400); **horizon fog** in `ocean.wgsl` blending the far water into a sky-haze color (sRGB-authored, linear-converted like the albedos) from 180→360 units, hiding the finite mesh edge gracefully at every pitch.
+
+**Evidence**: three-pitch ocean captures — `f0160` (near-horizontal: water meets a hazy horizon under the sky, the hardest case), `f0175` (~30°), `f0190` (steep, 1.20 rad on the HUD) — no cutoff or mesh edge at any of them. Lab regression: `f0030`/`f0620` unchanged in character (60-unit world; Depth32Float at zfar 1500 shows no z-fighting in either scenario; SSFR depth smoothing visually unaffected). Known minor artifact, ledgered: at the steep pitch, faint tile seams appear — the Godot-port edge-blend heuristic (`fract(round(uv*1000)/10)`) was tuned for 50-unit tiles; the convergence decision below would delete that code entirely.
+
+### H-3 — Flatness: diagnosis only (nothing implemented)
+
+Why the ocean reads flat at most view angles (shader-line evidence, `examples/fluids_demo/src/ocean.wgsl`):
+
+1. **Geometric flatness by design**: vertex wave displacement is damped by `(1.0 − vertex_distance_clamped)` where the distance **clamps at 85 units from the camera** (`:76-77, :88`). Beyond 85 units the ocean is a mathematically flat plane — and at near-horizontal pitches, nearly everything visible is beyond 85.
+2. **Exactly one view-dependent shading term exists**: `fresnel(5.0, normal, view)` (`:133`) — and it only mixes two *similar blues* (`albedo (0,0.32,0.43) ↔ albedo2 (0,0.47,0.76)`, `:136-138`): a subtle hue shift, not a reflection/brightness response. The (F.1.3-repaired) normal maps feed only this mix.
+3. **Absent terms, and the dead uniforms each would consume**: no **sun specular** (no light vector exists in the shader; would need a light-dir uniform — the SSFR `CameraUniform.light_dir` pattern is reusable); no **environment/sky reflection** (no skybox binding declared — the SSFR shade pass's `reflect + equirect sample` is the reusable pattern); no **depth-based shore fade / edge foam / Beer-Lambert attenuation** (would consume the dead `beers_law`, `depth_offset`, `edge_scale`, `near`, `far` uniforms plus a scene-depth binding — these are exactly the Godot original's depth-texture features the port dropped); no **BRDF** (dead `metallic`, `roughness`).
+4. Net: at most angles the eye gets flat geometry + a single hue mix + fog — a textured plane. The blobby pattern at steep angles is the `depth_color` blend keyed on *camera* distance (`vertex_distance_clamped`), not water depth.
+
+**The F.4 strategic question (gate input)**: extend this demo-local Godot-port shader (implement the four missing term groups against its dead uniforms) **vs. converge the demo ocean onto the engine's existing `astraweave-render::WaterRenderer`** (Gerstner waves, engine-maintained, the same component the F.0 audit flagged for the SSFR-duplication conversation). Convergence makes all demo-ocean investment disposable, deletes the tile-seam hack and dead uniforms wholesale, and exercises the engine path the campaign actually cares about. Recommendation (not a decision): converge. **Nothing was implemented under H-3**; no wired-but-broken defect beyond F.1.3's normal-map fix surfaced (the tile seams are a mis-tuned heuristic made visible by the extent change — ledgered, not garbage-producing).
+
+### H-4 — Chain closure
+
+**Defect tally, F.0 audit → F.1.4** (every item evidence-backed in this report's addenda):
+
+| Class | Count | Items |
+|---|---|---|
+| **Never-executed** (hard validation/clip blockers — the code could not run) | 6 | WGSL `JfaParams` 32-vs-16; missing bind groups at every fluid dispatch; SSFR depth-layout fragment visibility; shade depth-texture × filtering-sampler pair; ocean `Uniforms` 144-vs-160; skybox radius beyond the far plane |
+| **Never-wired / never-fed** (ran, but an input or output was disconnected) | 8 | Vestigial ping-pong buffer (two divergent half-rate states); `particle_flags` never bound (despawn GPU-invisible); SDF init voxelizing 128 zeroed entries; inverted JFA ping-pong destroying the seed; SDF z-dispatch covering half the volume; background never composited to the swapchain; spawn free-list never populated; degenerate generated normal maps |
+| **Never-seen** (rendered wrong by construction, caught only by eyes/captures) | 4 | Aspect-stretched impostors; sRGB double-encoding (ocean); far-plane ocean cutoff; gas-regime lab sim defaults |
+| **Evidence-discipline corrections** | 3 | F.0's "demo-validated" framing (nothing GPU-side had ever executed); F.1's built-not-run demo gate (v1.1 correction); F.1.2's log-line spawn verification (v1.3 correction → standing rule: captures or GPU readback only) |
+
+**Honest-baseline declaration**: as of F.1.4, everything the demo shows is real — both scenarios render and survive resize/maximize/switch/quit (exit 0 through the full exercise); clicks spawn at the cursor; the solver runs with race-free defined semantics and 7 GPU-execution tests; first baselines are recorded. Everything it lacks is **ledgered, not hidden**.
+
+**Consolidated F.4 ledger (priority order — that phase's scoping input)**:
+
+1. **Expose the XSPH viscosity coefficient** (hardcoded 0.01 in `fluid.wgsl`) + revisit `ε=100` — the single lever for a calm pooled surface (solver change, owner-gated).
+2. **Per-particle color in the SSFR shade path** — interactivity legibility (spawn bursts, dye, debugging); `Particle.color` is currently dead data.
+3. **Ocean: converge-vs-extend decision** (H-3 above) — folds in specular, sky reflection, depth fade, the 7 dead uniforms, tile seams, `normal2` seed duplication, and the Gerstner/`WaterRenderer` duplication question.
+4. Smooth-pass runtime setters + depth-pass render radius coupling to `smoothing_radius`.
+5. Ground/floor visual + default camera placement (starts inside the droplet field).
+6. Housekeeping: pre-existing `astraweave-terrain`(7)/`astraweave-render`(1) clippy warnings (their owners); `cargo clippy -p <bin> -- -D warnings` propagates to path deps (use crate-scoped runs).
+
+**Owner's final capture list** (`examples/fluids_demo/captures/`, current set):
+
+| Capture | The one question |
+|---|---|
+| `f0381/f0440` (1100×700), `f0481/f0540` (800×600) | Do bursts appear exactly where pointed (floor click; into-fluid click) — offset workaround gone? |
+| `f0160` / `f0175` / `f0190` (1600×900) | Ocean to the horizon at near-horizontal / 30° / steep — no cutoff, no mesh edge? |
+| `f0030`, `f0620` | Lab unchanged by the far-plane change? |
+| `f0120` | Aspect/sky regression check at 16:9 |
+
+**Branch state**: `campaign/fluids-f1`, **12 commits over `main`** after this one (F.0 audit; F.1 ×4; report; F.1.1; F.1.2; F.1.3; F.1.4). **Declared ready for merge review.** The F.1 hotfix chain is CLOSED: the next campaign action is the **F.2 gate (facade crate per Path B)** — further demo visual work queues behind F.2/F.4 and requires an owner gate, no exceptions.
+
+---
+
 **Revision history**
 
 | Version | Date | Change |
@@ -365,3 +425,4 @@ v1.2 closed H-3 (click-spawn) on a CPU log line — `Spawned 50/50 … free pool
 | 1.1 | 2026-06-11 | F.1.1 hotfix addendum: FluidRenderer had never constructed (2 pipeline/binding mismatches fixed), clean 12 s demo run captured, `gpu_renderer_smoke` closes the renderer coverage gap, v1.0 "should now actually run" inference corrected |
 | 1.2 | 2026-06-11 | F.1.2 hotfix addendum: resize/scenario crashes (2 distinct defects), teardown cascade, never-wired click-spawn, never-rendered skybox + missing background composite, oblong impostors, gas-regime demo defaults; permanent capture infrastructure; DEFECTS/TUNING ledger for F.4 |
 | 1.3 | 2026-06-11 | F.1.3 hotfix addendum: evidence-discipline correction (log lines ≠ visual evidence); respawn proven crate-correct by GPU readback, root cause = demo-side invisibility (`Particle.color` unused by SSFR — ledgered); spawn UX (sky-drop bursts, fallback, ocean-mode notice); ocean defect pass (sRGB double-encode + degenerate normal maps fixed, blend clean) |
+| 1.4 | 2026-06-12 | **F.1.4 chain closure**: spawn-at-cursor (workarounds removed, crosshair-verified); ocean to the horizon (zfar 100→1500, skybox 1200, mesh ±400 + horizon fog, three-pitch evidence); flatness diagnosis with the F.4 converge-vs-extend strategic question (nothing implemented); full F.0→F.1.4 defect tally (6 never-executed / 8 never-wired / 4 never-seen / 3 evidence-discipline); honest-baseline declaration; consolidated F.4 ledger; branch declared ready for merge review — next action is the F.2 gate |

@@ -188,31 +188,23 @@ impl State {
 
         let (origin, dir) = self.screen_to_world_ray(self.mouse_pos[0], self.mouse_pos[1]);
 
-        // Intersect with the Y=5 plane; when the click aims at the sky (no
-        // forward intersection), fall back to a point 25 units along the ray
-        // so a click ALWAYS produces a visible burst rather than silence.
+        // F.1.4 (H-1): spawn AT the cursor's hit point, period. The F.1.3
+        // +10 lift and 30-unit distance cap were visibility workarounds the
+        // owner rejected — the spec is "particles appear where I point".
+        // Ray ∩ y=5 (≈ pool surface) when it hits; the F.1.3 sky-aimed
+        // fallback (25 units along the ray) remains for above-horizon clicks.
+        //
+        // Accepted consequence, documented: until F.4's per-particle color,
+        // a burst into existing dense fluid reads only as displacement
+        // motion — that is the honest behavior, NOT a bug to work around
+        // with placement offsets.
         let hit = self
             .ray_plane_intersection(origin, dir, 5.0)
             .unwrap_or_else(|| origin + dir * 25.0);
-        // Cap the spawn distance: a plane hit far across the domain would
-        // make the burst a few pixels tall — keep it near enough to read.
-        let hit = if (hit - origin).length() > 30.0 {
-            origin + dir * 25.0
-        } else {
-            hit
-        };
         {
-            // F.1.3: spawn ABOVE the foam line (+10), not inside it. The SSFR
-            // pipeline renders every particle as the same water material
-            // (Particle.color is never sampled by the shade pass — ledgered
-            // for F.4), so a burst materializing INSIDE the existing 18k-
-            // particle foam is invisible by indistinguishability: capture-
-            // verified, and the root of the persistent "click does nothing"
-            // report despite GPU-readback-proven respawn. Dropping the burst
-            // in from the sky makes every click unambiguous.
             let hit_pos = Vec3::new(
                 hit.x.clamp(-29.0, 29.0),
-                (hit.y + 10.0).clamp(0.5, 55.0),
+                hit.y.clamp(0.5, 55.0),
                 hit.z.clamp(-29.0, 29.0),
             );
             let count = self.spawn_burst_size as usize;
@@ -437,7 +429,12 @@ impl State {
             // C.6.D: fovy stores radians directly (was degrees pre-C.6.D).
             fovy: 45_f32.to_radians(),
             znear: 0.1,
-            zfar: 100.0,
+            // F.1.4 (H-2): was 100.0 — the far plane truncated the ocean mid-
+            // screen (the owner's "distance cutoff"; the mesh reaches ±125 but
+            // clipping ended at 100). 1500 gives an ocean vista; Depth32Float
+            // keeps ample precision at this range. Skybox radius (1200) and
+            // ocean fog distances are sized relative to this value.
+            zfar: 1500.0,
         };
 
         // Initialize Egui
@@ -1300,6 +1297,12 @@ impl State {
                     .request_inner_size(winit::dpi::PhysicalSize::new(1600u32, 900u32));
             }
             140 => self.toggle_render_mode(),
+            // Ocean at three pitches (H-2 horizon evidence):
+            // near-horizontal, ~30 deg, steep down. Captures 160/175/190.
+            150 => self.camera_pitch = 0.05,
+            165 => self.camera_pitch = 0.5,
+            180 => self.camera_pitch = 1.2,
+            199 => self.camera_pitch = 0.3,
             200 => self.toggle_render_mode(),
             230 => {
                 let _ = self
@@ -1307,11 +1310,15 @@ impl State {
                     .request_inner_size(winit::dpi::PhysicalSize::new(1100u32, 700u32));
             }
             // Click-spawns happen LATE, once the re-initialized dam (frame
-            // 200) has opened the view: a sky-aimed burst against open
-            // background is the unambiguous capture evidence H-1 requires.
+            // 200) has opened the view. F.1.4 evidence: one click onto open
+            // floor (lower-left), one INTO the existing fluid mass (center);
+            // the crosshair overlay marks the cursor in captures.
             380 => {
                 self.spawn_burst_size = 150;
-                self.mouse_pos = [self.size.width as f32 * 0.3, self.size.height as f32 * 0.18];
+                self.mouse_pos = [
+                    self.size.width as f32 * 0.22,
+                    self.size.height as f32 * 0.72,
+                ];
                 self.spawn_particles_at_cursor();
             }
             450 => {
@@ -1320,7 +1327,10 @@ impl State {
                     .request_inner_size(winit::dpi::PhysicalSize::new(800u32, 600u32));
             }
             480 => {
-                self.mouse_pos = [self.size.width as f32 * 0.3, self.size.height as f32 * 0.18];
+                self.mouse_pos = [
+                    self.size.width as f32 * 0.45,
+                    self.size.height as f32 * 0.55,
+                ];
                 self.spawn_particles_at_cursor();
             }
             660 => {
@@ -1546,11 +1556,11 @@ fn parse_options() -> DemoOptions {
     // The exercise gate wants eyes at fixed points: startup, post-maximize,
     // ocean scenario, back in lab post-click, second resize, settled.
     if opts.exercise && opts.capture_frames.is_empty() {
-        // 30 baseline; 120 post-resize aspect check; 170 ocean;
-        // 381/440 click-spawn pair @1100x700 (click@380, sky-aimed, after the
-        // scene opens up); 481/540 second pair @800x600 (resize@450,
-        // click@480); 620 settled basin.
-        opts.capture_frames = vec![30, 120, 170, 381, 440, 481, 540, 620];
+        // 30 baseline; 120 post-resize aspect check; 160/175/190 ocean at
+        // three pitches (near-horizontal / 30deg / steep); 381/440 floor-
+        // click pair @1600x900; 481/540 into-fluid click pair @800x600;
+        // 620 settled basin.
+        opts.capture_frames = vec![30, 120, 160, 175, 190, 381, 440, 481, 540, 620];
     }
     opts
 }

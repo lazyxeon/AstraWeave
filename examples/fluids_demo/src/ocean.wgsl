@@ -158,6 +158,16 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     
     // Final color with depth and surface
     let final_color = mix(surface_color, depth_color, 0.3);
-    
-    return vec4<f32>(final_color, 1.0);
+
+    // F.1.4 (H-2): horizon fog. The mesh is finite (±400) and wave
+    // displacement flattens beyond the 85-unit falloff; blending the far
+    // water into the sky haze hides the mesh edge gracefully at every pitch.
+    // Haze color approximates the kloppenheim sky horizon (sRGB-authored,
+    // converted to linear like the albedos).
+    let haze = srgb_to_linear(vec3<f32>(0.74, 0.82, 0.92));
+    let dist_xz = length(input.world_pos.xz - uniforms.ocean_pos.xz);
+    let fog = smoothstep(180.0, 360.0, dist_xz);
+    let fogged = mix(final_color, haze, fog);
+
+    return vec4<f32>(fogged, 1.0);
 }
