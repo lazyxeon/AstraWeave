@@ -67,6 +67,12 @@ impl ScenarioManager {
         self.scenarios.get_mut(self.current_index)
     }
 
+    /// Index of the active scenario (0 = Laboratory). Used by the demo to
+    /// gate particle spawning, which only the Laboratory scenario renders.
+    pub fn current_index(&self) -> usize {
+        self.current_index
+    }
+
     pub fn next(&mut self) {
         self.current_index = (self.current_index + 1) % self.scenarios.len();
     }

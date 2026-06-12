@@ -497,21 +497,35 @@ impl OceanRenderer {
         queue: &wgpu::Queue,
         size: u32,
     ) -> (wgpu::Texture, wgpu::TextureView) {
+        // F.1.3 (H-2): pre-fix this wrote a DEGENERATE "normal map" — constant
+        // (128, 128, noise): zero x/y tilt with a noisy z, which after the
+        // shader's *2-1 decode normalizes to a flat (or sign-flipped) normal.
+        // The entire normal-perturbation path was inert — one ingredient of
+        // the owner's "gelatin" (no surface detail response to view/light).
+        // Now: a proper tangent-space normal map derived from the height
+        // field's finite differences.
         let perlin = Perlin::new(123);
         let mut data = vec![0u8; (size * size * 4) as usize];
 
-        for y in 0..size {
-            for x in 0..size {
-                let nx = x as f64 / size as f64 * 8.0;
-                let ny = y as f64 / size as f64 * 8.0;
+        let height = |x: i64, y: i64| -> f64 {
+            // Wrap for seamless tiling.
+            let xw = x.rem_euclid(size as i64) as f64;
+            let yw = y.rem_euclid(size as i64) as f64;
+            perlin.get([xw / size as f64 * 8.0, yw / size as f64 * 8.0])
+        };
+        let strength = 2.0_f64;
 
-                let value = perlin.get([nx, ny]);
-                let normalized = ((value + 1.0) / 2.0 * 255.0) as u8;
+        for y in 0..size as i64 {
+            for x in 0..size as i64 {
+                let dx = height(x - 1, y) - height(x + 1, y);
+                let dy = height(x, y - 1) - height(x, y + 1);
+                let len = (dx * dx + dy * dy + strength * strength).sqrt();
+                let n = [dx / len, dy / len, strength / len];
 
-                let idx = ((y * size + x) * 4) as usize;
-                data[idx] = 128;
-                data[idx + 1] = 128;
-                data[idx + 2] = normalized;
+                let idx = ((y as u32 * size + x as u32) * 4) as usize;
+                data[idx] = ((n[0] * 0.5 + 0.5) * 255.0) as u8;
+                data[idx + 1] = ((n[1] * 0.5 + 0.5) * 255.0) as u8;
+                data[idx + 2] = ((n[2] * 0.5 + 0.5) * 255.0) as u8;
                 data[idx + 3] = 255;
             }
         }

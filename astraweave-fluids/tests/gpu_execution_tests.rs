@@ -481,3 +481,88 @@ fn gpu_renderer_smoke() {
         "FluidRenderer::render produced a validation error: {render_err:?}"
     );
 }
+
+/// F.1.3 (H-1): respawn reactivation — the path that despawn-freezing's
+/// test-proven machinery never covered. Spawn-side reuse of freed slots must
+/// flip the GPU flag back to 1, land the position write, and produce
+/// particles that actually SIMULATE (fall under gravity), not just CPU
+/// bookkeeping that logs success. (F.1.2 verified click-spawn with a CPU log
+/// line — bookkeeping, not evidence; this test is the corrected standard.)
+#[test]
+fn gpu_respawn_reactivates_particles() {
+    let _gpu = gpu_serial();
+    let Some((device, queue)) = try_create_test_device("gpu_respawn_reactivates_particles") else {
+        return;
+    };
+    let mut system = FluidSystem::new(&device, PARTICLE_COUNT);
+    apply_demo_params(&mut system);
+
+    // Settle the constructor lattice a few frames first.
+    for _ in 0..5 {
+        run_step(&mut system, &device, &queue, DT);
+    }
+
+    // Despawn a region (the constructor block spans x,z in [-5, ...), y >= 2;
+    // take the x < 0 half). Processed by the next step.
+    let before = system.active_count;
+    system.despawn_region(&queue, [-100.0, -100.0, -100.0], [0.0, 100.0, 100.0]);
+    run_step(&mut system, &device, &queue, DT);
+    let after_despawn = system.active_count;
+    let despawned = before - after_despawn;
+    assert!(
+        despawned > 100,
+        "test setup: expected a substantial despawn, got {despawned}"
+    );
+
+    // Respawn M particles into freed slots, high above the floor, marked by
+    // a unique color so readback can identify them unambiguously.
+    const M: usize = 64;
+    const SPAWN_Y: f32 = 40.0;
+    let positions: Vec<[f32; 3]> = (0..M)
+        .map(|i| {
+            [
+                10.0 + (i % 8) as f32 * 0.4,
+                SPAWN_Y,
+                10.0 + (i / 8) as f32 * 0.4,
+            ]
+        })
+        .collect();
+    let velocities = vec![[0.0f32, 0.0, 0.0]; M];
+    let colors = vec![[9.0f32, 0.0, 9.0, 1.0]; M]; // sentinel color
+    let spawned = system.spawn_particles(&queue, &positions, &velocities, Some(&colors));
+    assert_eq!(spawned, M, "spawn_particles should fill {M} freed slots");
+
+    // Step 30 frames: if reactivation works, the respawned particles free-fall.
+    for _ in 0..30 {
+        run_step(&mut system, &device, &queue, DT);
+    }
+    let particles = read_particles(&system, &device, &queue);
+
+    let respawned: Vec<&Particle> = particles
+        .iter()
+        .filter(|p| p.color == [9.0, 0.0, 9.0, 1.0])
+        .collect();
+    assert_eq!(
+        respawned.len(),
+        M,
+        "expected {M} sentinel-colored particles in the buffer, found {}",
+        respawned.len()
+    );
+    for (i, p) in respawned.iter().enumerate() {
+        let y = p.position[1];
+        assert!(
+            y.is_finite() && y > -1000.0,
+            "respawned particle {i} still parked (y = {y}): flag never reactivated?"
+        );
+        // 30 frames of free fall from y=40: ~0.5*9.81*(0.5s)^2 ~ 1.2 units;
+        // assert a generous envelope (moved down measurably, still in-world).
+        assert!(
+            y < SPAWN_Y - 0.5,
+            "respawned particle {i} did not fall (y = {y} vs spawn {SPAWN_Y}): not simulating"
+        );
+        assert!(
+            y >= -EPS,
+            "respawned particle {i} fell out of the world (y = {y})"
+        );
+    }
+}

@@ -111,6 +111,17 @@ fn fresnel(amount: f32, normal: vec3<f32>, view: vec3<f32>) -> f32 {
     return pow(1.0 - clamp(dot(normalize(normal), normalize(view)), 0.0, 1.0), amount);
 }
 
+// F.1.3 (H-2): the albedo constants below were authored in sRGB space (this
+// shader is a Godot port; Godot color pickers give sRGB values). The wgpu
+// fragment output is treated as LINEAR and hardware-encoded into the *Srgb
+// swapchain — writing sRGB-authored constants unconverted double-brightens
+// them: the owner's "neon sky blue". Convert authored values to linear once.
+fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+    let lo = c / 12.92;
+    let hi = pow((c + 0.055) / 1.055, vec3<f32>(2.4));
+    return select(hi, lo, c <= vec3<f32>(0.04045));
+}
+
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     // Time calculations for wave movement
@@ -132,14 +143,14 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let normal = normalize(mix(wave_normal_blend, normal_blend, 0.5) * 2.0 - 1.0);
     let fresnel_factor = fresnel(5.0, normal, view);
     
-    // Base albedo colors
-    let albedo = vec3<f32>(0.0, 0.32, 0.43);
-    let albedo2 = vec3<f32>(0.0, 0.47, 0.76);
+    // Base albedo colors (sRGB-authored; converted to linear — F.1.3 H-2)
+    let albedo = srgb_to_linear(vec3<f32>(0.0, 0.32, 0.43));
+    let albedo2 = srgb_to_linear(vec3<f32>(0.0, 0.47, 0.76));
     let surface_color = mix(albedo, albedo2, fresnel_factor);
-    
-    // Depth colors
-    let color_shallow = vec3<f32>(0.0, 0.47, 0.76);
-    let color_deep = vec3<f32>(0.11, 0.29, 0.33);
+
+    // Depth colors (sRGB-authored; converted to linear — F.1.3 H-2)
+    let color_shallow = srgb_to_linear(vec3<f32>(0.0, 0.47, 0.76));
+    let color_deep = srgb_to_linear(vec3<f32>(0.11, 0.29, 0.33));
     
     // Simplified depth blending (without depth texture access)
     let depth_blend = clamp(input.vertex_distance_clamped, 0.0, 1.0);

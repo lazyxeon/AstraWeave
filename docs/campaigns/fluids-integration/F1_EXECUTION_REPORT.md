@@ -1,6 +1,6 @@
 # F.1 Execution Report — FluidSystem Correctness Repair, Solver Consolidation, First Real Baselines
 
-**Document version**: 1.2
+**Document version**: 1.3
 **Execution date**: 2026-06-11
 **Branch**: `campaign/fluids-f1` (base: `8e1505dd8`)
 **Commit range** (actual hashes, in order):
@@ -297,6 +297,66 @@ A *calm glassy pooled basin* still does not form: the fluid settles into a livel
 
 ---
 
+## F.1.3 Hotfix Addendum — Spawn Visibility, Ocean Defect Pass (2026-06-11)
+
+### Evidence-discipline correction (record first)
+
+v1.2 closed H-3 (click-spawn) on a CPU log line — `Spawned 50/50 … free pool now 1950` is free-list bookkeeping, not proof anything simulated or appeared on screen, and the owner-facing capture list contained no click capture. The owner's "still nothing visible" was correct *simultaneously* with the log being correct, which is precisely why the rule now stands: **a log counter is never sufficient evidence for an interactive or visual feature — captures or GPU-readback assertions only.** F.1.3 was verified under that rule.
+
+### H-1 — Respawn hypotheses, worked in order
+
+| # | Hypothesis | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Flag never flips back on reuse | **REJECTED** | `spawn_particles` writes flag=1 per slot to the GPU buffer (code) and the new `gpu_respawn_reactivates_particles` test **passed against pre-fix code**: spawn→despawn→respawn→30 frames→readback shows all 64 sentinel particles unparked, finite, and fallen under gravity |
+| 2 | Render count stale / instance range misses scattered slots | **REJECTED** | Draw covers `0..particle_count` instances (all slots); reused indices are inside the range by construction |
+| 3 | Position write misses / loses to the park | **REJECTED** | Per-slot offsets verified; readback shows respawned positions live |
+| 4 | Scenario coverage undefined | **CONFIRMED (and the broader demo-UX root cause)** | See below |
+
+**The actual root cause was demo-side visibility, proven by capture**: a click-spawn at y=5 materializes *inside* the existing 18,000-particle foam — and `Particle.color` **is never sampled by the SSFR pipeline** (the depth pass reads position only; the shade pass reconstructs one uniform water material from depth), so even a sentinel-orange burst is pixel-identical to its neighbors. The CPU spawned, the GPU simulated, the renderer drew — and nothing was distinguishable. The brief's framing finding lands twice over: the F.1.2 log line was true *and* meaningless.
+
+**Demo fixes (all capture-verified)**: bursts now spawn **+10 above the foam line** and fall in visibly; sky-aimed clicks that miss the y=5 plane get a 25-unit-along-ray fallback (a click ALWAYS produces a visible response); spawn distance capped at 30 so the clump reads at screen scale; burst color orange (correct if/when SSFR becomes color-aware — ledgered); **ocean-mode clicks show an on-screen notice** ("Particle spawning is Laboratory-only…") instead of silently draining the shared pool — the ocean scenario does not render the particle system at all; pool-exhausted clicks also notice. Help text now says "(Laboratory only)". New crate test: `gpu_respawn_reactivates_particles` (7 GPU tests total) — it could not fail pre-fix because the crate path was never broken; it now pins reactivation against regression, which no test did before.
+
+### H-2 — Ocean defect pass (its first-ever evaluation)
+
+| Check | Verdict | Detail |
+|---|---|---|
+| 1. "Neon" → color space | **DEFECT, fixed** | The albedo/depth constants are Godot-port **sRGB-authored values** written raw into the sRGB-encoded swapchain — wgpu treats fragment output as linear and encodes again; double-encoding produced exactly the neon cyan. `srgb_to_linear()` now converts the four authored constants (`ocean.wgsl`) |
+| 2. "Gelatin" → intended features live? | **One DEFECT fixed, one hypothesis corrected** | (a) The generated "normal maps" were **degenerate by construction**: constant `(128,128,noise)` — zero x/y tilt, noisy z — decoding to flat/sign-flipped normals; the entire normal-perturbation path was inert. Now a real tangent-space normal map derived from height-field finite differences (seamless-wrapping). (b) Initial read suspected the Fresnel view vector (`ocean_pos − world_pos`) — corrected on closer inspection: `ocean_pos` is assigned the camera position each frame (it double-duties as scroll center), so Fresnel was already view-dependent. Fragile pattern, noted in ledger |
+| 3. Blend/depth/draw order | **CLEAN** | Loads color+depth, draws after the skybox, opaque output through ALPHA_BLENDING with α=1; depth-tests correctly. No fix needed |
+
+**After** (`captures/ocean_after_f0170.png`): deep saturated ocean blue with visible wave mottling under a sky horizon. **Before** = the owner's own "neon sky blue gelatin" sighting (and F.1.2's f0170, regenerated each run — the owner is the before-witness; capture sets are per-run).
+
+### TUNING ledger additions (F.4)
+
+- **L8 — `Particle.color` is dead data in the SSFR pipeline** — the shade pass renders one uniform water material. Per-particle color/dye rendering (the demo sets colors everywhere; `mix_dye` heat exists) is a renderer feature decision.
+- **L9 — Ocean dead uniforms**: 7 uploaded but never read by the shader (`beers_law`, `depth_offset`, `edge_scale`, `metallic`, `roughness`, `near`, `far`) — the Godot port dropped the features that used them (Beer's-law depth, edge foam). Implement or remove at F.4.
+- **L10 — Ocean structure/taste**: no sun specular and no environment-reflection input declared (the Fresnel mixes two albedos — by design of the port); `ocean_pos` double-duties as camera position; `normal2_texture` shares `normal_texture`'s seed (identical maps, differently scrolled).
+- **L11 — Exercise-driver click timing is scene-dependent** (early-collapse frames fill the frustum with foam); late sky-aimed clicks are the stable evidence pattern.
+
+### F.1.3 verification gate
+
+| Item | Result |
+|---|---|
+| Click-spawn capture pairs, two window sizes | ✅ `f0381/f0440` (1100×700) and `f0481/f0540` (800×600): tight 150-sphere clump at the aimed sky point one frame after click; gone (fallen/merged) ~60 frames later. Logs corroborate (`150/150`, pool 1850→1700) but are no longer the evidence |
+| `gpu_respawn_reactivates_particles` | ✅ present and passing; **passed pre-fix too** — documented honestly: the crate path was never broken, so the brief's "must fail pre-fix" expectation is replaced by the test's regression-pinning role + the capture pairs as the fix evidence |
+| Ocean three checks | ✅ 2 defects fixed (color space, degenerate normals) + 1 clean (blend/depth) + 1 hypothesis self-corrected (Fresnel) |
+| Ocean-mode click behavior | ✅ visible notice; no pool drain |
+| Tests default/experimental | ✅ 2,259+**7**+99 / 2,448+**7**+99, 0 failed |
+| Clippy `-D warnings` (crate) / demo own warnings | ✅ clean / none |
+| Scope wall | ✅ `tests/gpu_execution_tests.rs`, `examples/fluids_demo/**` only |
+
+### Captures for the owner (each with its one question)
+
+| Capture | The one question |
+|---|---|
+| `f0381_1100x700.png` → `f0440_1100x700.png` | Click at frame 380: does a tight clump appear high at the aimed point, then fall and merge by +60? |
+| `f0481_800x600.png` → `f0540_800x600.png` | Same, after resizing to 800×600 — click-spawn works at both sizes? |
+| `ocean_after_f0170.png` | Is this an ocean now (deep blue, wave mottling, horizon) rather than neon gelatin? |
+| `f0620_800x600.png` | Settled basin sanity after all F.1.3 changes |
+| Live check (no capture): click during the Ocean scenario | Does the yellow "Laboratory-only" notice appear instead of silence? |
+
+---
+
 **Revision history**
 
 | Version | Date | Change |
@@ -304,3 +364,4 @@ A *calm glassy pooled basin* still does not form: the fluid settles into a livel
 | 1.0 | 2026-06-11 | F.1 execution report; branch `campaign/fluids-f1`, commits `e22e7bd0a..e4c98bb7f` + this report |
 | 1.1 | 2026-06-11 | F.1.1 hotfix addendum: FluidRenderer had never constructed (2 pipeline/binding mismatches fixed), clean 12 s demo run captured, `gpu_renderer_smoke` closes the renderer coverage gap, v1.0 "should now actually run" inference corrected |
 | 1.2 | 2026-06-11 | F.1.2 hotfix addendum: resize/scenario crashes (2 distinct defects), teardown cascade, never-wired click-spawn, never-rendered skybox + missing background composite, oblong impostors, gas-regime demo defaults; permanent capture infrastructure; DEFECTS/TUNING ledger for F.4 |
+| 1.3 | 2026-06-11 | F.1.3 hotfix addendum: evidence-discipline correction (log lines ≠ visual evidence); respawn proven crate-correct by GPU readback, root cause = demo-side invisibility (`Particle.color` unused by SSFR — ledgered); spawn UX (sky-drop bursts, fallback, ocean-mode notice); ocean defect pass (sRGB double-encode + degenerate normal maps fixed, blend clean) |

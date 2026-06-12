@@ -120,6 +120,11 @@ struct State {
     capture_frames: Vec<u64>,
     capture_requested: bool,
     exercise: bool,
+
+    // F.1.3: transient on-screen notice (message, visible-until-frame).
+    // Silent dead input is the defect class this campaign keeps paying for;
+    // anything that swallows a click must say so on screen.
+    notice: Option<(String, u64)>,
 }
 
 impl State {
@@ -160,12 +165,56 @@ impl State {
         Some(ray_origin + ray_dir * t)
     }
 
-    /// Spawn particles at mouse cursor position
+    /// Spawn particles at mouse cursor position.
+    ///
+    /// F.1.3: crate-level respawn was proven working by GPU readback
+    /// (`gpu_respawn_reactivates_particles`); the "click does nothing" report
+    /// was demo-side UX — invisible-by-similarity spawns (same blue as 18k
+    /// existing particles), silent sky-miss returns, and undefined behavior
+    /// in the ocean scenario (which doesn't render particles at all). All
+    /// three are addressed here: distinct orange burst, ray fallback, and a
+    /// visible notice instead of silently swallowing the click.
     fn spawn_particles_at_cursor(&mut self) {
+        // The ocean scenario never draws the particle system; spawning there
+        // would silently drain the pool with zero visible effect.
+        if self.scenario_manager.current_index() != 0 {
+            self.notice = Some((
+                "Particle spawning is Laboratory-only (this scenario doesn't render particles)"
+                    .to_string(),
+                self.frame_counter + 180,
+            ));
+            return;
+        }
+
         let (origin, dir) = self.screen_to_world_ray(self.mouse_pos[0], self.mouse_pos[1]);
 
-        // Intersect with Y=5 plane (fluid center height)
-        if let Some(hit_pos) = self.ray_plane_intersection(origin, dir, 5.0) {
+        // Intersect with the Y=5 plane; when the click aims at the sky (no
+        // forward intersection), fall back to a point 25 units along the ray
+        // so a click ALWAYS produces a visible burst rather than silence.
+        let hit = self
+            .ray_plane_intersection(origin, dir, 5.0)
+            .unwrap_or_else(|| origin + dir * 25.0);
+        // Cap the spawn distance: a plane hit far across the domain would
+        // make the burst a few pixels tall — keep it near enough to read.
+        let hit = if (hit - origin).length() > 30.0 {
+            origin + dir * 25.0
+        } else {
+            hit
+        };
+        {
+            // F.1.3: spawn ABOVE the foam line (+10), not inside it. The SSFR
+            // pipeline renders every particle as the same water material
+            // (Particle.color is never sampled by the shade pass — ledgered
+            // for F.4), so a burst materializing INSIDE the existing 18k-
+            // particle foam is invisible by indistinguishability: capture-
+            // verified, and the root of the persistent "click does nothing"
+            // report despite GPU-readback-proven respawn. Dropping the burst
+            // in from the sky makes every click unambiguous.
+            let hit_pos = Vec3::new(
+                hit.x.clamp(-29.0, 29.0),
+                (hit.y + 10.0).clamp(0.5, 55.0),
+                hit.z.clamp(-29.0, 29.0),
+            );
             let count = self.spawn_burst_size as usize;
             let mut positions = Vec::with_capacity(count);
             let mut velocities = Vec::with_capacity(count);
@@ -186,7 +235,10 @@ impl State {
                     (hit_pos.z + offset_z).clamp(-29.0, 29.0),
                 ]);
                 velocities.push([0.0, -2.0, 0.0]); // Slight downward velocity
-                colors.push([0.3, 0.6, 1.0, 1.0]); // Bright blue
+                                                   // F.1.3: distinct ORANGE so spawns are visible against the
+                                                   // 18k blue particles (the old blue-on-blue bursts were
+                                                   // unspottable — one root of "click does nothing").
+                colors.push([1.0, 0.45, 0.1, 1.0]);
             }
 
             let spawned = self.fluid_system.spawn_particles(
@@ -207,6 +259,12 @@ impl State {
                 hit_pos.z,
                 self.fluid_system.max_particles - self.fluid_system.active_count
             );
+            if spawned == 0 {
+                self.notice = Some((
+                    "Spawn pool exhausted — switch scenarios (SPACE twice) to refill".to_string(),
+                    self.frame_counter + 180,
+                ));
+            }
         }
     }
 
@@ -457,6 +515,7 @@ impl State {
             capture_frames: opts.capture_frames,
             capture_requested: false,
             exercise: opts.exercise,
+            notice: None,
         }
     }
 
@@ -819,6 +878,21 @@ impl State {
                 .max(0.001);
 
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            // F.1.3: transient notice (e.g. "spawning is Laboratory-only").
+            if let Some((msg, until)) = &self.notice {
+                if self.frame_counter < *until {
+                    egui::Area::new(egui::Id::new("f13_notice"))
+                        .anchor(egui::Align2::CENTER_TOP, [0.0, 24.0])
+                        .show(ctx, |ui| {
+                            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                ui.colored_label(egui::Color32::YELLOW, msg);
+                            });
+                        });
+                } else {
+                    self.notice = None;
+                }
+            }
+
             if self.show_debug_panel {
                 egui::Window::new("🎮 Fluids Demo")
                     .anchor(egui::Align2::RIGHT_TOP, [-10.0, 10.0])
@@ -936,7 +1010,7 @@ impl State {
                         ui.small("WASD - Orbit camera");
                         ui.small("Q/E - Zoom in/out");
                         ui.small("SPACE - Switch scenario");
-                        ui.small("Left Click - Spawn particles");
+                        ui.small("Left Click - Spawn particles (Laboratory only)");
                         ui.small("F1 - Toggle this panel");
                         ui.small("F2 - Toggle optimization overlay");
                         ui.small("ESC - Exit");
@@ -1232,11 +1306,24 @@ impl State {
                     .window
                     .request_inner_size(winit::dpi::PhysicalSize::new(1100u32, 700u32));
             }
-            260 => {
-                self.mouse_pos = [self.size.width as f32 * 0.5, self.size.height as f32 * 0.5];
+            // Click-spawns happen LATE, once the re-initialized dam (frame
+            // 200) has opened the view: a sky-aimed burst against open
+            // background is the unambiguous capture evidence H-1 requires.
+            380 => {
+                self.spawn_burst_size = 150;
+                self.mouse_pos = [self.size.width as f32 * 0.3, self.size.height as f32 * 0.18];
                 self.spawn_particles_at_cursor();
             }
-            640 => {
+            450 => {
+                let _ = self
+                    .window
+                    .request_inner_size(winit::dpi::PhysicalSize::new(800u32, 600u32));
+            }
+            480 => {
+                self.mouse_pos = [self.size.width as f32 * 0.3, self.size.height as f32 * 0.18];
+                self.spawn_particles_at_cursor();
+            }
+            660 => {
                 eprintln!("EXERCISE COMPLETE: clean exit");
                 event_loop.exit();
             }
@@ -1459,7 +1546,11 @@ fn parse_options() -> DemoOptions {
     // The exercise gate wants eyes at fixed points: startup, post-maximize,
     // ocean scenario, back in lab post-click, second resize, settled.
     if opts.exercise && opts.capture_frames.is_empty() {
-        opts.capture_frames = vec![30, 120, 170, 270, 320, 400, 600];
+        // 30 baseline; 120 post-resize aspect check; 170 ocean;
+        // 381/440 click-spawn pair @1100x700 (click@380, sky-aimed, after the
+        // scene opens up); 481/540 second pair @800x600 (resize@450,
+        // click@480); 620 settled basin.
+        opts.capture_frames = vec![30, 120, 170, 381, 440, 481, 540, 620];
     }
     opts
 }
