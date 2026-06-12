@@ -375,3 +375,109 @@ fn gpu_visible_state_advances_every_frame() {
         last_y = y;
     }
 }
+
+/// F.1.1 coverage-gap closure: `FluidRenderer` had never been constructed by
+/// any test, so a VERTEX-only visibility flag on a fragment-read camera
+/// uniform (and a depth-texture × filtering-sampler pair in the shade
+/// shader) shipped as startup panics on every demo launch. This smoke test
+/// constructs the renderer headless (offscreen target — no surface) and
+/// renders one frame against a live FluidSystem, under explicit validation
+/// error scopes.
+#[test]
+fn gpu_renderer_smoke() {
+    let _gpu = gpu_serial();
+    let Some((device, queue)) = try_create_test_device("gpu_renderer_smoke") else {
+        return;
+    };
+    const W: u32 = 256;
+    const H: u32 = 256;
+    let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+
+    // A small live particle system, stepped once so the buffer holds real
+    // simulation state.
+    let mut system = FluidSystem::new(&device, 1024);
+    apply_demo_params(&mut system);
+    run_step(&mut system, &device, &queue, DT);
+
+    // Renderer construction under a validation scope (this is where the
+    // F.1.1 startup panics fired).
+    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let renderer = astraweave_fluids::FluidRenderer::new(&device, W, H, format);
+    let construct_err = pollster::block_on(device.pop_error_scope());
+    assert!(
+        construct_err.is_none(),
+        "FluidRenderer construction produced a validation error: {construct_err:?}"
+    );
+
+    // Offscreen inputs (no swapchain surface anywhere).
+    let make_tex = |label: &str, fmt: wgpu::TextureFormat, usage: wgpu::TextureUsages| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: W,
+                height: H,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: fmt,
+            usage,
+            view_formats: &[],
+        })
+    };
+    let target = make_tex(
+        "smoke target",
+        format,
+        wgpu::TextureUsages::RENDER_ATTACHMENT,
+    );
+    let scene = make_tex("smoke scene", format, wgpu::TextureUsages::TEXTURE_BINDING);
+    let scene_depth = make_tex(
+        "smoke scene depth",
+        wgpu::TextureFormat::Depth32Float,
+        wgpu::TextureUsages::TEXTURE_BINDING,
+    );
+    let skybox = make_tex("smoke skybox", format, wgpu::TextureUsages::TEXTURE_BINDING);
+
+    // Minimal but well-formed camera looking at the spawn region.
+    let eye = glam::Vec3::new(0.0, 8.0, 25.0);
+    let view = glam::Mat4::look_at_rh(eye, glam::Vec3::new(0.0, 4.0, 0.0), glam::Vec3::Y);
+    let proj = glam::Mat4::perspective_rh(1.0, W as f32 / H as f32, 0.1, 200.0);
+    let view_proj = proj * view;
+    let camera = astraweave_fluids::renderer::CameraUniform {
+        view_proj: view_proj.to_cols_array_2d(),
+        inv_view_proj: view_proj.inverse().to_cols_array_2d(),
+        view_inv: view.inverse().to_cols_array_2d(),
+        cam_pos: [eye.x, eye.y, eye.z, 1.0],
+        light_dir: [0.3, 0.9, 0.2, 0.0],
+        time: 0.0,
+        padding: [0.0; 19],
+    };
+
+    // One full render (depth -> smooth -> shade -> secondary) under a scope.
+    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("smoke render"),
+    });
+    renderer.render(
+        &mut encoder,
+        &target.create_view(&Default::default()),
+        &scene.create_view(&Default::default()),
+        &scene_depth.create_view(&Default::default()),
+        &skybox.create_view(&Default::default()),
+        system.get_particle_buffer(),
+        system.particle_count,
+        system.secondary_particle_buffer(),
+        system.secondary_particle_count(),
+        camera,
+        &queue,
+        &device,
+    );
+    queue.submit([encoder.finish()]);
+    let render_err = pollster::block_on(device.pop_error_scope());
+    let _ = device.poll(wgpu::MaintainBase::Wait);
+    assert!(
+        render_err.is_none(),
+        "FluidRenderer::render produced a validation error: {render_err:?}"
+    );
+}

@@ -130,7 +130,15 @@ impl FluidRenderer {
                 label: Some("SSFR Depth Layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    // FRAGMENT too: ssfr_depth.wgsl's fs_main reads the
+                    // camera uniform to reconstruct sphere-surface depth
+                    // (view_inv/cam_pos/view_proj). VERTEX-only visibility
+                    // made every FluidRenderer construction panic at
+                    // pipeline creation (F.1.1 finding — the renderer had
+                    // never successfully constructed on any device).
+                    // secondary.wgsl shares this layout; its fragment stage
+                    // ignores the uniform, so the superset is harmless.
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,

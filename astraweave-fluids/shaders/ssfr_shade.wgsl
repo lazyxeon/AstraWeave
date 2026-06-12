@@ -101,7 +101,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let scene_color = textureSample(scene_texture, default_sampler, in.uv + RefractOffset).rgb;
     
     // Caustics & Volumetrics
-    let ground_depth = textureSample(scene_depth, default_sampler, in.uv + RefractOffset);
+    // nearest_sampler, NOT default_sampler: depth textures may not be
+    // paired with a filtering sampler (wgpu rejects the pair at pipeline
+    // creation — F.1.1 finding).
+    let ground_depth = textureSample(scene_depth, nearest_sampler, in.uv + RefractOffset);
     let ground_pos = world_pos_from_depth(in.uv + RefractOffset, ground_depth);
     
     // Procedural Caustics - Triple layer for richness

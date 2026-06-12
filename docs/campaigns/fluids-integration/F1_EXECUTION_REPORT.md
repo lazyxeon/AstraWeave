@@ -1,6 +1,6 @@
 # F.1 Execution Report — FluidSystem Correctness Repair, Solver Consolidation, First Real Baselines
 
-**Document version**: 1.0
+**Document version**: 1.1
 **Execution date**: 2026-06-11
 **Branch**: `campaign/fluids-f1` (base: `8e1505dd8`)
 **Commit range** (actual hashes, in order):
@@ -179,8 +179,56 @@ Test-count delta accounting: pre-F.1 lib 2,480 → default 2,259 / experimental 
 
 ---
 
+## F.1.1 Hotfix Addendum — FluidRenderer Has Never Run (2026-06-11)
+
+**Trigger**: the owner's post-F.1 demo launch (the visual sanity check v1.0 requested) hit a fatal startup panic: `SSFR Depth Pipeline ... Shader global ResourceBinding { group: 0, binding: 0 } is not available in the pipeline layout / Visibility flags don't include the shader stage`.
+
+**Honest correction of v1.0.** Version 1.0 inferred the demo "should now actually run" after the compute-path repairs. It could not have: `FluidRenderer::new` panics at pipeline creation, *before* any compute work — meaning **this render-side panic, not the five SDF/compute defects, was the actual first blocker on every demo launch**, and `FluidRenderer` (like `FluidSystem` before F.1) had never successfully constructed on any device. The gap existed for the same reason twice over: F.1's verification gate used *built-not-run* evidence for the demo (`cargo build` exit 0), and the new GPU test suite covered the solver but added **no renderer test** — WI-5's brief specified solver tests and the agent did not generalize the lesson to the sibling subsystem in the same crate. The F.0 audit's "demo-validated" framing for `FluidSystem` compounded this: nothing in the crate's GPU surface had ever actually been validated by execution. F.1.1 closes both the defects and the coverage gap.
+
+### H-1 — Full pipeline × binding mismatch audit
+
+All four `FluidRenderer` pipelines (SSFR depth, smooth compute, shade, secondary) were cross-checked: per-stage WGSL resource usage vs `BindGroupLayout` visibility and binding types; WGSL struct sizes vs buffer sizes (`CameraUniform` 304 B ✓ both sides, `SmoothParams` 32 B ✓); texture formats/usages vs declarations; vertex layouts vs shader inputs; dispatch vs workgroup size. **Two mismatches found, both fixed**:
+
+| # | Pipeline | Binding | Defect | Fix |
+|---|---|---|---|---|
+| 1 | SSFR Depth (and Secondary, which shares the layout) | group 0 binding 0 (camera uniform) | Layout visibility `VERTEX` only, but `ssfr_depth.wgsl::fs_main` reads `camera` (view_inv/cam_pos/view_proj) for sphere-surface depth reconstruction → pipeline creation panic (the reported error) | `visibility: VERTEX \| FRAGMENT` (`renderer.rs`). Safe superset for the shared secondary pipeline, whose fragment ignores the uniform |
+| 2 | SSFR Shade | group 0 bindings 4+5 pairing | `ssfr_shade.wgsl:104` sampled `scene_depth` (`texture_depth_2d`) with `default_sampler` (a **Filtering** sampler); wgpu statically rejects depth-texture × filtering-sampler pairs → this would have been the *next* startup panic after fix #1 | Sample with `nearest_sampler` (NonFiltering) in the shader |
+
+Verified clean in the same audit (no fix needed): smooth pass (params buffer 32 B = WGSL struct; depth/storage texture types; 16×16 dispatch), shade bindings 1/2/3/6 (filterable/non-filterable sample types consistent with their samplers and the R32Float source), secondary vertex layout (48 B stride, 3 attrs), depth-pass `targets: &[]` + `frag_depth`, all texture usage flags, both pass-order texture-usage transitions.
+
+### H-2 — Clean run (verbatim)
+
+`cargo run -p fluids_demo --release` equivalent (release binary launched, killed after 12 s of runtime):
+
+```
+RESULT: still running after 12s -> killed (no startup crash)
+--- stderr ---
+(empty)
+```
+
+**Zero wgpu validation errors, zero panics** on the first post-fix run; no iteration was required. The Steam Vulkan layer JSON loader errors the owner saw interactively did not reproduce in the redirected-stderr capture — they are machine-environment noise (Steam overlay layer manifests), not project output, and are out of scope.
+
+### H-3 — Coverage gap closed
+
+`gpu_renderer_smoke` added to `tests/gpu_execution_tests.rs` (same loud-skip + serialization mutex pattern; 6 GPU tests total now): constructs `FluidRenderer` **headless against an offscreen Rgba8UnormSrgb target** (no surface), builds a well-formed `CameraUniform` from glam matrices, and renders one full frame (depth → smooth → shade → secondary) against a live, stepped `FluidSystem` — with construction and render each wrapped in explicit `push_error_scope(Validation)`/`pop_error_scope` assertions, so validation errors fail the test even if the global panic hook changes. The test fails on pre-F.1.1 code and passes post-fix. **Structural finding for F.4**: `FluidRenderer` required *no* restructuring to render offscreen — it never touches a surface — so the brief's contingency (offscreen-blocking API would threaten the `draw_into` integration) did not materialize.
+
+### F.1.1 verification gate
+
+| Item | Result |
+|---|---|
+| All pipelines create + 12 s demo run with empty stderr | ✅ (capture above) |
+| `gpu_renderer_smoke` passing on dev GPU | ✅ (6/6 GPU tests) |
+| `cargo test -p astraweave-fluids` default / `--features experimental` | ✅ 2,259+6+99 / 2,448+6+99, 0 failed |
+| `cargo clippy --all-features -- -D warnings` | ✅ clean |
+| Scope wall (`git status`) | ✅ exactly `renderer.rs`, `ssfr_shade.wgsl`, `tests/gpu_execution_tests.rs` + this addendum |
+
+**Owner's visual sanity check remains the final step** — the sim now provably runs without errors, but only eyes can confirm the water looks like water.
+
+---
+
 **Revision history**
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-06-11 | F.1 execution report; branch `campaign/fluids-f1`, commits `e22e7bd0a..e4c98bb7f` + this report |
+| 1.1 | 2026-06-11 | F.1.1 hotfix addendum: FluidRenderer had never constructed (2 pipeline/binding mismatches fixed), clean 12 s demo run captured, `gpu_renderer_smoke` closes the renderer coverage gap, v1.0 "should now actually run" inference corrected |
