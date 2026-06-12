@@ -169,8 +169,13 @@ impl SkyboxRenderer {
             ],
         });
 
-        // Create sphere mesh (large radius)
-        let (vertices, indices) = Self::create_sphere(1500.0, 32, 16);
+        // Create sphere mesh. F.1.2: was radius 1500 — beyond the demo
+        // camera's zfar (100), so EVERY skybox triangle was clipped and the
+        // skybox never rendered once (flat-gray background + gray refraction
+        // source were the result). 50 sits inside the far plane; the sphere is
+        // camera-centered and depth-write-off, so scene geometry still draws
+        // over it.
+        let (vertices, indices) = Self::create_sphere(50.0, 32, 16);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Skybox Vertex Buffer"),

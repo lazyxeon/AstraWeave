@@ -1,6 +1,6 @@
 # F.1 Execution Report — FluidSystem Correctness Repair, Solver Consolidation, First Real Baselines
 
-**Document version**: 1.1
+**Document version**: 1.2
 **Execution date**: 2026-06-11
 **Branch**: `campaign/fluids-f1` (base: `8e1505dd8`)
 **Commit range** (actual hashes, in order):
@@ -226,9 +226,81 @@ RESULT: still running after 12s -> killed (no startup crash)
 
 ---
 
+## F.1.2 Hotfix Addendum — Demo Runtime Defects (2026-06-11)
+
+**Trigger**: owner's post-F.1.1 session — resize/scenario crash (captured), dead left-click, and the visual report "smooth playdough … perfect spheres or perfect oblong spheres … no rendered surface."
+
+### Root causes (every owner symptom traced to a specific never-worked defect)
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| Resize/maximize crash (the captured 800×600-vs-1920×991 panic) | `State::resize` recreated `depth_texture` but **not `depth_view`** (still viewing the startup-sized texture) and refreshed `scene_view` from a **never-recreated `scene_texture`** | Both recreated on resize; debug assertions at frame start name the class at its source (H-1) |
+| Scenario-switch crash | **Distinct second defect**: `OceanRenderer`'s `Uniforms` packed to 144 B vs the WGSL's 160 B (`vec2` 8-byte alignment gap + 16-byte struct round-up — the JfaParams family again). Every ocean draw failed validation: **the ocean scenario had never rendered a single frame** | Explicit-pad host mirror with documented offsets (H-2). The owner's crash was the resize defect reached *through* the ocean path; with H-1 fixed, the exercise run immediately exposed this one underneath |
+| Abort cascade after the panic (`SurfaceSemaphores` + `STATUS_STACK_BUFFER_OVERRUN`) | Panic unwound through the live `SurfaceTexture`, whose teardown assert panicked again during unwind → abort | `catch_unwind` around frame encode; controlled `SurfaceTexture` drop; **one** clean `FATAL: frame encode panicked: …` + exit (H-4). Verified by a REAL panic (the ocean uniform, run 1: single message, exit 1, no cascade) — no synthetic injection needed |
+| Left-click never spawns | **Never-could-work**: the input wire existed, but `spawn_particles` only draws from the despawn free-list and `reset_particles` marks ALL particles active — the free-list was empty for the demo's entire life | Lab init places a 2,000-particle reserve block in a far corner and despawns it immediately, populating the pool. Verified: `Spawned 50/50 … free pool now 1950`. Cap-adjacent spawns safe by construction (`min(requested, free)`) (H-3) |
+| "Playdough" (matte, no surface to judge) | Two compounding never-rendered defects: (1) the background (clear + skybox) was drawn **only into `scene_texture`** — nothing ever drew a background on the swapchain, so the screen was zero-black around the fluid; (2) **the skybox itself had never rendered anywhere**: its sphere radius was 1500 vs the camera's zfar = 100 — every triangle far-plane-clipped since the day it was written. The SSFR refraction input was therefore flat gray and the visible composite "pearls in a void" | Background now renders to the swapchain and is copied into `scene_texture` as the true refraction source (`scene_texture` += COPY_DST); skybox sphere radius 50 (camera-centered, depth-write-off). Post-fix captures show sky-lit glassy droplets with live refraction/Fresnel (H-6b **defect fixed**) |
+| "Perfect OBLONG spheres" | Billboard expansion used the **right-axis projected radius for both NDC axes**; NDC x/y scale differently by the aspect ratio, so impostors stretched horizontally by `aspect` on any non-square window | Project an up-axis edge too; per-axis NDC radii (`ssfr_depth.wgsl`). Capture-verified circular at 4:3, 16:9, and 11:7 (H-6c **defect fixed**) |
+| "Spheres, not a fluid" | H-6a hypothesis (smooth output unconsumed) **REJECTED**: the shade pass binds the smoothed texture (code-verified F.1.1) and post-fix captures show adjacent particles fusing into smooth merged blobs. The real blockers were **sim-state**: lab init shipped `viscosity = 40` (a ×4 vorticity-confinement gain — F.1's measured permanently-jittering regime: the dam exploded into a gas) and `target_density = 10` against an achievable spawn density of ~3.85 (constraint maximally violated forever → permanent attraction churn), into a 22-unit-tall pillar scattering 20k particles across the whole 60×60 floor | Demo-side (in scope): `viscosity 40 → 0.5`, `target_density 10 → 4.2` (near spawn-packing equilibrium), dam reshaped wide-and-low (32×18×31). Result: dense fused foam with smoothly blended multi-particle surfaces (f0270/f0600) — fusion proven |
+
+### The honest remainder (out of scope, reported verbatim)
+
+A *calm glassy pooled basin* still does not form: the fluid settles into a lively fused foam, not a flat surface. The blocker is **solver-side and explicitly out of F.1.2 scope** ("no solver changes"): the XSPH viscosity blend is **hardcoded at 0.01 in `fluid.wgsl`** (the demo's "viscosity" slider drives only vorticity confinement), so the sim has almost no energy sink — F.1's own envelope measurements (quasi-steady mean speed² ≈ 20–27 ⇒ ~4.5 m/s perpetual agitation) predicted exactly this. Per the brief's stop rule, this is handed to F.4 rather than fixed here.
+
+### DEFECTS (fixed) / TUNING (F.4) ledger
+
+**DEFECTS fixed in F.1.2** — resize targets (H-1), ocean uniform layout (H-2), teardown cascade (H-4), never-populated spawn pool (H-3), missing background composite + never-rendered skybox (H-6b), aspect-stretched impostors (H-6c), gas-regime lab defaults (H-6a, demo-side). Capture evidence: before = run-1/run-3 sets; after = current `captures/` set.
+
+**TUNING / F.4 ledger** (observed, deliberately not acted on):
+1. **Expose the XSPH viscosity coefficient** (hardcoded 0.01, `fluid.wgsl` integrate) as a `SimParams` field + slider — the single highest-leverage step toward a calm pooled surface (solver change). Revisit `ε = 100` constraint softening at the same time.
+2. Smooth-pass strength (radius 5 px, hardcoded `SmoothParams`, no setter) — adequate for the current foam look; revisit for large calm surfaces.
+3. Depth-pass render radius hardcoded 0.5 (decoupled from `smoothing_radius`).
+4. "No variation between particles": uniform fluid is not wrong; foam/spray/size/color variation are dormant features (secondary-particle system runs but spawns conservatively).
+5. Ground/floor visual: there is no floor geometry; the pool sits on an invisible plane — a ground quad would anchor the scene.
+6. Pre-existing clippy warnings in `astraweave-terrain` (7) and `astraweave-render` (1) surfaced while linting the demo — out of scope, noted for their owners. (Also: `cargo clippy -p <bin> -- -D warnings` propagates the deny to path dependencies — use crate-scoped lint runs.)
+7. Default-scenario camera starts inside the droplet cloud; pulling the start distance back would read better.
+
+### H-6d — Surface-tension pair (the slider works)
+
+`--surface-tension=0.0` vs `0.9`, settled frame 600 (`captures/st_0_0_f0600.png`, `captures/st_0_9_f0600.png`): at 0.0, a fine dispersion of small uniform droplets; at 0.9, markedly larger coalesced blobs dominate. The slider's cohesion term is alive and legible — not broken; further shaping is F.4 sim-tuning.
+
+### Capture infrastructure (permanent — F.4 will be evaluated with it)
+
+- **F12**: capture next frame. **`--capture-frames N,M,…`**: capture by frame index. PNGs → `examples/fluids_demo/captures/` (gitignored).
+- **`--exercise`**: scripted gate driver — resize 800×600→1600×900 (frame 80), →ocean (140), →lab (200), resize →1100×700 (230), center click-spawn (260), captures (30/120/170/270/320/400/600), clean exit 0 (640).
+- **`--surface-tension=X`**: startup override for comparison pairs.
+- Implementation: swapchain `COPY_SRC`, padded `copy_texture_to_buffer`, blocking map, BGRA→RGBA swizzle, `image` crate PNG.
+
+### F.1.2 verification gate
+
+| Item | Result |
+|---|---|
+| Maximize/resize/minimize-restore, scenario switch both ways incl. post-resize | ✅ exercise runs 2–5: exit 0, zero validation errors (run-1 baseline caught the ocean defect) |
+| Left-click spawn at clicked location; cap-safe | ✅ `Spawned 50/50 … free pool now 1950`; clamped to sim domain |
+| Clean exit 0; single clean message on mid-frame panic | ✅ exit 0 every post-fix run; H-4 verified by the real ocean panic (one FATAL line, exit 1, no cascade) |
+| H-6a/b/c resolved with evidence | ✅ a=rejected-as-render-defect→sim-state fixed (captures); b=fixed (skybox+composite, captures); c=fixed (circular at 3 aspect ratios, captures) |
+| Fusion capture | ✅ f0270/f0600: smooth merged multi-particle surfaces; calm-pool remainder reported out-of-scope (solver) |
+| Surface-tension pair | ✅ `st_0_0_f0600.png` / `st_0_9_f0600.png` |
+| `cargo test -p astraweave-fluids` default/experimental | ✅ 2,259+6+99 / 2,448+6+99, 0 failed |
+| `clippy -p astraweave-fluids --all-features -- -D warnings` | ✅ clean; demo's own 4 warnings fixed (deps' pre-existing warnings ledgered) |
+| Scope wall | ✅ `ssfr_depth.wgsl` + `examples/fluids_demo/**` + this addendum only |
+
+### Captures for the owner's second visual pass (each with the one question it answers)
+
+| Capture | The one question |
+|---|---|
+| `f0030_800x600.png` | Are impostors circular at 4:3, sky background present? |
+| `f0120_1600x900.png` | Still circular at 16:9 (the oblong defect's old worst case)? Sky-lit glassy droplets instead of matte pearls-on-black? |
+| `f0170_1600x900.png` | Does the ocean scenario — rendering for the first time ever — look like an animated water plane under sky? |
+| `f0270_1100x700.png` | Mid-click-spawn: do adjacent particles fuse into smooth merged blobs (the SSFR chain working)? |
+| `f0600_1100x700.png` | The settled state: fused foam — is this acceptable until F.4 exposes the real viscosity control? |
+| `st_0_0_f0600.png` vs `st_0_9_f0600.png` | Can you see your surface-tension slider working (fine droplets vs large coalesced blobs)? |
+
+---
+
 **Revision history**
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-06-11 | F.1 execution report; branch `campaign/fluids-f1`, commits `e22e7bd0a..e4c98bb7f` + this report |
 | 1.1 | 2026-06-11 | F.1.1 hotfix addendum: FluidRenderer had never constructed (2 pipeline/binding mismatches fixed), clean 12 s demo run captured, `gpu_renderer_smoke` closes the renderer coverage gap, v1.0 "should now actually run" inference corrected |
+| 1.2 | 2026-06-11 | F.1.2 hotfix addendum: resize/scenario crashes (2 distinct defects), teardown cascade, never-wired click-spawn, never-rendered skybox + missing background composite, oblong impostors, gas-regime demo defaults; permanent capture infrastructure; DEFECTS/TUNING ledger for F.4 |

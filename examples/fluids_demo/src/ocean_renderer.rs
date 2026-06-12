@@ -2,26 +2,37 @@ use glam::{Mat4, Vec3};
 use noise::{NoiseFn, Perlin};
 use wgpu::util::DeviceExt;
 
+/// Host mirror of `ocean.wgsl::Uniforms`.
+///
+/// F.1.2 (H-2): the pre-fix packed layout was 144 bytes while the WGSL
+/// uniform layout is 160 — `vec2<f32>` has 8-byte alignment in the uniform
+/// address space, inserting a 4-byte gap after `time_scale`, and the struct
+/// size rounds up to its 16-byte alignment. Every ocean draw failed
+/// validation ("bound with size 144 where the shader expects 160"), i.e.
+/// the ocean scenario had never rendered a single frame. The explicit pads
+/// below reproduce WGSL's implicit layout.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
-    view_proj: [[f32; 4]; 4],
-    ocean_pos: [f32; 3],
-    time: f32,
-    noise_scale: f32,
-    height_scale: f32,
-    time_scale: f32,
-    wave_direction: [f32; 2],
-    wave_direction2: [f32; 2],
-    beers_law: f32,
-    depth_offset: f32,
-    edge_scale: f32,
-    metallic: f32,
-    roughness: f32,
-    near: f32,
-    far: f32,
-    _pad0: f32,
-    _pad1: f32,
+    view_proj: [[f32; 4]; 4],  // offset   0
+    ocean_pos: [f32; 3],       // offset  64
+    time: f32,                 // offset  76
+    noise_scale: f32,          // offset  80
+    height_scale: f32,         // offset  84
+    time_scale: f32,           // offset  88
+    _pad_vec2_align: f32,      // offset  92 (vec2 8-byte alignment gap)
+    wave_direction: [f32; 2],  // offset  96
+    wave_direction2: [f32; 2], // offset 104
+    beers_law: f32,            // offset 112
+    depth_offset: f32,         // offset 116
+    edge_scale: f32,           // offset 120
+    metallic: f32,             // offset 124
+    roughness: f32,            // offset 128
+    near: f32,                 // offset 132
+    far: f32,                  // offset 136
+    _pad0: f32,                // offset 140
+    _pad1: f32,                // offset 144
+    _pad_tail: [f32; 3],       // offset 148 -> 160 (struct align round-up)
 }
 
 #[repr(C)]
@@ -101,6 +112,7 @@ impl OceanRenderer {
             noise_scale: 20.0,
             height_scale: 2.0,
             time_scale: 0.1,
+            _pad_vec2_align: 0.0,
             wave_direction: [0.5, -0.2],
             wave_direction2: [-0.5, 0.5],
             beers_law: 2.0,
@@ -112,6 +124,7 @@ impl OceanRenderer {
             far: 100.0,
             _pad0: 0.0,
             _pad1: 0.0,
+            _pad_tail: [0.0; 3],
         };
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -563,6 +576,7 @@ impl OceanRenderer {
             noise_scale: 20.0,
             height_scale: 2.0,
             time_scale: 0.1,
+            _pad_vec2_align: 0.0,
             wave_direction: [0.5, -0.2],
             wave_direction2: [-0.5, 0.5],
             beers_law: 2.0,
@@ -574,6 +588,7 @@ impl OceanRenderer {
             far: 100.0,
             _pad0: 0.0,
             _pad1: 0.0,
+            _pad_tail: [0.0; 3],
         };
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
