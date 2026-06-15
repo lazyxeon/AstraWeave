@@ -38,7 +38,7 @@ WorldSnapshot  AI Model   PlanIntent  Tool Validation
 - `Orchestrator` trait: Abstracts AI planning (rule-based vs LLM)
 - **Tool Sandbox**: All AI actions validated by engine (no cheating possible)
 
-### GOAP+Hermes Hybrid Arbiter (Full Patterns)
+### GOAP+LLM Hybrid Arbiter (Full Patterns)
 
 ```rust
 // See astraweave-ai/src/arbiter.rs
@@ -80,7 +80,7 @@ impl Agent {
 
 // Pattern 2: Shared LLM executor (efficient for many agents)
 let llm_executor = Arc::new(LlmExecutor::new(
-    hermes_client,  // OllamaClient with Hermes 2 Pro model
+    qwen_client,  // Qwen via Ollama
     tool_registry,
 ));
 let agents: Vec<Agent> = (0..100)
@@ -269,7 +269,7 @@ let status = graph.tick(&context);
 | Classical | 0.20 ms |
 | BehaviorTree | 0.17 ms |
 | Utility | 0.46 ms |
-| LLM (Hermes 2 Pro) | 3,462 ms |
+| LLM (Qwen) | 3,462 ms |
 | Hybrid | 2,155 ms |
 | Ensemble | 2,355 ms |
 

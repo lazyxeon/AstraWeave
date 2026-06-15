@@ -9,7 +9,7 @@
 //! ```bash
 //! # Start Ollama with Qwen3-8B
 //! ollama serve
-//! ollama pull qwen3:8b
+//! ollama pull qwen3.5:4b
 //!
 //! # Run demo
 //! cargo run -p llm_streaming_demo --release
@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
         eprintln!("\nPlease ensure Ollama is running:");
         eprintln!("  1. Install Ollama: https://ollama.ai");
         eprintln!("  2. Start server: ollama serve");
-        eprintln!("  3. Pull model: ollama pull qwen3:8b");
+        eprintln!("  3. Pull model: ollama pull qwen3.5:4b");
         std::process::exit(1);
     }
 

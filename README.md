@@ -74,7 +74,7 @@ Built in Rust, designed for massive-scale intelligent worlds with production-gra
 
 <!-- Source: ARCHITECTURE_MAP.md v0.7.0 revision history; §0 Trace Index;
      §5 Dormant-Code Inventory; §7 Documentation Hazards. -->
-> **What changed (May 2026)?** The **architecture trace campaign** completed 13 per-subsystem traces under `docs/architecture/` (terrain materials, render pipeline, physics, persistence-ECS, networking ×2, input, fluids, ECS/math/core/SDK foundation, audio, animation, AI pipeline, aw_editor). The [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) was reconciled to v0.7.0 against those traces, and the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/) was deployed. Specific documentation hazards were surfaced and corrected: Fluids reclassified as research surface (no production game-loop dep), the runtime LLM model default identified as `phi3:medium` (not Qwen3 despite doc-comments), dual `World` coexistence (legacy `core::World` + ECS substrate) documented, four parallel animation type families catalogued, and the §7.7 wrapped-component resource identity trap promoted to a workspace-wide structural axiom.
+> **What changed (May 2026)?** The **architecture trace campaign** completed 13 per-subsystem traces under `docs/architecture/` (terrain materials, render pipeline, physics, persistence-ECS, networking ×2, input, fluids, ECS/math/core/SDK foundation, audio, animation, AI pipeline, aw_editor). The [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) was reconciled to v0.7.0 against those traces, and the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/) was deployed. Specific documentation hazards were surfaced and corrected: Fluids reclassified as research surface (no production game-loop dep), the runtime LLM default drift from Qwen to `phi3:medium` was identified and later replaced with `qwen3.5:4b`, dual `World` coexistence (legacy `core::World` + ECS substrate) documented, four parallel animation type families catalogued, and the §7.7 wrapped-component resource identity trap promoted to a workspace-wide structural axiom.
 >
 > **Why 59.3%?** The v5.0 methodology uses `cargo llvm-cov --lib --summary-only` which instruments all compiled code including inlined dependency generics. Large GPU-only and async code paths (rendering, terrain, audio) are untestable in headless mode. See [MASTER_COVERAGE_REPORT](docs/current/MASTER_COVERAGE_REPORT.md) for full analysis.
 >
@@ -183,10 +183,8 @@ Systems within a stage execute in registration order; stages execute in the orde
 ## ✨ Key Features
 
 ### 🧠 AI & Agents
-  <!-- Source: ai_pipeline.md §6 (runtime default is phi3:medium per
-       orchestrator.rs:488-490; Qwen3 supported via OLLAMA_MODEL but is not
-       the runtime default despite doc-comment phrasing). -->
-  **Multi-Modal Intelligence**: 6 validated AI modes (GOAP, Behavior Trees, LLM, Hybrid ensembles). Local LLM via Ollama — model configurable via `OLLAMA_MODEL` (defaults to `phi3:medium`, with Phi-3 / Hermes2Pro / Qwen3-8B clients all supported).
+  <!-- Source: active Ollama defaults in astraweave-llm/src/qwen3_ollama.rs and examples. -->
+  **Multi-Modal Intelligence**: 6 validated AI modes (GOAP, Behavior Trees, LLM, Hybrid ensembles). Local LLM via Ollama — model configurable via `OLLAMA_MODEL` and defaults to Qwen (`qwen3.5:4b`) for active examples and probes.
   
   <!-- Source: ai_pipeline.md §1 (12,700+ agents validated). Hardware context
        added per Correction 10. -->
@@ -301,7 +299,7 @@ AstraWeave is a modular workspace of **~51 production crates** organized into 7 
 
 ### 🧠 AI & Intelligence (14 crates)
 -   **`astraweave-ai`**: Core loop orchestration with GOAP planner and async LLM executor
--   **`astraweave-llm`**: Production LLM integration (Phi-3/Hermes2, Ollama, prompt caching, circuit breaker)
+-   **`astraweave-llm`**: Production LLM integration (Qwen via Ollama, prompt caching, circuit breaker; Phi-3/Hermes clients retained only as legacy comparison modules)
 -   **`astraweave-llm-eval`**: Automated LLM evaluation with multi-metric scoring
 -   **`astraweave-behavior`**: Behavior trees, HTN planning, GOAP with LRU plan caching
 -   **`astraweave-context`**: Conversation history with token-aware sliding windows and summarization

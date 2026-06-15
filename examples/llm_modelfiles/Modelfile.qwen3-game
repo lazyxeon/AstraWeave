@@ -1,4 +1,4 @@
-# Qwen3-8B Game AI — Balanced Performance
+# Qwen Instruct Game AI — Balanced Performance
 #
 # Primary model for real-time game AI with AstraWeave.
 # Non-thinking mode for fast JSON responses.
@@ -9,7 +9,7 @@
 #
 # Performance target: <2s latency, ≥90% JSON success rate
 
-FROM qwen3:8b
+FROM qwen3.5:4b
 
 # Sampling params — Qwen3 recommends temp ≥ 0.5, top_k = 20
 PARAMETER temperature 0.5
